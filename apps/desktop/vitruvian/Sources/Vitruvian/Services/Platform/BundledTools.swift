@@ -8,5 +8,5 @@ import VitruvianCore
 /// only what is listed here; a migration adds one line.
 @MainActor
 package enum BundledTools {
-    package static let all: [any BundledTool.Type] = [PortManagerService.self]
+    package static let all: [any BundledTool.Type] = [PortManagerService.self, URLCleanerService.self]
 }

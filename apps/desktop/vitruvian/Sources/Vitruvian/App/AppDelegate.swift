@@ -337,7 +337,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         ExtraBrightnessService.shared.stop()
         ProcessUsageService.shared.stopNetworkMonitoring(force: true)
-        URLCleanerService.shared.stop()
         // Forced off rather than synced: a held button's Up never comes now.
         QuitInputRelease.releaseAll()
         if AppFeature.mouseAcceleration.isAvailable

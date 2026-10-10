@@ -533,7 +533,9 @@ enum ToolBrokerTests {
 
     /// A manifest and the `AppFeature` it stands beside describe one thing.
     static func manifestsAgree(_ suite: TestSuite) {
-        let manifests = [PortManagerService.manifest]
+        let manifests = [PortManagerService.manifest, URLCleanerService.manifest]
+        suite.expect(BundledTools.all.map { $0.manifest.id } == manifests.map(\.id),
+                     "every tool the host holds is checked here")
         let registry = ToolRegistry(isAvailable: { _ in true })
         BuiltinTools.install(into: registry)
         var keys: [String] = []
@@ -552,6 +554,11 @@ enum ToolBrokerTests {
                 (Defaults.registeredDefaults[declared.key] as? NSObject)
                     == (declared.defaultValue.defaultsValue as? NSObject)
             }, "\(manifest.id) declares each preference with the default the app registers")
+            suite.expect((manifest.enabledBy.map { [$0] } ?? []) == feature.enabledKeys,
+                         "\(manifest.id) is switched on by the key its feature names")
+            suite.expect(FeatureRuntime.actions(for: feature, in: .standard).contains(.tool(manifest.id))
+                             == manifest.activation.contains(.onLaunch),
+                         "\(manifest.id) is handed to the tool host at launch exactly when its manifest says so")
             keys += manifest.preferences.map(\.key)
         }
         suite.expect(Set(keys).count == keys.count, "no preference belongs to two tools")

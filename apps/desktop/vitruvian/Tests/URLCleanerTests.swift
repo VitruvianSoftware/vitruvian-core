@@ -21,6 +21,7 @@ enum URLCleanerTests {
         stopping(suite)
         copyByHand(suite)
         oneLook(suite)
+        commands(suite)
     }
 
     /// The cleaner's outside world for one test. Only the test's own thread
@@ -125,13 +126,8 @@ enum URLCleanerTests {
 
     /// The cleaner over `rig`, and how the app re-decides whether it runs.
     static func bench(_ rig: CleanerRig) -> (cleaner: URLCleanerService, sync: () -> Void) {
-        let cleaner = URLCleanerService(environment: .init(
-            defaults: rig.defaults,
-            lane: { rig.lane.append($0) },
-            main: { work in rig.main.append { MainActor.assumeIsolated { work() } } },
-            pasteboard: { rig.board },
-            every: { rig.startTimer($0, $1, $2) }))
-        return (cleaner, { cleaner.syncWithPreferences() })
+        let host = ToolHost(broker: rig.broker(), tools: [URLCleanerService.self])
+        return (host.tool(URLCleanerService.self), { host.sync(URLCleanerService.manifest.id) })
     }
 
     /// Whether this Mac's pasteboard counts the app's signature, written
@@ -372,11 +368,14 @@ enum URLCleanerTests {
     /// the cleaner last knew; `cancelled` is a look called off before it ran.
     static func look(at board: NSPasteboard, since: Int, cancelled: Bool = false)
         -> (changeCount: Int, cleaned: URLCleaning.Result?)? {
-        let token = URLCleanerService.PollToken()
+        let token = ClipboardPollToken()
         if cancelled { token.cancel() }
-        return URLCleanerService.pollPasteboard(sinceChangeCount: since, token: token, pasteboard: board,
-                                                rules: URLCleaning.Rules.none)
-            .map { (changeCount: $0.changeCount, cleaned: $0.cleaned) }
+        return ClipboardRewrite.poll(since: since, token: token,
+                                     rule: URLCleanerService.rewriteRule(rules: { .none }), pasteboard: board)
+            .map { poll in
+                (changeCount: poll.changeCount,
+                 cleaned: poll.replaced.map { URLCleaning.Result(url: $0.text, removed: $0.note) })
+            }
     }
 
     static func oneLook(_ suite: TestSuite) {
@@ -396,5 +395,67 @@ enum URLCleanerTests {
         suite.expect(rewritten?.cleaned?.url == cleaned && rewritten?.changeCount == board.changeCount
                          && board.changeCount != before,
                      "a look that rewrites answers with the clipboard's count after the rewrite")
+    }
+
+    /// The command bar's "Clean URL" row, the Paste buttons, and what the
+    /// tool asked the broker for along the way.
+    static func commands(_ suite: TestSuite) {
+        let rig = CleanerRig()
+        defer { rig.close() }
+        rig.set(installed: true, enabled: false)
+        let host = ToolHost(broker: rig.broker(), tools: [URLCleanerService.self])
+        let command = URLCleanerService.cleanClipboard
+        let s = L10n.shared.s
+        func runCommand() {
+            rig.said = []
+            host.run(command)
+            rig.settle()
+        }
+
+        suite.expect(host.canRun(command) && host.running.isEmpty,
+                     "the command runs while automatic cleaning is switched off")
+        rig.board.clearContents()
+        runCommand()
+        suite.expect(rig.said == ["link: \(s.urlCleanerNoURL)"], "an empty clipboard says there is no link")
+        rig.copy("not a link")
+        runCommand()
+        suite.expect(rig.said == ["link: \(s.urlCleanerNoURL)"] && rig.text == "not a link",
+                     "text that is not a link says so and is left alone")
+        rig.copy("https://example.com/?id=42")
+        let count = rig.board.changeCount
+        runCommand()
+        suite.expect(rig.said == ["checkmark.circle: \(s.urlCleanerNoChange)"] && rig.board.changeCount == count,
+                     "a link with nothing to take out says so and is left alone")
+        rig.copy(dirty)
+        runCommand()
+        let removed = (URLCleaning.clean(dirty)?.removed ?? []).joined(separator: ", ")
+        suite.expect(rig.text == cleaned && rig.board.string(forType: .URL) == cleaned
+                         && rig.said == ["link: " + String(format: s.urlCleanerRemovedFormat, removed)],
+                     "a link with tracking parts is cleaned, and the message names what was taken out")
+
+        let cleaner = host.tool(URLCleanerService.self)
+        var pasted: [String] = []
+        rig.copy("pasted")
+        cleaner.pasteboardText { pasted.append($0) }
+        rig.settle()
+        rig.board.clearContents()
+        cleaner.pasteboardText { pasted.append($0) }
+        rig.settle()
+        suite.expect(pasted == ["pasted", ""],
+                     "a Paste button reads the clipboard's text, and an empty clipboard as empty text")
+
+        let registry = ToolRegistry(isAvailable: { $0.isAvailable(in: rig.defaults) })
+        BuiltinTools.install(into: registry, host: { host })
+        rig.copy(dirty)
+        suite.expect(ToolSurface.allCases.allSatisfy { surface in
+            !registry.commands(on: surface).contains { $0.id.tool == command.tool }
+        }, "the cleaner adds no row, tile, wheel slot or shortcut of its own")
+        suite.expect(registry.run(command), "the command bar's row runs the cleaner's command through the registry")
+        rig.settle()
+        suite.expect(rig.text == cleaned, "and the command does its work")
+        rig.set(installed: false, enabled: false)
+        rig.copy(dirty)
+        suite.expect(!registry.run(command) && rig.lane.isEmpty, "removed in the hub, the command does nothing")
+        suite.expect(rig.undeclared.isEmpty, "the cleaner asks for nothing its manifest does not declare")
     }
 }

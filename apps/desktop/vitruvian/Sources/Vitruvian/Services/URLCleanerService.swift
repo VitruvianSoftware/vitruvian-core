@@ -9,197 +9,101 @@ import VitruvianDesign
 
 @MainActor
 package final class URLCleanerService: ObservableObject {
-    package static let shared = URLCleanerService(environment: .live)
-
-    /// What the cleaner reaches outside itself. The app's is the saved
-    /// preferences, the shared clipboard lane, the general pasteboard and a
-    /// run-loop timer. A test passes a suite and a pasteboard of its own, and
-    /// runs the lane, the main queue and the timer by hand.
-    package struct Environment {
-        /// Where the hub's switch, the cleaner's own switch and the rules
-        /// are saved.
-        package var defaults: UserDefaults
-        /// Runs work on the clipboard lane, off the main thread.
-        package var lane: (@escaping @Sendable () -> Void) -> Void
-        /// Hands work from the lane back to the main thread.
-        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
-        /// The pasteboard to watch, asked for on the lane.
-        package var pasteboard: @Sendable () -> NSPasteboard
-        /// Starts a repeating tick on the main thread, given its interval
-        /// and its tolerance. Calling the result stops it.
-        package var every: (TimeInterval, TimeInterval, @escaping @MainActor () -> Void) -> (() -> Void)
-
-        package init(defaults: UserDefaults,
-                     lane: @escaping (@escaping @Sendable () -> Void) -> Void,
-                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
-                     pasteboard: @escaping @Sendable () -> NSPasteboard,
-                     every: @escaping (TimeInterval, TimeInterval, @escaping @MainActor () -> Void) -> (() -> Void)) {
-            self.defaults = defaults
-            self.lane = lane
-            self.main = main
-            self.pasteboard = pasteboard
-            self.every = every
-        }
-
-        @MainActor package static let live = Environment(
-            defaults: .standard,
-            lane: { GeneralPasteboardAccess.shared.async($0) },
-            main: { work in DispatchQueue.main.async { work() } },
-            pasteboard: { .general },
-            every: { interval, tolerance, tick in
-                let timer = Timer(timeInterval: interval, repeats: true) { _ in
-                    // Added to the main run loop below, so it fires on the main thread.
-                    MainActor.assumeIsolated { tick() }
-                }
-                timer.tolerance = tolerance
-                RunLoop.main.add(timer, forMode: .common)
-                return { timer.invalidate() }
-            })
-    }
-
     @Published package private(set) var isRunning = false
     @Published package private(set) var lastCleaned: String?
     /// Names the last automatic clean took out, so Settings can say what the
     /// silent rewrite did rather than only that it is running.
     @Published package private(set) var lastRemoved: [String] = []
 
-    /// The token moved to the broker with the look it calls off.
-    package typealias PollToken = ClipboardPollToken
+    private let services: ToolServices
+    /// True while the broker watches the clipboard for this tool.
+    private var watching = false
 
-    package struct PollResult {
-        package let changeCount: Int
-        package let cleaned: URLCleaning.Result?
-    }
-
-    private let environment: Environment
-    private var stopTimer: (() -> Void)?
-    private var lastChangeCount = 0
-    private var pollInFlight = false
-    private var pollToken: PollToken?
-
-    package init(environment: Environment) {
-        self.environment = environment
-    }
-
-    package func syncWithPreferences() {
-        if AppFeature.urlCleaner.isAvailable(in: environment.defaults),
-           environment.defaults[Preferences.urlCleanerEnabled] {
-            start()
-        } else {
-            stop()
-        }
+    package init(services: ToolServices) {
+        self.services = services
     }
 
     package func clean(_ text: String) -> URLCleaning.Result? {
-        URLCleaning.clean(text, rules: Self.rules(in: environment.defaults))
+        URLCleaning.clean(text, rules: Self.rules(try? services.storage.reader().get()))
     }
 
     /// Writes on the shared lane and settles the change count on the main
-    /// queue, where the poll compares against it. The caller never waits: the
+    /// queue, where the watch compares against it. The caller never waits: the
     /// lane can be wedged behind an app that promised pasteboard content and
     /// stopped answering (issue #887).
     package func copy(_ urlString: String) {
-        cancelPoll()
         lastCleaned = urlString
-        let board = environment.pasteboard
-        let main = environment.main
-        environment.lane { [weak self] in
-            let pasteboard = board()
-            let changeCount = ClipboardRewrite.write(urlString, to: pasteboard)
-            // Unlike a rewrite of what another app copied, this link is ours.
-            pasteboard.declareVitruvianSource()
-            main {
-                guard let self else { return }
-                self.lastChangeCount = max(self.lastChangeCount, changeCount)
-            }
-        }
+        services.clipboard.writeLink(urlString)
     }
 
-    package func stop() {
-        stopTimer?()
-        stopTimer = nil
-        cancelPoll()
-        isRunning = false
+    /// The text on the clipboard, for a Paste button: empty when it holds
+    /// none. Through the shared lane: a direct read would both race the
+    /// clipboard services on AppKit's pasteboard cache and hang the button
+    /// (and with it the app) on a promised flavour nobody renders any more.
+    package func pasteboardText(_ completion: @escaping @MainActor (String) -> Void) {
+        services.clipboard.readText { completion($0 ?? "") }
     }
 
-    private func start() {
-        guard stopTimer == nil else {
+    /// Starts the automatic clean. The tool host calls this each time it
+    /// finds the cleaner installed and switched on, so a second call only
+    /// confirms it is running.
+    package func start() {
+        guard !watching else {
             isRunning = true
             return
         }
-        stopTimer = environment.every(0.8, 0.25) { [weak self] in self?.cleanClipboardIfNeeded() }
+        guard case .success(let storage) = services.storage.reader() else { return }
+        let rule = Self.rewriteRule(rules: { Self.rules(storage) })
+        let refusal = services.clipboard.rewriteLinks(rule: rule) { [weak self] replaced in
+            guard let self, self.isRunning else { return }
+            self.lastCleaned = replaced.text
+            self.lastRemoved = replaced.note
+        }
+        guard refusal == nil else { return }
+        watching = true
         isRunning = true
-        baselinePasteboard()
     }
 
-    /// Reads the initial change count away from the main thread. It shares the
-    /// same serial lane as Clipboard History, so neither service can race
-    /// AppKit's pasteboard type cache while starting up.
-    private func baselinePasteboard() {
-        guard !pollInFlight else { return }
-        let token = PollToken()
-        pollToken = token
-        pollInFlight = true
-        let board = environment.pasteboard
-        let main = environment.main
-        environment.lane { [weak self] in
-            guard !token.isCancelled else { return }
-            let changeCount = board().changeCount
-            main {
-                guard let self, self.pollToken === token else { return }
-                self.pollToken = nil
-                self.pollInFlight = false
-                guard self.isRunning else { return }
-                self.lastChangeCount = changeCount
+    package func stop() {
+        services.clipboard.stopRewritingLinks()
+        watching = false
+        isRunning = false
+    }
+
+    package func canRun(_ command: CommandID) -> Bool {
+        command == Self.cleanClipboard
+    }
+
+    /// Cleans the link on the clipboard once and says what it did. Reads
+    /// through the shared lane like every other clipboard row: a direct
+    /// main-thread read races the lane's readers and freezes the app on a
+    /// promised flavour nobody is left to render (issue #887).
+    package func run(_ command: CommandID) {
+        guard command == Self.cleanClipboard else { return }
+        let notify = services.notify
+        services.clipboard.readText { [weak self] raw in
+            guard let self else { return }
+            let s = L10n.shared.s
+            guard let raw,
+                  !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                notify.hud(icon: "link", message: s.urlCleanerNoURL)
+                return
             }
-        }
-    }
-
-    private func cleanClipboardIfNeeded() {
-        guard !pollInFlight else { return }
-        let sinceChangeCount = lastChangeCount
-        let token = PollToken()
-        pollToken = token
-        pollInFlight = true
-        let board = environment.pasteboard
-        let main = environment.main
-        // UserDefaults is safe to use from any thread.
-        nonisolated(unsafe) let defaults = environment.defaults
-        environment.lane { [weak self] in
-            guard !token.isCancelled else { return }
-            let result = Self.pollPasteboard(sinceChangeCount: sinceChangeCount, token: token,
-                                             pasteboard: board(), defaults: defaults)
-            main {
-                guard let self, self.pollToken === token else { return }
-                self.pollToken = nil
-                self.pollInFlight = false
-                guard self.isRunning, let result else { return }
-                self.lastChangeCount = result.changeCount
-                if let cleaned = result.cleaned {
-                    self.lastCleaned = cleaned.url
-                    self.lastRemoved = cleaned.removed
-                }
+            let cleaned = self.clean(raw)
+            switch URLCleaning.outcome(for: cleaned, input: raw) {
+            case .notAURL:
+                notify.hud(icon: "link", message: s.urlCleanerNoURL)
+            case .unchanged:
+                notify.hud(icon: "checkmark.circle", message: s.urlCleanerNoChange)
+            case .rewritten:
+                cleaned.map { self.copy($0.url) }
+                notify.hud(icon: "link", message: s.urlCleanerCleaned)
+            case .removed(let names):
+                cleaned.map { self.copy($0.url) }
+                notify.hud(icon: "link",
+                           message: String(format: s.urlCleanerRemovedFormat,
+                                           names.joined(separator: ", ")))
             }
-        }
-    }
-
-    /// Runs only on GeneralPasteboardAccess. The look itself is the
-    /// broker's; this hands it the cleaner's rule and reads its answer.
-    /// `pasteboard` and `rules` are the general pasteboard and the stored
-    /// rules, except in the tests, which pass a private pasteboard.
-    /// `defaults` is where the stored rules are read when `rules` is nil.
-    nonisolated package static func pollPasteboard(sinceChangeCount: Int, token: PollToken,
-                                                   pasteboard: NSPasteboard = .general,
-                                                   rules: URLCleaning.Rules? = nil,
-                                                   defaults: UserDefaults = .standard) -> PollResult? {
-        // UserDefaults is safe to use from any thread.
-        nonisolated(unsafe) let store = defaults
-        let poll = ClipboardRewrite.poll(since: sinceChangeCount, token: token,
-                                         rule: rewriteRule(rules: { rules ?? Self.rules(in: store) }),
-                                         pasteboard: pasteboard)
-        return poll.map { poll in
-            PollResult(changeCount: poll.changeCount,
-                       cleaned: poll.replaced.map { URLCleaning.Result(url: $0.text, removed: $0.note) })
         }
     }
 
@@ -227,16 +131,47 @@ package final class URLCleanerService: ObservableObject {
             dropsMarkup: { URLCleaning.markupAddsOnlyFormatting($0, to: $1) })
     }
 
-    nonisolated private static func rules(in defaults: UserDefaults) -> URLCleaning.Rules {
+    /// The saved rules. With no reader, the built-in rules alone.
+    nonisolated private static func rules(_ storage: StorageReader?) -> URLCleaning.Rules {
         URLCleaning.rules(
-            globalNames: defaults[Preferences.urlCleanerCustomParameters],
-            siteNames: defaults[Preferences.urlCleanerSiteParameters],
-            disabledNames: defaults[Preferences.urlCleanerDisabledParameters])
+            globalNames: storage?.value(for: Preferences.urlCleanerCustomParameters),
+            siteNames: storage?.value(for: Preferences.urlCleanerSiteParameters),
+            disabledNames: storage?.value(for: Preferences.urlCleanerDisabledParameters))
     }
+}
 
-    private func cancelPoll() {
-        pollToken?.cancel()
-        pollToken = nil
-        pollInFlight = false
-    }
+extension URLCleanerService: BundledTool {
+    /// Cleans the link on the clipboard once. The command bar's "Clean URL"
+    /// row runs it. It asks for no surface: the row is the bar's own.
+    package static let cleanClipboard: CommandID = {
+        guard let id = ToolID(AppFeature.urlCleaner.rawValue),
+              let command = CommandID(tool: id, name: "cleanClipboard")
+        else { preconditionFailure("the URL cleaner's command is not valid") }
+        return command
+    }()
+
+    package static let manifest: ToolManifest = {
+        let feature = AppFeature.urlCleaner
+        guard let clean = CommandDescriptor(id: cleanClipboard, title: feature.rawValue, symbol: feature.symbolName,
+                                            surfaces: []),
+              let tool = ToolDescriptor(id: cleanClipboard.tool, name: feature.rawValue, symbol: feature.symbolName,
+                                        commands: [clean]),
+              let storage = CapabilityRequest(.storage, reason: "Remembers whether automatic cleaning is on, and your rules."),
+              let read = CapabilityRequest(.clipboardRead, reason: "Reads a link you copied, to clean it."),
+              let rewrite = CapabilityRequest(.clipboardRewrite, reason: "Replaces a link you copied with the cleaned link."),
+              let write = CapabilityRequest(.clipboardWrite, reason: "Copies a link you cleaned by hand."),
+              let say = CapabilityRequest(.notify, reason: "Says what was taken out of a link."),
+              let manifest = ToolManifest(
+                  tool: tool, group: feature.group, capabilities: [storage, read, rewrite, write, say],
+                  preferences: [
+                      PreferenceDeclaration(key: DefaultsKey.urlCleanerEnabled, default: .bool(false)),
+                      PreferenceDeclaration(key: DefaultsKey.urlCleanerCustomParameters, default: .string("")),
+                      PreferenceDeclaration(key: DefaultsKey.urlCleanerSiteParameters, default: .string("")),
+                      PreferenceDeclaration(key: DefaultsKey.urlCleanerDisabledParameters, default: .string("")),
+                      PreferenceDeclaration(key: DefaultsKey.panelUtilityURLCleaner, default: .bool(true)),
+                  ],
+                  activation: [.onLaunch, .onCommand, .onShown], enabledBy: DefaultsKey.urlCleanerEnabled)
+        else { preconditionFailure("the URL cleaner's manifest is not valid") }
+        return manifest
+    }()
 }

@@ -131,6 +131,12 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/URLCleanerService.swift`: one look at the clipboard and the write that follows it moved, word for word, to `Services/Platform/Broker/ClipboardRewrite.swift`. The cleaner hands the look its three decisions (which types it touches, what a link becomes, whether the HTML may go) as a rule.
   - `Services/FeatureRuntime.swift`: one binding action, `tool`, hands a feature that has become a tool to the tool host. `FeatureBindingAction` is no longer `CaseIterable`; nothing read the list.
   - `Services/PortManager/PortManagerService.swift`: says it has nothing to start and no command, now that the tool interface asks.
+  - `Services/URLCleanerService.swift`: the URL cleaner is a tool. It has a manifest and one command, is built by the tool host with the services that manifest allows, and reads its rules, reads and rewrites the clipboard and shows its message only through the broker. Its singleton, its timer, its pasteboard code and the `Environment` this entry added above are gone.
+  - `UI/Settings/URLCleanerSettings.swift`, `UI/MenuPanel/PanelURLCleanerView.swift`: get the tool from the host, tell the host when the switch flips, and ask the tool for the clipboard's text, where they called the service's singleton and the pasteboard.
+  - `Services/CommandBar/CommandBarCatalog.swift`: the "Clean URL" row runs the tool's command through the registry, and the selection row calls the tool. `cleanClipboardURL()` moved into the tool. Both rows keep their ids.
+  - `Services/FeatureRuntime.swift`: the URL cleaner's arm hands it to the tool host; its own binding action is gone.
+  - `App/AppDelegate.swift`: the URL cleaner's line left the quit list. The tool host stops it, and no longer builds it at quit when it never ran.
+  - `Tests/ClipboardFeatureTests.swift`: the link cleaner's four checks call the look where it lives now. Their expectations are unchanged.
 - **2026-10-09**: Tool platform, the broker, stage A (`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`):
   - New files, none with an upstream header: `Core/Platform/ToolManifest.swift` (what a tool is and which capabilities it asks for) and `Services/Platform/Broker/CapabilityBroker.swift` (the one place that decides whether a tool may use a capability), with their tests in `Tests/ToolPlatformTests.swift` and `Tests/ToolBrokerTests.swift`.
   - `App/AppDelegate.swift`: stops the tools the host built, at quit.

@@ -82,6 +82,8 @@ enum FeatureRuntimeContract {
         suite.expect([AppFeature.quickToggles, .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager]
                         .allSatisfy { actions($0).isEmpty },
                      "an on-demand tool has nothing to start or stop")
+        suite.expect(actions(.urlCleaner) == [.tool(URLCleanerService.manifest.id)],
+                     "a feature that has become a tool is handed to the tool host")
 
         // The island's extensions follow the island.
         let extensions: [AppFeature: FeatureBindingAction] = [

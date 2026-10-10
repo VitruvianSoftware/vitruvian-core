@@ -366,7 +366,8 @@ package final class FeatureRuntime: ObservableObject {
         case .finderCutPaste: return [.finderCutPaste]
         case .finderRename: return [.finderRename]
         case .shelf: return [.shelf, .fileTools]
-        case .urlCleaner: return [.urlCleaner]
+        // A tool: the tool host decides whether it runs.
+        case .urlCleaner: return [.tool(URLCleanerService.manifest.id)]
         case .diskImageInstaller: return [.diskImageInstaller]
         case .mixer: return [.preciseVolumeRoller, .appVolumeMixer, .audioInputDevices]
         case .soundOutputSwitcher: return [.appVolumeMixer, .soundOutputSwitcher]
@@ -470,7 +471,6 @@ package final class FeatureRuntime: ObservableObject {
         case .finderCutPaste: FinderCutPaste.shared.syncWithPreferences()
         case .finderRename: FinderRenameService.shared.syncWithPreferences()
         case .shelf: ShelfService.shared.syncWithPreferences()
-        case .urlCleaner: URLCleanerService.shared.syncWithPreferences()
         case .diskImageInstaller: DiskImageInstallerService.shared.syncWithPreferences()
         case .preciseVolumeRoller: PreciseVolumeRollerService.shared.syncWithPreferences()
         case .appVolumeMixer: AppVolumeMixer.shared.syncWithPreferences()
@@ -534,7 +534,7 @@ package enum FeatureBindingAction: Hashable {
     case mouseButtonShortcuts, middleClick, mouseClickDebounce, keyboardDebounce, quitProtection, superKey
     case textSnippets, snippetLibrary, clipboardHistory, clipboardAutoClear
     case fileTools, cancelMedia, closeMediaEditors
-    case pastePlain, finderCutPaste, finderRename, shelf, urlCleaner, diskImageInstaller
+    case pastePlain, finderCutPaste, finderRename, shelf, diskImageInstaller
     case preciseVolumeRoller, appVolumeMixer, audioInputDevices, soundOutputSwitcher, audioPriority
     case micMute, musicLaunchBlocker, keepAwake, hotkeys, brightness, extraBrightness, bluetoothSleep
     case quickLauncher, screenCapture, screenText, screenshot, screenRecorder, recentCaptures
