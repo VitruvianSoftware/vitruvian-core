@@ -32,6 +32,9 @@ no design value of its own.
   that device, so run it by explicit label.
 - **Daemon.** `macagent/BUILD` carries the Go binary plus its `install` and `pair` helpers;
   the six-digit pairing code gates the macros, console and clipboard endpoints.
+- **Release and distribution.** Release-please cuts `android-remote-vX.Y.Z` on merge to `main`.
+  `.github/workflows/android-remote-release.yaml` packages the release APK with multi-ABI support
+  via `scripts/publish.sh` and attaches `VitruvianRemote-X.Y.Z.apk` to GitHub Releases.
 
 ## House rules
 

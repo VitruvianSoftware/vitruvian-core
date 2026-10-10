@@ -35,8 +35,12 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
-    vitruvian.dev/release-model: none
+    vitruvian.dev/release-model: monorepo-bazel
+    vitruvian.dev/release-workflow: android-remote-release.yaml
   links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=android-remote
+      title: Releases
+      icon: card_giftcard
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/packages/design-system/ANDROID.md
       title: Vitruvian on Android (Compose handoff)
       icon: docs
