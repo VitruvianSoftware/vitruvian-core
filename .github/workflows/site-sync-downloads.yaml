@@ -72,6 +72,10 @@ jobs:
           git config user.name "vitruvian-wren-agent[bot]"
           git config user.email "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
 
+          # The checkout above used persist-credentials: false, so git has no
+          # credentials of its own. Hand it the App token for the push.
+          gh auth setup-git
+
           git checkout -B "$branch"
           git add apps/web/vitruviansoftware-dev/_data/downloads.yml
           git commit -m "chore(site): synchronize downloads catalog with latest releases"
