@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.1...android-remote-v0.1.2) (2026-10-10)
+
+
+### Features
+
+* **remote:** add vanity APK download redirect and update distribution docs ([#3051](https://github.com/VitruvianSoftware/vitruvian-core/issues/3051)) ([0c5643e](https://github.com/VitruvianSoftware/vitruvian-core/commit/0c5643e63f534faf7ae60e25a46fd7915934c457))
+
 ## [0.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.0...android-remote-v0.1.1) (2026-10-10)
 
 
