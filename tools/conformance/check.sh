@@ -421,6 +421,7 @@ ROWS_DEPENDABOT_ACTIONS=""
 ROWS_ACTION_PINS=""
 ROWS_GITLEAKS=""
 ROWS_OCIBASE=""
+ROWS_PROMGRAPH=""
 ROWS_TECHDOCS=""
 ROWS_PROJKIND=""
 
@@ -462,6 +463,7 @@ emit() {
     action_pins)  ROWS_ACTION_PINS="${ROWS_ACTION_PINS}${_row}" ;;
     gitleaks)     ROWS_GITLEAKS="${ROWS_GITLEAKS}${_row}" ;;
     ocibase)      ROWS_OCIBASE="${ROWS_OCIBASE}${_row}" ;;
+    promgraph)    ROWS_PROMGRAPH="${ROWS_PROMGRAPH}${_row}" ;;
     techdocs)     ROWS_TECHDOCS="${ROWS_TECHDOCS}${_row}" ;;
     projkind)     ROWS_PROJKIND="${ROWS_PROJKIND}${_row}" ;;
 
@@ -3938,6 +3940,86 @@ EOF
   fi
 }
 
+# ---------------------------------------------------------------------------
+# check_backstage_prometheus_graphs
+#
+# The Prometheus tab on a Backstage component page draws one graph per entry in
+# the component's `prometheus.io/rule` annotation. The plugin splits the value
+# on "," (one graph each) and then on "|" (query, then the label that names the
+# lines), and puts the query in the request URL as it stands. So the query can
+# only be a bare metric name.
+#
+# Until 2026-10-09 every catalog-info.yaml set it to the app's own name
+# (`prometheus.io/rule: backstage`). No metric has that name, Prometheus
+# answered "no data" with a 200, and every component page showed an empty frame
+# that looked like a graph still loading. Nothing failed.
+#
+# So: every query named by a `prometheus.io/rule` must be a recording rule in
+# the Prometheus ApplicationSet, which is where this cluster's rules live.
+# A root with no such annotation reports nothing.
+# ---------------------------------------------------------------------------
+check_backstage_prometheus_graphs() {
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os, re
+
+root = os.environ.get("ROOT", ".")
+rules_path = os.path.join(root, "gitops/argocd/platform/prometheus/applicationset.yaml")
+recorded = set()
+if os.path.isfile(rules_path):
+    for line in open(rules_path, encoding="utf-8"):
+        m = re.match(r"\s*(?:-\s+)?record:\s*['\"]?([^'\"\s#]+)", line)
+        if m:
+            recorded.add(m.group(1))
+
+skip = {"node_modules", ".git", "vendor", "dist"}
+total = 0
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = sorted(d for d in dirnames if d not in skip and not d.startswith("bazel-"))
+    if "catalog-info.yaml" not in filenames:
+        continue
+    path = os.path.join(dirpath, "catalog-info.yaml")
+    rel = os.path.relpath(path, root)
+    for line in open(path, encoding="utf-8"):
+        m = re.match(r"\s*prometheus\.io/rule:\s*(.*?)\s*(?:#.*)?$", line)
+        if not m:
+            continue
+        value = m.group(1).strip().strip("'\"")
+        for entry in value.split(","):
+            query = entry.split("|", 1)[0].strip()
+            total += 1
+            if not re.fullmatch(r"[A-Za-z_:][A-Za-z0-9_:]*", query):
+                print(f"FAIL\t{rel}\t{query or '(empty)'}\tnot a bare metric name")
+            elif query not in recorded:
+                print(f"FAIL\t{rel}\t{query}\tno recording rule with this name")
+print(f"TOTAL\t{total}")
+PY
+)"
+
+  local total_seen=0 has_failures=0
+  while IFS="$(printf '\t')" read -r status file found why; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      TOTAL) total_seen="$file" ;;
+      FAIL)
+        emit "promgraph" "$GLYPH_FAIL" "$C_RED" "$file" "$found" "a recording rule" \
+          "prometheus.io/rule: $why" "name a rule from the backstage-graphs group in gitops/argocd/platform/prometheus/applicationset.yaml, or add one there"
+        has_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  [ "$total_seen" -gt 0 ] || return 0
+  if [ "$has_failures" -eq 0 ]; then
+    emit "promgraph" "$GLYPH_OK" "$C_GREEN" "catalog-info.yaml" "${total_seen} graph(s)" "a recording rule" \
+      "every graph names a metric Prometheus records" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
 check_naming_conventions
 check_owners
 check_root_directories
@@ -3948,6 +4030,7 @@ check_dependabot_action_coverage
 check_action_sha_pins
 check_gitleaks_allowlist_paths
 check_oci_base_registry
+check_backstage_prometheus_graphs
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -3982,6 +4065,7 @@ print_group "Dependabot actions coverage (#814: exported mirror workflows in dep
 print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)" "$ROWS_ACTION_PINS"
 print_group "Secret-scan allowlist (every .gitleaks.toml path exemption still matches a file)" "$ROWS_GITLEAKS"
 print_group "Container base images (no oci.pull from Docker Hub, which rate-limits shared runners)" "$ROWS_OCIBASE"
+print_group "Backstage Prometheus graphs (every prometheus.io/rule names a recording rule)" "$ROWS_PROMGRAPH"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Chart-owned CRDs (turning a chart's CRD install off lets Argo CD prune them, deleting every object)" "$ROWS_CRDOWN"

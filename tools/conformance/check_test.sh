@@ -924,6 +924,58 @@ case_oci_base_comment_ignored() {
   rm -rf "$root"
 }
 
+# --- check_backstage_prometheus_graphs ----------------------------------------
+# A Backstage graph can only ask Prometheus for a bare metric name, so the
+# annotation has to name a recording rule that exists.
+promgraph_rows() {
+  printf '%s\n' "$1" | awk '
+    /^Backstage Prometheus graphs/ {in_s=1; next}
+    in_s && /^[A-Za-z]/ && !/^ / {in_s=0}
+    in_s && index($0, "catalog-info.yaml") {print}
+  '
+}
+
+# write_graph_component <root> <app> <annotation value> — one component, and the
+# single rule the fixture cluster records.
+write_graph_component() {
+  mkdir -p "$1/gitops/argocd/platform/prometheus" "$1/apps/web/$2"
+  printf '      - record: demo:cpu_cores\n        expr: vector(1)\n' \
+    > "$1/gitops/argocd/platform/prometheus/applicationset.yaml"
+  printf 'metadata:\n  annotations:\n    prometheus.io/rule: %s\n' "$3" \
+    > "$1/apps/web/$2/catalog-info.yaml"
+}
+
+# The fixed state: the graph names a rule that is recorded.
+case_promgraph_recorded_rule() {
+  root="$(new_root)"
+  write_graph_component "$root" demo '"demo:cpu_cores|pod"'
+  out="$(run_check "$root")"
+  expect "a graph that names a recording rule passes" \
+    "$(promgraph_rows "$out")" "✓"
+  rm -rf "$root"
+}
+
+# Three ways to get it wrong, one component each, checked in a single run
+# because every run of the checker costs seconds against this test's timeout.
+case_promgraph_bad_annotations() {
+  root="$(new_root)"
+  # The 2026-10-09 state: the app's own name, which is no metric.
+  write_graph_component "$root" byname 'byname'
+  # A real PromQL expression cannot survive the plugin's split and raw URL.
+  write_graph_component "$root" byexpr '"sum(rate(http_requests_total[5m]))"'
+  # One unrecorded rule in a list fails even when the others are fine.
+  write_graph_component "$root" bylist '"demo:cpu_cores|pod,demo:memory_bytes|pod"'
+  out="$(run_check "$root")"
+  rows="$(promgraph_rows "$out")"
+  expect "a graph named after the app, with no such rule, fails" \
+    "$(printf '%s\n' "$rows" | grep 'apps/web/byname/')" "no recording rule with this name"
+  expect "a PromQL expression in the annotation fails" \
+    "$(printf '%s\n' "$rows" | grep 'apps/web/byexpr/')" "not a bare metric name"
+  expect "a list with one unrecorded rule fails on that rule" \
+    "$(printf '%s\n' "$rows" | grep 'apps/web/bylist/')" "demo:memory_bytes"
+  rm -rf "$root"
+}
+
 case_branches_filter
 case_push_only_branches
 case_paths_filter_unchanged
@@ -961,6 +1013,8 @@ case_oci_base_off_docker_hub
 case_oci_base_bare_name_is_docker_hub
 case_oci_base_explicit_docker_hub
 case_oci_base_comment_ignored
+case_promgraph_recorded_rule
+case_promgraph_bad_annotations
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1

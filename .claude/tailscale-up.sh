@@ -28,9 +28,9 @@
 # Why a SessionStart hook and not the cloud "Setup script": the cloud
 # environment cache snapshots files, not running processes, so a daemon started
 # in the Setup script would not be running on cached/resumed sessions. The
-# BINARY is installed by //tools/cloud-bootstrap (the hook that runs before this
-# one) for any profile whose `tools` column lists tailscale; this hook (re)starts
-# the daemon each session.
+# BINARY is installed by //tools/cloud-bootstrap, which .claude/session-start.sh
+# runs to completion before this, for any profile whose `tools` column lists
+# tailscale; this hook (re)starts the daemon each session.
 #
 # Why userspace networking: the sandbox has no TUN device and all egress is
 # forced through an HTTP/HTTPS proxy, so raw WireGuard cannot leave. tailscaled

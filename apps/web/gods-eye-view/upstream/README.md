@@ -91,6 +91,12 @@ Running upstream's code the way `vite preview` does has two consequences:
   Street Level) refuse a request carrying reverse-proxy headers, which every
   request through the cluster gateway does, so the public site never spends a
   configured key.
+- So production sets no `MAPILLARY_CLIENT_TOKEN`. Street Level gets its
+  coverage tiles only through the gated `/api/mapillary/tiles` proxy, which
+  answers 403 behind the gateway, so a token would change nothing a visitor
+  sees. The build would also put the token in the public bundle. Turning
+  Street Level on in production means exempting the two `/api/mapillary`
+  routes from the gate first, and only then adding the token.
 
 The Dockerfile copies `server/`, `src/`, `config/` and `scripts/` whole, since
 upstream's handlers import from all four and read `config/` and
