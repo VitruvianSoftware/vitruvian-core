@@ -156,17 +156,6 @@ We're constantly improving ADK Agents based on developer feedback:
 - **Custom agent templates** for different tech stacks
 - **Advanced monitoring and analytics** dashboards
 
-## Ready to Transform Your Development Workflow?
-
-ADK Agents is **open source and free** to use. Try it today and experience what it's like to have an AI-powered DevOps companion that truly understands your code and workflow.
-
-**🔗 Get Started:**
-- [Documentation](https://adk-agents.vitruviansoftware.dev/) - Complete setup guides and examples
-
-**Found this helpful? Share it with your team and follow us for more updates:**
-- [GitHub](https://github.com/VitruvianSoftware) 
-- [Twitter](https://twitter.com/ipv1337)
-
 ---
 
 *ADK Agents is built on Google's ADK framework and is part of the Vitruvian Software Open Source initiative. We're committed to building tools that make developers more productive and software development more enjoyable.* 
