@@ -201,6 +201,37 @@ package final class ClipboardWatcher {
         }
     }
 
+    /// The clipboard's text without its formatting, read on the lane and
+    /// handed back on the main thread. Nil when it holds no text. Promised
+    /// content renders when read, so a busy source app would hold the main
+    /// thread here; the lane answers back on main when it can.
+    package func readPlainText(completion: @escaping @MainActor (String?) -> Void) {
+        let board = environment.pasteboard
+        let main = environment.main
+        environment.lane {
+            let text = ClipboardWatcher.plainText(from: board())
+            main { completion(text) }
+        }
+    }
+
+    /// The clipboard's text without any formatting: the plain string when
+    /// present, else the text of its RTF or HTML content.
+    // Read on the pasteboard's own lane.
+    nonisolated package static func plainText(from pasteboard: NSPasteboard) -> String? {
+        if let plain = pasteboard.string(forType: .string) {
+            return plain
+        }
+        if let rtf = pasteboard.data(forType: .rtf),
+           let attributed = NSAttributedString(rtf: rtf, documentAttributes: nil) {
+            return attributed.string
+        }
+        if let html = pasteboard.data(forType: .html),
+           let attributed = NSAttributedString(html: html, documentAttributes: nil) {
+            return attributed.string
+        }
+        return nil
+    }
+
     /// Replaces the clipboard with a link `tool` made itself: as text and
     /// as a URL, signed as the app's own. A look of that tool's that is
     /// waiting is called off first, and once the write is done its watch

@@ -12,61 +12,102 @@ import VitruvianDesign
 /// the synthesized ⌘V.
 @MainActor
 package final class PastePlainService: ObservableObject {
-    package static let shared = PastePlainService()
+    package static let shared = PastePlainService(environment: .live)
+
+    /// What the service reaches outside itself. The app's is the saved
+    /// preferences, hotkey 10, Accessibility, the clipboard lane, the front
+    /// app's menus and the paste helper. A test passes doubles, so it
+    /// registers no key, asks macOS nothing and touches no clipboard.
+    package struct Environment {
+        /// Where the hub's switch, this feature's own switch and its
+        /// shortcut are saved.
+        package var defaults: UserDefaults
+        package var hotkey: ToolHotkey
+        /// Whether Accessibility is granted at this instant.
+        package var isTrusted: () -> Bool
+        package var beep: () -> Void
+        /// The system's Accessibility prompt and the app's guide.
+        package var requestAccessibility: () -> Void
+        /// Reads the clipboard on its lane.
+        package var clipboard: ClipboardWatcher
+        package var menu: FrontAppMenu
+        /// The paste helper: the text, what to do just before Command-V
+        /// goes down, and what to do once it is up.
+        package var paste: (_ text: String, _ willPost: @escaping () -> Void, _ didPost: @escaping () -> Void) -> Void
+
+        package init(defaults: UserDefaults, hotkey: ToolHotkey, isTrusted: @escaping () -> Bool,
+                     beep: @escaping () -> Void, requestAccessibility: @escaping () -> Void,
+                     clipboard: ClipboardWatcher, menu: FrontAppMenu,
+                     paste: @escaping (String, @escaping () -> Void, @escaping () -> Void) -> Void) {
+            self.defaults = defaults
+            self.hotkey = hotkey
+            self.isTrusted = isTrusted
+            self.beep = beep
+            self.requestAccessibility = requestAccessibility
+            self.clipboard = clipboard
+            self.menu = menu
+            self.paste = paste
+        }
+
+        @MainActor package static let live = Environment(
+            defaults: .standard,
+            hotkey: QuickToolHotkey(id: 10),
+            isTrusted: { AXIsProcessTrusted() },
+            beep: { NSSound.beep() },
+            requestAccessibility: { Permissions.shared.requestAccessibility() },
+            clipboard: ClipboardWatcher(environment: .live),
+            menu: FrontAppMenu(environment: .live),
+            paste: { text, willPost, didPost in
+                _ = TransientPaste.shared.paste(text, willPostShortcut: willPost, didPostShortcut: didPost)
+            })
+    }
 
     @Published package private(set) var shortcutRegistrationFailed = false
 
-    private let hotkey = QuickToolHotkey(id: 10)
+    private let environment: Environment
 
     /// The permission prompt fires at most once per launch, so a shortcut
     /// mashed without Accessibility nags once instead of five times.
     private var promptedForAccessibility = false
 
-    private init() {
-        hotkey.onPress = { [weak self] in self?.performPastePlain() }
+    package init(environment: Environment) {
+        self.environment = environment
+        environment.hotkey.onPress = { [weak self] in self?.performPastePlain() }
+    }
+
+    /// The saved shortcut, or the default when none is saved or it cannot
+    /// be read.
+    private var savedShortcut: GlobalShortcut {
+        GlobalShortcut(storageValue: environment.defaults[Preferences.pastePlainShortcut]) ?? .pastePlainDefault
     }
 
     package func syncWithPreferences() {
-        let enabled = AppFeature.pastePlain.isAvailable
-            && UserDefaults.standard[Preferences.pastePlainEnabled]
-        let shortcut = GlobalShortcut.saved(for: DefaultsKey.pastePlainShortcut,
-                                            fallback: .pastePlainDefault)
-        shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
-                                                  storageKey: DefaultsKey.pastePlainShortcut)
+        let enabled = AppFeature.pastePlain.isAvailable(in: environment.defaults)
+            && environment.defaults[Preferences.pastePlainEnabled]
+        shortcutRegistrationFailed = !environment.hotkey.sync(enabled: enabled, shortcut: savedShortcut,
+                                                              storageKey: DefaultsKey.pastePlainShortcut)
     }
 
     package func suspend() {
-        hotkey.unregister()
+        environment.hotkey.unregister()
     }
 
     package func performPastePlain() {
         // Without Accessibility the synthesized ⌘V can never be posted: say so
         // (system prompt once, a beep after) instead of silently swallowing the
         // shortcut, which reads as "the feature does nothing" (issue #186).
-        guard AXIsProcessTrusted() else {
+        guard environment.isTrusted() else {
             if promptedForAccessibility {
-                NSSound.beep()
+                environment.beep()
             } else {
                 promptedForAccessibility = true
-                Permissions.shared.requestAccessibility()
+                environment.requestAccessibility()
             }
             return
         }
-        Self.readPlainText(on: .shared, from: { .general }) { [weak self] plain in
-            self?.pastePlain(plain)
-        }
-    }
-
-    /// Reads the text of `pasteboard` without formatting on `lane`, off the
-    /// main thread, and hands any text to `paste` on main. Promised content
-    /// renders when read, so a busy source app would hold the main thread
-    /// here; the lane answers back on main when it can.
-    package static func readPlainText(on lane: GeneralPasteboardAccess,
-                                      from pasteboard: @escaping @Sendable () -> NSPasteboard,
-                                      then paste: @escaping @MainActor (String) -> Void) {
-        lane.async({ PastePlainService.plainText(from: pasteboard()) }) { plain in
+        environment.clipboard.readPlainText { [weak self] plain in
             guard let plain, !plain.isEmpty else { return }
-            paste(plain)
+            self?.pastePlain(plain)
         }
     }
 
@@ -79,108 +120,18 @@ package final class PastePlainService: ObservableObject {
         // later pastes, and held modifier keys don't matter to a menu
         // press. The strip-and-restore dance below stays as the fallback
         // for every app without that command.
-        if pressNativeMatchStyleItem() { return }
+        if environment.menu.pressItem(matching: [QuickToolsSupport.matchStyleEquivalent]) { return }
 
         var releaseHotkey = false
-        _ = TransientPaste.shared.paste(
+        environment.paste(
             plain,
-            willPostShortcut: { [weak self] in
+            { [weak self] in
                 guard let self else { return }
-                let shortcut = GlobalShortcut.saved(for: DefaultsKey.pastePlainShortcut,
-                                                    fallback: .pastePlainDefault)
-                releaseHotkey = shortcut.isStandardPasteCommand
-                if releaseHotkey { self.hotkey.unregister() }
+                releaseHotkey = self.savedShortcut.isStandardPasteCommand
+                if releaseHotkey { self.environment.hotkey.unregister() }
             },
-            didPostShortcut: { [weak self] in
+            { [weak self] in
                 if releaseHotkey { self?.syncWithPreferences() }
-            }
-        )
-    }
-
-    /// Presses the frontmost app's own matching-style paste when its menus
-    /// carry the universal ⌥⇧⌘V equivalent. Found by key equivalent, never by
-    /// localized title, same as the mouse navigation menu press. Returns
-    /// false when the app has no such command (or refuses the press) so the
-    /// caller falls back to the synthesized paste.
-    /// Bundles known to carry no ⌥⇧⌘V menu item, so their menu bar is not
-    /// re-walked on every single press. An app gets another chance after a
-    /// relaunch (the pid changes) — menus rarely grow the item mid-run, and
-    /// the synthesized fallback covers it if they do.
-    private var noMatchStyleItem: [pid_t: Bool] = [:]
-
-    private func pressNativeMatchStyleItem() -> Bool {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
-        let pid = app.processIdentifier
-        if noMatchStyleItem[pid] == true { return false }
-        let application = AXUIElementCreateApplication(pid)
-        // A busy target must not hold the main thread for AX's default
-        // multi-second timeout; every traversed element gets the same bound.
-        AXUIElementSetMessagingTimeout(application, 0.35)
-        guard let menuBar: AXUIElement = Self.attribute(kAXMenuBarAttribute, from: application) else {
-            return false
-        }
-        var visited = 0
-        guard let item = Self.findMatchStyleItem(in: menuBar, depth: 0, visited: &visited) else {
-            noMatchStyleItem[pid] = true
-            if noMatchStyleItem.count > 64 { noMatchStyleItem.removeAll() }
-            return false
-        }
-        return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
-    }
-
-    /// Depth 3 is a direct item of a top level menu (bar, bar item, menu,
-    /// item), where every app keeps its paste commands; anything deeper is
-    /// out of reach on purpose, and the visited cap keeps a pathological
-    /// menu bar from stalling the press.
-    private static func findMatchStyleItem(in element: AXUIElement,
-                                           depth: Int,
-                                           visited: inout Int) -> AXUIElement? {
-        guard depth <= 3, visited < 600 else { return nil }
-        visited += 1
-        AXUIElementSetMessagingTimeout(element, 0.35)
-
-        let command: String? = attribute(kAXMenuItemCmdCharAttribute, from: element)
-        let modifiers: NSNumber? = attribute(kAXMenuItemCmdModifiersAttribute, from: element)
-        let enabled: NSNumber? = attribute(kAXEnabledAttribute, from: element)
-        if QuickToolsSupport.isMatchStyleEquivalent(commandCharacter: command,
-                                                    modifierMask: modifiers?.uint32Value,
-                                                    isEnabled: enabled?.boolValue != false) {
-            return element
-        }
-
-        guard depth < 3 else { return nil }
-        let children: [AXUIElement] = attribute(kAXChildrenAttribute, from: element) ?? []
-        for child in children {
-            if let match = findMatchStyleItem(in: child, depth: depth + 1, visited: &visited) {
-                return match
-            }
-        }
-        return nil
-    }
-
-    private static func attribute<T>(_ name: String, from element: AXUIElement) -> T? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else {
-            return nil
-        }
-        return value as? T
-    }
-
-    /// The clipboard's text without any formatting: the plain string when
-    /// present, else the text of its RTF or HTML content.
-    // Read on the pasteboard's own lane.
-    nonisolated package static func plainText(from pasteboard: NSPasteboard) -> String? {
-        if let plain = pasteboard.string(forType: .string) {
-            return plain
-        }
-        if let rtf = pasteboard.data(forType: .rtf),
-           let attributed = NSAttributedString(rtf: rtf, documentAttributes: nil) {
-            return attributed.string
-        }
-        if let html = pasteboard.data(forType: .html),
-           let attributed = NSAttributedString(html: html, documentAttributes: nil) {
-            return attributed.string
-        }
-        return nil
+            })
     }
 }

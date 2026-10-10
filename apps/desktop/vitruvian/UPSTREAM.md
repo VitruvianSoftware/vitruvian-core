@@ -126,6 +126,10 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-10**: Tool platform, the broker, stage C (`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-c.md`):
+  - `Services/QuickTools/PastePlainService.swift`: takes what it reaches outside itself (the saved preferences, its hotkey, Accessibility, the beep, the paste helper) as an `Environment`, so a press can be tested. Its walk through the front app's menus moved to `Services/Platform/Broker/FrontAppMenu.swift`, where it reads a menu bar through values, and its read of the clipboard's plain text moved, word for word, to `Services/Platform/Broker/ClipboardWatcher.swift`. Nothing it does changed.
+  - `Core/QuickTools/QuickToolsSupport.swift`: `isMatchStyleEquivalent` is defined by a value, `matchStyleEquivalent`, that says the same key equivalent. Its answers are unchanged.
+  - `Tests/ClipboardFeatureTests.swift`: the check that Paste as plain text reads on the clipboard lane calls the read where it lives now. Its expectations are unchanged.
 - **2026-10-10**: Tool platform, the broker, stage B (`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-b.md`):
   - New files, none with an upstream header: `Services/Platform/Broker/StorageAccess.swift` (a tool's preferences), `Services/Platform/Broker/ClipboardRewrite.swift` (one look at the clipboard), `Services/Platform/Broker/ClipboardWatcher.swift` (the one timer that looks, for the tools that ask), `Services/Platform/BundledTools.swift` (the list of tools), with their tests in `Tests/ToolBrokerTests.swift` and `Tests/URLCleanerTests.swift`.
   - `Services/URLCleanerService.swift`: takes what it reaches outside itself (the saved preferences, the clipboard lane, the pasteboard, its timer) as an `Environment`, so its timer and its copy can be tested. Nothing it does changed.
