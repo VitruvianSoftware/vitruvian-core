@@ -7,7 +7,7 @@ import VitruvianDesign
 import VitruvianServices
 
 package struct PortManagerView: View {
-    @ObservedObject private var service = PortManagerService.shared
+    @ObservedObject private var service = ToolHost.shared.tool(PortManagerService.self)
     @State private var pending: PortManagerEntry?
     @State private var force = false
     @ObservedObject private var l10n = L10n.shared
@@ -126,17 +126,17 @@ package struct PortManagerView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 4)
-            if AppFeature.killProcess.isAvailable {
+            if service.canTerminate {
                 HStack(spacing: 4) {
                     Button(strings.kill) { force = false; pending = entry }
                         .buttonStyle(.bordered).controlSize(.mini)
                         .disabled(entry.startedAt == nil
-                                  || KillProcessService.isProtected(pid: entry.pid, name: entry.processName))
+                                  || service.isProtected(entry))
                     Button { force = true; pending = entry } label: { Image(systemName: "bolt.fill") }
                         .buttonStyle(.bordered).controlSize(.mini)
                         .accessibilityLabel(strings.forceKill)
                         .disabled(entry.startedAt == nil
-                                  || KillProcessService.isProtected(pid: entry.pid, name: entry.processName))
+                                  || service.isProtected(entry))
                 }
             }
         }
@@ -160,19 +160,13 @@ package struct PortManagerRowActions: View {
         if let url = PortManagerSupport.browserURL(for: entry) {
             Divider()
             Button(FeatureStrings.commandBar(language).openInBrowser) {
-                if !NSWorkspace.shared.open(url) { NSSound.beep() }
+                ToolHost.shared.tool(PortManagerService.self).open(url)
             }
         }
     }
 
     private func copy(_ value: String) {
-        GeneralPasteboardAccess.shared.async({
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.declareVitruvianSource()
-            return NSPasteboard.general.setString(value, forType: .string)
-        }, then: { copied in
-            if !copied { NSSound.beep() }
-        })
+        ToolHost.shared.tool(PortManagerService.self).copy(value)
     }
 }
 

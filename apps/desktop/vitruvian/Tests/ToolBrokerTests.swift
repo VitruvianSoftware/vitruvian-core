@@ -14,6 +14,8 @@ enum ToolBrokerTests {
         smallCapabilities(suite)
         processes(suite)
         host(suite)
+        portManager(suite)
+        manifestsAgree(suite)
     }
 
     /// What the broker is told about the world, and what it reported.
@@ -206,5 +208,116 @@ enum ToolBrokerTests {
         host.stopAll()
         host.stopAll()
         suite.expect(first.stops == 2 && ProbeTool.built == 1, "quitting stops every built tool, and builds none")
+    }
+
+    static func portManager(_ suite: TestSuite) {
+        final class Kills {
+            var available = true
+            var ended: [(pid: pid_t, startedAt: UInt64, force: Bool)] = []
+            var finish: [@MainActor @Sendable () -> Void] = []
+        }
+        let kills = Kills()
+        let recorder = Recorder()
+        let reports = PortManagerRefreshTests.Processes()
+        func broker(installed: Bool, reports: PortManagerRefreshTests.Processes) -> CapabilityBroker {
+            CapabilityBroker(
+                environment: .init(isInstalled: { _ in installed }, isGranted: { _ in true }, allows: { _, _ in true },
+                                   reportUndeclared: { _, capability in
+                                       suite.expect(false, "the Port manager used \(capability.rawValue) without declaring it")
+                                   }),
+                backings: .init(
+                    notify: .init(beep: { recorder.beeps += 1 }),
+                    open: .init(open: { recorder.opened.append($0); return recorder.opens }),
+                    clipboard: .init(write: { text, completion in
+                        recorder.written.append(text)
+                        completion(recorder.writes)
+                    }),
+                    processes: .init(
+                        startTime: { reports.current[$0] },
+                        listeningSocketsReport: { reports.listing() },
+                        terminationAvailable: { kills.available },
+                        isProtected: { pid, _ in pid == 1 },
+                        terminate: { pid, _, startedAt, force, completion in
+                            kills.ended.append((pid, startedAt, force))
+                            kills.finish.append(completion)
+                        })))
+        }
+        let tool = ToolHost(broker: broker(installed: true, reports: reports)).tool(PortManagerService.self)
+        let stable = PortManagerEntry(port: 3000, protocolName: "TCP", address: "*", pid: 42,
+                                      processName: "node", startedAt: 7)
+        let unstable = PortManagerEntry(port: 3001, protocolName: "TCP", address: "*", pid: 43,
+                                        processName: "node", startedAt: nil)
+
+        suite.expect(Set(PortManagerService.manifest.capabilities.map(\.capability))
+                         == [.processes, .clipboardWrite, .open, .notify],
+                     "the Port manager asks for exactly what it uses")
+
+        // A tool the hub does not hold is refused its scan. Nothing runs, so
+        // the fake listing can be read here; `refused` is touched nowhere else.
+        let refused = PortManagerRefreshTests.Processes()
+        let removed = ToolHost(broker: broker(installed: false, reports: refused)).tool(PortManagerService.self)
+        removed.refresh()
+        suite.expect(removed.refreshFailed && !removed.isRefreshing && !removed.hasLoadedOnce
+                         && removed.entries.isEmpty && refused.calls == 0,
+                     "a refused scan reads nothing and ends as a timed-out one does")
+
+        tool.terminate(unstable, force: false)
+        suite.expect(kills.ended.isEmpty, "an entry with no stable identity is never ended")
+        tool.terminate(stable, force: true)
+        suite.expect(kills.ended.count == 1 && kills.ended[0].pid == 42 && kills.ended[0].startedAt == 7
+                         && kills.ended[0].force,
+                     "ending a process passes its identity and force through")
+        // The scan this starts runs on a real background queue, so `reports`
+        // is not read from here on: the scan owns it.
+        let idle = !tool.isRefreshing
+        kills.finish.forEach { $0() }
+        suite.expect(idle && tool.isRefreshing, "the list refreshes after a process is ended")
+
+        suite.expect(tool.canTerminate && tool.isProtected(PortManagerEntry(
+                         port: 1, protocolName: "TCP", address: "*", pid: 1, processName: "launchd", startedAt: 1))
+                         && !tool.isProtected(stable),
+                     "the views ask the tool what may be ended")
+        kills.available = false
+        tool.terminate(stable, force: false)
+        suite.expect(!tool.canTerminate && kills.ended.count == 1,
+                     "without the Kill process feature nothing is offered and nothing is ended")
+
+        tool.copy("3000")
+        suite.expect(recorder.written == ["3000"] && recorder.beeps == 0, "a row copies its value")
+        recorder.writes = false
+        tool.copy("3001")
+        suite.expect(recorder.beeps == 1, "a copy that did not take beeps")
+        let link = URL(string: "http://localhost:3000")!
+        tool.open(link)
+        suite.expect(recorder.opened == [link] && recorder.beeps == 1, "a row opens its port in the browser")
+        recorder.opens = false
+        tool.open(link)
+        suite.expect(recorder.beeps == 2, "a link that would not open beeps")
+    }
+
+    /// A manifest and the `AppFeature` it stands beside describe one thing.
+    static func manifestsAgree(_ suite: TestSuite) {
+        let manifests = [PortManagerService.manifest]
+        let registry = ToolRegistry(isAvailable: { _ in true })
+        BuiltinTools.install(into: registry)
+        var keys: [String] = []
+        for manifest in manifests {
+            guard let feature = AppFeature(rawValue: manifest.id.rawValue) else {
+                suite.expect(false, "\(manifest.id) names a feature")
+                continue
+            }
+            suite.expect(manifest.group == feature.group && manifest.tool.symbol == feature.symbolName,
+                         "\(manifest.id) is filed and drawn as its feature is")
+            suite.expect(Set(manifest.capabilities.flatMap(\.capability.ridesOn)) == Set(feature.permissions),
+                         "\(manifest.id) needs the macOS grants its feature declares, and no others")
+            suite.expect(registry.tool(manifest.id) == manifest.tool,
+                         "\(manifest.id) is the tool the registry already holds")
+            suite.expect(manifest.preferences.allSatisfy { declared in
+                (Defaults.registeredDefaults[declared.key] as? NSObject)
+                    == (declared.defaultValue.defaultsValue as? NSObject)
+            }, "\(manifest.id) declares each preference with the default the app registers")
+            keys += manifest.preferences.map(\.key)
+        }
+        suite.expect(Set(keys).count == keys.count, "no preference belongs to two tools")
     }
 }
