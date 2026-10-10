@@ -25,6 +25,7 @@ enum PastePlainTests {
         plainText(suite)
         menuWalk(suite)
         whatTheMenuRemembers(suite)
+        asTool(suite)
     }
 
     /// What a made-up menu bar was asked.
@@ -78,6 +79,26 @@ enum PastePlainTests {
                     return self.menuBars[app]
                 })
         }
+
+        /// A broker whose hub, preferences, clipboard, hotkey, grant, menus
+        /// and paste helper are this rig's.
+        func broker() -> CapabilityBroker {
+            clipboard.broker(
+                isGranted: { [unowned self] in $0 != .accessibility || self.trusted },
+                beep: { [unowned self] in self.beeps += 1 },
+                hotkey: .init(
+                    makeHotkey: { [unowned self] _ in self.key },
+                    savedShortcut: { [unowned self] role in
+                        self.clipboard.defaults.string(forKey: role.storageKey)
+                            .flatMap { GlobalShortcut(storageValue: $0) } ?? role.defaultShortcut
+                    }),
+                keystrokes: .init(
+                    paste: { [unowned self] text, willPost, didPost in
+                        self.pastes.append((text, willPost, didPost))
+                    },
+                    requestGrant: { [unowned self] in self.prompts += 1 },
+                    menu: menu))
+        }
     }
 
     /// The feature over `rig`: how the app re-decides whether it runs, what
@@ -85,16 +106,10 @@ enum PastePlainTests {
     /// press of the shortcut is `rig.key.onPress?()`.
     static func bench(_ rig: PasteRig)
         -> (tool: PastePlainService, sync: () -> Void, run: () -> Void, suspend: () -> Void) {
-        let tool = PastePlainService(environment: .init(
-            defaults: rig.clipboard.defaults,
-            hotkey: rig.key,
-            isTrusted: { rig.trusted },
-            beep: { rig.beeps += 1 },
-            requestAccessibility: { rig.prompts += 1 },
-            clipboard: ClipboardWatcher(environment: rig.clipboard.watching),
-            menu: FrontAppMenu(environment: rig.menu),
-            paste: { text, willPost, didPost in rig.pastes.append((text, willPost, didPost)) }))
-        return (tool, { tool.syncWithPreferences() }, { tool.performPastePlain() }, { tool.suspend() })
+        let host = ToolHost(broker: rig.broker(), tools: [PastePlainService.self])
+        let id = PastePlainService.manifest.id
+        return (host.tool(PastePlainService.self), { host.sync(id) }, { host.run(PastePlainService.paste) },
+                { host.suspend(id) })
     }
 
     /// A menu element made of values. `key` is its command character and its
@@ -484,5 +499,72 @@ enum PastePlainTests {
         _ = press(in: 100, with: fresh)
         suite.expect(rig.menuBarsAsked.count == 67 && rig.menuBarsAsked.suffix(2) == [164, 100],
                      "the sixty-fifth empties the list, itself included, and every app is walked again")
+    }
+
+    /// What the tool declares, its command, and that it asks the broker for
+    /// nothing it did not declare.
+    static func asTool(_ suite: TestSuite) {
+        let manifest = PastePlainService.manifest
+        suite.expect(Set(manifest.capabilities.map(\.capability)) == [.hotkey, .keystrokes, .clipboardRead, .notify],
+                     "Paste as plain text asks for exactly what it uses")
+        suite.expect(manifest.grantsNeededToStart.isEmpty
+                         && manifest.capabilities.flatMap(\.capability.ridesOn) == [.accessibility],
+                     "it rides on Accessibility and starts without it: the first press asks")
+
+        let rig = PasteRig()
+        defer { rig.close() }
+        rig.set(installed: true, on: true)
+        rig.clipboard.copy("Plain words")
+        let host = ToolHost(broker: rig.broker(), tools: [PastePlainService.self])
+        let command = PastePlainService.paste
+        let registry = ToolRegistry(isAvailable: { $0.isAvailable(in: rig.clipboard.defaults) })
+        BuiltinTools.install(into: registry, tools: [PastePlainService.self], host: { host })
+        suite.expect(ToolSurface.allCases.allSatisfy { surface in
+            !registry.commands(on: surface).contains { $0.id.tool == manifest.id }
+        }, "it adds no row, tile, wheel slot or shortcut entry of its own")
+
+        // A full uninstall before anything needed the tool builds nothing.
+        host.suspend(manifest.id)
+        suite.expect(host.built.isEmpty, "letting go of the key of a tool that was never built builds nothing")
+
+        // Every path once: a decision, two presses without the grant, and a
+        // press with it while its shortcut is Command-V.
+        host.sync(manifest.id)
+        rig.trusted = false
+        rig.key.onPress?()
+        rig.key.onPress?()
+        rig.trusted = true
+        rig.save(commandV)
+        host.sync(manifest.id)
+        rig.key.onPress?()
+        rig.clipboard.settle()
+        rig.pastes[0].willPost()
+        rig.pastes[0].didPost()
+        suite.expect(rig.prompts == 1 && rig.beeps == 1 && rig.pastes.count == 1
+                         && rig.clipboard.undeclared.isEmpty,
+                     "it asks the broker for nothing its manifest does not declare")
+
+        rig.set(installed: true, on: false)
+        host.sync(manifest.id)
+        suite.expect(host.running.isEmpty && registry.run(command),
+                     "the command bar's row runs its command through the registry, while the shortcut is switched off")
+        rig.clipboard.settle()
+        suite.expect(rig.pastes.count == 2, "and the command pastes")
+        rig.set(installed: false, on: true)
+        suite.expect(!registry.run(command) && !host.canRun(command) && rig.clipboard.lane.isEmpty,
+                     "removed in the hub, the command does nothing")
+
+        // Switched off and never started: the command builds the tool, and
+        // takes no key for it.
+        let cold = PasteRig()
+        defer { cold.close() }
+        cold.set(installed: true, on: false)
+        cold.clipboard.copy("Plain words")
+        let coldHost = ToolHost(broker: cold.broker(), tools: [PastePlainService.self])
+        coldHost.run(command)
+        cold.clipboard.settle()
+        suite.expect(coldHost.built == [manifest.id] && coldHost.running.isEmpty && cold.key.registered == nil
+                         && cold.key.registrations == 0 && cold.pastes.count == 1,
+                     "run while switched off and never started, the command pastes and takes no key")
     }
 }

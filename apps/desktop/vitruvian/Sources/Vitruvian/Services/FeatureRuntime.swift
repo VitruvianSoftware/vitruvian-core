@@ -362,7 +362,8 @@ package final class FeatureRuntime: ObservableObject {
         case .mediaTools:
             return AppFeature.mediaTools.isAvailable(in: defaults) ? [.fileTools]
                 : [.fileTools, .cancelMedia, .closeMediaEditors]
-        case .pastePlain: return [.pastePlain]
+        // A tool: the tool host decides whether it runs.
+        case .pastePlain: return [.tool(PastePlainService.manifest.id)]
         case .finderCutPaste: return [.finderCutPaste]
         case .finderRename: return [.finderRename]
         case .shelf: return [.shelf, .fileTools]
@@ -467,7 +468,6 @@ package final class FeatureRuntime: ObservableObject {
         case .fileTools: NotchFileToolsService.shared.syncWithPreferences()
         case .cancelMedia: MediaService.shared.cancel()
         case .closeMediaEditors: ScreenRecorderService.shared.closeEditors(ownedBy: .mediaTools)
-        case .pastePlain: PastePlainService.shared.syncWithPreferences()
         case .finderCutPaste: FinderCutPaste.shared.syncWithPreferences()
         case .finderRename: FinderRenameService.shared.syncWithPreferences()
         case .shelf: ShelfService.shared.syncWithPreferences()
@@ -534,7 +534,7 @@ package enum FeatureBindingAction: Hashable {
     case mouseButtonShortcuts, middleClick, mouseClickDebounce, keyboardDebounce, quitProtection, superKey
     case textSnippets, snippetLibrary, clipboardHistory, clipboardAutoClear
     case fileTools, cancelMedia, closeMediaEditors
-    case pastePlain, finderCutPaste, finderRename, shelf, diskImageInstaller
+    case finderCutPaste, finderRename, shelf, diskImageInstaller
     case preciseVolumeRoller, appVolumeMixer, audioInputDevices, soundOutputSwitcher, audioPriority
     case micMute, musicLaunchBlocker, keepAwake, hotkeys, brightness, extraBrightness, bluetoothSleep
     case quickLauncher, screenCapture, screenText, screenshot, screenRecorder, recentCaptures

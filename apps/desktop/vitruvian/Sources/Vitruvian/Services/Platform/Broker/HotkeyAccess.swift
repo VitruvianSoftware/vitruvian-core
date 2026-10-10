@@ -27,11 +27,19 @@ package final class HotkeyBindings {
             self.savedShortcut = savedShortcut
         }
 
-        /// The app's own. No role has a key here yet. A role's id moves in
-        /// with the tool that holds it, in the same change, so no id is
-        /// ever made in two places (`hotkey_ids_are_unique`).
-        @MainActor package static let live = Environment(makeHotkey: { _ in nil },
-                                                         savedShortcut: { $0.savedShortcut })
+        /// The app's own. A role's hotkey id is spelled here and nowhere
+        /// else. It moves in with the tool that holds the role, in the same
+        /// change, so no id is ever made in two places
+        /// (`hotkey_ids_are_unique`). A role not listed has no key here.
+        @MainActor package static let live = Environment(
+            makeHotkey: { role in
+                switch role {
+                // Paste as plain text has had this id since before it was a tool.
+                case .pastePlain: return QuickToolHotkey(id: 10)
+                default: return nil
+                }
+            },
+            savedShortcut: { $0.savedShortcut })
 
         /// Holds no key. For tests of other capabilities.
         package static var inert: Environment {

@@ -839,7 +839,7 @@ enum ToolBrokerTests {
 
     /// A manifest and the `AppFeature` it stands beside describe one thing.
     static func manifestsAgree(_ suite: TestSuite) {
-        let manifests = [PortManagerService.manifest, URLCleanerService.manifest]
+        let manifests = [PortManagerService.manifest, URLCleanerService.manifest, PastePlainService.manifest]
         suite.expect(BundledTools.all.map { $0.manifest.id } == manifests.map(\.id),
                      "every tool the host holds is checked here")
         let registry = ToolRegistry(isAvailable: { _ in true })

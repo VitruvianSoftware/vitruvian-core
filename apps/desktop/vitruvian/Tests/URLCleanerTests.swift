@@ -107,20 +107,25 @@ enum URLCleanerTests {
 
         /// A broker whose hub, preferences, clipboard and screen are this
         /// rig's.
-        @MainActor func broker() -> CapabilityBroker {
+        @MainActor func broker(isGranted: @escaping (AppPermission) -> Bool = { _ in true },
+                               beep: @escaping () -> Void = {},
+                               hotkey: HotkeyBindings.Environment = .inert,
+                               keystrokes: KeystrokesAccess.Backing = .inert) -> CapabilityBroker {
             CapabilityBroker(
                 environment: .init(
                     isInstalled: { [self] id in AppFeature(rawValue: id.rawValue)?.isAvailable(in: defaults) ?? true },
-                    isGranted: { _ in true },
+                    isGranted: isGranted,
                     allows: { _, _ in true },
                     reportUndeclared: { [self] _, capability in undeclared.append(capability.rawValue) }),
                 backings: .init(
-                    notify: .init(beep: {}, hud: { [self] icon, message in said.append("\(icon): \(message)") }),
+                    notify: .init(beep: beep, hud: { [self] icon, message in said.append("\(icon): \(message)") }),
                     open: .init(open: { _ in true }),
                     clipboard: .init(write: { _, _ in }, watching: watching),
                     processes: .inert,
                     storage: .init(read: { [self] in defaults.object(forKey: $0) },
-                                   undeclaredKey: { [self] in undeclared.append($0) })))
+                                   undeclaredKey: { [self] in undeclared.append($0) }),
+                    hotkey: hotkey,
+                    keystrokes: keystrokes))
         }
     }
 

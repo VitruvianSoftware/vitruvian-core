@@ -12,100 +12,60 @@ import VitruvianDesign
 /// the synthesized ⌘V.
 @MainActor
 package final class PastePlainService: ObservableObject {
-    package static let shared = PastePlainService(environment: .live)
-
-    /// What the service reaches outside itself. The app's is the saved
-    /// preferences, hotkey 10, Accessibility, the clipboard lane, the front
-    /// app's menus and the paste helper. A test passes doubles, so it
-    /// registers no key, asks macOS nothing and touches no clipboard.
-    package struct Environment {
-        /// Where the hub's switch, this feature's own switch and its
-        /// shortcut are saved.
-        package var defaults: UserDefaults
-        package var hotkey: ToolHotkey
-        /// Whether Accessibility is granted at this instant.
-        package var isTrusted: () -> Bool
-        package var beep: () -> Void
-        /// The system's Accessibility prompt and the app's guide.
-        package var requestAccessibility: () -> Void
-        /// Reads the clipboard on its lane.
-        package var clipboard: ClipboardWatcher
-        package var menu: FrontAppMenu
-        /// The paste helper: the text, what to do just before Command-V
-        /// goes down, and what to do once it is up.
-        package var paste: (_ text: String, _ willPost: @escaping () -> Void, _ didPost: @escaping () -> Void) -> Void
-
-        package init(defaults: UserDefaults, hotkey: ToolHotkey, isTrusted: @escaping () -> Bool,
-                     beep: @escaping () -> Void, requestAccessibility: @escaping () -> Void,
-                     clipboard: ClipboardWatcher, menu: FrontAppMenu,
-                     paste: @escaping (String, @escaping () -> Void, @escaping () -> Void) -> Void) {
-            self.defaults = defaults
-            self.hotkey = hotkey
-            self.isTrusted = isTrusted
-            self.beep = beep
-            self.requestAccessibility = requestAccessibility
-            self.clipboard = clipboard
-            self.menu = menu
-            self.paste = paste
-        }
-
-        @MainActor package static let live = Environment(
-            defaults: .standard,
-            hotkey: QuickToolHotkey(id: 10),
-            isTrusted: { AXIsProcessTrusted() },
-            beep: { NSSound.beep() },
-            requestAccessibility: { Permissions.shared.requestAccessibility() },
-            clipboard: ClipboardWatcher(environment: .live),
-            menu: FrontAppMenu(environment: .live),
-            paste: { text, willPost, didPost in
-                _ = TransientPaste.shared.paste(text, willPostShortcut: willPost, didPostShortcut: didPost)
-            })
-    }
-
     @Published package private(set) var shortcutRegistrationFailed = false
 
-    private let environment: Environment
+    private let services: ToolServices
 
     /// The permission prompt fires at most once per launch, so a shortcut
     /// mashed without Accessibility nags once instead of five times.
     private var promptedForAccessibility = false
 
-    package init(environment: Environment) {
-        self.environment = environment
-        environment.hotkey.onPress = { [weak self] in self?.performPastePlain() }
+    package init(services: ToolServices) {
+        self.services = services
     }
 
-    /// The saved shortcut, or the default when none is saved or it cannot
-    /// be read.
-    private var savedShortcut: GlobalShortcut {
-        GlobalShortcut(storageValue: environment.defaults[Preferences.pastePlainShortcut]) ?? .pastePlainDefault
+    /// Takes the shortcut. The tool host calls this each time it finds the
+    /// tool installed and switched on, with or without Accessibility, so a
+    /// second call only asks for the key it already holds. It is also how
+    /// the key comes back after a shortcut recording let every key go, and
+    /// how a newly recorded combination is taken.
+    package func start() {
+        services.hotkey.bind(.pastePlain,
+                             onPress: { [weak self] in self?.pastePlainText() },
+                             onRegistered: { [weak self] given in self?.shortcutRegistrationFailed = !given })
     }
 
-    package func syncWithPreferences() {
-        let enabled = AppFeature.pastePlain.isAvailable(in: environment.defaults)
-            && environment.defaults[Preferences.pastePlainEnabled]
-        shortcutRegistrationFailed = !environment.hotkey.sync(enabled: enabled, shortcut: savedShortcut,
-                                                              storageKey: DefaultsKey.pastePlainShortcut)
+    package func stop() {
+        services.hotkey.unbind(.pastePlain)
+        shortcutRegistrationFailed = false
     }
 
-    package func suspend() {
-        environment.hotkey.unregister()
+    package func canRun(_ command: CommandID) -> Bool {
+        command == Self.paste
     }
 
-    package func performPastePlain() {
+    package func run(_ command: CommandID) {
+        guard command == Self.paste else { return }
+        pastePlainText()
+    }
+
+    /// One press of the shortcut, or one run of the command bar's row.
+    private func pastePlainText() {
         // Without Accessibility the synthesized ⌘V can never be posted: say so
         // (system prompt once, a beep after) instead of silently swallowing the
         // shortcut, which reads as "the feature does nothing" (issue #186).
-        guard environment.isTrusted() else {
+        // Asked before anything is read.
+        if let refusal = services.keystrokes.refusal {
+            guard case .notGranted = refusal else { return }
             if promptedForAccessibility {
-                environment.beep()
+                services.notify.beep()
             } else {
                 promptedForAccessibility = true
-                environment.requestAccessibility()
+                services.keystrokes.requestGrant()
             }
             return
         }
-        environment.clipboard.readPlainText { [weak self] plain in
+        services.clipboard.readPlainText { [weak self] plain in
             guard let plain, !plain.isEmpty else { return }
             self?.pastePlain(plain)
         }
@@ -120,18 +80,50 @@ package final class PastePlainService: ObservableObject {
         // later pastes, and held modifier keys don't matter to a menu
         // press. The strip-and-restore dance below stays as the fallback
         // for every app without that command.
-        if environment.menu.pressItem(matching: [QuickToolsSupport.matchStyleEquivalent]) { return }
+        if case .success(true) = services.keystrokes.pressFrontAppMenuItem(
+            matching: [QuickToolsSupport.matchStyleEquivalent]) { return }
 
-        var releaseHotkey = false
-        environment.paste(
-            plain,
-            { [weak self] in
-                guard let self else { return }
-                releaseHotkey = self.savedShortcut.isStandardPasteCommand
-                if releaseHotkey { self.environment.hotkey.unregister() }
-            },
-            { [weak self] in
-                if releaseHotkey { self?.syncWithPreferences() }
-            })
+        // The paste types ⌘V. When ⌘V is this tool's own shortcut, the paste
+        // lets go of it while it types and takes it again after.
+        services.keystrokes.paste(plain)
     }
+}
+
+extension PastePlainService: BundledTool {
+    /// Pastes the clipboard as plain text, once. The shortcut runs it, and
+    /// so does the command bar's row. It asks for no surface: the row is the
+    /// bar's own, and the shortcut is a `GlobalShortcutRole`.
+    package static let paste: CommandID = {
+        guard let id = ToolID(AppFeature.pastePlain.rawValue),
+              let command = CommandID(tool: id, name: "paste")
+        else { preconditionFailure("Paste as plain text's command is not valid") }
+        return command
+    }()
+
+    package static let manifest: ToolManifest = {
+        let feature = AppFeature.pastePlain
+        guard let command = CommandDescriptor(id: paste, title: feature.rawValue, symbol: feature.symbolName,
+                                              surfaces: []),
+              let tool = ToolDescriptor(id: paste.tool, name: feature.rawValue, symbol: feature.symbolName,
+                                        commands: [command]),
+              let shortcut = CapabilityRequest(.hotkey, reason: "Pastes as plain text when you press its shortcut."),
+              // It starts without Accessibility: the shortcut is taken at
+              // once, and the first press asks.
+              let keys = CapabilityRequest(
+                  .keystrokes,
+                  reason: "Presses Paste and Match Style in the app in front, or types the paste for you.",
+                  startsWithoutGrant: true),
+              let read = CapabilityRequest(.clipboardRead, reason: "Reads what you copied, to paste its text."),
+              let say = CapabilityRequest(.notify, reason: "Beeps when it cannot paste."),
+              let manifest = ToolManifest(
+                  tool: tool, group: feature.group, capabilities: [shortcut, keys, read, say],
+                  preferences: [
+                      PreferenceDeclaration(key: DefaultsKey.pastePlainEnabled, default: .bool(false)),
+                      PreferenceDeclaration(key: DefaultsKey.pastePlainShortcut,
+                                            default: .string(GlobalShortcut.pastePlainDefault.storageValue)),
+                  ],
+                  activation: [.onLaunch, .onCommand], enabledBy: DefaultsKey.pastePlainEnabled)
+        else { preconditionFailure("Paste as plain text's manifest is not valid") }
+        return manifest
+    }()
 }

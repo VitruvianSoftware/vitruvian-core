@@ -11,7 +11,7 @@ import VitruvianServices
 /// page decides whether it shows, and where.
 struct PastePlainSettingsSection: View {
     @ObservedObject private var l10n = L10n.shared
-    @ObservedObject private var pastePlain = PastePlainService.shared
+    @ObservedObject private var pastePlain = ToolHost.shared.tool(PastePlainService.self)
     @AppStorage(Preferences.pastePlainEnabled) private var pastePlainEnabled: Bool
     /// Whether Accessibility is granted, as the page that shows this section
     /// observes it.
@@ -21,14 +21,14 @@ struct PastePlainSettingsSection: View {
         Section {
             Toggle(l10n.s.pastePlainName, isOn: $pastePlainEnabled)
                 .onChange(of: pastePlainEnabled) { _, _ in
-                    PastePlainService.shared.syncWithPreferences()
+                    ToolHost.shared.sync(PastePlainService.self)
                 }
             Text(l10n.s.pastePlainCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ShortcutPreferenceRow(role: .pastePlain,
                                   isEnabled: pastePlainEnabled) {
-                PastePlainService.shared.syncWithPreferences()
+                ToolHost.shared.sync(PastePlainService.self)
             }
             if pastePlainEnabled, pastePlain.shortcutRegistrationFailed {
                 Text(l10n.s.shortcutUnavailable)
