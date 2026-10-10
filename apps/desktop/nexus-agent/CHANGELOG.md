@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.20.1...nexus-agent-v1.20.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** diagrams are drawn with a bundled copy of Mermaid, not a script fetched from a CDN ([#3043](https://github.com/VitruvianSoftware/vitruvian-core/issues/3043)) ([f249a2e](https://github.com/VitruvianSoftware/vitruvian-core/commit/f249a2eb389425c09d0fbb236998028d8063ddab))
+
 ## [1.20.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.20.0...nexus-agent-v1.20.1) (2026-10-10)
 
 
