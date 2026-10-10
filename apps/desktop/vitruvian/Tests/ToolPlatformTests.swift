@@ -67,12 +67,21 @@ enum ToolPlatformTests {
         suite.expect(manifest(enabledBy: "somethingElse") == nil
                          && manifest(enabledBy: "panelUtilityPortManager") != nil,
                      "the preference that enables a tool is one it declares")
-        suite.expect(Capability.allCases.allSatisfy { $0.ridesOn.isEmpty },
-                     "no stage A capability rides on a macOS grant")
+        suite.expect(Capability.allCases.filter { !$0.ridesOn.isEmpty } == [.keystrokes]
+                         && Capability.keystrokes.ridesOn == [.accessibility],
+                     "one capability rides on a macOS grant: keystrokes, on Accessibility")
         suite.expect(Set(Capability.allCases.map(\.rawValue))
                          == ["notify", "open", "processes", "clipboard.write", "storage", "clipboard.read",
-                             "clipboard.rewrite"],
+                             "clipboard.rewrite", "hotkey", "keystrokes"],
                      "capabilities are named as the platform design names them")
+        let typing = CapabilityRequest(.keystrokes, reason: "Types for you.")!
+        let typingLater = CapabilityRequest(.keystrokes, reason: "Types for you.", startsWithoutGrant: true)!
+        suite.expect(manifest(capabilities: [copy, typing])?.grantsNeededToStart == [.accessibility]
+                         && manifest(capabilities: [copy, typingLater])?.grantsNeededToStart == []
+                         && manifest(capabilities: [copy])?.grantsNeededToStart == [],
+                     "a tool needs the grants its capabilities ride on before it starts, unless it says it starts without")
+        suite.expect(CapabilityRequest(.clipboardWrite, reason: "Copies.", startsWithoutGrant: true) == nil,
+                     "only a capability that rides on a grant can say its tool starts without it")
     }
 
     static func ids(_ suite: TestSuite) {

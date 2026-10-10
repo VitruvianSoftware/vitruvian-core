@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import ApplicationServices
+import CoreGraphics
 import Foundation
 import VitruvianCore
 
@@ -49,21 +51,37 @@ package final class CapabilityBroker {
         }
 
         /// The app as it is: a tool with the id of a hub feature follows
-        /// that feature; the two macOS grants the app watches are read
-        /// from `Permissions`; a compiled-in tool is always allowed.
-        @MainActor package static let live = Environment(
-            isInstalled: { id in AppFeature(rawValue: id.rawValue)?.isAvailable ?? true },
-            isGranted: { permission in
-                switch permission {
-                case .accessibility: return Permissions.shared.accessibility
-                case .screenRecording: return Permissions.shared.screenRecording
-                default: return true
-                }
-            },
-            allows: { _, _ in true },
-            reportUndeclared: { id, capability in
-                assertionFailure("\(id) used \(capability.rawValue) without declaring it")
-            })
+        /// that feature; a compiled-in tool is always allowed; and the two
+        /// macOS grants the app watches are asked of macOS itself, at the
+        /// moment of each call.
+        ///
+        /// Not of `Permissions`. It publishes a grant one main-queue hop
+        /// after it is first touched, so it reads false all through launch,
+        /// and afterwards only as often as it polls: up to 2.5 seconds
+        /// behind a grant and 60 behind a revocation. A tool's press is
+        /// answered by the state of that instant, as it was before tools.
+        @MainActor package static let live = Environment.reading(
+            accessibility: { AXIsProcessTrusted() },
+            screenRecording: { CGPreflightScreenCaptureAccess() })
+
+        /// `live`, with the two questions it puts to macOS handed in, so a
+        /// test can answer them.
+        @MainActor package static func reading(accessibility: @escaping () -> Bool,
+                                               screenRecording: @escaping () -> Bool) -> Environment {
+            Environment(
+                isInstalled: { id in AppFeature(rawValue: id.rawValue)?.isAvailable ?? true },
+                isGranted: { permission in
+                    switch permission {
+                    case .accessibility: return accessibility()
+                    case .screenRecording: return screenRecording()
+                    default: return true
+                    }
+                },
+                allows: { _, _ in true },
+                reportUndeclared: { id, capability in
+                    assertionFailure("\(id) used \(capability.rawValue) without declaring it")
+                })
+        }
     }
 
     /// What each capability calls to do its work.

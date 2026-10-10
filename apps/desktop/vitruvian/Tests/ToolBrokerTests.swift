@@ -20,6 +20,7 @@ enum ToolBrokerTests {
         clipboard(suite)
         host(suite)
         runRule(suite)
+        grants(suite)
         hostRunsTools(suite)
         portManager(suite)
         manifestsAgree(suite)
@@ -347,6 +348,128 @@ enum ToolBrokerTests {
                                             holdsGrants: { asked.append("grants"); return true }())
         suite.expect(!stopsEarly && asked.isEmpty,
                      "a tool that is not installed is not asked about its switch or its grants")
+    }
+
+    /// A tool that cannot start without Accessibility. It has no switch, so
+    /// only the grant decides.
+    final class NeedsGrantProbe: BundledTool {
+        static let manifest = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("wallpaper")!, name: "wallpaper", symbol: "photo", commands: [])!,
+            group: .tools, capabilities: [CapabilityRequest(.keystrokes, reason: "test")!],
+            preferences: [], activation: [.onLaunch], enabledBy: nil)!
+        init(services: ToolServices) {}
+        func start() { ToolBrokerTests.events.append("needs start") }
+        func stop() { ToolBrokerTests.events.append("needs stop") }
+        func run(_ command: CommandID) {}
+        func canRun(_ command: CommandID) -> Bool { false }
+    }
+
+    /// A tool that says it starts without Accessibility, and asks later.
+    final class AsksLaterProbe: BundledTool {
+        static let manifest = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("mediaTools")!, name: "mediaTools", symbol: "film", commands: [])!,
+            group: .tools,
+            capabilities: [CapabilityRequest(.keystrokes, reason: "test", startsWithoutGrant: true)!],
+            preferences: [], activation: [.onLaunch], enabledBy: nil)!
+        init(services: ToolServices) {}
+        func start() { ToolBrokerTests.events.append("later start") }
+        func stop() { ToolBrokerTests.events.append("later stop") }
+        func run(_ command: CommandID) {}
+        func canRun(_ command: CommandID) -> Bool { false }
+    }
+
+    /// The first capability that rides on a macOS grant: the broker's
+    /// refusal, where the app's broker gets its answer, and the run rule's
+    /// grant clause through the host.
+    static func grants(_ suite: TestSuite) {
+        let world = World()
+        let broker = bench(world: world)
+        let typing = manifest([.keystrokes, .notify], id: "wallpaper")
+
+        world.granted = []
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notGranted(.accessibility),
+                     "a capability that rides on a macOS grant is refused without it")
+        suite.expect(broker.refusal(of: .notify, for: typing) == nil,
+                     "a capability that rides on nothing is not held back by another's grant")
+        world.granted = [.accessibility]
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == nil,
+                     "the grant is asked about at every call: given while the app runs, it holds from the next one")
+        world.granted = [.screenRecording]
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notGranted(.accessibility),
+                     "and taken away, it is missed at the next one")
+        world.installed = false
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notInstalled,
+                     "not installed is said before a missing grant")
+        world.installed = true
+        world.allowed = false
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notGranted(.accessibility),
+                     "a missing grant is said before what the person allows")
+        world.allowed = true
+
+        // The app's own broker, with the two questions it puts to macOS
+        // answered here.
+        var accessibility = false
+        var screen = false
+        let live = CapabilityBroker.Environment.reading(accessibility: { accessibility },
+                                                        screenRecording: { screen })
+        suite.expect(!live.isGranted(.accessibility) && !live.isGranted(.screenRecording)
+                         && live.isGranted(.notifications),
+                     "the app's broker asks about the two grants the app watches, and takes the others as given")
+        accessibility = true
+        suite.expect(live.isGranted(.accessibility) && !live.isGranted(.screenRecording),
+                     "it asks at the moment of the call: a grant holds the instant it is given, with no hop and no poll to wait for")
+        accessibility = false
+        screen = true
+        suite.expect(!live.isGranted(.accessibility) && live.isGranted(.screenRecording),
+                     "each grant is asked of its own source")
+
+        // The run rule's grant clause, through the host.
+        let needs = NeedsGrantProbe.manifest.id
+        let later = AsksLaterProbe.manifest.id
+        for granted in [false, true] {
+            events = []
+            world.granted = granted ? [.accessibility] : []
+            let host = ToolHost(broker: broker, tools: [NeedsGrantProbe.self, AsksLaterProbe.self])
+            host.sync(needs)
+            host.sync(later)
+            suite.expect(events == (granted ? ["needs start", "later start"] : ["later start"])
+                             && host.built == (granted ? [needs, later] : [later]),
+                         "Accessibility \(granted): a tool that needs it " + (granted ? "starts" : "waits")
+                             + ", and a tool that says it starts without it starts")
+        }
+
+        events = []
+        world.granted = []
+        let host = ToolHost(broker: broker, tools: [NeedsGrantProbe.self, AsksLaterProbe.self])
+        func decide() {
+            host.sync(needs)
+            host.sync(later)
+        }
+        decide()
+        world.granted = [.accessibility]
+        decide()
+        suite.expect(events == ["later start", "needs start", "later start"] && host.running == [later, needs],
+                     "a grant given while the app runs starts the tool that waited for it, at the next decision")
+        world.granted = []
+        decide()
+        suite.expect(events.suffix(2) == ["needs stop", "later start"] && host.running == [later],
+                     "a grant taken away stops the tool that needs it, and leaves the other running")
+        suite.expect(broker.refusal(of: .keystrokes, for: AsksLaterProbe.manifest) == .notGranted(.accessibility),
+                     "starting without the grant does not open the capability: each call is still refused")
+
+        // Suspending.
+        events = []
+        host.suspend(later)
+        host.suspend(needs)
+        host.suspend(ToolID("screenshot")!)
+        suite.expect(events == ["later stop", "needs stop"] && host.running.isEmpty,
+                     "suspending stops a built tool at once, whatever the run rule says")
+        decide()
+        suite.expect(events.suffix(1) == ["later start"] && host.running == [later],
+                     "and the next decision starts it again")
+        let unbuilt = ToolHost(broker: broker, tools: [AsksLaterProbe.self])
+        unbuilt.suspend(later)
+        suite.expect(unbuilt.built.isEmpty, "suspending a tool that was never built builds nothing")
     }
 
     static func hostRunsTools(_ suite: TestSuite) {
