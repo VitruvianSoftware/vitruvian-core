@@ -2,6 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
+import AppKit
 import VitruvianCore
 import VitruvianServices
 
@@ -15,6 +16,7 @@ enum ToolBrokerTests {
         processes(suite)
         preferences(suite)
         messages(suite)
+        oneLook(suite)
         host(suite)
         portManager(suite)
         manifestsAgree(suite)
@@ -401,5 +403,85 @@ enum ToolBrokerTests {
             keys += manifest.preferences.map(\.key)
         }
         suite.expect(Set(keys).count == keys.count, "no preference belongs to two tools")
+    }
+
+    /// What a rule was asked, in order. Only the test's own thread touches
+    /// it.
+    nonisolated final class RuleLog: @unchecked Sendable {
+        var asked: [String] = []
+    }
+
+    static func oneLook(_ suite: TestSuite) {
+        // Handed to the rules below, which the look calls on this thread.
+        nonisolated(unsafe) let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let log = RuleLog()
+        func rule(reads: Bool = true, replacement: String? = "clean", drops: Bool = true,
+                  during: @escaping @Sendable () -> Void = {}) -> ClipboardRewriteRule {
+            ClipboardRewriteRule(
+                readsText: { _ in
+                    log.asked.append("types")
+                    return reads
+                },
+                replacement: { text in
+                    log.asked.append("text \(text)")
+                    during()
+                    return replacement.map { ClipboardReplacement(text: $0, note: ["n"]) }
+                },
+                dropsMarkup: { _, text in
+                    log.asked.append("markup \(text)")
+                    return drops
+                })
+        }
+        func look(_ rule: ClipboardRewriteRule, token: ClipboardPollToken = ClipboardPollToken()) -> ClipboardPoll? {
+            log.asked = []
+            return ClipboardRewrite.poll(since: -1, token: token, rule: rule, pasteboard: board)
+        }
+        func copy(_ text: String, html: String? = nil) {
+            board.clearContents()
+            board.setString(text, forType: .string)
+            if let html { board.setString(html, forType: .html) }
+        }
+
+        copy("dirty")
+        var result = look(rule(reads: false))
+        suite.expect(result?.replaced == nil && log.asked == ["types"] && board.string(forType: .string) == "dirty",
+                     "a rule that says no to the types is never shown the text")
+        result = look(rule(replacement: nil))
+        suite.expect(result?.replaced == nil && log.asked == ["types", "text dirty"],
+                     "a rule that offers nothing leaves the copy alone")
+
+        copy("dirty", html: "<b>dirty</b>")
+        result = look(rule(replacement: nil))
+        suite.expect(log.asked == ["types", "text dirty"], "the HTML is not read for a copy the rule leaves alone")
+        result = look(rule(drops: false))
+        suite.expect(result?.replaced == nil && log.asked == ["types", "text dirty", "markup dirty"]
+                         && board.string(forType: .html) != nil,
+                     "a rule that will not drop the HTML leaves the copy alone")
+        result = look(rule())
+        suite.expect(result?.replaced == ClipboardReplacement(text: "clean", note: ["n"])
+                         && board.string(forType: .string) == "clean" && board.string(forType: .URL) == "clean"
+                         && board.string(forType: .html) == nil && result?.changeCount == board.changeCount,
+                     "a replacement is written as text and as a link, and the look answers with the count after it")
+
+        copy("dirty")
+        result = look(rule(during: {
+            board.clearContents()
+            board.setString("other", forType: .string)
+        }))
+        suite.expect(result?.replaced == nil && board.string(forType: .string) == "other",
+                     "a copy that changed while the rule was deciding is not overwritten")
+
+        copy("dirty")
+        let token = ClipboardPollToken()
+        result = look(rule(during: { token.cancel() }), token: token)
+        suite.expect(result?.replaced == nil && board.string(forType: .string) == "dirty",
+                     "a look called off while the rule was deciding writes nothing")
+
+        board.clearContents()
+        board.writeObjects(["a" as NSString, "b" as NSString])
+        result = look(rule())
+        suite.expect(result?.replaced == nil && log.asked == ["types"] && board.pasteboardItems?.count == 2,
+                     "a copy of several items is not read")
     }
 }

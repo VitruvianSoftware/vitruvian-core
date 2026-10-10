@@ -128,6 +128,7 @@ is that notice. Add an entry for every change to upstream files.
 
 - **2026-10-10**: Tool platform, the broker, stage B (`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-b.md`):
   - `Services/URLCleanerService.swift`: takes what it reaches outside itself (the saved preferences, the clipboard lane, the pasteboard, its timer) as an `Environment`, so its timer and its copy can be tested. Nothing it does changed.
+  - `Services/URLCleanerService.swift`: one look at the clipboard and the write that follows it moved, word for word, to `Services/Platform/Broker/ClipboardRewrite.swift`. The cleaner hands the look its three decisions (which types it touches, what a link becomes, whether the HTML may go) as a rule.
 - **2026-10-09**: Tool platform, the broker, stage A (`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`):
   - New files, none with an upstream header: `Core/Platform/ToolManifest.swift` (what a tool is and which capabilities it asks for) and `Services/Platform/Broker/CapabilityBroker.swift` (the one place that decides whether a tool may use a capability), with their tests in `Tests/ToolPlatformTests.swift` and `Tests/ToolBrokerTests.swift`.
   - `App/AppDelegate.swift`: stops the tools the host built, at quit.

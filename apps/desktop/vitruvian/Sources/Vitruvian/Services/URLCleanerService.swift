@@ -10,7 +10,6 @@ import VitruvianDesign
 @MainActor
 package final class URLCleanerService: ObservableObject {
     package static let shared = URLCleanerService(environment: .live)
-    nonisolated private static let urlType = NSPasteboard.PasteboardType(UTType.url.identifier)
 
     /// What the cleaner reaches outside itself. The app's is the saved
     /// preferences, the shared clipboard lane, the general pasteboard and a
@@ -64,25 +63,8 @@ package final class URLCleanerService: ObservableObject {
     /// silent rewrite did rather than only that it is running.
     @Published package private(set) var lastRemoved: [String] = []
 
-    /// `cancelled` sits under `lock`, so it is `@unchecked Sendable`.
-    package final class PollToken: @unchecked Sendable {
-        private let lock = NSLock()
-        private var cancelled = false
-
-        package init() {}
-
-        package func cancel() {
-            lock.lock()
-            cancelled = true
-            lock.unlock()
-        }
-
-        package var isCancelled: Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            return cancelled
-        }
-    }
+    /// The token moved to the broker with the look it calls off.
+    package typealias PollToken = ClipboardPollToken
 
     package struct PollResult {
         package let changeCount: Int
@@ -123,7 +105,7 @@ package final class URLCleanerService: ObservableObject {
         let main = environment.main
         environment.lane { [weak self] in
             let pasteboard = board()
-            let changeCount = Self.writeToPasteboard(urlString, to: pasteboard)
+            let changeCount = ClipboardRewrite.write(urlString, to: pasteboard)
             // Unlike a rewrite of what another app copied, this link is ours.
             pasteboard.declareVitruvianSource()
             main {
@@ -201,8 +183,8 @@ package final class URLCleanerService: ObservableObject {
         }
     }
 
-    /// Runs only on GeneralPasteboardAccess. Reading the change count, types
-    /// and payload plus any rewrite is one serialized transaction.
+    /// Runs only on GeneralPasteboardAccess. The look itself is the
+    /// broker's; this hands it the cleaner's rule and reads its answer.
     /// `pasteboard` and `rules` are the general pasteboard and the stored
     /// rules, except in the tests, which pass a private pasteboard.
     /// `defaults` is where the stored rules are read when `rules` is nil.
@@ -210,51 +192,39 @@ package final class URLCleanerService: ObservableObject {
                                                    pasteboard: NSPasteboard = .general,
                                                    rules: URLCleaning.Rules? = nil,
                                                    defaults: UserDefaults = .standard) -> PollResult? {
-        let changeCount = pasteboard.changeCount
-        guard !token.isCancelled else { return nil }
-        guard changeCount != sinceChangeCount else {
-            return PollResult(changeCount: changeCount, cleaned: nil)
+        // UserDefaults is safe to use from any thread.
+        nonisolated(unsafe) let store = defaults
+        let poll = ClipboardRewrite.poll(since: sinceChangeCount, token: token,
+                                         rule: rewriteRule(rules: { rules ?? Self.rules(in: store) }),
+                                         pasteboard: pasteboard)
+        return poll.map { poll in
+            PollResult(changeCount: poll.changeCount,
+                       cleaned: poll.replaced.map { URLCleaning.Result(url: $0.text, removed: $0.note) })
         }
+    }
 
-        // The types decide before any content is read: a picture or a file
-        // is never fetched only to be left alone. Some "copy link" commands
-        // put the link on the pasteboard only as a URL, with no text next
-        // to it.
-
-        // The rewrite is for a link something was actually taken out of. A
-        // copy with nothing to remove is left exactly as the user put it,
-        // because writing to the pasteboard discards whatever else the copy
-        // carried, and a link the cleaner did not need to touch is the one
-        // most likely to come back spelled differently.
-        let types = (pasteboard.types ?? []).map(\.rawValue)
-        guard URLCleaning.canRewritePasteboard(types: types),
-              // The rewrite writes one item, so a copy of several is left alone.
-              pasteboard.pasteboardItems?.count == 1,
-              let text = pasteboard.string(forType: .string) ?? pasteboard.string(forType: urlType),
-              let cleaned = URLCleaning.clean(text, rules: rules ?? Self.rules(in: defaults)),
-              !cleaned.removed.isEmpty,
-              !token.isCancelled else {
-            return PollResult(changeCount: changeCount, cleaned: nil)
-        }
-        // The rewrite drops the HTML, which is only right when the HTML adds
-        // nothing to the link but formatting.
-        if types.contains("public.html"),
-           !URLCleaning.markupAddsOnlyFormatting(pasteboard.string(forType: .html) ?? "", to: text) {
-            return PollResult(changeCount: changeCount, cleaned: nil)
-        }
-        // Another app may have copied since the read. Nothing compares and
-        // swaps across processes, so this narrows the window, not closes it.
-        guard pasteboard.changeCount == changeCount else {
-            return PollResult(changeCount: changeCount, cleaned: nil)
-        }
-
-        // The app the copy named as its source stays named, and a copy from
-        // another device stays marked as one, so the clipboard history does
-        // not credit the cleaned link to the app in front.
-        let rewrittenChangeCount = writeToPasteboard(cleaned.url, source: pasteboard.string(forType: .source),
-                                                     remote: types.contains("com.apple.is-remote-clipboard"),
-                                                     to: pasteboard)
-        return PollResult(changeCount: rewrittenChangeCount, cleaned: cleaned)
+    /// What the automatic clean asks of each copy, on the clipboard lane.
+    /// `rules` is read there, each time a link is about to be cleaned, so a
+    /// rule changed in Settings holds from the next copy.
+    nonisolated package static func rewriteRule(rules: @escaping @Sendable () -> URLCleaning.Rules)
+        -> ClipboardRewriteRule {
+        ClipboardRewriteRule(
+            // The types decide before any content is read: a picture or a
+            // file is never fetched only to be left alone.
+            readsText: { URLCleaning.canRewritePasteboard(types: $0) },
+            // The rewrite is for a link something was actually taken out of. A
+            // copy with nothing to remove is left exactly as the user put it,
+            // because writing to the pasteboard discards whatever else the copy
+            // carried, and a link the cleaner did not need to touch is the one
+            // most likely to come back spelled differently.
+            replacement: { text in
+                guard let cleaned = URLCleaning.clean(text, rules: rules()),
+                      !cleaned.removed.isEmpty else { return nil }
+                return ClipboardReplacement(text: cleaned.url, note: cleaned.removed)
+            },
+            // The rewrite drops the HTML, which is only right when the HTML adds
+            // nothing to the link but formatting.
+            dropsMarkup: { URLCleaning.markupAddsOnlyFormatting($0, to: $1) })
     }
 
     nonisolated private static func rules(in defaults: UserDefaults) -> URLCleaning.Rules {
@@ -262,17 +232,6 @@ package final class URLCleanerService: ObservableObject {
             globalNames: defaults[Preferences.urlCleanerCustomParameters],
             siteNames: defaults[Preferences.urlCleanerSiteParameters],
             disabledNames: defaults[Preferences.urlCleanerDisabledParameters])
-    }
-
-    @discardableResult
-    nonisolated private static func writeToPasteboard(_ urlString: String, source: String? = nil, remote: Bool = false,
-                                                      to pasteboard: NSPasteboard = .general) -> Int {
-        pasteboard.clearContents()
-        pasteboard.setString(urlString, forType: .string)
-        pasteboard.setString(urlString, forType: urlType)
-        if let source { pasteboard.setString(source, forType: .source) }
-        if remote { pasteboard.setData(Data(), forType: .remoteClipboard) }
-        return pasteboard.changeCount
     }
 
     private func cancelPoll() {
