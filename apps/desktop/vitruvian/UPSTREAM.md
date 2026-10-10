@@ -137,6 +137,8 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/FeatureRuntime.swift`: the URL cleaner's arm hands it to the tool host; its own binding action is gone.
   - `App/AppDelegate.swift`: the URL cleaner's line left the quit list. The tool host stops it, and no longer builds it at quit when it never ran.
   - `Tests/ClipboardFeatureTests.swift`: the link cleaner's four checks call the look where it lives now. Their expectations are unchanged.
+  - `bazel/source_lints.py`: the URL cleaner's four files join `MIGRATED_TOOLS`. The rule now reads `@AppStorage(Preferences.x)`, and fails when a key a tool's views may bind is not declared by its manifest, or is not spelled alike in `DefaultsKey` and `Preferences`.
+  - `Tests/mutation_checks.py`: four mutations (a rewrite after the clipboard changed under the look; a watch taking its own rewrite for a new copy; a tool reading a preference it did not declare; the host starting a tool that is switched off).
 - **2026-10-09**: Tool platform, the broker, stage A (`docs/superpowers/plans/2026-10-09-vitruvian-broker-stage-a.md`):
   - New files, none with an upstream header: `Core/Platform/ToolManifest.swift` (what a tool is and which capabilities it asks for) and `Services/Platform/Broker/CapabilityBroker.swift` (the one place that decides whether a tool may use a capability), with their tests in `Tests/ToolPlatformTests.swift` and `Tests/ToolBrokerTests.swift`.
   - `App/AppDelegate.swift`: stops the tools the host built, at quit.

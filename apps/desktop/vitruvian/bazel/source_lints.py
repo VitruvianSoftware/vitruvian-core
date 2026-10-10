@@ -2215,6 +2215,25 @@ MIGRATED_TOOLS = {
         # Preference keys a view of this tool may bind with @AppStorage.
         "keys": ["panelUtilityPortManager"],
     },
+    "urlCleaner": {
+        "files": [
+            "Sources/Vitruvian/Services/URLCleanerService.swift",
+            "Sources/Vitruvian/Core/URLCleaning.swift",
+            "Sources/Vitruvian/UI/Settings/URLCleanerSettings.swift",
+            "Sources/Vitruvian/UI/MenuPanel/PanelURLCleanerView.swift",
+        ],
+        # `URLCleaning` is here so the broker never calls the cleaner's rules
+        # itself: they reach it only as a `ClipboardRewriteRule`.
+        "types": ["URLCleanerService", "URLCleaning"],
+        # The manifest also declares `panelUtilityURLCleaner`; the view that
+        # binds it is the menu panel's, which is not one of these files.
+        "keys": [
+            "urlCleanerEnabled",
+            "urlCleanerCustomParameters",
+            "urlCleanerSiteParameters",
+            "urlCleanerDisabledParameters",
+        ],
+    },
 }
 
 # What a migrated tool's files may not name, and what to say.
@@ -2241,7 +2260,7 @@ BROKER_PREFIX = APP_PREFIX + "Services/Platform/Broker/"
 _STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
 _SINGLETON = re.compile(r"\b([A-Z]\w*)\.shared\b")
 _APP_STORAGE = re.compile(r"@AppStorage\(\s*")
-_APP_STORAGE_KEY = re.compile(r'"([^"\\]*)"|DefaultsKey\.(\w+)')
+_APP_STORAGE_KEY = re.compile(r'"([^"\\]*)"|DefaultsKey\.(\w+)|Preferences\.(\w+)')
 
 
 def code_and_blanked(line):
@@ -2283,12 +2302,53 @@ def migrated_tool_problems(tools, source_of):
                         problems.append(f"{where} names the singleton {found.group(1)}")
                 for found in _APP_STORAGE.finditer(code):
                     key = _APP_STORAGE_KEY.match(written, found.end())
-                    name = key and (key.group(1) or key.group(2))
+                    name = key and (key.group(1) or key.group(2) or key.group(3))
                     if name not in row["keys"]:
                         problems.append(
                             f"{where} binds the preference {name or 'it cannot read'} "
                             f"with @AppStorage; the tool {tool} may bind {row['keys']}"
                         )
+    return problems
+
+
+def migrated_tool_key_problems(tools, source_of, defaults_keys, preferences):
+    """Each preference a migrated tool's views may bind that its manifest does
+    not declare, or that `DefaultsKey` and `Preferences` do not both spell as
+    the key itself. The scan above reads `DefaultsKey.x` and `Preferences.x`
+    as the key `x`, which holds only while the three agree."""
+    problems = []
+    for tool, row in tools.items():
+        declared = set()
+        for path in row["files"]:
+            declared.update(
+                re.findall(
+                    r"PreferenceDeclaration\(\s*key:\s*DefaultsKey\.(\w+)",
+                    source_of(path) or "",
+                )
+            )
+        for key in row["keys"]:
+            if key not in declared:
+                problems.append(
+                    f"the tool {tool} may bind the preference {key} in a view, "
+                    "and no manifest in its files declares it"
+                )
+            named = re.search(
+                r"static let " + re.escape(key) + r'\s*=\s*"' + re.escape(key) + r'"',
+                defaults_keys,
+            )
+            typed = re.search(
+                r"static let "
+                + re.escape(key)
+                + r"\s*=\s*Preference\(\s*DefaultsKey\."
+                + re.escape(key)
+                + r"\b",
+                preferences,
+            )
+            if not (named and typed):
+                problems.append(
+                    f"the tool {tool} lists the preference {key}, which DefaultsKey "
+                    "and Preferences do not both declare under that name"
+                )
     return problems
 
 
@@ -2312,6 +2372,8 @@ def migrated_tools_reach_services_through_the_broker(repo):
             "let one = entry.shared, two = make().shared",
             '@AppStorage("panelUtilityPortManager") private var again = true',
             "@AppStorage(key) private var unread = true",
+            "@AppStorage(Preferences.panelUtilityPortManager) private var typed: Bool",
+            "@AppStorage(Preferences.somethingElse) private var stray: Bool",
         ]
     )
     sample_tools = {
@@ -2331,6 +2393,8 @@ def migrated_tools_reach_services_through_the_broker(repo):
         "migrated tool goes through its ToolServices",
         "sample:13 binds the preference it cannot read with @AppStorage; the tool "
         "sample may bind ['panelUtilityPortManager']",
+        "sample:15 binds the preference somethingElse with @AppStorage; the tool "
+        "sample may bind ['panelUtilityPortManager']",
         "moved is listed for the tool sample and is not there: list the file "
         "where it is now",
     ]:
@@ -2339,6 +2403,41 @@ def migrated_tools_reach_services_through_the_broker(repo):
             "preference and a listed file that is gone, and not prose, strings, "
             "the allowed singletons or the tool's own key"
         )
+    key_sample = migrated_tool_key_problems(
+        {
+            "sample": {
+                "files": ["tool"],
+                "types": [],
+                "keys": ["alpha", "beta", "gamma"],
+            }
+        },
+        {
+            "tool": "PreferenceDeclaration(key: DefaultsKey.alpha, default: .bool(true)),\n"
+            "PreferenceDeclaration(key: DefaultsKey.beta, default: .bool(true))"
+        }.get,
+        'static let alpha = "alpha"\nstatic let beta = "other"\nstatic let gamma = "gamma"',
+        "static let alpha = Preference(DefaultsKey.alpha, default: true)\n"
+        "static let beta = Preference(DefaultsKey.beta, default: true)\n"
+        "static let gamma = Preference(\n    DefaultsKey.gamma, default: true)",
+    )
+    if key_sample != [
+        "the tool sample lists the preference beta, which DefaultsKey and "
+        "Preferences do not both declare under that name",
+        "the tool sample may bind the preference gamma in a view, and no "
+        "manifest in its files declares it",
+    ]:
+        problems.append(
+            "the scan finds a key spelled apart and a key no manifest declares, "
+            "and not a key declared and spelled alike"
+        )
+    problems.extend(
+        migrated_tool_key_problems(
+            MIGRATED_TOOLS,
+            repo.sources.get,
+            repo.source(APP_PREFIX + "Core/DefaultsKey.swift"),
+            repo.source(PREFERENCES_PATH),
+        )
+    )
     problems.extend(migrated_tool_problems(MIGRATED_TOOLS, repo.sources.get))
     return problems
 
