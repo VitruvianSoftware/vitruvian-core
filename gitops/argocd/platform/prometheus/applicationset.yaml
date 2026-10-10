@@ -186,30 +186,50 @@ spec:
                 # class (2xx, 4xx, ...). cpu_cores and memory_bytes are per pod and cover
                 # the app container only, not its database. ready_pods counts every ready
                 # pod in the namespace.
+                #
+                # cpu_cores and memory_bytes read the raw kubelet series, selected by
+                # namespace and container only. Do not build them on the k8s.rules rule
+                # above, and do not add an image filter: on the Docker nodes these series
+                # come from the kubernetes-nodes-resource scrape job (extraScrapeConfigs
+                # below), which has no image label, so an image filter silently drops
+                # every pod scheduled there. Each pod is scraped from exactly one of the
+                # two sources, never both, so the sum does not double count.
                 - name: backstage-graphs
                   rules:
                   - record: backstage:requests_per_second
                     expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/backstage/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
                   - record: backstage:cpu_cores
-                    expr: sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="backstage", container="backstage-backend"})
+                    expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="backstage", container="backstage-backend"}[5m]))
                   - record: backstage:memory_bytes
                     expr: sum by (pod) (container_memory_working_set_bytes{namespace="backstage", container="backstage-backend"})
                   - record: buzz:requests_per_second
                     expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/buzz/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
                   - record: buzz:cpu_cores
-                    expr: sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="buzz", container="relay"})
+                    expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="buzz", container="relay"}[5m]))
                   - record: buzz:memory_bytes
                     expr: sum by (pod) (container_memory_working_set_bytes{namespace="buzz", container="relay"})
                   - record: mcp_slack:requests_per_second
                     expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/mcp-slack/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
                   - record: mcp_slack:ready_pods
                     expr: sum by (namespace) (kube_pod_status_ready{namespace="mcp-slack", condition="true"})
+                  - record: mcp_slack:cpu_cores
+                    expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="mcp-slack", container="mcp-slack"}[5m]))
+                  - record: mcp_slack:memory_bytes
+                    expr: sum by (pod) (container_memory_working_set_bytes{namespace="mcp-slack", container="mcp-slack"})
                   - record: storybook:requests_per_second
                     expr: sum by (code_class) (label_replace(rate(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/storybook/.+"}[5m]), "code_class", "${1}xx", "envoy_response_code_class", "(.+)"))
                   - record: storybook:ready_pods
                     expr: sum by (namespace) (kube_pod_status_ready{namespace="storybook", condition="true"})
+                  - record: storybook:cpu_cores
+                    expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="storybook", container="storybook"}[5m]))
+                  - record: storybook:memory_bytes
+                    expr: sum by (pod) (container_memory_working_set_bytes{namespace="storybook", container="storybook"})
                   - record: whoami:ready_pods
                     expr: sum by (namespace) (kube_pod_status_ready{namespace="whoami", condition="true"})
+                  - record: whoami:cpu_cores
+                    expr: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="whoami", container="whoami"}[5m]))
+                  - record: whoami:memory_bytes
+                    expr: sum by (pod) (container_memory_working_set_bytes{namespace="whoami", container="whoami"})
               alerting_rules.yml:
                 groups:
 
@@ -774,6 +794,10 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      # The Backstage page for this app lists an alert only when its
+                      # namespace label matches. The sum() above drops every label,
+                      # so the namespace is named here.
+                      namespace: mcp-slack
                     annotations:
                       summary: "mcp-slack failing {{ $value | humanizePercentage }} of requests"
                       description: "Majority of mcp-slack requests returning 5xx for >10m while the pod is Ready and /health is green. Split the class before debugging: 503 means the IdP was unreachable and the token was never judged (IdpUnavailableError — check Zitadel/JWKS, not this server); 500 means an unexpected failure in this server (check pod logs). The alert fires on both because either is an outage, but they are different systems."
@@ -845,6 +869,10 @@ spec:
                     for: 10m
                     labels:
                       severity: warning
+                      # The Backstage page for this app lists an alert only when its
+                      # namespace label matches. The sum() above drops every label,
+                      # so the namespace is named here.
+                      namespace: mcp-slack
                     annotations:
                       summary: "mcp-slack cannot reach Zitadel (sustained 503)"
                       description: "mcp-slack has been returning IdpUnavailableError (503) for >10m — the server could not reach the IdP to verify tokens. This is our failure, not the caller's. Does NOT indicate pod-down (an Envoy-generated 503 is not counted here), and does NOT yet cover a slow IdP — JWKSTimeout still returns 401, tracked on #1418."
@@ -911,6 +939,10 @@ spec:
                     for: 30m
                     labels:
                       severity: warning
+                      # The Backstage page for this app lists an alert only when its
+                      # namespace label matches. The sum() above drops every label,
+                      # so the namespace is named here.
+                      namespace: mcp-slack
                     annotations:
                       summary: "mcp-slack repeatedly refusing a validly-signed token (sustained 403)"
                       description: "Someone holding a validly-signed token audienced for the mcp-slack project has been refused for >30m by one of this endpoint's per-request identity controls — an unlisted subject (OIDC_ALLOWED_SUBJECTS), a client that isn't the pinned OIDC client (OIDC_ALLOWED_CLIENT_ID, #1491), or a token carrying an azp claim at all. The endpoint is doing its job — this alert is the evidence that the cross-client path Zitadel documents as open is being exercised. TO ATTRIBUTE IT, grep the pod log for the literal string: mcp-slack: refused. The line names which control fired (SubjectNotAllowedError, ClientNotAllowedError or AuthorizedPartyPresentError) and the presented value, labelled sub=, client_id= or azp= to match — never assume it is a subject. Deliberately 403-only: this endpoint is scanned, so logging 401s would bury the signal in unauthenticated noise, and a 403 by construction means a validly-signed token audienced for our project. Note the presented identity is also returned to the CALLER (JSON body and WWW-Authenticate error_description), which is why keeping our own copy is the point — otherwise this is detection without attribution. The log line omits the presented value when the failing check has none to report, such as an absent client_id."
@@ -1037,6 +1069,51 @@ spec:
                   action: keep
                 - source_labels: [__meta_kubernetes_endpoint_port_name]
                   regex: 'http'
+                  action: keep
+              # Per-container CPU and memory for pods on the Docker nodes.
+              # The chart's kubernetes-nodes-cadvisor job covers the containerd nodes,
+              # but on the nodes k3s runs with --docker, cAdvisor reports every
+              # container series with EMPTY container, pod, namespace and image labels,
+              # so nothing on those nodes can be told apart. The kubelet's own
+              # /metrics/resource endpoint on the same nodes does carry the right
+              # container, pod and namespace labels (it has no image label).
+              #
+              # Limited to the Docker nodes on purpose: the containerd nodes already
+              # have these two series, correctly labelled, from cAdvisor, and scraping
+              # both sources there would give every container two series and double
+              # any sum over them. The keep rule matches the k3s.io/node-args node
+              # annotation, a one-line JSON list that holds "--docker" on exactly those
+              # nodes. A node moved to containerd drops out of this job by itself.
+              #
+              # Auth, TLS and the API-server proxy path mirror the chart's
+              # kubernetes-nodes-cadvisor job. The chart passes this whole block through
+              # the Helm tpl function, so it must never contain a double open brace;
+              # the $1 below is plain text to tpl and reaches Prometheus unchanged.
+              - job_name: 'kubernetes-nodes-resource'
+                scheme: https
+                tls_config:
+                  ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                  insecure_skip_verify: true
+                bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+                kubernetes_sd_configs:
+                  - role: node
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_node_annotation_k3s_io_node_args]
+                  regex: '.*"--docker".*'
+                  action: keep
+                - action: labelmap
+                  regex: __meta_kubernetes_node_label_(.+)
+                - target_label: __address__
+                  replacement: kubernetes.default.svc:443
+                - source_labels: [__meta_kubernetes_node_name]
+                  regex: (.+)
+                  target_label: __metrics_path__
+                  replacement: /api/v1/nodes/$1/proxy/metrics/resource
+                # Only the two series the graphs need; the endpoint also serves pod-,
+                # node- and swap-level series nothing here reads.
+                metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: 'container_cpu_usage_seconds_total|container_memory_working_set_bytes'
                   action: keep
             alertmanager:
               # HA: 2-replica gossip cluster. The subchart auto-wires clustering

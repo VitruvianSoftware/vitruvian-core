@@ -4,6 +4,7 @@
 """Prometheus Thanos sidecar must have sufficient memory headroom to avoid OOM kills."""
 
 import os
+import re
 import unittest
 
 import yaml
@@ -65,6 +66,88 @@ class PrometheusValuesTest(unittest.TestCase):
         self.assertIn("time() - kube_pod_container_state_started < 30 * 60", expr)
         # The 6h restart lookback is still the "repeatedly" signal.
         self.assertIn("kube_pod_container_status_restarts_total[6h]", expr)
+
+    def _resource_job(self):
+        jobs = yaml.safe_load(self.v["extraScrapeConfigs"])
+        (job,) = [j for j in jobs if j["job_name"] == "kubernetes-nodes-resource"]
+        return job
+
+    def test_resource_job_scrapes_only_docker_nodes(self):
+        """The kubelet resource endpoint is scraped on the Docker nodes only.
+
+        The containerd nodes already get the same two series from cAdvisor.
+        Without the keep rule every container there would have two series
+        and every sum over them would double.
+        """
+        job = self._resource_job()
+        self.assertEqual(job["kubernetes_sd_configs"], [{"role": "node"}])
+        first = job["relabel_configs"][0]
+        self.assertEqual(first["action"], "keep")
+        self.assertEqual(
+            first["source_labels"],
+            ["__meta_kubernetes_node_annotation_k3s_io_node_args"],
+        )
+        # Prometheus anchors relabel regexes at both ends, so fullmatch.
+        docker = '["agent","--node-name","james-mbp","--docker"]'
+        containerd = '["server","--tls-san","k8s-api.lab.ipv1337.dev"]'
+        self.assertTrue(re.fullmatch(first["regex"], docker))
+        self.assertFalse(re.fullmatch(first["regex"], containerd))
+        # A node with no such annotation presents an empty value.
+        self.assertFalse(re.fullmatch(first["regex"], ""))
+
+    def test_resource_job_goes_through_the_api_server_proxy(self):
+        job = self._resource_job()
+        self.assertEqual(job["scheme"], "https")
+        by_target = {r.get("target_label"): r for r in job["relabel_configs"]}
+        self.assertEqual(
+            by_target["__address__"]["replacement"], "kubernetes.default.svc:443"
+        )
+        self.assertEqual(
+            by_target["__metrics_path__"]["replacement"],
+            "/api/v1/nodes/$1/proxy/metrics/resource",
+        )
+
+    def test_resource_job_keeps_only_container_cpu_and_memory(self):
+        (rule,) = self._resource_job()["metric_relabel_configs"]
+        self.assertEqual(rule["action"], "keep")
+        self.assertEqual(rule["source_labels"], ["__name__"])
+        self.assertEqual(
+            set(rule["regex"].split("|")),
+            {
+                "container_cpu_usage_seconds_total",
+                "container_memory_working_set_bytes",
+            },
+        )
+
+    def test_extra_scrape_configs_survive_helm_tpl(self):
+        """The chart renders extraScrapeConfigs through tpl.
+
+        A double open brace in it would be run as a Helm template.
+        """
+        self.assertNotIn("{{", self.v["extraScrapeConfigs"])
+
+    def test_app_cpu_graphs_do_not_filter_on_image(self):
+        """App CPU and memory graphs must work for pods on Docker nodes.
+
+        Series from the resource endpoint carry no image label, so a rule
+        that filters on image, or builds on the k8s.rules rule that does,
+        shows nothing for a pod scheduled on a Docker node.
+        """
+        groups = self.v["serverFiles"]["recording_rules.yml"]["groups"]
+        (group,) = [g for g in groups if g["name"] == "backstage-graphs"]
+        rules = [
+            r
+            for r in group["rules"]
+            if r["record"].endswith((":cpu_cores", ":memory_bytes"))
+        ]
+        apps = {r["record"].split(":")[0] for r in rules}
+        self.assertEqual(
+            apps, {"backstage", "buzz", "mcp_slack", "storybook", "whoami"}
+        )
+        self.assertEqual(len(rules), 10)
+        for r in rules:
+            self.assertNotIn("image", r["expr"], r["record"])
+            self.assertNotIn("node_namespace_pod_container", r["expr"], r["record"])
 
 
 if __name__ == "__main__":
