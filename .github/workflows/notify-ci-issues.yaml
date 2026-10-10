@@ -120,6 +120,7 @@ jobs:
           # a side effect of an export existing.
           MIRRORS: >-
             VitruvianSoftware/mcp-slack
+            VitruvianSoftware/mcp-roborock
             VitruvianSoftware/nexus-agent
             VitruvianSoftware/devx
             VitruvianSoftware/homelab

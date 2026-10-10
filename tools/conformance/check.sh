@@ -2678,6 +2678,78 @@ VMEOF
   fi
 }
 
+# Two lists a new mirror must be added to BY HAND, and neither one fails when a
+# component is missing from it:
+#
+#   * the smoke test's `for wf in ...` list -- the assertion that every expected
+#     migration is registered. A component absent from it can vanish from
+#     copy.bara.sky and the smoke test still reports "all expected migrations
+#     registered".
+#   * notify-ci-issues.yaml's MIRRORS list -- the repos whose `main` failures
+#     raise an alert. A component absent from it fails on its mirror unseen.
+#
+# Measured 2026-10-10: mcp-roborock was in neither, and the two pulumi example
+# mirrors were watched but not smoke-tested. Nothing documented that these lists
+# exist. This derives both from COMPONENTS so adding a component without them is a
+# red check rather than a silent gap.
+check_copybara_component_lists() {
+  cb="$COPYBARA_CONFIG_FILE"
+  [ -f "$cb" ] || return 0
+  smoke="$ROOT/.github/workflows/copybara-config-smoketest.yaml"
+  notify="$ROOT/.github/workflows/notify-ci-issues.yaml"
+  smoke_rel=".github/workflows/copybara-config-smoketest.yaml"
+  notify_rel=".github/workflows/notify-ci-issues.yaml"
+
+  # The standalone repo name: `repo` when a component sets it, else `name`.
+  repos="$(awk '
+    /^ *"name":/ { gsub(/[",]/, "", $2); name=$2; repo=""; next }
+    /^ *"repo":/ { gsub(/[",]/, "", $2); repo=$2; next }
+    /^ *"standalone_rev_id":/ { print (repo != "" ? repo : name) }
+  ' "$cb" | sort -u)"
+
+  if [ -z "$repos" ]; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" "no components parsed" "at least 1" \
+      "the component-list guard found no COMPONENTS entries - it is running blind, not passing" \
+      "check the COMPONENTS list format in tools/copybara/copy.bara.sky"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    return 0
+  fi
+
+  for f in "$smoke:$smoke_rel" "$notify:$notify_rel"; do
+    if [ ! -f "${f%%:*}" ]; then
+      emit "copybara" "$GLYPH_FAIL" "$C_RED" "${f#*:}" "missing" "present" \
+        "the file that must list every mirrored component is gone, so nothing verifies the list - and a rule that skips when its input is absent reports a clean run either way" \
+        "restore ${f#*:}"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      return 0
+    fi
+  done
+
+  total=0; bad=0
+  for repo in $repos; do
+    total=$((total + 1))
+    wf="export_$(printf '%s' "$repo" | tr '-' '_')"
+    if ! grep -E 'for wf in ' "$smoke" | grep -qE "[ ]${wf}([ ;]|\$)"; then
+      emit "copybara" "$GLYPH_FAIL" "$C_RED" "$smoke_rel" "$wf not listed" "listed in the smoke test's expected migrations" \
+        "the smoke test would still pass if '$wf' disappeared from copy.bara.sky, so a mirror's export could be dropped with nothing red" \
+        "add $wf to the 'for wf in' list in $smoke_rel"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); bad=1
+    fi
+    if ! grep -qE "^[[:space:]]+VitruvianSoftware/${repo}[[:space:]]*\$" "$notify"; then
+      emit "copybara" "$GLYPH_FAIL" "$C_RED" "$notify_rel" "VitruvianSoftware/$repo not watched" "listed under MIRRORS" \
+        "a failing run on the '$repo' mirror's main raises no alert, so it breaks unseen (4 of 8 mirrors were broken for weeks this way before #1851)" \
+        "add VitruvianSoftware/$repo to the MIRRORS list in $notify_rel"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); bad=1
+    fi
+  done
+
+  if [ "$bad" -eq 0 ]; then
+    emit "copybara" "$GLYPH_OK" "$C_GREEN" "tools/copybara/copy.bara.sky" "$total components" "all smoke-tested and watched" \
+      "every mirrored component is in the smoke test's expected list and in notify-ci-issues' MIRRORS" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
 # An export workflow triggers on its own subtree only. That means a change to
 # the SHARED export config -- tools/copybara/copy.bara.sky, which carries the
 # version maps, the catalog rewrite and the monorepo-only excludes -- never
@@ -3862,6 +3934,7 @@ check_release_please_packages
 check_copybara_infra_exclude
 check_copybara_version_maps
 check_copybara_export_triggers
+check_copybara_component_lists
 
 check_release_infra_exclude
 check_no_local_paths

@@ -101,7 +101,7 @@ jobs:
                     echo "::error::copy.bara.sky failed to load (never reached configuration validation)"
                     exit 1
                   fi
-                  for wf in export_devx export_homelab export_mcp_slack export_nexus_agent export_oauth_user_inspector export_pulumi_library export_site_vitruviansoftware_dev; do
+                  for wf in export_devx export_homelab export_mcp_roborock export_mcp_slack export_nexus_agent export_oauth_user_inspector export_pulumi_library export_pulumi_go_example_foundation export_pulumi_ts_example_foundation export_site_vitruviansoftware_dev; do
                     grep -q "$wf" <<<"$out" || {
                       echo "::error::expected migration '$wf' missing from the config — load incomplete"
                       exit 1

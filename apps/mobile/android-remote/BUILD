@@ -95,9 +95,8 @@ kt_android_library(
 # The APK. `bazel build //mobile/android/remote:app`, then
 # `adb install -r bazel-bin/mobile/android/remote/app.apk`.
 #
-# Debug-signed only: this app has no release pipeline yet, and shipping an
-# unsigned-for-release target that looks releasable is worse than not having
-# one. See README.md for what a release would need.
+# Multi-ABI APK packaged for release and distribution by
+# android-remote-release.yaml and scripts/publish.sh.
 android_binary(
     name = "app",
     custom_package = "dev.vitruvian.remote",
@@ -110,7 +109,7 @@ android_binary(
         "minSdkVersion": "26",
         "targetSdkVersion": "35",
         "versionCode": "1",
-        "versionName": "0.1.0",
+        "versionName": "0.1.1",  # x-release-please-version
     },
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no

@@ -97,8 +97,7 @@ from the 9/10 Pro Fold and are the only invented values in the design.
 - **Exec runs as the user with no per-command policy.** A paired phone can run
   anything the user can. That is the product, but a per-macro allow-list
   would be a reasonable next fence.
-- **No release pipeline.** `:app` is debug-signed. A release needs a signing
-  config, a `versionCode` source and a distribution channel decided.
+- **Release pipeline & distribution.** Configured via release-please (`release-please-config.json`, `.release-please-manifest.json`) and `.github/workflows/android-remote-release.yaml`. When a release PR merges on `main`, GitHub Releases cuts `android-remote-vX.Y.Z`, compiles the multi-ABI release APK via `scripts/publish.sh`, and attaches `VitruvianRemote-X.Y.Z.apk` with SHA-256 sidecars for direct phone downloads.
 - **No screenshot tests.** The design system's definition of done asks for a
   preview per component in both themes, screenshot-tested; the previews are not
   written yet.

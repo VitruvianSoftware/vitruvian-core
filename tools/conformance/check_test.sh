@@ -1049,6 +1049,88 @@ case_promgraph_bad_annotations() {
   rm -rf "$root"
 }
 
+
+# --- Copybara component lists (smoke test + watched mirrors) ----------------
+# A fixture with a COMPONENTS list, the smoke test's `for wf in` line and the
+# notify workflow's MIRRORS block. $2 = space-separated wf names for the smoke
+# test, $3 = space-separated repo names for MIRRORS.
+write_copybara_lists() {
+  root="$1"; smoke_wfs="$2"; watched="$3"
+  mkdir -p "$root/tools/copybara"
+  cat > "$root/tools/copybara/copy.bara.sky" <<'SKY'
+COMPONENTS = [
+    {
+        "name": "alpha",
+        "repo": "alpha",
+        "subtree": "apps/cli/alpha",
+        "standalone_rev_id": "ALPHA_REV_ID",
+    },
+    {
+        "name": "site-beta",
+        "repo": "site-beta",
+        "subtree": "apps/web/beta",
+        "standalone_rev_id": "SITE_BETA_REV_ID",
+    },
+]
+SKY
+  printf '                  for wf in %s; do\n' "$smoke_wfs" \
+    > "$root/.github/workflows/copybara-config-smoketest.yaml"
+  {
+    printf '          MIRRORS: >-\n'
+    for r in $watched; do printf '            VitruvianSoftware/%s\n' "$r"; done
+    printf '        run: true\n'
+  } > "$root/.github/workflows/notify-ci-issues.yaml"
+}
+
+cb_lists_line() { printf '%s\n' "$1" | grep -F "$2" | head -1; }
+
+case_copybara_lists_complete() {
+  root="$(new_root)"
+  write_copybara_lists "$root" "export_alpha export_site_beta" "alpha site-beta"
+  out="$(run_check "$root")"
+  expect "every component in both lists is reported as covered" \
+    "$(cb_lists_line "$out" "2 components")" "all smoke-tested and watched"
+  rm -rf "$root"
+}
+
+# The mcp-roborock shape: exported, but neither smoke-tested nor watched.
+case_copybara_lists_missing_from_both() {
+  root="$(new_root)"
+  write_copybara_lists "$root" "export_alpha" "alpha"
+  out="$(run_check "$root")"
+  expect "a component absent from the smoke test is reported" \
+    "$(cb_lists_line "$out" "export_site_beta not listed")" "not listed"
+  expect "a component absent from MIRRORS is reported" \
+    "$(cb_lists_line "$out" "VitruvianSoftware/site-beta not watched")" "not watched"
+  rm -rf "$root"
+}
+
+# The two pulumi example mirrors' shape: watched, but not smoke-tested.
+case_copybara_lists_watched_not_smoke_tested() {
+  root="$(new_root)"
+  write_copybara_lists "$root" "export_alpha" "alpha site-beta"
+  out="$(run_check "$root")"
+  expect "a watched component missing from the smoke test is still reported" \
+    "$(cb_lists_line "$out" "export_site_beta not listed")" "not listed"
+  # Wrapped in <> so an EMPTY line (nothing reported) is the only match for "<>".
+  expect "the watched component is not also reported as unwatched" \
+    "<$(cb_lists_line "$out" "VitruvianSoftware/site-beta not watched")>" "<>"
+  rm -rf "$root"
+}
+
+# A prefix of another name must not count as listed: export_alpha is not
+# export_alpha_extra, and VitruvianSoftware/alpha is not VitruvianSoftware/alpha-x.
+case_copybara_lists_prefix_is_not_a_match() {
+  root="$(new_root)"
+  write_copybara_lists "$root" "export_alpha_extra export_site_beta" "alpha-x site-beta"
+  out="$(run_check "$root")"
+  expect "export_alpha_extra does not satisfy export_alpha" \
+    "$(cb_lists_line "$out" "export_alpha not listed")" "not listed"
+  expect "alpha-x does not satisfy alpha" \
+    "$(cb_lists_line "$out" "VitruvianSoftware/alpha not watched")" "not watched"
+  rm -rf "$root"
+}
+
 case_branches_filter
 case_push_only_branches
 case_paths_filter_unchanged
@@ -1088,6 +1170,11 @@ case_oci_base_explicit_docker_hub
 case_oci_base_comment_ignored
 case_promgraph_recorded_rule
 case_promgraph_bad_annotations
+
+case_copybara_lists_complete
+case_copybara_lists_missing_from_both
+case_copybara_lists_watched_not_smoke_tested
+case_copybara_lists_prefix_is_not_a_match
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1
