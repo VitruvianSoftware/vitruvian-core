@@ -25,8 +25,7 @@
 #
 # Deliberately NOT mirrored (Guiding Principles §2.7): there is no
 # `vitruvian.dev/mirror` annotation because this app is not exported by
-# Copybara. The omission is intentional, not drift - an unreleased Android
-# client with no distribution channel has nothing to mirror yet.
+# Copybara. Releases are cut directly in the monorepo via android-remote-release.yaml.
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
