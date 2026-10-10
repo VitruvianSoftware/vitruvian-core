@@ -405,7 +405,11 @@ jobs:
           bazel build "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/... //apps/desktop/nexus-agent/macos:NexusAgent
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
-          bazel test "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgentTests
+          # app_holds_mermaid_test opens the NexusAgent archive built just
+          # above and fails when the copy of Mermaid its diagrams draw with is
+          # missing; here, not in the nexus-agent-macos unit, because this is
+          # the job that builds the app.
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgentTests //apps/desktop/nexus-agent/macos:app_holds_mermaid_test
 
           # home-speaker build, unit tests & packaging validation
           bazel build "${cache[@]}" --config=macos-app //apps/desktop/home-speaker/... //apps/desktop/home-speaker:HomeSpeaker

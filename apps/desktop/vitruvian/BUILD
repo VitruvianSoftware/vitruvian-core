@@ -539,6 +539,27 @@ sh_test(
     target_compatible_with = MACOS_ONLY,
 )
 
+# The app holds the copy of Mermaid the shared chat view ships: its diagram
+# cards draw with it, and an app without it still builds, signs and opens. The
+# script is the standalone Nexus Agent app's, run here on this app's archive,
+# which `:Vitruvian` in the unit below has already built.
+sh_test(
+    name = "app_holds_mermaid_test",
+    size = "small",
+    srcs = ["//apps/desktop/nexus-agent/macos:scripts/bazel_app_holds_mermaid_test.sh"],
+    args = [
+        "Vitruvian",
+        "$(rootpaths :Vitruvian)",
+        "$(rootpaths //apps/desktop/nexus-agent/macos:shared_ui_resources)",
+    ],
+    data = [
+        ":Vitruvian",
+        "//apps/desktop/nexus-agent/macos:shared_ui_resources",
+    ],
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+)
+
 sh_test(
     name = "fan_helper_selftest",
     size = "small",
@@ -668,6 +689,7 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         ":Vitruvian",
+        ":app_holds_mermaid_test",
         ":fan_helper_selftest",
         ":selftest",
         ":source_lints_test",

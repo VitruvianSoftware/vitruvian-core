@@ -182,6 +182,35 @@ sh_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# The app Bazel built holds the copy of Mermaid the chat view ships
+# (scripts/bazel_app_holds_mermaid_test.sh says why nothing else would notice).
+# It reads the archive `:NexusAgent` already produced, so it costs no build
+# where the app is built: the macos-build job of .github/workflows/ci.yaml,
+# which runs it by label. It is deliberately not in the unit below, which does
+# not build the app and would have to.
+sh_test(
+    name = "app_holds_mermaid_test",
+    size = "small",
+    srcs = ["scripts/bazel_app_holds_mermaid_test.sh"],
+    args = [
+        "NexusAgent",
+        "$(rootpaths :NexusAgent)",
+        "$(rootpaths :shared_ui_resources)",
+    ],
+    data = [
+        ":NexusAgent",
+        ":shared_ui_resources",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The Vitruvian desktop app runs the same check on its own archive.
+exports_files(
+    ["scripts/bazel_app_holds_mermaid_test.sh"],
+    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+)
+
 pipeline_unit(
     name = "nexus-agent-macos",
     depends_on = ["nexus-agent-src"],

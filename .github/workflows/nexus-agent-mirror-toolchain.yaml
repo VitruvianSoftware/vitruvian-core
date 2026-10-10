@@ -20,24 +20,37 @@
 
 name: Nexus Agent Mirror Toolchain
 
-# Builds the standalone Nexus Agent package exactly as its public mirror does:
-# the same runner image and the same two commands as build-macos in
-# apps/desktop/nexus-agent/.github/workflows/release.yml.
+# Rehearses the standalone Nexus Agent's release the way its public mirror
+# runs it: the same runner image and the same steps as the build-macos and
+# package jobs of apps/desktop/nexus-agent/.github/workflows/release.yml, from
+# `swift build` to the three .app bundles, the DMGs and the ZIP. That file is
+# exported to the mirror and never runs here, so without this a change to it,
+# or to macos/scripts/bundle.sh, first runs on a real release.
 #
 # Why this exists beside //apps/desktop/nexus-agent/macos:mirror_build_test:
 # that test runs on this repository's pinned Xcode, which is newer than the one
-# the mirror builds with. It catches a library missing from Package.swift. It
-# cannot catch code that only the newer Swift accepts. The mirror tags a
-# release BEFORE it builds, so such code would ship a release with no binaries.
+# the mirror builds with, and it never passes the build through an artifact.
+# It catches a library missing from Package.swift. It cannot catch code that
+# only the newer Swift accepts, a resource folder the older Swift names or lays
+# out differently, or an upload that leaves a file behind. The mirror tags a
+# release BEFORE it builds, so each of those would ship a release with no
+# binaries, or with an app whose diagrams do not draw.
 #
 # It also runs the package's tests with that Swift, which the mirror's release
 # does not: the tests otherwise run only under Bazel, on the newer Xcode.
 #
-# Only when the package changes, so it runs rarely. A standard GitHub-hosted
-# runner on a public repository is not billed. NOT a required check: a red run
-# here means "the next standalone release would fail to build".
+# Left out, because they publish or need the mirror's token: the detect job
+# (which tags and creates the release), "Upload release assets" and "Update
+# Homebrew Cask". Nothing here is notarised, because the release is not either.
 #
-# Keep `runs-on` and the build commands in step with release.yml.
+# Only when the package or its release changes, so it runs rarely. A standard
+# GitHub-hosted runner on a public repository is not billed. NOT a required
+# check: a red run here means "the next standalone release would fail".
+#
+# The steps the two files share must stay word for word the same, apart from
+# this repository's path to the package and the pinned actions.
+# //tools/ci:nexus_agent_release_rehearsal_test compares them and fails when
+# one changes without the other.
 
 on:
   pull_request:
@@ -45,7 +58,11 @@ on:
       - 'apps/desktop/nexus-agent/macos/Package.swift'
       - 'apps/desktop/nexus-agent/macos/Sources/**'
       - 'apps/desktop/nexus-agent/macos/Tests/**'
+      - 'apps/desktop/nexus-agent/macos/Resources/**'
+      - 'apps/desktop/nexus-agent/macos/scripts/**'
       - 'apps/desktop/nexus-agent/testdata/**'
+      - 'apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md'
+      - 'apps/desktop/nexus-agent/.github/workflows/release.yml'
       - '.github/workflows/nexus-agent-mirror-toolchain.yaml'
   # Run it by hand after changing the mirror's runner image.
   workflow_dispatch:
@@ -60,6 +77,7 @@ permissions:
   contents: read
 
 jobs:
+  # release.yml: build-macos.
   build:
     name: swift build (${{ matrix.arch }})
     runs-on: macos-15
@@ -80,12 +98,24 @@ jobs:
           swift --version
 
       - name: Build for ${{ matrix.arch }}
-        env:
-          ARCH: ${{ matrix.arch }}
         run: |
-          set -euo pipefail
           cd apps/desktop/nexus-agent/macos
-          swift build -c release --arch "$ARCH"
+          swift build -c release --arch ${{ matrix.arch }}
+
+      # The executable and, beside it, the folder SwiftPM writes the chat
+      # view's resources to (the copy of Mermaid that draws diagrams).
+      # macos/scripts/bundle.sh copies that folder into the app and stops
+      # when it is missing. One day is enough: only the package job below
+      # reads it.
+      - name: Upload arch binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: NexusAgent-${{ matrix.arch }}
+          path: |
+            apps/desktop/nexus-agent/macos/.build/release/NexusAgent
+            apps/desktop/nexus-agent/macos/.build/release/NexusAgent_NexusAgentUI.bundle
+          if-no-files-found: error
+          retention-days: 1
 
       # The mirror's release does not run the tests, so this is the one place
       # they are compiled and run with its Swift. Once is enough: the runner
@@ -98,3 +128,115 @@ jobs:
           cd apps/desktop/nexus-agent/macos
           swift test 2>&1 | tee "$RUNNER_TEMP/swift-test.log"
           grep -E 'Executed [1-9][0-9]* tests?, with 0 failures' "$RUNNER_TEMP/swift-test.log"
+
+  # release.yml: package, up to the ZIP. Then what the release never checks:
+  # that each app it would publish can draw a diagram.
+  package:
+    name: package the apps
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: NexusAgent-arm64
+          path: /tmp/arm64
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: NexusAgent-x86_64
+          path: /tmp/x86_64
+
+      # What came through the artifacts, before anything reads it: when a
+      # later step fails, this says whether a file was missing or misplaced.
+      - name: Show what was downloaded
+        run: |
+          set -euo pipefail
+          find /tmp/arm64 /tmp/x86_64 -maxdepth 4 -exec ls -ld {} +
+
+      - name: Create universal binary
+        run: |
+          mkdir -p /tmp/universal
+          lipo -create \
+            /tmp/arm64/NexusAgent \
+            /tmp/x86_64/NexusAgent \
+            -output /tmp/universal/NexusAgent
+          echo "==> Universal binary architectures:"
+          lipo -info /tmp/universal/NexusAgent
+          # The resources are the same files for both architectures.
+          cp -R /tmp/arm64/NexusAgent_NexusAgentUI.bundle /tmp/universal/
+
+      - name: Assemble .app bundles
+        run: |
+          VERSION="0.0.0-rehearsal"
+          chmod +x apps/desktop/nexus-agent/macos/scripts/bundle.sh
+
+          # Universal
+          mkdir -p /tmp/dist-universal
+          apps/desktop/nexus-agent/macos/scripts/bundle.sh /tmp/universal/NexusAgent "$VERSION" /tmp/dist-universal
+
+          # arm64
+          mkdir -p /tmp/dist-arm64
+          apps/desktop/nexus-agent/macos/scripts/bundle.sh /tmp/arm64/NexusAgent "$VERSION" /tmp/dist-arm64
+
+          # x86_64
+          mkdir -p /tmp/dist-x86_64
+          apps/desktop/nexus-agent/macos/scripts/bundle.sh /tmp/x86_64/NexusAgent "$VERSION" /tmp/dist-x86_64
+
+      # Each app holds the copy of Mermaid where the chat view looks for it,
+      # unchanged, with its licence, and is the signed executable for the
+      # processors its name says.
+      - name: Check the three apps
+        run: |
+          set -euo pipefail
+          check=apps/desktop/nexus-agent/macos/scripts/check_packaged_app.sh
+          bash "$check" /tmp/dist-universal/NexusAgent.app arm64 x86_64
+          bash "$check" /tmp/dist-arm64/NexusAgent.app arm64
+          bash "$check" /tmp/dist-x86_64/NexusAgent.app x86_64
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMGs
+        run: |
+          VERSION="0.0.0-rehearsal"
+
+          for arch in universal arm64 x86_64; do
+            create-dmg \
+              --volname "NexusAgent" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "NexusAgent.app" 175 190 \
+              --app-drop-link 425 190 \
+              --no-internet-enable \
+              "NexusAgent-${VERSION}-${arch}.dmg" \
+              "/tmp/dist-${arch}/" || true
+          done
+
+          ls -lh *.dmg
+
+      - name: Create ZIP for auto-updater
+        run: |
+          VERSION="0.0.0-rehearsal"
+          cd /tmp/dist-universal
+          zip -r "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
+          cd "${GITHUB_WORKSPACE}"
+          ls -lh *.zip
+
+      # The ZIP is what an installed app updates itself from, so the app that
+      # comes back out of it is checked as well: `zip` must have kept the
+      # resource folder and the signature.
+      - name: Check the app inside the ZIP
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/unzipped"
+          ditto -x -k NexusAgent-0.0.0-rehearsal-universal.zip "$RUNNER_TEMP/unzipped"
+          bash apps/desktop/nexus-agent/macos/scripts/check_packaged_app.sh \
+            "$RUNNER_TEMP/unzipped/NexusAgent.app" arm64 x86_64

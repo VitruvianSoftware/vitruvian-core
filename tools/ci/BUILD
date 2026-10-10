@@ -21,6 +21,7 @@
 # The orchestrator's hermetic tests drive the REAL decision engine (spec §4.2:
 # deploy-affected.sh is shelled, never rewritten), so the scripts must be
 # visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # `bazel run //tools/ci:gen` — regenerate the generated delivery workflows
@@ -154,4 +155,24 @@ sh_test(
     size = "small",
     srcs = ["bisect-culprit_test.sh"],
     data = ["bisect-culprit.sh"],
+)
+
+# The mirror's release workflow for the standalone Nexus Agent never runs here;
+# nexus-agent-mirror-toolchain.yaml rehearses its build and packaging on pull
+# requests. This fails when the steps the two share stop being the same, which
+# nothing else would report: the rehearsal would stay green while proving
+# nothing about the release. Reads both files as text; builds nothing.
+py_test(
+    name = "nexus_agent_release_rehearsal_test",
+    size = "small",
+    srcs = ["nexus_agent_release_rehearsal_test.py"],
+    args = [
+        "$(rootpath //apps/desktop/nexus-agent:release_workflow)",
+        "$(rootpath //:.github/workflows/nexus-agent-mirror-toolchain.yaml)",
+    ],
+    data = [
+        "//:.github/workflows/nexus-agent-mirror-toolchain.yaml",
+        "//apps/desktop/nexus-agent:release_workflow",
+    ],
+    main = "nexus_agent_release_rehearsal_test.py",
 )
