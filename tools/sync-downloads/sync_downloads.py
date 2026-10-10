@@ -192,7 +192,8 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
             count=1,
         )
         has_vitruvian_universal_dmg = any(
-            "universal.dmg" in a.get("name", "") for a in rel_vitruvian.get("assets", [])
+            "universal.dmg" in a.get("name", "")
+            for a in rel_vitruvian.get("assets", [])
         )
         for asset in rel_vitruvian.get("assets", []):
             name = asset.get("name", "")
@@ -214,7 +215,13 @@ def sync_catalog(catalog_path, dry_run=False, check=False, token=None):
                     updated_content,
                     count=1,
                 )
-            elif not has_vitruvian_universal_dmg and name.endswith(".dmg") and "arm64" not in name and "x86_64" not in name and "beta" not in name:
+            elif (
+                not has_vitruvian_universal_dmg
+                and name.endswith(".dmg")
+                and "arm64" not in name
+                and "x86_64" not in name
+                and "beta" not in name
+            ):
                 updated_content = re.sub(
                     r"(id:\s*vitruvian-desktop[\s\S]*?label:\s*Universal DMG[\s\S]*?url:\s*)[^\n]+([\s\S]*?size:\s*)[^\n]+",
                     rf"\g<1>{url}\g<2>{size_str}",
