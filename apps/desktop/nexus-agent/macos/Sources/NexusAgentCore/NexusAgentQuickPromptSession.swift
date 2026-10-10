@@ -418,7 +418,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             return
         }
         guard let agentPath else {
-            let reason = strings.missingAgent
+            // Named for the provider that was to run the turn: it is
+            // Claude's program that is missing when Claude is chosen.
+            let reason = strings.missingProgram(of: configuration.activeProvider)
             messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
             // With the chat out of sight nobody sees that bubble, so the
             // host is told as it is of any other failed turn.

@@ -175,7 +175,7 @@ class ConfigManager: ObservableObject {
             //   no effort otherwise: agy default
             // An effort line wins over the thinking line, as it does for
             // the bot.
-            effort = configuration.unnamedEffort ?? configuration.effort.rawValue
+            effort = configuration.effortChoice
         }
 
         /// Each of the six, to go through them one by one.
@@ -375,7 +375,7 @@ class ConfigManager: ObservableObject {
         // Starting from what was read is what tells the first case from
         // the others: setting the effort is the user's choice.
         var configuration = effortRead
-        if EnvFields(effortRead).effort != effort { configuration.effort = .parse(effort) }
+        configuration.effortChoice = effort
         configuration.botToken = botToken
         configuration.allowedUserIDs = allowedUserIds
         configuration.workingDirectory = workingDirectory

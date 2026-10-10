@@ -283,6 +283,24 @@ public struct NexusAgentConfiguration: Equatable {
         return written
     }
 
+    /// The effort as a page with a row for every case selects it, by the
+    /// row's tag: the name of one of the four efforts (empty for
+    /// automatic), or the file's own word when it is none of them
+    /// (`unnamedEffort`), which is then a row of its own.
+    ///
+    /// Setting it is the user choosing a row, and replaces whatever the
+    /// file said. Setting the row that is already selected is no choice:
+    /// the effort stays as it was read, so a save leaves the file's lines
+    /// alone. A tag that is no effort's name, other than the selected
+    /// word, counts as automatic.
+    public var effortChoice: String {
+        get { unnamedEffort ?? effort.rawValue }
+        set {
+            guard newValue != effortChoice else { return }
+            effort = .parse(newValue)
+        }
+    }
+
     /// The placeholder the bot's example file ships with.
     public static let placeholderToken = "your_bot_token_here"
 

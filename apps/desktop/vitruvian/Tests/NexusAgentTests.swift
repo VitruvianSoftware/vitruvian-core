@@ -39,6 +39,8 @@ enum NexusAgentTests {
         backupDoesNotCarryProviderCommands(suite)
         hostTurnNotices(suite)
         hostSaysWhyATurnFailed(suite)
+        missingProgramIsNamed(suite)
+        settingsShowAnUnknownEffortAsItself(suite)
         changesReachTheViews(suite)
         sharedChatWiring(suite)
         notchHearsOfTheModelEditor(suite)
@@ -1131,10 +1133,10 @@ enum NexusAgentTests {
 
     /// A failed turn's notice carries the words of the chat's error bubble,
     /// and Vitruvian shows them: in the notch, and in the notification when
-    /// the chat is out of sight. They are cut as a reply is: the first line
-    /// that is not blank, 80 characters in the notch and 200 in the
-    /// notification. The notices here are the ones the shared session sends
-    /// for real turns.
+    /// the chat is out of sight. They are shown whole, the non-blank lines
+    /// joined by one space, then cut: 80 characters in the notch and 200 in
+    /// the notification. The notices here are the ones the shared session
+    /// sends for real turns.
     private static func hostSaysWhyATurnFailed(_ suite: TestSuite) {
         typealias Host = VitruvianNexusAgentHost
         let rig = Rig()
@@ -1180,10 +1182,11 @@ enum NexusAgentTests {
                      "a bad exit sends a failed notice with the bubble's words: \"\(badExit?.failureDetail ?? "nil")\"")
         if let badExit {
             let hidden = Host.announcement(finished: badExit, isChatVisible: false, strings: strings)
-            suite.expect(hidden.notchTitle == failedTitle && hidden.notchDetail == strings.agentFailed
+            let whole = strings.agentFailed + " agy: quota exceeded"
+            suite.expect(hidden.notchTitle == failedTitle && hidden.notchDetail == String(whole.prefix(80))
                          && hidden.notificationTitle == failedTitle
-                         && hidden.notificationBody == strings.agentFailed && !hidden.playsSound,
-                         "a bad exit shows the first line of what went wrong, in the notch and the notification: "
+                         && hidden.notificationBody == whole && !hidden.playsSound,
+                         "a bad exit shows all of what went wrong on one line, the program's own complaint included: "
                          + "\"\(hidden.notchDetail)\", \"\(hidden.notificationBody ?? "nil")\"")
         }
 
@@ -1215,9 +1218,15 @@ enum NexusAgentTests {
                                                failureDetail: detail),
                 isChatVisible: false, strings: english)
         }
-        let cut = failure("\n   \n" + long + "\nsecond line")
-        suite.expect(cut.notchDetail == String(long.prefix(80)) && cut.notificationBody == String(long.prefix(200)),
-                     "what went wrong is cut as a reply is: its first non-blank line, 80 characters in the notch and 200 in the notification")
+        let joined = failure("\n   \nStopped with an error.\n\n  quota exceeded  \r\ntry later\n")
+        suite.expect(joined.notchDetail == "Stopped with an error. quota exceeded try later"
+                     && joined.notificationBody == "Stopped with an error. quota exceeded try later",
+                     "what went wrong is shown whole: its non-blank lines, joined by one space: \"\(joined.notchDetail)\"")
+        let cut = failure("short\n" + long)
+        suite.expect(cut.notchDetail == String(("short " + long).prefix(80)) && cut.notchDetail.count == 80
+                     && cut.notificationBody == String(("short " + long).prefix(200))
+                     && cut.notificationBody?.count == 200,
+                     "the joined line is then cut: 80 characters in the notch and 200 in the notification")
         let both = failure("Lost the connection", reply: "Half a reply\nand its second line")
         suite.expect(both.notchDetail == "Lost the connection" && both.notificationBody == "Lost the connection"
                      && both.notchTitle == "Claude — Failed" && both.notificationTitle == "Claude — Failed",
@@ -1232,6 +1241,96 @@ enum NexusAgentTests {
                          && neither.notificationTitle == "Claude — Failed" && neither.notificationBody == "",
                          "a failed turn with neither is announced as before, with nothing under the title")
         }
+    }
+
+    /// The chat's bubble and the Settings page say which program is missing.
+    /// agy keeps this app's own sentence, in every language it has; any
+    /// other provider gets the shared English sentence around its program.
+    private static func missingProgramIsNamed(_ suite: TestSuite) {
+        let own = NexusAgentCLIProvider(id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-00000000000A")!,
+                                        name: "My LLM", commandTemplate: "llm {prompt}", isBuiltIn: false)
+        var sentences: Set<String> = []
+        for language in AppLanguage.allCases {
+            let strings = VitruvianNexusAgentHost.strings(for: language)
+            let translated = FeatureStrings.nexusAgent(language).missingAgent
+            sentences.insert(translated)
+            suite.expect(strings.missingProgram(of: .antigravity) == translated && translated.contains("agy"),
+                         "\(language): agy missing keeps this app's sentence: \(strings.missingProgram(of: .antigravity))")
+            suite.expect(strings.missingProgram(of: .claude) == "Could not find 'claude' in PATH. Is it installed?"
+                         && strings.missingProgram(of: .ollama) == "Could not find 'ollama' in PATH. Is it installed?"
+                         && strings.missingProgram(of: own) == "Could not find 'llm' in PATH. Is it installed?",
+                         "\(language): any other missing program is named: \(strings.missingProgram(of: .claude))")
+        }
+        suite.expect(sentences.count > 5 && sentences.contains("The Antigravity CLI (agy) was not found."),
+                     "the agy sentence is the translated one, English included (\(sentences.count) wordings)")
+
+        // The page's line: the service's own, while the program is missing.
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        let strings = VitruvianNexusAgentHost(defaults: rig.defaults).strings
+        suite.expect(service.agentPath == nil && service.missingProgramText == strings.missingAgent,
+                     "Settings says agy is missing in this app's words: \(service.missingProgramText ?? "nil")")
+        service.updateActiveProvider(.claude)
+        suite.expect(service.missingProgramText == "Could not find 'claude' in PATH. Is it installed?",
+                     "Settings names Claude when Claude is what is missing: \(service.missingProgramText ?? "nil")")
+        service.updateActiveProvider(own)
+        suite.expect(service.missingProgramText == "Could not find 'llm' in PATH. Is it installed?",
+                     "Settings names a command's own program: \(service.missingProgramText ?? "nil")")
+        // And the chat's bubble says the same. A session of its own, with
+        // a host that only keeps notices: nothing is announced for real.
+        let session = NexusAgentQuickPromptSession(environment: rig.environment,
+                                                   host: NoticeKeepingHost(strings: strings))
+        for provider in [NexusAgentCLIProvider.antigravity, .claude, own] {
+            service.updateActiveProvider(provider)
+            session.newChat()
+            session.send("hi", configuration: service.configuration, agentPath: service.agentPath)
+            suite.expect(session.messages.last?.isError == true
+                         && session.messages.last?.text == service.missingProgramText,
+                         "\(provider.name): the chat's bubble says what the page says: \(session.messages.last?.text ?? "nil")")
+        }
+        rig.executables.insert("/opt/homebrew/bin/llm")
+        service.updateActiveProvider(.antigravity)
+        service.updateActiveProvider(own)
+        suite.expect(service.agentPath != nil && service.missingProgramText == nil,
+                     "with the program installed the page has no such line")
+        service.updateActiveProvider(.antigravity)
+    }
+
+    /// The effort picker of the Settings page is bound to the shared
+    /// `effortChoice`: a word in `.env` that is none of the page's four
+    /// rows is a row of its own, kept by a save that leaves it and replaced
+    /// by a choice.
+    private static func settingsShowAnUnknownEffortAsItself(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.installBot()
+        let env = rig.bot + "/.env"
+        func written() -> String? { NexusAgentEnvFile.values(in: rig.files[env] ?? "")["AGY_EFFORT"] }
+        let service = NexusAgentService(environment: rig.environment)
+
+        rig.files[env] = "TELEGRAM_BOT_TOKEN=1:real\nAGY_EFFORT=max\nAGY_THINKING=true\n"
+        service.load()
+        var draft = service.configuration
+        suite.expect(draft.effortChoice == "max" && draft.unnamedEffort == "max",
+                     "an effort word the page has no row for is the row selected: \(draft.effortChoice)")
+        suite.expect(NexusAgentSettingsView.unknownEffortRow("max") == "max (from .env)",
+                     "and its row says where it comes from: \(NexusAgentSettingsView.unknownEffortRow("max"))")
+        draft.model = "m2"
+        draft.effortChoice = "max"
+        suite.expect(service.save(draft) && written() == "max" && service.configuration.effortChoice == "max",
+                     "a save that leaves the effort alone keeps the word: \(written() ?? "nil")")
+        draft = service.configuration
+        draft.effortChoice = "low"
+        suite.expect(draft.unnamedEffort == nil && draft.effort == .low && service.save(draft) && written() == "low"
+                     && service.configuration.effortChoice == "low",
+                     "choosing a row replaces the word, and its row goes: \(written() ?? "nil")")
+
+        rig.files[env] = "TELEGRAM_BOT_TOKEN=1:real\nAGY_EFFORT=HIGH\n"
+        service.load()
+        draft = service.configuration
+        suite.expect(draft.effortChoice == "high" && draft.unnamedEffort == nil && service.save(draft) && written() == "HIGH",
+                     "a row's name in other letters is that row, and is not respelled by a save: \(written() ?? "nil")")
     }
 
     /// The service is an engine from another module with its own published

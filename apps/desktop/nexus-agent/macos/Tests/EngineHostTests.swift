@@ -2607,16 +2607,63 @@ final class EngineHostTests: XCTestCase {
             XCTAssertTrue(rig.programRuns.isEmpty, "\(provider.name): nothing is asked of a program that is not there")
             let bubble = engine.session.messages.last
             XCTAssertEqual(bubble?.isError, true, provider.name)
-            XCTAssertEqual(bubble?.text, host.strings.missingAgent, provider.name)
+            XCTAssertEqual(bubble?.text, wordsForMissing(provider), provider.name)
             XCTAssertEqual(host.finished.count, 1, "\(provider.name): the host is told, once")
             let notice = host.finished.first?.notice
             XCTAssertEqual(notice?.providerName, provider.name)
             XCTAssertEqual(notice?.failed, true, provider.name)
             XCTAssertEqual(notice?.endedCleanly, false, provider.name)
             XCTAssertEqual(notice?.text, "", provider.name)
-            XCTAssertEqual(notice?.failureDetail, host.strings.missingAgent, provider.name)
-            XCTAssertEqual(announcedOutOfSight(notice)?.notificationBody, host.strings.missingAgent, provider.name)
+            XCTAssertEqual(notice?.failureDetail, wordsForMissing(provider), provider.name)
+            XCTAssertEqual(announcedOutOfSight(notice)?.notificationBody, wordsForMissing(provider), provider.name)
         }
+    }
+
+    /// What the chat says when a built-in provider's program is not
+    /// installed: agy's own sentence for agy, and for the others the
+    /// sentence a missing command gets, naming the program looked for.
+    private func wordsForMissing(_ provider: NexusAgentCLIProvider) -> String {
+        switch provider.id {
+        case NexusAgentCLIProvider.claude.id: return "Could not find 'claude' in PATH. Is it installed?"
+        case NexusAgentCLIProvider.ollama.id: return "Could not find 'ollama' in PATH. Is it installed?"
+        default: return "The Antigravity CLI (agy) was not found."
+        }
+    }
+
+    /// The sentence names the program that was looked for, in the host's
+    /// words: agy's is the host's own (a translation is kept word for
+    /// word), any other is built around the program's name. The page asks
+    /// the engine for the same sentence while the program is missing.
+    func testAMissingProgramIsNamed() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        host.strings.missingAgent = "agy fehlt."
+        host.strings.commandNotFoundPrefix = "Nicht gefunden: "
+        host.strings.commandNotFoundSuffix = "."
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        let cases: [(NexusAgentCLIProvider, String)] = [
+            (.antigravity, "agy fehlt."), (.claude, "Nicht gefunden: claude."), (.ollama, "Nicht gefunden: ollama."),
+            (ownProvider(), "Nicht gefunden: llm."),
+            (ownProvider("\"/Applications/My Tool/run\" {prompt}"), "Nicht gefunden: /Applications/My Tool/run."),
+        ]
+        for (provider, words) in cases {
+            XCTAssertEqual(host.strings.missingProgram(of: provider), words, provider.commandTemplate)
+            engine.updateActiveProvider(provider)
+            XCTAssertNil(engine.agentPath, provider.commandTemplate)
+            XCTAssertEqual(engine.missingProgramText, words, provider.commandTemplate)
+            engine.session.newChat()
+            engine.session.send("hi", configuration: engine.configuration, agentPath: engine.agentPath)
+            XCTAssertEqual(engine.session.messages.last?.text, words, provider.commandTemplate)
+            XCTAssertEqual(host.finished.last?.notice.failureDetail, words, provider.commandTemplate)
+        }
+        XCTAssertEqual(host.finished.count, cases.count, "one failed notice each")
+
+        // Once the program is there the page has nothing to say.
+        rig.executables = ["/opt/homebrew/bin/llm"]
+        engine.updateActiveProvider(ownProvider())
+        XCTAssertNotNil(engine.agentPath)
+        XCTAssertNil(engine.missingProgramText)
     }
 
     /// A turn stopped while it was still waiting to start (Ollama being

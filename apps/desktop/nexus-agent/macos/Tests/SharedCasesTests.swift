@@ -500,6 +500,40 @@ final class SharedCasesTests: XCTestCase {
         XCTAssertGreaterThan(checked, 100, "the choices were checked")
     }
 
+    /// The row a page selects for the effort, by its tag, and what
+    /// choosing a row does. Reading it and setting it back is no choice.
+    func testTheEffortChoiceIsTheRowAPageSelects() {
+        for (written, row) in [("max", "max"), ("HIGH", "high"), ("low", "low"), ("", "")] {
+            let before = "AGY_APPROVAL_MODE=default\nAGY_EFFORT=\(written)\nAGY_THINKING=true\n"
+            var read = NexusAgentEnvFile.parse(before)
+            let shown = written.isEmpty ? "high" : row
+            XCTAssertEqual(read.effortChoice, shown, "written \(written)")
+            read.effortChoice = shown
+            XCTAssertEqual(read, NexusAgentEnvFile.parse(before), "written \(written): the same row is not a choice")
+            XCTAssertEqual(NexusAgentEnvFile.render(read, over: before), NexusAgentEnvFile.render(NexusAgentEnvFile.parse(before), over: before))
+            read.effortChoice = "medium"
+            XCTAssertEqual(read.effort, .medium, "written \(written)")
+            XCTAssertNil(read.unnamedEffort, "written \(written): the word's row goes with the choice")
+            XCTAssertEqual(read.effortChoice, "medium")
+            XCTAssertEqual(NexusAgentEnvFile.values(in: NexusAgentEnvFile.render(read, over: before))["AGY_EFFORT"], "medium")
+        }
+    }
+
+    /// A failure's words on one line: the lines that are not blank, each
+    /// without the space around it, joined by single spaces.
+    func testAFailuresWordsOnOneLine() {
+        func notice(_ detail: String?) -> NexusAgentTurnNotice {
+            NexusAgentTurnNotice(providerName: "P", text: "a reply", failed: true, endedCleanly: false, failureDetail: detail)
+        }
+        XCTAssertEqual(notice("The agent stopped with an error.\nagy: quota exceeded").failureSummary,
+                       "The agent stopped with an error. agy: quota exceeded")
+        XCTAssertEqual(notice("\n  \n one \r\n\n\ttwo\t\nthree\n").failureSummary, "one two three")
+        XCTAssertEqual(notice("just one").failureSummary, "just one")
+        for none in [nil, "", " \n\t\n"] as [String?] {
+            XCTAssertNil(notice(none).failureSummary, "no words is nil, not an empty line")
+        }
+    }
+
     /// Settings that were read from a file which has since gone are saved
     /// into a new one. The effort is still what the old file meant: its
     /// word as written, or High where only the thinking line said so,

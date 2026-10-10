@@ -69,8 +69,12 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
         set { UserDefaults.standard.set(newValue, forKey: "vitruvian.claude.hiddenSessionIds") }
     }
 
-    package var strings: NexusAgentHostStrings {
-        let translated = FeatureStrings.nexusAgent(L10n.shared.language)
+    package var strings: NexusAgentHostStrings { Self.strings(for: L10n.shared.language) }
+
+    /// The shared code's text in `language`: this app's own words where it
+    /// has them, and the shared English for the rest.
+    nonisolated package static func strings(for language: AppLanguage) -> NexusAgentHostStrings {
+        let translated = FeatureStrings.nexusAgent(language)
         return NexusAgentHostStrings(untitledSession: translated.untitledSession,
                                      missingAgent: translated.missingAgent,
                                      agentFailed: translated.agentFailed,
@@ -116,16 +120,17 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
     /// A failed turn says why, where the notice has words for it
     /// (`failureDetail`, the text of the chat's error bubble): they take
     /// the place of the reply, which a failed turn often does not have, in
-    /// the notch and in the notification, cut as a reply's first line is.
-    /// A failed turn with no such words is told as it always was.
+    /// the notch and in the notification. All of them are shown, on one
+    /// line (`failureSummary`) cut to the room there is: the first line by
+    /// itself is often only "the agent stopped with an error", with the
+    /// program's own complaint after it. A failed turn with no such words
+    /// is told as it always was.
     nonisolated package static func announcement(finished notice: NexusAgentTurnNotice, isChatVisible: Bool,
                                                  strings: NexusAgentHostStrings) -> TurnAnnouncement {
         let name = notice.providerName
         let reply = notice.text
         let firstLine = Self.firstLine(of: reply)
-        let detail = notice.failureDetail ?? ""
-        let whyItFailed = notice.failed && !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? Self.firstLine(of: detail) : nil
+        let whyItFailed = notice.failed ? notice.failureSummary : nil
         var announcement = TurnAnnouncement(
             notchTitle: notice.failed ? strings.failedTitle(provider: name) : strings.doneTitle(provider: name),
             notchDetail: String((whyItFailed ?? firstLine).prefix(80)),
