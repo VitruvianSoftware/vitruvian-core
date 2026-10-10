@@ -256,12 +256,17 @@ func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
     return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12)) ?? .distantPast
 }
 
-/// Opens the chat on a conversation that has already happened. The prompt
-/// is sent with no agent to run it, which opens the chat and tells the host
-/// nothing; the messages are then the ones given.
+/// Opens the chat on a conversation that has already happened: the
+/// messages are the ones given, and the session list is opened and closed
+/// again, which lands on the conversation and tells the host nothing.
+/// Sending a prompt with no agent to run it would open the chat too, but
+/// that is a failed turn, and the host posts a notification for one, which
+/// a program with no app bundle around it cannot do.
 func showChat(_ service: NexusAgentService, _ messages: [NexusAgentChatMessage]) {
-    service.session.send("snapshot", configuration: service.configuration, agentPath: nil)
+    service.session.draft = ""
     service.session.messages = messages
+    service.session.toggleSessions(configuration: service.configuration)
+    service.session.toggleSessions(configuration: service.configuration)
 }
 
 /// Starts a turn that stays in flight.

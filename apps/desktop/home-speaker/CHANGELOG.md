@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.10.0...home-speaker-v1.11.0) (2026-10-10)
+
+
+### Features
+
+* **desktop:** align release artifacts and distribution across all desktop apps ([#3031](https://github.com/VitruvianSoftware/vitruvian-core/issues/3031)) ([ba58378](https://github.com/VitruvianSoftware/vitruvian-core/commit/ba583785237e385ec4f8393e8e2f1808ac2da6c6))
+
 ## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.9.0...home-speaker-v1.10.0) (2026-09-26)
 
 

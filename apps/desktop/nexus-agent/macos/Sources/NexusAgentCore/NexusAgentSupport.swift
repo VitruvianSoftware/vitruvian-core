@@ -217,7 +217,28 @@ public struct NexusAgentConfiguration: Equatable {
     public var workingDirectory: String
     public var approvalMode: NexusAgentApprovalMode
     public var model: String
-    public var effort: NexusAgentEffort
+    /// The effort as the page names it. Choosing one is the user's word, so
+    /// it forgets how the file said it (`effortAsWritten`,
+    /// `effortIsFromThinkingLine`), and a save then writes the choice.
+    public var effort: NexusAgentEffort {
+        didSet {
+            effortAsWritten = nil
+            effortIsFromThinkingLine = false
+        }
+    }
+    /// The file's effort line, when it holds something the page has no
+    /// name for: `HIGH`, `max`, a value with spaces kept by quotes. The bot
+    /// passes agy whatever the line says, changing nothing, so a turn here
+    /// passes this too (`effortArgument`), and `effort` is only the nearest
+    /// name the page can show for it. While it is set a save writes the
+    /// line back as it was. Set by reading a file, never by hand.
+    public fileprivate(set) var effortAsWritten: String?
+    /// True when the file has no effort and `effort` is high only because
+    /// its `AGY_THINKING` line says `true`. While it is set a save leaves
+    /// both lines as they are: writing `high` into the effort line would
+    /// change a key on a save that was about something else. Set by
+    /// reading a file, never by hand.
+    public fileprivate(set) var effortIsFromThinkingLine = false
     public var activeProvider: NexusAgentCLIProvider
     /// The program the bot should run, written to `.env` on save. Nil leaves
     /// the file's own `CLI_PROVIDER` and `CLI_COMMAND_TEMPLATE` lines alone,
@@ -246,6 +267,40 @@ public struct NexusAgentConfiguration: Equatable {
         self.botProvider = botProvider
     }
 
+    /// What follows `--effort` when agy is run, as the bot decides it; nil
+    /// passes no flag and leaves the choice to agy. The examples are shared
+    /// with the bot's tests: `apps/desktop/nexus-agent/testdata/agy-flags.json`.
+    public var effortArgument: String? {
+        effortAsWritten ?? (effort == .automatic ? nil : effort.rawValue)
+    }
+
+    /// The file's effort line when it is a word none of the page's names
+    /// stands for (`max`), and nil otherwise: `HIGH` is High in other
+    /// letters. A page that can show such a word shows this, as written,
+    /// in place of `effort`, which for it is only "automatic".
+    public var unnamedEffort: String? {
+        guard let written = effortAsWritten, NexusAgentEffort.parse(written) == .automatic else { return nil }
+        return written
+    }
+
+    /// The effort as a page with a row for every case selects it, by the
+    /// row's tag: the name of one of the four efforts (empty for
+    /// automatic), or the file's own word when it is none of them
+    /// (`unnamedEffort`), which is then a row of its own.
+    ///
+    /// Setting it is the user choosing a row, and replaces whatever the
+    /// file said. Setting the row that is already selected is no choice:
+    /// the effort stays as it was read, so a save leaves the file's lines
+    /// alone. A tag that is no effort's name, other than the selected
+    /// word, counts as automatic.
+    public var effortChoice: String {
+        get { unnamedEffort ?? effort.rawValue }
+        set {
+            guard newValue != effortChoice else { return }
+            effort = .parse(newValue)
+        }
+    }
+
     /// The placeholder the bot's example file ships with.
     public static let placeholderToken = "your_bot_token_here"
 
@@ -272,6 +327,10 @@ public enum NexusAgentEnvFile {
     public static let approvalModeKey = "AGY_APPROVAL_MODE"
     public static let modelKey = "AGY_MODEL"
     public static let effortKey = "AGY_EFFORT"
+    /// `true`, and nothing else, means high effort when the effort line is
+    /// empty. The page has no control of its own for it: see
+    /// `effortAssignments` for when a save writes it.
+    public static let thinkingKey = "AGY_THINKING"
     /// Which program the bot runs: `agy`, or `custom` with the template below.
     /// Owned by the page only when the configuration sets `botProvider`.
     public static let providerKey = "CLI_PROVIDER"
@@ -304,17 +363,59 @@ public enum NexusAgentEnvFile {
         func compat(_ name: String) -> String? {
             values["AGY_\(name)"] ?? values["GEMINI_\(name)"]
         }
-        var effort = NexusAgentEffort.parse(values[effortKey])
-        if effort == .automatic, values["GEMINI_THINKING"]?.lowercased() == "true" {
-            effort = .high
-        }
-        return NexusAgentConfiguration(
+        let written = values[effortKey] ?? ""
+        var effort = NexusAgentEffort.parse(written)
+        // The thinking line means high effort when there is no effort to
+        // go by: an effort line that says anything wins, a word the page
+        // has no name for included. The bot takes thinking from
+        // AGY_THINKING, or from the old name when that key is absent (an
+        // empty AGY_THINKING line still hides the old one), and only the
+        // exact word `true` switches it on.
+        let thinking = written.isEmpty && compat("THINKING") == "true"
+        if thinking { effort = .high }
+        var configuration = NexusAgentConfiguration(
             botToken: values[tokenKey] ?? "",
             allowedUserIDs: values[allowedUsersKey] ?? "",
             workingDirectory: compat("WORKING_DIR") ?? "",
             approvalMode: .parse(compat("APPROVAL_MODE")),
             model: compat("MODEL") ?? "",
             effort: effort)
+        if isUnnamedEffort(written) { configuration.effortAsWritten = written }
+        // Only the line a save keeps counts here. The old name is dropped
+        // by every save, so the high it stands for is written as an effort.
+        configuration.effortIsFromThinkingLine = thinking && values[thinkingKey] == "true"
+        return configuration
+    }
+
+    /// True for an effort line that says something, but not one of the
+    /// words the page offers, spelled as the page writes them.
+    private static func isUnnamedEffort(_ written: String) -> Bool {
+        !written.isEmpty && NexusAgentEffort(rawValue: written) == nil
+    }
+
+    /// What a save writes for the effort and for the thinking line, which
+    /// between them decide the `--effort` the bot passes agy. A key that
+    /// is not in the answer is left as the file has it.
+    ///
+    /// A configuration that still holds the effort as it was read keeps
+    /// the file's own words: a line the page has no name for (`HIGH`,
+    /// `max`) is written back as it was, and a high that comes from
+    /// `AGY_THINKING=true` leaves the effort line empty, as long as that
+    /// thinking line is still there to mean it. Neither key changes on a
+    /// save that was about something else.
+    ///
+    /// An effort the user chose is written by its name. Choosing
+    /// "automatic" also has to switch off an `AGY_THINKING=true`, or the
+    /// bot would go on passing high and the page would show High again the
+    /// next time it read the file. Any other choice leaves the thinking
+    /// line alone: the effort line wins over it.
+    private static func effortAssignments(for configuration: NexusAgentConfiguration,
+                                          over existing: String) -> [String: String] {
+        let thinks = values(in: existing)[thinkingKey] == "true"
+        if let written = configuration.effortAsWritten { return [effortKey: written] }
+        if configuration.effortIsFromThinkingLine, thinks { return [effortKey: ""] }
+        if configuration.effort == .automatic, thinks { return [effortKey: "", thinkingKey: "false"] }
+        return [effortKey: configuration.effort.rawValue]
     }
 
     /// The file with the page's values written in. An existing file keeps its
@@ -322,10 +423,14 @@ public enum NexusAgentEnvFile {
     /// lacks is added at the end. With no file yet, the bot's template is
     /// written, so the result matches what the standalone app produced.
     public static func render(_ configuration: NexusAgentConfiguration, over existing: String?) -> String {
-        let wanted = assignments(for: configuration)
+        var wanted = assignments(for: configuration)
         guard let existing, !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            // An effort word read from a file that has since gone is still
+            // the effort: the new file gets it as it was written.
+            wanted.merge(effortAssignments(for: configuration, over: "")) { _, effort in effort }
             return template(wanted)
         }
+        wanted.merge(effortAssignments(for: configuration, over: existing)) { _, effort in effort }
         var written: Set<String> = []
         // Each entry is a line with its own ending, so a line left alone
         // comes out byte for byte as it went in (a CRLF file keeps its CRLF
@@ -949,7 +1054,7 @@ public enum NexusAgentSupport {
         }
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
         if !model.isEmpty { arguments += ["--model", model] }
-        if configuration.effort != .automatic { arguments += ["--effort", configuration.effort.rawValue] }
+        if let effort = configuration.effortArgument { arguments += ["--effort", effort] }
         if let conversationID, !conversationID.isEmpty { arguments += ["--conversation", conversationID] }
         return arguments
     }

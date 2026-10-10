@@ -55,7 +55,21 @@ public struct NexusAgentChatView: View {
     @ObservedObject private var session: NexusAgentQuickPromptSession
     private let strings: NexusAgentChatStrings
     private let chrome: NexusAgentChatChrome
-    @FocusState private var inputFocused: Bool
+    /// The two fields a prompt is typed in: the pill's, and the follow-up
+    /// bar's under a conversation. They are never on show together.
+    private enum PromptField: Hashable {
+        case pill, followUp
+    }
+    /// Which prompt field has the caret, if either has. Each field answers
+    /// to a value of its own. When they shared one switch, asking for the
+    /// field that was arriving changed nothing while the one that was
+    /// leaving still held the caret, and then the caret left with it.
+    @FocusState private var caret: PromptField?
+    /// A prompt field is due in the window and has not been given the
+    /// caret yet: from when the chat first appears, and from each change
+    /// between the pill and the conversation, until that field is there
+    /// (`promptFieldArrived`).
+    @State private var promptAwaitsCaret = true
     /// The pointer is over the pill, which is what brings the action buttons in.
     @State private var isHoveringInput = false
     @State private var sparklePulse = false
@@ -91,13 +105,11 @@ public struct NexusAgentChatView: View {
         return NexusAgentSupport.isGitRepo(at: URL(fileURLWithPath: path))
     }
 
-    private var contextualPlaceholder: String {
-        // Over an open session list the field shows the filter's words
-        // unless the app asks for the prompt's own: what is typed here is a
-        // prompt either way (the list's filter is the field under it).
-        if session.mode == .sessions, !chrome.keepsPromptPlaceholderOverSessions {
-            return strings.sessionsFilter
-        }
+    /// What the pill's field says while it is empty. It says the same with
+    /// the session list open under it: what is typed here is a prompt
+    /// either way, and the list has a filter field of its own, which is the
+    /// one that says so.
+    private var promptPlaceholder: String {
         let providerName = engine.activeProvider.name.components(separatedBy: " ").first ?? strings.fallbackProviderName
         return strings.askPrefix + providerName + strings.askSuffix
     }
@@ -108,6 +120,47 @@ public struct NexusAgentChatView: View {
         }
         let providerName = engine.activeProvider.name.components(separatedBy: " ").first ?? strings.fallbackProviderName
         return strings.followUpPrefix + providerName + strings.followUpSuffix
+    }
+
+    // MARK: - The caret
+
+    /// What sends the caret back to the prompt when it changes: the app
+    /// showed the chat again (`focusSerial`); the chat went from one of
+    /// pill, session list and conversation to another, which is the first
+    /// prompt sent, a session resumed, a kept conversation come back to,
+    /// and New Chat; or the model name's editor closed.
+    private struct CaretCue: Equatable, Sendable {
+        var shown: Int
+        var mode: NexusAgentQuickPromptMode
+        var editingModel: Bool
+    }
+
+    private var caretCue: CaretCue {
+        CaretCue(shown: session.focusSerial, mode: session.mode, editingModel: session.isEditingModel)
+    }
+
+    /// The prompt field the chat shows in the mode it is in.
+    private var fieldOnShow: PromptField {
+        session.mode == .chat ? .followUp : .pill
+    }
+
+    /// Asks for the caret in the prompt. The model name's editor keeps it
+    /// while it is open.
+    private func returnCaret() {
+        if !session.isEditingModel { caret = fieldOnShow }
+    }
+
+    /// A prompt field is in the window (`PromptFieldArrival`). If the caret
+    /// was waiting for it, it is asked for now. A field can be given the
+    /// caret only once it is there: asked for in the update that brought
+    /// the follow-up bar, the caret was left with the window when the
+    /// first prompt was sent, and the next thing typed went nowhere. An
+    /// arrival the caret was not waiting for asks for nothing, so the caret
+    /// is never taken from where the user has put it since.
+    private func promptFieldArrived() {
+        guard promptAwaitsCaret else { return }
+        promptAwaitsCaret = false
+        returnCaret()
     }
 
     public var body: some View {
@@ -144,14 +197,21 @@ public struct NexusAgentChatView: View {
         .clipShape(shape)
         .overlay(overlayBorder)
         .onAppear {
-            inputFocused = true
             if chrome.isEmbedded && session.sessions.isEmpty {
                 session.refreshSessions(configuration: engine.configuration)
             }
         }
-        .onChange(of: session.focusSerial) { _, _ in inputFocused = true }
-        .onChange(of: session.mode) { _, _ in
-            inputFocused = true
+        // The caret goes back to the prompt at every change of `caretCue`.
+        // That is enough while the prompt's field stays where it is (the
+        // chat shown again, the session list opened under the pill, the
+        // model name's editor closed). A change that brings the other
+        // field is finished by `promptFieldArrived`, once that field is in
+        // the window.
+        .task(id: caretCue) { returnCaret() }
+        .onChange(of: session.mode) { old, new in
+            // The pill and the conversation change places, and with them
+            // the field a prompt is typed in.
+            if (old == .chat) != (new == .chat) { promptAwaitsCaret = true }
             // A drawer that opens, or closes, starts with no row selected,
             // and with Clear All not yet clicked.
             selectedSessionIndex = nil
@@ -270,10 +330,11 @@ public struct NexusAgentChatView: View {
     private var inputBar: some View {
         HStack(spacing: 12) {
             pulsingSparkles
-            TextField(contextualPlaceholder, text: $session.draft)
+            TextField(promptPlaceholder, text: $session.draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 18, weight: .regular))
-                .focused($inputFocused)
+                .focused($caret, equals: .pill)
+                .background(PromptFieldArrival { promptFieldArrived() })
                 .onSubmit {
                     if resumeSelectedSession(from: .prompt(session.draft)) { return }
                     if session.canSend { engine.sendQuickPrompt() }
@@ -779,7 +840,7 @@ public struct NexusAgentChatView: View {
             }
 
             ChatProviderBadge(engine: engine, strings: strings)
-            ChatModelBadge(engine: engine, strings: strings)
+            ChatModelBadge(engine: engine, session: session, strings: strings)
             ChatWorkingDirectoryBadge(engine: engine, session: session, strings: strings, showWindow: chrome.showWindow)
 
             Spacer()
@@ -1056,7 +1117,8 @@ public struct NexusAgentChatView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...6)
-                .focused($inputFocused)
+                .focused($caret, equals: .followUp)
+                .background(PromptFieldArrival { promptFieldArrived() })
                 .onSubmit { if session.canSend { engine.sendQuickPrompt() } }
                 .onExitCommand { if session.isRunning { session.stop() } }
                 .onKeyPress(.upArrow) {

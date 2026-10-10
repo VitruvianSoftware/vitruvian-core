@@ -1,0 +1,189 @@
+{
+  "rule": "The text of .env decides the flags agy is run with after `-p <prompt> --output-format <format>`: the permission flags, then --model, then --effort. The effort line is passed on exactly as written (no trimming, no change of case, no list of allowed words); only when it is absent or empty does a thinking line count, and then only the exact word true, read from AGY_THINKING or, when that key is absent, from GEMINI_THINKING. A case with `custom` is a bot set to run a command of the user's own: `args` is then what is added to that command's own arguments. A case with `environment` also sets those variables in the bot's process before it starts; the bot's dotenv never replaces a variable that is already set, so the process wins, even when it is set to nothing. The Mac apps read the file only and never their own process environment, so for those cases they pass `apps` instead of `args`. The bot's own deadline flag (--print-timeout) is not part of this.",
+  "cases": [
+    {
+      "name": "no effort line and no thinking line: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\n",
+      "args": []
+    },
+    {
+      "name": "an empty effort line: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=\n",
+      "args": []
+    },
+    {
+      "name": "low",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=low\n",
+      "args": ["--effort", "low"]
+    },
+    {
+      "name": "medium",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=medium\n",
+      "args": ["--effort", "medium"]
+    },
+    {
+      "name": "high",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=high\n",
+      "args": ["--effort", "high"]
+    },
+    {
+      "name": "capitals are passed on as written: HIGH",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=HIGH\n",
+      "args": ["--effort", "HIGH"]
+    },
+    {
+      "name": "a word that is not low, medium or high is passed on as written: max",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=max\n",
+      "args": ["--effort", "max"]
+    },
+    {
+      "name": "spaces inside quotes are part of the value and are passed on",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=' high '\n",
+      "args": ["--effort", " high "]
+    },
+    {
+      "name": "spaces outside quotes are removed by dotenv before the bot sees them",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=  high  \n",
+      "args": ["--effort", "high"]
+    },
+    {
+      "name": "GEMINI_EFFORT is not a name the bot reads",
+      "env": "AGY_APPROVAL_MODE=default\nGEMINI_EFFORT=high\n",
+      "args": []
+    },
+    {
+      "name": "AGY_THINKING=true with no effort line means high",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=true\n",
+      "args": ["--effort", "high"]
+    },
+    {
+      "name": "AGY_THINKING=true with an empty effort line means high",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=\nAGY_THINKING=true\n",
+      "args": ["--effort", "high"]
+    },
+    {
+      "name": "AGY_THINKING=TRUE is not the word true: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=TRUE\n",
+      "args": []
+    },
+    {
+      "name": "AGY_THINKING=1 is not the word true: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=1\n",
+      "args": []
+    },
+    {
+      "name": "AGY_THINKING=false: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=false\n",
+      "args": []
+    },
+    {
+      "name": "the old name GEMINI_THINKING=true still means high",
+      "env": "AGY_APPROVAL_MODE=default\nGEMINI_THINKING=true\n",
+      "args": ["--effort", "high"]
+    },
+    {
+      "name": "GEMINI_THINKING=True is not the word true: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\nGEMINI_THINKING=True\n",
+      "args": []
+    },
+    {
+      "name": "an empty AGY_THINKING line hides GEMINI_THINKING=true: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=\nGEMINI_THINKING=true\n",
+      "args": []
+    },
+    {
+      "name": "AGY_THINKING=false wins over GEMINI_THINKING=true: no effort flag",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=false\nGEMINI_THINKING=true\n",
+      "args": []
+    },
+    {
+      "name": "AGY_THINKING=true wins over GEMINI_THINKING=false",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=true\nGEMINI_THINKING=false\n",
+      "args": ["--effort", "high"]
+    },
+    {
+      "name": "an effort line wins over thinking: low",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=low\nAGY_THINKING=true\n",
+      "args": ["--effort", "low"]
+    },
+    {
+      "name": "an effort word the bot does not know still wins over thinking: max",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=max\nAGY_THINKING=true\n",
+      "args": ["--effort", "max"]
+    },
+    {
+      "name": "the model comes before the effort",
+      "env": "AGY_APPROVAL_MODE=plan\nAGY_MODEL=m1\nAGY_EFFORT=medium\n",
+      "args": ["--mode", "plan", "--model", "m1", "--effort", "medium"]
+    },
+    {
+      "name": "a command of the user's own is run as written: no effort flag is added to it",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=high\nAGY_THINKING=true\n",
+      "custom": true,
+      "args": []
+    },
+    {
+      "name": "the process says low and the file says high: the bot runs low, the apps run high",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=high\n",
+      "environment": { "AGY_EFFORT": "low" },
+      "args": ["--effort", "low"],
+      "apps": ["--effort", "high"]
+    },
+    {
+      "name": "the process sets the effort to nothing and the file says high: the bot passes no flag, the apps run high",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_EFFORT=high\n",
+      "environment": { "AGY_EFFORT": "" },
+      "args": [],
+      "apps": ["--effort", "high"]
+    },
+    {
+      "name": "the process says high and the file has no effort line: the bot runs high, the apps pass no flag",
+      "env": "AGY_APPROVAL_MODE=default\n",
+      "environment": { "AGY_EFFORT": "high" },
+      "args": ["--effort", "high"],
+      "apps": []
+    },
+    {
+      "name": "the process says thinking and the file says not: the bot runs high, the apps pass no flag",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=false\n",
+      "environment": { "AGY_THINKING": "true" },
+      "args": ["--effort", "high"],
+      "apps": []
+    },
+    {
+      "name": "the process says not thinking and the file says thinking: the bot passes no flag, the apps run high",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=true\n",
+      "environment": { "AGY_THINKING": "false" },
+      "args": [],
+      "apps": ["--effort", "high"]
+    },
+    {
+      "name": "the old name in the process does not beat the new name in the file",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_THINKING=false\n",
+      "environment": { "GEMINI_THINKING": "true" },
+      "args": [],
+      "apps": []
+    },
+    {
+      "name": "the process says plan and the file says yolo: the bot runs plan, the apps run yolo",
+      "env": "AGY_APPROVAL_MODE=yolo\n",
+      "environment": { "AGY_APPROVAL_MODE": "plan" },
+      "args": ["--mode", "plan"],
+      "apps": ["--dangerously-skip-permissions"]
+    },
+    {
+      "name": "the process says yolo and the file says plan: the bot runs yolo, the apps run plan",
+      "env": "AGY_APPROVAL_MODE=plan\n",
+      "environment": { "AGY_APPROVAL_MODE": "yolo" },
+      "args": ["--dangerously-skip-permissions"],
+      "apps": ["--mode", "plan"]
+    },
+    {
+      "name": "the process names one model and the file another: the bot runs the process's, the apps the file's",
+      "env": "AGY_APPROVAL_MODE=default\nAGY_MODEL=from-file\n",
+      "environment": { "AGY_MODEL": "from-process" },
+      "args": ["--model", "from-process"],
+      "apps": ["--model", "from-file"]
+    }
+  ]
+}

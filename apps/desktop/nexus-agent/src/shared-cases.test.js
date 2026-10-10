@@ -29,8 +29,10 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 // The package the bot loads `.env` with (bot.js: `import "dotenv/config"`).
 import dotenv from "dotenv";
@@ -190,6 +192,162 @@ test(".env values: what the apps write, dotenv reads back as the same value", ()
       assert.equal(lossy, undefined, `${name}: lossy is true or left out`);
       assert.equal(read, value, name);
     }
+    checked += 1;
+  }
+  assert.equal(checked, cases.length);
+});
+
+// ─── agy flags ───────────────────────────────────────────────────────────────
+//
+// What the bot passes agy depends on how it starts: bot.js loads `.env` with
+// `import "dotenv/config"`, and agy.js then reads the process environment
+// once, as it is imported. So each example starts the bot's modules that way
+// in a fresh node process: its own folder holding the example's `.env`, a
+// process environment with no setting of the bot's in it but the example's
+// own, and the home folder pointed at that folder too. Nothing here starts
+// agy: the flags are read from the bot's own argument builder, and AGY_BIN
+// names a program that does nothing in case anything ever tried.
+
+const dotenvConfigUrl = pathToFileURL(
+  createRequire(import.meta.url).resolve("dotenv/config"),
+).href;
+const agyUrl = new URL("./agy.js", import.meta.url).href;
+
+/**
+ * Starts the bot's modules over `envText` and runs `body`, which leaves its
+ * answer in `result`.
+ * @param {string} envText - the whole `.env`
+ * @param {Record<string, string>} environment - variables set before the bot starts
+ * @param {string} body - statements run after the bot's modules are loaded
+ * @returns {any}
+ */
+function startBot(envText, environment, body) {
+  const folder = fs.mkdtempSync(path.join(scratch, "bot-"));
+  fs.writeFileSync(path.join(folder, ".env"), envText);
+  /** @type {Record<string, string | undefined>} */
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!/^(AGY_|GEMINI_|CLI_|DOTENV_)/.test(key)) env[key] = value;
+  }
+  Object.assign(env, { HOME: folder, AGY_BIN: "/usr/bin/false" }, environment);
+  const script = `
+    await import(${JSON.stringify(dotenvConfigUrl)});
+    const bot = await import(${JSON.stringify(agyUrl)});
+    let result;
+    ${body}
+    process.stdout.write("\\nRESULT " + JSON.stringify(result) + "\\n");
+    process.exit(0);
+  `;
+  const run = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", script],
+    { env, cwd: folder, encoding: "utf8" },
+  );
+  assert.equal(run.status, 0, `the bot's modules did not load: ${run.stderr}`);
+  // dotenv prints a line of its own when it loads a file; the answer is the
+  // last line that starts with the marker.
+  const line = run.stdout
+    .split("\n")
+    .filter((text) => text.startsWith("RESULT "))
+    .pop();
+  assert.ok(line, `the bot gave no answer: ${run.stdout}`);
+  return JSON.parse(line.slice("RESULT ".length));
+}
+
+// The flags the bot gives agy after the prompt and the output format, for a
+// chat nobody has changed a setting for.
+const flagsBody = `
+  const settings = bot.getChatSettings(0);
+  const args = bot.buildAgyArgs("hi", settings, "stream-json", undefined, undefined);
+  result = { head: args.slice(0, 4), flags: args.slice(4) };
+`;
+
+/** @param {any} item */
+function checkShape(item) {
+  assert.equal(typeof item.env, "string", `${item.name}: env is a string`);
+  assert.ok(Array.isArray(item.args), `${item.name}: args is a list`);
+}
+
+test("agy flags: the bot, started over each shared .env, passes agy the flags the example says", () => {
+  const cases = loadCases("agy-flags.json").filter(
+    (item) => item.environment === undefined && item.custom === undefined,
+  );
+  assert.ok(cases.length > 0, "there are examples with a file alone");
+  let checked = 0;
+  for (const item of cases) {
+    checkShape(item);
+    assert.equal(
+      item.apps,
+      undefined,
+      `${item.name}: with a file alone the apps pass what the bot passes, so there is no apps list`,
+    );
+    const answer = startBot(item.env, {}, flagsBody);
+    assert.deepEqual(
+      answer.head,
+      ["-p", "hi", "--output-format", "stream-json"],
+      `${item.name}: the flags follow the prompt and the format`,
+    );
+    assert.deepEqual(answer.flags, item.args, item.name);
+    checked += 1;
+  }
+  assert.equal(checked, cases.length);
+});
+
+test("agy flags: a variable already set in the bot's process wins over the same line of .env", () => {
+  const cases = loadCases("agy-flags.json").filter(
+    (item) => item.environment !== undefined,
+  );
+  assert.ok(cases.length > 0, "there are examples with a process environment");
+  let checked = 0;
+  for (const item of cases) {
+    checkShape(item);
+    assert.ok(
+      item.environment !== null &&
+        typeof item.environment === "object" &&
+        Object.values(item.environment).every((v) => typeof v === "string"),
+      `${item.name}: environment is an object of strings`,
+    );
+    // The apps do not read their process environment, so these examples
+    // say what they pass as well; the apps' own test checks that list.
+    assert.ok(Array.isArray(item.apps), `${item.name}: apps is a list`);
+    const answer = startBot(item.env, item.environment, flagsBody);
+    assert.deepEqual(answer.flags, item.args, item.name);
+    checked += 1;
+  }
+  assert.equal(checked, cases.length);
+});
+
+test("agy flags: a command of the user's own is run as written, with no effort flag added", () => {
+  const cases = loadCases("agy-flags.json").filter(
+    (item) => item.custom !== undefined,
+  );
+  assert.ok(
+    cases.length > 0,
+    "there is an example with a command of the user's own",
+  );
+  // The command is a stand-in that prints the arguments it was started
+  // with, so what the bot really ran is what is compared.
+  const echo = path.join(scratch, "print-arguments.mjs");
+  fs.writeFileSync(
+    echo,
+    "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n",
+  );
+  for (const file of [process.execPath, echo]) {
+    assert.ok(!/['"]/.test(file), `${file} can be written inside quotes`);
+  }
+  const provider =
+    "CLI_PROVIDER=custom\n" +
+    `CLI_COMMAND_TEMPLATE='"${process.execPath}" "${echo}" {prompt}'\n`;
+  let checked = 0;
+  for (const item of cases) {
+    checkShape(item);
+    assert.equal(item.custom, true, `${item.name}: custom is true or left out`);
+    const answer = startBot(
+      item.env + provider,
+      {},
+      `result = { argv: JSON.parse((await bot.executePrompt("hi")).text) };`,
+    );
+    assert.deepEqual(answer.argv, ["hi", ...item.args], item.name);
     checked += 1;
   }
   assert.equal(checked, cases.length);

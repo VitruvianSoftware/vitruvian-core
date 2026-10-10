@@ -51,14 +51,16 @@ let package = Package(
             // The app shell is Swift 5 code. Only the shared core is Swift 6.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // The same tests BUILD's NexusAgentTests runs, over the core only (the
+        // app has `@main`, so it cannot be linked into a test). Swift 5 mode
+        // because that is how Bazel compiles them. They find the shared
+        // sources and `../testdata` from their own file's path, so nothing is
+        // copied; `swift build` does not compile this target.
+        .testTarget(
+            name: "NexusAgentTests",
+            dependencies: ["NexusAgentCore"],
+            path: "Tests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )
-
-// STILL DIVERGENT, deliberately not fixed here: BUILD declares a
-// NexusAgentTests target over Tests/, and this manifest declares none, so
-// `swift test` in the standalone repo reports "no tests found" and passes
-// vacuously while the same sources ARE tested here under Bazel. Left out of
-// this change because it could not be VERIFIED -- XCTest is unavailable in the
-// toolchain this was fixed on -- and the mirror's release workflow runs only
-// `swift build`, so shipping an unexercised test target would add an untested
-// claim to fix an untested claim. Tracked separately.

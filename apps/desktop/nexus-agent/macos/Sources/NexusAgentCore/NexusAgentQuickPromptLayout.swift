@@ -197,6 +197,36 @@ public enum NexusAgentClearAllGuard {
     }
 }
 
+/// What Esc does in a window that shows the chat. The window watches for
+/// the key itself, ahead of the chat's views, which is how it can close on
+/// Esc wherever the caret is. So a view cannot keep the key for a use of
+/// its own: the window asks here what the key means, and does that.
+public enum NexusAgentEscapeKey {
+    /// What one press does. A press does one of these and no more.
+    public enum Action: Equatable, Sendable {
+        /// Something is being edited in place in the chat (the model's
+        /// name): the press closes that editor, and the window stays.
+        case closeInlineEditor
+        /// A reply is arriving, in a window whose Esc stops one: it stops,
+        /// and the window stays.
+        case stopReply
+        /// Nothing of the chat's is in the way: the key is the window's,
+        /// which closes.
+        case dismiss
+    }
+
+    /// What a press does. An open editor comes first: someone typing a
+    /// model's name who presses Esc means that name, not the reply behind
+    /// it and not the window. `replyToStop` is whether a reply is in flight
+    /// that this window's Esc stops; a window whose Esc never stops one
+    /// passes false.
+    public static func action(inlineEditorOpen: Bool, replyToStop: Bool) -> Action {
+        if inlineEditorOpen { return .closeInlineEditor }
+        if replyToStop { return .stopReply }
+        return .dismiss
+    }
+}
+
 /// One past agy conversation, as the sessions drawer lists it.
 public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     public let id: String

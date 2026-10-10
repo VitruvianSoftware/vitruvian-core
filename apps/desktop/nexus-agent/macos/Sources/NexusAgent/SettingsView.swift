@@ -197,6 +197,12 @@ struct SettingsView: View {
                                     Text("Low — fastest").tag("low")
                                     Text("Medium").tag("medium")
                                     Text("High — deepest reasoning, slowest").tag("high")
+                                    // A word in `.env` that is none of the
+                                    // rows above is shown as itself, and
+                                    // kept until another row is picked.
+                                    if let written = configManager.effortFromFile {
+                                        Text("\(written) (from .env)").tag(written)
+                                    }
                                 }
                                 .labelsHidden()
                                 Text("Passed as --effort. High also raises the bot's wait to 10 minutes.")

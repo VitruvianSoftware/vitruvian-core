@@ -22,19 +22,49 @@ package struct NexusAgentQuickPromptView: View {
 
     @ObservedObject private var service: NexusAgentService
     @ObservedObject private var l10n = L10n.shared
+    /// The island has been told that the model name's editor is open.
+    @State private var reportedEditorToNotch = false
+    /// Tells the island which layer the Agents page shows, with how to
+    /// close it, or nil for none.
+    private let setNotchLayer: @MainActor ((() -> Void)?) -> Void
 
     /// The app shows its one service. The snapshot tool
     /// (Tools/NexusAgentChatSnapshots.swift) hands in a service built over
-    /// fake files instead, so that it never reads the user's own.
-    package init(embeddedInNotch: Bool = false, service: NexusAgentService = .shared) {
+    /// fake files instead, so that it never reads the user's own. A test
+    /// hands in `setNotchLayer` to see what the island would be told.
+    package init(embeddedInNotch: Bool = false, service: NexusAgentService = .shared,
+                 setNotchLayer: @escaping @MainActor ((() -> Void)?) -> Void = {
+                     NotchService.shared.setPageLayer(.agents, close: $0)
+                 }) {
         self.embeddedInNotch = embeddedInNotch
         self.service = service
+        self.setNotchLayer = setNotchLayer
     }
 
     package var body: some View {
         NexusAgentChatView(engine: service,
                            strings: Self.strings(for: l10n.language),
                            chrome: Self.chrome(for: service, embeddedInNotch: embeddedInNotch))
+            // Escape closes the model name's editor before the island. The
+            // session is listened to directly: it is the session that
+            // publishes the editor opening, and this view observes only
+            // the service, so it is not drawn again when that happens.
+            .onReceive(service.session.$isEditingModel) { editing in reportEditorToNotch(editing) }
+            .onDisappear { reportEditorToNotch(false) }
+    }
+
+    /// In the notch, Escape is the island's key: it closes the layer a page
+    /// has reported before it closes the island, so the open editor is
+    /// reported as the Agents page's layer. The floating window asks the
+    /// session itself (`NexusAgentService`'s key monitor). The island is
+    /// only spoken to when there is something to say, so a chat that is
+    /// drawn with no island (the snapshot tool's) never reaches for it.
+    private func reportEditorToNotch(_ editing: Bool) {
+        guard embeddedInNotch, editing != reportedEditorToNotch else { return }
+        reportedEditorToNotch = editing
+        setNotchLayer(editing ? { [service] in
+            _ = service.session.cancelInlineEditing()
+        } : nil)
     }
 
     /// The chat's text in `language`. The fields this app has words for come
