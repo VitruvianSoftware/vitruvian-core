@@ -47,10 +47,30 @@ package final class CapabilityBroker {
         }
     }
 
-    package let environment: Environment
+    /// What each capability calls to do its work.
+    package struct Backings {
+        package var notify: NotifyAccess.Backing
+        package var open: OpenAccess.Backing
+        package var clipboard: ClipboardAccess.Backing
 
-    package init(environment: Environment) {
+        package init(notify: NotifyAccess.Backing, open: OpenAccess.Backing, clipboard: ClipboardAccess.Backing) {
+            self.notify = notify
+            self.open = open
+            self.clipboard = clipboard
+        }
+    }
+
+    package let environment: Environment
+    package let backings: Backings
+
+    package init(environment: Environment, backings: Backings) {
         self.environment = environment
+        self.backings = backings
+    }
+
+    /// The handle for one tool.
+    package func services(for manifest: ToolManifest) -> ToolServices {
+        ToolServices(manifest: manifest, broker: self)
     }
 
     /// Why `tool` may not use `capability` now, or nil when it may. The
