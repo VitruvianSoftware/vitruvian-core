@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.21.0...mcp-slack-v1.21.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **backstage:** the Prometheus graphs on component pages were always empty ([#3021](https://github.com/VitruvianSoftware/vitruvian-core/issues/3021)) ([a5cf945](https://github.com/VitruvianSoftware/vitruvian-core/commit/a5cf945ba50e2ada0da6d792884bd5ecee5f111d))
+
 ## [1.21.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.20.0...mcp-slack-v1.21.0) (2026-09-22)
 
 
