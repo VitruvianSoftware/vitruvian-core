@@ -151,9 +151,16 @@ spec:
               # does not make an oversized query fit, which is what the caps are
               # for.
               #
-              # Accepted consequence: the "Slowest steps" panel shows a limit
-              # error until issue #2606 cuts that metric down. Only then can the
-              # caps be raised.
+              # Accepted consequences, until issue #2606 cuts that metric down
+              # (only then can the caps be raised):
+              #  - the "Slowest steps" panel shows a limit error at any range;
+              #  - the samples cap also refuses the other panels built on the
+              #    cicd_duration_seconds histogram at long ranges. By the chunk
+              #    arithmetic above the ceiling is roughly 12,000 series at 6h,
+              #    4,000 at 24h and 600 at 7d, and that dashboard opens at 7d
+              #    on selects of 5k to 15k series. Those selects would need
+              #    several GB at 7d, so they were never servable in 2Gi; they
+              #    now fail with an error instead of killing the Querier.
               #
               # Overriding extraArgs replaces the chart default list, so
               # --log.level is restated.
