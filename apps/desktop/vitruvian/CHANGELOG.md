@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.37.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.36.0...vitruvian-v3.37.0) (2026-10-10)
+
+
+### Features
+
+* **desktop:** align release artifacts and distribution across all desktop apps ([#3031](https://github.com/VitruvianSoftware/vitruvian-core/issues/3031)) ([ba58378](https://github.com/VitruvianSoftware/vitruvian-core/commit/ba583785237e385ec4f8393e8e2f1808ac2da6c6))
+
 ## [3.36.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.35.1...vitruvian-v3.36.0) (2026-10-09)
 
 
