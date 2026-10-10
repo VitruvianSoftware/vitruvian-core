@@ -155,7 +155,3 @@ We're constantly improving ADK Agents based on developer feedback:
 - **Team collaboration features** for shared workflows
 - **Custom agent templates** for different tech stacks
 - **Advanced monitoring and analytics** dashboards
-
----
-
-*ADK Agents is built on Google's ADK framework and is part of the Vitruvian Software Open Source initiative. We're committed to building tools that make developers more productive and software development more enjoyable.* 
