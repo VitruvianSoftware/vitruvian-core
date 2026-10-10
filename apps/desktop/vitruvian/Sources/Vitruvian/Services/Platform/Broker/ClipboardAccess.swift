@@ -68,6 +68,17 @@ package struct ClipboardAccess {
         return nil
     }
 
+    /// Reads the clipboard's text without its formatting: the plain string,
+    /// else the words of its rich text. `completion` hears it on the main
+    /// thread, nil when there is none; it is not called when the call is
+    /// refused.
+    @discardableResult
+    package func readPlainText(completion: @escaping @MainActor (String?) -> Void) -> BrokerRefusal? {
+        if let refusal = gate(.clipboardRead) { return refusal }
+        watcher.readPlainText(completion: completion)
+        return nil
+    }
+
     /// Watches the clipboard and, each time somebody copies, asks `rule`
     /// whether to put something in the copy's place. The whole look (read,
     /// ask, check the copy is still the one read, write) is one job on the

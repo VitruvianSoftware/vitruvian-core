@@ -16,10 +16,13 @@ enum ToolBrokerTests {
         processes(suite)
         preferences(suite)
         messages(suite)
+        hotkeys(suite)
+        keystrokes(suite)
         oneLook(suite)
         clipboard(suite)
         host(suite)
         runRule(suite)
+        grants(suite)
         hostRunsTools(suite)
         portManager(suite)
         manifestsAgree(suite)
@@ -265,6 +268,187 @@ enum ToolBrokerTests {
                      "a refused message is not shown")
     }
 
+    static func hotkeys(_ suite: TestSuite) {
+        let world = World()
+        var given = true
+        var saved = GlobalShortcut.pastePlainDefault
+        var made = 0
+        let key = ToolPlatformTests.FakeHotkey(id: 10, accepts: { given })
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in world.installed },
+                               isGranted: { world.granted.contains($0) },
+                               allows: { _, _ in world.allowed },
+                               reportUndeclared: { _, _ in }),
+            backings: .init(
+                notify: .init(beep: {}), open: .init(open: { _ in true }),
+                clipboard: .init(write: { _, _ in }), processes: .inert,
+                hotkey: .init(makeHotkey: { role in
+                    made += 1
+                    return role == .pastePlain ? key : nil
+                }, savedShortcut: { _ in saved })))
+        let owner = ToolID("pastePlain")!
+        let tool = broker.services(for: manifest([.hotkey], id: "pastePlain")).hotkey
+        let commandV = PastePlainTests.commandV
+        var presses = 0
+        var heard: [Bool] = []
+        func bind() -> BrokerRefusal? {
+            tool.bind(.pastePlain, onPress: { presses += 1 }, onRegistered: { heard.append($0) })
+        }
+
+        suite.expect(bind() == nil && key.registered?.shortcut == .pastePlainDefault
+                         && key.registered?.storageKey == DefaultsKey.pastePlainShortcut && heard == [true],
+                     "a tool that asks for it takes the key saved for its role, claimed under the role's own preference")
+        key.onPress?()
+        suite.expect(presses == 1, "a press of the key reaches the tool")
+        suite.expect(bind() == nil && key.registrations == 1 && made == 1 && heard == [true, true],
+                     "asking again while the key is held takes nothing twice, and makes no second hotkey")
+        saved = commandV
+        suite.expect(bind() == nil && key.registered?.shortcut == commandV && key.registrations == 2,
+                     "asking again after the saved combination changed takes the new one")
+        // What a shortcut recording does to every key the app holds.
+        key.unregister()
+        suite.expect(bind() == nil && key.registered?.shortcut == commandV,
+                     "asking again after the key was let go takes it back")
+        given = false
+        saved = .pastePlainDefault
+        suite.expect(bind() == nil && key.registered == nil && heard.last == false,
+                     "a combination macOS will not give is not a refusal: the tool hears that the key was not given")
+        given = true
+
+        // The host lets go of a key by its combination, and takes it again.
+        saved = commandV
+        _ = bind()
+        let before = heard.count
+        suite.expect(broker.hotkeys.release(of: ToolID("portManager")!, where: { _ in true }).isEmpty
+                         && broker.hotkeys.release(of: owner, where: { $0 == .pastePlainDefault }).isEmpty
+                         && key.registered != nil,
+                     "a key is let go only for the tool that holds it, and only when its combination is the one named")
+        suite.expect(broker.hotkeys.release(of: owner, where: { $0 == commandV }) == [.pastePlain]
+                         && key.registered == nil && heard.count == before,
+                     "the host can let go of a tool's key and keep what the tool asked for")
+        broker.hotkeys.retake([.pastePlain], for: owner)
+        suite.expect(key.registered?.shortcut == commandV && heard.count == before + 1 && heard.last == true,
+                     "and take it again, telling the tool how that went")
+
+        tool.unbind(.pastePlain)
+        tool.unbind(.pastePlain)
+        suite.expect(key.registered == nil, "giving a key back lets go of it, and doing so twice is safe")
+        broker.hotkeys.retake([.pastePlain], for: owner)
+        suite.expect(key.registered == nil && heard.count == before + 1,
+                     "a key the tool gave back in the meantime is not taken again")
+
+        // Refusals.
+        suite.expect(tool.bind(.clipboard, onPress: {}) == .unavailable && made == 1,
+                     "a tool takes only a key of its own feature")
+        let other = broker.services(for: manifest([.hotkey], id: "finderRename")).hotkey
+        suite.expect(other.bind(.finderRename, onPress: {}) == .unavailable && made == 2,
+                     "a role the host holds no key for is not offered")
+        let none = broker.services(for: manifest([], id: "pastePlain")).hotkey
+        suite.expect(none.bind(.pastePlain, onPress: { presses += 1 }) == .notDeclared(.hotkey)
+                         && key.registered == nil && made == 2,
+                     "a refused bind takes no key and makes no hotkey")
+        world.installed = false
+        let quiet = heard.count
+        suite.expect(bind() == .notInstalled && key.registered == nil && heard.count == quiet,
+                     "a tool removed in the hub is refused its key")
+        world.installed = true
+        _ = bind()
+        world.installed = false
+        tool.unbind(.pastePlain)
+        suite.expect(key.registered == nil, "but can always give one back")
+    }
+
+    static func keystrokes(_ suite: TestSuite) {
+        let world = World()
+        var pastes: [(text: String, willPost: () -> Void, didPost: () -> Void)] = []
+        var asked = 0
+        var front: pid_t? = 7
+        let log = PastePlainTests.MenuLog()
+        let bar = PastePlainTests.editMenu(log, [PastePlainTests.item("Match", key: PastePlainTests.matchStyle, log)])
+        var given = true
+        var saved = PastePlainTests.commandV
+        let key = ToolPlatformTests.FakeHotkey(id: 10, accepts: { given })
+        let broker = CapabilityBroker(
+            environment: .init(isInstalled: { _ in world.installed },
+                               isGranted: { world.granted.contains($0) },
+                               allows: { _, _ in world.allowed },
+                               reportUndeclared: { _, _ in }),
+            backings: .init(
+                notify: .init(beep: {}), open: .init(open: { _ in true }),
+                clipboard: .init(write: { _, _ in }), processes: .inert,
+                hotkey: .init(makeHotkey: { _ in key }, savedShortcut: { _ in saved }),
+                keystrokes: .init(paste: { text, willPost, didPost in pastes.append((text, willPost, didPost)) },
+                                  requestGrant: { asked += 1 },
+                                  menu: .init(frontmostApp: { front }, menuBar: { _ in bar }))))
+        let services = broker.services(for: manifest([.keystrokes, .hotkey], id: "pastePlain"))
+        let tool = services.keystrokes
+        let wanted = [QuickToolsSupport.matchStyleEquivalent]
+
+        world.granted = []
+        suite.expect(tool.refusal == .notGranted(.accessibility)
+                         && tool.paste("x") == .notGranted(.accessibility)
+                         && tool.pressFrontAppMenuItem(matching: wanted) == .failure(.notGranted(.accessibility))
+                         && pastes.isEmpty && log.reads == 0,
+                     "without Accessibility a tool can neither paste nor press a menu item, and nothing is tried")
+        suite.expect(tool.requestGrant() == nil && asked == 1,
+                     "a tool that lacks the grant can have the person asked for it")
+        world.granted = [.accessibility]
+        suite.expect(tool.refusal == nil && tool.requestGrant() == nil && asked == 1,
+                     "with the grant held there is nothing to ask")
+
+        suite.expect(tool.pressFrontAppMenuItem(matching: wanted) == .success(true) && log.pressed == ["Match"],
+                     "a tool that asks for it has a menu item of the front app pressed, by its key equivalent")
+        front = nil
+        suite.expect(tool.pressFrontAppMenuItem(matching: wanted) == .success(false) && log.pressed == ["Match"],
+                     "and is told when nothing was pressed")
+
+        var heard: [Bool] = []
+        services.hotkey.bind(.pastePlain, onPress: {}, onRegistered: { heard.append($0) })
+        suite.expect(tool.paste("Plain words") == nil && pastes.count == 1 && pastes[0].text == "Plain words"
+                         && key.registered != nil,
+                     "a paste hands the text to the paste helper, and holds the tool's key until the paste is typed")
+        pastes[0].willPost()
+        suite.expect(key.registered == nil,
+                     "the tool's own key, when it is Command-V, is let go just before the paste is typed")
+        given = false
+        pastes[0].didPost()
+        suite.expect(key.registered == nil && heard == [true, false],
+                     "and asked for again once it is typed: the tool hears how that went")
+
+        given = true
+        saved = .pastePlainDefault
+        services.hotkey.bind(.pastePlain, onPress: {}, onRegistered: { heard.append($0) })
+        let taken = key.registrations
+        _ = tool.paste("again")
+        pastes[1].willPost()
+        suite.expect(key.registered != nil, "a key that is not Command-V is kept while the paste is typed")
+        pastes[1].didPost()
+        suite.expect(key.registrations == taken && heard.count == 3, "and nothing is taken again after it")
+
+        let none = broker.services(for: manifest([], id: "pastePlain")).keystrokes
+        suite.expect(none.refusal == .notDeclared(.keystrokes) && none.paste("x") == .notDeclared(.keystrokes)
+                         && none.requestGrant() == .notDeclared(.keystrokes)
+                         && none.pressFrontAppMenuItem(matching: wanted) == .failure(.notDeclared(.keystrokes))
+                         && pastes.count == 2 && asked == 1,
+                     "a tool that did not ask for keystrokes gets none, and nobody is asked on its behalf")
+        world.installed = false
+        world.granted = []
+        suite.expect(tool.requestGrant() == .notInstalled && tool.paste("x") == .notInstalled
+                         && asked == 1 && pastes.count == 2,
+                     "a tool removed in the hub can neither paste nor ask for the grant")
+
+        // The paste helper calls neither closure when the paste cannot
+        // start, and it never fails once the key has been let go.
+        world.installed = true
+        world.granted = [.accessibility]
+        saved = PastePlainTests.commandV
+        services.hotkey.bind(.pastePlain, onPress: {}, onRegistered: { heard.append($0) })
+        let held = key.registrations
+        _ = tool.paste("never typed")
+        suite.expect(pastes.count == 3 && key.registered?.shortcut == saved && key.registrations == held,
+                     "a paste that cannot start leaves the tool's own key held")
+    }
+
     final class ProbeTool: BundledTool {
         static let manifest = ToolBrokerTests.manifest([.notify])
         static var built = 0
@@ -347,6 +531,128 @@ enum ToolBrokerTests {
                                             holdsGrants: { asked.append("grants"); return true }())
         suite.expect(!stopsEarly && asked.isEmpty,
                      "a tool that is not installed is not asked about its switch or its grants")
+    }
+
+    /// A tool that cannot start without Accessibility. It has no switch, so
+    /// only the grant decides.
+    final class NeedsGrantProbe: BundledTool {
+        static let manifest = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("wallpaper")!, name: "wallpaper", symbol: "photo", commands: [])!,
+            group: .tools, capabilities: [CapabilityRequest(.keystrokes, reason: "test")!],
+            preferences: [], activation: [.onLaunch], enabledBy: nil)!
+        init(services: ToolServices) {}
+        func start() { ToolBrokerTests.events.append("needs start") }
+        func stop() { ToolBrokerTests.events.append("needs stop") }
+        func run(_ command: CommandID) {}
+        func canRun(_ command: CommandID) -> Bool { false }
+    }
+
+    /// A tool that says it starts without Accessibility, and asks later.
+    final class AsksLaterProbe: BundledTool {
+        static let manifest = ToolManifest(
+            tool: ToolDescriptor(id: ToolID("mediaTools")!, name: "mediaTools", symbol: "film", commands: [])!,
+            group: .tools,
+            capabilities: [CapabilityRequest(.keystrokes, reason: "test", startsWithoutGrant: true)!],
+            preferences: [], activation: [.onLaunch], enabledBy: nil)!
+        init(services: ToolServices) {}
+        func start() { ToolBrokerTests.events.append("later start") }
+        func stop() { ToolBrokerTests.events.append("later stop") }
+        func run(_ command: CommandID) {}
+        func canRun(_ command: CommandID) -> Bool { false }
+    }
+
+    /// The first capability that rides on a macOS grant: the broker's
+    /// refusal, where the app's broker gets its answer, and the run rule's
+    /// grant clause through the host.
+    static func grants(_ suite: TestSuite) {
+        let world = World()
+        let broker = bench(world: world)
+        let typing = manifest([.keystrokes, .notify], id: "wallpaper")
+
+        world.granted = []
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notGranted(.accessibility),
+                     "a capability that rides on a macOS grant is refused without it")
+        suite.expect(broker.refusal(of: .notify, for: typing) == nil,
+                     "a capability that rides on nothing is not held back by another's grant")
+        world.granted = [.accessibility]
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == nil,
+                     "the grant is asked about at every call: given while the app runs, it holds from the next one")
+        world.granted = [.screenRecording]
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notGranted(.accessibility),
+                     "and taken away, it is missed at the next one")
+        world.installed = false
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notInstalled,
+                     "not installed is said before a missing grant")
+        world.installed = true
+        world.allowed = false
+        suite.expect(broker.refusal(of: .keystrokes, for: typing) == .notGranted(.accessibility),
+                     "a missing grant is said before what the person allows")
+        world.allowed = true
+
+        // The app's own broker, with the two questions it puts to macOS
+        // answered here.
+        var accessibility = false
+        var screen = false
+        let live = CapabilityBroker.Environment.reading(accessibility: { accessibility },
+                                                        screenRecording: { screen })
+        suite.expect(!live.isGranted(.accessibility) && !live.isGranted(.screenRecording)
+                         && live.isGranted(.notifications),
+                     "the app's broker asks about the two grants the app watches, and takes the others as given")
+        accessibility = true
+        suite.expect(live.isGranted(.accessibility) && !live.isGranted(.screenRecording),
+                     "it asks at the moment of the call: a grant holds the instant it is given, with no hop and no poll to wait for")
+        accessibility = false
+        screen = true
+        suite.expect(!live.isGranted(.accessibility) && live.isGranted(.screenRecording),
+                     "each grant is asked of its own source")
+
+        // The run rule's grant clause, through the host.
+        let needs = NeedsGrantProbe.manifest.id
+        let later = AsksLaterProbe.manifest.id
+        for granted in [false, true] {
+            events = []
+            world.granted = granted ? [.accessibility] : []
+            let host = ToolHost(broker: broker, tools: [NeedsGrantProbe.self, AsksLaterProbe.self])
+            host.sync(needs)
+            host.sync(later)
+            suite.expect(events == (granted ? ["needs start", "later start"] : ["later start"])
+                             && host.built == (granted ? [needs, later] : [later]),
+                         "Accessibility \(granted): a tool that needs it " + (granted ? "starts" : "waits")
+                             + ", and a tool that says it starts without it starts")
+        }
+
+        events = []
+        world.granted = []
+        let host = ToolHost(broker: broker, tools: [NeedsGrantProbe.self, AsksLaterProbe.self])
+        func decide() {
+            host.sync(needs)
+            host.sync(later)
+        }
+        decide()
+        world.granted = [.accessibility]
+        decide()
+        suite.expect(events == ["later start", "needs start", "later start"] && host.running == [later, needs],
+                     "a grant given while the app runs starts the tool that waited for it, at the next decision")
+        world.granted = []
+        decide()
+        suite.expect(events.suffix(2) == ["needs stop", "later start"] && host.running == [later],
+                     "a grant taken away stops the tool that needs it, and leaves the other running")
+        suite.expect(broker.refusal(of: .keystrokes, for: AsksLaterProbe.manifest) == .notGranted(.accessibility),
+                     "starting without the grant does not open the capability: each call is still refused")
+
+        // Suspending.
+        events = []
+        host.suspend(later)
+        host.suspend(needs)
+        host.suspend(ToolID("screenshot")!)
+        suite.expect(events == ["later stop", "needs stop"] && host.running.isEmpty,
+                     "suspending stops a built tool at once, whatever the run rule says")
+        decide()
+        suite.expect(events.suffix(1) == ["later start"] && host.running == [later],
+                     "and the next decision starts it again")
+        let unbuilt = ToolHost(broker: broker, tools: [AsksLaterProbe.self])
+        unbuilt.suspend(later)
+        suite.expect(unbuilt.built.isEmpty, "suspending a tool that was never built builds nothing")
     }
 
     static func hostRunsTools(_ suite: TestSuite) {
@@ -533,7 +839,7 @@ enum ToolBrokerTests {
 
     /// A manifest and the `AppFeature` it stands beside describe one thing.
     static func manifestsAgree(_ suite: TestSuite) {
-        let manifests = [PortManagerService.manifest, URLCleanerService.manifest]
+        let manifests = [PortManagerService.manifest, URLCleanerService.manifest, PastePlainService.manifest]
         suite.expect(BundledTools.all.map { $0.manifest.id } == manifests.map(\.id),
                      "every tool the host holds is checked here")
         let registry = ToolRegistry(isAvailable: { _ in true })
@@ -682,6 +988,14 @@ enum ToolBrokerTests {
         rig.settle()
         suite.expect(texts == ["hello", nil],
                      "a tool that asks for it reads the clipboard's text, and nothing from an empty one")
+        var plain: [String?] = []
+        rig.copy("words")
+        suite.expect(tool.readPlainText { plain.append($0) } == nil && plain.isEmpty && rig.lane.count == 1
+                         && none.readPlainText { plain.append($0) } == .notDeclared(.clipboardRead)
+                         && rig.lane.count == 1,
+                     "reading the clipboard's text without its formatting waits for the lane, and is refused as any read is")
+        rig.settle()
+        suite.expect(plain == ["words"], "and the text arrives once the lane has run")
 
         var wrote = 0
         tool.writeLink("https://example.com/x") { wrote += 1 }

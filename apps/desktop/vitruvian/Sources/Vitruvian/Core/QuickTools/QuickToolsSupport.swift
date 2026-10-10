@@ -224,11 +224,13 @@ package enum QuickToolsSupport {
     package static func isMatchStyleEquivalent(commandCharacter: String?,
                                        modifierMask: UInt32?,
                                        isEnabled: Bool) -> Bool {
-        let shiftAndOption: UInt32 = 1 | 2
-        return commandCharacter?.uppercased() == "V"
-            && modifierMask == shiftAndOption
+        matchStyleEquivalent.matches(commandCharacter: commandCharacter, modifierMask: modifierMask)
             && isEnabled
     }
+
+    /// The same key equivalent as a value: what Paste as plain text hands
+    /// the menu walk, which looks for it among the items that are enabled.
+    package static let matchStyleEquivalent = MenuKeyEquivalent(character: "V", modifierMask: 1 | 2)
 
     /// The payload as a web link for the optional open action. Limited to
     /// http and https on purpose: a scanned code must never be able to launch

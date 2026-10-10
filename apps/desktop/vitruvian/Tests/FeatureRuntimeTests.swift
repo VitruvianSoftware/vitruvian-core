@@ -84,6 +84,26 @@ enum FeatureRuntimeContract {
                      "an on-demand tool has nothing to start or stop")
         suite.expect(actions(.urlCleaner) == [.tool(URLCleanerService.manifest.id)],
                      "a feature that has become a tool is handed to the tool host")
+        let pasteTool = FeatureBindingAction.tool(PastePlainService.manifest.id)
+        suite.expect(actions(.pastePlain) == [pasteTool], "Paste as plain text is handed to the tool host too")
+
+        // A macOS grant that changes while the app runs, and the end of a
+        // shortcut recording, reach the tool host through that one action.
+        defaults.set(true, forKey: AppFeature.pastePlain.availabilityKey)
+        log.actions = []
+        hub.permissionDidChange(.accessibility)
+        suite.expect(log.actions.contains(pasteTool)
+                         && !log.actions.contains(.tool(URLCleanerService.manifest.id)),
+                     "a change to Accessibility hands the tool that rides on it to the tool host, and no other tool")
+        log.actions = []
+        hub.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
+        suite.expect(log.actions.contains(pasteTool),
+                     "the end of a shortcut recording hands the tool to the host, which takes its key again")
+        defaults.set(false, forKey: AppFeature.pastePlain.availabilityKey)
+        log.actions = []
+        hub.permissionDidChange(.accessibility)
+        suite.expect(!log.actions.contains(pasteTool), "a tool removed in the hub is not woken by a grant")
+        defaults.set(true, forKey: AppFeature.pastePlain.availabilityKey)
 
         // The island's extensions follow the island.
         let extensions: [AppFeature: FeatureBindingAction] = [
