@@ -2197,6 +2197,195 @@ def hotkey_ids_are_unique(repo):
     return problems
 
 
+# --- Tools and the broker -----------------------------------------------------
+
+# A feature that has become a tool. In its files no code reaches a service:
+# everything goes through the `ToolServices` the tool was built with. A row
+# is added in the pull request that migrates the feature.
+MIGRATED_TOOLS = {
+    "portManager": {
+        "files": [
+            "Sources/Vitruvian/Services/PortManager/PortManagerService.swift",
+            "Sources/Vitruvian/Services/PortManager/PortManagerSupport.swift",
+            "Sources/Vitruvian/UI/PortManager/PortManagerView.swift",
+            "Sources/Vitruvian/UI/MenuPanel/PanelPortManagerView.swift",
+        ],
+        # Type names the broker's files must never mention.
+        "types": ["PortManagerService", "PortManagerEntry", "PortManagerSupport"],
+        # Preference keys a view of this tool may bind with @AppStorage.
+        "keys": ["panelUtilityPortManager"],
+    },
+}
+
+# What a migrated tool's files may not name, and what to say.
+BROKERED = [
+    (r"\bNSPasteboard\b", "the clipboard"),
+    (r"\bGeneralPasteboardAccess\b", "the clipboard lane"),
+    (r"\bCGEvent(Source)?\b", "synthesised input"),
+    (r"\bAXIsProcessTrusted\b|\bAXUIElement", "Accessibility"),
+    (r"\bQuickToolHotkey\s*\(|\bRegisterEventHotKey\b", "a global hotkey"),
+    (r"\bProcess\s*\(\s*\)|\bShell\.|\bAdminShell\.", "a subprocess"),
+    (r"\bNSWorkspace\b", "the workspace"),
+    (r"\bUserDefaults\b", "saved preferences"),
+    (r"\bNotifier\.|\bQuickToolHUD\.|\bNSSound\b", "an alert"),
+    (r"\bTransientPaste\b", "the paste helper"),
+    (r"\bAppFeature\.\w+\.isAvailable\b", "whether another feature is installed"),
+]
+
+# The singletons a migrated tool's files may name: the host that hands out
+# tools, and the UI's own state. Grows only by review.
+TOOL_FILE_SINGLETONS = {"ToolHost", "L10n", "SettingsRouter", "PanelInteractionState"}
+
+BROKER_PREFIX = APP_PREFIX + "Services/Platform/Broker/"
+
+_STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
+_SINGLETON = re.compile(r"\b([A-Z]\w*)\.shared\b")
+_APP_STORAGE = re.compile(r"@AppStorage\(\s*")
+_APP_STORAGE_KEY = re.compile(r'"([^"\\]*)"|DefaultsKey\.(\w+)')
+
+
+def code_and_blanked(line):
+    """A line up to its comment, twice: as written, and with what each string
+    literal holds blanked out. The two are the same length, so a place found
+    in one is the same place in the other."""
+    blanked = _STRING_LITERAL.sub(
+        lambda found: '"' + " " * (len(found.group(0)) - 2) + '"', line
+    )
+    end = blanked.find("//")
+    return (line, blanked) if end < 0 else (line[:end], blanked[:end])
+
+
+def migrated_tool_problems(tools, source_of):
+    """What a migrated tool's files name that only the broker may: a brokered
+    service, a singleton, or another tool's preference. `source_of` gives a
+    file's text, or None when there is no such file."""
+    problems = []
+    for tool, row in tools.items():
+        for path in row["files"]:
+            text = source_of(path)
+            if text is None:
+                problems.append(
+                    f"{path} is listed for the tool {tool} and is not there: "
+                    "list the file where it is now"
+                )
+                continue
+            for number, line in enumerate(text.split("\n"), start=1):
+                written, code = code_and_blanked(line)
+                where = f"{path}:{number}"
+                for pattern, what in BROKERED:
+                    if re.search(pattern, code):
+                        problems.append(
+                            f"{where} reaches {what} directly; a migrated tool "
+                            "goes through its ToolServices"
+                        )
+                for found in _SINGLETON.finditer(code):
+                    if found.group(1) not in TOOL_FILE_SINGLETONS:
+                        problems.append(f"{where} names the singleton {found.group(1)}")
+                for found in _APP_STORAGE.finditer(code):
+                    key = _APP_STORAGE_KEY.match(written, found.end())
+                    name = key and (key.group(1) or key.group(2))
+                    if name not in row["keys"]:
+                        problems.append(
+                            f"{where} binds the preference {name or 'it cannot read'} "
+                            f"with @AppStorage; the tool {tool} may bind {row['keys']}"
+                        )
+    return problems
+
+
+def migrated_tools_reach_services_through_the_broker(repo):
+    """In a migrated tool's files no code names a sensitive service or a
+    service singleton: the tool is handed `ToolServices` and reaches the
+    system through it, so the broker's checks cannot be walked around."""
+    problems = []
+    sample = "\n".join(
+        [
+            "let total = entries.count",
+            "NSPasteboard.general.clearContents()",
+            "KillProcessService.shared.kill(pid)",
+            "@ObservedObject private var l10n = L10n.shared",
+            "// NSWorkspace.shared opens the link, in prose",
+            "@AppStorage(DefaultsKey.panelUtilityPortManager) private var shown = true",
+            '@AppStorage("somethingElse") private var other = false',
+            "if AppFeature.killProcess.isAvailable { end() }",
+            'let name = "UserDefaults.standard" // NSSound.beep() after the code',
+            "let feature = AppFeature.portManager",
+            "let one = entry.shared, two = make().shared",
+            '@AppStorage("panelUtilityPortManager") private var again = true',
+            "@AppStorage(key) private var unread = true",
+        ]
+    )
+    sample_tools = {
+        "sample": {
+            "files": ["sample", "moved"],
+            "types": [],
+            "keys": ["panelUtilityPortManager"],
+        }
+    }
+    if migrated_tool_problems(sample_tools, {"sample": sample}.get) != [
+        "sample:2 reaches the clipboard directly; a migrated tool goes through "
+        "its ToolServices",
+        "sample:3 names the singleton KillProcessService",
+        "sample:7 binds the preference somethingElse with @AppStorage; the tool "
+        "sample may bind ['panelUtilityPortManager']",
+        "sample:8 reaches whether another feature is installed directly; a "
+        "migrated tool goes through its ToolServices",
+        "sample:13 binds the preference it cannot read with @AppStorage; the tool "
+        "sample may bind ['panelUtilityPortManager']",
+        "moved is listed for the tool sample and is not there: list the file "
+        "where it is now",
+    ]:
+        problems.append(
+            "the scan finds a brokered service, a singleton, another tool's "
+            "preference and a listed file that is gone, and not prose, strings, "
+            "the allowed singletons or the tool's own key"
+        )
+    problems.extend(migrated_tool_problems(MIGRATED_TOOLS, repo.sources.get))
+    return problems
+
+
+def tool_types_named(path, text, types):
+    """Each line of `text` that names one of `types` outside a comment."""
+    found = []
+    for number, line in enumerate(text.split("\n"), start=1):
+        written, _ = code_and_blanked(line)
+        for name in types:
+            if re.search(r"\b" + re.escape(name) + r"\b", written):
+                found.append(
+                    f"{path}:{number} names the tool type {name}; the broker "
+                    "serves tools and knows none"
+                )
+    return found
+
+
+def the_broker_names_no_tool(repo):
+    """No file of the broker names a tool's type. The broker decides from the
+    manifest it is handed, so the next tool needs no change to it, and a tool
+    cannot be given a door of its own."""
+    problems = []
+    sample = "\n".join(
+        [
+            "func beep() { environment.beep() }",
+            "let tool = PortManagerService.manifest",
+            "// PortManagerService asks for this, in prose",
+        ]
+    )
+    if tool_types_named("sample", sample, ["PortManagerService"]) != [
+        "sample:2 names the tool type PortManagerService; the broker serves "
+        "tools and knows none"
+    ]:
+        problems.append("the scan finds a tool type named in code, and not prose")
+    types = [name for row in MIGRATED_TOOLS.values() for name in row["types"]]
+    paths = [p for p in repo.app_sources() if p.startswith(BROKER_PREFIX)]
+    if not paths:
+        problems.append(
+            f"no Swift file was found under {BROKER_PREFIX}: the scan no "
+            "longer matches the code"
+        )
+    for path in paths:
+        problems.extend(tool_types_named(path, repo.source(path), types))
+    return problems
+
+
 # UPSTREAM.md's sections, in order. "Modifications" is the dated notice
 # GPL-3.0 section 5(a) asks for.
 UPSTREAM_SECTIONS = [
@@ -2314,6 +2503,8 @@ RULES = [
     package_views_publish_their_body,
     later_layers_reach_only_package_statics,
     hotkey_ids_are_unique,
+    migrated_tools_reach_services_through_the_broker,
+    the_broker_names_no_tool,
     modification_log_is_whole,
 ]
 
