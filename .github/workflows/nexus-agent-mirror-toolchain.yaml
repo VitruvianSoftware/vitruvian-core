@@ -200,6 +200,89 @@ jobs:
           bash "$check" /tmp/dist-arm64/NexusAgent.app arm64
           bash "$check" /tmp/dist-x86_64/NexusAgent.app x86_64
 
+      # The checks above read the app; this starts it, which nothing else
+      # does between a change and a release. A runner has no settings and no
+      # bot of anyone's, and a logged-in desktop session, so a menu-bar app
+      # can start here. Rehearsal only: the release itself starts nothing.
+      #
+      # The home folder is a throwaway one whose bot folder is empty: with no
+      # bot token the bot is never started (auto-start is off by default as
+      # well). What a first launch does do: put its icon in the menu bar,
+      # register the global hotkey, ask the system for notification and
+      # accessibility permission (the system's own prompts, which the app
+      # does not wait for), and after three seconds ask GitHub whether a
+      # newer release exists. None of that ends the app, so it must still be
+      # running fifteen seconds in, must stop when told to, and must leave
+      # no crash report. The reports are looked for in the runner's real
+      # Library, where the system writes them whatever home the app is given.
+      - name: Start the packaged app
+        run: |
+          set -euo pipefail
+          app=/tmp/dist-universal/NexusAgent.app
+          reports="$HOME/Library/Logs/DiagnosticReports"
+          scratch="$RUNNER_TEMP/first-launch"
+          mkdir -p "$scratch/home/.config/nexus-agent"
+          touch "$scratch/launched"
+
+          HOME="$scratch/home" CFFIXED_USER_HOME="$scratch/home" \
+            "$app/Contents/MacOS/NexusAgent" >"$scratch/output.log" 2>&1 &
+          pid=$!
+
+          # A process that has ended stays listed, as a zombie, until it is
+          # waited for, and `kill -0` still finds it: so the state is read.
+          running() {
+            state="$(ps -o state= -p "$pid" 2>/dev/null || true)"
+            [ -n "$state" ] && [ "${state#Z}" = "$state" ]
+          }
+
+          survived=yes
+          for _ in $(seq 15); do
+            sleep 1
+            running || { survived=no; break; }
+          done
+
+          stopped=yes
+          if [ "$survived" = yes ]; then
+            kill -TERM "$pid"
+            stopped=no
+            for _ in $(seq 10); do
+              running || { stopped=yes; break; }
+              sleep 1
+            done
+            [ "$stopped" = yes ] || kill -KILL "$pid"
+          fi
+          status=0
+          wait "$pid" || status=$?
+
+          echo "==> What the app printed (exit status $status; 143 is the stop it was sent):"
+          cat "$scratch/output.log"
+
+          # A crash report is written a moment after the process is gone.
+          sleep 5
+          crash=""
+          if [ -d "$reports" ]; then
+            crash="$(find "$reports" -name 'NexusAgent*' -newer "$scratch/launched" -print)"
+          fi
+          failed=no
+          if [ -n "$crash" ]; then
+            echo "error: the app left a crash report:" >&2
+            echo "$crash" | while IFS= read -r report; do
+              echo "--- $report" >&2
+              head -n 60 "$report" >&2
+            done
+            failed=yes
+          fi
+          if [ "$survived" != yes ]; then
+            echo "error: the app ended by itself within fifteen seconds, with status $status" >&2
+            failed=yes
+          fi
+          if [ "$stopped" != yes ]; then
+            echo "error: the app was still running ten seconds after it was told to stop" >&2
+            failed=yes
+          fi
+          [ "$failed" = no ]
+          echo "==> The app started, stayed up for fifteen seconds, stopped when told to, and left no crash report"
+
       - name: Install create-dmg
         run: brew install create-dmg
 

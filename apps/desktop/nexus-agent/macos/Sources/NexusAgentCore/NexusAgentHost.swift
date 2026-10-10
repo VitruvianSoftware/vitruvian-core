@@ -179,15 +179,19 @@ public struct NexusAgentHostStrings: Sendable {
     /// program that was looked for. agy has a sentence of its own, which
     /// an app may have translated. Any other program gets the sentence a
     /// missing command gets, around its name: `claude`, `ollama`, or the
-    /// first word of a command of the user's own, as its template has it.
-    public func missingProgram(of provider: NexusAgentCLIProvider) -> String {
+    /// first word of a command of the user's own. That word may have the
+    /// model in it (`{model} run {prompt}`), so the model in use is passed
+    /// and filled in, as the chat does when it runs the command; with none
+    /// passed the stand-in model is named, which is what would be run.
+    public func missingProgram(of provider: NexusAgentCLIProvider, model: String = "") -> String {
         switch provider.route {
         case .antigravity:
             return missingAgent
         case .claude, .ollama:
             return commandNotFound(provider.executableName)
         case .custom:
-            return commandNotFound(NexusAgentSupport.templateWords(provider.commandTemplate).first ?? "")
+            return commandNotFound(
+                NexusAgentSupport.programName(template: provider.commandTemplate, model: model) ?? "")
         }
     }
 

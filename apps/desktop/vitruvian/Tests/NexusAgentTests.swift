@@ -1297,6 +1297,27 @@ enum NexusAgentTests {
         suite.expect(service.agentPath != nil && service.missingProgramText == nil,
                      "with the program installed the page has no such line")
         service.updateActiveProvider(.antigravity)
+
+        // A command whose program is written with the model in it: the
+        // page names the program the chat looked for, never `{model}`.
+        let byModel = NexusAgentCLIProvider(id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-00000000000B")!,
+                                            name: "By model", commandTemplate: "{model} run {prompt}",
+                                            isBuiltIn: false)
+        rig.installBot()
+        for (model, program) in [("gemma3:4b", "gemma3:4b"), ("", NexusAgentSupport.templateFallbackModel)] {
+            // A file that says nothing is not read, so it always has a line.
+            rig.files[rig.bot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n" + (model.isEmpty ? "" : "AGY_MODEL=\(model)\n")
+            service.load()
+            service.updateActiveProvider(byModel)
+            let words = "Could not find '\(program)' in PATH. Is it installed?"
+            suite.expect(service.configuration.model == model && service.missingProgramText == words,
+                         "model '\(model)': Settings names the filled-in program: \(service.missingProgramText ?? "nil")")
+            session.newChat()
+            session.send("hi", configuration: service.configuration, agentPath: service.agentPath)
+            suite.expect(session.messages.last?.text == words,
+                         "model '\(model)': and so does the chat's bubble: \(session.messages.last?.text ?? "nil")")
+        }
+        service.updateActiveProvider(.antigravity)
     }
 
     /// The effort picker of the Settings page is bound to the shared

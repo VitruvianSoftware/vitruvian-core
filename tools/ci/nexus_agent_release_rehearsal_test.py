@@ -69,6 +69,8 @@ REHEARSAL_ONLY = {
     "Run the tests",
     "Show what was downloaded",
     "Check the three apps",
+    # The rehearsal starts the app it packaged; a release starts nothing.
+    "Start the packaged app",
     "Check the app inside the ZIP",
 }
 

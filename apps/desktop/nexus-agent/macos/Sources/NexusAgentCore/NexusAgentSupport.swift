@@ -874,8 +874,18 @@ public enum NexusAgentSupport {
         return (programTakesPrompt ? "" : filled[0], Array(filled.dropFirst()))
     }
 
-    /// A template cut into words, placeholders not yet filled in. Also how
-    /// the session names the program it could not find, as written.
+    /// What a command's program is called when it cannot be found: the
+    /// template's first word with `{model}` filled in, which is the name
+    /// that was looked for. A first word that holds `{prompt}` is no
+    /// program (see `providerCommand`) and is named as written. Nil when
+    /// the template has no words. The chat's bubble and a settings page
+    /// both name the program through here, so they cannot disagree.
+    static func programName(template: String, model: String) -> String? {
+        guard let command = providerCommand(template: template, prompt: "", model: model) else { return nil }
+        return command.executable.isEmpty ? templateWords(template).first : command.executable
+    }
+
+    /// A template cut into words, placeholders not yet filled in.
     static func templateWords(_ template: String) -> [String] {
         var words: [String] = []
         var current = ""

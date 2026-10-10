@@ -2666,6 +2666,45 @@ final class EngineHostTests: XCTestCase {
         XCTAssertNil(engine.missingProgramText)
     }
 
+    /// A command's program may be written with the model in it
+    /// (`{model} run {prompt}`). The page then names the program the chat
+    /// looked for and names in its bubble: the model filled in, the
+    /// stand-in model when none is set, and never the placeholder.
+    func testThePageNamesACommandsProgramAsTheChatDoes() {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let host = RecordingHost()
+        rig.files[rig.defaultBot] = ""
+        let env = rig.defaultBot + "/.env"
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        let fallback = NexusAgentSupport.templateFallbackModel
+        // The template, the model in the settings file, the program named.
+        let cases: [(String, String, String)] = [
+            ("llm -m {model} \"{prompt}\"", "gemma3:4b", "llm"),
+            ("{model} run {prompt}", "gemma3:4b", "gemma3:4b"),
+            ("{model} run {prompt}", "", fallback),
+            ("run-{model} {prompt}", "gemma3:4b", "run-gemma3:4b"),
+            // A program named by the prompt is no program: named as written.
+            ("{prompt} {model}", "gemma3:4b", "{prompt}"),
+        ]
+        for (template, model, program) in cases {
+            let label = "\(template) with model '\(model)'"
+            // A file that says nothing is not read, so it always has a line.
+            rig.files[env] = "TELEGRAM_BOT_TOKEN=1:abc\n" + (model.isEmpty ? "" : "AGY_MODEL=\(model)\n")
+            engine.load()
+            XCTAssertEqual(engine.configuration.model, model, label)
+            let provider = ownProvider(template)
+            engine.updateActiveProvider(provider)
+            XCTAssertNil(engine.agentPath, label)
+            let words = "Could not find '\(program)' in PATH. Is it installed?"
+            XCTAssertEqual(engine.missingProgramText, words, label)
+            XCTAssertEqual(host.strings.missingProgram(of: provider, model: model), words, label)
+            engine.session.newChat()
+            engine.session.send("hi", configuration: engine.configuration, agentPath: engine.agentPath)
+            XCTAssertEqual(engine.session.messages.last?.text, words, "the chat's bubble: \(label)")
+        }
+    }
+
     /// A turn stopped while it was still waiting to start (Ollama being
     /// asked for its models) never reaches the launch, so it is a stopped
     /// turn and not a failed one, even when the launch would have failed.
