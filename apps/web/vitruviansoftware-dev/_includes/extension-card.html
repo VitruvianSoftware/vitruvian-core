@@ -15,6 +15,12 @@
     {%- for tool in tools -%}<li class="tag">{{ tool }}</li>{%- endfor -%}
   </ul>
   <div class="card-foot">
+    {%- for step in x.setup -%}
+    <div class="install-block">
+      <span class="install-label">{{ step.label }}</span>
+      <code class="install">{{ step.command }}</code>
+    </div>
+    {%- endfor -%}
     {%- for i in x.installs -%}
     <div class="install-block">
       <span class="install-label">{% if i.label %}{{ i.label }}{% else %}Install in {{ i.tool }}{% endif %}</span>

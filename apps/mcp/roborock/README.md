@@ -23,21 +23,32 @@ flowchart LR
 
 ## Quick Installation
 
-### Option 1: Claude Code Plugin (Zero-Checkout)
+### Step 1: Install the server
+
+```bash
+uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
+```
+
+Everything else depends on this. The plugins start the MCP server with
+`uvx vitruvian-roborock mcp`, and the package is not published to PyPI, so
+`uvx` can only find it once it is installed. Skip this step and the plugin
+still installs, but its tools never appear.
+
+This step alone gives you the standalone CLI, `rrctl`.
+
+### Step 2: Add the plugin to your tool
+
+Claude Code:
+
 ```bash
 claude plugin marketplace add VitruvianSoftware/mcp-roborock
 claude plugin install vitruvian-roborock
 ```
 
-### Option 2: Antigravity Plugin
-```bash
-git clone https://github.com/VitruvianSoftware/mcp-roborock.git ~/.config/plugins/mcp-roborock
-agy plugin install ~/.config/plugins/mcp-roborock/plugin
-```
+Antigravity:
 
-### Option 3: Standalone CLI (`rrctl`)
 ```bash
-uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
+agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
 ```
 
 ---
