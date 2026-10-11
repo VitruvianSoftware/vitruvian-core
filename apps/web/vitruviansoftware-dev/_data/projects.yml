@@ -180,19 +180,15 @@ projects:
     source: apps/mcp/roborock
     extension:
       kind: plugin
-      needs: uv, and a Roborock account (run rrctl setup once to log in)
-      setup:
-        - label: "First, for either tool: install the server"
-          command: uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
+      needs: uv, and a Roborock account (the plugin walks you through logging in)
       installs:
         - tool: Claude Code
-          label: "Then, in Claude Code: add the marketplace"
+          label: "Claude Code, step 1: add the marketplace"
           command: claude plugin marketplace add VitruvianSoftware/mcp-roborock
         - tool: Claude Code
-          label: "And install the plugin"
+          label: "Claude Code, step 2: install"
           command: claude plugin install vitruvian-roborock
         - tool: Antigravity
-          label: "Or, in Antigravity"
           command: agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
 
   - name: NexusAgent

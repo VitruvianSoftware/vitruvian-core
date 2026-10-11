@@ -11,7 +11,7 @@
       "name": "vitruvian-roborock",
       "source": "./plugin",
       "description": "Check on and control a Roborock vacuum: status, live map, start, pause, dock and mop wash.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "VitruvianSoftware",
         "url": "https://github.com/VitruvianSoftware"
