@@ -140,10 +140,12 @@ projects:
     source: apps/mcp/slack
     extension:
       kind: mcp
-      needs: Slack bot and user tokens, set as environment variables
+      needs: Slack bot and user tokens, passed to the server as environment variables (add an --env flag for each; the README lists them)
       installs:
         - tool: Claude Code
           command: claude mcp add slack -- npx -y @vitruviansoftware/mcp-slack@latest
+        - tool: Antigravity
+          command: agy mcp add slack npx -y @vitruviansoftware/mcp-slack@latest
 
   - name: gh-watch
     group: agents
@@ -184,6 +186,12 @@ projects:
         - tool: Claude Code
           label: "Claude Code, step 2: install"
           command: claude plugin install vitruvian-roborock
+        - tool: Antigravity
+          label: "Antigravity, step 1: clone"
+          command: git clone https://github.com/VitruvianSoftware/mcp-roborock.git ~/.config/plugins/mcp-roborock
+        - tool: Antigravity
+          label: "Antigravity, step 2: install"
+          command: agy plugin install ~/.config/plugins/mcp-roborock/plugin
 
   - name: NexusAgent
     group: agents
