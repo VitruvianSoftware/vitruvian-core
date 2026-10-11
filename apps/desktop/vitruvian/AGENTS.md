@@ -281,8 +281,11 @@ and this app holds only what is specific to it.
 
 A tool can be a separate program the app starts and talks to
 (`docs/superpowers/specs/2026-10-10-vitruvian-external-tools-design.md`).
-Stage A of that work is built: the protocol, and reading a tool's manifest.
-Nothing in the app starts a tool yet, and nothing calls the manifest reader.
+Stages A and B of that work are built: the protocol, reading a tool's
+manifest, and the runtime that starts a tool, talks to it and stops it. No
+screen adds a tool yet. Only a build made with
+`--define=vitruvian_external_tools=true` can add one, from the folder the
+hidden preference `developmentToolFolder` names (`README.md` says how).
 
 - The protocol lives in `packages/vitruvian-sdk`, under MIT: JSON Schema in
   `protocol/`, the same messages as Swift in `Sources/VitruvianToolProtocol`.
@@ -320,6 +323,58 @@ Nothing in the app starts a tool yet, and nothing calls the manifest reader.
 - `ToolDescriptor.name` and `CommandDescriptor.title` of an outside tool are
   its English text. Its other languages are in `ExternalToolManifest.name`
   and `.commandTitles`; a surface asks `text(for: language.rawValue)`.
+- The runtime is `Services/Platform/External/`. A transport carries bytes to
+  one run of a program; a `ToolLink` speaks the protocol for that run; an
+  `ExternalTool` owns the program from one run to the next and is the tool
+  host's second kind of `HostedTool`; `ExternalToolStore` holds what is
+  installed.
+- Only `ProcessTransport.swift` reads or writes a pipe, and never on the
+  main thread. Everything else there is `@MainActor` and never waits. Do not
+  add a `Task`: the runtime uses Dispatch queues and main-actor closures.
+- Every deadline, wait and limit is a number in `ToolLimits` counted on a
+  `ToolClock`. A test moves a `ManualToolClock` by hand and never waits. A
+  new limit goes in `ToolLimits`, with a check on each side of it.
+- "Can it run?" for an outside tool is answered from the last
+  `commands/state` and how the tool stands. It never sends a message: lists
+  ask while they draw.
+- What a tool asks of the app is done in `ExternalToolCalls`, through the
+  tool's own `ToolServices`, so the broker refuses a service the manifest
+  does not list in `uses`. Its `switch` over `ToolMethod` is exhaustive on
+  purpose. A refusal is one of the protocol's codes, from
+  `ExternalToolCalls.error(for:)`.
+- A preference a tool saves goes to the app's own preferences under
+  `<tool id>/<preference id>`. No file is written for it. A saved string has
+  no limit of its own: the 1 MB line is the only one.
+- An outside tool reaches the host through `ToolHost.add`, and only
+  `ExternalToolStore.install(from:)` calls it. Only the development switch in
+  `main.swift` calls that, inside `#if VITRUVIAN_EXTERNAL_TOOLS`; the source
+  rule `a_release_build_adds_no_outside_tool` fails for any other caller.
+  The stage that adds the screen that asks the person replaces that rule.
+- A release build still holds the switch's function
+  (`ExternalToolStore.installDevelopmentTool`): it is in `Services`, which
+  has no define, so that the unit tests can run it. Nothing in a release
+  build calls it. Do not read that as "the code is not there".
+- The store forgets its tools when the app quits and never deletes a tool's
+  files. `Tools/<id>/` is the app's copy of a tool's folder and
+  `ToolData/<id>/` is what the tool saved, both under the app's support
+  folder. Adding a tool again replaces `Tools/<id>/` whole and keeps
+  `ToolData/<id>/`. That replacement is the only thing the runtime deletes.
+- `ToolFolders.install` is the only code that copies or deletes for a tool.
+  An id is one folder name: no slash, no two dots in a row, no dot first. A
+  `Tools` or `ToolData` folder that is a link to another place is refused
+  (`linkedElsewhere`). A link inside the picked folder is copied as a link.
+  The folder's size is not limited.
+- Three limits are known and accepted. A tool that closes its output and
+  keeps running is noticed only when three requests go unanswered. A tool's
+  last line with no line break is dropped. After the last kill at quit the
+  app does not wait to see the process gone.
+- A test of the runtime uses `FakeTool`, which is no process. A test that
+  needs a real one starts `tool_fixture` (`Tools/ToolFixture.swift`), waits
+  only through `ToolRuntimeSupport.wait`, and kills the process and sees it
+  gone before it returns. A test's folders are under the temporary folder,
+  never the app's real support folder.
+- The runtime adds no sentence a person reads. A tool that stops working is
+  a line in the system log until the screens exist.
 
 ## Porting from upstream
 

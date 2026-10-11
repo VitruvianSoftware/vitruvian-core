@@ -2293,6 +2293,9 @@ BROKERED = [
 TOOL_FILE_SINGLETONS = {"ToolHost", "L10n", "SettingsRouter", "PanelInteractionState"}
 
 BROKER_PREFIX = APP_PREFIX + "Services/Platform/Broker/"
+# The runtime for tools that run as their own programs. Like the broker, it
+# serves whatever tool it is handed and knows none.
+RUNTIME_PREFIX = APP_PREFIX + "Services/Platform/External/"
 
 _STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
 _SINGLETON = re.compile(r"\b([A-Z]\w*)\.shared\b")
@@ -2496,7 +2499,8 @@ def tool_types_named(path, text, types):
 def the_broker_names_no_tool(repo):
     """No file of the broker names a tool's type. The broker decides from the
     manifest it is handed, so the next tool needs no change to it, and a tool
-    cannot be given a door of its own."""
+    cannot be given a door of its own. The same holds for the runtime that
+    starts tools from outside: it is handed a manifest too."""
     problems = []
     sample = "\n".join(
         [
@@ -2511,14 +2515,87 @@ def the_broker_names_no_tool(repo):
     ]:
         problems.append("the scan finds a tool type named in code, and not prose")
     types = [name for row in MIGRATED_TOOLS.values() for name in row["types"]]
-    paths = [p for p in repo.app_sources() if p.startswith(BROKER_PREFIX)]
-    if not paths:
+    for prefix in (BROKER_PREFIX, RUNTIME_PREFIX):
+        paths = [p for p in repo.app_sources() if p.startswith(prefix)]
+        if not paths:
+            problems.append(
+                f"no Swift file was found under {prefix}: the scan no "
+                "longer matches the code"
+            )
+        for path in paths:
+            problems.extend(tool_types_named(path, repo.source(path), types))
+    return problems
+
+
+# The define a development build is made with to add a tool from outside
+# (BUILD, `external_tools`), and what adding one looks like in code.
+DEVELOPMENT_SWITCH = "VITRUVIAN_EXTERNAL_TOOLS"
+_ADDS_A_TOOL = re.compile(r"\binstallDevelopmentTool\b|\.install\(from:")
+
+
+def tools_added_outside_the_switch(path, text):
+    """Each line of `text` that adds a tool from outside and is not between
+    `#if VITRUVIAN_EXTERNAL_TOOLS` and its `#endif`."""
+    found = []
+    inside = []
+    for number, line in enumerate(text.split("\n"), start=1):
+        directive = line.strip()
+        if directive.startswith("#if"):
+            inside.append(directive.split()[1:] == [DEVELOPMENT_SWITCH])
+        elif directive.startswith(("#else", "#elseif")) and inside:
+            inside[-1] = False
+        elif directive.startswith("#endif") and inside:
+            inside.pop()
+        elif not any(inside):
+            written, _ = code_and_blanked(line)
+            if _ADDS_A_TOOL.search(written):
+                found.append(f"{path}:{number}")
+    return found
+
+
+def a_release_build_adds_no_outside_tool(repo):
+    """A tool that runs as its own program is added in one place: the
+    development switch in main.swift, which only a build made with
+    --define=vitruvian_external_tools=true compiles. Until the screen that
+    asks the person exists, nothing else may add one, so a release build has
+    no way to. The runtime's own folder is where adding is written, and is
+    not scanned."""
+    problems = []
+    sample = "\n".join(
+        [
+            "ExternalToolStore.shared.install(from: folder)",
+            "#if VITRUVIAN_EXTERNAL_TOOLS",
+            "_ = ExternalToolStore.shared.installDevelopmentTool()",
+            "#else",
+            "store.installDevelopmentTool()",
+            "#endif",
+            "#if !VITRUVIAN_EXTERNAL_TOOLS",
+            "store.install(from: folder)",
+            "#endif",
+            "// store.install(from: folder), in prose",
+            "SampleTool.install()",
+        ]
+    )
+    if tools_added_outside_the_switch("sample", sample) != [
+        "sample:1",
+        "sample:5",
+        "sample:8",
+    ]:
         problems.append(
-            f"no Swift file was found under {BROKER_PREFIX}: the scan no "
-            "longer matches the code"
+            "the scan finds a tool added outside the switch, in its #else and "
+            "under its negation, and not inside it, in prose or the sample tool"
         )
+    paths = [p for p in repo.app_sources() if not p.startswith(RUNTIME_PREFIX)]
+    main = APP_PREFIX + "main.swift"
+    if DEVELOPMENT_SWITCH not in repo.source(main):
+        problems.append(f"{main} no longer holds the development switch")
+    found = []
     for path in paths:
-        problems.extend(tool_types_named(path, repo.source(path), types))
+        found.extend(tools_added_outside_the_switch(path, repo.source(path)))
+    if found:
+        problems.append(
+            f"a tool from outside is added only inside #if {DEVELOPMENT_SWITCH}: {found}"
+        )
     return problems
 
 
@@ -2642,6 +2719,7 @@ RULES = [
     hotkey_ids_are_unique,
     migrated_tools_reach_services_through_the_broker,
     the_broker_names_no_tool,
+    a_release_build_adds_no_outside_tool,
     modification_log_is_whole,
 ]
 

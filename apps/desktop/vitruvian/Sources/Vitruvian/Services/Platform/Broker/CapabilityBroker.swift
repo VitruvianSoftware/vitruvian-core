@@ -51,9 +51,10 @@ package final class CapabilityBroker {
         }
 
         /// The app as it is: a tool with the id of a hub feature follows
-        /// that feature; a compiled-in tool is always allowed; and the two
-        /// macOS grants the app watches are asked of macOS itself, at the
-        /// moment of each call.
+        /// that feature; a tool from outside, whose id has a dot, is
+        /// installed when the tool store says so; a compiled-in tool is
+        /// always allowed; and the two macOS grants the app watches are
+        /// asked of macOS itself, at the moment of each call.
         ///
         /// Not of `Permissions`. It publishes a grant one main-queue hop
         /// after it is first touched, so it reads false all through launch,
@@ -62,14 +63,24 @@ package final class CapabilityBroker {
         /// answered by the state of that instant, as it was before tools.
         @MainActor package static let live = Environment.reading(
             accessibility: { AXIsProcessTrusted() },
-            screenRecording: { CGPreflightScreenCaptureAccess() })
+            screenRecording: { CGPreflightScreenCaptureAccess() },
+            outsideToolIsInstalled: { ExternalToolStore.shared.isInstalled($0) })
 
-        /// `live`, with the two questions it puts to macOS handed in, so a
-        /// test can answer them.
+        /// `live`, with the questions it puts to macOS and to the tool
+        /// store handed in, so a test can answer them; and what stops a
+        /// development build, so a test can see when it would.
         @MainActor package static func reading(accessibility: @escaping () -> Bool,
-                                               screenRecording: @escaping () -> Bool) -> Environment {
+                                               screenRecording: @escaping () -> Bool,
+                                               outsideToolIsInstalled: @escaping (ToolID) -> Bool = { _ in false },
+                                               stop: @escaping (String) -> Void = { assertionFailure($0) })
+            -> Environment {
             Environment(
-                isInstalled: { id in AppFeature(rawValue: id.rawValue)?.isAvailable ?? true },
+                isInstalled: { id in
+                    guard id.isBundledForm else { return outsideToolIsInstalled(id) }
+                    // An id with no dot that names no feature is no tool
+                    // the app knows.
+                    return AppFeature(rawValue: id.rawValue)?.isAvailable ?? false
+                },
                 isGranted: { permission in
                     switch permission {
                     case .accessibility: return accessibility()
@@ -79,7 +90,11 @@ package final class CapabilityBroker {
                 },
                 allows: { _, _ in true },
                 reportUndeclared: { id, capability in
-                    assertionFailure("\(id) used \(capability.rawValue) without declaring it")
+                    // A mistake in one of the app's own tools stops a
+                    // development build. One in a tool from outside is that
+                    // tool's: it is refused, and the app carries on.
+                    guard id.isBundledForm else { return }
+                    stop("\(id) used \(capability.rawValue) without declaring it")
                 })
         }
     }

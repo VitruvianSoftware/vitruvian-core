@@ -37,6 +37,7 @@ enum TestGroups {
         "agents",
         "features",
         "platform",
+        "tool-runtime",
         "utilities",
         "settings",
         "display-restoration",
@@ -170,6 +171,15 @@ enum TestGroups {
                 ToolPlatformTests.run(suite)
                 ToolBrokerTests.run(suite)
                 ExternalToolManifestTests.run(suite)
+            }),
+            ("tool-runtime", {
+                ToolRuntimeTests.run(suite)
+                ToolLinkTests.run(suite)
+                ToolProcessTests.run(suite)
+                ExternalToolTests.run(suite)
+                ExternalToolHostTests.run(suite)
+                ExternalToolCallsTests.run(suite)
+                ExternalToolStoreTests.run(suite)
             }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)

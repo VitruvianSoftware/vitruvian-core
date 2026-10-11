@@ -161,6 +161,9 @@ swift_library(
         ":VMStatisticsCompat",
         ":VitruvianCore",
         ":VitruvianDesign",
+        # The tool protocol's types, for the runtime under Services/Platform/
+        # External that talks to a tool running as its own program.
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
 )
 
@@ -214,6 +217,16 @@ config_setting(
     define_values = {"vitruvian_sample_tool": "true"},
 )
 
+# A development build that adds one tool that runs as its own program, from
+# the folder the hidden preference `developmentToolFolder` names, with no
+# screen (ExternalToolStore.installDevelopmentTool):
+#   --define=vitruvian_external_tools=true
+# Without it the app has no way to add such a tool.
+config_setting(
+    name = "external_tools",
+    define_values = {"vitruvian_external_tools": "true"},
+)
+
 # Everything not yet in a module of its own. main.swift holds top-level code,
 # which rules_swift allows by not passing -parse-as-library when a main.swift
 # is present.
@@ -228,6 +241,9 @@ swift_library(
     srcs = APP_SRCS,
     copts = select({
         ":sample_tool": ["-DVITRUVIAN_SAMPLE_TOOL"],
+        "//conditions:default": [],
+    }) + select({
+        ":external_tools": ["-DVITRUVIAN_EXTERNAL_TOOLS"],
         "//conditions:default": [],
     }),
     # Swift 6 language mode since REFACTOR.md step 6zzj. Each of its closures
@@ -246,15 +262,20 @@ swift_library(
     ],
 )
 
-# The same module, compiled as a build with the sample tool would compile it.
+# The same module, compiled as a build with both development defines would
+# compile it: the sample tool, and the switch that adds a tool from outside.
 # Nothing links it. It is built in CI (the pipeline unit below lists it), so
-# the lines of main.swift that only a --define=vitruvian_sample_tool=true
-# build compiles cannot stop compiling without anybody noticing.
+# the lines of main.swift that only such a build compiles cannot stop
+# compiling without anybody noticing. It keeps the name it had when the
+# sample tool was the only one.
 swift_library(
     name = "VitruvianLibWithSampleTool",
     package_name = SWIFT_PACKAGE,
     srcs = APP_SRCS,
-    copts = ["-DVITRUVIAN_SAMPLE_TOOL"],
+    copts = [
+        "-DVITRUVIAN_SAMPLE_TOOL",
+        "-DVITRUVIAN_EXTERNAL_TOOLS",
+    ],
     features = ["swift.enable_v6"],
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
@@ -330,6 +351,29 @@ swift_binary(
     # Swift 6 language mode since REFACTOR.md step 6zzn. A script that runs on
     # the main thread: its top-level functions share the main actor with the
     # images they draw.
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+)
+
+# A tool the unit tests start as a real child process: it speaks the tool
+# protocol and has a command for each way a tool can behave, well or badly
+# (Tools/ToolFixture.swift lists them). A script like MakeIcon, so it is
+# compiled as main.swift the same way. It links nothing of the app.
+genrule(
+    name = "tool_fixture_main",
+    srcs = ["Tools/ToolFixture.swift"],
+    outs = ["tool_fixture_src/main.swift"],
+    cmd = "cp $< $@",
+)
+
+swift_binary(
+    name = "tool_fixture",
+    srcs = [":tool_fixture_main"],
     copts = [
         "-default-isolation",
         "MainActor",
@@ -587,6 +631,7 @@ sh_test(
     ],
     data = [
         "build.sh",
+        ":tool_fixture",
         ":unit_tests_bin",
     ] + glob([
         "Resources/**",
@@ -594,6 +639,8 @@ sh_test(
         "Tests/**",
         "Tools/**",
     ]),
+    # Where ToolProcessTests finds the tool it starts, below the runfiles.
+    env = {"VITRUVIAN_TOOL_FIXTURE": "$(rootpath :tool_fixture)"},
     # The tests' UserDefaults suites land in the real ~/Library/Preferences;
     # the sandbox would block sweeping them afterwards.
     tags = [
