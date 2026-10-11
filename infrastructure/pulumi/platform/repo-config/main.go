@@ -50,6 +50,7 @@ import (
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/cicd_webhook"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/copybara_sync"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/secrets"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/site_domain"
 )
 
 func main() {
@@ -478,6 +479,13 @@ func main() {
 
 		// GitHub Actions run/job events -> the CI collector (cicd-telemetry).
 		if err := cicd_webhook.Manage(ctx); err != nil {
+			return err
+		}
+
+		// The vitruviansoftware.dev website's custom domain: two Cloudflare
+		// records and the mirror repo's Pages setting. Dormant until
+		// SITE_DOMAIN_MANAGED=true; see internal/site_domain.
+		if err := site_domain.Manage(ctx); err != nil {
 			return err
 		}
 

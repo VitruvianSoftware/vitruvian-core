@@ -445,9 +445,13 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
     records**. The target is another GitHub account's Pages hostname; that works because GitHub routes
     by the custom domain, not by the CNAME target. The apex CNAME, the
     `_github-pages-challenge-VitruvianSoftware` TXT record and the Pages setting were created by hand,
-    before this repo had Pulumi, and **no Pulumi program declares them**. If one is lost, recreate it
-    by hand (`devx sites init` / `verify` for a subdomain; the apex CNAME in the Cloudflare
-    dashboard), not by re-running an apply.
+    before this repo had Pulumi. `repo-config` can now manage them (`internal/site_domain`, switched on
+    by the `SITE_DOMAIN_MANAGED` repo variable; `gh variable get SITE_DOMAIN_MANAGED -R
+    VitruvianSoftware/vitruvian-core`). While it is not `true` they are still hand-made and a lost one
+    is recreated by hand (`devx sites init` / `verify` for a subdomain; the apex CNAME in the
+    Cloudflare dashboard). When it is `true` they are protected, and are changed through
+    `repo-config`, not the dashboard. The zone's other writers are listed in
+    `docs/engineering/domain-zone-conventions.md`.
 
 #### Variant: one-way with PR-import
 

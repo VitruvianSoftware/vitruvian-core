@@ -3,6 +3,7 @@ module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-co
 go 1.26.6
 
 require (
+	github.com/pulumi/pulumi-cloudflare/sdk/v5 v5.49.1
 	github.com/pulumi/pulumi-github/sdk/v6 v6.15.0
 	github.com/pulumi/pulumi/sdk/v3 v3.259.0
 )
