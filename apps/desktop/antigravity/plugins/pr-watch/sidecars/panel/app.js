@@ -115,6 +115,7 @@ function card(watch) {
   };
   const toggle = el("input", {
     type: "checkbox",
+    "data-focus": `autofix:${watch.key}`,
     onchange: (event) =>
       act("/api/autofix", { key: watch.key, enabled: event.target.checked }),
   });
@@ -123,6 +124,7 @@ function card(watch) {
 
   const merge = el("input", {
     type: "checkbox",
+    "data-focus": `automerge:${watch.key}`,
     onchange: (event) =>
       act("/api/automerge", { key: watch.key, enabled: event.target.checked }),
   });
@@ -131,6 +133,7 @@ function card(watch) {
 
   const comments = el("input", {
     type: "checkbox",
+    "data-focus": `comments:${watch.key}`,
     onchange: (event) =>
       act("/api/comments", { key: watch.key, enabled: event.target.checked }),
   });
@@ -220,6 +223,7 @@ function card(watch) {
         {
           type: "button",
           class: "secondary",
+          "data-focus": `unwatch:${watch.key}`,
           onclick: () => act("/api/unwatch", { key: watch.key }),
         },
         "Stop watching",
@@ -232,10 +236,19 @@ function render(state) {
   const watches = [...state.watches].sort((a, b) =>
     a.closed === b.closed ? b.addedAt - a.addedAt : a.closed ? 1 : -1,
   );
-  // Leave the rows alone while one of their controls has focus, so a redraw
-  // never takes a checkbox out from under the keyboard.
-  if (!$("list").contains(document.activeElement))
-    $("list").replaceChildren(...watches.map(card));
+  // The rows are rebuilt on every redraw. Put keyboard focus back on the
+  // control that had it, so a redraw never takes a checkbox out from under
+  // the keyboard and never has to be skipped.
+  const list = $("list");
+  const focused = list.contains(document.activeElement)
+    ? document.activeElement.dataset.focus
+    : undefined;
+  list.replaceChildren(...watches.map(card));
+  if (focused) {
+    for (const control of list.querySelectorAll("[data-focus]")) {
+      if (control.dataset.focus === focused) control.focus();
+    }
+  }
   $("empty").hidden = watches.length > 0;
   const open = watches.filter((w) => !w.closed).length;
   const pace = state.pace;
