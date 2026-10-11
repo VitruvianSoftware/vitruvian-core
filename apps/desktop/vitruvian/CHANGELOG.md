@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.38.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.38.0...vitruvian-v3.38.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **vitruvian:** a DMG whose volume already ejected is not a failed release ([#3067](https://github.com/VitruvianSoftware/vitruvian-core/issues/3067)) ([b09cbc0](https://github.com/VitruvianSoftware/vitruvian-core/commit/b09cbc05431f863c93c35fe0b74caa63a00eab40))
+
 ## [3.38.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.37.2...vitruvian-v3.38.0) (2026-10-11)
 
 
