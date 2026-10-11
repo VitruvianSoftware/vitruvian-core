@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" width="100%" height="auto" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; border-radius: 6px;">
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .host-panel { fill: #1c1313; stroke: #542521; stroke-width: 1.5; rx: 6px; }
+      .sandbox-panel { fill: #111e28; stroke: #2a5475; stroke-width: 1.5; rx: 6px; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; line-height: 1.4; }
+      .pill-danger { fill: #2d1313; stroke: #61221d; stroke-width: 1; rx: 3px; }
+      .pill-safe { fill: #10241b; stroke: #215c3d; stroke-width: 1; rx: 3px; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .err-text { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .accent-blue { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .flow-arrow { stroke: #3f6080; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="ar-hermetic" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <rect x="20" y="20" width="920" height="50" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="36" y="42" class="title">Hermetic Sandboxing &amp; Deterministic Build Substrate</text>
+  <text x="36" y="60" class="subtitle">Why AI Agents Require Strict Build Sandboxes Over Host-Level Compilers and System Packages</text>
+
+  <!-- Left: The Host Environment (Fragile & Polluted) -->
+  <g transform="translate(20, 85)">
+    <rect width="360" height="345" class="host-panel" />
+    <text x="24" y="32" class="box-head" fill="#d2907b">UNSANDBOXED HOST POLLUTION</text>
+
+    <text x="24" y="58" class="box-body">Fragile ecosystem dependencies:</text>
+    <rect x="20" y="66" width="320" height="96" class="pill-danger" />
+    <text x="32" y="86" class="err-text">✗ Global npm / pip packages diverge per machine</text>
+    <text x="32" y="104" class="err-text">✗ Agents leave rogue background processes</text>
+    <text x="32" y="122" class="err-text">✗ Concurrent agents corrupt shared build caches</text>
+    <text x="32" y="140" class="err-text">✗ "Works on my machine" failures in CI pipeline</text>
+
+    <text x="24" y="184" class="box-body"><tspan fill="#e7e4dd">Consequences for Agent Autonomy:</tspan></text>
+    <text x="24" y="204" class="box-body">• Agent changes pass locally but fail in merge queue</text>
+    <text x="24" y="222" class="box-body">• Undeclared file dependencies leak silently</text>
+    <text x="24" y="240" class="box-body">• Unrestricted network calls make tests non-repeatable</text>
+    <text x="24" y="258" class="box-body">• Model spends wasted iterations debugging environment</text>
+
+    <rect x="20" y="280" width="320" height="50" fill="#2d1313" stroke="#61221d" rx="4" />
+    <text x="180" y="302" class="err-text" text-anchor="middle" style="font-weight:600;">HIGH ENTROPY / FLAKY RUNS</text>
+    <text x="180" y="318" fill="#d2907b" text-anchor="middle" style="font-size:10px;">Agents cannot trust test results</text>
+  </g>
+
+  <!-- Center Arrow -->
+  <path d="M 385 255 L 425 255" class="flow-arrow" marker-end="url(#ar-hermetic)" />
+
+  <!-- Right: Bazel Hermetic Sandboxing -->
+  <g transform="translate(430, 85)">
+    <rect width="510" height="345" class="sandbox-panel" />
+    <text x="24" y="32" class="box-head" fill="#7fbf9a">HERMETIC BAZEL SUBSTRATE (vitruvian-core)</text>
+
+    <!-- Top feature grid -->
+    <g transform="translate(20, 50)">
+      <rect width="225" height="110" fill="#0d1822" stroke="#1f3b52" rx="4" />
+      <text x="16" y="24" class="accent-blue">PINNED TOOLCHAINS</text>
+      <text x="16" y="44" class="box-body">• Go 1.26 hermetic SDK</text>
+      <text x="16" y="62" class="box-body">• Node.js 24 / pnpm pinned</text>
+      <text x="16" y="80" class="box-body">• Python 3.11 isolated venv</text>
+      <text x="16" y="98" class="box-body">• Zero host dependency</text>
+
+      <rect x="245" width="225" height="110" fill="#0d1822" stroke="#1f3b52" rx="4" />
+      <text x="261" y="24" class="accent-blue">STRICT SANDBOXING</text>
+      <text x="261" y="44" class="box-body">• Undeclared files BLOCKED</text>
+      <text x="261" y="62" class="box-body">• Network access BLOCKED</text>
+      <text x="261" y="80" class="box-body">• Ephemeral test execution</text>
+      <text x="261" y="98" class="box-body">• Isolated tmp &amp; process tree</text>
+    </g>
+
+    <!-- Middle: Gazelle AST Maintenance -->
+    <rect x="20" y="172" width="470" height="88" class="pill-safe" />
+    <text x="32" y="194" class="ok-text" style="font-weight:600;">GAZELLE AST CODE GRAPH MAINTENANCE</text>
+    <text x="32" y="214" class="box-body">• Agents don't hand-write BUILD files: <tspan fill="#e7e4dd">bazel run //:gazelle</tspan></text>
+    <text x="32" y="232" class="box-body">• Parses Go AST and package imports to generate precise BUILD targets</text>
+    <text x="32" y="250" class="box-body">• One-Version-Rule enforces identical library versions across repo</text>
+
+    <!-- Bottom: Invariant Guarantee -->
+    <rect x="20" y="272" width="470" height="58" fill="#0c2419" stroke="#1b5c3b" rx="4" />
+    <text x="255" y="295" class="ok-text" text-anchor="middle" style="font-weight:600; font-size:12px;">MATHEMATICAL DETERMINISM</text>
+    <text x="255" y="315" fill="#a4e4be" text-anchor="middle" style="font-size:11px;">Agent Workstation Output ≡ CI Worker Output ≡ Merge Queue Outcome</text>
+  </g>
+</svg>

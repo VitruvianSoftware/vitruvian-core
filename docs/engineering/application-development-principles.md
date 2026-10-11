@@ -291,14 +291,14 @@ Pick the category that matches the artifact you are shipping. Each section is se
 
 | Aspect | Standard |
 |---|---|
-| **Tech stack & build** | pnpm/webpack (extension) or Swift/`rules_apple` (native macOS). **Not bazel-built for production** — Bazel runs the JS `jest_test` (and *compile-checks* the Swift app, the sole macOS CI leg); the shippable bundle/DMG comes from a publish path. |
-| **Local dev** | Load the extension from its built `dist/`; run the native app from Bazel (`bazel build --config=macos-app //<app>/macos:...`). |
-| **Hosting & runtime** | The user's browser / Mac. No server. |
-| **Deploy / CI** | **(target):** the documented distribution (extension store, notarized DMG, Gemini extension) needs a real CI publish/notarize workflow — today distribution is README-documented but not codified. Store publication (e.g. Chrome Web Store) is an explicit, gated step. |
-| **Environments & promotion** | Use **artifact release channels** (alpha/beta/stable) — this is a *distribution train*, orthogonal to server environments. Do not conflate it with the SaaS dev→prod ladder. |
-| **Secrets & config** | Client-side config only; backend secrets stay in the backend. |
+| **Tech stack & build** | pnpm/webpack (browser extension) or Swift/`rules_apple` / SwiftPM (native macOS desktop apps in `apps/desktop/`). Universal binaries (`arm64` + `x86_64`) compiled via Bazel (`--config=macos-app`) or SwiftPM (`--arch arm64 --arch x86_64`). |
+| **Local dev** | Load the extension from its built `dist/`; run native apps via Bazel or SwiftPM (`swift run` or `bazel build --config=macos-app //<app>/...`). Packaging dry-run locally via `bazel run //tools/desktop-package:package-desktop -- --app-path ... --dry-run`. |
+| **Hosting & runtime** | The user's browser / Mac. No server runtime. |
+| **Deploy / CI** | Automated packaging via `//tools/desktop-package:package-desktop`. All native desktop apps produce the standardized **6-point distribution contract**: (1) Universal DMG (`<App>-<ver>-universal.dmg`), (2) Apple Silicon DMG (`<App>-<ver>-arm64.dmg`), (3) Intel x86_64 DMG (`<App>-<ver>-x86_64.dmg`), (4) Universal ZIP (`<App>-<ver>-universal.zip`), (5) Homebrew Cask in `VitruvianSoftware/homebrew-tap` (`Casks/<app>.rb`), and (6) Downloads catalog entry in `apps/web/vitruviansoftware-dev/_data/downloads.yml` via `//tools/sync-downloads`. Automated `lipo` thinning, Developer ID codesigning with deep verification, Apple Notary Service API notarization with stapling, and GitHub Release asset publishing. Store publication (e.g. Chrome Web Store) remains an explicit, gated step. |
+| **Environments & promotion** | Use **artifact release channels** (alpha/beta/stable) — this is a *distribution train*, orthogonal to server environments. Rolling beta releases update on push to `main`; production releases promote via release-please GitHub Release tags. |
+| **Secrets & config** | Client-side config only; backend secrets stay in the backend. Signing certificates (`SIGNING_CERT_P12`) and Apple Notary credentials (`NOTARY_API_KEY_P8`) injected via pipeline secrets into dedicated macOS runners (`runs-on: xcode-27`). |
 | **Observability** | App-appropriate client logging; a lightweight Playwright smoke for the critical render+auth path **(target)**. |
-| **Example apps** | `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox), `apps/desktop/nexus-agent/macos` (Swift menu-bar app). |
+| **Example apps** | `apps/desktop/home-speaker` (menu bar speech broadcaster), `apps/desktop/vitruvian` (agent control hub), `apps/desktop/nexus-agent/macos` (Swift menu bar bridge), `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox). |
 
 ---
 
