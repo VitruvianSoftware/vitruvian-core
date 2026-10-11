@@ -272,3 +272,47 @@ Fedora Silverblue uses an immutable `/usr` filesystem managed by `rpm-ostree`. F
   kubectl -n longhorn-system get replicas -o wide
   ```
   Allow Longhorn 3-5 minutes to rebuild replicas across the newly restored node.
+
+---
+
+## 6. October 2026 Freeze Incident & Remediation
+
+### Root Cause & Symptoms
+Following the BIOS update to version `0067` on October 6, `intel_idle.max_cstate=1` was added to kernel arguments. The host subsequently hard-froze on October 9 at ~14:44 PDT and October 10 at ~14:16 PDT:
+- Both freezes left the host completely unreachable, required a double-power-cycle to complete POST, and neither watchdog successfully recovered the system to an OS booted state.
+- In addition, `intel_idle.max_cstate=1` was forcing CPU cores into continuous `POLL` spinning at idle, keeping temperatures elevated at 65–78°C.
+
+### Completed Remediation Steps on Host (2026-10-11)
+
+1. **Reverted `intel_idle.max_cstate=1`**:
+   - Removed from `rpm-ostree` kernel arguments:
+     ```bash
+     sudo rpm-ostree kargs --delete-if-present=intel_idle.max_cstate=1
+     ```
+   - An ostree deployment has been staged and committed, queued for activation on the next reboot. This restores normal core C-states and normal idle temperatures.
+
+2. **Configured Kernel Lockup Panics**:
+   - Added `/etc/sysctl.d/99-panic-lockup.conf`:
+     ```ini
+     kernel.hardlockup_panic = 1
+     kernel.softlockup_panic = 1
+     kernel.panic_on_io_nmi = 1
+     kernel.panic = 10
+     ```
+   - Applied immediately via `sudo sysctl -p /etc/sysctl.d/99-panic-lockup.conf`. Future soft/hard lockups or IO NMIs will now dump panic diagnostics and trigger a clean 10-second automatic reboot instead of wedging silently.
+
+3. **Resolved Watchdog Contention**:
+   - Identified dual-watchdog race: `/dev/watchdog0` (`intel_oc_wdt`, used by systemd) vs `/dev/watchdog1` (`wdat_wdt`, used by `fedora-health-watchdog.py`).
+   - Created `/etc/modprobe.d/blacklist-intel_oc_wdt.conf` with `blacklist intel_oc_wdt` to eliminate driver conflict and known Intel OC watchdog bugs on Alder Lake.
+   - Disabled `fedora-health-watchdog.service` for future boots:
+     ```bash
+     sudo systemctl disable fedora-health-watchdog.service
+     ```
+     allowing systemd to cleanly fall back to ACPI WDAT (`wdat_wdt`).
+   - Hardened `/usr/local/bin/fedora-health-watchdog.py` with multi-device fallback and updated service unit to `Restart=on-failure`.
+
+### Physical / BIOS Checklist (Next Maintenance Window)
+- **Fast Boot**: Disable Fast Boot in BIOS (`Boot > Fast Boot`). Fast Boot can cause POST failure following ungraceful freezes or watchdog resets, requiring a double power cycle.
+- **Primary Display**: Set to IGD (Intel Integrated Graphics) in BIOS (`Devices > Video > Primary Display`) so headless boot with `nomodeset` does not stall waiting for display init on the dGPU (RTX 2060).
+- **NIC Fallback**: If network lockups recur on the Aquantia AQC113C (`enp110s0`, `atlantic`), move connection to the onboard Intel I225-LM 2.5GbE NIC (`enp109s0`, `igc`).
+

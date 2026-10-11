@@ -2,15 +2,24 @@
 
 |              |                                                                              |
 | ------------ | ---------------------------------------------------------------------------- |
-| **Status**   | ✅ Service restored (manually); ✅ **self-heal P0s (placement + storage) shipped + applied 2026-06-21** (#194/#196/#197); ✅ **Root cause resolved & BIOS upgraded 2026-10-06** (`intel_idle.max_cstate=1` + BIOS `0067` + out-of-band power cycle automation) |
+| **Status**   | ✅ Service restored (manually); ✅ **self-heal P0s (placement + storage) shipped + applied 2026-06-21** (#194/#196/#197); ✅ **BIOS upgraded to 0067 2026-10-06**; ✅ **C-state polling reverted, kernel lockup panics & ACPI WDAT watchdog deconfliction 2026-10-11** |
 | **Severity** | SEV-1 — main `cnpg-cluster` Postgres DB fully down ~43 min + broad platform disruption (homelab, no external users) |
 | **Detected** | 2026-06-21 ~04:01 UTC (during the [Prometheus WAL incident](2026-06-13-prometheus-wal-corruption.md) work) |
 | **Restored** | 2026-06-21 ~05:00 UTC (manual force-deletes + physical power-cycle + iSCSI re-layer) |
 | **Components** | node `fedora`; `cnpg-cluster` (main DB), prometheus, alertmanager, longhorn-manager, argocd application-controller, tempo; Longhorn |
-| **Recurrence** | fedora freezes **every few days** (boots ended Jun 13 / 15 / 20 / Oct 06) — resolved by capping package C-states at C1 |
+| **Recurrence** | fedora freezes **every few days** (boots ended Jun 13 / 15 / 20 / Oct 06 / Oct 09 / Oct 10) — remediated Oct 11 with C-state reversion, lockup panics, and watchdog deconfliction |
 | **Related**  | [2026-06-13-prometheus-wal-corruption.md](2026-06-13-prometheus-wal-corruption.md) |
 
 > Living document. This incident is about **resilience**: fedora goes offline repeatedly, so the goal is making the platform **self-heal onto working nodes** instead of requiring manual surgery + a physical power-cycle.
+
+## Resolution / update — 2026-10-11 (Post-0067 Freeze Remediation, Watchdog Deconfliction & C-State Reversion)
+
+Following the BIOS 0067 upgrade on October 6, hard freezes recurred on October 9 (~14:44 PDT) and October 10 (~14:16 PDT). Remediation completed on 2026-10-11:
+
+1. **Reverted `intel_idle.max_cstate=1`**: Capping at C1 was forcing continuous `POLL` spinning at idle, keeping temperatures elevated at 65–78°C. Removed from `rpm-ostree kargs` (`sudo rpm-ostree kargs --delete-if-present=intel_idle.max_cstate=1`), restoring standard low-power C-states on next reboot.
+2. **Configured Kernel Lockup Panics**: Deployed `/etc/sysctl.d/99-panic-lockup.conf` (`hardlockup_panic = 1`, `softlockup_panic = 1`, `panic_on_io_nmi = 1`, `panic = 10`) and applied via `sysctl -p`. Future lockups dump trace diagnostics and trigger an automatic 10-second reboot rather than wedging silently.
+3. **Deconflicted Watchdog Drivers**: Identified dual-watchdog race between `/dev/watchdog0` (`intel_oc_wdt`) and `/dev/watchdog1` (`wdat_wdt`). Blacklisted `intel_oc_wdt` in `/etc/modprobe.d/blacklist-intel_oc_wdt.conf` and disabled `fedora-health-watchdog.service` so systemd cleanly manages the hardware ACPI WDAT watchdog.
+4. **Physical Maintenance Checklist Prepared**: Documented in canonical runbook [`docs/operations/fedora-node-recovery-runbook.md`](../fedora-node-recovery-runbook.md) (Fast Boot disablement, primary display set to IGD, and secondary Intel I225-LM NIC fallback).
 
 ## Resolution / update — 2026-10-06 (Root Cause Fix & BIOS Update)
 
