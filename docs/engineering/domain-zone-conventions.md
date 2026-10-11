@@ -99,6 +99,28 @@ app on a zone that already had an owner, that is four TXT records. Never delete
 one: Google re-checks DNS periodically, so removing a token revokes that
 principal's ownership and the next deploy fails.
 
+## Who writes to `vitruviansoftware.dev`
+
+Read from the Cloudflare API on 2026-10-11 (34 records). The zone has **several
+writers**, which is why no single stack owns it and why a stack that declares
+records here must declare named records, never "the zone".
+
+| Records | Written by |
+| --- | --- |
+| apex CNAME, and the `_github-pages-challenge-vitruviansoftware` TXT | `repo-config`, `internal/site_domain` (when `SITE_DOMAIN_MANAGED` is on; hand-made before that) |
+| `tabula`, `tabula.dev`, `tabula.staging`, `tabula-api`, `tabula-api.dev`, `tabula-api.staging` | the tabula Pulumi stacks (`apps/suites/tabula/infra`) |
+| three apex `google-site-verification` TXT, marked "do not delete" | `tools/ci/ensure-site-verification.sh` |
+| `backstage`, `storybook` (with their `heritage=external-dns` ownership TXT) | external-dns in the cluster |
+| 5 MX, SPF, DKIM, `mail`, `calendar`, `drive`, `groups`, the other `google-site-verification` TXT | Google Workspace, by hand |
+| `devx` | `devx sites init`, by hand |
+| `adk-agents`, and `_github-pages-challenge-bluecentre` | another GitHub account's Pages, by hand |
+| `opensource` (Vercel), `_tailscale-challenge`, `sandbox` TXT | by hand |
+
+The apex is **one CNAME**, `vitruviansoftware.dev` to `bluecentre.github.io`,
+DNS-only. Cloudflare flattens it, so resolvers see GitHub's eight Pages
+addresses; the zone holds no A or AAAA records. The target is another GitHub
+account's Pages hostname, which works because GitHub routes by the custom domain.
+
 ## Guardrails
 
 Two automated checks enforce parts of this, both added after the failures they

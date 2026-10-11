@@ -72,6 +72,32 @@ pulumi config set --path statusCheckContexts[0] "build"
 pulumi config set --path statusCheckContexts[1] "test"
 ```
 
+### Website custom domain (`SITE_DOMAIN_MANAGED`)
+
+`internal/site_domain` declares how the vitruviansoftware.dev website is
+published on its **root** domain: two Cloudflare records (the apex CNAME and
+this organisation's GitHub Pages verification TXT) and the Pages setting of the
+`site-vitruviansoftware-dev` mirror repo. It owns nothing else in the zone, which
+also holds mail, identity and other tools' records (see
+[`docs/engineering/domain-zone-conventions.md`](../../../../docs/engineering/domain-zone-conventions.md)).
+
+| Input | Kind | What it does |
+|---|---|---|
+| `SITE_DOMAIN_MANAGED` | repo **variable** | The switch. Anything other than `true` declares nothing. |
+| `DNS_CLOUDFLARE_API_TOKEN` | repo **secret** | Passed to the job as `CLOUDFLARE_API_TOKEN`. DNS:Edit and Zone:Read on the one zone. |
+
+All three resources already exist, so each is **imported** and **protected**.
+The first apply with the switch on shows 3 imports and 2 in-place updates that
+change nothing real (a client-side `allowOverwrite` flag, and `content` set to
+the value already live). It must show no create, replace or delete.
+
+**Once on, leave it on.** An undeclared resource is deleted; protect turns that
+into a failed run, not a deleted record.
+
+To turn it on: store the token (`docs/operations/key-rotation.md`), run a
+`workflow_dispatch` preview with `SITE_DOMAIN_MANAGED=true` and read it, then
+set the variable and apply.
+
 ### Tabula deploy environments
 
 This program also manages the GitHub Environments the generated

@@ -145,6 +145,14 @@ jobs:
                   # shared sync App creds, injected from pipeline secrets.
                   SYNC_APP_ID: ${{ secrets.SYNC_APP_ID }}
                   SYNC_APP_PRIVATE_KEY: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+                  # The website's custom domain (internal/site_domain); dormant
+                  # unless the SITE_DOMAIN_MANAGED variable is "true".
+                  SITE_DOMAIN_MANAGED: ${{ vars.SITE_DOMAIN_MANAGED }}
+                  # A preview that does not hold the real token (Dependabot, forks)
+                  # still has to CONFIGURE the Cloudflare provider to plan the
+                  # records already in state. A dry run with no refresh makes no
+                  # Cloudflare call, so a non-secret placeholder is safe.
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.DNS_CLOUDFLARE_API_TOKEN || 'preview-only-not-a-real-cloudflare-token' }}
                   # CI telemetry webhook secret (cicd_webhook), from
                   # //tools/gitops:rotate-github-otel-webhook-secret. REQUIRED:
                   # without it the run fails rather than deleting the webhook.

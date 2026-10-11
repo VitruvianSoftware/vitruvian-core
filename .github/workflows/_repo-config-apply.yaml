@@ -106,6 +106,17 @@ jobs:
                   # shared sync App creds, injected from pipeline secrets.
                   SYNC_APP_ID: ${{ secrets.SYNC_APP_ID }}
                   SYNC_APP_PRIVATE_KEY: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+                  # The vitruviansoftware.dev website's custom domain
+                  # (internal/site_domain): two Cloudflare records and the
+                  # mirror repo's Pages setting. DORMANT unless the repo variable
+                  # SITE_DOMAIN_MANAGED is "true". Once on it must stay on: an
+                  # undeclared resource is deleted, and protect makes that a
+                  # failed run instead.
+                  SITE_DOMAIN_MANAGED: ${{ vars.SITE_DOMAIN_MANAGED }}
+                  # Zone-scoped DNS:Edit token (Bitwarden item
+                  # vitruvian-core/cloudflare-dns-token). Distinct secret name on
+                  # purpose, so no other workflow picks it up by accident.
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.DNS_CLOUDFLARE_API_TOKEN }}
                   # CI telemetry webhook secret (cicd_webhook), from
                   # //tools/gitops:rotate-github-otel-webhook-secret. REQUIRED:
                   # without it the run fails rather than deleting the webhook.
