@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "GH Watch",
+  "description": "Polls GitHub for the pull requests you are watching and wakes their conversation on a new CI failure.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "GH Watch",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "GH Watch"
+      }
+    ]
+  }
+}
