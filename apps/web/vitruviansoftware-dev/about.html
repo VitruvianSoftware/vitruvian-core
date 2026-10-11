@@ -66,6 +66,46 @@ description: >-
   </div>
 </section>
 
+{%- assign team = site.data.team -%}
+<section class="section" id="team">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Leadership and team</span>
+      <h2>One human. Ten specialists. Zero standups.</h2>
+      <p>Most companies have a team page of people who look pleased to be there. Ours has one person, and ten AI agents who do not blink.</p>
+    </div>
+
+    <article class="plate team-founder">
+      <figure class="team-photo">
+        <img src="{{ team.founder.photo | relative_url }}" alt="Portrait of {{ team.founder.name }}, in a painted style" width="480" height="480" loading="lazy">
+      </figure>
+      <div>
+        <span class="team-title">{{ team.founder.title }}</span>
+        <h3>{{ team.founder.name }}</h3>
+        <p>{{ team.founder.does }}</p>
+        <p class="team-quirk">{{ team.founder.quirk }}</p>
+        <div class="card-links">
+          <a class="text-link" href="{{ team.founder.github }}">GitHub</a>
+        </div>
+      </div>
+    </article>
+
+    <div class="team-grid mt-6">
+      {%- for agent in team.agents -%}
+      <article class="plate plate-live team-card">
+        {%- include team-portrait.html glyph=agent.glyph name=agent.name -%}
+        <span class="team-title">{{ agent.title }}</span>
+        <h3><a href="https://github.com/apps/vitruvian-{{ agent.name | downcase }}-agent">{{ agent.name }}</a></h3>
+        <p>{{ agent.does }}</p>
+        <p class="team-quirk">{{ agent.quirk }}</p>
+      </article>
+      {%- endfor -%}
+    </div>
+
+    <p class="muted team-note">The titles are a joke. The rest is not: each agent has its own GitHub identity, opens its own pull requests and has its work reviewed before it merges, the same as anyone else here. <a class="text-link" href="{{ '/engineering/' | relative_url }}">How that works</a></p>
+  </div>
+</section>
+
 <section class="section">
   <div class="container">
     <div class="plate band">

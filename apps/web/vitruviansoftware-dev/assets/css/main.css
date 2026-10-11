@@ -1649,6 +1649,119 @@ pre {
   }
 }
 
+/* ───────────────────────────── team ─────────────────────────────────────── */
+.team-founder {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.team-photo {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-divider);
+  background: var(--color-bg);
+}
+
+.team-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+/* Ten cards: five, two or one to a row, so no row is ever left with a
+   single card in it. */
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.team-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.team-founder h3,
+.team-card h3 {
+  margin: 0;
+}
+
+.team-founder p,
+.team-card p {
+  margin: 0;
+  color: var(--color-text-dim);
+}
+
+.team-founder p + p,
+.team-founder .card-links {
+  margin-top: var(--space-4);
+}
+
+.team-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent-text);
+}
+
+/* The one-liner under each bio. Sanguine, like a note in the margin. */
+.team-founder .team-quirk,
+.team-card .team-quirk {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  font-size: 13px;
+  font-style: italic;
+  color: var(--color-sanguine-text);
+}
+
+.team-portrait {
+  width: 96px;
+  height: 96px;
+  margin-bottom: var(--space-3);
+}
+
+.team-portrait-frame {
+  stroke: var(--color-accent-text);
+}
+
+.team-portrait-study {
+  stroke: var(--color-sanguine-text);
+  color: var(--color-sanguine-text);
+}
+
+.team-note {
+  margin-top: var(--space-6);
+  max-width: 68ch;
+}
+
+@media (max-width: 1100px) {
+  .team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .team-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-founder {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-photo {
+    max-width: 220px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
