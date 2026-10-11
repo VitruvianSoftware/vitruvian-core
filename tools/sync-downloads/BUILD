@@ -22,7 +22,7 @@
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 
 py_binary(
     name = "sync-downloads",
@@ -35,4 +35,10 @@ py_binary(
 alias(
     name = "sync_downloads",
     actual = ":sync-downloads",
+)
+
+py_test(
+    name = "sync_downloads_test",
+    srcs = ["sync_downloads_test.py"],
+    deps = [":sync-downloads"],
 )
