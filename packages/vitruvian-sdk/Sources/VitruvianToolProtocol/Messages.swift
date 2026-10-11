@@ -1,0 +1,386 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+import Foundation
+
+/// The versions of the protocol this library speaks.
+public enum ProtocolVersion {
+    public static let current = "1"
+    public static let supported = [current]
+}
+
+/// An app service a tool may call. A tool's manifest lists the ones it
+/// calls in `uses`, by these names.
+public enum AppService: String, CaseIterable, Sendable {
+    case notify
+    case open
+    case clipboardRead = "clipboard.read"
+    case clipboardWrite = "clipboard.write"
+    case keystrokes
+    case processes
+    case storage
+}
+
+/// Every message of protocol version 1, by its name on the link.
+/// `protocol/methods.json` is the same table, and a test holds the two
+/// together.
+public enum ToolMethod: String, CaseIterable, Sendable {
+    case initialize
+    case commandRun = "command/run"
+    case preferencesChanged = "preferences/changed"
+    case languageChanged = "language/changed"
+    case shutdown
+    case commandsState = "commands/state"
+    case notifyHUD = "notify/hud"
+    case notifyBeep = "notify/beep"
+    case openURL = "open/url"
+    case clipboardReadText = "clipboard/readText"
+    case clipboardWriteText = "clipboard/writeText"
+    case keystrokesPaste = "keystrokes/paste"
+    case keystrokesPressMenuItem = "keystrokes/pressMenuItem"
+    case processesTerminate = "processes/terminate"
+    case storageGet = "storage/get"
+    case storageSet = "storage/set"
+    case log
+
+    public enum Sender: String, Sendable {
+        case app, tool
+    }
+
+    /// Who sends it.
+    public var sender: Sender {
+        switch self {
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown:
+            return .app
+        case .commandsState, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText, .clipboardWriteText,
+             .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet, .storageSet, .log:
+            return .tool
+        }
+    }
+
+    /// True for a request, which is answered; false for a notice.
+    public var isAnswered: Bool {
+        switch self {
+        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
+            return false
+        case .initialize, .commandRun, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText,
+             .clipboardWriteText, .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet,
+             .storageSet:
+            return true
+        }
+    }
+
+    /// The service the tool's manifest must list in `uses` before the app
+    /// will do this; nil when it needs none.
+    public var service: AppService? {
+        switch self {
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
+            return nil
+        case .notifyHUD, .notifyBeep: return .notify
+        case .openURL: return .open
+        case .clipboardReadText: return .clipboardRead
+        case .clipboardWriteText: return .clipboardWrite
+        case .keystrokesPaste, .keystrokesPressMenuItem: return .keystrokes
+        case .processesTerminate: return .processes
+        case .storageGet, .storageSet: return .storage
+        }
+    }
+}
+
+/// Why a request was refused, as the code of its failure.
+public enum RefusalCode: Int, CaseIterable, Sendable {
+    /// The app: the service is not listed in the tool's `uses`.
+    case notInUses = -32001
+    /// The app: the tool is not installed.
+    case notInstalled = -32002
+    /// The app: Vitruvian lacks a macOS permission the service needs.
+    case permissionMissing = -32003
+    /// The app: not available right now.
+    case unavailable = -32004
+    /// The tool: it would not run the command.
+    case commandRefused = -32010
+
+    /// A few English words for a log.
+    public var message: String {
+        switch self {
+        case .notInUses: return "not listed in uses"
+        case .notInstalled: return "tool not installed"
+        case .permissionMissing: return "Vitruvian lacks a macOS permission"
+        case .unavailable: return "not available right now"
+        case .commandRefused: return "command refused"
+        }
+    }
+
+    /// The failure that says so. `service` goes with `notInUses`, and
+    /// `permission` with `permissionMissing`.
+    public func error(service: AppService? = nil, permission: String? = nil) -> RPCErrorObject {
+        var fields: [String: JSONValue] = [:]
+        if let service { fields["service"] = .string(service.rawValue) }
+        if let permission { fields["permission"] = .string(permission) }
+        return RPCErrorObject(code: rawValue, message: message, data: fields.isEmpty ? nil : .object(fields))
+    }
+
+    /// The refusal a failure carries; nil for any other failure.
+    public init?(_ error: RPCErrorObject) {
+        self.init(rawValue: error.code)
+    }
+}
+
+/// What a refusal names, in a failure's `data`.
+public struct RefusalData: Codable, Equatable, Sendable {
+    /// With `notInUses`: the entry missing from the tool's `uses`.
+    public let service: String?
+    /// With `permissionMissing`: the macOS permission Vitruvian lacks.
+    public let permission: String?
+
+    public init(service: String? = nil, permission: String? = nil) {
+        self.service = service
+        self.permission = permission
+    }
+}
+
+/// Nothing to say: `{}`. The params of a message that carries none, and the
+/// result of a request that was simply done.
+public struct EmptyObject: Codable, Equatable, Sendable {
+    private struct NoKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+    }
+
+    public init() {}
+
+    public init(from decoder: any Decoder) throws {
+        _ = try decoder.container(keyedBy: NoKey.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        _ = encoder.container(keyedBy: NoKey.self)
+    }
+}
+
+// MARK: - What the app sends
+
+public struct InitializeParams: Codable, Equatable, Sendable {
+    /// The protocol versions the app speaks.
+    public let protocolVersions: [String]
+    /// The language the app is in, as a tag such as `en-US`.
+    public let language: String
+    /// The folder the tool may keep its own files in.
+    public let dataFolder: String
+
+    public init(protocolVersions: [String], language: String, dataFolder: String) {
+        self.protocolVersions = protocolVersions
+        self.language = language
+        self.dataFolder = dataFolder
+    }
+}
+
+public struct InitializeResult: Codable, Equatable, Sendable {
+    /// The one version, of those offered, the tool will speak.
+    public let protocolVersion: String
+    public let toolVersion: String
+
+    public init(protocolVersion: String, toolVersion: String) {
+        self.protocolVersion = protocolVersion
+        self.toolVersion = toolVersion
+    }
+}
+
+public struct CommandRunParams: Codable, Equatable, Sendable {
+    /// The command's id as the manifest writes it, without the tool's id.
+    public let command: String
+
+    public init(command: String) {
+        self.command = command
+    }
+}
+
+public struct PreferencesChangedParams: Codable, Equatable, Sendable {
+    /// Each changed preference's id and its new value.
+    public let values: [String: JSONValue]
+
+    public init(values: [String: JSONValue]) {
+        self.values = values
+    }
+}
+
+public struct LanguageChangedParams: Codable, Equatable, Sendable {
+    public let language: String
+
+    public init(language: String) {
+        self.language = language
+    }
+}
+
+// MARK: - What a tool sends
+
+public struct CommandsStateParams: Codable, Equatable, Sendable {
+    /// The ids of the commands that can run now. One not listed cannot.
+    public let runnable: [String]
+
+    public init(runnable: [String]) {
+        self.runnable = runnable
+    }
+}
+
+public struct NotifyHUDParams: Codable, Equatable, Sendable {
+    /// An SF Symbol name.
+    public let icon: String
+    public let message: String
+
+    public init(icon: String, message: String) {
+        self.icon = icon
+        self.message = message
+    }
+}
+
+public struct OpenURLParams: Codable, Equatable, Sendable {
+    public let url: String
+
+    public init(url: String) {
+        self.url = url
+    }
+}
+
+public struct OpenURLResult: Codable, Equatable, Sendable {
+    public let opened: Bool
+
+    public init(opened: Bool) {
+        self.opened = opened
+    }
+}
+
+public struct ClipboardReadTextResult: Codable, Equatable, Sendable {
+    /// Nil when the clipboard holds no text.
+    public let text: String?
+
+    public init(text: String?) {
+        self.text = text
+    }
+}
+
+public struct ClipboardWriteTextParams: Codable, Equatable, Sendable {
+    public let text: String
+
+    public init(text: String) {
+        self.text = text
+    }
+}
+
+public struct ClipboardWriteTextResult: Codable, Equatable, Sendable {
+    public let written: Bool
+
+    public init(written: Bool) {
+        self.written = written
+    }
+}
+
+public struct KeystrokesPasteParams: Codable, Equatable, Sendable {
+    public let text: String
+
+    public init(text: String) {
+        self.text = text
+    }
+}
+
+/// A menu item's key equivalent. Command is always part of it.
+public struct KeyEquivalent: Codable, Equatable, Sendable {
+    /// The names `modifiers` may hold.
+    public enum Modifier: String, CaseIterable, Sendable {
+        case shift, option, control
+    }
+
+    /// The key, as the menu shows it.
+    public let character: String
+    /// The keys held with Command, by `Modifier` name.
+    public let modifiers: [String]
+
+    public init(character: String, modifiers: [String]) {
+        self.character = character
+        self.modifiers = modifiers
+    }
+}
+
+public struct KeystrokesPressMenuItemParams: Codable, Equatable, Sendable {
+    /// The key equivalents that count.
+    public let equivalents: [KeyEquivalent]
+
+    public init(equivalents: [KeyEquivalent]) {
+        self.equivalents = equivalents
+    }
+}
+
+public struct KeystrokesPressMenuItemResult: Codable, Equatable, Sendable {
+    public let pressed: Bool
+
+    public init(pressed: Bool) {
+        self.pressed = pressed
+    }
+}
+
+public struct ProcessesTerminateParams: Codable, Equatable, Sendable {
+    public let pid: Int
+    public let name: String
+    /// True to end it at once; false to ask it to quit.
+    public let force: Bool
+
+    public init(pid: Int, name: String, force: Bool) {
+        self.pid = pid
+        self.name = name
+        self.force = force
+    }
+}
+
+public struct StorageGetParams: Codable, Equatable, Sendable {
+    /// The preference's id, as the manifest writes it.
+    public let key: String
+
+    public init(key: String) {
+        self.key = key
+    }
+}
+
+public struct StorageGetResult: Codable, Equatable, Sendable {
+    public let value: JSONValue
+
+    public init(value: JSONValue) {
+        self.value = value
+    }
+}
+
+public struct StorageSetParams: Codable, Equatable, Sendable {
+    public let key: String
+    public let value: JSONValue
+
+    public init(key: String, value: JSONValue) {
+        self.key = key
+        self.value = value
+    }
+}
+
+public struct LogParams: Codable, Equatable, Sendable {
+    public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
+}
