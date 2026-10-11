@@ -176,6 +176,7 @@ enum TestGroups {
                 ToolRuntimeTests.run(suite)
                 ToolLinkTests.run(suite)
                 ToolProcessTests.run(suite)
+                ExternalToolTests.run(suite)
             }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
