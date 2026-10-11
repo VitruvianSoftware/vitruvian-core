@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.38.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.38.2...vitruvian-v3.38.3) (2026-10-11)
+
+
+### Bug Fixes
+
+* **vitruvian:** name the assertion the software-dimming mutation really trips ([#3088](https://github.com/VitruvianSoftware/vitruvian-core/issues/3088)) ([a304990](https://github.com/VitruvianSoftware/vitruvian-core/commit/a304990757a70257a33dff2b0f48abf1863888f2))
+
 ## [3.38.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.38.1...vitruvian-v3.38.2) (2026-10-11)
 
 
