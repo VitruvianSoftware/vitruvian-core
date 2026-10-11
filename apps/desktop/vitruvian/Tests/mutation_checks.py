@@ -547,6 +547,21 @@ MUTATIONS = [
      "        default:\n            return .wrongKind(key)\n",
      "        default:\n            backing.write(key, value.defaultsValue)\n            return nil\n",
      "is answered invalid params, and saves nothing"),
+    ("an id that names nothing counts as installed", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/Broker/CapabilityBroker.swift",
+     "                    return AppFeature(rawValue: id.rawValue)?.isAvailable ?? false\n",
+     "                    return AppFeature(rawValue: id.rawValue)?.isAvailable ?? true\n",
+     "an id with no dot that names no feature of the app is not installed"),
+    ("the app's copy of a tool is copied over itself", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        for folder in [\"Tools\", \"ToolData\"] where Array(from.prefix(home.count + 1)) == home + [folder] {\n            return .failure(.insideTheApp)\n        }\n",
+     "",
+     "the app's own copy cannot be added over itself, which would lose it"),
+    ("a tool is added over one that is installed", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        guard installed[id] == nil, parts.registry().tool(id) == nil, parts.host().manifest(for: id) == nil else {\n            return .failure(.alreadyInstalled(id))\n        }\n",
+     "",
+     "a tool whose id is installed already is not added a second time, and its copy is left alone"),
 ]
 
 
