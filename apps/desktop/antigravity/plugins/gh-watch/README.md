@@ -102,6 +102,23 @@ ln -s "$(pwd)" ~/.gemini/config/plugins/gh-watch
 Then enable it under Customizations → Installed, and open it from any
 conversation: the ⋮ menu → Extensions → GH Watch.
 
+## Update
+
+An install from GitHub is a git clone in Antigravity's plugin folder, and
+Antigravity has no update command for it. To update, disable the plugin
+under Customizations → Installed, pull, then enable it again:
+
+```bash
+git -C ~/.gemini/config/plugins/gh-watch pull
+```
+
+Disabling first matters: Antigravity only reloads a plugin's background
+process when the plugin is switched off and on. Your watch list and settings
+are kept; they live outside the plugin folder.
+
+If you disable the plugin and later reinstall it, it comes back disabled,
+because Antigravity remembers that choice by folder name. Enable it again.
+
 ## Use
 
 A pull request an agent opens with `gh pr create` is watched without you

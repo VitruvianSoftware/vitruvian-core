@@ -33,6 +33,8 @@ navigation:
     url: /projects/
   - title: Downloads
     url: /downloads/
+  - title: AI Extensions
+    url: /extensions/
   - title: Engineering
     url: /engineering/
   - title: Blog
