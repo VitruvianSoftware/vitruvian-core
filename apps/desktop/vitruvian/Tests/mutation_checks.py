@@ -517,6 +517,21 @@ MUTATIONS = [
      "            stepTimer = clock.after(grace) { [self] in escalate() }\n",
      "            stepTimer = clock.after(grace) { [weak self] in self?.escalate() }\n",
      "a tool nobody holds any more still has its program ended"),
+    ("the host runs a command of a tool that is not installed", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/ToolHost.swift",
+     "              broker.environment.isInstalled(command.tool),\n",
+     "",
+     "nor any command of a tool that is not installed, whatever the tool says"),
+    ("at quit a program that will not leave is left running", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/ToolHost.swift",
+     "            for tool in lingering where !tool.hasEnded { tool.escalate() }\n",
+     "",
+     "one that has not left is asked to end; when that ends it, the host waits no more"),
+    ("an outside tool is handed over under one of the app's own ids", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/ToolHost.swift",
+     "        guard !id.isBundledForm, types[id] == nil, added[id] == nil else { return false }\n",
+     "        guard types[id] == nil, added[id] == nil else { return false }\n",
+     "a tool under an id with no dot, the form of the app's own, is refused"),
 ]
 
 
