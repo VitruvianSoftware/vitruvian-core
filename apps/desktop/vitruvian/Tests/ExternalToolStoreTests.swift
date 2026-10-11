@@ -28,6 +28,7 @@ enum ExternalToolStoreTests {
         updating(suite)
         heldBack(suite)
         unreadableRecords(suite)
+        toldOnce(suite)
         aRealTool(suite)
     }
 
@@ -815,6 +816,55 @@ enum ExternalToolStoreTests {
                          && ToolFolders(root: URL(fileURLWithPath: "/s")).place(for: ToolID("InstalledTools.json")!)?.files.path
                          == "/s/Tools/InstalledTools.json",
                      "the file is beside the tools' folders, not in one: a tool named like it gets its own folder")
+    }
+
+    /// The one sentence a person is shown when a tool stops working, and
+    /// the button that starts it again.
+    static func toldOnce(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let picked = bench.folder(manifest: ExternalToolManifestTests.file(#"{"uses": []}"#))
+        bench.add(picked)
+        bench.registry.run(copy)
+        bench.current.greets()
+        bench.current.ends(1)
+        suite.expect(bench.said == ["exclamationmark.triangle: «\u{00A0}Déploiements\u{00A0}» a cessé de fonctionner"]
+                         && bench.stoppedWorking == [id],
+                     "at a tool's first crash the person is told, in one sentence in the app's language, "
+                         + "by the name the tool gives itself in that language, whatever the tool says it uses")
+        bench.clock.advance(by: 1)
+        bench.registry.run(copy)
+        bench.current.ends(1)
+        suite.expect(bench.said.count == 1 && bench.stoppedWorking == [id],
+                     "a second crash says nothing more: once for each tool, in each run of the app")
+        bench.clock.advance(by: 2)
+        bench.registry.run(copy)
+        bench.current.ends(1)
+        suite.expect(bench.store.listed.first?.standing == .gaveUp && !bench.registry.canRun(copy) && bench.said.count == 1,
+                     "after three crashes within a minute it stays stopped, and Settings is told so")
+
+        let revision = bench.registry.revision
+        bench.store.startAgain(id)
+        suite.expect(bench.store.listed.first?.standing == .resting && bench.registry.canRun(copy)
+                         && bench.registry.revision > revision && bench.registry.run(copy) && bench.runs.count == 4,
+                     "starting it again from Settings lets its commands run, and the next one starts its program")
+        bench.current.greets()
+        bench.store.startAgain(id)
+        suite.expect(bench.store.listed.first?.standing == .running && bench.runs.count == 4,
+                     "starting again a tool that is running does nothing")
+        bench.store.startAgain(ToolID("com.acme.other")!)
+
+        // The same tool, updated in the same run of the app, crashes again.
+        bench.add(picked)
+        bench.registry.run(copy)
+        bench.current.ends(1)
+        suite.expect(bench.said.count == 1, "a tool that was updated is still the same tool: the person was told already")
+
+        let next = bench.relaunched()
+        next.store.restore()
+        next.registry.run(copy)
+        next.current.ends(1)
+        suite.expect(next.said.count == 1, "at the next launch the person is told again, once")
     }
 
     /// The whole path with a real program: the fixture tool, added from a

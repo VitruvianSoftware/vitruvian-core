@@ -78,7 +78,8 @@ package final class ExternalToolStore {
         package var makeTransport: @MainActor (_ program: URL, _ dataFolder: URL) -> any ToolTransport
         /// The language the app is in, as a tag such as `en-US`.
         package var language: @MainActor () -> String
-        /// Told, once for each tool, that it stopped working.
+        /// Told, once for each tool, that it stopped working, after the
+        /// person has been.
         package var stoppedWorking: @MainActor (ToolID) -> Void
         /// Deletes every preference a tool saved.
         package var forgetPreferences: @MainActor (ToolID) -> Void
@@ -103,9 +104,8 @@ package final class ExternalToolStore {
             self.forgetPreferences = forgetPreferences
         }
 
-        /// The app as it is. The sentence that tells the person a tool
-        /// stopped working comes with the screens; until then it is a line
-        /// in the system log.
+        /// The app as it is. That a tool stopped working is also a line
+        /// in the system log, for whoever is making the tool.
         ///
         /// The type is written out, here and on `shared`: the broker's own
         /// `live` asks this store what is installed, and without it the
@@ -150,6 +150,9 @@ package final class ExternalToolStore {
     /// True when the file of records was there and could not be read. It
     /// is set aside, not written over, the first time a record is saved.
     private var recordsUnreadable = false
+    /// The tools the person has been told stopped working, in this run of
+    /// the app.
+    private var told: Set<ToolID> = []
 
     package init(parts: Parts) {
         self.parts = parts
@@ -376,6 +379,31 @@ package final class ExternalToolStore {
         return true
     }
 
+    // MARK: - A tool that stopped working
+
+    /// The symbol beside the sentence that says a tool stopped working.
+    package static let stoppedSymbol = "exclamationmark.triangle"
+
+    /// Tells the person, once for each tool in each run of the app, that a
+    /// tool stopped working: one sentence, in the app's short on-screen
+    /// message, at the tool's first crash. The message is the app's own, so
+    /// it does not depend on what the tool's manifest lists in `uses`.
+    private func tellStopped(_ id: ToolID) {
+        guard told.insert(id).inserted else { return }
+        let tag = parts.language()
+        let name = installed[id]?.tool.name.text(for: tag) ?? installed[id]?.tool.manifest.tool.name ?? id.rawValue
+        let strings = FeatureStrings.externalTools(AppLanguage(rawValue: tag) ?? .enUS)
+        parts.broker().backings.notify.hud(Self.stoppedSymbol, strings.stopped(name))
+        parts.stoppedWorking(id)
+    }
+
+    /// Lets a tool that crashed too often try again, as if it had never
+    /// crashed. For the button in Settings beside a tool that stopped
+    /// working. It does nothing for a tool that has not given up.
+    package func startAgain(_ id: ToolID) {
+        tools[id]?.revive()
+    }
+
     // MARK: - The host, the registry and the file
 
     /// Hands a tool to the host and the registry. False, with nothing
@@ -423,6 +451,7 @@ package final class ExternalToolStore {
 
     private func makeTool(_ entry: Installed) -> ExternalTool {
         let parts = self.parts
+        let told: @MainActor (ToolID) -> Void = { [weak self] in self?.tellStopped($0) }
         let manifest = entry.tool.manifest
         let id = manifest.id
         let program = entry.files.appendingPathComponent(entry.tool.program)
@@ -441,7 +470,7 @@ package final class ExternalToolStore {
             events: .init(
                 // Whoever lists its commands looks again.
                 onChange: { parts.registry().noteAvailabilityChanged() },
-                onStoppedWorking: { parts.stoppedWorking(id) },
+                onStoppedWorking: { told(id) },
                 // A command that did not run beeps, as a built-in one does.
                 onCommandFailed: { parts.broker().backings.notify.beep() }))
     }

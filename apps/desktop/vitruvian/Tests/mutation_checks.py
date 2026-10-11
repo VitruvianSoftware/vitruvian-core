@@ -622,6 +622,11 @@ MUTATIONS = [
      "        if deletingData { parts.forgetPreferences(id) }\n",
      "",
      "removing it with what it saved deletes its data folder and its own preferences, and no other"),
+    ("the person is told at every crash of a tool", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        guard told.insert(id).inserted else { return }\n",
+     "        told.insert(id)\n",
+     "a tool that was updated is still the same tool: the person was told already"),
 ]
 
 
