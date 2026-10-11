@@ -297,12 +297,13 @@ Nothing in the app starts a tool yet, and nothing calls the manifest reader.
   `packages/vitruvian-sdk/Sources/VitruvianToolProtocol`, run
   `bazel run //apps/desktop/vitruvian:pin_tool_protocol` and add a line to the
   log in `UPSTREAM.md`. `tool_protocol_pin_test` fails until you do.
-- What the pin protects, exactly. A change made only in the package does not
-  select this app's pipeline unit by itself: the presubmit planner picks the
-  `vitruvian-sdk` unit and lists `tool_protocol_pin_test` among the affected
-  tests, which the Linux lane runs and which fails. Updating the pin changes
-  this folder, and that is what selects this app's unit and runs its tests.
-  So the app's tests cannot be skipped, but only because the pin fails first.
+- What the pin protects, exactly. For a change made only in the package, the
+  presubmit planner lists `tool_protocol_pin_test` among the affected tests.
+  That test is in this app's pipeline unit, so the unit is selected and the
+  app's tests run; the pin test fails until the pin is updated here.
+  This held only once a comment with a round bracket was taken out of the
+  `pipeline_unit` call in `BUILD`: the planner reads the call up to the first
+  closing bracket. Keep brackets out of that call's comments.
 - A manifest's own rules are in the package (`ToolManifestFile.read`), so
   the command-line tool a tool's author runs applies the same ones. This app
   adds what only it can know, in `Core/Platform/ExternalToolManifest.swift`:

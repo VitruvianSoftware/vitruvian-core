@@ -710,10 +710,9 @@ py_test(
 # which VitruvianCore links. It does two jobs. A change to them must also
 # change this folder, or this app would never release it. And it is the only
 # test here that depends on them and is not `manual`, so it is the only one
-# the presubmit planner lists for a change made only in the package. The
-# planner does not select this app's unit for such a change (checked
-# 2026-10-10): the Linux lane runs this test, it fails, and the new pin is
-# then a change in this folder, which does select the unit.
+# the presubmit planner lists for a change made only in the package. It is in
+# this app's pipeline unit, so the planner then selects the unit and the
+# app's tests run (checked 2026-10-10).
 TOOL_PROTOCOL = ["//packages/vitruvian-sdk:protocol_sources"]
 
 TOOL_PROTOCOL_ARGS = [

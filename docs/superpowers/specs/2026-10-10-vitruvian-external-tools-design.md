@@ -549,7 +549,7 @@ command that was run shows it. Run on macOS 27.0 with Xcode 27 and Swift 6.4.
 | A script that plays the app's side to any tool | Met, for one tool | `bazel test //packages/vitruvian-sdk:conformance_test` passes: the reference tool passes and ten broken copies are each caught. No second tool exists to run it against. |
 | The app reads a manifest, with every rule of section 6 and each refusal | Met, but for one refusal | The app's `platform` suite passes with 60 new checks. `notOfferedHere`, what a newer package meets in an older app, has no test that reaches it through a file. |
 | A person sees no change | Met | Nothing under the app's `Sources/` names the reader but its own file; the app's unit tests and `selftest` pass. Nothing was checked by hand, as there is no screen to check. |
-| A change to the package cannot skip the app's tests | Met, through the pin failing first | With one character changed in the package, `tool_protocol_pin_test` fails. The presubmit planner does not select the app's unit for such a change by itself; the pin test fails on the Linux lane, and the new pin is a change in the app's folder, which does select it. |
+| A change to the package cannot skip the app's tests | Met | With one character changed in the package, `tool_protocol_pin_test` fails, and the presubmit planner selects the app's unit for that change (run locally, not watched on CI). This needed a fix on the way: a bracket in a comment was hiding the app's test list from the planner. |
 | `Package.swift` describes the same package | Partly | `swift build` of the package passes by hand. CI does not build it, and its tests were not run that way. |
 
 None of the five "done when" items of section 1 is met by stage A alone.
