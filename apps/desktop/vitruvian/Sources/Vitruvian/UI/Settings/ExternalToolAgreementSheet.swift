@@ -26,6 +26,17 @@ package struct ToolAgreementContent: Equatable {
     /// agreeing takes a deliberate click.
     package static let defaultChoice: Choice = .cancel
 
+    /// The most rows the two lists may hold, together, and be drawn whole.
+    /// With more they are in a region that scrolls, so that the sheet has
+    /// the same height for a tool with seven rows as for one with the most
+    /// a tool may have, 32 commands and 7 services.
+    package static let rowsDrawnWhole = 6
+    /// The height of that region, in points. The rest of the sheet is at
+    /// most about 575 points with every line of the tool's own words at
+    /// its limit, so the sheet stays under 800: what is left of a 13-inch
+    /// display 900 points high under the menu bar and above the Dock.
+    package static let listsHeight: CGFloat = 200
+
     /// True when a tool with this id is added already, so that agreeing
     /// replaces it.
     package let isUpdate: Bool
@@ -59,6 +70,11 @@ package struct ToolAgreementContent: Equatable {
     package let usesNote: String
     package let agree: String
     package let cancel: String
+
+    /// How many rows the two lists hold together.
+    package var listRows: Int { commands.count + uses.count }
+    /// True when the lists are too long to draw whole, and scroll.
+    package var listsScroll: Bool { listRows > Self.rowsDrawnWhole }
 
     /// `cancel` is the app's existing word for Cancel. `hasSymbol` says
     /// whether this Mac has a symbol of that name.
@@ -165,6 +181,26 @@ package struct ToolAgreementSheet: View {
             header
             if content.isUpdate { update }
             statement
+            // Only the two lists scroll. The header, the statement and the
+            // buttons are outside the region, so they are always in view.
+            if content.listsScroll {
+                ScrollView(.vertical) {
+                    lists.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: ToolAgreementContent.listsHeight)
+            } else if content.listRows > 0 {
+                lists
+            }
+            buttons
+        }
+        .padding(22)
+        .frame(width: 480)
+        .onExitCommand(perform: onCancel)
+    }
+
+    /// What the tool adds and what it says it uses.
+    private var lists: some View {
+        VStack(alignment: .leading, spacing: 16) {
             if !content.commands.isEmpty {
                 list(content.commandsTitle, content.commands, symbol: "command", lines: 2)
             }
@@ -177,11 +213,7 @@ package struct ToolAgreementSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            buttons
         }
-        .padding(22)
-        .frame(width: 480)
-        .onExitCommand(perform: onCancel)
     }
 
     private var header: some View {
@@ -197,16 +229,16 @@ package struct ToolAgreementSheet: View {
                 // The tool's own words, and the folder's name, can be any length.
                 // Each is cut short, so that none can push the statement or the
                 // buttons off the sheet.
-                Text(content.title).font(.title3.bold()).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                Text(content.title).font(.title3.bold()).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 Text(content.byline).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                 if let summary = content.summary {
-                    Text(summary).font(.callout).lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                    Text(summary).font(.callout).lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 }
                 Text(content.from)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                    .lineLimit(3)
+                    .lineLimit(2)
                     .truncationMode(.middle)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(content.ownWords)

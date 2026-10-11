@@ -85,6 +85,30 @@ enum ExternalToolScreensTests {
                      "a tool that says it uses nothing gets the same statement: the list is not what makes it true")
         suite.expect(!silent.exists(silent.support) && silent.store.listed.isEmpty,
                      "and building what the sheet says adds nothing")
+        suite.expect(sheet.listRows == 4 && !sheet.listsScroll && plain.listRows == 0 && !plain.listsScroll,
+                     "the design's example has four rows in its two lists, drawn whole")
+
+        // The most a tool may have: 32 commands, and every service.
+        let full = ExternalToolStoreTests.Bench()
+        defer { full.close() }
+        let commands = ExternalToolManifestTests.list(32) {
+            #"{"id": "c\#($0)", "title": {"en": "Command \#($0)"}, "surfaces": ["commandBar"]}"#
+        }
+        let most = ExternalToolManifestTests.file(#"""
+            {"uses": ["notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage"],
+             "contributes": {"commands": \#(commands)}}
+            """#)
+        guard case .success(let large) = full.store.offer(from: full.folder(manifest: most)) else {
+            suite.expect(false, "a tool with 32 commands and every service is offered")
+            return
+        }
+        let long = content(large)
+        suite.expect(long.commands.count == 32 && long.commands.first == "Command 0" && long.commands.last == "Command 31"
+                         && long.uses.count == 7 && Set(long.uses).count == 7 && long.listRows == 39 && long.listsScroll
+                         && ToolAgreementContent.rowsDrawnWhole == 6 && ToolAgreementContent.listsHeight == 200
+                         && long.headline == sheet.headline && long.agree == sheet.agree,
+                     "a tool with the most a tool may have, 32 commands and 7 services, has 39 rows: "
+                         + "they scroll in a region of a fixed height, and the statement and the buttons are not in it")
     }
 
     /// The sheet for a tool that is added already.
