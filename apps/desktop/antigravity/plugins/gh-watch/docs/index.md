@@ -61,7 +61,7 @@ Merge conflicts and review comments follow the same idea:
 | It still conflicts on the same commit | Up to three reminders, after 30, 60 and 120 minutes |
 | A push leaves the conflict in place | Told again, once GitHub says so on two reads in a row |
 | GitHub has not worked out mergeability yet | Nothing changes |
-| A collaborator or bot leaves a new comment or review | Passed on, quoted |
+| A collaborator or bot leaves a new comment or review | Passed on, quoted, if the pull request's review-comments switch is on (off by default) |
 | A comment from you, or from someone outside the repository | Never passed on |
 | Comments that existed before watching began | Not passed on |
 
@@ -110,7 +110,7 @@ Two things in the panel are about what is waiting on a person, not an agent:
 
 Antigravity runs `hooks/note-pr-create.sh` after every shell command an
 agent runs. For anything but `gh pr create` it does nothing. For that command
-it leaves a note in the watcher's data folder; the watcher looks up the pull
+it leaves a note in a fixed folder (`~/.gemini/antigravity/gh-watch-inbox`); the watcher looks up the pull
 request for the branch in the folder the command ran in, and starts watching
 it for the conversation that ran the command. It never takes over a pull
 request that is already watched. The hook only ever answers `{}`, so it

@@ -20,7 +20,9 @@ case "$payload" in *'gh pr create'*) ;; *) exit 0 ;; esac
 # conversations under other folders, and a note from them would never be read.
 case "$payload" in *'/.gemini/antigravity/'*) ;; *) exit 0 ;; esac
 
-inbox="$HOME/.gemini/antigravity/sidecar_data/gh-watch/panel/data/inbox"
+# A fixed folder, not one inside the plugin's own data folder: that one is
+# named after however the plugin was installed, which this script cannot know.
+inbox="$HOME/.gemini/antigravity/gh-watch-inbox"
 mkdir -p "$inbox" 2>/dev/null || exit 0
 note="$inbox/$(date +%s)-$$.json"
 # Write then rename, so the watcher never reads half a note.

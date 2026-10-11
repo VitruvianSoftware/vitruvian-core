@@ -498,6 +498,8 @@ test("a note from the hook starts a watch for the conversation that opened the P
   assert.equal(watch.conversationId, "conv-9");
   assert.equal(watch.addedBy, "hook");
   assert.equal(watch.autoFix, true);
+  // Other people's review comments are never passed on unless asked for.
+  assert.equal(watch.comments, false);
   assert.deepEqual(world.lookedIn, ["/work/repo"]);
   assert.equal(inbox.list().length, 0);
 });

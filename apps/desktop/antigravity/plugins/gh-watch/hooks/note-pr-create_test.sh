@@ -57,7 +57,7 @@ check "answers {} for gh pr create" "$?"
 check "leaves one note for gh pr create in the desktop app" "$?"
 note="$(find "${SANDBOX}" -name '*.json')"
 case "${note}" in
-*/.gemini/antigravity/sidecar_data/gh-watch/panel/data/inbox/*) inbox_ok=0 ;;
+*/.gemini/antigravity/gh-watch-inbox/*) inbox_ok=0 ;;
 *) inbox_ok=1 ;;
 esac
 check "writes the note into the watcher's inbox" "${inbox_ok}"

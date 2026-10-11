@@ -67,18 +67,40 @@ matters where there is none. Draft pull requests cannot auto-merge.
 
 - Antigravity desktop. Terminal-only `agy` sessions are not covered, because
   only the desktop app runs plugin background processes.
-- The GitHub CLI (`gh`) on your `PATH`, signed in (`gh auth status`).
+- The GitHub CLI (`gh`) on your `PATH`, signed in (`gh auth status`). The
+  plugin reads GitHub as you, with whatever access that login has.
+
+## Platforms
+
+| Platform | Status |
+| --- | --- |
+| macOS | Tested |
+| Linux | Expected to work; not tested |
+| Windows | Not supported yet: the sign-up hook is a shell script, and Antigravity runs hooks through `cmd` there. Watching a pull request by hand from the panel should still work, but is untested |
+
+## What it sends and where
+
+Nothing leaves your machine except the requests `gh` makes to GitHub. The
+watch list, settings and flaky-check memory are files in Antigravity's data
+folder on your machine. There is no telemetry.
 
 ## Install
 
-Link the plugin folder into Antigravity's plugin directory, then enable it
-under Customizations → Installed:
+From GitHub:
+
+```bash
+agy plugin install https://github.com/VitruvianSoftware/gh-watch
+```
+
+Or, from a checkout of this repository, link the plugin folder into
+Antigravity's plugin directory:
 
 ```bash
 ln -s "$(git rev-parse --show-toplevel)/apps/desktop/antigravity/plugins/gh-watch" ~/.gemini/config/plugins/gh-watch
 ```
 
-Open it from any conversation: the ⋮ menu → Extensions → GH Watch.
+Then enable it under Customizations → Installed, and open it from any
+conversation: the ⋮ menu → Extensions → GH Watch.
 
 ## Use
 
@@ -97,7 +119,7 @@ Each watched pull request has four switches:
   hours; if its checks fail, the agent is asked to work out whether the merge
   caused it and to fix it with a new pull request, never by pushing to the
   base branch.
-- **Tell the agent about new review comments.** Only comments from people who
+- **Tell the agent about new review comments.** Off by default. Only comments from people who
   can already push to the repository (owner, member, collaborator) and from
   bots are passed on, never your own and never a stranger's.
 - **Auto-merge on GitHub when ready.**
@@ -110,9 +132,8 @@ Review comments are other people's words placed in front of an agent that can
 change and push code. The plugin limits that in three ways: it only forwards
 comments from collaborators and bots on the repository, it wraps them in
 markers that say they are quoted feedback and not instructions, and it caps
-what it sends at 10 comments of 1,500 characters each. If that is still more
-trust than you want to give, turn the review-comments switch off for that
-pull request.
+what it sends at 10 comments of 1,500 characters each. The switch is off for every
+pull request until you turn it on.
 
 ## Layout
 
@@ -134,7 +155,7 @@ pull request.
 | `sidecars/panel/{index.html,app.js,styles.css}` | The side panel |
 
 The watch list is saved in Antigravity's data folder for the plugin
-(`~/.gemini/antigravity/sidecar_data/gh-watch/panel/data/watches.json`), and
+(`~/.gemini/antigravity/sidecar_data/<plugin folder>/panel/data/watches.json`), and
 the process log is next to it under `logs/sidecar.log`.
 
 ## Moving or renaming the plugin folder

@@ -26,6 +26,7 @@
 // by Antigravity; there is nothing to install.
 
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Response, SidecarApp } from "sidecar_sdk";
@@ -49,6 +50,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR =
   process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR || join(HERE, ".data");
 
+// Where hooks/note-pr-create.sh leaves its notes. It is a fixed folder under
+// Antigravity's data folder, not inside DATA_DIR, because DATA_DIR is named
+// after however the plugin was installed and the hook cannot know that name.
+const INBOX_DIR = join(
+  process.env.ANTIGRAVITY_APP_DATA_DIR ||
+    join(homedir(), ".gemini", "antigravity"),
+  "gh-watch-inbox",
+);
+
 const app = new SidecarApp();
 const store = new Store(join(DATA_DIR, "watches.json"));
 const watcher = new Watcher({
@@ -58,8 +68,7 @@ const watcher = new Watcher({
   fetchQueue,
   fetchCommitChecks,
   resolvePr,
-  // Where hooks/note-pr-create.sh leaves its notes.
-  inbox: new Inbox(join(DATA_DIR, "inbox")),
+  inbox: new Inbox(INBOX_DIR),
   sendMessage: async (conversationId, message, opts) =>
     app.sendMessage(conversationId, message, opts),
 });
@@ -177,7 +186,9 @@ app.api("/api/watch", async (data) => {
     number: snap.number,
     conversationId,
     autoFix: existing?.autoFix ?? true,
-    comments: existing?.comments ?? true,
+    // Off unless asked for: review comments are other people's words put in
+    // front of an agent that can push code.
+    comments: existing?.comments ?? false,
     updates: existing?.updates ?? true,
     addedAt: existing?.addedAt ?? Date.now(),
     closed: false,
