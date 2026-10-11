@@ -1087,6 +1087,23 @@ def release_scripts_have_no_case_twins(repo):
     return problems
 
 
+def dmg_detach_accepts_a_mount_that_is_gone(repo):
+    """Finder can hold the disk image busy, so the first `hdiutil detach` says
+    "Resource busy" and the volume then unmounts on its own. Every later detach
+    fails with "No such file or directory". make-dmg.sh must treat a mount that
+    is gone as detached, and not run a forced detach on it, or a release that
+    packaged fine dies at the last step."""
+    text = repo.read_text("Tools/make-dmg.sh")
+    if not text:
+        return ["Tools/make-dmg.sh is readable for the detach check"]
+    problems = []
+    if text.count('! -d "$MOUNT"') < 1:
+        problems.append("make-dmg.sh checks the mount is gone between detach retries")
+    if '[[ $detached -ne 1 && -d "$MOUNT" ]]' not in text:
+        problems.append("make-dmg.sh forces a detach only while the mount still exists")
+    return problems
+
+
 def build_signs_with_a_stable_identity(repo):
     """An ad-hoc signature changes hash on every build, so macOS orphans
     Accessibility and Screen Recording grants on each rebuild while System
@@ -2602,6 +2619,7 @@ RULES = [
     build_sweeps_its_temp_dirs,
     build_signs_with_a_stable_identity,
     release_scripts_have_no_case_twins,
+    dmg_detach_accepts_a_mount_that_is_gone,
     test_types_do_not_shadow_real_ones,
     test_groups_list_what_they_run,
     names_use_the_apps_identifier,

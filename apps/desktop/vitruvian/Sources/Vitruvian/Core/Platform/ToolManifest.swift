@@ -56,6 +56,17 @@ package struct CapabilityRequest: Equatable, Sendable {
         self.reason = reason
         self.startsWithoutGrant = startsWithoutGrant
     }
+
+    /// A service an outside tool's manifest lists in `uses`. It has no
+    /// reason: nobody is asked to approve an outside tool's services one by
+    /// one, so its manifest gives none. Such a tool is never held back for a
+    /// macOS grant either: it starts, and each call of a capability that
+    /// rides on a grant is refused until the grant is there.
+    package init(usedByOutsideTool capability: Capability) {
+        self.capability = capability
+        self.reason = ""
+        self.startsWithoutGrant = !capability.ridesOn.isEmpty
+    }
 }
 
 /// One preference a tool owns: the key it is saved under today, unchanged,

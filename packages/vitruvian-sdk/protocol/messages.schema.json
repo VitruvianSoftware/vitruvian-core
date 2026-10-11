@@ -1,0 +1,502 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vitruvian tool protocol, version 1: one message",
+  "description": "One line on the link between the app and a tool: a JSON-RPC 2.0 message, in UTF-8, with no line break inside it, at most 1,048,576 bytes long. methods.json lists every message; each message's params and result are a definition below. A field this schema does not name is ignored, which is how a later version adds one.",
+  "type": "object",
+  "required": ["jsonrpc"],
+  "properties": {
+    "jsonrpc": { "description": "Always the text 2.0.", "const": "2.0" }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/notice" },
+    { "$ref": "#/$defs/result" },
+    { "$ref": "#/$defs/failure" }
+  ],
+  "$defs": {
+    "id": {
+      "description": "What ties an answer to its request. A whole number or a string, chosen by whoever sends the request. The app counts up from 1.",
+      "type": ["integer", "string"]
+    },
+    "request": {
+      "description": "A message that is answered. The answer is a result or a failure with the same id.",
+      "type": "object",
+      "required": ["id", "method"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "method": {
+          "description": "Which message this is. One the receiver does not know is answered with failure -32601.",
+          "type": "string"
+        },
+        "params": {
+          "description": "What the message carries. Always an object.",
+          "type": "object"
+        }
+      },
+      "not": {
+        "anyOf": [{ "required": ["result"] }, { "required": ["error"] }]
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "method": { "const": "initialize" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/initializeParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "command/run" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/commandRunParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "notify/hud" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/notifyHUDParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "open/url" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/openURLParams" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "clipboard/writeText" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/clipboardWriteTextParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "keystrokes/paste" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/keystrokesPasteParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "keystrokes/pressMenuItem" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/keystrokesPressMenuItemParams" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "method": { "const": "processes/terminate" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/processesTerminateParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "storage/get" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/storageGetParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "storage/set" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/storageSetParams" } }
+          }
+        }
+      ]
+    },
+    "notice": {
+      "description": "A message that is not answered. It has no id.",
+      "type": "object",
+      "required": ["method"],
+      "properties": {
+        "method": {
+          "description": "Which message this is. One the receiver does not know is ignored.",
+          "type": "string"
+        },
+        "params": {
+          "description": "What the message carries. Always an object.",
+          "type": "object"
+        }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["id"] },
+          { "required": ["result"] },
+          { "required": ["error"] }
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "method": { "const": "preferences/changed" } }
+          },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/preferencesChangedParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "language/changed" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/languageChangedParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "commands/state" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/commandsStateParams" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "log" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/logParams" } }
+          }
+        }
+      ]
+    },
+    "result": {
+      "description": "The answer to a request that was done.",
+      "type": "object",
+      "required": ["id", "result"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "description": "What the request's row in methods.json names. Always an object in version 1."
+        }
+      },
+      "not": {
+        "anyOf": [{ "required": ["method"] }, { "required": ["error"] }]
+      }
+    },
+    "failure": {
+      "description": "The answer to a request that was not done.",
+      "type": "object",
+      "required": ["id", "error"],
+      "properties": {
+        "id": {
+          "description": "The request's id, or null when the request could not be read at all.",
+          "type": ["integer", "string", "null"]
+        },
+        "error": { "$ref": "#/$defs/error" }
+      },
+      "not": {
+        "anyOf": [{ "required": ["method"] }, { "required": ["result"] }]
+      }
+    },
+    "error": {
+      "description": "Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused.",
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "description": "The reason, as a number.",
+          "type": "integer"
+        },
+        "message": {
+          "description": "The reason, in a few English words, for a log. Never shown to the person as it is.",
+          "type": "string"
+        },
+        "data": {
+          "description": "More about the reason. For -32001 and -32003 it is a refusalData."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "code": { "enum": [-32001, -32003] } },
+            "required": ["data"]
+          },
+          "then": {
+            "properties": { "data": { "$ref": "#/$defs/refusalData" } }
+          }
+        }
+      ]
+    },
+    "refusalData": {
+      "description": "What a refusal names.",
+      "type": "object",
+      "properties": {
+        "service": {
+          "description": "For -32001: the entry missing from the tool's uses.",
+          "type": "string"
+        },
+        "permission": {
+          "description": "For -32003: the macOS permission Vitruvian lacks, for example accessibility.",
+          "type": "string"
+        }
+      }
+    },
+    "empty": {
+      "description": "Nothing to say: an object with no fields. It is the result of a request that was simply done.",
+      "type": "object"
+    },
+    "initializeParams": {
+      "description": "The first message. Until it is answered neither side sends anything else.",
+      "type": "object",
+      "required": ["protocolVersions", "language", "dataFolder"],
+      "properties": {
+        "protocolVersions": {
+          "description": "The protocol versions the app speaks.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "language": {
+          "description": "The language the app is in, as a tag such as en-US, fr or pt-BR.",
+          "type": "string"
+        },
+        "dataFolder": {
+          "description": "The folder the tool may keep its own files in. It is also the folder the tool is started in.",
+          "type": "string"
+        }
+      }
+    },
+    "initializeResult": {
+      "description": "The tool's answer to initialize. A tool that picks a version the app did not offer is stopped.",
+      "type": "object",
+      "required": ["protocolVersion", "toolVersion"],
+      "properties": {
+        "protocolVersion": {
+          "description": "The one version, of those offered, the tool will speak.",
+          "type": "string"
+        },
+        "toolVersion": {
+          "description": "The tool's own version.",
+          "type": "string"
+        }
+      }
+    },
+    "commandRunParams": {
+      "description": "Run one of the tool's commands. The answer is empty when it ran, or failure -32010 when the tool would not run it.",
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "description": "The command's id as the manifest writes it, without the tool's id in front.",
+          "type": "string"
+        }
+      }
+    },
+    "preferencesChangedParams": {
+      "description": "Some of the tool's preferences were changed from outside the tool.",
+      "type": "object",
+      "required": ["values"],
+      "properties": {
+        "values": {
+          "description": "Each changed preference's id and its new value.",
+          "type": "object"
+        }
+      }
+    },
+    "languageChangedParams": {
+      "description": "The person changed the app's language.",
+      "type": "object",
+      "required": ["language"],
+      "properties": {
+        "language": {
+          "description": "The new language, as a tag.",
+          "type": "string"
+        }
+      }
+    },
+    "commandsStateParams": {
+      "description": "Which of the tool's commands can run now. The tool sends it whenever that changes; each one replaces the last. Until the first one, all of them can.",
+      "type": "object",
+      "required": ["runnable"],
+      "properties": {
+        "runnable": {
+          "description": "The ids of the commands that can run. A command not listed cannot.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "notifyHUDParams": {
+      "description": "Show the app's short on-screen message.",
+      "type": "object",
+      "required": ["icon", "message"],
+      "properties": {
+        "icon": {
+          "description": "An SF Symbol name, drawn beside the message.",
+          "type": "string"
+        },
+        "message": {
+          "description": "The words, shown as the tool wrote them.",
+          "type": "string"
+        }
+      }
+    },
+    "openURLParams": {
+      "description": "Open a link in the person's default app for it.",
+      "type": "object",
+      "required": ["url"],
+      "properties": { "url": { "description": "The link.", "type": "string" } }
+    },
+    "openURLResult": {
+      "description": "Whether the link was opened.",
+      "type": "object",
+      "required": ["opened"],
+      "properties": {
+        "opened": {
+          "description": "False when macOS had nothing to open it with.",
+          "type": "boolean"
+        }
+      }
+    },
+    "clipboardReadTextResult": {
+      "description": "The text on the clipboard.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "description": "The clipboard's text. Left out when the clipboard holds no text.",
+          "type": "string"
+        }
+      }
+    },
+    "clipboardWriteTextParams": {
+      "description": "Replace the clipboard with this text, marked as Vitruvian's own so clipboard history files it correctly.",
+      "type": "object",
+      "required": ["text"],
+      "properties": { "text": { "description": "The text.", "type": "string" } }
+    },
+    "clipboardWriteTextResult": {
+      "description": "Whether the clipboard took the text.",
+      "type": "object",
+      "required": ["written"],
+      "properties": {
+        "written": {
+          "description": "False when the clipboard would not take it.",
+          "type": "boolean"
+        }
+      }
+    },
+    "keystrokesPasteParams": {
+      "description": "Paste this text into the app in front. The clipboard is put back afterwards.",
+      "type": "object",
+      "required": ["text"],
+      "properties": { "text": { "description": "The text.", "type": "string" } }
+    },
+    "keystrokesPressMenuItemParams": {
+      "description": "Press a menu item of the app in front, found by its key equivalent and never by its title.",
+      "type": "object",
+      "required": ["equivalents"],
+      "properties": {
+        "equivalents": {
+          "description": "The key equivalents that count. The first enabled item that has one of them is pressed.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/keyEquivalent" }
+        }
+      }
+    },
+    "keyEquivalent": {
+      "description": "A menu item's key equivalent. Command is always part of it.",
+      "type": "object",
+      "required": ["character", "modifiers"],
+      "properties": {
+        "character": {
+          "description": "The key, as the menu shows it, for example V.",
+          "type": "string"
+        },
+        "modifiers": {
+          "description": "The keys held with Command.",
+          "type": "array",
+          "items": { "enum": ["shift", "option", "control"] }
+        }
+      }
+    },
+    "keystrokesPressMenuItemResult": {
+      "description": "Whether an item was pressed.",
+      "type": "object",
+      "required": ["pressed"],
+      "properties": {
+        "pressed": {
+          "description": "False when no enabled item has one of the key equivalents.",
+          "type": "boolean"
+        }
+      }
+    },
+    "processesTerminateParams": {
+      "description": "End a process, with the app's checks and its administrator prompt when one is needed.",
+      "type": "object",
+      "required": ["pid", "name", "force"],
+      "properties": {
+        "pid": { "description": "The process's id.", "type": "integer" },
+        "name": {
+          "description": "The process's name, shown if the app has to ask for an administrator password.",
+          "type": "string"
+        },
+        "force": {
+          "description": "True to end it at once; false to ask it to quit.",
+          "type": "boolean"
+        }
+      }
+    },
+    "storageGetParams": {
+      "description": "Read one of the preferences the manifest declares.",
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": { "description": "The preference's id.", "type": "string" }
+      }
+    },
+    "storageGetResult": {
+      "description": "The preference's value.",
+      "type": "object",
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "description": "The saved value, or the manifest's default when nothing is saved.",
+          "type": ["string", "boolean", "number"]
+        }
+      }
+    },
+    "storageSetParams": {
+      "description": "Save one of the preferences the manifest declares.",
+      "type": "object",
+      "required": ["key", "value"],
+      "properties": {
+        "key": { "description": "The preference's id.", "type": "string" },
+        "value": {
+          "description": "The new value, of the type the manifest names.",
+          "type": ["string", "boolean", "number"]
+        }
+      }
+    },
+    "logParams": {
+      "description": "A line for the tool's log in Settings.",
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "message": { "description": "The line.", "type": "string" }
+      }
+    }
+  }
+}

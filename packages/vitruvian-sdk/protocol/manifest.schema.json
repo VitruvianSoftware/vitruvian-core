@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vitruvian tool manifest",
+  "description": "The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands share an id, no two preferences share an id; and the whole file is at most 65,536 bytes.",
+  "type": "object",
+  "required": ["id", "name", "version", "protocol", "publisher", "runtime"],
+  "properties": {
+    "id": {
+      "description": "The tool's identity, in reverse-DNS form, for example com.acme.deploys. Letters, digits, hyphens and underscores in parts joined by single dots. It must have a dot: an id with none belongs to a feature built into the app. At most 128 characters. It never changes between versions of a tool.",
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+$"
+    },
+    "name": {
+      "description": "What the tool is called, shown as written.",
+      "$ref": "#/$defs/localizedText"
+    },
+    "description": {
+      "description": "One sentence on what the tool does, shown as written.",
+      "$ref": "#/$defs/localizedText"
+    },
+    "version": {
+      "description": "The tool's own version, as its author writes it.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "protocol": {
+      "description": "The protocol version the tool speaks.",
+      "const": "1"
+    },
+    "publisher": {
+      "description": "Who made the tool. Shown beside its name. The app does not check it.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "license": {
+      "description": "The licence the tool is offered under, for example an SPDX identifier.",
+      "type": "string"
+    },
+    "icon": {
+      "description": "An SF Symbol name. A name this Mac does not have draws as a plain puzzle piece.",
+      "type": "string"
+    },
+    "uses": {
+      "description": "The app services the tool calls. The app refuses a call to a service that is not listed. This is not a list of what the tool is allowed to do: a tool is a separate program and can do anything the app can.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "notify",
+          "open",
+          "clipboard.read",
+          "clipboard.write",
+          "keystrokes",
+          "processes",
+          "storage"
+        ]
+      }
+    },
+    "contributes": {
+      "description": "What the tool adds to the app.",
+      "$ref": "#/$defs/contributes"
+    },
+    "preferences": {
+      "description": "The settings the tool keeps through the app. At most 16.",
+      "type": "array",
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/preference" }
+    },
+    "activation": {
+      "description": "When the app starts the tool. onCommand: the first time one of its commands runs. onLaunch: with the app. Left out, it is onCommand.",
+      "type": "array",
+      "items": { "enum": ["onCommand", "onLaunch"] }
+    },
+    "runtime": {
+      "description": "How the tool runs.",
+      "$ref": "#/$defs/runtime"
+    }
+  },
+  "$defs": {
+    "localizedText": {
+      "description": "A piece of text in one or more languages, keyed by language tag (en, fr, pt-BR). English, under en, is required. The app shows the entry for the language in use, then the entry for that language without its region, then English.",
+      "type": "object",
+      "required": ["en"],
+      "additionalProperties": { "type": "string", "pattern": "\\S" }
+    },
+    "contributes": {
+      "description": "What the tool adds to the app. Version 1 has commands only.",
+      "type": "object",
+      "properties": {
+        "commands": {
+          "description": "The tool's commands. At most 32.",
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/command" }
+        }
+      }
+    },
+    "command": {
+      "description": "One thing the tool can be asked to do.",
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": {
+          "description": "The command's name within the tool. The same characters as a tool id; a dot is not needed. The app knows the command as <tool id>/<this id>.",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$"
+        },
+        "title": {
+          "description": "What the command is called in a list.",
+          "$ref": "#/$defs/localizedText"
+        },
+        "icon": {
+          "description": "An SF Symbol name. Left out, the tool's icon is used.",
+          "type": "string"
+        },
+        "surfaces": {
+          "description": "Where the command is offered: the command bar, the radial menu, the Quick panel, and as a shortcut the person records.",
+          "type": "array",
+          "items": {
+            "enum": ["commandBar", "radial", "quickPanel", "shortcut"]
+          }
+        }
+      }
+    },
+    "preference": {
+      "description": "One setting. The tool reads and writes it with storage/get and storage/set.",
+      "type": "object",
+      "required": ["id", "type", "default"],
+      "properties": {
+        "id": {
+          "description": "The setting's name within the tool. The same characters as a command id.",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$"
+        },
+        "type": {
+          "description": "What kind of value it holds.",
+          "enum": ["string", "boolean", "integer", "number"]
+        },
+        "default": {
+          "description": "The value before anything is saved. It is of the type named."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "string" } } },
+          "then": { "properties": { "default": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "boolean" } } },
+          "then": { "properties": { "default": { "type": "boolean" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "integer" } } },
+          "then": { "properties": { "default": { "type": "integer" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "number" } } },
+          "then": { "properties": { "default": { "type": "number" } } }
+        }
+      ]
+    },
+    "runtime": {
+      "description": "The program the app starts.",
+      "type": "object",
+      "required": ["kind", "exec"],
+      "properties": {
+        "kind": {
+          "description": "external: a separate program. The only kind a manifest file may name.",
+          "const": "external"
+        },
+        "exec": {
+          "description": "The program, as a path inside the tool's folder, with / between its parts. No part is empty, . or .., so the path cannot leave the folder.",
+          "type": "string",
+          "pattern": "^(?!\\.{1,2}(/|$))[^/]+(/(?!\\.{1,2}(/|$))[^/]+)*$"
+        }
+      }
+    }
+  }
+}
