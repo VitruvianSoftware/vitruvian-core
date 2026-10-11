@@ -49,6 +49,7 @@ spec:
     - ./apps/mcp/slack/catalog-info.yaml
     - ./apps/mcp/roborock/catalog-info.yaml
     - ./apps/desktop/nexus-agent/catalog-info.yaml
+    - ./apps/desktop/antigravity/plugins/gh-watch/catalog-info.yaml
     - ./apps/web/oauth-user-inspector/catalog-info.yaml
     - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
     - ./apps/mobile/android-remote/catalog-info.yaml

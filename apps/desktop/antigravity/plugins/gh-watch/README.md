@@ -92,11 +92,11 @@ From GitHub:
 agy plugin install https://github.com/VitruvianSoftware/gh-watch
 ```
 
-Or, from a checkout of this repository, link the plugin folder into
-Antigravity's plugin directory:
+Or from a clone. Run this inside the plugin folder (the one holding
+`plugin.json`), which links it into Antigravity's plugin directory:
 
 ```bash
-ln -s "$(git rev-parse --show-toplevel)/apps/desktop/antigravity/plugins/gh-watch" ~/.gemini/config/plugins/gh-watch
+ln -s "$(pwd)" ~/.gemini/config/plugins/gh-watch
 ```
 
 Then enable it under Customizations → Installed, and open it from any
@@ -166,6 +166,20 @@ the plugin is enabled leaves every conversation running a hook whose script
 is gone.
 
 ## Test
+
+The logic is plain JavaScript with no dependencies, tested with Node's
+built-in runner. From the plugin folder:
+
+```bash
+node --test sidecars/panel/lib/
+bash hooks/note-pr-create_test.sh
+```
+
+This plugin is developed in the
+[vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)
+monorepo, under `apps/desktop/antigravity/plugins/gh-watch`, and published
+from there to [VitruvianSoftware/gh-watch](https://github.com/VitruvianSoftware/gh-watch).
+In the monorepo the same tests run through Bazel:
 
 ```bash
 bazel test //apps/desktop/antigravity/plugins/gh-watch/...
