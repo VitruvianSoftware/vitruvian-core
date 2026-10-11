@@ -73,6 +73,8 @@ main h2 small{font-weight:500;color:var(--ink3);font-size:.8125rem;margin-left:.
 .note{font-size:.9375rem;color:var(--ink);max-width:46rem;margin:.875rem 0 0}
 .note p{margin:.25rem 0}
 .note .alt{color:var(--ink2)}
+.note .words{margin:.25rem 0 0;padding-left:1.125rem;color:var(--ink2)}
+.note .words li{margin:.1875rem 0}
 .stage{background:var(--panel);border:1px solid var(--rule);border-radius:.875rem;padding:1.25rem;display:flex;justify-content:center;overflow:hidden}
 .flow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:stretch;margin:1rem 0 0}
 .flow .box{border-radius:.625rem;padding:.5rem .75rem;font-size:.8125rem;line-height:1.35;flex:1 1 9rem;min-width:0}
@@ -286,6 +288,15 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.875em;ov
     <p>One named problem, in one sentence, straight after the folder picker. Nothing was copied and nothing changed. There are seven such sentences. The other six say: no <code>vitruvian-tool.json</code>; a mistake in it, with the rule it broke for whoever made the tool; it needs a newer Vitruvian; macOS has quarantined it; it is too large (256 MB or 10,000 files); or it could not be copied.</p>
     <p>Choice: for a downloaded folder the alert shows the command that clears the quarantine and a Copy button. The app never clears it for the person, as the spec says.</p>
     <p class="alt">Alternative: one generic sentence with the technical detail in English. Five fewer strings, and a person is told less.</p>
+    <p>The other six, word for word, each under the same title:</p>
+    <ul class="words">
+      <li>It has no vitruvian-tool.json file, so it is not a tool.</li>
+      <li>Its vitruvian-tool.json file has a mistake. Tell whoever made the tool: <code>unknownService("camera")</code></li>
+      <li>It needs something this version of Vitruvian does not have: <code>island</code></li>
+      <li>macOS has quarantined this folder because it was downloaded. Vitruvian will not clear that for you. If you trust it, run this in Terminal, then add it again: <code>xattr -dr com.apple.quarantine '/Users/me/Downloads/deploys'</code></li>
+      <li>The folder is too large. A tool can hold up to 256 MB and 10,000 files.</li>
+      <li>Vitruvian could not copy the folder, or it changed while you were reading. Nothing was added.</li>
+    </ul>
   </div>
 
   <h2>e. The agreement sheet</h2>
@@ -310,6 +321,16 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.875em;ov
     <p>Choice: the statement sits in a plain tinted panel above both lists, so the lists read as detail under it. The list of what the tool uses is the tool's own statement and says so underneath.</p>
     <p class="alt">This departs from the spec in one place. The spec (section 8, and open question 4) says the sheet shows no list of what a tool uses, because a list reads as a promise. The brief for this stage asks for the list, as information. If the spec should win, the list leaves the sheet and stays in the detail view only: one deleted block, no string saved.</p>
     <p class="alt">Not chosen: a tick box "I trust who made this tool" that enables the button. It is one more string and one more click, and it is what the bold sentence already asks.</p>
+    <p>A tool may list seven of the app's services. Each has its own plain words:</p>
+    <ul class="words">
+      <li>Show messages and play the alert sound</li>
+      <li>Open links</li>
+      <li>Read the clipboard</li>
+      <li>Write to the clipboard</li>
+      <li>Paste and press menu commands in other apps</li>
+      <li>End other programs</li>
+      <li>Save its own settings</li>
+    </ul>
   </div>
 
   <h2>f. The same sheet, for an update whose manifest changed</h2>
