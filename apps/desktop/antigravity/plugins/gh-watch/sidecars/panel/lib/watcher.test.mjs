@@ -456,6 +456,9 @@ test("parseNote accepts a successful gh pr create and nothing else", () => {
   assert.equal(parseNote(note("echo gh pr created")), null);
   assert.equal(parseNote(note("echo gh pr create")), null);
   assert.equal(parseNote(note("true gh pr create")), null);
+  assert.equal(parseNote(note("gh pr create --help")), null);
+  assert.equal(parseNote(note("gh pr create --dry-run --fill")), null);
+  assert.ok(parseNote(note("gh pr create --title 'add -h flag' --fill")));
   assert.equal(parseNote(note("grep -r 'gh pr create' .")), null);
   assert.ok(parseNote(note("cd repo; gh pr create --fill")));
   assert.ok(parseNote(note("git push -u origin x || true\ngh pr create")));

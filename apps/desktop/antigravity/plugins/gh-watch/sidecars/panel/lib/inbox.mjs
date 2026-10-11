@@ -42,12 +42,18 @@ export const NOTE_TTL_MS = 10 * 60 * 1000;
 // mentions them (an echo, a comment, a grep).
 const CREATE = /^gh\s+pr\s+create(\s|$)/;
 
+// Asking for help, or for a dry run, opens nothing. The short `-h` is left
+// out on purpose: it turns up inside quoted titles, and missing a real pull
+// request is worse than one wasted lookup.
+const NOT_A_CREATE = /\s(--help|--dry-run)(\s|$)/;
+
 // Splits a command line at the usual shell joiners and reports whether any
 // part of it is a `gh pr create`.
 function createsPr(command) {
   return command
     .split(/&&|\|\||[;|\n]/)
-    .some((part) => CREATE.test(part.trim()));
+    .map((part) => part.trim())
+    .some((part) => CREATE.test(part) && !NOT_A_CREATE.test(part));
 }
 
 // Reads one note. Returns { conversationId, cwd } when it really is a
