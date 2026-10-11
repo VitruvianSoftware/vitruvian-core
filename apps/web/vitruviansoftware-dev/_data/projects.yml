@@ -12,6 +12,8 @@
 #   installs: one entry per command: the tool it is for and the command
 #             itself. Add `label` when a tool needs more than one step. Only list a command you have
 #             run, or that the project's own README documents.
+#   setup:    optional; commands to run before any tool's own, each with a
+#             `label`. Use it when every tool needs the same first step.
 #   needs:    optional; one short line on what must be in place first
 
 groups:
@@ -178,20 +180,20 @@ projects:
     source: apps/mcp/roborock
     extension:
       kind: plugin
-      needs: a Roborock account
+      needs: uv, and a Roborock account (run rrctl setup once to log in)
+      setup:
+        - label: "First, for either tool: install the server"
+          command: uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
       installs:
         - tool: Claude Code
-          label: "Claude Code, step 1: add the marketplace"
+          label: "Then, in Claude Code: add the marketplace"
           command: claude plugin marketplace add VitruvianSoftware/mcp-roborock
         - tool: Claude Code
-          label: "Claude Code, step 2: install"
+          label: "And install the plugin"
           command: claude plugin install vitruvian-roborock
         - tool: Antigravity
-          label: "Antigravity, step 1: clone"
-          command: git clone https://github.com/VitruvianSoftware/mcp-roborock.git ~/.config/plugins/mcp-roborock
-        - tool: Antigravity
-          label: "Antigravity, step 2: install"
-          command: agy plugin install ~/.config/plugins/mcp-roborock/plugin
+          label: "Or, in Antigravity"
+          command: agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
 
   - name: NexusAgent
     group: agents
