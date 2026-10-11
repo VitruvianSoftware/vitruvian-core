@@ -1,0 +1,54 @@
+---
+layout: page
+title: AI Extensions
+permalink: /ai/
+eyebrow: AI Extensions
+heading: Plugins, MCP servers and skills for AI coding tools.
+lead: >-
+  Everything here installs with one command into a tool you already use, such
+  as Antigravity or Claude Code. Each is open source, developed in the
+  vitruvian-core monorepo and published to its own repository.
+description: >-
+  Open-source plugins, MCP servers and agent skills from Vitruvian Software for
+  Antigravity, Claude Code and other AI coding tools, each with its install
+  command.
+---
+
+{%- assign extensions = site.data.projects.projects | where_exp: "p", "p.extension" -%}
+{%- assign shown = 0 -%}
+{%- for kind in site.data.projects.extension_kinds -%}
+  {%- assign members = extensions | where_exp: "p", "p.extension.kind == kind.id" -%}
+  {%- if members.size > 0 -%}
+  {%- assign shown = shown | plus: 1 -%}
+<section class="section" id="{{ kind.id }}">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">{{ shown | prepend: '0' }}</span>
+      <h2>{{ kind.title }}</h2>
+      <p>{{ kind.blurb }}</p>
+    </div>
+    <div class="grid grid-2">
+      {%- for project in members -%}
+        {%- include extension-card.html project=project -%}
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+  {%- endif -%}
+{%- endfor -%}
+
+<section class="section">
+  <div class="container">
+    <div class="plate band">
+      <div>
+        <h2>Built one of your own?</h2>
+        <p>These are developed in the open. Read how one is put together, open an issue, or send a pull request to the monorepo.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn" href="{{ site.monorepo }}/tree/main/apps/desktop/antigravity">Antigravity plugins</a>
+        <a class="btn" href="{{ site.monorepo }}/tree/main/apps/mcp">MCP servers</a>
+        <a class="btn" href="{{ site.monorepo }}/blob/main/CONTRIBUTING.md">Read CONTRIBUTING.md</a>
+      </div>
+    </div>
+  </div>
+</section>

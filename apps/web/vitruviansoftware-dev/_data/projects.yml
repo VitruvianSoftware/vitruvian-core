@@ -5,6 +5,14 @@
 # repo:    the public repository, if the project has its own
 # source:  the path in the vitruvian-core monorepo, if it lives there
 # install: a one-line install command, shown on the card when present
+#
+# extension: set this on a project that plugs into an AI coding tool, and it
+#            is also listed on /ai/. Leave it off for everything else.
+#   kind:     plugin | mcp | skill   (see `extension_kinds` below)
+#   installs: one entry per command: the tool it is for and the command
+#             itself. Add `label` when a tool needs more than one step. Only list a command you have
+#             run, or that the project's own README documents.
+#   needs:    optional; one short line on what must be in place first
 
 groups:
   - id: devtools
@@ -23,6 +31,18 @@ groups:
     title: In the monorepo
     blurb: Newer work that lives in vitruvian-core and has not been split out into its own repository yet.
 
+# The sections of /ai/, in order.
+extension_kinds:
+  - id: plugin
+    title: Plugins
+    blurb: Installed into an AI coding tool as a unit. A plugin can add panels, background watchers, hooks and skills.
+  - id: mcp
+    title: MCP servers
+    blurb: Model Context Protocol servers. They give an agent tools for a system it could not otherwise reach, and work with any client that speaks MCP.
+  - id: skill
+    title: Skills
+    blurb: Instructions an agent loads when a task calls for them, so it uses a tool the way its authors intended.
+
 projects:
   - name: devx
     group: devtools
@@ -36,6 +56,13 @@ projects:
     repo: https://github.com/VitruvianSoftware/devx
     source: apps/cli/devx
     install: brew install VitruvianSoftware/tap/devx
+    extension:
+      kind: skill
+      needs: devx installed
+      installs:
+        - tool: Any agent
+          label: Add the skills to your project
+          command: devx agent init
 
   - name: homelab
     group: devtools
@@ -111,6 +138,31 @@ projects:
     tags: [TypeScript, MCP, Slack]
     repo: https://github.com/VitruvianSoftware/mcp-slack
     source: apps/mcp/slack
+    extension:
+      kind: mcp
+      needs: Slack bot and user tokens, set as environment variables
+      installs:
+        - tool: Claude Code
+          command: claude mcp add slack -- npx -y @vitruviansoftware/mcp-slack@latest
+
+  - name: gh-watch
+    group: agents
+    featured: true
+    status: mirror
+    summary: >-
+      An Antigravity plugin that watches your pull requests. It wakes the
+      agent when CI fails or the branch conflicts, and tells it when the
+      change goes green, merges and lands, so no agent has to sit polling CI.
+    tags: [JavaScript, Antigravity, GitHub]
+    repo: https://github.com/VitruvianSoftware/gh-watch
+    source: apps/desktop/antigravity/plugins/gh-watch
+    install: agy plugin install https://github.com/VitruvianSoftware/gh-watch
+    extension:
+      kind: plugin
+      needs: Antigravity desktop and the GitHub CLI, signed in
+      installs:
+        - tool: Antigravity
+          command: agy plugin install https://github.com/VitruvianSoftware/gh-watch
 
   - name: mcp-roborock
     group: agents
@@ -122,6 +174,16 @@ projects:
     tags: [Python, MCP, FastMCP]
     repo: https://github.com/VitruvianSoftware/mcp-roborock
     source: apps/mcp/roborock
+    extension:
+      kind: plugin
+      needs: a Roborock account
+      installs:
+        - tool: Claude Code
+          label: "Claude Code, step 1: add the marketplace"
+          command: claude plugin marketplace add VitruvianSoftware/mcp-roborock
+        - tool: Claude Code
+          label: "Claude Code, step 2: install"
+          command: claude plugin install vitruvian-roborock
 
   - name: NexusAgent
     group: agents
