@@ -34,7 +34,8 @@ export const MAX_CONFLICT_REMINDERS = 3;
 //   prev: null | { since, headSha, lastAt, reminders }
 // Returns { notice: null | { kind, sinceMs }, state }. Kinds:
 //   "new"       the pull request has just started conflicting;
-//   "persisted" a new commit was pushed and it still conflicts;
+//   "persisted" a new commit was pushed and it still conflicts, seen on two
+//               reads in a row;
 //   "reminder"  still conflicting on the same commit after a while. At most
 //               MAX_CONFLICT_REMINDERS, 30 minutes apart and doubling.
 export function decideConflict(prev, snap, now) {
@@ -50,9 +51,22 @@ export function decideConflict(prev, snap, now) {
     };
   }
   if (prev.headSha !== snap.headSha) {
+    // Right after a push GitHub can still be showing the old verdict against
+    // the new commit. Believe it only once it says so on two reads running.
+    if (prev.unconfirmedHead !== snap.headSha) {
+      return {
+        notice: null,
+        state: { ...prev, unconfirmedHead: snap.headSha },
+      };
+    }
     return {
       notice: { kind: "persisted", sinceMs: now - prev.since },
-      state: { ...prev, headSha: snap.headSha, lastAt: now, reminders: 0 },
+      state: {
+        since: prev.since,
+        headSha: snap.headSha,
+        lastAt: now,
+        reminders: 0,
+      },
     };
   }
   const wait = CONFLICT_REMINDER_MS * 2 ** prev.reminders;

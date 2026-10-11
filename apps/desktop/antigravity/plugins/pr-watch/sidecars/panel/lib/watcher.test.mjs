@@ -303,6 +303,8 @@ test("a merge conflict wakes once, and again only after a push that keeps it", a
   assert.equal(store.get(key).conflicting, true);
 
   world.snap = conflicting("sha2");
+  await watcher.check(key); // first read after the push: not believed yet
+  assert.equal(sent.length, 1);
   await watcher.check(key);
   assert.equal(sent.length, 2);
   assert.match(sent[1].message, /still has merge conflicts/);

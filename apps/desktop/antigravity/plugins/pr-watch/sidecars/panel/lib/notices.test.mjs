@@ -81,14 +81,24 @@ test("UNKNOWN keeps what was known, in both directions", () => {
   assert.deepEqual(unknown.state, first.state);
 });
 
-test("a push that does not fix the conflict is reported", () => {
+test("a push that does not fix the conflict is reported on the second read", () => {
   const first = decideConflict(null, at("CONFLICTING", "sha1"), 1000);
-  const pushed = decideConflict(first.state, at("CONFLICTING", "sha2"), 5000);
+  // The first read after the push may still carry the old verdict.
+  const stale = decideConflict(first.state, at("CONFLICTING", "sha2"), 5000);
+  assert.equal(stale.notice, null);
+  const pushed = decideConflict(stale.state, at("CONFLICTING", "sha2"), 6000);
   assert.equal(pushed.notice.kind, "persisted");
   assert.equal(
-    decideConflict(pushed.state, at("CONFLICTING", "sha2"), 6000).notice,
+    decideConflict(pushed.state, at("CONFLICTING", "sha2"), 7000).notice,
     null,
   );
+});
+
+test("a push that fixes the conflict is never reported as still conflicting", () => {
+  const first = decideConflict(null, at("CONFLICTING", "sha1"), 1000);
+  const stale = decideConflict(first.state, at("CONFLICTING", "sha2"), 5000);
+  const settled = decideConflict(stale.state, at("MERGEABLE", "sha2"), 6000);
+  assert.deepEqual(settled, { notice: null, state: null });
 });
 
 test("reminders come 30, 60 and 120 minutes apart, then stop", () => {

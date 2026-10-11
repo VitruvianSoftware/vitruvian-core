@@ -58,7 +58,7 @@ Merge conflicts and review comments follow the same idea:
 | --- | --- |
 | The pull request starts conflicting with its base | One message asking the agent to merge the base in |
 | It still conflicts on the same commit | Up to three reminders, after 30, 60 and 120 minutes |
-| A push leaves the conflict in place | Told again |
+| A push leaves the conflict in place | Told again, once GitHub says so on two reads in a row |
 | GitHub has not worked out mergeability yet | Nothing changes |
 | A collaborator or bot leaves a new comment or review | Passed on, quoted |
 | A comment from you, or from someone outside the repository | Never passed on |
