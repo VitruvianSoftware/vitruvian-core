@@ -21,6 +21,7 @@ enum ExternalToolStoreTests {
         throughTheBroker(suite)
         refusals(suite)
         deleting(suite)
+        deletingMore(suite)
         removing(suite)
         goneBeforeDeleted(suite)
         installedOrNot(suite)
@@ -30,6 +31,7 @@ enum ExternalToolStoreTests {
         heldBack(suite)
         unreadableRecords(suite)
         toldOnce(suite)
+        saysNothing(suite)
         aRealTool(suite)
         aRealToolRemoved(suite)
     }
@@ -487,6 +489,57 @@ enum ExternalToolStoreTests {
                      "with Tools a link to another place, nothing there is deleted")
     }
 
+    /// More of what a removal may and may not reach.
+    static func deletingMore(_ suite: TestSuite) {
+        suite.expect(["", ".", "..", "../x", "a/b", "/", "com..acme", ".com.acme", "com.acme.", "com.acme/..", "~", "a b.c"]
+                         .allSatisfy { ToolID($0) == nil },
+                     "no id is empty, climbs out of its folder, or holds a slash, a space or a tilde")
+        let bench = Bench()
+        defer { bench.close() }
+        let folders = ToolFolders(root: bench.support)
+        bench.add(bench.folder())
+        suite.expect(!folders.delete(ToolID("Tools")!, data: true) && !folders.delete(ToolID("ToolData")!, data: true)
+                         && bench.exists(bench.files) && bench.exists(bench.data),
+                     "an id with no dot deletes nothing: neither folder of tools can be named")
+
+        let bytes = Data((0..<4096).map { UInt8($0 % 251) })
+        try? bytes.write(to: bench.data.appendingPathComponent("saved"))
+        bench.box.values["com.acme.deploys/project"] = "api"
+        let keys = bench.box.values.keys.sorted()
+        suite.expect(bench.store.remove(id, deletingData: false)
+                         && (try? Data(contentsOf: bench.data.appendingPathComponent("saved"))) == bytes
+                         && (try? FileManager.default.contentsOfDirectory(atPath: bench.data.path)) == ["saved"]
+                         && bench.box.values.keys.sorted() == keys
+                         && bench.box.values["com.acme.deploys/project"] as? String == "api",
+                     "keeping what a tool saved leaves its data folder and its preferences byte for byte")
+
+        // A link where what the tool saved should be.
+        let elsewhere = bench.root.appendingPathComponent("elsewhere-data", isDirectory: true)
+        try? FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try? Data("theirs".utf8).write(to: elsewhere.appendingPathComponent("precious"))
+        try? FileManager.default.removeItem(at: bench.data)
+        try? FileManager.default.createSymbolicLink(at: bench.data, withDestinationURL: elsewhere)
+        suite.expect(folders.delete(id, data: true)
+                         && (try? FileManager.default.attributesOfItem(atPath: bench.data.path)) == nil
+                         && bench.exists(elsewhere.appendingPathComponent("precious")),
+                     "a data folder that is a link is deleted as a link: what it points at is not touched")
+
+        // A copy that cannot be deleted: the folder of copies is read-only.
+        let half = Bench()
+        defer { half.close() }
+        half.add(half.folder())
+        let tools = half.support.appendingPathComponent("Tools")
+        try? FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: tools.path)
+        let removed = half.store.remove(id, deletingData: true)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: tools.path)
+        let next = half.relaunched()
+        next.store.restore()
+        suite.expect(removed && half.exists(half.files) && half.records.isEmpty && !half.exists(half.data)
+                         && next.store.listed.isEmpty && next.registry.tool(id) == nil
+                         && next.host.manifest(for: id) == nil && next.runs.isEmpty,
+                     "a copy that could not be deleted is forgotten all the same: the next launch starts nothing")
+    }
+
     static func removing(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
@@ -928,6 +981,68 @@ enum ExternalToolStoreTests {
         next.registry.run(copy)
         next.current.ends(1)
         suite.expect(next.said.count == 1, "at the next launch the person is told again, once")
+    }
+
+    /// When nothing is said, and when Start Again does nothing.
+    static func saysNothing(_ suite: TestSuite) {
+        let idle = Bench()
+        defer { idle.close() }
+        idle.add(idle.folder())
+        idle.registry.run(copy)
+        idle.current.greets()
+        idle.current.exitsOnClose = 0
+        idle.clock.advance(by: 121)
+        suite.expect(idle.runs.count == 1 && idle.current.inputClosed && idle.said.isEmpty && idle.stoppedWorking.isEmpty,
+                     "a tool stopped for being idle is not said to have stopped working")
+        idle.registry.run(copy)
+        idle.current.greets()
+        idle.store.setOn(id, false)
+        idle.current.ends(9)
+        suite.expect(idle.runs.count == 2 && idle.said.isEmpty && idle.stoppedWorking.isEmpty,
+                     "nor is one the person switched off, however its program then ends")
+
+        let gone = Bench()
+        defer { gone.close() }
+        gone.add(gone.folder())
+        gone.registry.run(copy)
+        gone.current.greets()
+        gone.store.remove(id, deletingData: true)
+        gone.current.ends(1)
+        suite.expect(gone.said.isEmpty && gone.stoppedWorking.isEmpty, "nor one that was removed")
+
+        let quit = Bench()
+        defer { quit.close() }
+        quit.add(quit.folder())
+        quit.registry.run(copy)
+        quit.current.greets()
+        quit.current.exitsOnClose = 1
+        quit.host.stopAll()
+        suite.expect(quit.current.inputClosed && quit.said.isEmpty && quit.stoppedWorking.isEmpty,
+                     "and nothing is said at quit, even when a program leaves with an error")
+
+        let early = Bench()
+        defer { early.close() }
+        early.add(early.folder())
+        early.registry.run(copy)
+        early.current.greets()
+        early.current.ends(1)
+        let revision = early.registry.revision
+        early.store.startAgain(id)
+        suite.expect(early.store.listed.first?.standing == .waiting && early.runs.count == 1
+                         && !early.registry.canRun(copy) && early.registry.revision == revision && early.said.count == 1,
+                     "starting again a tool the app has not given up on does nothing: it is still waiting")
+
+        let held = Bench()
+        defer { held.close() }
+        held.add(held.folder())
+        try? Data("{}".utf8).write(to: held.files.appendingPathComponent("vitruvian-tool.json"))
+        let after = held.relaunched()
+        after.store.restore()
+        after.store.startAgain(id)
+        suite.expect(after.store.listed.map(\.isHeld) == [true] && after.store.listed.first?.standing == nil
+                         && after.runs.isEmpty && after.started.isEmpty && after.registry.tool(id) == nil
+                         && !after.registry.canRun(copy) && after.host.manifest(for: id) == nil,
+                     "starting again cannot start a tool that is held back")
     }
 
     /// The whole path with a real program: the fixture tool, added from a

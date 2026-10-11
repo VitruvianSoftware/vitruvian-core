@@ -15,6 +15,7 @@ enum ExternalToolScreensTests {
         agreement(suite)
         anUpdate(suite)
         refusalWords(suite)
+        asWritten(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -173,5 +174,81 @@ enum ExternalToolScreensTests {
                                                  .changedSinceOffered, .notRemembered]
         suite.expect(rest.allSatisfy { message($0).message == english.refusalNotAdded && message($0).command == nil },
                      "everything else says that nothing was added")
+    }
+
+    /// A tool's words are shown as written, an update is judged by the
+    /// manifest's bytes alone, and the command for a quarantined folder is
+    /// safe whatever the folder is called.
+    static func asWritten(_ suite: TestSuite) {
+        let loud = ExternalToolStoreTests.Bench()
+        defer { loud.close() }
+        let marked = ExternalToolManifestTests.file(
+            #"{"name": {"en": "**Bold** [free](https://example.invalid)"}, "publisher": "_Acme_ `x`"}"#)
+        if case .success(let offer) = loud.store.offer(from: loud.folder(manifest: marked)) {
+            suite.expect(content(offer).title == "Add “**Bold** [free](https://example.invalid)” to Vitruvian?"
+                             && content(offer).byline == "_Acme_ `x` · 1.2.0",
+                         "a name with markdown and a link in it is carried as the plain text the tool wrote")
+        } else {
+            suite.expect(false, "a name with markdown and a link in it is carried as the plain text the tool wrote")
+        }
+
+        // The old tool runs on while the person reads the sheet.
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        let picked = bench.folder()
+        bench.add(picked)
+        bench.registry.run(ExternalToolStoreTests.copy)
+        bench.current.greets()
+        let sent = bench.current.sent.count
+        let copied = bench.files.appendingPathComponent("vitruvian-tool.json")
+        let agreed = try? Data(contentsOf: copied)
+        try? ExternalToolManifestTests.file(#"{"version": "1.3.0"}"#)
+            .write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        if case .success(let newer) = bench.store.offer(from: picked) {
+            let sheet = content(newer)
+            suite.expect(sheet.isUpdate && sheet.changed != nil && bench.store.listed.first?.standing == .running
+                             && bench.runs.count == 1 && bench.current.sent.count == sent && !bench.current.inputClosed
+                             && bench.store.installed[id]?.tool.version == "1.2.0"
+                             && agreed != nil && (try? Data(contentsOf: copied)) == agreed,
+                         "the tool that is added runs on, untouched, until the person agrees to the update")
+        } else {
+            suite.expect(false, "the tool that is added runs on, untouched, until the person agrees to the update")
+        }
+
+        // One byte of the manifest, and nothing else, makes it changed.
+        let exact = ExternalToolStoreTests.Bench()
+        defer { exact.close() }
+        let folder = exact.folder()
+        exact.add(folder)
+        try? Data("another program".utf8).write(to: folder.appendingPathComponent("bin/deploys"))
+        let unchanged = (try? exact.store.offer(from: folder).get()).map { content($0).changed }
+        let file = folder.appendingPathComponent("vitruvian-tool.json")
+        var spaced = (try? Data(contentsOf: file)) ?? Data()
+        spaced.append(0x20)
+        try? spaced.write(to: file)
+        let oneByte = (try? exact.store.offer(from: folder).get()).map { content($0) }
+        suite.expect(unchanged == .some(nil) && oneByte?.changed == english.updateChanged
+                         && oneByte?.versions == "You have version 1.2.0. This folder has version 1.2.0.",
+                     "the sheet says the tool changed exactly when its manifest's bytes are not the ones agreed to: "
+                         + "one added space is enough, and another program is not")
+
+        // The quoted folder is one word to a shell, whatever it holds.
+        let paths = ["/Users/me/Down loads/it's", "/tmp/a\nb", "/tmp/$(touch x) `id` \\ \" ; rm -rf ~", "/tmp/''", "/tmp/-n"]
+        var echoed: [String] = []
+        for path in paths {
+            let shell = Process()
+            let output = Pipe()
+            shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+            shell.arguments = ["-c", "printf '%s' " + ToolRefusalMessage.quoted(path)]
+            shell.standardOutput = output
+            guard (try? shell.run()) != nil else { continue }
+            let bytes = output.fileHandleForReading.readDataToEndOfFile()
+            shell.waitUntilExit()
+            echoed.append(String(decoding: bytes, as: UTF8.self))
+        }
+        let newline = ToolRefusalMessage(.quarantined(URL(fileURLWithPath: "/tmp/a\nb c")), language: .enUS,
+                                         strings: english)
+        suite.expect(echoed == paths && newline.command == "xattr -dr com.apple.quarantine '/tmp/a\nb c'",
+                     "a quote, a space, a newline and a command in a folder's name reach a shell as one plain word")
     }
 }
