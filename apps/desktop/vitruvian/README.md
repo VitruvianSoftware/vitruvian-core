@@ -112,25 +112,37 @@ with the sample tool registered. No release build has it:
 bazel build --config=macos-app --define=vitruvian_sample_tool=true //apps/desktop/vitruvian:Vitruvian
 ```
 
-A tool that runs as its own program is added from a folder, with the
-person's consent. There is no development switch and no build define for
-it: every build adds a tool the same way. The app keeps a copy in
+A tool that runs as its own program is added in Settings, under Features,
+in the section "Tools from outside": choose the tool's folder, read the
+sheet, and agree. To try it, choose
+`packages/vitruvian-sdk/conformance/reference-tool`. There is no development
+switch and no build define for it: every build adds a tool the same way. The
+tool is a separate program with every permission the app has. The app keeps
+a copy in
 `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/<id>/`,
 what the tool saves in `ToolData/<id>/` beside it, and the list of added
-tools in `InstalledTools.json` there. That a tool stopped working is in the
-system log: `log stream --predicate 'category == "tools"'`.
+tools in `InstalledTools.json` there. That a tool stopped working is said
+once on screen, and is in the system log:
+`log stream --predicate 'category == "tools"'`.
 
-What to expect, since nothing on screen says it:
+What to expect:
 
-- The copy replaces the one from the last launch. The folder is copied
-  whole, whatever its size. Nothing ever deletes `Tools/<id>/` or
-  `ToolData/<id>/` for you: remove them by hand when you are done.
+- The app runs its copy, not your folder. After you change the tool, open
+  its row and choose "Update from Folder…": the app asks again and replaces
+  the copy. A folder may hold up to 256 MB and 10,000 files.
+- Remove, in the tool's detail, deletes the copy. It deletes `ToolData/<id>/`
+  and the tool's settings only if you pick that button. It first waits up
+  to one second for the tool's program to end. If the program is still
+  there after it is killed, what it saved is kept. A child process the tool
+  started is not waited for.
+- If you edit the app's copy by hand, the tool is held back at the next
+  launch and listed as changed. Only the manifest file is compared.
 - The tool gets the environment the app has, not your shell's. A program
   that starts with `#!/usr/bin/env python3` or `node` needs one on the short
   `PATH` macOS gives an app. The reference tool is such a program.
 - A tool that crashes waits before it can run again: one second, doubling
   up to five minutes. After three crashes within a minute it stays stopped
-  until the app is started again.
+  until you click Start Again on its row, or start the app again.
 - Three known limits. A tool that closes its output and keeps running is
   noticed only after three requests go unanswered. A last line with no line
   break is dropped. At quit, after the final kill, the app does not wait to

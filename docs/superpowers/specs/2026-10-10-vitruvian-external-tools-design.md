@@ -320,7 +320,8 @@ its program will not start. The app says so and says how to clear it. It
 never clears it for the person.
 
 **The words.** The app's own sentences here are new and are written in all
-15 languages: about 15 of them, counted at the planning step. The tool's
+15 languages: about 15 of them, counted at the planning step. Counted: 42;
+the stage C plan's table lists them. The tool's
 words are shown as given (decision 10).
 
 **With no outside tool installed** the hub shows one quiet line and the
@@ -536,7 +537,7 @@ Each is its own plan and pull request.
 |---|---|---|
 | A | **Built.** The SDK package with the protocol, its Swift types and the conformance script. The manifest read from JSON, and a pin of the protocol's sources in the app. | No |
 | B | **Built.** The runtime, tested against the fake tool and, on a Mac runner, a real child process. The tool host's two kinds. The broker's forms for outside tools; `storage` writing and the folder. A development switch installs one tool from a folder with no screen. | No, without the switch |
-| C | The tool store, the agreement sheet, the tools section of Settings, the privacy section. Mock-ups first. | Yes |
+| C | **Built.** The tool store, the agreement sheet, the tools section of Settings, the privacy section. Mock-ups first. | Yes |
 | D | The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks. | Only to a tool's author |
 
 **Stage A, as built (2026-10-10).** Each line is marked met only where a
@@ -575,8 +576,10 @@ rewritten: stage C settles the first three, and they stay open until it does.
 
 - A tool that crashed three times within a minute stays stopped until the
   app is started again. There is no Settings screen to start it from.
+  Stage C: Start Again, on the tool's row in Settings.
 - "The person is told once" is a line in the system log, at a tool's first
-  crash in a run of the app.
+  crash in a run of the app. Stage C: also the app's short on-screen
+  message, once per tool per run.
 - A tool gets the environment the app has, not the login shell's. A tool
   whose first line asks for `python3` or `node` finds only what is on the
   short `PATH` macOS gives an app.
@@ -585,17 +588,71 @@ rewritten: stage C settles the first three, and they stay open until it does.
   `conformance_test`. It has never been started by the app.
 - Removing a tool deletes nothing in this stage: `Tools/<id>/` and
   `ToolData/<id>/` both stay. Adding a tool again replaces `Tools/<id>/` and
-  keeps `ToolData/<id>/`. Section 8's Remove is stage C's.
+  keeps `ToolData/<id>/`. Section 8's Remove is stage C's. Stage C: Remove
+  deletes the copy, and what the tool saved when the person picks that.
 - A folder is copied whole, with no limit on its size or on how many files
   it holds. This spec gives none. A link inside it is copied as a link. A
   `Tools` or `ToolData` folder that is itself a link to another place is
-  refused; that check is not in the plan.
+  refused; that check is not in the plan. Stage C: a folder may hold 256 MB
+  and 10,000 things, and a larger one is refused before anything is copied.
 - The store forgets its tools when the app quits. The switch adds the folder
-  again at each launch.
+  again at each launch. Stage C: the store remembers in
+  `InstalledTools.json`, and the switch is deleted.
 - Three limits are known and accepted. A tool that closes its output and
   keeps running is noticed only when three requests go unanswered. A tool's
   last line with no line break is dropped. After the final kill at quit the
   app does not wait to see the process gone.
+
+**Stage C, as built (2026-10-11).** Each line is marked met only where a
+command that was run shows it. Run on one Mac (Mac16,5, Apple M4 Max) with
+macOS 27.0, Xcode 27.0 and Swift 6.4. Nothing here was run on a CI runner.
+Nobody opened the app: how a screen looks, and which button a key presses,
+was not checked. The stage C plan's list "By hand" has twelve checks, and
+none has been done.
+
+| What stage C was to deliver | Met? | What shows it |
+|---|---|---|
+| The tool store | Met | `ExternalToolStoreTests.remembering`, `.switching`, `.updating`, `.heldBack`, `.unreadableRecords`, `.deleting`, `.removing` and `.goneBeforeDeleted`, in the `tool-runtime` suite: `bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests --test_arg=--suite=tool-runtime` passes with 502 checks. Run twenty times in a row with `--runs_per_test=20 --local_test_jobs=1 --nocache_test_results`: twenty passes, and `pgrep -fl tool_fixture` printed nothing after. |
+| The agreement sheet: what it says, and that only it adds a tool | Met | `ExternalToolScreensTests.agreement`, `.anUpdate`, `.asWritten` and `.beforeAgreeing`. `source_lints_test` passes with `only_the_agreement_sheet_consents` among its 48 rules. In the app's sources `ToolConsent(` is written once, in the sheet's Add button, and `add` is called once, from the sheet's `onAgree`. |
+| The agreement sheet: how it looks, that Return and Escape cancel, that it fits a small display | Not checked: by hand | By-hand checks 2, 3 and 12. `ToolAgreementContent.defaultChoice` is `.cancel` and a planted regression holds it, but no test presses a key. That the sheet stays under 800 points is arithmetic from the line limits. |
+| The tools section of Settings: what each row, the detail and the question before removal say | Met | `ExternalToolScreensTests.rows`, `.detailAndRemoval`, `.removalChoices` and `.switchAndOwnWords`. Each state of a row has a check. Each of the two removing buttons is checked against what the store then keeps or deletes. |
+| The tools section of Settings: how it looks and behaves in the app | Not checked: by hand | By-hand checks 1 and 4 to 11. Three things compile and were never seen: two sheets from one card, the folder picker opening after the detail closes, and Cancel as the default button of the question before removal. |
+| The privacy section | Met | `docs/PRIVACY.md` has the section "Tools you add from outside", with the words of the mock-up. No other copy of that page exists in the repository. |
+| Every text in fifteen languages | Met by rule, not by a reader | `ExternalToolStringsTests`, in the same suite: 42 texts, none blank, none left in English, each format filled as the English one. Every one of the 42 is used by a view or a value. Nobody who reads the other fourteen languages has reviewed them. |
+| A build with no tool added is as before, but for one card | Met in tests, not by hand | `selftest` passes. `platform` is unchanged at 766 checks, `features` at 1179 and `settings` at 474, each the same before and after the card was added. A full run reports `TESTS OK (49 suites)`. By-hand check 1 was not done. |
+| The planted regressions | Met for nine, reported for the rest | `Tests/mutation_checks.py` holds the 28 entries stage C added or reworded, each once, and each quoted line is in its source exactly once. The nine for the Settings card were run through the script's own `main()` and each failed its check. The others were run by whoever built their task, and reported as failing theirs. The whole list was not run again at the end. |
+
+Where stage C differs from the sections above it:
+
+- The sheet lists what a tool says it uses, under a note that the list is
+  the tool's and no limit. Section 8 says the sheet shows no list.
+- A copy whose manifest is not the one agreed to is held back at launch:
+  listed, never started, until the person updates it from its folder.
+- The records and a tool's own preferences are in no settings backup.
+- A folder may hold 256 MB and 10,000 things.
+- A tool's preferences have no screen. `preferences/changed` and
+  `language/changed` are still never sent.
+- The app's new texts number 42, not about 15.
+- Remove waits for the tool's program to be gone before it deletes
+  anything: told goodbye, asked to end after half a second, killed a
+  quarter of a second later. The wait is on the main thread, up to one
+  second. A program still there after the kill keeps what it saved,
+  whatever the person picked, and the app does not say so on screen: it
+  has no text for it.
+- On the sheet and in a tool's detail the two lists scroll in a region 200
+  points high when they hold seven rows or more. A tool's own words have
+  line limits. The detail shows the newest 200 lines of a tool's log.
+
+Limits of stage C that are known and accepted:
+
+- Remove waits for the tool's own process only, not for a child it started.
+- "Changed" compares the manifest file, not the program.
+- The translations in fourteen languages were not reviewed by a reader of
+  them.
+- The sheet's height bound of 800 points is arithmetic, not seen.
+- A tool's preferences have no screen.
+- A records file that cannot be read is kept until the next tool is added.
+  Then it is moved aside, replacing an earlier moved-aside file.
 
 ## 16. Open questions
 
@@ -607,7 +664,11 @@ decisions lists; sections 4, 6, 9, 10, 11 and 15 above have been brought in
 line with what stage A built. The stage B plan is
 `docs/superpowers/plans/2026-10-10-vitruvian-external-tools-stage-b.md`. Its
 table of decisions lists what it adds to this spec and where it differs;
-section 15 says what was built.
+section 15 says what was built. The stage C plan is
+`docs/superpowers/plans/2026-10-11-vitruvian-external-tools-stage-c.md`. Its
+mock-ups are
+`docs/superpowers/specs/2026-10-11-vitruvian-external-tools-stage-c-mockups.html`.
+Its table of decisions lists what it adds and where it differs.
 
 1. **Nothing on the island and no feature moved out in this sub-project**
    (decision 2). *Default: yes. It is about size, not trust.*
@@ -615,7 +676,8 @@ section 15 says what was built.
    the repository's licence check enforces it.*
 3. **One message per line**, not length-prefixed (decision 3). *Default: yes.*
 4. **The sheet shows one statement and no permission list** (section 8).
-   *Default: yes.*
+   *Default: yes.* Stage C shows the list as the tool's own statement, under
+   the statement; see its decision 4.
 5. **A tool records its shortcut through the app, and does not register its
    own** (decision 8). *Default: yes. The app offers no message for
    registering a key, so that a tool's shortcut is checked against every
