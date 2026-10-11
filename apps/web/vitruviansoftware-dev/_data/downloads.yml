@@ -18,7 +18,7 @@ categories:
     items:
       - id: nexus-agent
         name: NexusAgent
-        version: "1.20.1"
+        version: "1.20.2"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -27,27 +27,27 @@ categories:
         brew_cask: VitruvianSoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.1/NexusAgent-1.20.1-universal.dmg
-            size: 4.2 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-universal.dmg
+            size: 5.1 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.1/NexusAgent-1.20.1-arm64.dmg
-            size: 3.0 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-arm64.dmg
+            size: 4.0 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.1/NexusAgent-1.20.1-x86_64.dmg
-            size: 3.1 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-x86_64.dmg
+            size: 4.0 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.1/NexusAgent-1.20.1-universal.zip
-            size: 4.2 MB
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-universal.zip
+            size: 5.1 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/nexus-agent
 
       - id: vitruvian-desktop
         name: Vitruvian Desktop
-        version: "3.37.1"
+        version: "3.38.2"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
@@ -55,27 +55,27 @@ categories:
         brew_cask: VitruvianSoftware/tap/vitruvian
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.37.1/Vitruvian-3.37.1-universal.dmg
-            size: 78.3 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.38.2/Vitruvian-3.38.2-universal.dmg
+            size: 79.6 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.37.1/Vitruvian-3.37.1-arm64.dmg
-            size: 41.2 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.38.2/Vitruvian-3.38.2-arm64.dmg
+            size: 42.4 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.37.1/Vitruvian-3.37.1-x86_64.dmg
-            size: 42.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.38.2/Vitruvian-3.38.2-x86_64.dmg
+            size: 43.8 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.37.1/Vitruvian-3.37.1-universal.zip
-            size: 78.3 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.38.2/Vitruvian-3.38.2-universal.zip
+            size: 79.7 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
 
       - id: home-speaker
         name: HomeSpeaker
-        version: "1.11.0"
+        version: "1.12.0"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
@@ -107,16 +107,16 @@ categories:
     items:
       - id: android-remote
         name: Vitruvian Remote
-        version: "0.1.1"
+        version: "0.1.2"
         summary: >-
           Android companion app for Vitruvian. Answer agent permission prompts, monitor
           coding sessions, and review status updates directly from your phone.
         platforms: ["Android (arm64-v8a, x86_64)"]
         downloads:
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.1/VitruvianRemote-0.1.1.apk
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.2/VitruvianRemote-0.1.2.apk
             size: 7.9 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.1
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.2
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote
 
   - id: cli
