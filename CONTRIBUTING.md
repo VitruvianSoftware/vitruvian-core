@@ -17,7 +17,7 @@ The build graph is **Bazel** (Bzlmod, via Bazelisk) with Aspect rulesets. Almost
 
 | Tool | Version / source | Why you need it |
 |------|------------------|-----------------|
-| **Bazelisk** (→ Bazel) | Bazel **9.1.1** is pinned by the repo; Bazelisk reads it | The primary build/test/run entrypoint for the whole repo |
+| **Bazelisk** (→ Bazel) | Bazel **9.3.0** is pinned by the repo; Bazelisk reads it | The primary build/test/run entrypoint for the whole repo |
 | **pnpm** | **10.20.0** (workspace) | JS/TS workspace package management; not used at build time by Bazel but needed for container builds and local `pnpm dev` |
 | **Node** | **22.21.1**, pinned in `.nvmrc` (and fed into the Bazel node toolchain) | All TS/JS apps. Use `nvm use` (or a manager that reads `.nvmrc`) |
 | **Go** | go.work toolchain (currently **1.26.6**); see note below | `devx`, `homelab`, and all `infrastructure/pulumi/*` programs |
@@ -37,10 +37,10 @@ git clone <repo-url> vitruvian-core && cd vitruvian-core
 nvm install            # reads .nvmrc -> 22.21.1
 corepack enable        # pnpm 10.20.0
 
-# 3. Bazelisk — install it AS `bazel` so the `bazel` command honors .bazelversion (-> 9.1.1).
+# 3. Bazelisk — install it AS `bazel` so the `bazel` command honors .bazelversion (-> 9.3.0).
 #    MODULE.bazel also declares a bazel_compatibility range, so an out-of-range or
 #    non-Bazelisk `bazel` fails fast with a clear message instead of cryptic errors.
-bazel version          # -> 9.1.1
+bazel version          # -> 9.3.0
 
 # 4. Verify your environment has the right tools + versions (//<app>:doctor checks one app)
 bazel run //:doctor
