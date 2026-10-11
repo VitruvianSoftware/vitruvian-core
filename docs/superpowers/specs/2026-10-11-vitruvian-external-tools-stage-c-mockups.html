@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage C mock-ups</title>
+<style>
+:root{
+  --s:1;
+  /* page */
+  --page:#f4f4f6; --ink:#1c1c1e; --ink2:#55555a; --ink3:#6c6c72; --rule:#d9d9de; --panel:#ffffff;
+  /* the app, light: macOS window, SettingsCard, controls */
+  --win:#ececec; --win-edge:#c9c9cc; --title:#e3e3e5;
+  --label:#1d1d1f; --label2:#5c5c61; --label3:#77777c;
+  --card:rgba(0,0,0,.045); --hover:rgba(0,0,0,.04); --divider:rgba(0,0,0,.11);
+  --accent:#0064d2; --accent-tile:rgba(0,122,255,.12); --on-accent:#ffffff;
+  --btn:#ffffff; --btn-edge:rgba(0,0,0,.18); --btn-ink:#1d1d1f;
+  --switch-off:#c4c4c8; --knob:#ffffff;
+  --orange:#a85400; --orange-fill:rgba(255,149,0,.14);
+  --green:#1a7f37; --red:#c4001a;
+  --hud:#f7f7f8; --hud-edge:rgba(0,0,0,.14);
+  --doc:#ffffff; --shadow:0 .75rem 2.25rem rgba(0,0,0,.20);
+  --ok-fill:#e3f3e6; --ok-ink:#12602a; --stop-fill:#fbe4e6; --stop-ink:#9a0014; --wait-fill:#fff1d6; --wait-ink:#7a4a00; --go-fill:#e1eefc; --go-ink:#0b4a9c;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+    --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+    --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+    --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+    --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+    --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+    --switch-off:#5c5c62; --knob:#e9e9ec;
+    --orange:#ffb04a; --orange-fill:rgba(255,159,10,.18);
+    --green:#4cd964; --red:#ff6961;
+    --hud:#3a3a3e; --hud-edge:rgba(255,255,255,.14);
+    --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+    --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+  --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+  --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+  --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+  --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+  --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+  --switch-off:#5c5c62; --knob:#e9e9ec;
+  --orange:#ffb04a; --orange-fill:rgba(255,159,10,.18);
+  --green:#4cd964; --red:#ff6961;
+  --hud:#3a3a3e; --hud-edge:rgba(255,255,255,.14);
+  --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+  --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+}
+html{font-size:calc(16px * var(--s))}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;font-size:1rem;line-height:1.5;-webkit-text-size-adjust:100%}
+.wrap{max-width:60rem;margin:0 auto;padding:0 16px 4rem}
+header.bar{position:sticky;top:0;z-index:5;background:var(--page);border-bottom:1px solid var(--rule)}
+header.bar .wrap{display:flex;flex-wrap:wrap;gap:.75rem 1rem;align-items:center;justify-content:space-between;padding-top:.75rem;padding-bottom:.75rem}
+header.bar h1{font-size:1.0625rem;margin:0;font-weight:650}
+header.bar p{margin:0;font-size:.8125rem;color:var(--ink2)}
+.tools{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:.5rem;overflow:hidden;background:var(--panel)}
+.seg button,.size button{font:inherit;font-size:.8125rem;color:var(--ink);background:transparent;border:0;padding:.3125rem .625rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.size{display:inline-flex;align-items:center;border:1px solid var(--rule);border-radius:.5rem;background:var(--panel)}
+.size output{font-size:.8125rem;min-width:3.25rem;text-align:center;color:var(--ink2);font-variant-numeric:tabular-nums}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main h2{font-size:1.25rem;margin:2.75rem 0 .25rem;font-weight:650}
+main h2 small{font-weight:500;color:var(--ink3);font-size:.8125rem;margin-left:.375rem}
+.lead{color:var(--ink2);max-width:46rem;margin:.25rem 0 1rem}
+.note{font-size:.9375rem;color:var(--ink);max-width:46rem;margin:.875rem 0 0}
+.note p{margin:.25rem 0}
+.note .alt{color:var(--ink2)}
+.note .words{margin:.25rem 0 0;padding-left:1.125rem;color:var(--ink2)}
+.note .words li{margin:.1875rem 0}
+.stage{background:var(--panel);border:1px solid var(--rule);border-radius:.875rem;padding:1.25rem;display:flex;justify-content:center;overflow:hidden}
+.flow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:stretch;margin:1rem 0 0}
+.flow .box{border-radius:.625rem;padding:.5rem .75rem;font-size:.8125rem;line-height:1.35;flex:1 1 9rem;min-width:0}
+.flow .box b{display:block;font-size:.875rem}
+.flow .arrow{align-self:center;color:var(--ink3);font-size:.875rem}
+.go{background:var(--go-fill);color:var(--go-ink)} .ok{background:var(--ok-fill);color:var(--ok-ink)}
+.stop{background:var(--stop-fill);color:var(--stop-ink)} .wait{background:var(--wait-fill);color:var(--wait-ink)}
+.key{font-size:.8125rem;color:var(--ink2);margin:.5rem 0 0}
+table{border-collapse:collapse;width:100%;font-size:.875rem}
+th,td{text-align:left;padding:.375rem .5rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{color:var(--ink2);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.875em;overflow-wrap:anywhere}
+.scroll{overflow-x:auto}
+
+/* ---- the app ---- */
+.app{font-size:.8125rem;line-height:1.35;color:var(--label);width:100%}
+.window{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);width:100%;max-width:47.5rem;overflow:hidden}
+.titlebar{background:var(--title);border-bottom:1px solid var(--divider);padding:.5rem .75rem;display:flex;align-items:center;gap:.375rem}
+.titlebar i{width:.6875rem;height:.6875rem;border-radius:50%;background:var(--switch-off);display:block}
+.titlebar span{margin-left:.5rem;font-weight:600;color:var(--label2)}
+.page{padding:1.375rem;display:flex;flex-direction:column;gap:1.25rem}
+.card{background:var(--card);border-radius:1rem;padding:1rem;display:flex;flex-direction:column;gap:.8125rem}
+.card.faint{opacity:.55}
+.head{display:flex;align-items:center;gap:.625rem;flex-wrap:wrap}
+.head .title{font-size:.8125rem;font-weight:700;flex:1 1 auto}
+.count{color:var(--label2);font-variant-numeric:tabular-nums;font-size:.6875rem}
+.tile{width:1.625rem;height:1.625rem;border-radius:.4375rem;background:var(--accent-tile);color:var(--accent);display:grid;place-items:center;flex:none}
+.tile svg{width:.875rem;height:.875rem}
+.tile.big{width:2.5rem;height:2.5rem;border-radius:.625rem}
+.tile.big svg{width:1.25rem;height:1.25rem}
+.quiet{color:var(--label2);font-size:.75rem}
+.btn{display:inline-block;font:inherit;font-size:.75rem;background:var(--btn);color:var(--btn-ink);border:1px solid var(--btn-edge);border-radius:.375rem;padding:.1875rem .625rem;white-space:nowrap;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.btn.small{font-size:.6875rem;padding:.125rem .5rem}
+.btn.default{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.btn.danger{color:var(--red)}
+.btn.wide{display:block;width:100%;text-align:center;padding:.3125rem .625rem;white-space:normal}
+.row{display:flex;align-items:center;gap:.75rem;padding:.4375rem .5rem;border-radius:.625rem;flex-wrap:wrap}
+.row .text{flex:1 1 10rem;min-width:0}
+.row .name{display:block}
+.cap{display:block;font-size:.6875rem;color:var(--label2)}
+.status{display:flex;align-items:baseline;gap:.3125rem;font-size:.6875rem;color:var(--label2)}
+.dot{width:.375rem;height:.375rem;border-radius:50%;display:inline-block;flex:none;transform:translateY(-.0625rem)}
+.dot.green{background:var(--green)} .dot.red{background:var(--red)} .dot.orange{background:var(--orange)}
+.sep{height:1px;background:var(--divider);margin-left:.5rem}
+.chev{color:var(--label3);width:.625rem;height:.625rem;flex:none}
+.switch{width:1.625rem;height:.9375rem;border-radius:.5rem;background:var(--accent);position:relative;flex:none}
+.switch::after{content:"";position:absolute;top:.0625rem;right:.0625rem;width:.8125rem;height:.8125rem;border-radius:50%;background:var(--knob);box-shadow:0 1px 1px rgba(0,0,0,.25)}
+.switch.off{background:var(--switch-off)} .switch.off::after{right:auto;left:.0625rem}
+.sheet{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);padding:1.375rem;width:100%;max-width:30rem;display:flex;flex-direction:column;gap:1rem}
+.sheet .top{display:flex;gap:.875rem;align-items:flex-start}
+.sheet h3{font-size:.9375rem;margin:0;font-weight:700;line-height:1.25}
+.sheet .by{color:var(--label2);font-size:.75rem;margin:.125rem 0 0}
+.sheet .sum{font-size:.75rem;margin:.125rem 0 0}
+.sheet .small{font-size:.6875rem;color:var(--label2);margin:.1875rem 0 0;overflow-wrap:anywhere}
+.statement{background:var(--orange-fill);border-radius:.625rem;padding:.75rem;display:flex;gap:.625rem;align-items:flex-start}
+.statement svg{width:1rem;height:1rem;color:var(--orange);flex:none;margin-top:.0625rem}
+.statement b{display:block;font-size:.8125rem}
+.statement p{margin:.25rem 0 0;font-size:.75rem}
+.group b{display:block;font-size:.75rem;margin-bottom:.3125rem}
+.group ul{list-style:none;margin:0;padding:0;font-size:.75rem}
+.group li{display:flex;gap:.5rem;align-items:baseline;margin:.1875rem 0}
+.group li::before{content:"";width:.25rem;height:.25rem;border-radius:50%;background:var(--label3);flex:none;transform:translateY(-.125rem)}
+.group .small{font-size:.6875rem;color:var(--label2);margin:.375rem 0 0}
+.upd{font-size:.75rem} .upd p{margin:.125rem 0} .upd .dim{color:var(--label2)}
+.actions{display:flex;gap:.625rem;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.actions .push{flex:1 1 auto}
+.path{display:flex;gap:.625rem;align-items:center;flex-wrap:wrap}
+.path code{flex:1 1 12rem;color:var(--label2);font-size:.6875rem}
+.alert{background:var(--win);border:1px solid var(--win-edge);border-radius:.875rem;box-shadow:var(--shadow);padding:1.25rem 1rem 1rem;width:100%;max-width:16.5rem;text-align:center;display:flex;flex-direction:column;gap:.5rem;align-items:center}
+.alert .appicon{width:3.25rem;height:3.25rem;border-radius:.75rem;background:var(--accent-tile);color:var(--accent);display:grid;place-items:center}
+.alert .appicon svg{width:1.625rem;height:1.625rem}
+.alert h3{font-size:.8125rem;margin:.25rem 0 0;font-weight:700}
+.alert p{font-size:.6875rem;margin:0;color:var(--label)}
+.alert code{font-size:.625rem;display:block;text-align:left;background:var(--card);border-radius:.375rem;padding:.375rem .5rem;width:100%}
+.alert .stack{display:flex;flex-direction:column;gap:.375rem;width:100%;margin-top:.5rem}
+.hud{background:var(--hud);border:1px solid var(--hud-edge);border-radius:.625rem;padding:.5625rem .875rem;display:inline-flex;gap:.5rem;align-items:center;font-size:.75rem;font-weight:600;color:var(--label);box-shadow:var(--shadow);max-width:100%}
+.hud svg{width:.875rem;height:.875rem;color:var(--accent);flex:none}
+.docpage{background:var(--doc);border:1px solid var(--rule);border-radius:.75rem;padding:1.25rem 1.5rem;max-width:44rem;width:100%;font-size:.9375rem;line-height:1.55;color:var(--ink)}
+.docpage h3{font-size:1.125rem;margin:0 0 .5rem}
+.docpage ul{padding-left:1.125rem;margin:.5rem 0}
+.docpage li{margin:.375rem 0}
+@media (max-width:30rem){.stage{padding:.75rem}.page{padding:.875rem}.sheet{padding:1rem}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-puzzle" viewBox="0 0 20 20"><path fill="currentColor" d="M8 2.5a2 2 0 0 1 4 0V4h3a1 1 0 0 1 1 1v3h1.5a2 2 0 0 1 0 4H16v4a1 1 0 0 1-1 1h-3.5v-1.5a1.5 1.5 0 0 0-3 0V17H5a1 1 0 0 1-1-1v-3.5H2.5a1.5 1.5 0 0 1 0-3H4V5a1 1 0 0 1 1-1h3V2.5Z"/></symbol>
+  <symbol id="i-box" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 6.5 10 3l7 3.5v7L10 17l-7-3.5v-7Zm0 0L10 10l7-3.5M10 10v7"/></symbol>
+  <symbol id="i-window" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path stroke="currentColor" stroke-width="1.6" d="M2.5 7.5h15"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2.2c.5 0 1 .27 1.25.72l6.9 12.2c.52.93-.14 2.08-1.25 2.08H3.1c-1.1 0-1.77-1.15-1.25-2.08l6.9-12.2c.25-.45.74-.72 1.25-.72Zm0 4.3c-.5 0-.9.4-.87.9l.27 4.5a.6.6 0 0 0 1.2 0l.27-4.5c.03-.5-.37-.9-.87-.9Zm0 7.3a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3.5 1.5 7 5 3.5 8.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3Zm8 0h6v6h-6V3ZM3 11h6v6H3v-6Zm8 0h6v6h-6v-6Z"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="wrap">
+    <div>
+      <h1>Tools from outside, stage C: mock-ups</h1>
+      <p>Vitruvian for macOS. Static pictures of the new screens, before any code.</p>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+      <div class="size" role="group" aria-label="Text size">
+        <button type="button" id="smaller" aria-label="Smaller text">A−</button>
+        <output id="scale" aria-live="polite">100%</output>
+        <button type="button" id="larger" aria-label="Larger text">A+</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="lead" style="margin-top:1.5rem">Stage C is the first stage a person sees. It adds one card to Settings, under Features, one sheet that asks before a tool is added, one question before a tool is removed, one short message, and a section of the privacy page. Every sentence below in a mock-up is the exact English text of the plan's string table. The tool's own words (its name, publisher, description and command titles) are examples.</p>
+
+  <div class="flow" aria-label="How a tool is added">
+    <div class="box go"><b>Choose a folder</b>The macOS folder picker.</div><span class="arrow">→</span>
+    <div class="box go"><b>Read it</b>Nothing is copied, run or saved.</div><span class="arrow">→</span>
+    <div class="box wait"><b>The sheet asks</b>Return and Escape both cancel.</div><span class="arrow">→</span>
+    <div class="box ok"><b>Add Tool</b>Copied, remembered, listed.</div>
+  </div>
+  <div class="flow">
+    <div class="box stop"><b>Refused</b>One plain sentence. Nothing changed. (d)</div>
+    <div class="box stop"><b>Cancel</b>Nothing changed.</div>
+    <div class="box wait"><b>Changed since you added it</b>Held back until you update it. Never started.</div>
+  </div>
+  <p class="key">Colour is status: blue in progress, amber waiting for the person, green done, red stopped.</p>
+
+  <h2>a. Settings, Features, with no tool added</h2>
+  <p class="lead">The section is the last card of the Features page, after the groups of built-in features.</p>
+  <div class="stage"><div class="app"><div class="window" style="margin:0 auto">
+    <div class="titlebar"><i></i><i></i><i></i><span>Features</span></div>
+    <div class="page">
+      <div class="card faint"><div class="head"><span class="tile"><svg><use href="#i-grid"/></svg></span><span class="title">Tools</span><span class="count">6/8</span></div></div>
+      <div class="card">
+        <div class="head"><span class="tile"><svg><use href="#i-puzzle"/></svg></span><span class="title">Tools from outside</span><span class="btn small">Add a Tool…</span></div>
+        <div class="quiet">No tools added. A tool from outside is a separate program that adds commands to Vitruvian.</div>
+      </div>
+    </div>
+  </div></div></div>
+  <div class="note">
+    <p>One quiet line and one button, as the spec asks. Nothing else in the app changes while no tool is added.</p>
+    <p>Choice: its own card on the Features page, not a new page in the sidebar. The spec says the Features hub; a sidebar page would promise more than three rows of content.</p>
+    <p class="alt">Alternative: a "Tools" page in the Settings sidebar. It would cost one more translated title and an edit to the sidebar's fixed list of pages.</p>
+  </div>
+
+  <h2>b. With two tools: one running, one stopped</h2>
+  <div class="stage"><div class="app"><div class="window" style="margin:0 auto">
+    <div class="titlebar"><i></i><i></i><i></i><span>Features</span></div>
+    <div class="page"><div class="card">
+      <div class="head"><span class="tile"><svg><use href="#i-puzzle"/></svg></span><span class="title">Tools from outside</span><span class="btn small">Add a Tool…</span></div>
+      <div>
+        <div class="row">
+          <span class="tile"><svg><use href="#i-box"/></svg></span>
+          <span class="text"><span class="name">Deploys</span><span class="cap">Acme · 1.2.0</span><span class="status"><span class="dot green"></span>Running</span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+          <span class="switch" role="img" aria-label="On"></span>
+        </div>
+        <div class="sep"></div>
+        <div class="row">
+          <span class="tile"><svg><use href="#i-window"/></svg></span>
+          <span class="text"><span class="name">Front Window</span><span class="cap">Example Labs · 0.3.1</span><span class="status"><span class="dot red"></span>Stopped working</span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+          <span class="btn small">Start Again</span>
+          <span class="switch" role="img" aria-label="On"></span>
+        </div>
+      </div>
+    </div></div>
+  </div></div></div>
+  <div class="note">
+    <p>Each row is the tool's own name, then publisher and version as the tool wrote them, a switch, and a way into its detail. A row says how the tool stands only when there is something to say: <b>Running</b>, or <b>Stopped working</b>. A tool waiting for its first command says nothing.</p>
+    <p>Choice: <b>Start Again</b> appears only once the app has given up (three crashes within a minute). Before that the app starts the tool again by itself, so a button would do nothing.</p>
+    <p>A third state is not drawn: a tool whose copy is no longer what the person agreed to shows an amber dot and "Changed since you added it. Update it to use it again." Its switch is disabled.</p>
+    <p class="alt">Alternative: always show a status, including "Ready". One more string in 15 languages, and a row that never changes for most tools.</p>
+  </div>
+
+  <h2>c. A tool's detail</h2>
+  <div class="stage"><div class="app"><div class="sheet" style="margin:0 auto">
+    <div class="top">
+      <span class="tile big"><svg><use href="#i-box"/></svg></span>
+      <div>
+        <h3>Deploys</h3>
+        <p class="by">Acme · 1.2.0</p>
+        <p class="sum">Copies the address of your latest deploy.</p>
+        <p class="status" style="margin-top:.25rem"><span class="dot green"></span>Running</p>
+      </div>
+    </div>
+    <div class="group"><b>Commands</b><ul><li>Copy latest deploy</li></ul><div style="margin-top:.375rem"><span class="btn small">Keyboard shortcuts</span></div></div>
+    <div class="group"><b>What it says it uses</b><ul><li>Write to the clipboard</li><li>Show messages and play the alert sound</li><li>Save its own settings</li></ul><p class="small">This list comes from the tool. It is not a limit on what the tool can do.</p></div>
+    <div class="path"><code>~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/com.acme.deploys</code><span class="btn small">Reveal in Finder</span></div>
+    <div class="quiet">▸ Log</div>
+    <div class="actions"><span class="btn danger">Remove</span><span class="btn">Update from Folder…</span><span class="push"></span><span class="btn default">Close</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>What the spec lists: the commands, the log, where the files are, and Remove. Plus what the tool says it uses, under the same note as on the agreement sheet, and <b>Update from Folder…</b>. "Keyboard shortcuts", "Reveal in Finder", "Log", "Remove" and "Close" are words the app already has.</p>
+    <p>Choice: the tool's preferences are not shown. A manifest gives a preference an id, a type and a default, and no name a person could read, so there is nothing to put on screen in plain words. The shortcuts button goes to the existing Shortcuts page, where a tool's commands already have rows.</p>
+    <p class="alt">Alternative: list each preference by its raw id with an editable field. That shows jargon, and needs the "preferences changed" message to be wired through. It belongs with stage D, once the manifest can carry a label.</p>
+  </div>
+
+  <h2>d. A folder that cannot be added</h2>
+  <div class="stage"><div class="app"><div class="alert" style="margin:0 auto">
+    <span class="appicon"><svg><use href="#i-puzzle"/></svg></span>
+    <h3>This folder can’t be added</h3>
+    <p>Its program, bin/deploys, is missing or macOS will not run it.</p>
+    <div class="stack"><span class="btn wide default">Close</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>One named problem, in one sentence, straight after the folder picker. Nothing was copied and nothing changed. There are seven such sentences. The other six say: no <code>vitruvian-tool.json</code>; a mistake in it, with the rule it broke for whoever made the tool; it needs a newer Vitruvian; macOS has quarantined it; it is too large (256 MB or 10,000 files); or it could not be copied.</p>
+    <p>Choice: for a downloaded folder the alert shows the command that clears the quarantine and a Copy button. The app never clears it for the person, as the spec says.</p>
+    <p class="alt">Alternative: one generic sentence with the technical detail in English. Five fewer strings, and a person is told less.</p>
+    <p>The other six, word for word, each under the same title:</p>
+    <ul class="words">
+      <li>It has no vitruvian-tool.json file, so it is not a tool.</li>
+      <li>Its vitruvian-tool.json file has a mistake. Tell whoever made the tool: <code>unknownService("camera")</code></li>
+      <li>It needs something this version of Vitruvian does not have: <code>island</code></li>
+      <li>macOS has quarantined this folder because it was downloaded. Vitruvian will not clear that for you. If you trust it, run this in Terminal, then add it again: <code>xattr -dr com.apple.quarantine '/Users/me/Downloads/deploys'</code></li>
+      <li>The folder is too large. A tool can hold up to 256 MB and 10,000 files.</li>
+      <li>Vitruvian could not copy the folder, or it changed while you were reading. Nothing was added.</li>
+    </ul>
+  </div>
+
+  <h2>e. The agreement sheet</h2>
+  <div class="stage"><div class="app"><div class="sheet" style="margin:0 auto">
+    <div class="top">
+      <span class="tile big"><svg><use href="#i-box"/></svg></span>
+      <div>
+        <h3>Add “Deploys” to Vitruvian?</h3>
+        <p class="by">Acme · 1.2.0</p>
+        <p class="sum">Copies the address of your latest deploy.</p>
+        <p class="small">From ~/tools/deploys</p>
+        <p class="small">The name, publisher and description are the tool’s own words. Vitruvian has not checked them.</p>
+      </div>
+    </div>
+    <div class="statement"><svg><use href="#i-warn"/></svg><div><b>This tool can do anything Vitruvian can on this Mac.</b><p>It is a separate program. It can read the screen, control other apps, read your files and use the network. Vitruvian does not limit or check what it does. Add it only if you trust who made it.</p></div></div>
+    <div class="group"><b>Commands</b><ul><li>Copy latest deploy</li></ul></div>
+    <div class="group"><b>What it says it uses</b><ul><li>Write to the clipboard</li><li>Show messages and play the alert sound</li><li>Save its own settings</li></ul><p class="small">This list comes from the tool. It is not a limit on what the tool can do.</p></div>
+    <div class="actions"><span class="btn">Add Tool</span><span class="btn default">Cancel</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>The one safety moment. It names the tool and the folder it came from, says in one bold sentence that the tool can do anything Vitruvian can, and says the tool's words are the tool's. <b>Cancel is the default button.</b> Return and Escape both leave with nothing added. Adding takes a click on a plain button.</p>
+    <p>Choice: the statement sits in a plain tinted panel above both lists, so the lists read as detail under it. The list of what the tool uses is the tool's own statement and says so underneath.</p>
+    <p class="alt">This departs from the spec in one place. The spec (section 8, and open question 4) says the sheet shows no list of what a tool uses, because a list reads as a promise. The brief for this stage asks for the list, as information. If the spec should win, the list leaves the sheet and stays in the detail view only: one deleted block, no string saved.</p>
+    <p class="alt">Not chosen: a tick box "I trust who made this tool" that enables the button. It is one more string and one more click, and it is what the bold sentence already asks.</p>
+    <p>A tool may list seven of the app's services. Each has its own plain words:</p>
+    <ul class="words">
+      <li>Show messages and play the alert sound</li>
+      <li>Open links</li>
+      <li>Read the clipboard</li>
+      <li>Write to the clipboard</li>
+      <li>Paste and press menu commands in other apps</li>
+      <li>End other programs</li>
+      <li>Save its own settings</li>
+    </ul>
+  </div>
+
+  <h2>f. The same sheet, for an update whose manifest changed</h2>
+  <div class="stage"><div class="app"><div class="sheet" style="margin:0 auto">
+    <div class="top">
+      <span class="tile big"><svg><use href="#i-box"/></svg></span>
+      <div>
+        <h3>Update “Deploys”?</h3>
+        <p class="by">Acme · 1.3.0</p>
+        <p class="sum">Copies the address of your latest deploy.</p>
+        <p class="small">From ~/tools/deploys</p>
+        <p class="small">The name, publisher and description are the tool’s own words. Vitruvian has not checked them.</p>
+      </div>
+    </div>
+    <div class="upd"><p>You have version 1.2.0. This folder has version 1.3.0.</p><p><b>What the tool says about itself has changed since you agreed. Read it again.</b></p><p class="dim">What the tool saved is kept.</p></div>
+    <div class="statement"><svg><use href="#i-warn"/></svg><div><b>This tool can do anything Vitruvian can on this Mac.</b><p>It is a separate program. It can read the screen, control other apps, read your files and use the network. Vitruvian does not limit or check what it does. Add it only if you trust who made it.</p></div></div>
+    <div class="group"><b>Commands</b><ul><li>Copy latest deploy</li><li>Open latest deploy</li></ul></div>
+    <div class="group"><b>What it says it uses</b><ul><li>Write to the clipboard</li><li>Show messages and play the alert sound</li><li>Open links</li><li>Save its own settings</li></ul><p class="small">This list comes from the tool. It is not a limit on what the tool can do.</p></div>
+    <div class="actions"><span class="btn">Update Tool</span><span class="btn default">Cancel</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>Choosing the folder of a tool that is already added always asks again, with the old and new version, as the spec says. The old tool keeps running until the person agrees.</p>
+    <p>Choice: "changed" means one thing, exactly: the bytes of <code>vitruvian-tool.json</code> are not the bytes the person agreed to. Then the bold line appears. The program and the other files are not compared; the statement already covers them.</p>
+    <p class="alt">Alternative: mark each new command and service with a "New" badge. One more string, and a comparison the person may trust more than it deserves.</p>
+  </div>
+
+  <h2>g. Removing a tool</h2>
+  <div class="stage"><div class="app"><div class="alert" style="margin:0 auto">
+    <span class="appicon"><svg><use href="#i-puzzle"/></svg></span>
+    <h3>Remove “Deploys”?</h3>
+    <p>Vitruvian deletes its copy of the tool. The folder you added it from is not touched.</p>
+    <div class="stack"><span class="btn wide">Remove, Keep What It Saved</span><span class="btn wide danger">Remove and Delete What It Saved</span><span class="btn wide default">Cancel</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>Remove always deletes the app's copy of the tool. What the tool saved (its data folder and its own settings) goes only if the person picks the second button. Cancel is the default.</p>
+    <p>Choice: two buttons, not a tick box. The alert the app already uses when the island is uninstalled has the same shape, and a button names what happens.</p>
+    <p class="alt">Alternative: always keep what the tool saved, and offer "delete its data" separately. Safer by a hair, but the spec says Remove deletes what it saved after asking.</p>
+  </div>
+
+  <h2>h. The privacy page's new section</h2>
+  <div class="stage"><div class="docpage">
+    <h3>Tools you add from outside</h3>
+    <p>Everything above is about Vitruvian itself. A tool from outside is different. It is a separate program, made by someone else, that you chose to add from a folder in Settings under Features. Vitruvian has no store that offers tools, and it adds none without asking you first.</p>
+    <ul>
+      <li><b>A tool can do anything Vitruvian can on your Mac.</b> macOS treats it as part of Vitruvian. Whatever you have allowed Vitruvian, such as reading the screen or controlling other apps, the tool has too, with no prompt of its own.</li>
+      <li><b>It can read your files and use the network.</b> It runs as you. It makes its own connections, which Vitruvian neither lists nor limits. The list of network connections above covers Vitruvian alone.</li>
+      <li><b>Vitruvian does not check what a tool does.</b> The list a tool gives of what it uses is the tool's own statement. It is not a limit, and macOS does not hold the tool to it.</li>
+      <li><b>What Vitruvian keeps about a tool stays on your Mac.</b> That is a copy of the tool's folder, a folder for what the tool saves, the tool's own settings, and a record of what you agreed to: the tool's name, version and publisher as the tool gave them, the folder you added it from, and when. None of it is uploaded, and none of it is in a settings backup.</li>
+      <li><b>Removing a tool deletes Vitruvian's copy of it and that record.</b> What the tool saved is deleted too if you say so. The folder you added the tool from is never touched. Vitruvian cannot undo what a tool did while it ran.</li>
+    </ul>
+    <p>With no tool added, none of this applies: Vitruvian starts no program of this kind. Add a tool only if you trust who made it.</p>
+  </div></div>
+  <div class="note">
+    <p>This is a section of <code>docs/PRIVACY.md</code>, placed after the list of network connections. The app has no privacy screen of its own, so there is no string here to translate.</p>
+    <p>Choice: it says plainly that the app's promises above cover the app alone, and what the app itself keeps about a tool.</p>
+  </div>
+
+  <h2>i. A tool stopped working</h2>
+  <div class="stage"><div class="app" style="text-align:center"><div class="hud"><svg><use href="#i-warn"/></svg>“Deploys” stopped working</div></div></div>
+  <div class="note">
+    <p>The app's existing short on-screen message, shown for a few seconds. It appears once for each tool in each run of the app, at the tool's first crash. The row in Settings carries the state after that.</p>
+    <p>Choice: at the first crash, not when the app gives up. The spec says the person is told that a tool stopped working; the first crash is when a command they ran did nothing.</p>
+    <p class="alt">Alternative: a macOS notification, which stays in Notification Center. It needs the Notifications permission, and a tool that crashes at launch would greet the person with a banner.</p>
+  </div>
+
+  <h2>Where the look comes from <small>the app's own Design tokens and components</small></h2>
+  <div class="scroll"><table>
+    <tr><th>In the mock-ups</th><th>In the app</th></tr>
+    <tr><td>The card</td><td><code>SettingsCard</code>: 16 pt padding, 16 pt continuous corners, <code>.quaternary</code> at 35%, 13 pt between its rows</td></tr>
+    <tr><td>The page column</td><td><code>FeatureHubColumn</code> (760 pt at most, 22 pt margin) inside <code>FeatureHubScrollPage</code> (20 pt between cards)</td></tr>
+    <tr><td>The icon tile</td><td>As <code>SettingsRow</code> and the hub's group header: 26 pt, 7 pt corners, <code>Color.accentColor</code> at 12%, a 12 pt semibold symbol. 40 pt and 10 pt corners on a sheet</td></tr>
+    <tr><td>A row</td><td>As <code>FeatureHubRow</code>: 7 pt and 8 pt padding, 10 pt corners, <code>Color.primary</code> at 4% under the pointer, a <code>chevron.forward</code>, a small <code>.switch</code> toggle, a <code>Divider</code> inset 8 pt</td></tr>
+    <tr><td>Text</td><td><code>.headline</code> for a card's title, body for a name, <code>.caption</code> in <code>.secondary</code> for the line under it, <code>.title3.bold()</code> for a sheet's title, <code>.callout</code> for its sentences</td></tr>
+    <tr><td>The statement panel</td><td><code>Color.orange</code> at 14%, the tint the hub's "experimental" badge already uses, 10 pt corners, <code>exclamationmark.triangle.fill</code></td></tr>
+    <tr><td>Status dots</td><td><code>circle.fill</code> at 6 pt in <code>.green</code>, <code>.red</code> and <code>.orange</code>, always beside the same status in words</td></tr>
+    <tr><td>Alerts</td><td>The system alert, through SwiftUI's <code>.alert</code>, as the hub's island question</td></tr>
+    <tr><td>The message</td><td><code>QuickToolHUD</code>, unchanged</td></tr>
+  </table></div>
+  <p class="key">The mock-ups use slightly darker secondary text than macOS draws, so this page meets WCAG AA at every size. The app itself uses the system's own label colours.</p>
+</main>
+
+<script>
+(function(){
+  var root=document.documentElement, KEY_T="cowork-artifact-theme", KEY_S="cowork-artifact-fontscale";
+  function read(key){try{return window.localStorage.getItem(key);}catch(e){return null;}}
+  function write(key,value){try{window.localStorage.setItem(key,value);}catch(e){}}
+  function setTheme(choice,save){
+    if(choice==="light"||choice==="dark"){root.setAttribute("data-theme",choice);}else{choice="system";root.removeAttribute("data-theme");}
+    var buttons=document.querySelectorAll("[data-theme-choice]");
+    for(var i=0;i<buttons.length;i++){buttons[i].setAttribute("aria-pressed",String(buttons[i].getAttribute("data-theme-choice")===choice));}
+    if(save){write(KEY_T,choice);}
+  }
+  var scale=1;
+  function setScale(value,save){
+    scale=Math.min(1.4,Math.max(0.8,Math.round(value*10)/10));
+    root.style.setProperty("--s",String(scale));
+    document.getElementById("scale").textContent=Math.round(scale*100)+"%";
+    if(save){write(KEY_S,String(scale));}
+  }
+  setTheme(read(KEY_T)||"system",false);
+  var saved=parseFloat(read(KEY_S));
+  setScale(isNaN(saved)?1:saved,false);
+  var choices=document.querySelectorAll("[data-theme-choice]");
+  for(var i=0;i<choices.length;i++){choices[i].addEventListener("click",function(){setTheme(this.getAttribute("data-theme-choice"),true);});}
+  document.getElementById("smaller").addEventListener("click",function(){setScale(scale-0.1,true);});
+  document.getElementById("larger").addEventListener("click",function(){setScale(scale+0.1,true);});
+})();
+</script>
+</body>
+</html>
