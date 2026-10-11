@@ -1,7 +1,7 @@
 # Vitruvian sub-project 3: tools that run as their own programs — design
 
-**Date:** 2026-10-10 · **Status:** draft, awaiting James; the trust model in
-section 3 decided by James 2026-10-10 · **Owner:** compass
+**Date:** 2026-10-10 · **Status:** approved by James 2026-10-10, with every
+default in section 16 · **Owner:** compass
 **Scope:** `apps/desktop/vitruvian`, and a new `packages/vitruvian-sdk`.
 **Parents:** `2026-10-08-vitruvian-tool-platform-design.md` (sections 5 to 10,
 and sub-project 3 in section 12); `2026-10-09-vitruvian-broker-and-bundled-tools-design.md`;
@@ -488,8 +488,9 @@ Each is its own plan and pull request.
 
 ## 16. Open questions
 
-Each has a default. Unless James says otherwise, the default stands and the
-stage A plan is written against it.
+Each had a default. James accepted every one on 2026-10-10. They are
+decisions now. The stage A plan is
+`docs/superpowers/plans/2026-10-10-vitruvian-external-tools-stage-a.md`.
 
 1. **Nothing on the island and no feature moved out in this sub-project**
    (decision 2). *Default: yes. It is about size, not trust.*
