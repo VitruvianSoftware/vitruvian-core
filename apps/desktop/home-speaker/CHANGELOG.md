@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.11.0...home-speaker-v1.12.0) (2026-10-11)
+
+
+### Features
+
+* **desktop:** establish reusable desktop release packaging pattern and guidelines ([#3062](https://github.com/VitruvianSoftware/vitruvian-core/issues/3062)) ([853d334](https://github.com/VitruvianSoftware/vitruvian-core/commit/853d33457a1de366ff9462b36fb58fe14b945593))
+
 ## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.10.0...home-speaker-v1.11.0) (2026-10-10)
 
 
