@@ -113,7 +113,7 @@ OPTIONAL_KEYS="$(csv_to_keys "$OPTIONAL_CSV")"
 # if the file/field is absent (the probe then degrades to presence-only).
 # ---------------------------------------------------------------------------
 
-# .bazelversion is a bare version on the first line (e.g. "9.1.1").
+# .bazelversion is a bare version on the first line (e.g. "9.3.0").
 expected_bazel() {
   [ -f "$ROOT/.bazelversion" ] || return 0
   # head -1 then strip surrounding whitespace; portable awk.
@@ -195,7 +195,7 @@ probe_version() {
   raw=""
   case "$key" in
     bazel)
-      # `bazel version` prints "Build label: 9.1.1" (the real Bazel version),
+      # `bazel version` prints "Build label: 9.3.0" (the real Bazel version),
       # plus a "Bazelisk version:" line we must NOT pick up. Parse the label.
       raw="$(bazel version 2>/dev/null | sed -n 's/^Build label:[ \t]*//p' | head -1)"
       # Fallback to the whole output if the label line isn't present.

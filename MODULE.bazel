@@ -21,7 +21,7 @@
 # Pin the Bazel version range so a developer who skipped Bazelisk (or has a stray
 # system `bazel` on PATH) fails fast with a clear message instead of cryptic flag
 # errors or silent local-vs-CI drift. `.bazelversion` (consumed by Bazelisk) pins
-# the exact build (9.1.1); this is the floor/ceiling enforced by Bazel itself for
+# the exact build (9.3.0); this is the floor/ceiling enforced by Bazel itself for
 # ANY invocation. Bump the ceiling deliberately when moving to Bazel 10.
 module(
     name = "vitruvian_core",
