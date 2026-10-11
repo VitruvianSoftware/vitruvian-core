@@ -24,6 +24,7 @@
 // Pure logic, like decide.mjs, so it runs under `node --test`.
 
 import { wakeMessage } from "./decide.mjs";
+import { progressLines, progressTitle } from "./landing.mjs";
 
 // --- Merge conflicts ---------------------------------------------------------
 
@@ -199,14 +200,16 @@ function feedbackLines(feedback) {
 // the one decide.mjs writes.
 export function composeMessage(
   pr,
-  { failing = [], conflict = null, feedback = [] },
+  { failing = [], conflict = null, feedback = [], progress = [] },
 ) {
-  if (!conflict && feedback.length === 0) return wakeMessage(pr, failing);
+  if (!conflict && feedback.length === 0 && progress.length === 0)
+    return wakeMessage(pr, failing);
   const lines = [
     `Automated notice from the gh-watch plugin about ${pr.repo}#${pr.number} ("${pr.title}").`,
     `PR: ${pr.url}`,
     `Branch: ${pr.branch}  Commit: ${(pr.headSha ?? "").slice(0, 12)}`,
   ];
+  if (progress.length > 0) lines.push("", ...progressLines(pr, progress));
   if (conflict) lines.push("", ...conflictLines(pr, conflict));
   if (failing.length > 0) {
     lines.push(
@@ -225,9 +228,10 @@ export function composeMessage(
 
 export function messageTitle(
   pr,
-  { failing = [], conflict = null, feedback = [] },
+  { failing = [], conflict = null, feedback = [], progress = [] },
 ) {
   const parts = [];
+  if (progress.length > 0) parts.push(progressTitle(progress));
   if (conflict) parts.push("merge conflicts");
   if (failing.length > 0) parts.push("CI failing");
   if (feedback.length > 0) parts.push("new review feedback");

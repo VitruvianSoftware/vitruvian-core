@@ -105,6 +105,10 @@ export function panelOpen(panelSeenAt, now) {
 
 // Picks the polling mode and says why, for the panel to show.
 export function modeOf({ watches, panelSeenAt, now }) {
+  // A merged pull request whose base branch is still being checked counts
+  // as live work.
+  if (watches.some((w) => w.progress?.landing?.phase === "watching"))
+    return { mode: "fast", reason: "merged, watching the base branch" };
   const open = watches.filter((w) => !w.closed);
   if (open.length === 0) return { mode: "slow", reason: "nothing to watch" };
   if (panelOpen(panelSeenAt, now))

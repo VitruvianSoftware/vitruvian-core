@@ -52,7 +52,7 @@ const snapshot = (headSha, state, ...raw) => ({
   checks: normaliseChecks(raw),
 });
 
-function setup({ autoFix = true, comments = false } = {}) {
+function setup({ autoFix = true, comments = false, updates = false } = {}) {
   const file = join(mkdtempSync(join(tmpdir(), "gh-watch-")), "watches.json");
   const store = new Store(file);
   const key = watchKey("o/r", 7);
@@ -63,6 +63,7 @@ function setup({ autoFix = true, comments = false } = {}) {
     conversationId: "conv-1",
     autoFix,
     comments,
+    updates,
   });
   const sent = [];
   const world = {
@@ -73,6 +74,9 @@ function setup({ autoFix = true, comments = false } = {}) {
     reads: 0,
     feedback: [],
     failFeedback: false,
+    queue: { queued: false, position: null },
+    baseChecks: [],
+    baseReads: 0,
   };
   const watcher = new Watcher({
     store,
@@ -81,6 +85,11 @@ function setup({ autoFix = true, comments = false } = {}) {
       world.reads += 1;
       if (world.failRead) throw new Error("boom");
       return world.snap;
+    },
+    fetchQueue: async () => world.queue,
+    fetchCommitChecks: async () => {
+      world.baseReads += 1;
+      return world.baseChecks;
     },
     fetchFeedback: async () => {
       if (world.failFeedback) throw new Error("graphql down");
@@ -445,6 +454,11 @@ test("parseNote accepts a successful gh pr create and nothing else", () => {
     cwd: "/work/repo",
   });
   assert.equal(parseNote(note("echo gh pr created")), null);
+  assert.equal(parseNote(note("echo gh pr create")), null);
+  assert.equal(parseNote(note("true gh pr create")), null);
+  assert.equal(parseNote(note("grep -r 'gh pr create' .")), null);
+  assert.ok(parseNote(note("cd repo; gh pr create --fill")));
+  assert.ok(parseNote(note("git push -u origin x || true\ngh pr create")));
   assert.equal(parseNote(note("gh pr view")), null);
   assert.equal(
     parseNote(note("gh pr create", { error: "exit status 1" })),
@@ -530,4 +544,103 @@ test("notes are discarded when automatic watching is switched off, or are not PR
   await watcher.signUp();
   assert.equal(inbox.list().length, 0);
   assert.equal(store.list().length, 0);
+});
+
+const merged = (sha) => ({
+  ...snapshot(sha, "MERGED", run("lint", "SUCCESS")),
+  mergeCommit: "mergesha",
+  base: "main",
+});
+const base = (name, bucket) => ({
+  name,
+  bucket,
+  url: `https://example.test/${name}`,
+});
+
+test("the journey: green, merged, landed, each told once", async () => {
+  const { store, key, sent, world, watcher } = setup({ updates: true });
+  world.snap = snapshot("sha1", "OPEN", run("lint", null, "IN_PROGRESS"));
+  await watcher.check(key);
+  assert.equal(sent.length, 0);
+
+  world.snap = snapshot("sha1", "OPEN", run("lint", "SUCCESS"));
+  await watcher.check(key);
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /All checks have passed/);
+  assert.equal(sent[0].opts.title, "o/r#7: checks passed");
+
+  world.queue = { queued: true, position: 2 };
+  await watcher.check(key);
+  assert.equal(store.get(key).queued, true);
+  assert.equal(store.get(key).queuePosition, 2);
+  assert.equal(sent.length, 1);
+
+  world.queue = { queued: false, position: null };
+  world.snap = merged("sha1");
+  await watcher.check(key);
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].message, /has merged into `main`/);
+  assert.equal(world.baseReads, 0);
+
+  world.baseChecks = [base("build", "pending")];
+  world.clock += 30_000;
+  await watcher.pass(); // closed, but followed at the normal pace
+  assert.equal(world.baseReads, 1);
+  assert.equal(sent.length, 2);
+  assert.equal(watcher.status().reason, "merged, watching the base branch");
+
+  world.baseChecks = [base("build", "pass")];
+  world.clock += 90_000;
+  await watcher.pass();
+  assert.equal(sent.length, 3);
+  assert.match(sent[2].message, /landed cleanly/);
+  assert.equal(store.get(key).progress.landing.result, "healthy");
+
+  world.clock += 30_000;
+  await watcher.pass(); // finished: back to the slow re-read
+  assert.equal(world.baseReads, 2);
+  assert.equal(sent.length, 3);
+});
+
+test("a failing base branch after the merge is reported with its checks", async () => {
+  const { key, sent, world, watcher } = setup({ updates: true });
+  await watcher.check(key);
+  world.snap = merged("sha1");
+  await watcher.check(key);
+  world.baseChecks = [base("build", "fail")];
+  await watcher.check(key);
+  assert.equal(sent.length, 2);
+  assert.match(
+    sent[1].message,
+    /Checks on `main` are failing after this merge/,
+  );
+  assert.match(sent[1].message, /- build/);
+});
+
+test("with updates off the journey is tracked but nothing is sent", async () => {
+  const { store, key, sent, world, watcher } = setup({ updates: false });
+  world.snap = snapshot("sha1", "OPEN", run("lint", null, "IN_PROGRESS"));
+  await watcher.check(key);
+  world.snap = snapshot("sha1", "OPEN", run("lint", "SUCCESS"));
+  await watcher.check(key);
+  world.snap = merged("sha1");
+  await watcher.check(key);
+  assert.equal(sent.length, 0);
+  assert.equal(store.get(key).progress.ended, "merged");
+});
+
+test("leaving the merge queue is reported, and an undelivered update is retried", async () => {
+  const { key, sent, world, watcher } = setup({ updates: true });
+  await watcher.check(key);
+  world.queue = { queued: true, position: 1 };
+  await watcher.check(key);
+  world.queue = { queued: false, position: null };
+  world.failSend = true;
+  await watcher.check(key);
+  assert.equal(sent.length, 0);
+  world.failSend = false;
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /left the merge queue without merging/);
 });

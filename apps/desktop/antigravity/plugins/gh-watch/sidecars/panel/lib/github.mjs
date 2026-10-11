@@ -29,7 +29,7 @@ import { normaliseChecks } from "./decide.mjs";
 import { collectFeedback } from "./notices.mjs";
 
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,autoMergeRequest,statusCheckRollup";
+  "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,autoMergeRequest,mergeCommit,statusCheckRollup";
 const PR_URL = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
 
 function gh(args, { cwd, timeoutMs = 20_000 } = {}) {
@@ -76,6 +76,7 @@ function toSnapshot(raw) {
     headSha: raw.headRefOid ?? "",
     mergeable: raw.mergeable ?? "UNKNOWN",
     autoMerge: raw.autoMergeRequest != null,
+    mergeCommit: raw.mergeCommit?.oid ?? null,
     checks: normaliseChecks(raw.statusCheckRollup),
   };
 }
@@ -192,4 +193,56 @@ export async function fetchFeedback(repo, number, run = gh) {
   if (!pr)
     throw new Error("GitHub returned no pull request for the feedback read");
   return collectFeedback(pr, await getLogin(run));
+}
+
+const QUEUE_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      isInMergeQueue
+      mergeQueueEntry { position }
+    }
+  }
+}`;
+
+// Whether a pull request is in the merge queue, and where. `gh pr view`
+// cannot say, so this is its own small read.
+export async function fetchQueue(repo, number, run = gh) {
+  const [owner, name] = repo.split("/");
+  const out = await run([
+    "api",
+    "graphql",
+    "-f",
+    `query=${QUEUE_QUERY}`,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `name=${name}`,
+    "-F",
+    `number=${number}`,
+  ]);
+  const pr = JSON.parse(out)?.data?.repository?.pullRequest;
+  return {
+    queued: pr?.isInMergeQueue === true,
+    position: pr?.mergeQueueEntry?.position ?? null,
+  };
+}
+
+// The checks that ran on one commit of the base branch, in the same shape
+// as a pull request's checks.
+export async function fetchCommitChecks(repo, sha, run = gh) {
+  const out = await run([
+    "api",
+    `repos/${repo}/commits/${sha}/check-runs?per_page=100`,
+  ]);
+  const runs = JSON.parse(out)?.check_runs ?? [];
+  return normaliseChecks(
+    runs.map((r) => ({
+      __typename: "CheckRun",
+      name: r.name,
+      status: r.status,
+      conclusion: r.conclusion,
+      detailsUrl: r.html_url,
+    })),
+  );
 }

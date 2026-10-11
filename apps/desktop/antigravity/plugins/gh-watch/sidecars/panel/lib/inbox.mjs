@@ -38,7 +38,17 @@ import { join } from "node:path";
 // dropped.
 export const NOTE_TTL_MS = 10 * 60 * 1000;
 
-const CREATE = /(^|[\s;&|(])gh\s+pr\s+create(\s|$)/;
+// Matches a command whose own words are `gh pr create`, not one that merely
+// mentions them (an echo, a comment, a grep).
+const CREATE = /^gh\s+pr\s+create(\s|$)/;
+
+// Splits a command line at the usual shell joiners and reports whether any
+// part of it is a `gh pr create`.
+function createsPr(command) {
+  return command
+    .split(/&&|\|\||[;|\n]/)
+    .some((part) => CREATE.test(part.trim()));
+}
 
 // Reads one note. Returns { conversationId, cwd } when it really is a
 // successful `gh pr create` with somewhere to look for the pull request, and
@@ -53,7 +63,7 @@ export function parseNote(text) {
   const call = payload?.toolCall;
   const command = call?.args?.CommandLine;
   if (call?.name !== "run_command" || typeof command !== "string") return null;
-  if (!CREATE.test(command)) return null;
+  if (!createsPr(command)) return null;
   if (payload.error) return null;
   const conversationId = payload.conversationId;
   const cwd = call.args.Cwd || payload.workspacePaths?.[0];

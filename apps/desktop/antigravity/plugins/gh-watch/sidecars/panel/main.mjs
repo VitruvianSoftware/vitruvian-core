@@ -31,8 +31,10 @@ import { fileURLToPath } from "node:url";
 import { Response, SidecarApp } from "sidecar_sdk";
 
 import {
+  fetchCommitChecks,
   fetchFeedback,
   fetchPr,
+  fetchQueue,
   resolvePr,
   setAutoMerge,
 } from "./lib/github.mjs";
@@ -51,6 +53,8 @@ const watcher = new Watcher({
   store,
   fetchPr,
   fetchFeedback,
+  fetchQueue,
+  fetchCommitChecks,
   resolvePr,
   // Where hooks/note-pr-create.sh leaves its notes.
   inbox: new Inbox(join(DATA_DIR, "inbox")),
@@ -150,6 +154,7 @@ app.api("/api/watch", async (data) => {
     conversationId,
     autoFix: existing?.autoFix ?? true,
     comments: existing?.comments ?? true,
+    updates: existing?.updates ?? true,
     addedAt: existing?.addedAt ?? Date.now(),
     closed: false,
     readFailures: 0,
@@ -176,6 +181,15 @@ app.api("/api/comments", async (data) => {
   const enabled = data.enabled === true;
   store.put({ ...watch, comments: enabled, seenFeedback: undefined });
   if (enabled) await watcher.check(watch.key);
+  return { watch: store.get(watch.key) };
+});
+
+// POST /api/updates {key, enabled}: tell the conversation when the change
+// goes green, merges and lands, or not.
+app.api("/api/updates", (data) => {
+  const watch = store.get(String(data.key ?? ""));
+  if (!watch) return fail("That pull request is not being watched", 404);
+  store.put({ ...watch, updates: data.enabled === true });
   return { watch: store.get(watch.key) };
 });
 

@@ -82,11 +82,24 @@ function ago(ms) {
 }
 
 function statusOf(watch) {
-  if (watch.prState === "MERGED") return { text: "Merged", tone: "done" };
+  if (watch.prState === "MERGED") {
+    const landing = watch.progress?.landing;
+    if (landing?.phase === "watching")
+      return { text: "Merged · checking base", tone: "run" };
+    if (landing?.result === "healthy")
+      return { text: "Merged · landed", tone: "good" };
+    if (landing?.result === "failing")
+      return { text: "Merged · base failing", tone: "bad" };
+    return { text: "Merged", tone: "done" };
+  }
   if (watch.closed) return { text: "Closed", tone: "done" };
   if (!watch.counts) return { text: "Not read yet", tone: "wait" };
   if (watch.conflicting) return { text: "Conflicts", tone: "bad" };
   if (watch.counts.fail > 0) return { text: "Failing", tone: "bad" };
+  if (watch.queued) {
+    const place = watch.queuePosition ? ` #${watch.queuePosition}` : "";
+    return { text: `In merge queue${place}`, tone: "run" };
+  }
   if (watch.counts.pending > 0) return { text: "Running", tone: "run" };
   return { text: "Passing", tone: "good" };
 }
@@ -128,7 +141,8 @@ function card(watch) {
     onchange: (event) =>
       act("/api/automerge", { key: watch.key, enabled: event.target.checked }),
   });
-  merge.checked = watch.autoMerge === true;
+  // GitHub clears its auto-merge flag once the pull request is queued.
+  merge.checked = watch.autoMerge === true || watch.queued === true;
   merge.disabled = watch.closed === true;
 
   const comments = el("input", {
@@ -139,6 +153,16 @@ function card(watch) {
   });
   comments.checked = watch.comments === true;
   comments.disabled = watch.closed === true;
+
+  const updates = el("input", {
+    type: "checkbox",
+    "data-focus": `updates:${watch.key}`,
+    onchange: (event) =>
+      act("/api/updates", { key: watch.key, enabled: event.target.checked }),
+  });
+  updates.checked = watch.updates === true;
+  // Stays usable after the merge: the base branch is still being followed.
+  updates.disabled = watch.closed === true && watch.prState !== "MERGED";
 
   const mine =
     sidecar.conversationId && watch.conversationId === sidecar.conversationId;
@@ -210,6 +234,12 @@ function card(watch) {
           { class: "check" },
           comments,
           "Tell the agent about new review comments",
+        ),
+        el(
+          "label",
+          { class: "check" },
+          updates,
+          "Tell the agent when it goes green, merges and lands",
         ),
         el(
           "label",

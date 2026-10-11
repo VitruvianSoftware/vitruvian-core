@@ -25,6 +25,7 @@ js_library(
         "sidecars/panel/lib/decide.mjs",
         "sidecars/panel/lib/github.mjs",
         "sidecars/panel/lib/inbox.mjs",
+        "sidecars/panel/lib/landing.mjs",
         "sidecars/panel/lib/notices.mjs",
         "sidecars/panel/lib/pace.mjs",
         "sidecars/panel/lib/store.mjs",
@@ -38,6 +39,13 @@ js_test(
     size = "small",
     data = [":lib"],
     entry_point = "sidecars/panel/lib/decide.test.mjs",
+)
+
+js_test(
+    name = "landing_test",
+    size = "small",
+    data = [":lib"],
+    entry_point = "sidecars/panel/lib/landing.test.mjs",
 )
 
 js_test(
@@ -75,6 +83,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":decide_test",
+        ":landing_test",
         ":note-pr-create_test",
         ":notices_test",
         ":pace_test",

@@ -67,6 +67,24 @@ Merge conflicts and review comments follow the same idea:
 
 Everything that needs attention on one pass goes into one message.
 
+## After the checks pass
+
+| Situation | What happens |
+| --- | --- |
+| Every check has finished and none failed | One message: checks passed (once per commit) |
+| The pull request enters the merge queue | Shown in the panel with its position; no message |
+| It leaves the merge queue without merging | One message |
+| It merges | One message; the base branch's checks on the merge commit are then followed |
+| Those checks pass | One message: landed cleanly |
+| One of them fails | One message at once, naming it |
+| Nothing runs on the merge commit for 10 minutes, or it takes over 2 hours | Following stops quietly |
+| It is closed without merging | One message |
+| It was already green, merged or closed when watching began | Nothing: old news is not announced |
+
+"Landed" is only believed 90 seconds after the merge. With a merge queue the
+merge commit already carries the queue's own passed checks at that moment,
+before the base branch's workflows have started.
+
 ## Automatic sign-up
 
 Antigravity runs `hooks/note-pr-create.sh` after every shell command an

@@ -26,6 +26,7 @@
 
 import { countChecks, decide, emptyState } from "./decide.mjs";
 import { NOTE_TTL_MS, parseNote } from "./inbox.mjs";
+import { decideProgress, landingActive, progressTitle } from "./landing.mjs";
 import {
   composeMessage,
   decideConflict,
@@ -49,6 +50,8 @@ export class Watcher {
   #store;
   #fetchPr;
   #fetchFeedback;
+  #fetchQueue;
+  #fetchCommitChecks;
   #resolvePr;
   #inbox;
   #sendMessage;
@@ -63,6 +66,8 @@ export class Watcher {
     store,
     fetchPr,
     fetchFeedback = async () => [],
+    fetchQueue = async () => ({ queued: false, position: null }),
+    fetchCommitChecks = async () => [],
     resolvePr = null,
     inbox = null,
     sendMessage,
@@ -71,6 +76,8 @@ export class Watcher {
     this.#store = store;
     this.#fetchPr = fetchPr;
     this.#fetchFeedback = fetchFeedback;
+    this.#fetchQueue = fetchQueue;
+    this.#fetchCommitChecks = fetchCommitChecks;
     this.#resolvePr = resolvePr;
     this.#inbox = inbox;
     this.#sendMessage = sendMessage;
@@ -120,6 +127,7 @@ export class Watcher {
         conversationId: parsed.conversationId,
         autoFix: true,
         comments: true,
+        updates: true,
         addedAt: this.#now(),
         addedBy: "hook",
         closed: false,
@@ -188,6 +196,10 @@ export class Watcher {
           const closedFor = now - (watch.closedAt ?? watch.checkedAt ?? now);
           if (closedFor >= settings.removeClosedHours * 3_600_000) {
             this.#store.remove(watch.key);
+          } else if (landingActive(watch)) {
+            // Just merged: the base branch's checks are followed at the
+            // normal pace until they finish.
+            await this.check(watch.key);
           } else if (
             now - (watch.checkedAt ?? 0) >=
             settings.slowSeconds * 1000
@@ -247,8 +259,43 @@ export class Watcher {
       checkedAt: now,
     };
 
+    // Where the change has got to: green, queued, merged, landed. The state
+    // is always kept for the panel; the news is only sent when the pull
+    // request's updates switch is on.
+    let queue = { queued: false, position: null };
+    let baseChecks = null;
+    try {
+      const settled =
+        !next.closed && next.counts.pending === 0 && next.counts.fail === 0;
+      if (settled || watch.queued) {
+        queue = await this.#fetchQueue(watch.repo, watch.number);
+      }
+      if (snap.state === "MERGED" && snap.mergeCommit && landingActive(watch)) {
+        baseChecks = await this.#fetchCommitChecks(
+          watch.repo,
+          snap.mergeCommit,
+        );
+      }
+    } catch (err) {
+      next.lastError = `Could not read merge progress: ${err.message}`;
+    }
+    const journey = decideProgress(
+      watch.progress,
+      { ...snap, queued: queue.queued },
+      baseChecks,
+      now,
+    );
+    next.progress = journey.state;
+    next.queued = queue.queued;
+    next.queuePosition = queue.position;
+    const progress = watch.updates ? journey.events : [];
+
     if (next.closed) {
-      this.#store.put(next);
+      if (progress.length === 0) {
+        this.#store.put(next);
+        return;
+      }
+      await this.#deliver(watch, next, snap, { progress }, now);
       return;
     }
 
@@ -281,12 +328,34 @@ export class Watcher {
       }
     }
 
-    if (failing.length === 0 && !conflict && feedback.length === 0) {
+    if (
+      failing.length === 0 &&
+      !conflict &&
+      feedback.length === 0 &&
+      progress.length === 0
+    ) {
       this.#store.put(next);
       return;
     }
+    await this.#deliver(
+      watch,
+      next,
+      snap,
+      { failing, conflict, feedback, progress },
+      now,
+    );
+  }
 
-    const parts = { failing, conflict, feedback };
+  // Sends one message for everything decided on this pass and records it.
+  // If it cannot be delivered, what was decided is rolled back so the next
+  // pass tries again.
+  async #deliver(watch, next, snap, parts, now) {
+    const {
+      failing = [],
+      conflict = null,
+      feedback = [],
+      progress = [],
+    } = parts;
     try {
       await this.#sendMessage(
         watch.conversationId,
@@ -294,18 +363,18 @@ export class Watcher {
         { title: messageTitle(snap, parts) },
       );
     } catch (err) {
-      // Not delivered: keep what was decided before this pass so the next
-      // one tries again.
       this.#store.put({
         ...next,
         decision: watch.decision,
         conflict: watch.conflict,
         seenFeedback: watch.seenFeedback,
+        progress: watch.progress,
         lastError: `Could not wake the conversation: ${err.message}`,
       });
       return;
     }
     const about = [
+      ...(progress.length > 0 ? [progressTitle(progress)] : []),
       ...failing.map((c) => c.name),
       ...(conflict ? ["merge conflicts"] : []),
       ...(feedback.length > 0

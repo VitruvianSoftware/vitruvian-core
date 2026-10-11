@@ -22,6 +22,10 @@ switch in Claude Code's desktop app.
 - New review comments from collaborators and bots are passed on, quoted and
   marked as other people's text. Comments already there when watching began
   are not.
+- Once nothing is failing, it follows the change the rest of the way and
+  tells the conversation when all checks have passed, when it merges, and
+  whether the checks on the base branch passed afterwards. So an agent never
+  has to sit and poll CI to find out it is done.
 - When an agent runs `gh pr create`, the new pull request is watched
   automatically for the conversation that opened it.
 - A side panel lists the watched pull requests with their check counts. Each
@@ -79,9 +83,14 @@ doing anything. To watch one yourself:
 2. Leave the box blank to watch the pull request for the branch checked out
    in that conversation's workspace, or paste a pull request URL or number.
 
-Each watched pull request has three switches:
+Each watched pull request has four switches:
 
 - **Wake the agent when CI fails or the branch conflicts.**
+- **Tell the agent when it goes green, merges and lands.** One short message
+  at each step. After a merge the base branch is followed for up to two
+  hours; if its checks fail, the agent is asked to work out whether the merge
+  caused it and to fix it with a new pull request, never by pushing to the
+  base branch.
 - **Tell the agent about new review comments.** Only comments from people who
   can already push to the repository (owner, member, collaborator) and from
   bots are passed on, never your own and never a stranger's.
@@ -108,6 +117,7 @@ pull request.
 | `sidecars/panel/main.mjs` | Panel backend: HTTP routes, starts the watcher |
 | `hooks.json`, `hooks/note-pr-create.sh` | The hook that notices `gh pr create` |
 | `sidecars/panel/lib/decide.mjs` | When to wake and when to wait (pure logic) |
+| `sidecars/panel/lib/landing.mjs` | Green, queued, merged, landed (pure logic) |
 | `sidecars/panel/lib/notices.mjs` | Merge conflicts, review feedback and the message text (pure logic) |
 | `sidecars/panel/lib/inbox.mjs` | Reads the notes the hook leaves |
 | `sidecars/panel/lib/watcher.mjs` | The polling loop |
@@ -119,6 +129,13 @@ pull request.
 The watch list is saved in Antigravity's data folder for the plugin
 (`~/.gemini/antigravity/sidecar_data/gh-watch/panel/data/watches.json`), and
 the process log is next to it under `logs/sidecar.log`.
+
+## Moving or renaming the plugin folder
+
+Disable the plugin in Antigravity first. Antigravity keeps the hook
+registered against the folder it was loaded from, so moving the folder while
+the plugin is enabled leaves every conversation running a hook whose script
+is gone.
 
 ## Test
 
