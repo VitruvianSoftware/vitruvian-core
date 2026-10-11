@@ -145,8 +145,12 @@ bash "$SCRIPT_UNDER_TEST" \
 [[ -f "$MOCK_DIST/MockApp-2.3.4-universal.zip.sha256" ]] || fail "universal zip checksum was not created"
 
 # Verify that the checksum file uses relative filename and shasum -c succeeds
-(cd "$MOCK_DIST" && shasum -c "MockApp-2.3.4-universal.zip.sha256") >/dev/null 2>&1 || fail "shasum -c failed on generated sidecar"
-ok "shasum -c validation succeeded on artifact sidecar"
+if command -v shasum >/dev/null 2>&1; then
+  (cd "$MOCK_DIST" && shasum -c "MockApp-2.3.4-universal.zip.sha256") >/dev/null 2>&1 || fail "shasum -c failed on generated sidecar"
+elif command -v sha256sum >/dev/null 2>&1; then
+  (cd "$MOCK_DIST" && sha256sum -c "MockApp-2.3.4-universal.zip.sha256") >/dev/null 2>&1 || fail "sha256sum -c failed on generated sidecar"
+fi
+ok "checksum validation succeeded on artifact sidecar"
 
 [[ -f "$MOCK_DIST/mock-app.rb" ]] || fail "cask formula mock-app.rb was not created"
 

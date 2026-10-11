@@ -73,7 +73,7 @@ HOMESPEAKER_REQUIRE_UNIVERSAL=1 ./scripts/bundle.sh "${BIN}" "${VERSION}" ./dist
 # Keep dist/HomeSpeaker.app pointing to universal bundle for local workflows
 ditto dist/stage-universal/HomeSpeaker.app dist/HomeSpeaker.app
 
-ROOT="$(cd "${APP_DIR}/../.." && pwd)"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "${APP_DIR}/../../.." && pwd))"
 PACKAGE_HELPER="${ROOT}/tools/desktop-package/package-desktop.sh"
 
 echo "==> Invoking shared tools/desktop-package helper for packaging and release distribution"

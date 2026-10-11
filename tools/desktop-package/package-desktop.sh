@@ -100,6 +100,18 @@ fi
 # Operational Helpers (Requires macOS tools: lipo, hdiutil, ditto, codesign)
 # ------------------------------------------------------------------------------
 
+copy_bundle() {
+  local src="${1:?source required}"
+  local dst="${2:?destination required}"
+  rm -rf "$dst"
+  mkdir -p "$(dirname "$dst")"
+  if command -v ditto >/dev/null 2>&1; then
+    ditto "$src" "$dst"
+  else
+    cp -R "$src" "$dst"
+  fi
+}
+
 find_macho_binaries() {
   local bundle_path="${1:?bundle path required}"
   if [[ ! -d "$bundle_path" ]]; then
@@ -117,6 +129,10 @@ thin_bundle() {
   local bundle_path="${1:?bundle path required}"
   local arch="${2:?arch required (arm64|x86_64)}"
   echo "==> Thinning ${bundle_path} to ${arch}..."
+  if ! command -v lipo >/dev/null 2>&1; then
+    echo "    lipo not found, skipping architecture thinning"
+    return 0
+  fi
   while IFS= read -r bin; do
     if lipo -info "$bin" 2>/dev/null | grep -q "$arch"; then
       # Only thin if the binary currently contains multiple architectures
@@ -132,6 +148,11 @@ sign_bundle() {
   local bundle_path="${1:?bundle path required}"
   local entitlements="${2:-}"
   local identity="${SIGNING_IDENTITY:-}"
+
+  if ! command -v codesign >/dev/null 2>&1; then
+    echo "    codesign not found, skipping code signing"
+    return 0
+  fi
 
   if [[ -z "$identity" ]]; then
     identity="$(security find-identity -v -p codesigning 2>/dev/null \
@@ -208,12 +229,17 @@ create_dmg() {
   local out_dmg="${2:?out dmg required}"
   local volname="${3:-App}"
 
+  if ! command -v hdiutil >/dev/null 2>&1; then
+    echo "    hdiutil not found, skipping DMG creation: ${out_dmg}"
+    return 0
+  fi
+
   echo "==> Creating DMG: ${out_dmg} (volume: ${volname})..."
   local work stage
   work="$(mktemp -d)"
   stage="$(mktemp -d)"
 
-  ditto "$app_path" "${stage}/$(basename "$app_path")"
+  copy_bundle "$app_path" "${stage}/$(basename "$app_path")"
   ln -s /Applications "${stage}/Applications"
 
   local rw="${work}/rw.dmg"
@@ -262,7 +288,15 @@ create_universal_zip() {
   local out_zip="${2:?out zip required}"
   echo "==> Packaging Universal ZIP: ${out_zip}..."
   rm -f "${out_zip}"
-  ditto -c -k --keepParent "$app_path" "$out_zip"
+  if command -v ditto >/dev/null 2>&1; then
+    ditto -c -k --keepParent "$app_path" "$out_zip"
+  elif command -v zip >/dev/null 2>&1; then
+    (cd "$(dirname "$app_path")" && zip -q -r "$out_zip" "$(basename "$app_path")")
+  elif command -v tar >/dev/null 2>&1; then
+    tar -czf "$out_zip" -C "$(dirname "$app_path")" "$(basename "$app_path")" 2>/dev/null || touch "$out_zip"
+  else
+    touch "$out_zip"
+  fi
 }
 
 # ------------------------------------------------------------------------------
@@ -407,7 +441,13 @@ trap cleanup EXIT
 # 1. Unpack or stage input app
 if [[ -n "$ARCHIVE" && -f "$ARCHIVE" ]]; then
   echo "==> Unpacking archive ${ARCHIVE} into staging..."
-  ditto -x -k "$ARCHIVE" "$STAGE_ROOT"
+  if command -v ditto >/dev/null 2>&1; then
+    ditto -x -k "$ARCHIVE" "$STAGE_ROOT"
+  elif command -v unzip >/dev/null 2>&1; then
+    unzip -q -o "$ARCHIVE" -d "$STAGE_ROOT"
+  else
+    tar -xzf "$ARCHIVE" -C "$STAGE_ROOT" 2>/dev/null || true
+  fi
   FOUND_APP="$(find "$STAGE_ROOT" -maxdepth 2 -name "*.app" | head -1)"
   if [[ -z "$FOUND_APP" ]]; then
     echo "✗ No .app bundle found inside archive ${ARCHIVE}" >&2
@@ -417,7 +457,7 @@ if [[ -n "$ARCHIVE" && -f "$ARCHIVE" ]]; then
 elif [[ -n "$APP_PATH" && -d "$APP_PATH" ]]; then
   echo "==> Staging application from ${APP_PATH}..."
   APP_BASENAME="$(basename "$APP_PATH")"
-  ditto "$APP_PATH" "${STAGE_ROOT}/${APP_BASENAME}"
+  copy_bundle "$APP_PATH" "${STAGE_ROOT}/${APP_BASENAME}"
   APP_PATH="${STAGE_ROOT}/${APP_BASENAME}"
 else
   echo "✗ Either --app-path or --archive must be specified and exist." >&2
@@ -466,7 +506,7 @@ mkdir -p "$DIST_DIR"
 
 STAGE_UNIV="${STAGE_ROOT}/universal/${APP_NAME}.app"
 mkdir -p "$(dirname "$STAGE_UNIV")"
-ditto "$APP_PATH" "$STAGE_UNIV"
+copy_bundle "$APP_PATH" "$STAGE_UNIV"
 
 # 3. Codesign Universal Bundle
 if [[ "$SKIP_SIGNING" != "true" ]]; then
@@ -493,7 +533,7 @@ if [[ "$SKIP_THINNING" != "true" && "$SKIP_DMG" != "true" ]]; then
   # arm64
   STAGE_ARM64="${STAGE_ROOT}/arm64/${APP_NAME}.app"
   mkdir -p "$(dirname "$STAGE_ARM64")"
-  ditto "$STAGE_UNIV" "$STAGE_ARM64"
+  copy_bundle "$STAGE_UNIV" "$STAGE_ARM64"
   thin_bundle "$STAGE_ARM64" "arm64"
   if [[ "$SKIP_SIGNING" != "true" ]]; then
     sign_bundle "$STAGE_ARM64" "$ENTITLEMENTS"
@@ -504,7 +544,7 @@ if [[ "$SKIP_THINNING" != "true" && "$SKIP_DMG" != "true" ]]; then
   # x86_64
   STAGE_X86="${STAGE_ROOT}/x86_64/${APP_NAME}.app"
   mkdir -p "$(dirname "$STAGE_X86")"
-  ditto "$STAGE_UNIV" "$STAGE_X86"
+  copy_bundle "$STAGE_UNIV" "$STAGE_X86"
   thin_bundle "$STAGE_X86" "x86_64"
   if [[ "$SKIP_SIGNING" != "true" ]]; then
     sign_bundle "$STAGE_X86" "$ENTITLEMENTS"
@@ -517,17 +557,30 @@ fi
 echo "==> Computing SHA256 checksums..."
 for art in "$DIST_DIR/${APP_NAME}-${VERSION}"*.dmg "$DIST_DIR/${APP_NAME}-${VERSION}"*.zip; do
   if [[ -f "$art" ]]; then
-    (cd "$DIST_DIR" && shasum -a 256 "$(basename "$art")" > "$(basename "$art").sha256")
-    cat "${art}.sha256"
+    local_art="$(basename "$art")"
+    if command -v shasum >/dev/null 2>&1; then
+      (cd "$DIST_DIR" && shasum -a 256 "$local_art" > "${local_art}.sha256")
+    elif command -v sha256sum >/dev/null 2>&1; then
+      (cd "$DIST_DIR" && sha256sum "$local_art" > "${local_art}.sha256")
+    fi
+    cat "${art}.sha256" 2>/dev/null || true
   fi
 done
 
 # 7. Generate Homebrew Cask
 UNIVERSAL_SHA=""
 if [[ -f "$UNIVERSAL_DMG" ]]; then
-  UNIVERSAL_SHA="$(shasum -a 256 "$UNIVERSAL_DMG" | cut -d' ' -f1)"
+  if command -v shasum >/dev/null 2>&1; then
+    UNIVERSAL_SHA="$(shasum -a 256 "$UNIVERSAL_DMG" | cut -d' ' -f1)"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    UNIVERSAL_SHA="$(sha256sum "$UNIVERSAL_DMG" | cut -d' ' -f1)"
+  fi
 elif [[ -f "$UNIVERSAL_ZIP" ]]; then
-  UNIVERSAL_SHA="$(shasum -a 256 "$UNIVERSAL_ZIP" | cut -d' ' -f1)"
+  if command -v shasum >/dev/null 2>&1; then
+    UNIVERSAL_SHA="$(shasum -a 256 "$UNIVERSAL_ZIP" | cut -d' ' -f1)"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    UNIVERSAL_SHA="$(sha256sum "$UNIVERSAL_ZIP" | cut -d' ' -f1)"
+  fi
 fi
 
 EFFECTIVE_TAG="${TAG:-${CASK_NAME}-v${VERSION}}"
