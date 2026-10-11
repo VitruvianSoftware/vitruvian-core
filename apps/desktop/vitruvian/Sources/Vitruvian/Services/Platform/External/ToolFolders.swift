@@ -75,6 +75,26 @@ package struct ToolFolders: Equatable, Sendable {
                          .appendingPathComponent(id.rawValue, isDirectory: true))
     }
 
+    /// The file the tool store keeps its records in.
+    package var records: URL { root.appendingPathComponent(ToolRecords.fileName) }
+
+    /// The tool's two folders, when the app's copy of it is there and each
+    /// folder is still where it is said to be, with every link followed.
+    /// The data folder is made again when it has gone. Nil otherwise: there
+    /// is nothing the app may run.
+    package func existing(_ id: ToolID, fileManager: FileManager = .default) -> Place? {
+        guard let place = place(for: id) else { return nil }
+        let home = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        var isFolder: ObjCBool = false
+        guard fileManager.fileExists(atPath: place.files.path, isDirectory: &isFolder), isFolder.boolValue,
+              stays(place.files.deletingLastPathComponent(), at: home + ["Tools"], fileManager),
+              stays(place.files, at: home + ["Tools", id.rawValue], fileManager),
+              stays(place.data.deletingLastPathComponent(), at: home + ["ToolData"], fileManager),
+              stays(place.data, at: home + ["ToolData", id.rawValue], fileManager),
+              PrivateFileStore.createDirectory(at: place.data, container: root) else { return nil }
+        return place
+    }
+
     /// Copies the folder at `source` to be the app's copy of the tool,
     /// in place of any copy already there, and makes the tool's data
     /// folder when it has none. What the tool saved before is kept.

@@ -19,6 +19,17 @@ package struct ToolOffer: Equatable, Sendable {
     /// The manifest file's bytes, as `ToolFingerprint` names them. Agreeing
     /// is agreeing to these bytes.
     package let fingerprint: String
+    /// What the person agreed to before, when they have added a tool with
+    /// this id already. Adding the offer then replaces that tool.
+    package let replaces: ToolAgreement?
+
+    /// True when this would replace a tool whose manifest was not these
+    /// bytes when the person agreed to it. That is all "changed" means: one
+    /// byte of the manifest file differs. The program and the other files
+    /// are not compared.
+    package var manifestChanged: Bool {
+        replaces.map { $0.fingerprint != fingerprint } ?? false
+    }
 }
 
 /// That the person agreed to one offer, and when. Adding a tool takes one

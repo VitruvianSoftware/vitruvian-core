@@ -282,10 +282,10 @@ and this app holds only what is specific to it.
 A tool can be a separate program the app starts and talks to
 (`docs/superpowers/specs/2026-10-10-vitruvian-external-tools-design.md`).
 Stages A and B of that work are built: the protocol, reading a tool's
-manifest, and the runtime that starts a tool, talks to it and stops it. No
-screen adds a tool yet. Only a build made with
-`--define=vitruvian_external_tools=true` can add one, from the folder the
-hidden preference `developmentToolFolder` names (`README.md` says how).
+manifest, and the runtime that starts a tool, talks to it and stops it.
+Stage C, the screens, is being built. Until its sheet exists nothing in the
+app can add a tool: adding takes the person's consent, and only that sheet
+may give it.
 
 - The protocol lives in `packages/vitruvian-sdk`, under MIT: JSON Schema in
   `protocol/`, the same messages as Swift in `Sources/VitruvianToolProtocol`.
@@ -345,16 +345,31 @@ hidden preference `developmentToolFolder` names (`README.md` says how).
 - A preference a tool saves goes to the app's own preferences under
   `<tool id>/<preference id>`. No file is written for it. A saved string has
   no limit of its own: the 1 MB line is the only one.
-- An outside tool reaches the host through `ToolHost.add`, and only
-  `ExternalToolStore.install(from:)` calls it. Only the development switch in
-  `main.swift` calls that, inside `#if VITRUVIAN_EXTERNAL_TOOLS`; the source
-  rule `a_release_build_adds_no_outside_tool` fails for any other caller.
-  The stage that adds the screen that asks the person replaces that rule.
-- A release build still holds the switch's function
-  (`ExternalToolStore.installDevelopmentTool`): it is in `Services`, which
-  has no define, so that the unit tests can run it. Nothing in a release
-  build calls it. Do not read that as "the code is not there".
-- The store forgets its tools when the app quits and never deletes a tool's
+- A tool is added in two steps, and there is no third way.
+  `ExternalToolStore.offer(from:)` reads the folder the person picked and
+  changes nothing: no copy, no program, no file. `ExternalToolStore.add`
+  takes a `ToolConsent` to that offer. Only the agreement sheet may make a
+  `ToolConsent`: the source rule `only_the_agreement_sheet_consents` fails
+  for any other file of the app that does. There is no development switch
+  and no build define for tools from outside: every build adds one the same
+  way.
+- What is added is what was shown. An offer names its manifest's exact
+  bytes (`ToolFingerprint`, their SHA-256). `add` reads the folder again and
+  refuses when they differ, and checks the app's copy the same way. That is
+  also all "changed" means for an update: one byte of the manifest differs.
+  The program and the other files are not compared.
+- The store remembers. `InstalledTools.json`, in the app's support folder,
+  holds each added tool's id, its switch and what was agreed (`ToolRecord`,
+  `ToolAgreement`). `main.swift` calls `restore()` once at launch. A file
+  that cannot be read means no tools and deletes nothing; it is moved aside,
+  never written over, the first time a tool is added after. It is not a
+  preference and is in no settings backup.
+- A copy that is not what the person agreed to is held back
+  (`Listed.isHeld`): never started, still listed. Only choosing its folder
+  again, and agreeing again, brings it back.
+- A tool that is switched off is out of the host and the registry, so
+  `isInstalled` is false for it and every request is refused.
+- The store never deletes a tool's
   files. `Tools/<id>/` is the app's copy of a tool's folder and
   `ToolData/<id>/` is what the tool saved, both under the app's support
   folder. Adding a tool again replaces `Tools/<id>/` whole and keeps
@@ -363,7 +378,9 @@ hidden preference `developmentToolFolder` names (`README.md` says how).
   An id is one folder name: no slash, no two dots in a row, no dot first. A
   `Tools` or `ToolData` folder that is a link to another place is refused
   (`linkedElsewhere`). A link inside the picked folder is copied as a link.
-  The folder's size is not limited.
+  A folder over `ToolLimits.folderBytes` or `folderItems` is refused before
+  anything is copied (`ToolFolders.weight`), and so is one whose program
+  macOS has quarantined. The app never clears a quarantine.
 - Three limits are known and accepted. A tool that closes its output and
   keeps running is noticed only when three requests go unanswered. A tool's
   last line with no line break is dropped. After the last kill at quit the

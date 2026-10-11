@@ -112,23 +112,13 @@ with the sample tool registered. No release build has it:
 bazel build --config=macos-app --define=vitruvian_sample_tool=true //apps/desktop/vitruvian:Vitruvian
 ```
 
-To work on the runtime for tools that run as their own programs, build with
-the development switch and name one tool's folder. No release build is made
-with the switch, and no build has a screen for it yet:
-
-```sh
-bazel build --config=macos-app --define=vitruvian_external_tools=true //apps/desktop/vitruvian:Vitruvian
-defaults write com.vitruviansoftware.vitruvian developmentToolFolder "$PWD/packages/vitruvian-sdk/conformance/reference-tool"
-```
-
-At each launch the app copies that folder into
-`~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/<id>/`
-and adds the tool's commands to the command bar and the other surfaces the
-manifest names. What the tool saves is in `ToolData/<id>/` beside it. The
-tool is a separate program with every permission the app has. To stop adding
-it, `defaults delete com.vitruviansoftware.vitruvian developmentToolFolder`.
-Why a tool was not added, and that one stopped working, are in the system
-log: `log stream --predicate 'category == "tools"'`.
+A tool that runs as its own program is added from a folder, with the
+person's consent. There is no development switch and no build define for
+it: every build adds a tool the same way. The app keeps a copy in
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/<id>/`,
+what the tool saves in `ToolData/<id>/` beside it, and the list of added
+tools in `InstalledTools.json` there. That a tool stopped working is in the
+system log: `log stream --predicate 'category == "tools"'`.
 
 What to expect, since nothing on screen says it:
 

@@ -22,7 +22,11 @@ enum ExternalToolStoreTests {
         refusals(suite)
         removing(suite)
         installedOrNot(suite)
-        developmentSwitch(suite)
+        remembering(suite)
+        switching(suite)
+        updating(suite)
+        heldBack(suite)
+        unreadableRecords(suite)
         aRealTool(suite)
     }
 
@@ -47,8 +51,13 @@ enum ExternalToolStoreTests {
         private(set) var host: ToolHost!
         private(set) var store: ExternalToolStore!
 
-        init(supportFolder: Bool = true, limits: ToolLimits = .standard) {
-            root = FileManager.default.temporaryDirectory
+        /// A bench over the folders of another, as the app is at its next
+        /// launch: a new store, host and registry, and the same files.
+        private let relaunchOf: Bench?
+
+        init(supportFolder: Bool = true, limits: ToolLimits = .standard, relaunchOf: Bench? = nil) {
+            self.relaunchOf = relaunchOf
+            root = relaunchOf?.root ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("vitruvian-tool-store-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let box = self.box
@@ -101,7 +110,29 @@ enum ExternalToolStoreTests {
             FileManager.default.fileExists(atPath: url.path)
         }
 
+        /// Both steps of adding a tool, with the consent a person would
+        /// give on the sheet.
+        @discardableResult
+        func add(_ folder: URL, on date: Date = Date(timeIntervalSince1970: 1_760_000_000))
+            -> Result<ExternalToolStore.Installed, ExternalToolStore.Refusal> {
+            store.offer(from: folder).flatMap { store.add(ToolConsent(to: $0, on: date)) }
+        }
+
+        /// The app, started again over the same files. Its store has read
+        /// nothing yet: `restore` is the caller's to call.
+        func relaunched() -> Bench {
+            Bench(relaunchOf: self)
+        }
+
+        /// The file the store keeps its records in, and what it holds.
+        var recordsFile: URL { support.appendingPathComponent("InstalledTools.json") }
+        var records: [ToolRecord] {
+            if case .records(let records) = ToolRecords.read(at: recordsFile) { return records }
+            return []
+        }
+
         func close() {
+            guard relaunchOf == nil else { return }
             try? FileManager.default.removeItem(at: root)
         }
     }
@@ -303,7 +334,7 @@ enum ExternalToolStoreTests {
     static func adding(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
-        guard case .success(let installed) = bench.store.install(from: bench.folder()) else {
+        guard case .success(let installed) = bench.add(bench.folder()) else {
             suite.expect(false, "the tool of the design's example is added from a folder")
             return
         }
@@ -341,7 +372,7 @@ enum ExternalToolStoreTests {
     static func throughTheBroker(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
-        bench.store.install(from: bench.folder())
+        bench.add(bench.folder())
         bench.registry.run(copy)
         bench.current.greets()
         bench.current.says(#"{"jsonrpc":"2.0","id":1,"method":"notify/hud","params":{"icon":"link","message":"Copied"}}"#)
@@ -365,10 +396,10 @@ enum ExternalToolStoreTests {
         defer { bench.close() }
         let empty = bench.root.appendingPathComponent("empty", isDirectory: true)
         try? FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
-        suite.expect(refusal(bench.store.install(from: empty)) == .manifest(.noManifest),
+        suite.expect(refusal(bench.add(empty)) == .manifest(.noManifest),
                      "a folder with no manifest is not added")
         let bad = bench.folder("bad", manifest: ExternalToolManifestTests.file(#"{"uses": ["camera"]}"#))
-        suite.expect(refusal(bench.store.install(from: bad)) == .manifest(.invalid(.unknownService("camera")))
+        suite.expect(refusal(bench.add(bad)) == .manifest(.invalid(.unknownService("camera")))
                          && !bench.exists(bench.support) && bench.store.installed.isEmpty
                          && bench.registry.tool(id) == nil,
                      "a manifest that breaks a rule is refused with what is wrong, and nothing is copied")
@@ -379,27 +410,29 @@ enum ExternalToolStoreTests {
         try? FileManager.default.removeItem(at: linked.appendingPathComponent("bin/deploys"))
         try? FileManager.default.createSymbolicLink(at: linked.appendingPathComponent("bin/deploys"),
                                                     withDestinationURL: outside)
-        suite.expect(refusal(bench.store.install(from: linked)) == .manifest(.programOutsideFolder("bin/deploys"))
+        suite.expect(refusal(bench.add(linked)) == .manifest(.programOutsideFolder("bin/deploys"))
                          && !bench.exists(bench.support),
                      "a program that is a link out of the folder is refused before anything is copied")
 
         let homeless = Bench(supportFolder: false)
         defer { homeless.close() }
-        suite.expect(refusal(homeless.store.install(from: bench.folder("nowhere"))) == .noSupportFolder
+        suite.expect(refusal(homeless.add(bench.folder("nowhere"))) == .noSupportFolder
                          && homeless.store.installed.isEmpty,
                      "with no support folder to copy into, nothing is added")
 
-        bench.store.install(from: bench.folder())
-        try? Data("in use".utf8).write(to: bench.files.appendingPathComponent("marker"))
-        suite.expect(refusal(bench.store.install(from: bench.folder("again"))) == .alreadyInstalled(id)
-                         && bench.store.installed.count == 1 && bench.exists(bench.files.appendingPathComponent("marker")),
-                     "a tool whose id is installed already is not added a second time, and its copy is left alone")
+        // Something else in the app answers to the id already.
+        let taken = Bench()
+        defer { taken.close() }
+        if let tool = ExternalToolManifestTests.tool() { try? taken.registry.register(tool.manifest.tool) }
+        suite.expect(refusal(taken.add(taken.folder())) == .alreadyInstalled(id) && !taken.exists(taken.support)
+                         && taken.store.listed.isEmpty,
+                     "a tool whose id something else in the app answers to is not added, and nothing is copied")
     }
 
     static func removing(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
-        bench.store.install(from: bench.folder())
+        bench.add(bench.folder())
         bench.registry.run(copy)
         bench.current.greets()
         bench.store.remove(id)
@@ -410,7 +443,7 @@ enum ExternalToolStoreTests {
         suite.expect(bench.exists(bench.files) && bench.exists(bench.data), "its files, and what it saved, stay")
         bench.store.remove(id)
         bench.current.ends(0)
-        if case .success = bench.store.install(from: bench.folder()) {
+        if case .success = bench.add(bench.folder()) {
             suite.expect(bench.registry.canRun(copy), "and it can be added again")
         } else {
             suite.expect(false, "and it can be added again")
@@ -418,7 +451,7 @@ enum ExternalToolStoreTests {
 
         let early = Bench()
         defer { early.close() }
-        early.store.install(from: early.folder(manifest: ExternalToolManifestTests.file(#"{"activation": ["onLaunch"]}"#)))
+        early.add(early.folder(manifest: ExternalToolManifestTests.file(#"{"activation": ["onLaunch"]}"#)))
         suite.expect(early.started.count == 1 && early.store.tool(id)?.standing == .starting,
                      "a tool that starts with the app is started as soon as it is added")
     }
@@ -439,44 +472,250 @@ enum ExternalToolStoreTests {
         suite.expect(!unasked.isInstalled(id), "with no store to ask, no tool from outside is installed")
     }
 
-    static func developmentSwitch(_ suite: TestSuite) {
+    /// What the store writes down, and what the next launch does with it.
+    static func remembering(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
-        let domain = "com.vitruviansoftware.vitruvian.tests.tool-store"
-        let defaults = UserDefaults(suiteName: domain)!
-        defaults.removePersistentDomain(forName: domain)
-        defer { defaults.removePersistentDomain(forName: domain) }
-        suite.expect(ExternalToolStore.developmentToolFolderKey == "developmentToolFolder"
-                         && bench.store.installDevelopmentTool(defaults: defaults) == nil
-                         && bench.store.installed.isEmpty && !bench.exists(bench.support),
-                     "with the hidden preference not set, the development switch adds nothing and touches nothing")
+        suite.expect(!bench.exists(bench.recordsFile) && bench.store.listed.isEmpty,
+                     "with nothing added there is no file of records, and nothing is listed")
+        bench.store.restore()
+        suite.expect(!bench.exists(bench.support), "a launch with nothing added reads one file that is not there, and makes nothing")
 
         let picked = bench.folder()
-        try? Data("one".utf8).write(to: picked.appendingPathComponent("notes"))
-        defaults.set(picked.path, forKey: ExternalToolStore.developmentToolFolderKey)
-        if case .success(let installed)? = bench.store.installDevelopmentTool(defaults: defaults) {
-            suite.expect(installed.tool.manifest.id == id && bench.registry.canRun(copy) && bench.started.isEmpty,
-                         "with it naming a tool's folder, that tool is added with no screen, and starts on its first command")
-        } else {
-            suite.expect(false, "with it naming a tool's folder, that tool is added")
-        }
+        let bytes = (try? Data(contentsOf: picked.appendingPathComponent("vitruvian-tool.json"))) ?? Data()
+        _ = bench.store.offer(from: picked)
+        suite.expect(!bench.exists(bench.recordsFile), "an offer writes nothing down")
+        let agreedOn = Date(timeIntervalSince1970: 1_760_000_000)
+        bench.add(picked, on: agreedOn)
+        let agreement = ToolAgreement(date: agreedOn, name: "Deploys", version: "1.2.0", publisher: "Acme",
+                                      fingerprint: ToolFingerprint.of(bytes),
+                                      source: picked.resolvingSymlinksInPath().standardizedFileURL.path)
+        let mode = (try? FileManager.default.attributesOfItem(atPath: bench.recordsFile.path))?[.posixPermissions] as? Int
+        let written = (try? String(contentsOf: bench.recordsFile, encoding: .utf8)) ?? ""
+        suite.expect(bench.records == [ToolRecord(id: "com.acme.deploys", isOn: true, agreement: agreement)]
+                         && mode == 0o600 && written.contains(#""version" : 1"#)
+                         && written.contains(#""date" : "2025-10-09T08:53:20Z""#),
+                     "adding a tool writes down, for the person alone, that it is on and what was agreed: "
+                         + "when, the name, version and publisher shown, the manifest's bytes and the folder")
+        suite.expect(bench.store.listed.map(\.id) == [id] && bench.store.listed.first?.record.agreement == agreement
+                         && bench.store.listed.first?.isHeld == false
+                         && bench.store.listed.first?.standing == .resting
+                         && bench.store.listed.first?.tool?.publisher == "Acme",
+                     "and Settings is given the tool, what was agreed, and how its program stands")
 
-        // The next launch: the store has forgotten the tool, and the
-        // folder has changed.
+        // The next launch.
+        let next = bench.relaunched()
+        suite.expect(!next.store.isInstalled(id) && next.registry.tool(id) == nil && next.store.listed.isEmpty,
+                     "a store that has not read its file yet holds nothing")
+        next.store.restore()
+        suite.expect(next.store.isInstalled(id) && next.registry.canRun(copy) && next.host.running == [id]
+                         && next.store.listed.first?.record.agreement == agreement && next.started.isEmpty,
+                     "at the next launch the tool is back, with what was agreed, and no program has started")
+        suite.expect(next.registry.run(copy) && next.started.count == 1
+                         && next.started[0].program == bench.files.appendingPathComponent("bin/deploys"),
+                     "and its command starts the program of the app's copy, as before")
+        next.store.restore()
+        suite.expect(next.store.listed.count == 1 && next.started.count == 1, "restoring twice changes nothing")
+
+        let early = Bench()
+        defer { early.close() }
+        early.add(early.folder(manifest: ExternalToolManifestTests.file(#"{"activation": ["onLaunch"]}"#)))
+        let again = early.relaunched()
+        again.store.restore()
+        suite.expect(again.started.count == 1 && again.store.tool(id)?.standing == .starting,
+                     "a tool that starts with the app is started when the launch brings it back")
+    }
+
+    /// The tool's switch in Settings.
+    static func switching(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder())
+        bench.registry.run(copy)
+        bench.current.greets()
+        let revision = bench.registry.revision
+        bench.store.setOn(id, false)
+        suite.expect(bench.current.sent.last == .notice(method: "shutdown", params: nil) && bench.current.inputClosed
+                         && !bench.store.isInstalled(id) && bench.registry.tool(id) == nil
+                         && bench.registry.commands(on: .commandBar).isEmpty && bench.host.manifest(for: id) == nil
+                         && bench.registry.revision > revision,
+                     "switching a tool off stops its program at once and takes its commands out of every list")
+        suite.expect(bench.store.listed.first?.record.isOn == false && bench.store.listed.first?.standing == nil
+                         && bench.store.listed.first?.tool?.manifest.id == id && bench.records.first?.isOn == false
+                         && bench.exists(bench.files) && bench.exists(bench.data),
+                     "it is still listed, by its own name, and written down as off; its files are not touched")
+        bench.current.ends(0)
+
+        let next = bench.relaunched()
+        next.store.restore()
+        suite.expect(!next.store.isInstalled(id) && next.registry.tool(id) == nil
+                         && next.store.listed.first?.record.isOn == false && next.store.listed.first?.isHeld == false,
+                     "a tool that is switched off stays off at the next launch")
+        next.store.setOn(id, true)
+        suite.expect(next.store.isInstalled(id) && next.registry.canRun(copy) && next.records.first?.isOn == true
+                         && next.store.listed.first?.standing == .resting,
+                     "switching it on brings its commands back, with no question asked: the person agreed already")
+        next.store.setOn(ToolID("com.acme.other")!, true)
+        suite.expect(next.store.listed.count == 1 && next.records.count == 1,
+                     "a switch for a tool nobody added changes nothing")
+    }
+
+    /// Choosing a tool's folder again.
+    static func updating(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let picked = bench.folder()
+        bench.add(picked)
         try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
-        try? Data("two".utf8).write(to: picked.appendingPathComponent("notes"))
-        bench.store.remove(id)
-        _ = bench.store.installDevelopmentTool(defaults: defaults)
-        suite.expect((try? String(contentsOf: bench.files.appendingPathComponent("notes"), encoding: .utf8)) == "two"
-                         && bench.exists(bench.data.appendingPathComponent("saved")) && bench.store.isInstalled(id),
-                     "each launch adds the folder afresh: the copy is the folder as it is now, and what the tool saved is kept")
+        bench.registry.run(copy)
+        bench.current.greets()
 
-        bench.store.remove(id)
-        defaults.set(bench.root.appendingPathComponent("no such folder").path,
-                     forKey: ExternalToolStore.developmentToolFolderKey)
-        suite.expect(bench.store.installDevelopmentTool(defaults: defaults).flatMap(refusal) == .manifest(.noManifest)
-                         && bench.store.installed.isEmpty,
-                     "a folder that is no tool is refused, and the app carries on without it")
+        guard case .success(let same) = bench.store.offer(from: picked) else {
+            suite.expect(false, "the folder of a tool that is added already is offered again")
+            return
+        }
+        suite.expect(same.replaces == bench.records.first?.agreement && same.replaces?.version == "1.2.0"
+                         && !same.manifestChanged && bench.store.isInstalled(id),
+                     "an offer for a tool that is added says what was agreed before; with the same manifest, "
+                         + "byte for byte, it says nothing changed; and the tool goes on running meanwhile")
+
+        try? ExternalToolManifestTests.file(#"{"version": "1.3.0", "uses": ["notify", "open"]}"#)
+            .write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        try? Data("new".utf8).write(to: picked.appendingPathComponent("notes"))
+        guard case .success(let newer) = bench.store.offer(from: picked) else {
+            suite.expect(false, "a newer version of an added tool is offered")
+            return
+        }
+        suite.expect(newer.manifestChanged && newer.replaces?.version == "1.2.0" && newer.tool.version == "1.3.0"
+                         && bench.store.installed[id]?.tool.version == "1.2.0"
+                         && !bench.exists(bench.files.appendingPathComponent("notes")),
+                     "a manifest with other bytes counts as changed, and until the person agrees the old tool stands")
+
+        let old = bench.current
+        let later = Date(timeIntervalSince1970: 1_770_000_000)
+        guard case .success = bench.store.add(ToolConsent(to: newer, on: later)) else {
+            suite.expect(false, "with consent to the newer offer, the tool is updated")
+            return
+        }
+        suite.expect(old.sent.last == .notice(method: "shutdown", params: nil)
+                         && bench.store.installed[id]?.tool.version == "1.3.0"
+                         && bench.exists(bench.files.appendingPathComponent("notes"))
+                         && bench.exists(bench.data.appendingPathComponent("saved")),
+                     "updating stops the old program, replaces the app's copy, and keeps what the tool saved")
+        suite.expect(bench.records.count == 1 && bench.records.first?.agreement.version == "1.3.0"
+                         && bench.records.first?.agreement.date == later
+                         && bench.records.first?.agreement.fingerprint == newer.fingerprint
+                         && bench.store.listed.count == 1 && bench.registry.canRun(copy),
+                     "what was agreed is now the newer manifest, and the tool is listed once")
+        old.ends(0)
+        suite.expect(bench.registry.run(copy) && bench.runs.count == 2,
+                     "and the next command starts the new program")
+
+        // An update the person is shown and that then changes.
+        guard case .success(let third) = bench.store.offer(from: picked) else { return }
+        try? ExternalToolManifestTests.file(#"{"version": "9.9.9"}"#)
+            .write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        suite.expect(refusal(bench.store.add(ToolConsent(to: third))) == .changedSinceOffered
+                         && bench.store.installed[id]?.tool.version == "1.3.0" && bench.registry.canRun(copy)
+                         && bench.records.first?.agreement.version == "1.3.0",
+                     "an update refused before anything is copied leaves the tool as it was, still running")
+
+        // Updated while it is switched off.
+        bench.store.setOn(id, false)
+        try? ExternalToolManifestTests.file(#"{"version": "1.4.0"}"#)
+            .write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        bench.add(picked)
+        suite.expect(!bench.store.isInstalled(id) && bench.registry.tool(id) == nil
+                         && bench.records.first?.agreement.version == "1.4.0" && bench.records.first?.isOn == false
+                         && bench.store.listed.first?.tool?.version == "1.4.0",
+                     "a tool updated while it is switched off stays off")
+    }
+
+    /// A copy that is not what the person agreed to.
+    static func heldBack(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let picked = bench.folder()
+        bench.add(picked)
+        // The tool, or anything else, rewrites the manifest of the app's copy.
+        try? ExternalToolManifestTests.file(#"{"uses": ["notify", "keystrokes"]}"#)
+            .write(to: bench.files.appendingPathComponent("vitruvian-tool.json"))
+        let next = bench.relaunched()
+        next.store.restore()
+        suite.expect(!next.store.isInstalled(id) && next.registry.tool(id) == nil && next.host.manifest(for: id) == nil
+                         && next.store.listed.map(\.isHeld) == [true] && next.store.listed.first?.tool == nil
+                         && next.store.listed.first?.record.agreement.name == "Deploys" && next.started.isEmpty,
+                     "a copy whose manifest is not, byte for byte, the one agreed to is held back at launch: "
+                         + "listed by the name agreed to, and never started")
+        next.store.setOn(id, false)
+        next.store.setOn(id, true)
+        suite.expect(!next.store.isInstalled(id) && next.store.listed.first?.isHeld == true
+                         && next.exists(next.files) && next.exists(next.data),
+                     "its switch does not bring it back, and nothing of it is deleted")
+        next.add(picked)
+        suite.expect(next.store.isInstalled(id) && next.store.listed.map(\.isHeld) == [false] && next.registry.canRun(copy),
+                     "choosing its folder again, and agreeing again, does")
+
+        let gone = Bench()
+        defer { gone.close() }
+        gone.add(gone.folder())
+        try? FileManager.default.removeItem(at: gone.files)
+        let after = gone.relaunched()
+        after.store.restore()
+        suite.expect(after.store.listed.map(\.isHeld) == [true] && !after.store.isInstalled(id)
+                         && after.records.count == 1,
+                     "a tool whose copy has gone is held back too, and still remembered")
+
+        let moved = Bench()
+        defer { moved.close() }
+        moved.add(moved.folder())
+        let elsewhere = moved.root.appendingPathComponent("elsewhere", isDirectory: true)
+        try? FileManager.default.moveItem(at: moved.files, to: elsewhere)
+        try? FileManager.default.createSymbolicLink(at: moved.files, withDestinationURL: elsewhere)
+        let linked = moved.relaunched()
+        linked.store.restore()
+        suite.expect(linked.store.listed.map(\.isHeld) == [true] && !linked.store.isInstalled(id),
+                     "and so is one whose copy has become a link to another place: the app runs nothing from there")
+    }
+
+    /// A file of records the app cannot read.
+    static func unreadableRecords(_ suite: TestSuite) {
+        for (what, text) in [("damaged", "{ not json"),
+                             ("from a later version", #"{"version": 2, "tools": []}"#),
+                             ("naming one of the app's own tools",
+                              #"{"version": 1, "tools": [{"id": "portManager", "isOn": true, "agreement": "#
+                                  + #"{"date": "2025-10-09T08:53:20Z", "name": "x", "version": "1", "publisher": "x", "#
+                                  + #""fingerprint": "x", "source": "/x"}}]}"#)] {
+            let bench = Bench()
+            defer { bench.close() }
+            bench.add(bench.folder())
+            try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+            try? Data(text.utf8).write(to: bench.recordsFile)
+            suite.expect(ToolRecords.read(at: bench.recordsFile) == .unreadable,
+                         "a file of records that is \(what) is not read")
+
+            let next = bench.relaunched()
+            next.store.restore()
+            suite.expect(next.store.listed.isEmpty && !next.store.isInstalled(id) && next.registry.tool(id) == nil
+                             && next.started.isEmpty,
+                         "with a file of records that is \(what), no tool from outside is loaded")
+            suite.expect((try? String(contentsOf: next.recordsFile, encoding: .utf8)) == text
+                             && next.exists(next.files.appendingPathComponent("bin/deploys"))
+                             && next.exists(next.data.appendingPathComponent("saved")),
+                         "and nothing is deleted: the file, the tool's copy and what it saved are as they were (\(what))")
+
+            next.add(next.folder("again"))
+            let aside = next.support.appendingPathComponent("InstalledTools.unreadable.json")
+            suite.expect((try? String(contentsOf: aside, encoding: .utf8)) == text && next.records.count == 1
+                             && next.store.isInstalled(id) && next.exists(next.data.appendingPathComponent("saved")),
+                         "adding a tool then puts the old file aside, whole, and starts a new one (\(what))")
+        }
+        suite.expect(ToolRecords.fileName == "InstalledTools.json" && ToolRecords.version == 1
+                         && ToolID("InstalledTools.json")?.isBundledForm == false
+                         && ToolFolders(root: URL(fileURLWithPath: "/s")).records.path == "/s/InstalledTools.json"
+                         && ToolFolders(root: URL(fileURLWithPath: "/s")).place(for: ToolID("InstalledTools.json")!)?.files.path
+                         == "/s/Tools/InstalledTools.json",
+                     "the file is beside the tools' folders, not in one: a tool named like it gets its own folder")
     }
 
     /// The whole path with a real program: the fixture tool, added from a
@@ -511,7 +750,7 @@ enum ExternalToolStoreTests {
         let hello = CommandID(tool: tool, name: "hello")!
         let quick = CommandID(tool: tool, name: "quick")!
         let hang = CommandID(tool: tool, name: "hang")!
-        guard case .success = bench.store.install(from: bench.folder(manifest: manifest, exec: "bin/fixture",
+        guard case .success = bench.add(bench.folder(manifest: manifest, exec: "bin/fixture",
                                                                       program: fixture)) else {
             suite.expect(false, "the fixture tool is added from a folder")
             return
