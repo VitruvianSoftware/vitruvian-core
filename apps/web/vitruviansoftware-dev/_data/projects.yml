@@ -7,7 +7,7 @@
 # install: a one-line install command, shown on the card when present
 #
 # extension: set this on a project that plugs into an AI coding tool, and it
-#            is also listed on /extensions/. Leave it off for everything else.
+#            is also listed on /ai/. Leave it off for everything else.
 #   kind:     plugin | mcp | skill   (see `extension_kinds` below)
 #   installs: one entry per command: the tool it is for and the command
 #             itself. Add `label` when a tool needs more than one step. Only list a command you have
@@ -31,7 +31,7 @@ groups:
     title: In the monorepo
     blurb: Newer work that lives in vitruvian-core and has not been split out into its own repository yet.
 
-# The sections of /extensions/, in order.
+# The sections of /ai/, in order.
 extension_kinds:
   - id: plugin
     title: Plugins
