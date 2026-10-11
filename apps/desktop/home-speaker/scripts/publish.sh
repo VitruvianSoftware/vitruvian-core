@@ -73,86 +73,27 @@ HOMESPEAKER_REQUIRE_UNIVERSAL=1 ./scripts/bundle.sh "${BIN}" "${VERSION}" ./dist
 # Keep dist/HomeSpeaker.app pointing to universal bundle for local workflows
 ditto dist/stage-universal/HomeSpeaker.app dist/HomeSpeaker.app
 
-create_dmg() {
-	local app_path="$1"
-	local out_dmg="$2"
-	local volname="HomeSpeaker"
-	local work stage
-	work="$(mktemp -d)"
-	stage="$(mktemp -d)"
-	ditto "${app_path}" "${stage}/HomeSpeaker.app"
-	ln -s /Applications "${stage}/Applications"
-	local rw="${work}/rw.dmg"
-	hdiutil create -volname "${volname}" -srcfolder "${stage}" -fs HFS+ -format UDRW -ov "${rw}" -quiet
-	rm -f "${out_dmg}"
-	hdiutil convert "${rw}" -format UDZO -imagekey zlib-level=9 -o "${out_dmg}" -quiet
-	rm -rf "${work}" "${stage}"
-}
+ROOT="$(cd "${APP_DIR}/../.." && pwd)"
+PACKAGE_HELPER="${ROOT}/tools/desktop-package/package-desktop.sh"
 
-echo "==> Creating DMGs (universal, arm64, x86_64)"
-create_dmg dist/stage-universal/HomeSpeaker.app "dist/HomeSpeaker-${VERSION}-universal.dmg"
-create_dmg dist/stage-arm64/HomeSpeaker.app "dist/HomeSpeaker-${VERSION}-arm64.dmg"
-create_dmg dist/stage-x86_64/HomeSpeaker.app "dist/HomeSpeaker-${VERSION}-x86_64.dmg"
-
-echo "==> Packaging ZIPs (universal and legacy macOS)"
-ditto -c -k --keepParent dist/stage-universal/HomeSpeaker.app "dist/HomeSpeaker-${VERSION}-universal.zip"
-ditto -c -k --keepParent dist/stage-universal/HomeSpeaker.app "dist/HomeSpeaker-${VERSION}-macOS.zip"
-
-echo "==> Generating SHA256 checksums"
-for f in dist/HomeSpeaker-${VERSION}-*.dmg dist/HomeSpeaker-${VERSION}-*.zip; do
-	shasum -a 256 "$f" >"${f}.sha256"
-	cat "${f}.sha256"
-done
-
+echo "==> Invoking shared tools/desktop-package helper for packaging and release distribution"
+EXTRA_ARGS=()
 if [[ "${DRY_RUN}" == "true" ]]; then
-	echo "==> Dry run: verified all release artifacts successfully created in dist/:"
-	ls -lh dist/HomeSpeaker-${VERSION}-*
-	exit 0
+	EXTRA_ARGS+=(--dry-run)
+fi
+if [[ -n "${TAG}" ]]; then
+	EXTRA_ARGS+=(--tag "${TAG}")
 fi
 
-if [[ -z "${TAG}" ]]; then
-	echo "==> No TAG specified; packages created in dist/. Skipping upload."
-	exit 0
-fi
+bash "${PACKAGE_HELPER}" \
+	--app-path "${APP_DIR}/dist/HomeSpeaker.app" \
+	--app-name "HomeSpeaker" \
+	--version "${VERSION}" \
+	--cask-name "home-speaker" \
+	--cask-desc "macOS menu bar app for speech notifications and smart speaker announcements" \
+	--cask-homepage "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker" \
+	--dist-dir "${APP_DIR}/dist" \
+	--sync-downloads \
+	"${EXTRA_ARGS[@]}"
 
-REPO="${GITHUB_REPOSITORY:-VitruvianSoftware/vitruvian-core}"
-echo "==> Attaching release artifacts to GitHub Release ${TAG} in ${REPO}"
-for f in dist/HomeSpeaker-${VERSION}-*.dmg dist/HomeSpeaker-${VERSION}-*.dmg.sha256 dist/HomeSpeaker-${VERSION}-*.zip dist/HomeSpeaker-${VERSION}-*.zip.sha256; do
-	echo "Uploading $(basename "$f")..."
-	gh release upload "${TAG}" "$f" --repo "${REPO}" --clobber
-done
-
-if [[ -n "${HOMEBREW_TAP_TOKEN:-}" ]]; then
-	TAP="VitruvianSoftware/homebrew-tap"
-	TAP_DIR="$(mktemp -d)/tap"
-	git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${TAP}.git" "${TAP_DIR}"
-	mkdir -p "${TAP_DIR}/Casks"
-	UNIVERSAL_DMG="dist/HomeSpeaker-${VERSION}-universal.dmg"
-	UNIVERSAL_DMG_SHA="$(shasum -a 256 "${UNIVERSAL_DMG}" | cut -d' ' -f1)"
-	cat >"${TAP_DIR}/Casks/home-speaker.rb" <<EOF
-cask "home-speaker" do
-  version "${VERSION}"
-  sha256 "${UNIVERSAL_DMG_SHA}"
-
-  url "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v${VERSION}/HomeSpeaker-${VERSION}-universal.dmg"
-  name "HomeSpeaker"
-  desc "macOS menu bar app for speech notifications and smart speaker announcements"
-  homepage "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker"
-
-  app "HomeSpeaker.app"
-end
-EOF
-	git -C "${TAP_DIR}" add Casks/home-speaker.rb
-	if git -C "${TAP_DIR}" diff --cached --quiet; then
-		echo "publish: ${TAP} already has home-speaker ${VERSION}"
-	else
-		git -C "${TAP_DIR}" -c user.name="github-actions[bot]" \
-			-c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-			commit -q -m "home-speaker ${VERSION}"
-		git -C "${TAP_DIR}" push -q origin HEAD
-		echo "publish: ${TAP} Casks/home-speaker.rb is now ${VERSION}"
-	fi
-	rm -rf "${TAP_DIR}"
-fi
-
-echo "==> Upload completed successfully."
+echo "==> HomeSpeaker release packaging completed successfully."

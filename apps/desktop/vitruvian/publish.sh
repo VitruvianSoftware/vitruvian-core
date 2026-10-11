@@ -175,4 +175,11 @@ EOF
 	fi
 fi
 
+if [[ "${GRADE}" == "production" ]]; then
+	echo "==> Synchronizing downloads catalog..."
+	if [[ -f "${ROOT}/tools/sync-downloads/sync_downloads.py" ]]; then
+		python3 "${ROOT}/tools/sync-downloads/sync_downloads.py" || echo "warning: sync_downloads failed" >&2
+	fi
+fi
+
 echo "=== vitruvian publish complete: ${TAG} (${VERSION}, ${GRADE}) ==="

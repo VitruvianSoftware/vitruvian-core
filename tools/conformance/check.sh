@@ -4046,7 +4046,7 @@ if os.path.isfile(rules_path):
         if m:
             recorded.add(m.group(1))
 
-skip = {"node_modules", ".git", "vendor", "dist"}
+skip = {"node_modules", ".git", "vendor", "dist", ".claude"}
 total = 0
 for dirpath, dirnames, filenames in os.walk(root):
     dirnames[:] = sorted(d for d in dirnames if d not in skip and not d.startswith("bazel-"))
@@ -4150,7 +4150,7 @@ def entity_name(doc):
             return m.group(1)
     return "(unnamed)"
 
-skip = {"node_modules", ".git", "vendor", "dist"}
+skip = {"node_modules", ".git", "vendor", "dist", ".claude"}
 total = 0
 for dirpath, dirnames, filenames in os.walk(root):
     dirnames[:] = sorted(d for d in dirnames if d not in skip and not d.startswith("bazel-"))
