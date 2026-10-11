@@ -1,2 +1,3 @@
 Throwaway file for the pr-watch conflict test. Safe to delete.
+line: changed on the base branch
 line: written on the pull request branch
