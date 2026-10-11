@@ -45,6 +45,12 @@ test("cleanSettings falls back to defaults and clamps to limits", () => {
   assert.equal(cleanSettings({ mergeMethod: "yolo" }).mergeMethod, "squash");
   assert.equal(cleanSettings({ mergeMethod: "rebase" }).mergeMethod, "rebase");
   assert.equal(cleanSettings().autoWatch, true);
+  assert.equal(cleanSettings().removeClosedHours, 24);
+  assert.equal(cleanSettings({ removeClosedHours: 0 }).removeClosedHours, 0);
+  assert.equal(
+    cleanSettings({ removeClosedHours: 9999 }).removeClosedHours,
+    720,
+  );
   assert.equal(cleanSettings({ autoWatch: false }).autoWatch, false);
   assert.equal(
     cleanSettings({ fastSeconds: 20 }, { autoWatch: false }).autoWatch,

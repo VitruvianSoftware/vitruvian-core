@@ -138,15 +138,56 @@ test("auto-fix off records status but never wakes", async () => {
   assert.deepEqual(store.get(key).failing, ["lint"]);
 });
 
-test("a merged pull request is marked closed and skipped afterwards", async () => {
+test("a merged pull request is marked closed and can no longer wake anyone", async () => {
   const { store, key, sent, world, watcher } = setup();
   world.snap = snapshot("sha1", "MERGED", run("lint", "FAILURE"));
   await watcher.pass();
   assert.equal(store.get(key).closed, true);
+  assert.equal(store.get(key).closedAt, 1000);
   assert.equal(sent.length, 0);
-  world.snap = snapshot("sha2", "OPEN", run("lint", "FAILURE"));
+  // It is not re-read on the very next pass.
+  world.clock += 30_000;
   await watcher.pass();
-  assert.equal(store.get(key).headSha, "sha1");
+  assert.equal(world.reads, 1);
+});
+
+test("a closed pull request is removed after the keep time", async () => {
+  const { store, key, world, watcher } = setup();
+  world.snap = snapshot("sha1", "MERGED", run("lint", "SUCCESS"));
+  await watcher.pass();
+  world.clock += 24 * 3_600_000 - 1;
+  await watcher.pass();
+  assert.ok(store.get(key));
+  world.clock += 1;
+  await watcher.pass();
+  assert.equal(store.get(key), undefined);
+});
+
+test("a keep time of zero removes a closed pull request on the next pass", async () => {
+  const { store, key, world, watcher } = setup();
+  store.updateSettings({ removeClosedHours: 0 });
+  world.snap = snapshot("sha1", "CLOSED", run("lint", "SUCCESS"));
+  await watcher.pass(); // read: now known to be closed
+  assert.equal(store.get(key).closed, true);
+  await watcher.pass();
+  assert.equal(store.get(key), undefined);
+});
+
+test("a reopened pull request is noticed at the slow pace and watched again", async () => {
+  const { store, key, sent, world, watcher } = setup();
+  world.snap = snapshot("sha1", "CLOSED", run("lint", "SUCCESS"));
+  await watcher.pass();
+  world.snap = snapshot("sha2", "OPEN", run("lint", "FAILURE"));
+  world.clock += 299_000;
+  await watcher.pass();
+  assert.equal(store.get(key).closed, true);
+  world.clock += 1_000;
+  await watcher.pass(); // re-read: open again
+  assert.equal(store.get(key).closed, false);
+  assert.equal(store.get(key).closedAt, undefined);
+  // The same read that sees it open reports what is failing on it.
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /- lint/);
 });
 
 test("read failures are recorded and back off", async () => {

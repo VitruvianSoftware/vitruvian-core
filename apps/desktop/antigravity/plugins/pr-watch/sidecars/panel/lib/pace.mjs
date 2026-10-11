@@ -32,12 +32,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
   holdSeconds: 300,
   mergeMethod: "squash",
   autoWatch: true,
+  removeClosedHours: 24,
 });
 
 export const LIMITS = Object.freeze({
   fastSeconds: [10, 600],
   slowSeconds: [30, 3600],
   holdSeconds: [0, 1800],
+  removeClosedHours: [0, 720],
 });
 
 export const MERGE_METHODS = Object.freeze(["squash", "merge", "rebase"]);
@@ -82,7 +84,19 @@ export function cleanSettings(input = {}, base = DEFAULT_SETTINGS) {
     ? merged.mergeMethod
     : DEFAULT_SETTINGS.mergeMethod;
   const autoWatch = merged.autoWatch !== false;
-  return { fastSeconds, slowSeconds, holdSeconds, mergeMethod, autoWatch };
+  const removeClosedHours = clampInt(
+    merged.removeClosedHours,
+    LIMITS.removeClosedHours,
+    DEFAULT_SETTINGS.removeClosedHours,
+  );
+  return {
+    fastSeconds,
+    slowSeconds,
+    holdSeconds,
+    mergeMethod,
+    autoWatch,
+    removeClosedHours,
+  };
 }
 
 export function panelOpen(panelSeenAt, now) {

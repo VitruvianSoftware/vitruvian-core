@@ -283,7 +283,12 @@ async function act(path, body) {
 
 // --- Settings ---------------------------------------------------------------
 
-const FIELDS = ["fastSeconds", "slowSeconds", "holdSeconds"];
+const FIELDS = [
+  "fastSeconds",
+  "slowSeconds",
+  "holdSeconds",
+  "removeClosedHours",
+];
 let settingsFilled = false;
 
 // Fills the form once, and again after a save, so a redraw never overwrites

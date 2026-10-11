@@ -177,8 +177,25 @@ export class Watcher {
     this.#lastPassAt = this.#now();
     const pass = this.#pass++;
     try {
+      const settings = this.#store.settings();
+      const now = this.#now();
       for (const watch of this.#store.list()) {
-        if (watch.closed) continue;
+        if (watch.closed) {
+          // A closed pull request stays in the list for a while, so the
+          // panel can show that it merged, and is then dropped. Until then
+          // it is re-read at the slow pace, which is how a reopened one is
+          // noticed.
+          const closedFor = now - (watch.closedAt ?? watch.checkedAt ?? now);
+          if (closedFor >= settings.removeClosedHours * 3_600_000) {
+            this.#store.remove(watch.key);
+          } else if (
+            now - (watch.checkedAt ?? 0) >=
+            settings.slowSeconds * 1000
+          ) {
+            await this.check(watch.key);
+          }
+          continue;
+        }
         // A pull request that keeps failing to read is retried less often.
         const every = Math.min(
           2 ** (watch.readFailures ?? 0),
@@ -224,6 +241,7 @@ export class Watcher {
         .filter((c) => c.bucket === "fail")
         .map((c) => c.name),
       closed: snap.state !== "OPEN",
+      closedAt: snap.state !== "OPEN" ? (watch.closedAt ?? now) : undefined,
       readFailures: 0,
       lastError: null,
       checkedAt: now,

@@ -49,7 +49,8 @@ The rules follow what Claude Code's desktop auto-fix does.
 | A new commit is pushed and a check fails | Reported again; each commit starts fresh |
 | A check fails while others in its workflow are still running | Waits up to 5 minutes, then reports them together |
 | The message could not be delivered | Tried again on the next pass |
-| The pull request is merged or closed | Watching stops |
+| The pull request is merged or closed | Wake-ups stop; it is removed from the list after 24 hours (a setting) |
+| It is reopened before being removed | Noticed at the slow pace, then watched as before |
 | GitHub cannot be read | Retried less and less often, down to every 16th pass |
 
 Merge conflicts and review comments follow the same idea:

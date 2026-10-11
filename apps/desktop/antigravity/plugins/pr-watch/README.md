@@ -28,6 +28,8 @@ switch in Claude Code's desktop app.
   has switches for the wake-ups, for review comments and for GitHub's
   auto-merge.
 - Opening the panel after it was closed checks everything at once.
+- A merged or closed pull request stays in the list for a day, greyed out,
+  and is then removed. If it is reopened in that time it is watched again.
 
 ## Settings
 
@@ -40,6 +42,7 @@ without restarting anything.
 | Check every, once all checks have settled | 300 s | 30–3600 s |
 | Wait for related checks before waking the agent | 300 s | 0–1800 s |
 | Auto-merge method, for repositories without a merge queue | squash | squash, merge, rebase |
+| Keep a merged or closed pull request in the list | 24 h | 0–720 h |
 | Watch pull requests automatically when an agent opens one | on | on, off |
 
 ## Auto-merge
