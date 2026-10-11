@@ -126,7 +126,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
-          ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","peripherals","pulumi-repo-config","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-desktop-macos"]'
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","peripherals","pulumi-repo-config","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-desktop-macos","vitruvian-sdk"]'
         run: |
           set +e -u -o pipefail
           case "$EVENT_NAME" in
@@ -1140,6 +1140,37 @@ jobs:
           extra_flags+=("--experimental_ui_max_stdouterr_bytes=-1")
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:VitruvianLibWithSampleTool //apps/desktop/vitruvian:app_holds_mermaid_test //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:nexus_agent_shared_pin_test //apps/desktop/vitruvian:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:VitruvianLibWithSampleTool //apps/desktop/vitruvian:app_holds_mermaid_test //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:nexus_agent_shared_pin_test //apps/desktop/vitruvian:unit_tests; else exit $rc; fi; }
 
+  unit-vitruvian-sdk:
+    name: vitruvian-sdk
+    runs-on: xcode-27
+    timeout-minutes: 30
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-sdk')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build & Test Unit vitruvian-sdk
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          extra_flags=(--config=macos-app)
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //packages/vitruvian-sdk:VitruvianToolProtocolTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //packages/vitruvian-sdk:VitruvianToolProtocolTests; else exit $rc; fi; }
+
   rdeps-map:
     name: plan/rdeps-map
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -1187,7 +1218,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-desktop-macos]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-desktop-macos, unit-vitruvian-sdk]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
