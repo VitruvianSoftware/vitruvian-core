@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-// Pure decision logic for pr-watch: no I/O, so it runs under `node --test`.
+// Pure decision logic for gh-watch: no I/O, so it runs under `node --test`.
 //
 // The rules mirror what Claude Code's desktop auto-fix does:
 //   * wake once per failing check per commit, never twice for the same one;
@@ -138,7 +138,7 @@ export function decide(prev, snap, now, { holdMs = DEFAULT_HOLD_MS } = {}) {
 // says who is speaking and exactly what is being asked.
 export function wakeMessage(pr, failing) {
   const lines = [
-    `Automated notice from the pr-watch plugin: CI is failing on ${pr.repo}#${pr.number} ("${pr.title}").`,
+    `Automated notice from the gh-watch plugin: CI is failing on ${pr.repo}#${pr.number} ("${pr.title}").`,
     `PR: ${pr.url}`,
     `Branch: ${pr.branch}  Commit: ${(pr.headSha ?? "").slice(0, 12)}`,
     "",

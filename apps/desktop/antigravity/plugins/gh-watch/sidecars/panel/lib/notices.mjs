@@ -203,7 +203,7 @@ export function composeMessage(
 ) {
   if (!conflict && feedback.length === 0) return wakeMessage(pr, failing);
   const lines = [
-    `Automated notice from the pr-watch plugin about ${pr.repo}#${pr.number} ("${pr.title}").`,
+    `Automated notice from the gh-watch plugin about ${pr.repo}#${pr.number} ("${pr.title}").`,
     `PR: ${pr.url}`,
     `Branch: ${pr.branch}  Commit: ${(pr.headSha ?? "").slice(0, 12)}`,
   ];

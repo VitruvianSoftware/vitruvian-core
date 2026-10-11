@@ -51,7 +51,7 @@ export class Store {
         if (parsed && typeof parsed.watches === "object") this.#data = parsed;
       } catch (err) {
         console.error(
-          `pr-watch: could not read ${file}, starting empty: ${err.message}`,
+          `gh-watch: could not read ${file}, starting empty: ${err.message}`,
         );
       }
     }

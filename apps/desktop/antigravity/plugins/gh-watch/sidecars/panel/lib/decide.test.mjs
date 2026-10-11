@@ -225,5 +225,5 @@ test("wakeMessage names the PR, the commit and each failing check", () => {
   assert.match(text, /o\/r#7/);
   assert.match(text, /abcdef012345/);
   assert.match(text, /- lint \[CI\] https:\/\/example\.test\/lint/);
-  assert.match(text, /pr-watch plugin/);
+  assert.match(text, /gh-watch plugin/);
 });

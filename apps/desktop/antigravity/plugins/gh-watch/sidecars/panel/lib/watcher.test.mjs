@@ -53,7 +53,7 @@ const snapshot = (headSha, state, ...raw) => ({
 });
 
 function setup({ autoFix = true, comments = false } = {}) {
-  const file = join(mkdtempSync(join(tmpdir(), "pr-watch-")), "watches.json");
+  const file = join(mkdtempSync(join(tmpdir(), "gh-watch-")), "watches.json");
   const store = new Store(file);
   const key = watchKey("o/r", 7);
   store.put({
@@ -455,7 +455,7 @@ test("parseNote accepts a successful gh pr create and nothing else", () => {
 });
 
 function signUpWorld() {
-  const dir = mkdtempSync(join(tmpdir(), "pr-watch-inbox-"));
+  const dir = mkdtempSync(join(tmpdir(), "gh-watch-inbox-"));
   const inboxDir = join(dir, "inbox");
   mkdirSync(inboxDir);
   const store = new Store(join(dir, "watches.json"));

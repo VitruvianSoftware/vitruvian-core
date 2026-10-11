@@ -9,7 +9,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UNDER_TEST="${HERE}/note-pr-create.sh"
-[ -f "${UNDER_TEST}" ] || UNDER_TEST="apps/desktop/antigravity/plugins/pr-watch/hooks/note-pr-create.sh"
+[ -f "${UNDER_TEST}" ] || UNDER_TEST="apps/desktop/antigravity/plugins/gh-watch/hooks/note-pr-create.sh"
 [ -f "${UNDER_TEST}" ] || {
 	echo "cannot find note-pr-create.sh" >&2
 	exit 1
@@ -57,7 +57,7 @@ check "answers {} for gh pr create" "$?"
 check "leaves one note for gh pr create in the desktop app" "$?"
 note="$(find "${SANDBOX}" -name '*.json')"
 case "${note}" in
-*/.gemini/antigravity/sidecar_data/pr-watch/panel/data/inbox/*) inbox_ok=0 ;;
+*/.gemini/antigravity/sidecar_data/gh-watch/panel/data/inbox/*) inbox_ok=0 ;;
 *) inbox_ok=1 ;;
 esac
 check "writes the note into the watcher's inbox" "${inbox_ok}"
@@ -68,7 +68,7 @@ check "leaves no half-written file behind" "$?"
 rm -rf "${SANDBOX}"
 
 # A HOME that cannot be written to must not make the hook fail.
-SANDBOX="/nonexistent/pr-watch-test"
+SANDBOX="/nonexistent/gh-watch-test"
 out=$(payload "gh pr create" "antigravity" | run_hook)
 rc=$?
 [ "${rc}" = "0" ] && [ "${out}" = "{}" ]

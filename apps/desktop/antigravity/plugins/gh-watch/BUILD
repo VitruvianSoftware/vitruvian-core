@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""pr-watch: an Antigravity plugin that watches pull requests and wakes the
+"""gh-watch: an Antigravity plugin that watches pull requests and wakes the
 conversation that owns one when its CI starts failing.
 
 The plugin is plain ESM JavaScript that Antigravity runs with its own bundled
@@ -15,7 +15,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
-package(default_visibility = ["//apps/desktop/antigravity/plugins/pr-watch:__subpackages__"])
+package(default_visibility = ["//apps/desktop/antigravity/plugins/gh-watch:__subpackages__"])
 
 # The watcher's logic. main.mjs is left out on purpose: it imports the
 # Antigravity sidecar SDK, which only exists inside the app.
@@ -70,7 +70,7 @@ sh_test(
 )
 
 pipeline_unit(
-    name = "antigravity-pr-watch",
+    name = "antigravity-gh-watch",
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [

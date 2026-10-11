@@ -1,4 +1,4 @@
-# pr-watch
+# gh-watch
 
 An Antigravity desktop plugin. It watches the pull requests you choose and,
 when a CI check on one starts failing, sends a message into the conversation
@@ -65,10 +65,10 @@ Link the plugin folder into Antigravity's plugin directory, then enable it
 under Customizations → Installed:
 
 ```bash
-ln -s "$(git rev-parse --show-toplevel)/apps/desktop/antigravity/plugins/pr-watch" ~/.gemini/config/plugins/pr-watch
+ln -s "$(git rev-parse --show-toplevel)/apps/desktop/antigravity/plugins/gh-watch" ~/.gemini/config/plugins/gh-watch
 ```
 
-Open it from any conversation: the ⋮ menu → Extensions → PR Watch.
+Open it from any conversation: the ⋮ menu → Extensions → GH Watch.
 
 ## Use
 
@@ -117,13 +117,13 @@ pull request.
 | `sidecars/panel/{index.html,app.js,styles.css}` | The side panel |
 
 The watch list is saved in Antigravity's data folder for the plugin
-(`~/.gemini/antigravity/sidecar_data/pr-watch/panel/data/watches.json`), and
+(`~/.gemini/antigravity/sidecar_data/gh-watch/panel/data/watches.json`), and
 the process log is next to it under `logs/sidecar.log`.
 
 ## Test
 
 ```bash
-bazel test //apps/desktop/antigravity/plugins/pr-watch/...
+bazel test //apps/desktop/antigravity/plugins/gh-watch/...
 ```
 
 After changing `main.mjs` or anything under `lib/`, disable and re-enable the

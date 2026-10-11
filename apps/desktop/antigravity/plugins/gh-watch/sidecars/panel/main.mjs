@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-// Backend for the pr-watch panel. Antigravity starts this file with Node.js
+// Backend for the gh-watch panel. Antigravity starts this file with Node.js
 // (see sidecar.json) and keeps it running while the plugin is enabled, so the
 // watcher polls whether or not the panel is open. 'sidecar_sdk' is resolved
 // by Antigravity; there is nothing to install.

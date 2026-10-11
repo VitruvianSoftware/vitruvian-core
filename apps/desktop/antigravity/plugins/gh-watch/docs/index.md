@@ -1,4 +1,4 @@
-# pr-watch
+# gh-watch
 
 An Antigravity desktop plugin that watches pull requests and wakes the
 conversation that owns one when its CI starts failing. See the
@@ -78,7 +78,7 @@ request that is already watched. The hook only ever answers `{}`, so it
 cannot allow, block or change a command.
 
 The message arrives in the conversation as a system notice, not as something
-the user typed. It says it comes from pr-watch, lists the failing checks with
+the user typed. It says it comes from gh-watch, lists the failing checks with
 links, and asks the agent to fix the cause on the branch or to say so if the
 failure is not caused by the pull request.
 

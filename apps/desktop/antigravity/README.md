@@ -6,7 +6,7 @@ loads, so installing one is a link into `~/.gemini/config/plugins/`.
 
 | Plugin | What it does |
 | --- | --- |
-| [`pr-watch`](plugins/pr-watch/README.md) | Watches pull requests and wakes the owning conversation when CI starts failing. |
+| [`gh-watch`](plugins/gh-watch/README.md) | Watches pull requests and wakes the owning conversation when CI starts failing. |
 
 These are not native macOS apps, so the release contract in
 [`apps/desktop/AGENTS.md`](../AGENTS.md) (DMGs, Homebrew cask, downloads

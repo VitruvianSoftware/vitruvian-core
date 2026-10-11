@@ -83,7 +83,7 @@ export class Inbox {
           text: readFileSync(file, "utf8"),
         });
       } catch (err) {
-        console.error(`pr-watch: could not read note ${file}: ${err.message}`);
+        console.error(`gh-watch: could not read note ${file}: ${err.message}`);
       }
     }
     return notes.sort((a, b) => a.at - b.at);

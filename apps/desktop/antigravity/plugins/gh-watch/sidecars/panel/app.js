@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-// Frontend for the pr-watch panel. /preload.js runs first and defines
+// Frontend for the gh-watch panel. /preload.js runs first and defines
 // window.sidecar; window.sidecar.fetch adds the token non-GET routes need.
 
 const sidecar = window.sidecar;
