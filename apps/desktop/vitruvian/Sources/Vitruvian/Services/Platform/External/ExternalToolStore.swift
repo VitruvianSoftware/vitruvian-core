@@ -80,6 +80,8 @@ package final class ExternalToolStore {
         package var language: @MainActor () -> String
         /// Told, once for each tool, that it stopped working.
         package var stoppedWorking: @MainActor (ToolID) -> Void
+        /// Deletes every preference a tool saved.
+        package var forgetPreferences: @MainActor (ToolID) -> Void
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -87,7 +89,8 @@ package final class ExternalToolStore {
                      limits: ToolLimits = .standard,
                      makeTransport: @escaping @MainActor (URL, URL) -> any ToolTransport,
                      language: @escaping @MainActor () -> String,
-                     stoppedWorking: @escaping @MainActor (ToolID) -> Void) {
+                     stoppedWorking: @escaping @MainActor (ToolID) -> Void,
+                     forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -97,6 +100,7 @@ package final class ExternalToolStore {
             self.makeTransport = makeTransport
             self.language = language
             self.stoppedWorking = stoppedWorking
+            self.forgetPreferences = forgetPreferences
         }
 
         /// The app as it is. The sentence that tells the person a tool
@@ -114,7 +118,19 @@ package final class ExternalToolStore {
             stoppedWorking: { id in
                 Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
                     .error("the tool \(id.rawValue, privacy: .public) stopped working")
-            })
+            },
+            forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) })
+    }
+
+    /// Deletes every preference saved under a tool's id: the keys that
+    /// start with the id and a slash (`ExternalToolManifest.storageKey`).
+    /// No preference of the app's own, and none of another tool, has such
+    /// a key: an id holds no slash.
+    package static func forgetPreferences(of id: ToolID, in defaults: UserDefaults) {
+        let prefix = id.rawValue + "/"
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     package static let shared: ExternalToolStore = ExternalToolStore(parts: .live)
@@ -333,18 +349,31 @@ package final class ExternalToolStore {
         parts.registry().noteAvailabilityChanged()
     }
 
-    /// Stops the tool, takes it out of the host and the registry, and
-    /// forgets it. Its files, and what it saved, stay where they are.
-    package func remove(_ id: ToolID) {
-        guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return }
+    /// Removes a tool the person added: stops its program, takes it out of
+    /// the host and the registry, forgets it, and deletes the app's copy of
+    /// its files. With `deletingData`, what the tool saved goes too: its
+    /// data folder, and the preferences saved under its id. Without, both
+    /// stay, and adding the tool again finds them.
+    ///
+    /// The folder the tool was added from is never touched. False, with
+    /// nothing changed, for a tool nobody added.
+    @discardableResult
+    package func remove(_ id: ToolID, deletingData: Bool) -> Bool {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return false }
         var next = records
         next.remove(at: known)
-        guard save(next) else { return }
+        guard save(next) else { return false }
         records = next
         deactivate(id)
         held.remove(id)
         resting[id] = nil
+        if parts.folders?.delete(id, data: deletingData) != true {
+            Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+                .error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
+        }
+        if deletingData { parts.forgetPreferences(id) }
         parts.registry().noteAvailabilityChanged()
+        return true
     }
 
     // MARK: - The host, the registry and the file

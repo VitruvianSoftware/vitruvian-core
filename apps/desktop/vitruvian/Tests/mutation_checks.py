@@ -607,6 +607,21 @@ MUTATIONS = [
      "              let file = try? decoder.decode(File.self, from: data), file.version == version else {\n",
      "              let file = try? decoder.decode(File.self, from: data) else {\n",
      "a file of records that is from a later version is not read"),
+    ("removing a tool deletes what it saved when the person kept it", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        for (folder, parent) in [(place.files, \"Tools\")] + (data ? [(place.data, \"ToolData\")] : []) {\n",
+     "        for (folder, parent) in [(place.files, \"Tools\"), (place.data, \"ToolData\")] {\n",
+     "deleting a tool's copy leaves what it saved, and leaves every other tool alone"),
+    ("a delete reaches through a link out of the app's folder", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "            guard stays(folder.deletingLastPathComponent(), at: home + [parent], fileManager),\n                  (try? fileManager.removeItem(at: folder)) != nil else {\n",
+     "            guard (try? fileManager.removeItem(at: folder)) != nil else {\n",
+     "with Tools a link to another place, nothing there is deleted"),
+    ("a removed tool's preferences outlive what it saved", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        if deletingData { parts.forgetPreferences(id) }\n",
+     "",
+     "removing it with what it saved deletes its data folder and its own preferences, and no other"),
 ]
 
 

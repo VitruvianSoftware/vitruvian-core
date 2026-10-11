@@ -128,6 +128,32 @@ package struct ToolFolders: Equatable, Sendable {
         return .success(place)
     }
 
+    /// Deletes the app's copy of a tool and, with `data`, the folder of
+    /// what the tool saved. False when something that should have gone is
+    /// still there.
+    ///
+    /// It can delete two things only: `Tools/<id>` and `ToolData/<id>`. An
+    /// id is one folder name, so neither can be `Tools`, `ToolData` or the
+    /// support folder. The folder each is in must be the app's own with
+    /// every link followed, or nothing in it is touched. When `Tools/<id>`
+    /// is itself a link, the link goes and what it points at stays.
+    @discardableResult
+    package func delete(_ id: ToolID, data: Bool, fileManager: FileManager = .default) -> Bool {
+        guard let place = place(for: id) else { return false }
+        let home = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        var gone = true
+        for (folder, parent) in [(place.files, "Tools")] + (data ? [(place.data, "ToolData")] : []) {
+            // Asked of the entry itself, not of what a link points at.
+            guard (try? fileManager.attributesOfItem(atPath: folder.path)) != nil else { continue }
+            guard stays(folder.deletingLastPathComponent(), at: home + [parent], fileManager),
+                  (try? fileManager.removeItem(at: folder)) != nil else {
+                gone = false
+                continue
+            }
+        }
+        return gone
+    }
+
     /// Whether `folder` is, with every link followed, one of the app's own
     /// tool folders or inside one.
     package func holds(_ folder: URL) -> Bool {

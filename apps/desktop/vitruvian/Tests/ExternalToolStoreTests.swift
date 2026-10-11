@@ -20,6 +20,7 @@ enum ExternalToolStoreTests {
         adding(suite)
         throughTheBroker(suite)
         refusals(suite)
+        deleting(suite)
         removing(suite)
         installedOrNot(suite)
         remembering(suite)
@@ -83,7 +84,10 @@ enum ExternalToolStoreTests {
                     return run
                 },
                 language: { "fr" },
-                stoppedWorking: { [unowned self] in stoppedWorking.append($0) }))
+                stoppedWorking: { [unowned self] in stoppedWorking.append($0) },
+                forgetPreferences: { id in
+                    box.values = box.values.filter { !$0.key.hasPrefix(id.rawValue + "/") }
+                }))
         }
 
         /// The app's support folder, as the store sees it.
@@ -385,7 +389,7 @@ enum ExternalToolStoreTests {
         suite.expect(bench.current.sent.last
                          == .failure(id: .number(3), error: RefusalCode.notInUses.error(service: .open)),
                      "a service its manifest does not list is refused by the broker, with the protocol's code")
-        bench.store.remove(id)
+        bench.store.remove(id, deletingData: false)
         suite.expect(ExternalToolCalls.error(for: .notInstalled).code == -32002
                          && bench.host.manifest(for: id) == nil,
                      "and a tool that was removed is no longer served")
@@ -429,25 +433,120 @@ enum ExternalToolStoreTests {
                      "a tool whose id something else in the app answers to is not added, and nothing is copied")
     }
 
+    /// What may be deleted for a tool, and what may not.
+    static func deleting(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let folders = ToolFolders(root: bench.support)
+        let other = ToolID("com.acme.other")!
+        for tool in [id, other] {
+            _ = folders.install(tool, from: bench.folder("picked-\(tool.rawValue)"))
+            if let place = folders.place(for: tool) { try? Data("kept".utf8).write(to: place.data.appendingPathComponent("saved")) }
+        }
+        let theirs = folders.place(for: other)!
+        suite.expect(folders.delete(id, data: false) && !bench.exists(bench.files)
+                         && bench.exists(bench.data.appendingPathComponent("saved"))
+                         && bench.exists(theirs.files) && bench.exists(theirs.data),
+                     "deleting a tool's copy leaves what it saved, and leaves every other tool alone")
+        suite.expect(folders.delete(id, data: true) && !bench.exists(bench.data)
+                         && bench.exists(theirs.files.appendingPathComponent("bin/deploys"))
+                         && bench.exists(theirs.data.appendingPathComponent("saved"))
+                         && bench.exists(bench.support.appendingPathComponent("Tools"))
+                         && bench.exists(bench.support.appendingPathComponent("ToolData")),
+                     "deleting what it saved too takes its data folder and nothing else: the two roots stand")
+        suite.expect(folders.delete(id, data: true) && !folders.delete(ToolID("portManager")!, data: true)
+                         && bench.exists(theirs.files),
+                     "deleting what is not there is done; one of the app's own tools has nothing to delete")
+
+        // A link where the tool's copy should be.
+        let elsewhere = bench.root.appendingPathComponent("elsewhere", isDirectory: true)
+        try? FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try? Data("theirs".utf8).write(to: elsewhere.appendingPathComponent("precious"))
+        try? FileManager.default.createSymbolicLink(at: bench.files, withDestinationURL: elsewhere)
+        suite.expect(folders.delete(id, data: false) && !bench.exists(bench.files)
+                         && bench.exists(elsewhere.appendingPathComponent("precious")),
+                     "a copy that is a link is deleted as a link: what it points at is not touched")
+
+        // A link where `Tools` should be.
+        let tools = bench.support.appendingPathComponent("Tools", isDirectory: true)
+        let away = bench.root.appendingPathComponent("away", isDirectory: true)
+        try? FileManager.default.moveItem(at: tools, to: away)
+        try? FileManager.default.createSymbolicLink(at: tools, withDestinationURL: away)
+        suite.expect(!folders.delete(other, data: false)
+                         && bench.exists(away.appendingPathComponent("com.acme.other/bin/deploys")),
+                     "with Tools a link to another place, nothing there is deleted")
+    }
+
     static func removing(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
-        bench.add(bench.folder())
+        let picked = bench.folder()
+        bench.add(picked)
+        try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+        bench.box.values["com.acme.deploys/project"] = "api"
+        bench.box.values["com.acme.deploys2/project"] = "theirs"
+        bench.box.values["project"] = "the app's"
         bench.registry.run(copy)
         bench.current.greets()
-        bench.store.remove(id)
-        suite.expect(bench.current.sent.last == .notice(method: "shutdown", params: nil) && bench.current.inputClosed
+        suite.expect(bench.store.remove(id, deletingData: false)
+                         && bench.current.sent.last == .notice(method: "shutdown", params: nil) && bench.current.inputClosed
                          && !bench.store.isInstalled(id) && bench.registry.tool(id) == nil
                          && bench.host.manifest(for: id) == nil && bench.store.tool(id) == nil,
                      "removing a tool stops its program and takes it out of the host and the registry")
-        suite.expect(bench.exists(bench.files) && bench.exists(bench.data), "its files, and what it saved, stay")
-        bench.store.remove(id)
+        suite.expect(bench.store.listed.isEmpty && bench.records.isEmpty && !bench.exists(bench.files)
+                         && bench.exists(bench.support.appendingPathComponent("Tools")),
+                     "it is forgotten, and the app's copy of its files is deleted")
+        suite.expect(bench.exists(bench.data.appendingPathComponent("saved"))
+                         && bench.box.values["com.acme.deploys/project"] as? String == "api"
+                         && bench.exists(picked.appendingPathComponent("bin/deploys")),
+                     "what it saved is kept when the person says so, and the folder it came from is not touched")
+        suite.expect(!bench.store.remove(id, deletingData: true) && bench.exists(bench.data.appendingPathComponent("saved")),
+                     "removing a tool nobody added does nothing, and deletes nothing")
         bench.current.ends(0)
-        if case .success = bench.add(bench.folder()) {
-            suite.expect(bench.registry.canRun(copy), "and it can be added again")
+
+        if case .success = bench.add(picked) {
+            suite.expect(bench.registry.canRun(copy) && bench.exists(bench.data.appendingPathComponent("saved")),
+                         "it can be added again, and finds what it saved")
         } else {
-            suite.expect(false, "and it can be added again")
+            suite.expect(false, "it can be added again, and finds what it saved")
         }
+        suite.expect(bench.store.remove(id, deletingData: true) && !bench.exists(bench.files) && !bench.exists(bench.data)
+                         && bench.box.values["com.acme.deploys/project"] == nil
+                         && bench.box.values["com.acme.deploys2/project"] as? String == "theirs"
+                         && bench.box.values["project"] as? String == "the app's"
+                         && bench.exists(bench.support.appendingPathComponent("ToolData"))
+                         && bench.exists(picked.appendingPathComponent("bin/deploys")),
+                     "removing it with what it saved deletes its data folder and its own preferences, and no other")
+        let next = bench.relaunched()
+        next.store.restore()
+        suite.expect(next.store.listed.isEmpty && next.registry.tool(id) == nil,
+                     "and the next launch does not bring it back")
+
+        // A tool that is held back can still be removed.
+        let held = Bench()
+        defer { held.close() }
+        held.add(held.folder())
+        try? Data("{}".utf8).write(to: held.files.appendingPathComponent("vitruvian-tool.json"))
+        let after = held.relaunched()
+        after.store.restore()
+        suite.expect(after.store.listed.map(\.isHeld) == [true] && after.store.remove(id, deletingData: true)
+                         && after.store.listed.isEmpty && !after.exists(after.files) && !after.exists(after.data),
+                     "a tool that is held back is removed like any other")
+
+        let domain = "com.vitruviansoftware.vitruvian.tests.tool-store"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set("api", forKey: "com.acme.deploys/project")
+        defaults.set(3, forKey: "com.acme.deploys/count")
+        defaults.set("theirs", forKey: "com.acme.deploys2/project")
+        defaults.set("the app's", forKey: "com.acme.deploys")
+        ExternalToolStore.forgetPreferences(of: id, in: defaults)
+        suite.expect(defaults.object(forKey: "com.acme.deploys/project") == nil
+                         && defaults.object(forKey: "com.acme.deploys/count") == nil
+                         && defaults.string(forKey: "com.acme.deploys2/project") == "theirs"
+                         && defaults.string(forKey: "com.acme.deploys") == "the app's",
+                     "forgetting a tool's preferences deletes the keys under its id and a slash, and no other key")
 
         let early = Bench()
         defer { early.close() }
