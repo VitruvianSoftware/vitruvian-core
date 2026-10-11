@@ -154,6 +154,18 @@ var syncedProjects = []syncedProject{
 		Description:    "Roborock vacuum integration, local daemon, FastMCP server, and plugins for Claude Code and Antigravity",
 	},
 	{
+		// Standalone mirror for the gh-watch Antigravity plugin
+		// (apps/desktop/antigravity/plugins/gh-watch). Public, so anyone can
+		// install it with `agy plugin install https://github.com/VitruvianSoftware/gh-watch`.
+		// Name uppercase-snakes to GH_WATCH -> GH_WATCH_SYNC_SSH_KEY, consumed by
+		// copybara-export-gh-watch.yaml.
+		Name:           "gh-watch",
+		StandaloneRepo: "gh-watch",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Antigravity plugin that watches your GitHub pull requests and wakes the agent when CI fails, conflicts appear or the change lands",
+	},
+	{
 		// Export-only mirror for the vitruviansoftware.dev website
 		// (apps/web/vitruviansoftware-dev). The repo already exists and stays the
 		// GitHub Pages publisher for the custom domain: the monorepo exports the
