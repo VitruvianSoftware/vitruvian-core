@@ -1,0 +1,505 @@
+{
+  "about": "Messages the schema and the Swift types must read alike. A result or failure names, in `answers`, the method it answers. `unknownFields: true` marks a message that carries a field version 1 does not have: both sides accept it, and the Swift types drop the field.",
+  "examples": [
+    {
+      "about": "the app starts",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersions": ["1"],
+          "language": "en-US",
+          "dataFolder": "/Users/example/Library/Application Support/Vitruvian/ToolData/com.acme.deploys"
+        }
+      }
+    },
+    {
+      "about": "the tool picks a version",
+      "valid": true,
+      "answers": "initialize",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": { "protocolVersion": "1", "toolVersion": "1.2.0" }
+      }
+    },
+    {
+      "about": "run a command",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "command/run",
+        "params": { "command": "copyLatest" }
+      }
+    },
+    {
+      "about": "the command ran",
+      "valid": true,
+      "answers": "command/run",
+      "message": { "jsonrpc": "2.0", "id": 2, "result": {} }
+    },
+    {
+      "about": "the tool would not run it",
+      "valid": true,
+      "answers": "command/run",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "error": { "code": -32010, "message": "command refused" }
+      }
+    },
+    {
+      "about": "preferences changed",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "preferences/changed",
+        "params": {
+          "values": { "project": "acme", "notify": false, "limit": 20 }
+        }
+      }
+    },
+    {
+      "about": "the language changed",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "language/changed",
+        "params": { "language": "fr" }
+      }
+    },
+    {
+      "about": "stop",
+      "valid": true,
+      "message": { "jsonrpc": "2.0", "method": "shutdown" }
+    },
+    {
+      "about": "which commands can run",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "commands/state",
+        "params": { "runnable": ["copyLatest"] }
+      }
+    },
+    {
+      "about": "no command can run",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "commands/state",
+        "params": { "runnable": [] }
+      }
+    },
+    {
+      "about": "an on-screen message, with a string id",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": "t-1",
+        "method": "notify/hud",
+        "params": { "icon": "checkmark.circle", "message": "Copied" }
+      }
+    },
+    {
+      "about": "the message was shown",
+      "valid": true,
+      "answers": "notify/hud",
+      "message": { "jsonrpc": "2.0", "id": "t-1", "result": {} }
+    },
+    {
+      "about": "the alert sound",
+      "valid": true,
+      "message": { "jsonrpc": "2.0", "id": 3, "method": "notify/beep" }
+    },
+    {
+      "about": "the sound was played",
+      "valid": true,
+      "answers": "notify/beep",
+      "message": { "jsonrpc": "2.0", "id": 3, "result": {} }
+    },
+    {
+      "about": "open a link",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "open/url",
+        "params": { "url": "https://example.com/deploys/41" }
+      }
+    },
+    {
+      "about": "the link was opened",
+      "valid": true,
+      "answers": "open/url",
+      "message": { "jsonrpc": "2.0", "id": 4, "result": { "opened": true } }
+    },
+    {
+      "about": "read the clipboard",
+      "valid": true,
+      "message": { "jsonrpc": "2.0", "id": 5, "method": "clipboard/readText" }
+    },
+    {
+      "about": "the clipboard's text",
+      "valid": true,
+      "answers": "clipboard/readText",
+      "message": { "jsonrpc": "2.0", "id": 5, "result": { "text": "hello" } }
+    },
+    {
+      "about": "a clipboard with no text",
+      "valid": true,
+      "answers": "clipboard/readText",
+      "message": { "jsonrpc": "2.0", "id": 5, "result": {} }
+    },
+    {
+      "about": "write the clipboard",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "clipboard/writeText",
+        "params": { "text": "https://example.com/deploys/41" }
+      }
+    },
+    {
+      "about": "the clipboard took it",
+      "valid": true,
+      "answers": "clipboard/writeText",
+      "message": { "jsonrpc": "2.0", "id": 6, "result": { "written": true } }
+    },
+    {
+      "about": "paste into the app in front",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "keystrokes/paste",
+        "params": { "text": "two\nlines" }
+      }
+    },
+    {
+      "about": "the paste was typed",
+      "valid": true,
+      "answers": "keystrokes/paste",
+      "message": { "jsonrpc": "2.0", "id": 7, "result": {} }
+    },
+    {
+      "about": "press Paste and Match Style",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "keystrokes/pressMenuItem",
+        "params": {
+          "equivalents": [
+            { "character": "V", "modifiers": ["shift", "option"] },
+            { "character": "V", "modifiers": [] }
+          ]
+        }
+      }
+    },
+    {
+      "about": "an item was pressed",
+      "valid": true,
+      "answers": "keystrokes/pressMenuItem",
+      "message": { "jsonrpc": "2.0", "id": 8, "result": { "pressed": true } }
+    },
+    {
+      "about": "end a process",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "processes/terminate",
+        "params": { "pid": 4242, "name": "node", "force": false }
+      }
+    },
+    {
+      "about": "the process was asked to end",
+      "valid": true,
+      "answers": "processes/terminate",
+      "message": { "jsonrpc": "2.0", "id": 9, "result": {} }
+    },
+    {
+      "about": "read a preference",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "storage/get",
+        "params": { "key": "project" }
+      }
+    },
+    {
+      "about": "the preference's value",
+      "valid": true,
+      "answers": "storage/get",
+      "message": { "jsonrpc": "2.0", "id": 10, "result": { "value": "acme" } }
+    },
+    {
+      "about": "save a preference",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "storage/set",
+        "params": { "key": "limit", "value": 20 }
+      }
+    },
+    {
+      "about": "the preference was saved",
+      "valid": true,
+      "answers": "storage/set",
+      "message": { "jsonrpc": "2.0", "id": 11, "result": {} }
+    },
+    {
+      "about": "a line for the log",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "log",
+        "params": { "message": "fetched 3 deploys" }
+      }
+    },
+    {
+      "about": "refused: the service is not in uses",
+      "valid": true,
+      "answers": "clipboard/writeText",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "error": {
+          "code": -32001,
+          "message": "not listed in uses",
+          "data": { "service": "clipboard.write" }
+        }
+      }
+    },
+    {
+      "about": "refused: Vitruvian lacks a permission",
+      "valid": true,
+      "answers": "keystrokes/paste",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "error": {
+          "code": -32003,
+          "message": "Vitruvian lacks a macOS permission",
+          "data": { "permission": "accessibility" }
+        }
+      }
+    },
+    {
+      "about": "refused: not available right now",
+      "valid": true,
+      "answers": "processes/terminate",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "error": { "code": -32004, "message": "not available right now" }
+      }
+    },
+    {
+      "about": "a line that could not be read has no id to answer",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": null,
+        "error": { "code": -32700, "message": "parse error" }
+      }
+    },
+    {
+      "about": "a method version 1 does not have is still a message",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "island/notice",
+        "params": { "text": "later" }
+      }
+    },
+    {
+      "about": "a field version 1 does not have is ignored",
+      "valid": true,
+      "unknownFields": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 13,
+        "method": "command/run",
+        "params": { "command": "copyLatest", "argument": "later" }
+      }
+    },
+    {
+      "about": "not version 2.0",
+      "valid": false,
+      "message": { "jsonrpc": "1.0", "id": 1, "method": "notify/beep" }
+    },
+    {
+      "about": "no version",
+      "valid": false,
+      "message": { "id": 1, "method": "notify/beep" }
+    },
+    {
+      "about": "a request whose id is null",
+      "valid": false,
+      "message": { "jsonrpc": "2.0", "id": null, "method": "notify/beep" }
+    },
+    {
+      "about": "an id with a fraction",
+      "valid": false,
+      "message": { "jsonrpc": "2.0", "id": 1.5, "method": "notify/beep" }
+    },
+    {
+      "about": "params that are a list",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "notify/beep",
+        "params": ["loud"]
+      }
+    },
+    {
+      "about": "neither a method nor an answer",
+      "valid": false,
+      "message": { "jsonrpc": "2.0", "id": 1 }
+    },
+    {
+      "about": "a result and a failure at once",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {},
+        "error": { "code": -32603, "message": "both" }
+      }
+    },
+    {
+      "about": "a method and a result at once",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "notify/beep",
+        "result": {}
+      }
+    },
+    {
+      "about": "a failure with no code",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": { "message": "no code" }
+      }
+    },
+    {
+      "about": "initialize with no language",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": { "protocolVersions": ["1"], "dataFolder": "/tmp" }
+      }
+    },
+    {
+      "about": "run a command with no params",
+      "valid": false,
+      "message": { "jsonrpc": "2.0", "id": 2, "method": "command/run" }
+    },
+    {
+      "about": "a command that is a number",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "command/run",
+        "params": { "command": 7 }
+      }
+    },
+    {
+      "about": "runnable commands that are not a list",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "commands/state",
+        "params": { "runnable": "copyLatest" }
+      }
+    },
+    {
+      "about": "a process id that is text",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "processes/terminate",
+        "params": { "pid": "4242", "name": "node", "force": false }
+      }
+    },
+    {
+      "about": "an answer to initialize with no version picked",
+      "valid": false,
+      "answers": "initialize",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": { "toolVersion": "1.2.0" }
+      }
+    },
+    {
+      "about": "an answer to open/url that is not yes or no",
+      "valid": false,
+      "answers": "open/url",
+      "message": { "jsonrpc": "2.0", "id": 4, "result": { "opened": "yes" } }
+    },
+    {
+      "about": "a key held with Command that is not shift, option or control",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "keystrokes/pressMenuItem",
+        "params": {
+          "equivalents": [{ "character": "V", "modifiers": ["command"] }]
+        }
+      }
+    },
+    {
+      "about": "a preference saved as a list",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "storage/set",
+        "params": { "key": "limit", "value": [20] }
+      }
+    },
+    {
+      "about": "a preference's value that is an object",
+      "valid": false,
+      "answers": "storage/get",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "result": { "value": { "limit": 20 } }
+      }
+    },
+    {
+      "about": "refused for a service, named as text and not as an object",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "error": {
+          "code": -32001,
+          "message": "not listed in uses",
+          "data": "clipboard.write"
+        }
+      }
+    }
+  ]
+}

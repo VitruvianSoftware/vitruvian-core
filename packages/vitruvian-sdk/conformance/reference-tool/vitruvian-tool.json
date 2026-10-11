@@ -1,0 +1,25 @@
+{
+  "id": "dev.vitruvian.reference",
+  "name": { "en": "Reference tool" },
+  "description": {
+    "en": "Says hello. The smallest tool that speaks protocol 1."
+  },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "hand.wave",
+  "uses": ["notify"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "hello",
+        "title": { "en": "Say hello" },
+        "icon": "hand.wave",
+        "surfaces": ["commandBar"]
+      }
+    ]
+  },
+  "activation": ["onCommand"],
+  "runtime": { "kind": "external", "exec": "bin/reference_tool.py" }
+}

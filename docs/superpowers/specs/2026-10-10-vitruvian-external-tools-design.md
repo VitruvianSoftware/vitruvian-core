@@ -1,7 +1,7 @@
 # Vitruvian sub-project 3: tools that run as their own programs — design
 
-**Date:** 2026-10-10 · **Status:** draft, awaiting James; the trust model in
-section 3 decided by James 2026-10-10 · **Owner:** compass
+**Date:** 2026-10-10 · **Status:** approved by James 2026-10-10, with every
+default in section 16 · **Owner:** compass
 **Scope:** `apps/desktop/vitruvian`, and a new `packages/vitruvian-sdk`.
 **Parents:** `2026-10-08-vitruvian-tool-platform-design.md` (sections 5 to 10,
 and sub-project 3 in section 12); `2026-10-09-vitruvian-broker-and-bundled-tools-design.md`;
@@ -141,7 +141,7 @@ Each is a default, with what it costs if it is wrong. Decision 1 is James's.
 | 9 | **Installing is choosing a folder.** The app copies it into its own support folder and runs the copy. | The original can move or be deleted. No Developer ID, so no signed packages. | Updating a tool is choosing its folder again. Sub-project 4 adds a Git address. The copy is for stability, not safety: a trusted tool can rewrite itself. |
 | 10 | **Tool-supplied words are shown as the tool wrote them.** A manifest may carry its name in several languages; English is required. | The app cannot translate a stranger's sentence. It already shows other programs' text unlocalised: script output, process names, GitHub data. | A tool in a language the person does not read. The hub shows the publisher beside it. |
 | 11 | **The SDK is MIT.** The parent design said Apache-2.0. | The repository's licence check enforces MIT headers on everything outside the app, and `packages/peripherals`, the precedent the parent names, is MIT. | No patent grant. If that matters later, the check gains an exception; nothing here depends on it. |
-| 12 | **The app links the SDK's protocol types.** One definition of each message, used by both sides. | Two hand-kept copies drift. A GPL app may link an MIT library; the app already links one. | A change to a message is a change in two places' build. That is the point. |
+| 12 | **The app links the SDK's protocol types.** One definition of each message, used by both sides. `Core` imports the module by name in the file that uses it and does not re-export it. The module's Swift sources are pinned in the app's folder (`tool_protocol_pin_test`). | Two hand-kept copies drift. A GPL app may link an MIT library; the app already links one. The pin is there for two reasons: the app is released by path, so a change made only in the package would never ship in it; and every Swift test of the app is `manual`, so the presubmit planner would not otherwise list any test of the app for such a change. | A change to a message is a change in two places' build. That is the point. |
 
 ## 5. Architecture
 
@@ -224,9 +224,26 @@ Rules:
 - **An unknown service, surface or preference type refuses the install**,
   with a message that names it. The alternative, installing with part of the
   manifest dropped, leaves a tool that half works.
-- **`exec` stays inside the folder.** A path that leaves it is refused.
+- **`exec` stays inside the folder.** A path that leaves it is refused. It
+  is checked twice: by its text, and, in the app, against the real folder
+  with links followed. A program that is missing, or that macOS will not
+  run, is refused too.
 - **The icon is an SF Symbol name.** One the Mac does not have draws as a
-  plain puzzle piece, as an unknown command does today.
+  plain puzzle piece, as an unknown command does today. An icon never
+  refuses a manifest: with none, or one that is only spaces, the tool draws
+  the puzzle piece, and a command with none takes its tool's.
+- **`id`, `name`, `version`, `protocol`, `publisher` and `runtime` are
+  required.** Everything else may be left out, and a tool with no
+  `activation` is `onCommand`. `activation` may name `onCommand` and
+  `onLaunch` only.
+- **`uses` may name** `notify`, `open`, `clipboard.read`, `clipboard.write`,
+  `keystrokes`, `processes` and `storage`. `hotkey` and `clipboard.rewrite`
+  are built-in tools' and are refused as unknown.
+- **A preference is `{ id, type, default }`.** `type` is `string`,
+  `boolean`, `integer` or `number`, and the default is of that type.
+- **Text in several languages is a map from a language tag to text.** A
+  language is its own entry, else its language without the region, else
+  English.
 - **Size limits**: the manifest 64 KB, 32 commands, 16 preferences. These
   keep the app's lists sane; they are not a safety measure.
 
@@ -320,6 +337,22 @@ neither lists nor limits.
 JSON-RPC 2.0. One message per line. UTF-8. The tool's standard output carries
 nothing else.
 
+`packages/vitruvian-sdk/protocol/` is the full statement of version 1. This
+section is its summary. Stage A pinned down what this section left open:
+
+- A request id is a whole number or a string.
+- A command is named by its bare id (`copyLatest`), never with its tool's.
+- `shutdown` is a notice.
+- Everything a tool asks of the app is a request, so it can be refused. Only
+  `commands/state` and `log` are notices.
+- `commands/state` carries the whole list of commands that can run now.
+- A request that is simply done answers `{}`.
+- A blank line is ignored. A line ends with a line feed; a carriage return
+  before it stays part of the line.
+- 1 MB is 1,048,576 bytes, not counting the line break.
+- A value read or written through `storage`, and the extra data a refusal
+  carries, are checked when a message is read, not later.
+
 **The app starts.** It sends `initialize` with the protocol versions it
 speaks, the language in use, and the path of the tool's data folder. The tool
 answers with the version it picked and its own version. A tool that picks a
@@ -347,8 +380,8 @@ thing itself (decision 5).
 | `clipboard/readText` | `clipboard.read` | the clipboard's text, read on the app's clipboard lane |
 | `clipboard/writeText` | `clipboard.write` | replace the clipboard with this text, marked as Vitruvian's so clipboard history files it correctly |
 | `keystrokes/paste` | `keystrokes` | paste this text into the app in front, with the app's tuned paste |
-| `keystrokes/pressMenuItem` | `keystrokes` | press the menu item with this key equivalent in the app in front |
-| `processes/terminate` | `processes` | end this process, with the app's checks and its admin prompt when needed |
+| `keystrokes/pressMenuItem` | `keystrokes` | press the menu item with one of these key equivalents in the app in front. It takes a list; each is a character and the modifiers held with Command (`shift`, `option`, `control`) |
+| `processes/terminate` | `processes` | end this process, with the app's checks and its admin prompt when needed. It takes a process id, its name and whether to force |
 | `storage/get`, `storage/set` | `storage` | read or write one of the preferences the manifest declares |
 | `log` | none | a line for the tool's log in Settings |
 
@@ -356,6 +389,11 @@ thing itself (decision 5).
 code: not listed in `uses`, not installed, a macOS permission Vitruvian does
 not have, or not available right now. A tool must cope with any request
 being refused.
+
+The codes: -32001 not listed in `uses`, -32002 not installed, -32003 a macOS
+permission missing, -32004 not available right now. A tool that will not run
+a command answers -32010. A message that cannot be handled at all gets one of
+JSON-RPC's own five: -32700, -32600, -32601, -32602, -32603.
 
 **Growing it.** A new message or field is added without a new version when an
 old tool can ignore it. Anything an old tool would misread needs version 2,
@@ -373,9 +411,13 @@ unchanged.
 
 ## 10. Inside the app: what changes
 
-- **`ToolManifest` from JSON**, in `Core`, with the rules of section 6. The
-  closed lists stay closed: reading a name the app does not know is a
-  refusal the sheet can show, never a crash.
+- **`ToolManifest` from JSON**, in `Core` (`ExternalToolManifest`), which
+  applies the rules of section 6. The rules that need only the file are in
+  the package's `ToolManifestFile.read`, so the command-line tool applies
+  the same ones; `Core` adds the checks against the real folder and the
+  mapping onto the app's closed lists. The closed lists stay closed:
+  reading a name the app does not know is a refusal the sheet can show,
+  never a crash.
 - **`ToolHost`** holds hosted tools behind one small protocol (start, stop,
   run a command, which commands can run), with the compiled-in kind and the
   outside kind as its two implementations. The compiled-in kind is today's
@@ -401,15 +443,26 @@ pipeline unit.
 
 | Piece | What it is |
 |---|---|
-| `protocol/` | The manifest and every message as JSON Schema, and a plain-language description of each. The source of truth. |
+| `protocol/` | The manifest and every message as JSON Schema, and a plain-language description of each. The source of truth. It also holds `methods.json`, the table of messages, and `examples/`. |
 | `Sources/VitruvianToolProtocol` | The same messages as Swift types. The app links this. |
 | `Sources/VitruvianToolKit` | A library a Swift tool is written with: declare commands, handle them, call the app. |
 | `Sources/vitruvian-tool` | A command-line tool: `init` (a new tool from a template), `validate` (check a folder the way the app will), `run` (play the app's side in a terminal, so a tool can be developed without the app). |
-| `Samples/` | Three sample tools: one in Swift using the kit; one in plain Python using nothing, to prove the protocol does not need the kit; one that reads the front window's title directly, to prove decision 1. |
-| `Conformance/` | A scripted app's side that any tool can be run against: the handshake, a refusal, a shutdown. |
+| `samples/` | Three sample tools: one in Swift using the kit; one in plain Python using nothing, to prove the protocol does not need the kit; one that reads the front window's title directly, to prove decision 1. |
+| `conformance/` | A scripted app's side that any tool can be run against. As built: Python 3 with no dependencies. It checks five things: the handshake, a command, an unknown command, the command again with every request refused, and shutdown. It also checks the params of the twelve messages a tool may send, against a table written by hand in the script. It does not read what a tool writes after its last answer. The tool it is proven against is `conformance/reference-tool`; stage D's plain-Python sample grows from it or replaces it. |
 
-Tests check that the Swift types and the schemas describe the same messages,
-so the two cannot drift.
+`conformance/` and `samples/` are lower case because the repository's naming
+lint wants that outside a Swift source tree.
+
+Two tests read the same example files, one against the schemas and one
+against the Swift types. Together they prove three things. Every example the
+files call valid is accepted by both, and every one they call invalid is
+refused by both. Every field a schema declares is used by a valid example,
+and every Swift type has exactly the fields its schema declares. The table
+of messages in `methods.json` is the Swift list of methods, row for row.
+
+They do not prove that a limit written on one side only is on the other,
+unless an example crosses it. So a change is made in the schema, the Swift
+type and an example, in one commit.
 
 Not in this sub-project: publishing the package anywhere, a TypeScript kit,
 and versioned documentation on a website. Sub-project 4.
@@ -481,15 +534,36 @@ Each is its own plan and pull request.
 
 | Stage | Builds | Can a person see it? |
 |---|---|---|
-| A | The SDK package with the protocol, its Swift types and the conformance script. The manifest read from JSON. | No |
+| A | **Built.** The SDK package with the protocol, its Swift types and the conformance script. The manifest read from JSON, and a pin of the protocol's sources in the app. | No |
 | B | The runtime, tested against the fake tool and, on a Mac runner, a real child process. The tool host's two kinds. The broker's forms for outside tools; `storage` writing and the folder. A development switch installs one tool from a folder with no screen. | No, without the switch |
 | C | The tool store, the agreement sheet, the tools section of Settings, the privacy section. Mock-ups first. | Yes |
 | D | The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks. | Only to a tool's author |
 
+**Stage A, as built (2026-10-10).** Each line is marked met only where a
+command that was run shows it. Run on macOS 27.0 with Xcode 27 and Swift 6.4.
+
+| What stage A was to deliver | Met? | What shows it |
+|---|---|---|
+| The protocol as JSON Schema, with examples the schemas judge | Met | `bazel test //packages/vitruvian-sdk:protocol_examples_test` passes |
+| The same messages and the manifest as Swift types, held to the schemas | Met | `bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests` passes, 30 tests |
+| A script that plays the app's side to any tool | Met, for one tool | `bazel test //packages/vitruvian-sdk:conformance_test` passes: the reference tool passes and ten broken copies are each caught. No second tool exists to run it against. |
+| The app reads a manifest, with every rule of section 6 and each refusal | Met, but for one refusal | The app's `platform` suite passes with 60 new checks. `notOfferedHere`, what a newer package meets in an older app, has no test that reaches it through a file. |
+| A person sees no change | Met | Nothing under the app's `Sources/` names the reader but its own file; the app's unit tests and `selftest` pass. Nothing was checked by hand, as there is no screen to check. |
+| A change to the package cannot skip the app's tests | Met | With one character changed in the package, `tool_protocol_pin_test` fails, and the presubmit planner selects the app's unit for that change (run locally, not watched on CI). This needed a fix on the way: a bracket in a comment was hiding the app's test list from the planner. |
+| `Package.swift` describes the same package | Partly | `swift build` of the package passes by hand. CI does not build it, and its tests were not run that way. |
+
+None of the five "done when" items of section 1 is met by stage A alone.
+They are for the whole sub-project. Stage A bears on item 4 only: a release
+build runs no line of this stage.
+
 ## 16. Open questions
 
-Each has a default. Unless James says otherwise, the default stands and the
-stage A plan is written against it.
+Each had a default. James accepted every one on 2026-10-10. They are
+decisions now. The stage A plan is
+`docs/superpowers/plans/2026-10-10-vitruvian-external-tools-stage-a.md`. It
+changes this spec in two places and adds to it in others, as its table of
+decisions lists; sections 4, 6, 9, 10, 11 and 15 above have been brought in
+line with what stage A built.
 
 1. **Nothing on the island and no feature moved out in this sub-project**
    (decision 2). *Default: yes. It is about size, not trust.*
