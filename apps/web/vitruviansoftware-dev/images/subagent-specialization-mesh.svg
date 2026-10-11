@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="100%" height="auto" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; border-radius: 6px;">
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .beacon-box { fill: #172433; stroke: #3b6088; stroke-width: 1.5; rx: 6px; }
+      .agent-box { fill: #131c26; stroke: #26384a; stroke-width: 1.5; rx: 6px; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-sub { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .box-text { fill: #8fa5b5; font-size: 10.5px; line-height: 1.35; }
+      .highlight { fill: #7fbf9a; font-weight: 500; }
+      .scope-badge { fill: #192b22; stroke: #2a5a3e; stroke-width: 1; rx: 3px; }
+      .scope-text { fill: #8ed4aa; font-size: 9.5px; }
+      .dispatch-line { stroke: #3f6080; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="ar-dispatch" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#3f6080" />
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <rect x="20" y="20" width="920" height="50" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="36" y="42" class="title">Multi-Domain Subagent Mesh &amp; Scoped Context Isolation</text>
+  <text x="36" y="60" class="subtitle">Hierarchical AGENTS.md Routing Eliminates Prompt Bloat and Prevents Cross-Domain Hallucination</text>
+
+  <!-- Lead Dispatcher: Beacon -->
+  <rect x="280" y="85" width="400" height="75" class="beacon-box" />
+  <text x="480" y="108" class="box-head" text-anchor="middle">BEACON (Lead Orchestrator &amp; Dispatcher)</text>
+  <text x="480" y="126" class="box-sub" text-anchor="middle">Decomposes user initiatives • Maps domain boundaries • Dispatches tasks</text>
+  <text x="480" y="144" class="highlight" text-anchor="middle" style="font-size:10px;">Root /AGENTS.md Context: Monorepo Principles, Identity &amp; SDLC Ladder</text>
+
+  <!-- Dispatch arrows -->
+  <path d="M 330 160 L 105 210" class="dispatch-line" marker-end="url(#ar-dispatch)" />
+  <path d="M 390 160 L 255 210" class="dispatch-line" marker-end="url(#ar-dispatch)" />
+  <path d="M 450 160 L 405 210" class="dispatch-line" marker-end="url(#ar-dispatch)" />
+  <path d="M 510 160 L 555 210" class="dispatch-line" marker-end="url(#ar-dispatch)" />
+  <path d="M 570 160 L 705 210" class="dispatch-line" marker-end="url(#ar-dispatch)" />
+  <path d="M 630 160 L 855 210" class="dispatch-line" marker-end="url(#ar-dispatch)" />
+
+  <!-- Subagent 1: Wren -->
+  <g transform="translate(20, 210)">
+    <rect width="140" height="150" class="agent-box" />
+    <text x="70" y="24" class="box-head" text-anchor="middle" fill="#7fbf9a">WREN</text>
+    <text x="70" y="40" class="box-sub" text-anchor="middle">App Logic</text>
+    <text x="12" y="60" class="box-text">• Go / TypeScript</text>
+    <text x="12" y="76" class="box-text">• CLI &amp; Desktop</text>
+    <text x="12" y="92" class="box-text">• Web services</text>
+    <rect x="8" y="108" width="124" height="32" class="scope-badge" />
+    <text x="70" y="122" class="scope-text" text-anchor="middle">apps/cli/devx/</text>
+    <text x="70" y="134" class="scope-text" text-anchor="middle">apps/desktop/*</text>
+  </g>
+
+  <!-- Subagent 2: Atlas -->
+  <g transform="translate(170, 210)">
+    <rect width="140" height="150" class="agent-box" />
+    <text x="70" y="24" class="box-head" text-anchor="middle" fill="#93b0ca">ATLAS</text>
+    <text x="70" y="40" class="box-sub" text-anchor="middle">Infrastructure</text>
+    <text x="12" y="60" class="box-text">• Pulumi IaC</text>
+    <text x="12" y="76" class="box-text">• Cloudflare</text>
+    <text x="12" y="92" class="box-text">• GCP Foundation</text>
+    <rect x="8" y="108" width="124" height="32" class="scope-badge" />
+    <text x="70" y="122" class="scope-text" text-anchor="middle">infrastructure/</text>
+    <text x="70" y="134" class="scope-text" text-anchor="middle">gcp-identities.tsv</text>
+  </g>
+
+  <!-- Subagent 3: Ridge -->
+  <g transform="translate(320, 210)">
+    <rect width="140" height="150" class="agent-box" />
+    <text x="70" y="24" class="box-head" text-anchor="middle" fill="#d9b264">RIDGE</text>
+    <text x="70" y="40" class="box-sub" text-anchor="middle">Homelab K3s</text>
+    <text x="12" y="60" class="box-text">• K8s cluster ops</text>
+    <text x="12" y="76" class="box-text">• Flapping triage</text>
+    <text x="12" y="92" class="box-text">• Argo CD GitOps</text>
+    <rect x="8" y="108" width="124" height="32" class="scope-badge" />
+    <text x="70" y="122" class="scope-text" text-anchor="middle">gitops/argocd/</text>
+    <text x="70" y="134" class="scope-text" text-anchor="middle">k8s-api.lab</text>
+  </g>
+
+  <!-- Subagent 4: Scout -->
+  <g transform="translate(470, 210)">
+    <rect width="140" height="150" class="agent-box" />
+    <text x="70" y="24" class="box-head" text-anchor="middle" fill="#93b0ca">SCOUT</text>
+    <text x="70" y="40" class="box-sub" text-anchor="middle">CI &amp; Watchdog</text>
+    <text x="12" y="60" class="box-text">• Bazel test runner</text>
+    <text x="12" y="76" class="box-text">• CI log extractor</text>
+    <text x="12" y="92" class="box-text">• watch-pr loop</text>
+    <rect x="8" y="108" width="124" height="32" class="scope-badge" />
+    <text x="70" y="122" class="scope-text" text-anchor="middle">tools/watch-pr</text>
+    <text x="70" y="134" class="scope-text" text-anchor="middle">tools/ci/*</text>
+  </g>
+
+  <!-- Subagent 5: Aegis -->
+  <g transform="translate(620, 210)">
+    <rect width="140" height="150" class="agent-box" />
+    <text x="70" y="24" class="box-head" text-anchor="middle" fill="#d2907b">AEGIS</text>
+    <text x="70" y="40" class="box-sub" text-anchor="middle">Security Review</text>
+    <text x="12" y="60" class="box-text">• Cryptographic sign</text>
+    <text x="12" y="76" class="box-text">• Peer code review</text>
+    <text x="12" y="92" class="box-text">• Token audits</text>
+    <rect x="8" y="108" width="124" height="32" class="scope-badge" />
+    <text x="70" y="122" class="scope-text" text-anchor="middle">tools/license/</text>
+    <text x="70" y="134" class="scope-text" text-anchor="middle">tools/agent-app</text>
+  </g>
+
+  <!-- Subagent 6: Quill -->
+  <g transform="translate(770, 210)">
+    <rect width="170" height="150" class="agent-box" />
+    <text x="85" y="24" class="box-head" text-anchor="middle" fill="#e7e4dd">QUILL</text>
+    <text x="85" y="40" class="box-sub" text-anchor="middle">Docs &amp; Governance</text>
+    <text x="12" y="60" class="box-text">• ADRs &amp; Principles</text>
+    <text x="12" y="76" class="box-text">• Operator runbooks</text>
+    <text x="12" y="92" class="box-text">• Blog &amp; Catalog</text>
+    <rect x="8" y="108" width="154" height="32" class="scope-badge" />
+    <text x="85" y="122" class="scope-text" text-anchor="middle">docs/ &amp; AGENTS.md</text>
+    <text x="85" y="134" class="scope-text" text-anchor="middle">apps/web/*</text>
+  </g>
+
+  <!-- Footer Banner: Scoped AGENTS.md Invariant -->
+  <rect x="20" y="380" width="920" height="80" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="36" y="406" class="box-head" fill="#7fbf9a">ARCHITECTURAL INVARIANT: DIRECTORY-SCOPED PROMPT CONTEXT</text>
+  <text x="36" y="428" class="box-text">• Agents load ONLY their subtree's AGENTS.md: zero token waste on irrelevant infrastructure or hardware protocols.</text>
+  <text x="36" y="446" class="box-text">• Context boundary isolation prevents catastrophic cross-domain hallucination and keeps LLM attention sharp on diff targets.</text>
+</svg>
