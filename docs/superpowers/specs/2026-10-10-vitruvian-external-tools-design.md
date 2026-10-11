@@ -535,7 +535,7 @@ Each is its own plan and pull request.
 | Stage | Builds | Can a person see it? |
 |---|---|---|
 | A | **Built.** The SDK package with the protocol, its Swift types and the conformance script. The manifest read from JSON, and a pin of the protocol's sources in the app. | No |
-| B | The runtime, tested against the fake tool and, on a Mac runner, a real child process. The tool host's two kinds. The broker's forms for outside tools; `storage` writing and the folder. A development switch installs one tool from a folder with no screen. | No, without the switch |
+| B | **Built.** The runtime, tested against the fake tool and, on a Mac runner, a real child process. The tool host's two kinds. The broker's forms for outside tools; `storage` writing and the folder. A development switch installs one tool from a folder with no screen. | No, without the switch |
 | C | The tool store, the agreement sheet, the tools section of Settings, the privacy section. Mock-ups first. | Yes |
 | D | The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks. | Only to a tool's author |
 
@@ -556,6 +556,47 @@ None of the five "done when" items of section 1 is met by stage A alone.
 They are for the whole sub-project. Stage A bears on item 4 only: a release
 build runs no line of this stage.
 
+**Stage B, as built (2026-10-11).** Each line is marked met only where a
+command that was run shows it. Run on one Mac (Mac16,5, Apple M4 Max) with
+macOS 27.0, Xcode 27.0 and Swift 6.4. Nothing here was run on a CI runner,
+and nobody opened the app.
+
+| What stage B was to deliver | Met? | What shows it |
+|---|---|---|
+| The runtime, tested against the fake tool | Met | `bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests --test_arg=--suite=tool-runtime` passes with 303 checks. Run twenty times in a row with `--runs_per_test=20 --local_test_jobs=1 --nocache_test_results`: twenty passes. The plan's 24 planted regressions are in `Tests/mutation_checks.py`, each once. Each was run when its task was built and failed its check; the whole list was not run again at the end. |
+| The runtime, tested against a real child process on a Mac runner | Met, but not on a runner | The same suite starts a real program, `tool_fixture`, in `ToolProcessTests`, `ExternalToolHostTests` and `ExternalToolStoreTests.aRealTool`. After every run `pgrep -fl tool_fixture` printed nothing. It ran on a developer's Mac only: no pull request is open, so the `vitruvian-desktop-macos` job has not run it. |
+| The tool host's two kinds | Met | `ExternalToolHostTests`, in that suite. The `platform` suite is unchanged at 766 checks, and a full run reports `TESTS OK (49 suites)`. |
+| The broker's forms for outside tools; `storage` writing and the folder | Met, but `storage` writes no file | `ExternalToolCallsTests` and `ExternalToolStoreTests.folders` and `.links`. A preference is saved in the app's own preferences under `<tool id>/<preference id>`. The data folder is made, for the person alone, and the tool runs in it; the app writes nothing there. |
+| A development switch installs one tool from a folder with no screen | Met in tests, not by hand | `ExternalToolStoreTests.developmentSwitch`; `selftest` passes in a build made with the define. The three checks under "By hand" in the plan were not done: nobody has seen a tool run in the real app, seen nothing left at quit, or seen a killed tool come back. |
+| A person sees no change without the switch | Met, but read the note | `selftest` passes without the define. With the `#if` taken out of `main.swift` by hand, `source_lints_test` fails on `a_release_build_adds_no_outside_tool`. The object file of `main.swift` names nothing of the tool store without the define, and names `installDevelopmentTool` with it. No file of strings changed. The note: the function that reads the hidden preference is in every build, because it is in `Services`, which has no define. A release build holds it and never calls it. |
+
+Where stage B differs from the sections above it. Sections 7 and 12 are not
+rewritten: stage C settles the first three, and they stay open until it does.
+
+- A tool that crashed three times within a minute stays stopped until the
+  app is started again. There is no Settings screen to start it from.
+- "The person is told once" is a line in the system log, at a tool's first
+  crash in a run of the app.
+- A tool gets the environment the app has, not the login shell's. A tool
+  whose first line asks for `python3` or `node` finds only what is on the
+  short `PATH` macOS gives an app.
+- The real child process in the tests is a small Swift program, not the
+  Python sample. The Python reference tool is still held by
+  `conformance_test`. It has never been started by the app.
+- Removing a tool deletes nothing in this stage: `Tools/<id>/` and
+  `ToolData/<id>/` both stay. Adding a tool again replaces `Tools/<id>/` and
+  keeps `ToolData/<id>/`. Section 8's Remove is stage C's.
+- A folder is copied whole, with no limit on its size or on how many files
+  it holds. This spec gives none. A link inside it is copied as a link. A
+  `Tools` or `ToolData` folder that is itself a link to another place is
+  refused; that check is not in the plan.
+- The store forgets its tools when the app quits. The switch adds the folder
+  again at each launch.
+- Three limits are known and accepted. A tool that closes its output and
+  keeps running is noticed only when three requests go unanswered. A tool's
+  last line with no line break is dropped. After the final kill at quit the
+  app does not wait to see the process gone.
+
 ## 16. Open questions
 
 Each had a default. James accepted every one on 2026-10-10. They are
@@ -563,7 +604,10 @@ decisions now. The stage A plan is
 `docs/superpowers/plans/2026-10-10-vitruvian-external-tools-stage-a.md`. It
 changes this spec in two places and adds to it in others, as its table of
 decisions lists; sections 4, 6, 9, 10, 11 and 15 above have been brought in
-line with what stage A built.
+line with what stage A built. The stage B plan is
+`docs/superpowers/plans/2026-10-10-vitruvian-external-tools-stage-b.md`. Its
+table of decisions lists what it adds to this spec and where it differs;
+section 15 says what was built.
 
 1. **Nothing on the island and no feature moved out in this sub-project**
    (decision 2). *Default: yes. It is about size, not trust.*
