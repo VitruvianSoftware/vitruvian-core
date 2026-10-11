@@ -342,6 +342,29 @@ swift_binary(
     target_compatible_with = MACOS_ONLY,
 )
 
+# A tool the unit tests start as a real child process: it speaks the tool
+# protocol and has a command for each way a tool can behave, well or badly
+# (Tools/ToolFixture.swift lists them). A script like MakeIcon, so it is
+# compiled as main.swift the same way. It links nothing of the app.
+genrule(
+    name = "tool_fixture_main",
+    srcs = ["Tools/ToolFixture.swift"],
+    outs = ["tool_fixture_src/main.swift"],
+    cmd = "cp $< $@",
+)
+
+swift_binary(
+    name = "tool_fixture",
+    srcs = [":tool_fixture_main"],
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+)
+
 # Draws the Nexus Agent chat in fixed states and writes each as a PNG, to
 # compare before and after a change that should not alter its look:
 #   bazel run --config=macos-app //apps/desktop/vitruvian:nexus_agent_chat_snapshots -- <output folder>
@@ -590,6 +613,7 @@ sh_test(
     ],
     data = [
         "build.sh",
+        ":tool_fixture",
         ":unit_tests_bin",
     ] + glob([
         "Resources/**",
@@ -597,6 +621,8 @@ sh_test(
         "Tests/**",
         "Tools/**",
     ]),
+    # Where ToolProcessTests finds the tool it starts, below the runfiles.
+    env = {"VITRUVIAN_TOOL_FIXTURE": "$(rootpath :tool_fixture)"},
     # The tests' UserDefaults suites land in the real ~/Library/Preferences;
     # the sandbox would block sweeping them afterwards.
     tags = [

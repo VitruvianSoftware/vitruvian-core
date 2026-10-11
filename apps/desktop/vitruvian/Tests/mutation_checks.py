@@ -482,6 +482,21 @@ MUTATIONS = [
      "        guard !tooMany else {\n            write(.failure(id: id, error: RefusalCode.unavailable.error()))\n            return\n        }\n",
      "",
      "past the limit for a second, what a tool asks is refused as not available and nothing is done"),
+    ("a tool's program runs in the app's own folder", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "        process.currentDirectoryURL = directory\n",
+     "",
+     "it runs in its data folder, and was told that folder and the language"),
+    ("the app goes on writing to a tool that does not read", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "        guard queued <= limits.unreadBytes else {\n            unread.withLock { $0 -= count }\n            return false\n        }\n",
+     "",
+     "a tool that takes nothing of what the app writes is stopped once 4 MB waits for it"),
+    ("a signal that ended a program is taken for its exit status", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "        process.terminationReason == .uncaughtSignal ? 128 + process.terminationStatus : process.terminationStatus\n",
+     "        process.terminationStatus\n",
+     "a tool killed while it runs a command ends its link, and the command fails"),
 ]
 
 
