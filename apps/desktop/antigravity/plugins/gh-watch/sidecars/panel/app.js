@@ -101,6 +101,7 @@ function statusOf(watch) {
     return { text: `In merge queue${place}`, tone: "run" };
   }
   if (watch.counts.pending > 0) return { text: "Running", tone: "run" };
+  if (watch.readyToMerge) return { text: "Ready to merge", tone: "wait" };
   return { text: "Passing", tone: "good" };
 }
 
@@ -285,6 +286,53 @@ function render(state) {
   $("summary").textContent =
     `${open} open · checking every ${pace.intervalSeconds}s (${pace.reason})`;
   fillSettings(state);
+  renderReviews(state.reviews ?? { items: [] });
+  renderFlaky(state.flaky ?? []);
+}
+
+// Pull requests where someone is waiting on the user's review.
+function renderReviews(reviews) {
+  const items = reviews.items ?? [];
+  $("reviews").hidden = items.length === 0 && !reviews.error;
+  // The search returns at most 20, so 20 means "20 or more".
+  $("reviews-count").textContent =
+    items.length >= 20 ? "20+" : String(items.length);
+  $("reviews-error").textContent = reviews.error ?? "";
+  $("reviews-error").hidden = !reviews.error;
+  $("reviews-list").replaceChildren(
+    ...items.map((pr) =>
+      el(
+        "li",
+        {},
+        el(
+          "a",
+          { href: pr.url, target: "_blank", rel: "noreferrer" },
+          `${pr.repo}#${pr.number} ${pr.title}`,
+        ),
+        el("span", { class: "muted small" }, ` · ${pr.author}`),
+      ),
+    ),
+  );
+}
+
+// Checks that have recently failed and then passed with no code change.
+function renderFlaky(flaky) {
+  $("flaky").hidden = flaky.length === 0;
+  $("flaky-count").textContent = String(flaky.length);
+  $("flaky-list").replaceChildren(
+    ...flaky.map((row) =>
+      el(
+        "li",
+        {},
+        `${row.name} `,
+        el(
+          "span",
+          { class: "muted small" },
+          `· ${row.repo} · ${row.count} times in 30 days`,
+        ),
+      ),
+    ),
+  );
 }
 
 async function load() {

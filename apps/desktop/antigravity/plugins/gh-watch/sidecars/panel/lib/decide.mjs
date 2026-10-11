@@ -134,6 +134,25 @@ export function decide(prev, snap, now, { holdMs = DEFAULT_HOLD_MS } = {}) {
   };
 }
 
+// The list of newly failing checks, shared by every message that has one.
+// A check that is known to be flaky is marked, with advice to re-run it
+// before changing code.
+export function failingLines(failing) {
+  const lines = [
+    `Newly failing checks (${failing.length}):`,
+    ...failing.map(
+      (c) =>
+        `- ${c.name}${c.workflow ? ` [${c.workflow}]` : ""}${c.url ? ` ${c.url}` : ""}${c.flaky ? ` (known flaky: ${c.flaky} times in the last 30 days)` : ""}`,
+    ),
+  ];
+  if (failing.some((c) => c.flaky)) {
+    lines.push(
+      "A check marked known flaky has recently failed and then passed on a re-run with no code change. Re-run those first (for example `gh run rerun <run-id> --failed`) and only change code if they fail again.",
+    );
+  }
+  return lines;
+}
+
 // The text sent into the conversation. It arrives as a system notice, so it
 // says who is speaking and exactly what is being asked.
 export function wakeMessage(pr, failing) {
@@ -142,11 +161,7 @@ export function wakeMessage(pr, failing) {
     `PR: ${pr.url}`,
     `Branch: ${pr.branch}  Commit: ${(pr.headSha ?? "").slice(0, 12)}`,
     "",
-    `Newly failing checks (${failing.length}):`,
-    ...failing.map(
-      (c) =>
-        `- ${c.name}${c.workflow ? ` [${c.workflow}]` : ""}${c.url ? ` ${c.url}` : ""}`,
-    ),
+    ...failingLines(failing),
     "",
     "Please look at the failing logs (for example `gh run view --log-failed`), fix the cause on this branch and push.",
     "You will not be told about these checks again for this commit. If the failure is not caused by this PR, say so instead of changing code.",

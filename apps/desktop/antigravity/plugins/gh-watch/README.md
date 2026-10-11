@@ -26,6 +26,12 @@ switch in Claude Code's desktop app.
   tells the conversation when all checks have passed, when it merges, and
   whether the checks on the base branch passed afterwards. So an agent never
   has to sit and poll CI to find out it is done.
+- It remembers checks that failed and then passed on a re-run of the same
+  commit. Once a check has done that twice in 30 days it is called flaky, and
+  the next time it fails the agent is told to re-run it before changing code.
+- The panel also lists the pull requests waiting on your review, anywhere on
+  GitHub, and marks a watched pull request "Ready to merge" when it is green
+  and mergeable but nothing is set to merge it.
 - When an agent runs `gh pr create`, the new pull request is watched
   automatically for the conversation that opened it.
 - A side panel lists the watched pull requests with their check counts. Each
@@ -117,6 +123,7 @@ pull request.
 | `sidecars/panel/main.mjs` | Panel backend: HTTP routes, starts the watcher |
 | `hooks.json`, `hooks/note-pr-create.sh` | The hook that notices `gh pr create` |
 | `sidecars/panel/lib/decide.mjs` | When to wake and when to wait (pure logic) |
+| `sidecars/panel/lib/flakes.mjs` | Remembering flaky checks (pure logic) |
 | `sidecars/panel/lib/landing.mjs` | Green, queued, merged, landed (pure logic) |
 | `sidecars/panel/lib/notices.mjs` | Merge conflicts, review feedback and the message text (pure logic) |
 | `sidecars/panel/lib/inbox.mjs` | Reads the notes the hook leaves |

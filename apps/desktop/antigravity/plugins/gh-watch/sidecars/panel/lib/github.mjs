@@ -29,7 +29,7 @@ import { normaliseChecks } from "./decide.mjs";
 import { collectFeedback } from "./notices.mjs";
 
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,autoMergeRequest,mergeCommit,statusCheckRollup";
+  "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup";
 const PR_URL = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
 
 function gh(args, { cwd, timeoutMs = 20_000 } = {}) {
@@ -75,6 +75,7 @@ function toSnapshot(raw) {
     base: raw.baseRefName ?? "",
     headSha: raw.headRefOid ?? "",
     mergeable: raw.mergeable ?? "UNKNOWN",
+    mergeState: raw.mergeStateStatus ?? "UNKNOWN",
     autoMerge: raw.autoMergeRequest != null,
     mergeCommit: raw.mergeCommit?.oid ?? null,
     checks: normaliseChecks(raw.statusCheckRollup),
@@ -245,4 +246,29 @@ export async function fetchCommitChecks(repo, sha, run = gh) {
       detailsUrl: r.html_url,
     })),
   );
+}
+
+// Open pull requests, anywhere on GitHub, where a review has been asked of
+// the signed-in account.
+export async function fetchReviewRequests(run = gh) {
+  const out = await run([
+    "search",
+    "prs",
+    "--review-requested=@me",
+    "--state=open",
+    "--json",
+    "number,title,url,repository,author,updatedAt,isDraft",
+    "--limit",
+    "20",
+  ]);
+  return (JSON.parse(out) ?? [])
+    .filter((pr) => pr.isDraft !== true)
+    .map((pr) => ({
+      repo: pr.repository?.nameWithOwner ?? "",
+      number: pr.number,
+      title: pr.title ?? "",
+      url: pr.url,
+      author: pr.author?.login ?? "",
+      updatedAt: pr.updatedAt ?? null,
+    }));
 }

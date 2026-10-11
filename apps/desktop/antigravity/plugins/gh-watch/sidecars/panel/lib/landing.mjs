@@ -45,6 +45,18 @@ export function isGreen(snap) {
   return passed > 0;
 }
 
+// True when a pull request is green and mergeable but nothing is going to
+// merge it: not queued and auto-merge not armed. It is waiting on a person.
+export function readyToMerge(snap) {
+  return (
+    isGreen(snap) &&
+    snap.isDraft !== true &&
+    snap.mergeState === "CLEAN" &&
+    snap.autoMerge !== true &&
+    snap.queued !== true
+  );
+}
+
 export function emptyProgress() {
   return { greenSha: null, queued: false, ended: null, landing: null };
 }

@@ -644,3 +644,32 @@ test("leaving the merge queue is reported, and an undelivered update is retried"
   assert.equal(sent.length, 1);
   assert.match(sent[0].message, /left the merge queue without merging/);
 });
+
+test("a check that keeps flaking is called out when it fails again", async () => {
+  const { store, key, sent, world, watcher } = setup();
+  // Twice: fail, then pass on the same commit.
+  for (const sha of ["sha1", "sha2"]) {
+    world.snap = snapshot(sha, "OPEN", run("e2e", "FAILURE"));
+    await watcher.check(key);
+    world.snap = snapshot(sha, "OPEN", run("e2e", "SUCCESS"));
+    await watcher.check(key);
+  }
+  assert.equal(sent.length, 2);
+  assert.doesNotMatch(sent[1].message, /known flaky/);
+  assert.equal(Object.keys(store.flakes()).length, 1);
+
+  world.snap = snapshot(
+    "sha3",
+    "OPEN",
+    run("e2e", "FAILURE"),
+    run("lint", "FAILURE"),
+  );
+  await watcher.check(key);
+  assert.equal(sent.length, 3);
+  assert.match(
+    sent[2].message,
+    /- e2e \[CI\] \(known flaky: 2 times in the last 30 days\)/,
+  );
+  assert.match(sent[2].message, /- lint \[CI\]\n/);
+  assert.match(sent[2].message, /Re-run those first/);
+});

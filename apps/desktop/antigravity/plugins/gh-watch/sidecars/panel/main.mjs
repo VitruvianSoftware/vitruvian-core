@@ -35,9 +35,11 @@ import {
   fetchFeedback,
   fetchPr,
   fetchQueue,
+  fetchReviewRequests,
   resolvePr,
   setAutoMerge,
 } from "./lib/github.mjs";
+import { listFlaky } from "./lib/flakes.mjs";
 import { Inbox } from "./lib/inbox.mjs";
 import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
 import { Store, watchKey } from "./lib/store.mjs";
@@ -77,16 +79,38 @@ app.api(
   "GET",
 );
 
+// Pull requests waiting on the user's review. Read only while the panel is
+// being looked at (it is what calls /api/state), at most every two minutes,
+// and never in the way of a reply.
+const REVIEWS_EVERY_MS = 120_000;
+let reviews = { at: 0, items: [], error: null, busy: false };
+function refreshReviews() {
+  if (reviews.busy || Date.now() - reviews.at < REVIEWS_EVERY_MS) return;
+  reviews.busy = true;
+  fetchReviewRequests()
+    .then((items) => {
+      reviews = { at: Date.now(), items, error: null, busy: false };
+    })
+    .catch((err) => {
+      reviews = { ...reviews, at: Date.now(), error: err.message, busy: false };
+    });
+}
+
 // GET /api/state: everything the panel shows.
 app.api(
   "/api/state",
-  () => ({
-    watches: store.list(),
-    settings: store.settings(),
-    limits: LIMITS,
-    mergeMethods: MERGE_METHODS,
-    pace: watcher.status(),
-  }),
+  () => {
+    refreshReviews();
+    return {
+      watches: store.list(),
+      settings: store.settings(),
+      limits: LIMITS,
+      mergeMethods: MERGE_METHODS,
+      pace: watcher.status(),
+      flaky: listFlaky(store.flakes(), Date.now()),
+      reviews: { items: reviews.items, error: reviews.error },
+    };
+  },
   "GET",
 );
 

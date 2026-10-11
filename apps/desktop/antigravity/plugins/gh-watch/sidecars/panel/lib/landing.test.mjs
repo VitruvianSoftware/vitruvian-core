@@ -32,6 +32,7 @@ import {
   landingActive,
   progressLines,
   progressTitle,
+  readyToMerge,
 } from "./landing.mjs";
 
 const c = (name, bucket) => ({
@@ -227,4 +228,14 @@ test("passed checks seen right at the merge are not yet believed", () => {
     [merged, [c("x", "fail")], 30_000],
   );
   assert.deepEqual(kinds(failing), ["base-failing"]);
+});
+
+test("ready to merge means green, clean, and nothing set to merge it", () => {
+  const green = { ...pr("OPEN", "s", [c("a", "pass")]), mergeState: "CLEAN" };
+  assert.equal(readyToMerge(green), true);
+  assert.equal(readyToMerge({ ...green, autoMerge: true }), false);
+  assert.equal(readyToMerge({ ...green, queued: true }), false);
+  assert.equal(readyToMerge({ ...green, isDraft: true }), false);
+  assert.equal(readyToMerge({ ...green, mergeState: "BLOCKED" }), false);
+  assert.equal(readyToMerge({ ...green, checks: [c("a", "pending")] }), false);
 });

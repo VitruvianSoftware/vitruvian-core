@@ -25,8 +25,14 @@
 // The polling loop. All I/O is injected, so the loop itself is unit tested.
 
 import { countChecks, decide, emptyState } from "./decide.mjs";
+import { recordFlakes, spotFlakes, tagFlaky } from "./flakes.mjs";
 import { NOTE_TTL_MS, parseNote } from "./inbox.mjs";
-import { decideProgress, landingActive, progressTitle } from "./landing.mjs";
+import {
+  decideProgress,
+  landingActive,
+  progressTitle,
+  readyToMerge,
+} from "./landing.mjs";
 import {
   composeMessage,
   decideConflict,
@@ -259,6 +265,15 @@ export class Watcher {
       checkedAt: now,
     };
 
+    // Remember checks that failed and then passed on the same commit.
+    const spot = spotFlakes(watch.flakeSeen, snap);
+    next.flakeSeen = spot.seen;
+    if (spot.flaked.length > 0) {
+      this.#store.setFlakes(
+        recordFlakes(this.#store.flakes(), watch.repo, spot.flaked, now),
+      );
+    }
+
     // Where the change has got to: green, queued, merged, landed. The state
     // is always kept for the panel; the news is only sent when the pull
     // request's updates switch is on.
@@ -288,6 +303,7 @@ export class Watcher {
     next.progress = journey.state;
     next.queued = queue.queued;
     next.queuePosition = queue.position;
+    next.readyToMerge = readyToMerge({ ...snap, queued: queue.queued });
     const progress = watch.updates ? journey.events : [];
 
     if (next.closed) {
@@ -306,7 +322,7 @@ export class Watcher {
       const ci = decide(watch.decision ?? emptyState(), snap, now, {
         holdMs: this.#store.settings().holdSeconds * 1000,
       });
-      failing = ci.wake;
+      failing = tagFlaky(this.#store.flakes(), watch.repo, ci.wake, now);
       next.decision = ci.state;
       const merge = decideConflict(watch.conflict ?? null, snap, now);
       conflict = merge.notice;

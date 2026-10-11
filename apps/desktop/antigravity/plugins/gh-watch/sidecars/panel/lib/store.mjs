@@ -75,6 +75,16 @@ export class Store {
     this.#save();
   }
 
+  // Sightings of flaky checks; see flakes.mjs for the shape.
+  flakes() {
+    return this.#data.flakes ?? {};
+  }
+
+  setFlakes(table) {
+    this.#data.flakes = table;
+    this.#save();
+  }
+
   // Always valid: missing or out-of-range values fall back to defaults.
   settings() {
     return cleanSettings(this.#data.settings);

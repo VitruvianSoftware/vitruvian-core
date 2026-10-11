@@ -85,6 +85,27 @@ Everything that needs attention on one pass goes into one message.
 merge commit already carries the queue's own passed checks at that moment,
 before the base branch's workflows have started.
 
+## Flaky checks
+
+A check counts as having flaked when it was seen failing on a commit and is
+later seen passing on that same commit: a re-run, with no code change. A fix
+pushed as a new commit does not count. Two sightings inside 30 days make a
+check "known flaky" for that repository. The agent is still woken when it
+fails, because it might be a real failure this time, but the message marks
+it and says to re-run it first. The memory is per machine, in the plugin's
+data folder.
+
+## Waiting on you
+
+Two things in the panel are about what is waiting on a person, not an agent:
+
+- **Waiting on your review** lists open, non-draft pull requests anywhere on
+  GitHub where your review has been asked. It is read only while the panel
+  is open, at most every two minutes.
+- **Ready to merge** marks a watched pull request that is green and
+  mergeable, but is not in the merge queue and has no auto-merge set, so it
+  will sit there until someone merges it.
+
 ## Automatic sign-up
 
 Antigravity runs `hooks/note-pr-create.sh` after every shell command an

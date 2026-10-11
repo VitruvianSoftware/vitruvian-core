@@ -23,7 +23,7 @@
 // Merge conflicts and review feedback: what to tell the agent and when.
 // Pure logic, like decide.mjs, so it runs under `node --test`.
 
-import { wakeMessage } from "./decide.mjs";
+import { failingLines, wakeMessage } from "./decide.mjs";
 import { progressLines, progressTitle } from "./landing.mjs";
 
 // --- Merge conflicts ---------------------------------------------------------
@@ -214,11 +214,7 @@ export function composeMessage(
   if (failing.length > 0) {
     lines.push(
       "",
-      `Newly failing checks (${failing.length}):`,
-      ...failing.map(
-        (c) =>
-          `- ${c.name}${c.workflow ? ` [${c.workflow}]` : ""}${c.url ? ` ${c.url}` : ""}`,
-      ),
+      ...failingLines(failing),
       "Look at the failing logs (for example `gh run view --log-failed`), fix the cause on this branch and push. If a failure is not caused by this PR, say so instead of changing code.",
     );
   }

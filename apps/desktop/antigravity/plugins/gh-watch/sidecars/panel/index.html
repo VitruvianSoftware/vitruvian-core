@@ -46,6 +46,20 @@
       <div id="list"></div>
       <p id="empty" class="muted" hidden>Nothing is being watched yet.</p>
     </section>
+    <!-- Closed by default: these lists can be long, and the watched pull
+         requests above are what the panel is for. -->
+    <details id="reviews" class="card" hidden>
+      <summary>Waiting on your review (<span id="reviews-count">0</span>)</summary>
+      <p id="reviews-error" class="error small" hidden></p>
+      <ul id="reviews-list" class="plain"></ul>
+    </details>
+
+    <details id="flaky" class="card" hidden>
+      <summary>Known flaky checks (<span id="flaky-count">0</span>)</summary>
+      <p class="muted small">These failed and then passed on a re-run with no code change. The agent is told to re-run them before changing code.</p>
+      <ul id="flaky-list" class="plain"></ul>
+    </details>
+
     <details class="card">
       <summary>Settings</summary>
       <form id="settings-form" class="settings" novalidate>
