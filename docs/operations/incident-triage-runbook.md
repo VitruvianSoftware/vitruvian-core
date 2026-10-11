@@ -46,6 +46,13 @@ This document serves as the standard operational incident response guide across 
 3. If necessary, promote a specific replica manually: `kubectl cnpg promote <cluster-name> <pod-name> -n <namespace>`.
 4. Ensure PVCs are healthy and node storage is not full.
 
+### Fedora Node Freeze / Unresponsive Node (`fedora`)
+**Symptoms**: Node `fedora` transitions to `NotReady` or `NodeStatusUnknown`. Workloads (etcd voter, Prometheus, Alertmanager, Longhorn) degrade or enter `Terminating`.
+**Context**: `fedora` (Intel NUC 12 Extreme i9-12900) serves as control-plane voter and sole GPU node. A kernel freeze or S5 standby requires an out-of-band power cycle via TP-Link Kasa HS300 Socket 6 (`NUC12I9`), followed by Wake-on-LAN, rpm-ostree iSCSI re-layering, and k8s workload cleanup.
+**Resolution**:
+1. Run the automated recovery script from any LAN workstation: `power-cycle-fedora` (or `/Users/james/bin/power-cycle-fedora`).
+2. For the step-by-step manual procedure, Silverblue `iscsi-initiator-utils` re-layering, Longhorn manager restart, and CloudNativePG / Prometheus health checks, follow the dedicated [Fedora Node Recovery Runbook](fedora-node-recovery-runbook.md).
+
 ### Argo Rollouts Canary Failures (`whoami`)
 **Symptoms**: The canary deployment is stuck in a paused state or failing its AnalysisRuns.
 **Context**: `whoami` uses Argo Rollouts with an AnalysisTemplate to verify canary health before proceeding.

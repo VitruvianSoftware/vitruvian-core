@@ -92,11 +92,11 @@ Every safety layer that should have absorbed a single-node loss was independentl
 |----|------|--------|-------|--------|---------------|
 | **P0 ✅** | placement | **CNPG anti-affinity `topologyKey: kubernetes.io/hostname`** — mirror grafana-db exactly: add `cluster.affinity: {topologyKey: kubernetes.io/hostname}` (inherits CNPG `enablePodAntiAffinity:true`, `preferred`). Stops whole-DB-on-one-node. | `cnpg-cluster/applicationset.yaml` values; **and** set the same in `cnpg.go`'s `DeployCnpgCluster` Values (mirror `grafana.go`) — **not** the `hostnameAntiAffinity` helper (that's operator-only) | low | live instances are already co-located + local-path-pinned → won't move on apply; must **cycle one instance at a time** (delete pod/PVC → CNPG re-clones onto a distinct host) to un-stack. Server-side dry-run first. |
 | **P0 ✅** | storage self-heal | **Longhorn `node-down-pod-deletion-policy: delete-statefulset-pod`** *(shipped value; not the `-both-` variant)* → dead-node pods self-evict, volumes release, reschedulable Longhorn workloads (prometheus, alertmanager) self-heal. | `longhorn/applicationset.yaml` `defaultSettings`; mirror in `longhorn.go` | low | **sleep-churn**: Longhorn fires on NotReady, which sleeping Mac nodes hit routinely → can trigger unwanted reschedules/rebuilds. Monitor; consider pairing with a longer `node-not-ready` confirmation. |
-| **P0** | node auto-recovery | **Make a frozen fedora actually auto-recover**: a *real* hardware watchdog bite path (`iTCO_wdt`/NMI with pretimeout — the `intel_oc_wdt` software path wedges) **and/or** an external power-cycle path (smart plug + a tiny controller off-cluster). | host/devx provisioning (not a manifest) | high | a hard power-cut still risks ext4 corruption of fedora's local-path PVs → only safe once P0-#1 lands so a 2/3 replica set survives. Do P0-#1 **first**. |
+| **P0 ✅** | node auto-recovery | **Make a frozen fedora actually auto-recover**: out-of-band power-cycle automation (`power-cycle-fedora`) via TP-Link Kasa HS300 Socket 6 (`NUC12I9`) + Wake-on-LAN + rpm-ostree iSCSI re-layering. Codified in [Fedora node recovery runbook](../fedora-node-recovery-runbook.md). | host/devx tooling + runbook | med | Automated power cut + WoL eliminates manual physical intervention. |
 | **P1** | failover speed | **Shorten `unreachable`/`not-ready` `tolerationSeconds` to ~60–90s** for the reschedulable monitoring pods (prometheus, alertmanager). | those AppSets' pod `tolerations` | medium | laptop sleep-churn → don't apply to anything pinned/arm64. **Drop MinIO** (arm64-pinned, can't run on fedora anyway). |
 | **P0 ✅** | node stability | **Right-size `argocd-application-controller`** (OOM'd ×2 **and** CPU-pegged at the 500m limit) — bumped to **2000m/2Gi** in `argocd.go`. Rebalance heavy workloads off fedora. | `argocd.go` resources | low | **DONE #196.** Re-prioritized from P2: this was the **critical-path blocker** for the GitOps loop (a throttled controller wedged the sync — see Resolution), not merely a stressor. Doesn't prevent the freeze itself. |
 | **P2** | detection | **node-problem-detector (detection only)** to surface node liveness/kernel issues — the genuine gap. | new platform AppSet | medium | **skip the auto-remediation** half (self-node-remediation/Medik8s) — too risky on a 3-CP cluster where a CP node sleeping could trigger destructive reboots. |
-| **P2** | docs | **Codify the recovery runbook** (force-delete stuck pods + clear stale VolumeAttachment + iSCSI re-layer) — these are already one-liners with `//tools/gitops:delete`. | this doc's appendix + a runbook | low | risk of **false comfort** — a polished runbook must not de-prioritize the P0 prevention above. |
+| **P2 ✅** | docs | **Codify the recovery runbook** (force-delete stuck pods + clear stale VolumeAttachment + iSCSI re-layer + power cycle/WoL) — codified in [Fedora node recovery runbook](../fedora-node-recovery-runbook.md). | `docs/operations/fedora-node-recovery-runbook.md` | low | Complete end-to-end operational guide. |
 
 ## Considered & rejected / already-done
 
@@ -109,15 +109,18 @@ Every safety layer that should have absorbed a single-node loss was independentl
 
 - [x] **P0 ✅** CNPG hostname anti-affinity (gitops + `cnpg.go`) + cycled the 3 co-located instances apart → **1-per-node, primary off fedora**. *(prevents whole-DB-on-one-node)* — #194
 - [x] **P0 ✅** Longhorn `node-down-pod-deletion-policy=delete-statefulset-pod` (gitops + `longhorn.go`). *(enables stateful self-heal)* — #194
-- [ ] **P0** Reliable fedora auto-recovery (hardware watchdog that bites, or external power-cycle automation). *(do after the anti-affinity fix)*
+- [x] **P0 ✅** Reliable fedora auto-recovery: external automated power cycle + WoL path implemented via `power-cycle-fedora` script and documented in [Fedora node recovery runbook](../fedora-node-recovery-runbook.md).
 - [ ] **P1** `tolerationSeconds` ~60–90s for prometheus/alertmanager (not pinned/arm64 workloads).
 - [x] **P0 ✅** Right-size `argocd-application-controller` → **2000m/2Gi** (CPU+mem; was the GitOps-loop blocker) — #196. *(rebalancing other heavy workloads off fedora: still open)*
 - [ ] **P2** node-problem-detector (detection only).
+- [x] **P2 ✅** Codify the recovery runbook: comprehensive procedures for out-of-band power cycling, Wake-on-LAN, rpm-ostree iSCSI remediation, and k8s workload cleanup codified in [Fedora node recovery runbook](../fedora-node-recovery-runbook.md).
 - [ ] **Verify** devx #256 actually persists fedora's iSCSI/tailscaled across reboots (it didn't this time).
 - [ ] **Investigate** the NVIDIA freeze hypothesis (persistent kernel logging / GPU health) before any driver change.
 - [ ] **Separate** fix `tempo` config (`enabled` under servicegraphs/spanmetrics) — unrelated latent bug exposed by the restart.
 
 ## Appendix — recovery runbook (what worked this time)
+
+> **Canonical Runbook:** For the end-to-end automated and manual recovery procedures, see [Fedora node recovery runbook](../fedora-node-recovery-runbook.md). Use `power-cycle-fedora` (`/Users/james/bin/power-cycle-fedora`) for hands-free out-of-band power-cycling and Wake-on-LAN.
 
 All cluster ops via `//tools/gitops` wrappers; SSH to fedora as `james@100.97.82.15` (passwordless sudo). `export KUBECONFIG=$HOME/.kube/cluster.yaml`.
 
