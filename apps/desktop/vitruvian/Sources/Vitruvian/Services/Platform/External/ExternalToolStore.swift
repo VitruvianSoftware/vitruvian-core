@@ -186,3 +186,32 @@ package final class ExternalToolStore {
                 onCommandFailed: { parts.broker().backings.notify.beep() }))
     }
 }
+
+extension ExternalToolStore {
+    /// The preference a development build reads a tool's folder from. No
+    /// screen sets it, and a release build never reads it.
+    package static let developmentToolFolderKey = "developmentToolFolder"
+
+    /// The development switch: adds the one tool whose folder the hidden
+    /// preference names, with no screen and no question. `main.swift` calls
+    /// this only in a build made with `--define=vitruvian_external_tools=true`.
+    ///
+    /// The store forgets its tools when the app quits, so this adds the
+    /// folder afresh at each launch: the app's copy is the folder as it is
+    /// now, and what the tool saved is kept. Nil when the preference is not
+    /// set; then nothing happens at all.
+    @discardableResult
+    package func installDevelopmentTool(defaults: UserDefaults = .standard) -> Result<Installed, Refusal>? {
+        guard let path = defaults.string(forKey: Self.developmentToolFolderKey), !path.isEmpty else { return nil }
+        let folder = URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+        let result = install(from: folder)
+        let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+        switch result {
+        case .success(let installed):
+            log.notice("added the development tool \(installed.tool.manifest.id.rawValue, privacy: .public)")
+        case .failure(let refusal):
+            log.error("the development tool at \(folder.path, privacy: .public) was not added: \(String(describing: refusal), privacy: .public)")
+        }
+        return result
+    }
+}

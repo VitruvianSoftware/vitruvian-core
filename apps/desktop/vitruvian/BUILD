@@ -217,6 +217,16 @@ config_setting(
     define_values = {"vitruvian_sample_tool": "true"},
 )
 
+# A development build that adds one tool that runs as its own program, from
+# the folder the hidden preference `developmentToolFolder` names, with no
+# screen (ExternalToolStore.installDevelopmentTool):
+#   --define=vitruvian_external_tools=true
+# Without it the app has no way to add such a tool.
+config_setting(
+    name = "external_tools",
+    define_values = {"vitruvian_external_tools": "true"},
+)
+
 # Everything not yet in a module of its own. main.swift holds top-level code,
 # which rules_swift allows by not passing -parse-as-library when a main.swift
 # is present.
@@ -231,6 +241,9 @@ swift_library(
     srcs = APP_SRCS,
     copts = select({
         ":sample_tool": ["-DVITRUVIAN_SAMPLE_TOOL"],
+        "//conditions:default": [],
+    }) + select({
+        ":external_tools": ["-DVITRUVIAN_EXTERNAL_TOOLS"],
         "//conditions:default": [],
     }),
     # Swift 6 language mode since REFACTOR.md step 6zzj. Each of its closures
@@ -249,15 +262,20 @@ swift_library(
     ],
 )
 
-# The same module, compiled as a build with the sample tool would compile it.
+# The same module, compiled as a build with both development defines would
+# compile it: the sample tool, and the switch that adds a tool from outside.
 # Nothing links it. It is built in CI (the pipeline unit below lists it), so
-# the lines of main.swift that only a --define=vitruvian_sample_tool=true
-# build compiles cannot stop compiling without anybody noticing.
+# the lines of main.swift that only such a build compiles cannot stop
+# compiling without anybody noticing. It keeps the name it had when the
+# sample tool was the only one.
 swift_library(
     name = "VitruvianLibWithSampleTool",
     package_name = SWIFT_PACKAGE,
     srcs = APP_SRCS,
-    copts = ["-DVITRUVIAN_SAMPLE_TOOL"],
+    copts = [
+        "-DVITRUVIAN_SAMPLE_TOOL",
+        "-DVITRUVIAN_EXTERNAL_TOOLS",
+    ],
     features = ["swift.enable_v6"],
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,

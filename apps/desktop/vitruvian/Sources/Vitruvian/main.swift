@@ -23,6 +23,13 @@ MainActor.assumeIsolated { BuiltinTools.install() }
 // a build made with --define=vitruvian_sample_tool=true has it.
 MainActor.assumeIsolated { SampleTool.install() }
 #endif
+#if VITRUVIAN_EXTERNAL_TOOLS
+// One tool that runs as its own program, added from the folder a hidden
+// preference names, with no screen. For working on the tool runtime. Only a
+// build made with --define=vitruvian_external_tools=true has these lines: a
+// release build has no way to add such a tool.
+MainActor.assumeIsolated { _ = ExternalToolStore.shared.installDevelopmentTool() }
+#endif
 // The island calls back into the services that follow it through these, so
 // it names none of them. Top-level code runs on the main thread.
 MainActor.assumeIsolated {

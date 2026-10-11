@@ -562,6 +562,11 @@ MUTATIONS = [
      "        guard installed[id] == nil, parts.registry().tool(id) == nil, parts.host().manifest(for: id) == nil else {\n            return .failure(.alreadyInstalled(id))\n        }\n",
      "",
      "a tool whose id is installed already is not added a second time, and its copy is left alone"),
+    ("the development switch adds a tool nobody named", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        guard let path = defaults.string(forKey: Self.developmentToolFolderKey), !path.isEmpty else { return nil }\n",
+     "        let path = defaults.string(forKey: Self.developmentToolFolderKey) ?? \"\"\n",
+     "with the hidden preference not set, the development switch adds nothing and touches nothing"),
 ]
 
 

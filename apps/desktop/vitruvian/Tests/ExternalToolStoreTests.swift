@@ -20,6 +20,7 @@ enum ExternalToolStoreTests {
         refusals(suite)
         removing(suite)
         installedOrNot(suite)
+        developmentSwitch(suite)
         aRealTool(suite)
     }
 
@@ -334,6 +335,46 @@ enum ExternalToolStoreTests {
                      "an id with no dot that names no feature of the app is not installed, and the store is not asked")
         let unasked = CapabilityBroker.Environment.reading(accessibility: { true }, screenRecording: { true })
         suite.expect(!unasked.isInstalled(id), "with no store to ask, no tool from outside is installed")
+    }
+
+    static func developmentSwitch(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let domain = "com.vitruviansoftware.vitruvian.tests.tool-store"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        suite.expect(ExternalToolStore.developmentToolFolderKey == "developmentToolFolder"
+                         && bench.store.installDevelopmentTool(defaults: defaults) == nil
+                         && bench.store.installed.isEmpty && !bench.exists(bench.support),
+                     "with the hidden preference not set, the development switch adds nothing and touches nothing")
+
+        let picked = bench.folder()
+        try? Data("one".utf8).write(to: picked.appendingPathComponent("notes"))
+        defaults.set(picked.path, forKey: ExternalToolStore.developmentToolFolderKey)
+        if case .success(let installed)? = bench.store.installDevelopmentTool(defaults: defaults) {
+            suite.expect(installed.tool.manifest.id == id && bench.registry.canRun(copy) && bench.started.isEmpty,
+                         "with it naming a tool's folder, that tool is added with no screen, and starts on its first command")
+        } else {
+            suite.expect(false, "with it naming a tool's folder, that tool is added")
+        }
+
+        // The next launch: the store has forgotten the tool, and the
+        // folder has changed.
+        try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+        try? Data("two".utf8).write(to: picked.appendingPathComponent("notes"))
+        bench.store.remove(id)
+        _ = bench.store.installDevelopmentTool(defaults: defaults)
+        suite.expect((try? String(contentsOf: bench.files.appendingPathComponent("notes"), encoding: .utf8)) == "two"
+                         && bench.exists(bench.data.appendingPathComponent("saved")) && bench.store.isInstalled(id),
+                     "each launch adds the folder afresh: the copy is the folder as it is now, and what the tool saved is kept")
+
+        bench.store.remove(id)
+        defaults.set(bench.root.appendingPathComponent("no such folder").path,
+                     forKey: ExternalToolStore.developmentToolFolderKey)
+        suite.expect(bench.store.installDevelopmentTool(defaults: defaults).flatMap(refusal) == .manifest(.noManifest)
+                         && bench.store.installed.isEmpty,
+                     "a folder that is no tool is refused, and the app carries on without it")
     }
 
     /// The whole path with a real program: the fixture tool, added from a
