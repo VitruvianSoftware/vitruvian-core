@@ -797,7 +797,10 @@ py_test(
 
 pipeline_unit(
     name = "vitruvian-desktop-macos",
-    # Services builds with complete concurrency checking (REFACTOR.md 6zu),
+    # No round brackets in this call's comments: the presubmit planner reads
+    # the call up to the first closing one, and then sees no test_targets.
+    #
+    # Services builds with complete concurrency checking, REFACTOR.md 6zu,
     # and each of its compile actions writes more than Bazel's default 1 MB of
     # warnings, which Bazel then skips printing. Show all of it, so the log
     # lists what still stands between Services and Swift 6 mode.
