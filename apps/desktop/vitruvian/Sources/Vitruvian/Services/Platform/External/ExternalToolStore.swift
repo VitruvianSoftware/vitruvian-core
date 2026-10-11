@@ -358,6 +358,12 @@ package final class ExternalToolStore {
     /// data folder, and the preferences saved under its id. Without, both
     /// stay, and adding the tool again finds them.
     ///
+    /// Nothing is deleted while the tool's program runs: it is told
+    /// goodbye, then asked to end, then killed, and the app waits a short
+    /// while for each (`ToolHost.removeAndSeeOut`). Should it still be
+    /// there after the kill, what it saved is kept whatever was asked, so
+    /// that a program is never left writing into a folder that is gone.
+    ///
     /// The folder the tool was added from is never touched. False, with
     /// nothing changed, for a tool nobody added.
     @discardableResult
@@ -367,14 +373,19 @@ package final class ExternalToolStore {
         next.remove(at: known)
         guard save(next) else { return false }
         records = next
-        deactivate(id)
+        let gone = deactivate(id, seeingItOut: true)
         held.remove(id)
         resting[id] = nil
-        if parts.folders?.delete(id, data: deletingData) != true {
-            Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
-                .error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+        // What it saved goes only once its program is gone.
+        let data = deletingData && gone
+        if deletingData, !gone {
+            logger.error("the removed tool \(id.rawValue, privacy: .public) is still running: what it saved is kept")
         }
-        if deletingData { parts.forgetPreferences(id) }
+        if parts.folders?.delete(id, data: data) != true {
+            logger.error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
+        }
+        if data { parts.forgetPreferences(id) }
         parts.registry().noteAvailabilityChanged()
         return true
     }
@@ -427,12 +438,19 @@ package final class ExternalToolStore {
     }
 
     /// Stops a tool's program and takes it out of the host and the
-    /// registry. The store still remembers it.
-    private func deactivate(_ id: ToolID) {
-        guard installed.removeValue(forKey: id) != nil else { return }
+    /// registry. The store still remembers it. With `seeingItOut` it also
+    /// waits a short while for the program to be gone. True when nothing
+    /// of the tool is left running, as far as was asked.
+    @discardableResult
+    private func deactivate(_ id: ToolID, seeingItOut: Bool = false) -> Bool {
+        guard installed.removeValue(forKey: id) != nil else { return true }
         tools[id] = nil
-        parts.host().remove(id)
         parts.registry().unregister(id)
+        guard seeingItOut else {
+            parts.host().remove(id)
+            return true
+        }
+        return parts.host().removeAndSeeOut(id)
     }
 
     /// Writes the records to their file. A file that could not be read at

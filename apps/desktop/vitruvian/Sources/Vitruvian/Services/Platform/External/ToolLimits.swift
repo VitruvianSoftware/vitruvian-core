@@ -30,6 +30,14 @@ package struct ToolLimits: Equatable, Sendable {
     package var goodbyeWait: TimeInterval = 2
     /// After that: how long before it is killed.
     package var endWait: TimeInterval = 1
+    /// When a tool is removed for good the app waits for its program to be
+    /// gone before it deletes anything, and it waits on the main thread. So
+    /// these are short: after the goodbye, how long before the tool is
+    /// asked to end; after that, how long before it is killed; and after
+    /// that, how long the app looks for the kill to have worked.
+    package var removeGoodbyeWait: TimeInterval = 0.5
+    package var removeEndWait: TimeInterval = 0.25
+    package var removeKillWait: TimeInterval = 0.25
     /// A tool that starts on a command is stopped after this long with
     /// nothing asked of it.
     package var idleStop: TimeInterval = 120

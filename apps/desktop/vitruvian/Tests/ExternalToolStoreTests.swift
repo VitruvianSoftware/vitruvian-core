@@ -22,6 +22,7 @@ enum ExternalToolStoreTests {
         refusals(suite)
         deleting(suite)
         removing(suite)
+        goneBeforeDeleted(suite)
         installedOrNot(suite)
         remembering(suite)
         switching(suite)
@@ -30,6 +31,7 @@ enum ExternalToolStoreTests {
         unreadableRecords(suite)
         toldOnce(suite)
         aRealTool(suite)
+        aRealToolRemoved(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -50,6 +52,10 @@ enum ExternalToolStoreTests {
         var said: [String] = []
         var beeps = 0
         var stoppedWorking: [ToolID] = []
+        /// Each wait the host made for a program to be gone, in seconds. It
+        /// only really waits for a real program: a tool that is no program
+        /// changes when the test says so, never while the host looks.
+        var waits: [TimeInterval] = []
         private(set) var host: ToolHost!
         private(set) var store: ExternalToolStore!
 
@@ -72,7 +78,10 @@ enum ExternalToolStoreTests {
                                 open: .init(open: { _ in true }), clipboard: .init(write: { _, _ in }),
                                 processes: .inert,
                                 storage: .init(read: { box.values[$0] }, write: { box.values[$0] = $1 })))
-            host = ToolHost(broker: broker)
+            host = ToolHost(broker: broker, wait: { [unowned self] seconds, done in
+                waits.append(seconds)
+                if transport != nil { ToolHost.wait(upTo: seconds, until: done) }
+            })
             store = ExternalToolStore(parts: .init(
                 folders: supportFolder ? ToolFolders(root: support) : nil,
                 host: { [unowned self] in host }, registry: { [unowned self] in registry }, broker: { broker },
@@ -556,6 +565,60 @@ enum ExternalToolStoreTests {
                      "a tool that starts with the app is started as soon as it is added")
     }
 
+    /// Nothing of a tool is deleted while its program runs: each step the
+    /// app takes to end it, with a tool that is no program.
+    static func goneBeforeDeleted(_ suite: TestSuite) {
+        func running(_ prepare: (FakeTool) -> Void) -> Bench {
+            let bench = Bench()
+            bench.add(bench.folder())
+            try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+            bench.box.values["com.acme.deploys/project"] = "api"
+            bench.registry.run(copy)
+            bench.current.greets()
+            prepare(bench.current)
+            return bench
+        }
+        func isGone(_ bench: Bench) -> Bool {
+            !bench.exists(bench.files) && !bench.exists(bench.data) && bench.box.values["com.acme.deploys/project"] == nil
+                && bench.records.isEmpty
+        }
+
+        let polite = running { $0.exitsOnClose = 0 }
+        defer { polite.close() }
+        suite.expect(polite.store.remove(id, deletingData: true) && polite.waits.isEmpty
+                         && polite.current.signals.isEmpty && isGone(polite),
+                     "a tool that leaves when it is told goodbye is removed with no wait")
+
+        let slow = running { $0.exitsOnTerminate = 15 }
+        defer { slow.close() }
+        suite.expect(slow.store.remove(id, deletingData: true) && slow.waits == [0.5]
+                         && slow.current.signals == ["terminate"] && isGone(slow),
+                     "one that does not leave is waited for half a second, then asked to end")
+
+        let deaf = running { $0.exitsOnKill = 9 }
+        defer { deaf.close() }
+        suite.expect(deaf.store.remove(id, deletingData: true) && deaf.waits == [0.5, 0.25]
+                         && deaf.current.signals == ["terminate", "kill"] && isGone(deaf),
+                     "one that ignores that is killed a quarter of a second later, and deleted once it is dead")
+
+        let undead = running { _ in }
+        defer { undead.close() }
+        suite.expect(undead.store.remove(id, deletingData: true) && undead.waits == [0.5, 0.25, 0.25]
+                         && undead.current.signals == ["terminate", "kill"]
+                         && undead.store.listed.isEmpty && undead.records.isEmpty && !undead.exists(undead.files)
+                         && (try? Data(contentsOf: undead.data.appendingPathComponent("saved"))) == Data("kept".utf8)
+                         && undead.box.values["com.acme.deploys/project"] as? String == "api",
+                     "a program still there after the kill keeps what it saved, whatever was asked: "
+                         + "only its copy and its record go")
+
+        let idle = Bench()
+        defer { idle.close() }
+        idle.add(idle.folder())
+        suite.expect(idle.store.remove(id, deletingData: true) && idle.waits.isEmpty && idle.runs.isEmpty
+                         && !idle.exists(idle.data),
+                     "a tool whose program is not running is removed with no wait")
+    }
+
     static func installedOrNot(_ suite: TestSuite) {
         var asked: [ToolID] = []
         let live = CapabilityBroker.Environment.reading(accessibility: { true }, screenRecording: { true },
@@ -931,5 +994,81 @@ enum ExternalToolStoreTests {
         bench.host.stopAll()
         suite.expect(processes.allSatisfy { !$0.isRunning } && processes[1].exitStatus == 0,
                      "at quit the host stops it and waits for it without turning the run loop: no process is left")
+    }
+
+    /// Removing with a real program: one that leaves when told, and one
+    /// that ignores the goodbye and being asked to end, and writes into its
+    /// data folder for as long as it lives.
+    static func aRealToolRemoved(_ suite: TestSuite) {
+        guard let fixture = ToolProcessTests.fixture else {
+            suite.expect(false, "the fixture tool is built and handed to the tests in VITRUVIAN_TOOL_FIXTURE")
+            return
+        }
+        let manifest = ExternalToolManifestTests.file(#"""
+            {"id": "dev.vitruvian.fixture", "uses": [],
+             "runtime": {"kind": "external", "exec": "bin/fixture"},
+             "contributes": {"commands": [
+               {"id": "quick", "title": {"en": "Quick"}, "surfaces": ["commandBar"]},
+               {"id": "scribble", "title": {"en": "Scribble"}, "surfaces": ["commandBar"]}]}}
+            """#)
+        let tool = ToolID("dev.vitruvian.fixture")!
+        var processes: [ProcessTransport] = []
+        var benches: [Bench] = []
+        defer {
+            for process in processes { process.kill() }
+            _ = ToolRuntimeSupport.wait { processes.allSatisfy { !$0.isRunning } }
+            for bench in benches { bench.close() }
+        }
+        /// A bench with the fixture added and `command` run, its program
+        /// started.
+        func running(_ command: String) -> Bench? {
+            let bench = Bench()
+            benches.append(bench)
+            bench.transport = { program, data in
+                let process = ProcessTransport(program: program, directory: data)
+                processes.append(process)
+                return process
+            }
+            guard case .success = bench.add(bench.folder(manifest: manifest, exec: "bin/fixture", program: fixture)),
+                  let run = CommandID(tool: tool, name: command), bench.registry.run(run),
+                  ToolRuntimeSupport.wait(until: { bench.store.tool(tool)?.standing == .running }) else {
+                suite.expect(false, "the fixture tool is added and started (\(command))")
+                return nil
+            }
+            return bench
+        }
+        func files(_ bench: Bench) -> URL { bench.support.appendingPathComponent("Tools/dev.vitruvian.fixture") }
+        func saved(_ bench: Bench) -> URL { bench.support.appendingPathComponent("ToolData/dev.vitruvian.fixture") }
+
+        guard let polite = running("quick") else { return }
+        var began = ProcessInfo.processInfo.systemUptime
+        var removed = polite.store.remove(tool, deletingData: true)
+        var took = ProcessInfo.processInfo.systemUptime - began
+        suite.expect(removed && took < 0.5 && processes.count == 1 && !processes[0].isRunning
+                         && processes[0].exitStatus == 0 && polite.waits.count <= 1
+                         && !polite.exists(files(polite)) && !polite.exists(saved(polite)),
+                     "a real tool that leaves when told goodbye is removed in well under a second, "
+                         + "its program gone by itself before its folders are")
+
+        guard let stubborn = running("scribble") else { return }
+        let scribbling = ToolLog.Entry(source: .message, text: "scribbling")
+        guard ToolRuntimeSupport.wait(until: { stubborn.store.tool(tool)?.log.entries.contains(scribbling) == true }),
+              stubborn.exists(saved(stubborn).appendingPathComponent("scribbled")) else {
+            suite.expect(false, "the fixture writes into its data folder while it runs")
+            return
+        }
+        began = ProcessInfo.processInfo.systemUptime
+        removed = stubborn.store.remove(tool, deletingData: true)
+        took = ProcessInfo.processInfo.systemUptime - began
+        suite.expect(removed && processes.count == 2 && !processes[1].isRunning
+                         && processes[1].exitStatus == 128 + SIGKILL && stubborn.waits == [0.5, 0.25, 0.25]
+                         && took < 2,
+                     "a real tool that ignores the goodbye and being asked to end is dead, killed, "
+                         + "when removing it returns, within the three short waits")
+        // Alive, it makes the folder again every half a millisecond. So a
+        // folder that is gone and stays gone was deleted after it died.
+        suite.expect(!stubborn.exists(saved(stubborn)) && !stubborn.exists(files(stubborn))
+                         && !ToolRuntimeSupport.wait(upTo: 0.2, until: { stubborn.exists(saved(stubborn)) }),
+                     "and what it saved was deleted after that: the folder it kept writing into is gone, and stays gone")
     }
 }

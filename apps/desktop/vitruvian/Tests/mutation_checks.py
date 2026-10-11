@@ -619,7 +619,7 @@ MUTATIONS = [
      "with Tools a link to another place, nothing there is deleted"),
     ("a removed tool's preferences outlive what it saved", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
-     "        if deletingData { parts.forgetPreferences(id) }\n",
+     "        if data { parts.forgetPreferences(id) }\n",
      "",
      "removing it with what it saved deletes its data folder and its own preferences, and no other"),
     ("the person is told at every crash of a tool", "tool-runtime",
@@ -637,6 +637,16 @@ MUTATIONS = [
      "        \"'\" + path.replacingOccurrences(of: \"'\", with: \"'\\\\''\") + \"'\"\n",
      "        \"'\" + path + \"'\"\n",
      "a quarantined folder says the app will not clear it, and gives the command for the person to run"),
+    ("a tool's data is deleted while its program still runs", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        let data = deletingData && gone\n",
+     "        let data = deletingData\n",
+     "a program still there after the kill keeps what it saved, whatever was asked: only its copy and its record go"),
+    ("a tool's folders are deleted without waiting for its program to be gone", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        let gone = deactivate(id, seeingItOut: true)\n",
+     "        let gone = deactivate(id)\n",
+     "and what it saved was deleted after that: the folder it kept writing into is gone, and stays gone"),
 ]
 
 
