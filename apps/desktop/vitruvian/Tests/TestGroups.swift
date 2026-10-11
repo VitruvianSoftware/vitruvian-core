@@ -178,6 +178,7 @@ enum TestGroups {
                 ToolProcessTests.run(suite)
                 ExternalToolTests.run(suite)
                 ExternalToolHostTests.run(suite)
+                ExternalToolCallsTests.run(suite)
             }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)

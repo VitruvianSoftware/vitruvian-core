@@ -31,6 +31,8 @@ package struct ToolServices {
 
     package var storage: StorageAccess {
         StorageAccess(gate: gate(.storage), keys: Set(manifest.preferences.map(\.key)),
+                      defaults: Dictionary(manifest.preferences.map { ($0.key, $0.defaultValue) },
+                                           uniquingKeysWith: { first, _ in first }),
                       backing: broker.backings.storage)
     }
 

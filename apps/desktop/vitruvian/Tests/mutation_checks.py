@@ -532,6 +532,21 @@ MUTATIONS = [
      "        guard !id.isBundledForm, types[id] == nil, added[id] == nil else { return false }\n",
      "        guard types[id] == nil, added[id] == nil else { return false }\n",
      "a tool under an id with no dot, the form of the app's own, is refused"),
+    ("an outside tool's preference is saved under a bare key", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolCalls.swift",
+     "        ExternalToolManifest.storageKey(tool: tool, preference: preference)\n",
+     "        preference\n",
+     "storage/get reads a preference under the tool's id"),
+    ("an outside tool ends a process the app protects", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolCalls.swift",
+     "            guard processes.canTerminate, !processes.isProtected(pid: pid, name: name) else {\n",
+     "            guard processes.canTerminate else {\n",
+     "a process the app protects is not ended: not available"),
+    ("a preference is saved as another kind of value", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/Broker/StorageAccess.swift",
+     "        default:\n            return .wrongKind(key)\n",
+     "        default:\n            backing.write(key, value.defaultsValue)\n            return nil\n",
+     "is answered invalid params, and saves nothing"),
 ]
 
 

@@ -65,9 +65,12 @@ package final class CapabilityBroker {
             screenRecording: { CGPreflightScreenCaptureAccess() })
 
         /// `live`, with the two questions it puts to macOS handed in, so a
-        /// test can answer them.
+        /// test can answer them; and what stops a development build, so a
+        /// test can see when it would.
         @MainActor package static func reading(accessibility: @escaping () -> Bool,
-                                               screenRecording: @escaping () -> Bool) -> Environment {
+                                               screenRecording: @escaping () -> Bool,
+                                               stop: @escaping (String) -> Void = { assertionFailure($0) })
+            -> Environment {
             Environment(
                 isInstalled: { id in AppFeature(rawValue: id.rawValue)?.isAvailable ?? true },
                 isGranted: { permission in
@@ -79,7 +82,11 @@ package final class CapabilityBroker {
                 },
                 allows: { _, _ in true },
                 reportUndeclared: { id, capability in
-                    assertionFailure("\(id) used \(capability.rawValue) without declaring it")
+                    // A mistake in one of the app's own tools stops a
+                    // development build. One in a tool from outside is that
+                    // tool's: it is refused, and the app carries on.
+                    guard id.isBundledForm else { return }
+                    stop("\(id) used \(capability.rawValue) without declaring it")
                 })
         }
     }
