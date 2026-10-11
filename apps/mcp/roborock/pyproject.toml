@@ -52,6 +52,8 @@ vitruvian-roborock = "vitruvian_roborock.cli.main:main"
 
 [project.urls]
 Repository = "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mcp/roborock"
+Documentation = "https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mcp/roborock/docs/installation.md"
+Issues = "https://github.com/VitruvianSoftware/vitruvian-core/issues"
 
 [dependency-groups]
 dev = ["pytest>=8"]

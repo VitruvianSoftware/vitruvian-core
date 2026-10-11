@@ -69,6 +69,7 @@ updates:
       - "/apps/cli/devx/.github/workflows"
       - "/apps/cli/homelab/.github/workflows"
       - "/apps/desktop/nexus-agent/.github/workflows"
+      - "/apps/mcp/roborock/.github/workflows"
       - "/apps/mcp/slack/.github/workflows"
       - "/apps/web/gods-eye-view/.github/workflows"
       - "/apps/web/vitruviansoftware-dev/.github/workflows"

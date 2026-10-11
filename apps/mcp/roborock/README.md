@@ -1,6 +1,6 @@
 # vitruvian-roborock
 
-![Vitruvian Roborock Banner](docs/assets/hero.jpg)
+![Vitruvian Roborock Banner](https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/mcp/roborock/docs/assets/hero.jpg)
 
 > **Autonomous agent control and real-time telemetry for Roborock vacuums.**
 > Check on and control your vacuum from a terminal (`rrctl`), from an AI agent (**Antigravity** and **Claude Code**), or from a live map in your browser.
@@ -97,5 +97,5 @@ When installed as a plugin, your AI agent automatically gains two specialized sk
 
 ## Documentation
 
-- [Detailed Installation & User Guide](docs/installation.md)
-- [Architecture & Security Model](docs/index.md)
+- [Detailed Installation & User Guide](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mcp/roborock/docs/installation.md)
+- [Architecture & Security Model](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mcp/roborock/docs/index.md)
