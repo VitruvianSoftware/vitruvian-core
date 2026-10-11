@@ -277,6 +277,49 @@ and this app holds only what is specific to it.
   VitruvianSoftware wrote all of it, and `UPSTREAM.md` records it.
 - The next standalone app that becomes a feature here follows the same shape.
 
+## Tools that run as their own programs
+
+A tool can be a separate program the app starts and talks to
+(`docs/superpowers/specs/2026-10-10-vitruvian-external-tools-design.md`).
+Stage A of that work is built: the protocol, and reading a tool's manifest.
+Nothing in the app starts a tool yet, and nothing calls the manifest reader.
+
+- The protocol lives in `packages/vitruvian-sdk`, under MIT: JSON Schema in
+  `protocol/`, the same messages as Swift in `Sources/VitruvianToolProtocol`.
+  The schema is the source of truth. Change a message in the schema, the
+  Swift type and an example, in one commit; the package's tests hold the
+  three together and can only see a difference an example crosses.
+- `Core` links `VitruvianToolProtocol`. A file that uses it imports it by
+  name. It is not re-exported from `Core`, and it never imports a
+  `Vitruvian*` module. Nothing is copied between the two folders: the
+  package is MIT and this app is GPL.
+- After changing a file under
+  `packages/vitruvian-sdk/Sources/VitruvianToolProtocol`, run
+  `bazel run //apps/desktop/vitruvian:pin_tool_protocol` and add a line to the
+  log in `UPSTREAM.md`. `tool_protocol_pin_test` fails until you do.
+- What the pin protects, exactly. A change made only in the package does not
+  select this app's pipeline unit by itself: the presubmit planner picks the
+  `vitruvian-sdk` unit and lists `tool_protocol_pin_test` among the affected
+  tests, which the Linux lane runs and which fails. Updating the pin changes
+  this folder, and that is what selects this app's unit and runs its tests.
+  So the app's tests cannot be skipped, but only because the pin fails first.
+- A manifest's own rules are in the package (`ToolManifestFile.read`), so
+  the command-line tool a tool's author runs applies the same ones. This app
+  adds what only it can know, in `Core/Platform/ExternalToolManifest.swift`:
+  the program is a file inside the folder that macOS will run, and every
+  name maps onto the app's closed lists (`Capability`, `ToolSurface`,
+  `Activation`, `PreferenceDeclaration.Value`). A name the app does not have
+  is a refusal that names it, never a crash and never a tool with part of
+  its manifest dropped.
+- `ManifestRefusal` and `ManifestProblem` carry values, never sentences.
+  Whoever shows one writes the words, in all fifteen languages.
+- An outside tool's id has a dot; a built-in tool's has none. Its
+  capabilities are made with `CapabilityRequest(usedByOutsideTool:)`, which
+  has no reason. A built-in tool never uses that initializer.
+- `ToolDescriptor.name` and `CommandDescriptor.title` of an outside tool are
+  its English text. Its other languages are in `ExternalToolManifest.name`
+  and `.commandTitles`; a surface asks `text(for: language.rawValue)`.
+
 ## Porting from upstream
 
 - Follow `UPSTREAM.md`, "Tracking and porting upstream". Start a port with
