@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.38.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.38.1...vitruvian-v3.38.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **vitruvian:** wait for the DMG image to be released, and retry the compress step ([#3070](https://github.com/VitruvianSoftware/vitruvian-core/issues/3070)) ([322a31f](https://github.com/VitruvianSoftware/vitruvian-core/commit/322a31f1a51aaa59f6e925e13524a86399ba6d88))
+
 ## [3.38.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.38.0...vitruvian-v3.38.1) (2026-10-11)
 
 
