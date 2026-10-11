@@ -1,0 +1,39 @@
+{%- comment -%}
+  A portrait for an AI agent: a small study drawn inside the circle and
+  square of the brand mark. Pass `glyph` (see _data/team.yml) and `name`.
+  The frame takes the accent colour and the study the sanguine one, after
+  the red chalk of a Renaissance sketchbook.
+{%- endcomment -%}
+<svg class="team-portrait" viewBox="0 0 96 96" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Portrait of {{ include.name }}">
+  <g class="team-portrait-frame" stroke-width="1.5">
+    <path d="M4 16V4h12M80 4h12v12M92 80v12H80M16 92H4V80"/>
+    <rect x="16" y="16" width="64" height="64" stroke-opacity=".5"/>
+    <circle cx="48" cy="48" r="36"/>
+  </g>
+  <g class="team-portrait-study">
+  {%- case include.glyph -%}
+  {%- when 'beacon' -%}
+    <path d="M42 68l3-28h6l3 28zM38 68h20"/><path d="M43 40v-7h10v7M42 33l6-6 6 6"/><path d="M57 35l9-4M57 39h10M39 35l-9-4M39 39H29"/>
+  {%- when 'atlas' -%}
+    <circle cx="48" cy="48" r="17"/><ellipse cx="48" cy="48" rx="7.5" ry="17"/><path d="M31 48h34M34 39h28M34 57h28"/>
+  {%- when 'ridge' -%}
+    <path d="M27 65l15-27 8 14 6-8 13 21z"/><path d="M38 45l4 4 4-4"/><circle cx="63" cy="32" r="4"/>
+  {%- when 'wren' -%}
+    <ellipse cx="46" cy="51" rx="13" ry="9" transform="rotate(-14 46 51)"/><circle cx="58" cy="40" r="6"/><path d="M63.6 38.6l6.4 1.8-6.2 2.2"/><path d="M35 48l-8-12M33.5 52L24 45"/><path d="M44 59.5V67M50 59V67"/><circle cx="59.6" cy="39" r="1" fill="currentColor" stroke="none"/>
+  {%- when 'scout' -%}
+    <circle cx="38" cy="55" r="9"/><circle cx="58" cy="55" r="9"/><path d="M32 47l3-15h6l3 14M52 46l3-14h6l3 15M44 51h8"/>
+  {%- when 'quill' -%}
+    <path d="M30 68l32-38"/><path d="M62 30c9 6 3 22-18 26l-8 4"/><path d="M62 30c-12 0-22 10-24 24"/><path d="M30 68l1.5-7"/>
+  {%- when 'compass' -%}
+    <circle cx="48" cy="48" r="17"/><path d="M48 34l5 14-5 14-5-14z"/><path d="M48 31v-5M48 70v-5M26 48h5M65 48h5"/><circle cx="48" cy="48" r="1.4" fill="currentColor" stroke="none"/>
+  {%- when 'pace' -%}
+    <circle cx="48" cy="52" r="15"/><path d="M44 33h8M48 33v4M60 40l3-3"/><path d="M48 52l7-8"/><circle cx="48" cy="52" r="1.4" fill="currentColor" stroke="none"/>
+  {%- when 'aegis' -%}
+    <path d="M48 29l16 6v12c0 10-7 17-16 21-9-4-16-11-16-21V35z"/><path d="M41 48l5 5 10-11"/>
+  {%- when 'forge' -%}
+    <path d="M30 45h32c0 6-4 8-8 8v6h6v6H36v-6h6v-6c-6 0-10-2-12-8z"/><path d="M62 45h7"/><path d="M52 29v6M49 32h6M62 31v4M60 33h4"/>
+  {%- else -%}
+    <circle cx="48" cy="48" r="6"/>
+  {%- endcase -%}
+  </g>
+</svg>

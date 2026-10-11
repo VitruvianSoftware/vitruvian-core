@@ -41,6 +41,7 @@ Then open <http://localhost:4000>.
 | `index.html`, `projects.html`, `ai.html`, `engineering.html`, `blog.html`, `about.html` | Pages |
 | `tech-stack.html`, `contributions.html` | Redirects from URLs the previous site used |
 | `_data/projects.yml` | Every project card on the site; edit a project here, once. A project with an `extension` block is also listed on `/ai/` |
+| `_data/team.yml` | The leadership and team section of the About page: the founder, and the AI agents with their portraits |
 | `_posts/` | Blog posts, named `YYYY-MM-DD-title.md`; set `description` for the listing |
 | `_layouts/`, `_includes/` | Page, post and card templates, header, footer, brand mark |
 | `assets/css/main.css` | The stylesheet, built on the Vitruvian design tokens |

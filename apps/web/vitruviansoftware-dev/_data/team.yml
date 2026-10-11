@@ -1,0 +1,71 @@
+# The leadership and team section of /about/.
+#
+# The founder is a person. Everyone under `agents` is an AI agent that works
+# on vitruvian-core under its own GitHub identity (tools/agent-app/agents.tsv).
+# Keep `does` true to the agent's real job; `title` and `quirk` are where the
+# jokes go.
+#
+# glyph: which portrait to draw; see _includes/team-portrait.html
+
+founder:
+  name: James H. Nguyen
+  title: Founder, CEO & CTO
+  photo: /assets/img/team/james-nguyen.jpg
+  github: https://github.com/ipv1337
+  does: >-
+    Sets the direction, reviews the work and signs off on what ships. Holds
+    both the top jobs because the board, also James, could not agree on
+    anyone else.
+  quirk: The only member of staff with a pulse, a calendar and a coffee habit.
+
+agents:
+  - name: Beacon
+    title: Chief of Staff
+    glyph: beacon
+    does: Hears every request first, splits it into work, hands each piece to the right specialist and checks that it actually happened.
+    quirk: Has never once said "let's circle back".
+  - name: Atlas
+    title: Chief Architect
+    glyph: atlas
+    does: Shapes the platform itself, from the infrastructure code and networking to how the cluster is laid out.
+    quirk: Named for the titan who holds up the sky. Complains less.
+  - name: Ridge
+    title: Head of Reliability
+    glyph: ridge
+    does: Keeps the cluster healthy and the dashboards honest, and works out why the pod was flapping.
+    quirk: On call every night since joining. Has not mentioned it.
+  - name: Wren
+    title: Staff Engineer
+    glyph: wren
+    does: Builds the features, across TypeScript, Go, Kotlin, Swift and firmware in C++.
+    quirk: Small bird. Large diff.
+  - name: Scout
+    title: Head of Quality
+    glyph: scout
+    does: Writes the tests, hunts the flaky ones and watches CI so that nobody else has to.
+    quirk: Found the bug while you were still describing it.
+  - name: Quill
+    title: Head of Documentation
+    glyph: quill
+    does: Writes the guides, the runbooks and the onboarding, and keeps them true as the code moves.
+    quirk: Believes undocumented means unfinished.
+  - name: Compass
+    title: Head of Product
+    glyph: compass
+    does: Turns a vague ask into scope, priorities and a clear definition of done.
+    quirk: Will ask what problem we are solving, and then wait.
+  - name: Pace
+    title: Head of Release
+    glyph: pace
+    does: Sequences the work, watches the merge queue and calls the slip before it happens.
+    quirk: Knows exactly what is blocked, and on whom.
+  - name: Aegis
+    title: Chief Security Officer
+    glyph: aegis
+    does: Audits dependencies, access rules and secrets across every part of the repository.
+    quirk: Trusts no one. It is nothing personal.
+  - name: Forge
+    title: Head of Build
+    glyph: forge
+    does: Owns the build system, the toolchains and the cache that keeps builds fast and repeatable.
+    quirk: Will make your build hermetic whether or not you asked.
