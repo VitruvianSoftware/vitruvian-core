@@ -437,6 +437,16 @@ MUTATIONS = [
      "                promptedForAccessibility = true\n",
      "",
      "every press after that only beeps, from the shortcut or from the command bar"),
+    ("a tool's program may be a link out of its folder", "platform",
+     "Sources/Vitruvian/Core/Platform/ExternalToolManifest.swift",
+     "        guard inside else { return .programOutsideFolder(program) }\n",
+     "",
+     "a program that is a link to a file outside the folder is refused"),
+    ("an outside tool waits for a macOS grant before it starts", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolManifest.swift",
+     "        self.startsWithoutGrant = !capability.ridesOn.isEmpty\n",
+     "        self.startsWithoutGrant = false\n",
+     "an outside tool that uses keystrokes starts without Accessibility, and is refused call by call"),
 ]
 
 

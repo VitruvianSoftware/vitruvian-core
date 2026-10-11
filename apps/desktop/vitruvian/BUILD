@@ -13,6 +13,9 @@
 #   :nexus_agent_shared_pin_test
 #                         the shared Nexus Agent sources match the pin in
 #                         bazel/nexus_agent_shared.sha256 (Linux-safe)
+#   :tool_protocol_pin_test
+#                         the tool protocol's Swift sources match the pin in
+#                         bazel/tool_protocol.sha256 (Linux-safe)
 #   :source_lints_test    the rules over how the sources, build scripts and
 #                         tests are written (Linux-safe)
 #   :publish              builds the DMG and attaches it to a GitHub Release
@@ -111,6 +114,10 @@ swift_library(
     deps = [
         ":FanControlKit",
         "//apps/desktop/nexus-agent/macos:NexusAgentCore",
+        # The tool protocol's types (MIT, packages/vitruvian-sdk): the app and
+        # a tool read each message from one definition. Core imports it by
+        # name where it is used; it is not re-exported.
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
 )
 
@@ -565,6 +572,8 @@ swift_test(
         ":VitruvianUI",
         # NexusAgentTests checks what the app hands the shared chat view.
         "//apps/desktop/nexus-agent/macos:NexusAgentUI",
+        # ExternalToolManifestTests names the manifest file's own types.
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
 )
 
@@ -697,6 +706,38 @@ py_test(
     main = "bazel/pin_nexus_agent_shared.py",
 )
 
+# The same guard for the tool protocol's Swift sources (packages/vitruvian-sdk),
+# which VitruvianCore links. It does two jobs. A change to them must also
+# change this folder, or this app would never release it. And it is the only
+# test here that depends on them and is not `manual`, so it is what makes the
+# presubmit planner run this app's unit when only the package changed.
+TOOL_PROTOCOL = ["//packages/vitruvian-sdk:protocol_sources"]
+
+TOOL_PROTOCOL_ARGS = [
+    "--name",
+    "tool_protocol",
+] + ["$(rootpaths %s)" % group for group in TOOL_PROTOCOL]
+
+py_binary(
+    name = "pin_tool_protocol",
+    srcs = ["bazel/pin_nexus_agent_shared.py"],
+    args = TOOL_PROTOCOL_ARGS,
+    data = TOOL_PROTOCOL,
+    main = "bazel/pin_nexus_agent_shared.py",
+)
+
+py_test(
+    name = "tool_protocol_pin_test",
+    size = "small",
+    srcs = ["bazel/pin_nexus_agent_shared.py"],
+    args = [
+        "--check",
+        "$(rootpath bazel/tool_protocol.sha256)",
+    ] + TOOL_PROTOCOL_ARGS,
+    data = ["bazel/tool_protocol.sha256"] + TOOL_PROTOCOL,
+    main = "bazel/pin_nexus_agent_shared.py",
+)
+
 # Rules over how all of the code is written, not what one piece of it does: an
 # API that never appears, every SF Symbol and system tool named, the build
 # script's temp-dir sweep, and the rest (bazel/source_lints.py). They read the
@@ -769,6 +810,7 @@ pipeline_unit(
         ":source_lints_test",
         ":sources_in_sync_test",
         ":nexus_agent_shared_pin_test",
+        ":tool_protocol_pin_test",
         ":unit_tests",
     ],
     tier = "L1",
