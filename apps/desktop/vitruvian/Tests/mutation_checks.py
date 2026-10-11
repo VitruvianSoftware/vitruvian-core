@@ -457,6 +457,21 @@ MUTATIONS = [
      "                return .tooLong\n",
      "                return .notAMessage\n",
      "a line over the limit is reported once, as soon as it is known, and the rest of it is dropped"),
+    ("a tool speaks a protocol version the app did not offer", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "            guard let result = try? value.decode(InitializeResult.self),\n                  hello.protocolVersions.contains(result.protocolVersion) else {\n",
+     "            guard let result = try? value.decode(InitializeResult.self) else {\n",
+     "a tool that picks a version the app did not offer is stopped"),
+    ("a tool's request is answered twice", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "        guard serving.remove(id) != nil, state == .ready else { return }\n",
+     "        guard state == .ready else { return }\n",
+     "the answer goes back under the tool's id, once"),
+    ("a tool that ignores being asked to end is never killed", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "            transport.kill()\n",
+     "",
+     "and one second later it is killed"),
 ]
 
 

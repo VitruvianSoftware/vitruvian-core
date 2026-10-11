@@ -54,6 +54,115 @@ final class ManualToolClock: ToolClock {
     }
 }
 
+/// A tool that is no program: a test says what it writes and sees what it
+/// was sent. It goes where a process and its pipes would, so everything
+/// above the transport runs as it does for a real tool.
+final class FakeTool: ToolTransport {
+    /// False for a program that cannot be started.
+    var starts = true
+    /// False for a tool that has stopped reading its input.
+    var reads = true
+    /// The status it exits with when its input closes, when asked to end,
+    /// and when killed. Nil for a tool that does not.
+    var exitsOnClose: Int32?
+    var exitsOnTerminate: Int32?
+    var exitsOnKill: Int32?
+
+    private(set) var started = 0
+    /// Every message the app wrote, in order.
+    private(set) var sent: [RPCMessage] = []
+    private(set) var inputClosed = false
+    /// "terminate" and "kill", as each was sent.
+    private(set) var signals: [String] = []
+    private(set) var isRunning = false
+
+    private var reader = ToolLineReader()
+    private var onItems: (@MainActor ([ToolInbound]) -> Void)?
+    private var onErrorOutput: (@MainActor (Data) -> Void)?
+    private var onExit: (@MainActor (Int32) -> Void)?
+
+    func start(onItems: @escaping @MainActor ([ToolInbound]) -> Void,
+               onErrorOutput: @escaping @MainActor (Data) -> Void,
+               onExit: @escaping @MainActor (Int32) -> Void) -> Bool {
+        started += 1
+        guard starts else { return false }
+        self.onItems = onItems
+        self.onErrorOutput = onErrorOutput
+        self.onExit = onExit
+        isRunning = true
+        return true
+    }
+
+    func send(_ line: Data) -> Bool {
+        guard reads, !inputClosed, line.last == 0x0A,
+              let message = try? LineFraming.message(from: line.dropLast()) else { return false }
+        sent.append(message)
+        return true
+    }
+
+    func closeInput() {
+        inputClosed = true
+        if let status = exitsOnClose { ends(status) }
+    }
+
+    func terminate() {
+        signals.append("terminate")
+        if let status = exitsOnTerminate { ends(status) }
+    }
+
+    func kill() {
+        signals.append("kill")
+        if let status = exitsOnKill { ends(status) }
+    }
+
+    // MARK: The tool's side
+
+    /// The tool writes one line.
+    func says(_ json: String) {
+        writes(ToolRuntimeSupport.line(json))
+    }
+
+    func writes(_ bytes: Data) {
+        guard isRunning else { return }
+        onItems?(reader.read(bytes))
+    }
+
+    /// The tool writes to its standard error.
+    func complains(_ text: String) {
+        onErrorOutput?(Data(text.utf8))
+    }
+
+    /// The tool's program ends.
+    func ends(_ status: Int32) {
+        guard isRunning else { return }
+        isRunning = false
+        onExit?(status)
+    }
+
+    /// Answers `initialize` as a tool should.
+    func greets(protocolVersion: String = "1") {
+        says(#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"\#(protocolVersion)","toolVersion":"0.1.0"}}"#)
+    }
+
+    /// Answers the app's request `id` with a result.
+    func answers(_ id: Int, _ result: String = "{}") {
+        says(#"{"jsonrpc":"2.0","id":\#(id),"result":\#(result)}"#)
+    }
+
+    /// Answers the app's request `id` with a failure.
+    func refuses(_ id: Int, code: Int = RefusalCode.commandRefused.rawValue) {
+        says(#"{"jsonrpc":"2.0","id":\#(id),"error":{"code":\#(code),"message":"no"}}"#)
+    }
+
+    /// The id of the last request the app sent, as a number.
+    var lastRequest: Int? {
+        for message in sent.reversed() {
+            if case .request(.number(let id), _, _) = message { return id }
+        }
+        return nil
+    }
+}
+
 enum ToolRuntimeSupport {
     /// Turns the run loop until `done` says so, for at most `seconds` of
     /// real time. True when it did. Only what starts a real program or

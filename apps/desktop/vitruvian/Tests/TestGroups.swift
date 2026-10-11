@@ -172,7 +172,10 @@ enum TestGroups {
                 ToolBrokerTests.run(suite)
                 ExternalToolManifestTests.run(suite)
             }),
-            ("tool-runtime", { ToolRuntimeTests.run(suite) }),
+            ("tool-runtime", {
+                ToolRuntimeTests.run(suite)
+                ToolLinkTests.run(suite)
+            }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
                 PortManagerRefreshTests.run(suite)
