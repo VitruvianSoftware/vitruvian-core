@@ -101,6 +101,9 @@ def manifest_problems():
             problems.append(
                 f"manifest '{example['about']}': an invalid example names its problem"
             )
+    reference = load("../conformance/reference-tool/vitruvian-tool.json")
+    if not validator.is_valid(reference):
+        problems.append("the reference tool's manifest does not pass the schema")
     return problems + unused(schema, "manifest", seen)
 
 

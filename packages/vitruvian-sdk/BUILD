@@ -36,7 +36,7 @@
 # why). The Swift targets are constrained to macOS so a Linux
 # `bazel build //...` skips them.
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -44,6 +44,12 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # The protocol as it is written down: the schemas, the table of messages, and
 # the examples both halves of the drift test read.
 PROTOCOL_FILES = glob(["protocol/**/*.json"])
+
+# The smallest tool that speaks the protocol. The conformance script is proven
+# against it, and its manifest is read by both halves of the drift test.
+REFERENCE_TOOL = glob(["conformance/reference-tool/**"])
+
+REFERENCE_MANIFEST = "conformance/reference-tool/vitruvian-tool.json"
 
 # The one list of the protocol's Swift sources: it is both what the module
 # compiles and what the Vitruvian app's pin hashes
@@ -74,7 +80,7 @@ swift_test(
     name = "VitruvianToolProtocolTests",
     size = "small",
     srcs = glob(["Tests/VitruvianToolProtocolTests/**/*.swift"]),
-    data = PROTOCOL_FILES,
+    data = PROTOCOL_FILES + [REFERENCE_MANIFEST],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":VitruvianToolProtocol"],
@@ -86,9 +92,43 @@ py_test(
     name = "protocol_examples_test",
     size = "small",
     srcs = ["protocol/protocol_examples_test.py"],
-    data = PROTOCOL_FILES,
+    data = PROTOCOL_FILES + [REFERENCE_MANIFEST],
     main = "protocol/protocol_examples_test.py",
     deps = ["@pip//jsonschema"],
+)
+
+# bazel run //packages/vitruvian-sdk:conformance -- <a tool's folder>
+#
+# Plays the app's side of the protocol to any tool. Plain Python with no
+# dependencies, so a tool's author can also run the file itself.
+#
+# The program is not itself named `conformance`: its launcher would then sit
+# in the runfiles where the conformance/ folder must be, and it could not
+# find its own script. The alias gives it the name without the file.
+py_binary(
+    name = "conformance_script",
+    srcs = ["conformance/conformance.py"],
+    main = "conformance/conformance.py",
+)
+
+alias(
+    name = "conformance",
+    actual = ":conformance_script",
+)
+
+# The reference tool passes, and tools that each break the protocol in one way
+# are each caught by the check meant for them. It starts real processes:
+# Python ones, a few seconds in all. Not `manual` and not tied to macOS, so
+# the Linux lane runs it too.
+py_test(
+    name = "conformance_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "conformance/conformance_test.py",
+    ],
+    data = REFERENCE_TOOL,
+    main = "conformance/conformance_test.py",
 )
 
 pipeline_unit(
@@ -97,6 +137,7 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         ":VitruvianToolProtocolTests",
+        ":conformance_test",
         ":protocol_examples_test",
     ],
     tier = "L1",
