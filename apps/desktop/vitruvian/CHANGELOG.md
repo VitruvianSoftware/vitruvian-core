@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.38.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.37.2...vitruvian-v3.38.0) (2026-10-11)
+
+
+### Features
+
+* **desktop:** establish reusable desktop release packaging pattern and guidelines ([#3062](https://github.com/VitruvianSoftware/vitruvian-core/issues/3062)) ([853d334](https://github.com/VitruvianSoftware/vitruvian-core/commit/853d33457a1de366ff9462b36fb58fe14b945593))
+
 ## [3.37.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.37.1...vitruvian-v3.37.2) (2026-10-10)
 
 
