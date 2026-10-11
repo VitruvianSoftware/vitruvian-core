@@ -439,11 +439,15 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
     To see the live state without the tool: `gh api repos/VitruvianSoftware/<repo>/pages` returns the
     custom domain (`cname`), `build_type`, `protected_domain_state` and the certificate. For
     `site-vitruviansoftware-dev` on 2026-10-10 that was `vitruviansoftware.dev`, `workflow`,
-    `verified`, certificate approved. The zone is on Cloudflare, and the apex has GitHub's four A
-    and four AAAA Pages addresses. Those records, the verification TXT record and the Pages setting
-    were created by hand, before this repo had Pulumi, and **no Pulumi program declares them**. If
-    one is lost, the fix is to recreate it (`devx sites init` / `verify` for a subdomain; the apex
-    A and AAAA records by hand), not to re-run an apply.
+    `verified`, certificate approved. The zone is on Cloudflare. The apex is **one CNAME record**,
+    `vitruviansoftware.dev` to `bluecentre.github.io`, DNS-only. Cloudflare flattens it, so a resolver
+    sees GitHub's four A and four AAAA Pages addresses, but the zone itself holds **no A or AAAA
+    records**. The target is another GitHub account's Pages hostname; that works because GitHub routes
+    by the custom domain, not by the CNAME target. The apex CNAME, the
+    `_github-pages-challenge-VitruvianSoftware` TXT record and the Pages setting were created by hand,
+    before this repo had Pulumi, and **no Pulumi program declares them**. If one is lost, recreate it
+    by hand (`devx sites init` / `verify` for a subdomain; the apex CNAME in the Cloudflare
+    dashboard), not by re-running an apply.
 
 #### Variant: one-way with PR-import
 
