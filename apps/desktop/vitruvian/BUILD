@@ -185,6 +185,9 @@ swift_library(
         ":VitruvianCore",
         ":VitruvianDesign",
         ":VitruvianServices",
+        # The tool protocol's types: the agreement sheet shows a tool's own
+        # words, which its manifest file carries in several languages.
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
         # The Nexus Agent chat view, shared with the standalone app. Only this
         # module may depend on it: it is SwiftUI, and the layers below are not
         # all views.

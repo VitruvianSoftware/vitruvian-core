@@ -627,6 +627,16 @@ MUTATIONS = [
      "        guard told.insert(id).inserted else { return }\n",
      "        told.insert(id)\n",
      "a tool that was updated is still the same tool: the person was told already"),
+    ("Return adds the tool", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+     "    package static let defaultChoice: Choice = .cancel\n",
+     "    package static let defaultChoice: Choice = .agree\n",
+     "Return presses Cancel, never the button that adds the tool"),
+    ("the command that clears a quarantine breaks on a quote", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+     "        \"'\" + path.replacingOccurrences(of: \"'\", with: \"'\\\\''\") + \"'\"\n",
+     "        \"'\" + path + \"'\"\n",
+     "a quarantined folder says the app will not clear it, and gives the command for the person to run"),
 ]
 
 
