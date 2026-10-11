@@ -93,7 +93,7 @@ MUTATIONS = [
      "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n    }\n\n    package func toggle()",
      "        removeEventMonitors()\n        closeCapture?()\n    }\n\n    package func toggle()",
      "closing manually opened controls stops the reader and never leaves a music strip behind"),
-    ("the software route keeps the picture dimmed when it is turned off", "software-dimming",
+    ("the display is probed before its picture is restored when software dimming is turned off", "software-dimming",
      "Sources/Vitruvian/Services/Display/BrightnessService.swift",
      "        guard !preferred else {\n"
      "            refresh(force: true)\n"
@@ -116,7 +116,7 @@ MUTATIONS = [
      "            self.environment.main { [weak self] in self?.refresh(force: true) }\n"
      "        }\n",
      "        refresh(force: true)\n",
-     "the picture goes back to its own curve when the choice goes off"),
+     "the rebuild waits for the restored curve, so the probe reads an undimmed display"),
     ("a timed session hands over on one condition", "keep-awake", "Sources/Vitruvian/Services/KeepAwakeManager.swift",
      "        guard KeepAwakeAutomationSupport.conditionsSatisfied(\n"
      "                matching: matches,\n"
