@@ -567,6 +567,11 @@ MUTATIONS = [
      "        guard let path = defaults.string(forKey: Self.developmentToolFolderKey), !path.isEmpty else { return nil }\n",
      "        let path = defaults.string(forKey: Self.developmentToolFolderKey) ?? \"\"\n",
      "with the hidden preference not set, the development switch adds nothing and touches nothing"),
+    ("a sentence about tools from outside left in English", "tool-runtime",
+     "Sources/Vitruvian/Core/ExternalToolStrings.swift",
+     "        agreeHeadline: \"Dieses Werkzeug kann auf diesem Mac alles tun, was Vitruvian kann.\",\n",
+     "        agreeHeadline: \"This tool can do anything Vitruvian can on this Mac.\",\n",
+     "no text about tools from outside is left in English in de (agreeHeadline)"),
 ]
 
 
