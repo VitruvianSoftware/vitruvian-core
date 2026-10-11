@@ -1101,6 +1101,15 @@ def dmg_detach_accepts_a_mount_that_is_gone(repo):
         problems.append("make-dmg.sh checks the mount is gone between detach retries")
     if '[[ $detached -ne 1 && -d "$MOUNT" ]]' not in text:
         problems.append("make-dmg.sh forces a detach only while the mount still exists")
+    if "hdiutil info" not in text:
+        problems.append(
+            "make-dmg.sh waits for the image to be released before converting"
+        )
+    convert = [x for x in text.split("\n") if "hdiutil convert" in x]
+    if not convert or any("-quiet" in x for x in convert):
+        problems.append("make-dmg.sh converts without -quiet so a failure says why")
+    if "convert failed (attempt" not in text:
+        problems.append("make-dmg.sh retries a failed convert")
     return problems
 
 

@@ -159,9 +159,31 @@ if [[ $detached -ne 1 && -d "$MOUNT" ]]; then
 fi
 MOUNT=""
 
+# The mount point can vanish while the image is still attached, and converting
+# an attached image fails. Wait until the image itself is released.
+for _ in $(seq 1 15); do
+    hdiutil info | grep -qF "$RW" || break
+    sleep 2
+done
+
 echo "▸ Compressing…"
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
-hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$OUT" -quiet
+# No -quiet, so a failure says why; a convert can lose a race with a late
+# detach, so try again before giving up.
+converted=0
+for attempt in 1 2 3; do
+    if hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$OUT"; then
+        converted=1
+        break
+    fi
+    echo "  hdiutil convert failed (attempt $attempt of 3), retrying…" >&2
+    rm -f "$OUT"
+    sleep 5
+done
+if [[ $converted -ne 1 ]]; then
+    echo "✗ Could not compress the disk image after 3 attempts" >&2
+    exit 1
+fi
 
 echo "✓ DMG ready: $OUT"
