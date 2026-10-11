@@ -2293,6 +2293,9 @@ BROKERED = [
 TOOL_FILE_SINGLETONS = {"ToolHost", "L10n", "SettingsRouter", "PanelInteractionState"}
 
 BROKER_PREFIX = APP_PREFIX + "Services/Platform/Broker/"
+# The runtime for tools that run as their own programs. Like the broker, it
+# serves whatever tool it is handed and knows none.
+RUNTIME_PREFIX = APP_PREFIX + "Services/Platform/External/"
 
 _STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
 _SINGLETON = re.compile(r"\b([A-Z]\w*)\.shared\b")
@@ -2496,7 +2499,8 @@ def tool_types_named(path, text, types):
 def the_broker_names_no_tool(repo):
     """No file of the broker names a tool's type. The broker decides from the
     manifest it is handed, so the next tool needs no change to it, and a tool
-    cannot be given a door of its own."""
+    cannot be given a door of its own. The same holds for the runtime that
+    starts tools from outside: it is handed a manifest too."""
     problems = []
     sample = "\n".join(
         [
@@ -2511,14 +2515,15 @@ def the_broker_names_no_tool(repo):
     ]:
         problems.append("the scan finds a tool type named in code, and not prose")
     types = [name for row in MIGRATED_TOOLS.values() for name in row["types"]]
-    paths = [p for p in repo.app_sources() if p.startswith(BROKER_PREFIX)]
-    if not paths:
-        problems.append(
-            f"no Swift file was found under {BROKER_PREFIX}: the scan no "
-            "longer matches the code"
-        )
-    for path in paths:
-        problems.extend(tool_types_named(path, repo.source(path), types))
+    for prefix in (BROKER_PREFIX, RUNTIME_PREFIX):
+        paths = [p for p in repo.app_sources() if p.startswith(prefix)]
+        if not paths:
+            problems.append(
+                f"no Swift file was found under {prefix}: the scan no "
+                "longer matches the code"
+            )
+        for path in paths:
+            problems.extend(tool_types_named(path, repo.source(path), types))
     return problems
 
 

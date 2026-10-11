@@ -161,6 +161,9 @@ swift_library(
         ":VMStatisticsCompat",
         ":VitruvianCore",
         ":VitruvianDesign",
+        # The tool protocol's types, for the runtime under Services/Platform/
+        # External that talks to a tool running as its own program.
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
 )
 

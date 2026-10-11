@@ -447,6 +447,16 @@ MUTATIONS = [
      "        self.startsWithoutGrant = !capability.ridesOn.isEmpty\n",
      "        self.startsWithoutGrant = false\n",
      "an outside tool that uses keystrokes starts without Accessibility, and is refused call by call"),
+    ("a tool's log grows without end", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLog.swift",
+     "        while bytes > limit, first < kept.count - 1 {\n            bytes -= Self.cost(kept[first].text)\n            first += 1\n        }\n",
+     "",
+     "past its size the oldest lines go first"),
+    ("a line over the limit is taken for one that is not a message", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLineReader.swift",
+     "                return .tooLong\n",
+     "                return .notAMessage\n",
+     "a line over the limit is reported once, as soon as it is known, and the rest of it is dropped"),
 ]
 
 
