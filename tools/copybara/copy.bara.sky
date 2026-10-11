@@ -402,6 +402,20 @@ COMPONENTS = [
     # local tool state (.agent/, .cursor, .bundle/config) is not carried in the
     # monorepo and the first export removes it.
     {
+        # The gh-watch Antigravity plugin. Its folder becomes the mirror's root,
+        # which is the shape `agy plugin install https://github.com/<owner>/<repo>`
+        # wants: plugin.json at the top. Export-only: it is developed and
+        # released here, and contributions come as pull requests to this
+        # repository, which is public.
+        "name": "gh-watch",
+        "repo": "gh-watch",
+        "subtree": "apps/desktop/antigravity/plugins/gh-watch",
+        "standalone_rev_id": "GH_WATCH_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        "export_only": True,
+    },
+    {
         "name": "site-vitruviansoftware-dev",
         "repo": "site-vitruviansoftware-dev",
         "subtree": "apps/web/vitruviansoftware-dev",

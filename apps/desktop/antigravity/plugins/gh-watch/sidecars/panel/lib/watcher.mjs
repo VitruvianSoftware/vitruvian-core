@@ -132,7 +132,7 @@ export class Watcher {
         number: snap.number,
         conversationId: parsed.conversationId,
         autoFix: true,
-        comments: true,
+        comments: false,
         updates: true,
         addedAt: this.#now(),
         addedBy: "hook",

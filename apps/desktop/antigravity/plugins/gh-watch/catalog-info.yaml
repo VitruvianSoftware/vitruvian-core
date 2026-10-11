@@ -25,7 +25,7 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: antigravity-gh-watch
+  name: gh-watch
   title: Antigravity GH Watch
   description: Antigravity desktop plugin that polls GitHub for the pull requests you are watching and wakes the owning conversation when CI starts failing.
   tags:
@@ -37,8 +37,12 @@ metadata:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
     vitruvian.dev/release-model: none
+    vitruvian.dev/mirror: VitruvianSoftware/gh-watch
     vitruvian.dev/environments: development
   links:
+    - url: https://github.com/VitruvianSoftware/gh-watch
+      title: GitHub Mirror
+      icon: github
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/gh-watch
       title: Source Tree
       icon: github

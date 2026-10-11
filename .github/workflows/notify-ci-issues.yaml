@@ -121,6 +121,7 @@ jobs:
           MIRRORS: >-
             VitruvianSoftware/mcp-slack
             VitruvianSoftware/mcp-roborock
+            VitruvianSoftware/gh-watch
             VitruvianSoftware/nexus-agent
             VitruvianSoftware/devx
             VitruvianSoftware/homelab
