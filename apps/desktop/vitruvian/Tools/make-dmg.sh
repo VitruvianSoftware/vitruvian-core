@@ -144,10 +144,17 @@ for attempt in 1 2 3 4; do
         detached=1
         break
     fi
+    # A detach that reported "Resource busy" can still finish a moment later.
+    # Once the mount is gone there is nothing left to detach, and asking again
+    # fails with "No such file or directory", which is not a failure.
+    if [[ ! -d "$MOUNT" ]]; then
+        detached=1
+        break
+    fi
     echo "  hdiutil detach failed (attempt $attempt of 4), retrying…" >&2
     sleep 2
 done
-if [[ $detached -ne 1 ]]; then
+if [[ $detached -ne 1 && -d "$MOUNT" ]]; then
     hdiutil detach "$MOUNT" -force
 fi
 MOUNT=""
