@@ -25,8 +25,17 @@
 // The polling loop. All I/O is injected, so the loop itself is unit tested.
 
 import { countChecks, decide, emptyState, wakeMessage } from "./decide.mjs";
+import {
+  RETURN_FLOOR_MS,
+  intervalMs,
+  modeOf,
+  panelOpen,
+  passDue,
+} from "./pace.mjs";
 
-export const POLL_INTERVAL_MS = 30_000;
+// How often the watcher looks at the clock. A pass only runs when one is due,
+// so this costs nothing and lets a changed setting take effect at once.
+export const TICK_MS = 5_000;
 const MAX_BACKOFF_PASSES = 16;
 
 export class Watcher {
@@ -34,22 +43,22 @@ export class Watcher {
   #fetchPr;
   #sendMessage;
   #now;
-  #holdMs;
   #pass = 0;
   #running = false;
   #timer = null;
+  #lastPassAt = 0;
+  #panelSeenAt = 0;
 
-  constructor({ store, fetchPr, sendMessage, now = Date.now, holdMs }) {
+  constructor({ store, fetchPr, sendMessage, now = Date.now }) {
     this.#store = store;
     this.#fetchPr = fetchPr;
     this.#sendMessage = sendMessage;
     this.#now = now;
-    this.#holdMs = holdMs;
   }
 
-  start(intervalMs = POLL_INTERVAL_MS) {
+  start(tickMs = TICK_MS) {
     if (this.#timer) return;
-    this.#timer = setInterval(() => void this.pass(), intervalMs);
+    this.#timer = setInterval(() => void this.tick(), tickMs);
     this.#timer.unref?.();
     void this.pass();
   }
@@ -59,10 +68,51 @@ export class Watcher {
     this.#timer = null;
   }
 
+  // Runs a pass if one is due at the current pace.
+  async tick() {
+    const { mode } = this.status();
+    const due = passDue({
+      now: this.#now(),
+      lastPassAt: this.#lastPassAt,
+      settings: this.#store.settings(),
+      mode,
+    });
+    if (due) await this.pass();
+  }
+
+  // The panel says whether it is showing. Coming back to it after it was
+  // away checks everything at once, unless a pass ran moments ago.
+  async notePresence(visible) {
+    const now = this.#now();
+    const wasOpen = panelOpen(this.#panelSeenAt, now);
+    this.#panelSeenAt = visible ? now : 0;
+    if (visible && !wasOpen && now - this.#lastPassAt >= RETURN_FLOOR_MS) {
+      await this.pass();
+    }
+  }
+
+  // What the panel shows about the pace.
+  status() {
+    const now = this.#now();
+    const settings = this.#store.settings();
+    const { mode, reason } = modeOf({
+      watches: this.#store.list(),
+      panelSeenAt: this.#panelSeenAt,
+      now,
+    });
+    return {
+      mode,
+      reason,
+      intervalSeconds: intervalMs(settings, mode) / 1000,
+      lastPassAt: this.#lastPassAt,
+    };
+  }
+
   // One pass over every watched pull request. Never overlaps itself.
   async pass() {
     if (this.#running) return;
     this.#running = true;
+    this.#lastPassAt = this.#now();
     const pass = this.#pass++;
     try {
       for (const watch of this.#store.list()) {
@@ -106,6 +156,7 @@ export class Watcher {
       headSha: snap.headSha,
       prState: snap.state,
       isDraft: snap.isDraft,
+      autoMerge: snap.autoMerge === true,
       counts: countChecks(snap.checks),
       failing: snap.checks
         .filter((c) => c.bucket === "fail")
@@ -124,7 +175,7 @@ export class Watcher {
     }
 
     const { wake, state } = decide(watch.decision ?? emptyState(), snap, now, {
-      holdMs: this.#holdMs,
+      holdMs: this.#store.settings().holdSeconds * 1000,
     });
     if (wake.length === 0) {
       this.#store.put({ ...next, decision: state });

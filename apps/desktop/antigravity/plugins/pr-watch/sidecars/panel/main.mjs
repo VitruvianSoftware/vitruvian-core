@@ -30,9 +30,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Response, SidecarApp } from "sidecar_sdk";
 
-import { fetchPr, resolvePr } from "./lib/github.mjs";
+import { fetchPr, resolvePr, setAutoMerge } from "./lib/github.mjs";
+import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
 import { Store, watchKey } from "./lib/store.mjs";
-import { POLL_INTERVAL_MS, Watcher } from "./lib/watcher.mjs";
+import { Watcher } from "./lib/watcher.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR =
@@ -65,9 +66,48 @@ app.api(
 // GET /api/state: everything the panel shows.
 app.api(
   "/api/state",
-  () => ({ pollSeconds: POLL_INTERVAL_MS / 1000, watches: store.list() }),
+  () => ({
+    watches: store.list(),
+    settings: store.settings(),
+    limits: LIMITS,
+    mergeMethods: MERGE_METHODS,
+    pace: watcher.status(),
+  }),
   "GET",
 );
+
+// POST /api/presence {visible}: the panel reports whether it is showing.
+// While it is, the watcher polls at the fast pace.
+app.api("/api/presence", async (data) => {
+  await watcher.notePresence(data.visible === true);
+  return { pace: watcher.status() };
+});
+
+// POST /api/settings {fastSeconds?, slowSeconds?, holdSeconds?, mergeMethod?}
+// Out-of-range values are clamped; the reply is what was actually stored.
+app.api("/api/settings", (data) => ({
+  settings: store.updateSettings(data),
+  pace: watcher.status(),
+}));
+
+// POST /api/automerge {key, enabled}: turns GitHub's own auto-merge on or
+// off. GitHub does the merging once the required checks and reviews are in.
+app.api("/api/automerge", async (data) => {
+  const watch = store.get(String(data.key ?? ""));
+  if (!watch) return fail("That pull request is not being watched", 404);
+  try {
+    await setAutoMerge(
+      watch.repo,
+      watch.number,
+      data.enabled === true,
+      store.settings().mergeMethod,
+    );
+  } catch (err) {
+    return fail(err.message);
+  }
+  await watcher.check(watch.key);
+  return { watch: store.get(watch.key) };
+});
 
 // POST /api/watch {ref, conversationId, workspaceUri}: start watching a pull
 // request and tie it to the conversation that should be woken.

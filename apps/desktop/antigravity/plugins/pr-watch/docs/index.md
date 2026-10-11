@@ -14,13 +14,27 @@ flowchart LR
         conv["Agent conversation"]
     end
     panel <-- "watch list, switches" --> watcher
-    watcher -- "gh pr view, every 30s" --> github["GitHub"]
+    watcher -- "gh pr view, every 30s or 5 min" --> github["GitHub"]
     watcher -- "message on a new failure" --> conv
     conv -- "pushes a fix" --> github
 ```
 
 Antigravity starts the watcher when the plugin is enabled and keeps it running,
 so it polls whether or not the panel is open. It stops when the app quits.
+
+## How often it checks
+
+| Situation | Pace |
+| --- | --- |
+| The panel is open | Fast (30 s by default) |
+| A check on any watched pull request is still running | Fast |
+| A pull request was just added and has not been read | Fast |
+| Every watched pull request has settled | Slow (5 min by default) |
+| The panel is opened after being closed | Checks at once, unless a pass ran in the last 10 s |
+
+Both intervals are settings. A settled pull request that gets a new push is
+noticed at the slow pace, after which its running checks put it back on the
+fast pace.
 
 ## When it wakes the conversation
 
@@ -49,3 +63,4 @@ failure is not caused by the pull request.
   conversation moves the wake-ups there.
 - It reads GitHub with your `gh` login, one request per watched pull request
   per pass.
+- Auto-merge is GitHub's feature: the switch only turns it on or off.

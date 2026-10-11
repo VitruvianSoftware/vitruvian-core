@@ -28,7 +28,7 @@ import { execFile } from "node:child_process";
 import { normaliseChecks } from "./decide.mjs";
 
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,headRefOid,mergeable,statusCheckRollup";
+  "number,title,url,state,isDraft,headRefName,headRefOid,mergeable,autoMergeRequest,statusCheckRollup";
 const PR_URL = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
 
 function gh(args, { cwd, timeoutMs = 20_000 } = {}) {
@@ -73,6 +73,7 @@ function toSnapshot(raw) {
     branch: raw.headRefName ?? "",
     headSha: raw.headRefOid ?? "",
     mergeable: raw.mergeable ?? "UNKNOWN",
+    autoMerge: raw.autoMergeRequest != null,
     checks: normaliseChecks(raw.statusCheckRollup),
   };
 }
@@ -110,4 +111,32 @@ export async function resolvePr(ref, cwd) {
   if (text !== "") args.push(text);
   args.push("--json", FIELDS);
   return toSnapshot(JSON.parse(await gh(args, { cwd })));
+}
+
+// GitHub refuses a bare `--auto` on a repository without a merge queue: it
+// wants to know how to merge.
+const NEEDS_METHOD = /--merge, --rebase, or --squash|merge method/i;
+
+// Turns GitHub's own auto-merge on or off for a pull request. Merging is
+// GitHub's doing, once the required checks and reviews are in; nothing is
+// merged here. `run` is injectable for tests.
+export async function setAutoMerge(repo, number, enabled, method, run = gh) {
+  const base = ["pr", "merge", String(number), "-R", repo];
+  if (!enabled) {
+    await run([...base, "--disable-auto"]);
+    return;
+  }
+  try {
+    // With a merge queue the repository decides how to merge.
+    await run([...base, "--auto"]);
+  } catch (err) {
+    if (/is a draft/i.test(err.message)) {
+      throw new Error(
+        "A draft pull request cannot auto-merge. Mark it ready for review first.",
+        { cause: err },
+      );
+    }
+    if (!NEEDS_METHOD.test(err.message)) throw err;
+    await run([...base, "--auto", `--${method}`]);
+  }
 }

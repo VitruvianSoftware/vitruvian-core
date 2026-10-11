@@ -23,6 +23,7 @@ js_library(
     srcs = [
         "sidecars/panel/lib/decide.mjs",
         "sidecars/panel/lib/github.mjs",
+        "sidecars/panel/lib/pace.mjs",
         "sidecars/panel/lib/store.mjs",
         "sidecars/panel/lib/watcher.mjs",
     ],
@@ -34,6 +35,13 @@ js_test(
     size = "small",
     data = [":lib"],
     entry_point = "sidecars/panel/lib/decide.test.mjs",
+)
+
+js_test(
+    name = "pace_test",
+    size = "small",
+    data = [":lib"],
+    entry_point = "sidecars/panel/lib/pace.test.mjs",
 )
 
 js_test(
@@ -49,6 +57,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":decide_test",
+        ":pace_test",
         ":watcher_test",
     ],
     tier = "L1",

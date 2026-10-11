@@ -34,6 +34,8 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
+import { cleanSettings } from "./pace.mjs";
+
 export const watchKey = (repo, number) => `${repo.toLowerCase()}#${number}`;
 
 export class Store {
@@ -71,6 +73,18 @@ export class Store {
   remove(key) {
     delete this.#data.watches[key];
     this.#save();
+  }
+
+  // Always valid: missing or out-of-range values fall back to defaults.
+  settings() {
+    return cleanSettings(this.#data.settings);
+  }
+
+  // Lays `input` over the saved settings and returns what was stored.
+  updateSettings(input) {
+    this.#data.settings = cleanSettings(input, this.settings());
+    this.#save();
+    return this.#data.settings;
   }
 
   #save() {

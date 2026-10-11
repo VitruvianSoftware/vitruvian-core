@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { normaliseChecks } from "./decide.mjs";
-import { parsePrUrl } from "./github.mjs";
+import { parsePrUrl, setAutoMerge } from "./github.mjs";
 import { Store, watchKey } from "./store.mjs";
 import { Watcher } from "./watcher.mjs";
 
@@ -62,11 +62,13 @@ function setup({ autoFix = true } = {}) {
     failSend: false,
     failRead: false,
     clock: 1000,
+    reads: 0,
   };
   const watcher = new Watcher({
     store,
     now: () => world.clock,
     fetchPr: async () => {
+      world.reads += 1;
       if (world.failRead) throw new Error("boom");
       return world.snap;
     },
@@ -156,4 +158,113 @@ test("parsePrUrl accepts pull request links only", () => {
   });
   assert.equal(parsePrUrl("https://github.com/o/r/issues/12"), null);
   assert.equal(parsePrUrl("12"), null);
+});
+
+test("polls fast while checks run and slow once they settle", async () => {
+  const { world, watcher } = setup();
+  world.snap = snapshot("sha1", "OPEN", run("lint", null, "IN_PROGRESS"));
+  await watcher.pass(); // read at t=1000: one check running
+  assert.deepEqual(
+    [watcher.status().mode, watcher.status().reason],
+    ["fast", "checks running"],
+  );
+  world.clock = 1000 + 29_000;
+  await watcher.tick();
+  assert.equal(world.reads, 1);
+  world.snap = snapshot("sha1", "OPEN", run("lint", "SUCCESS"));
+  world.clock = 1000 + 30_000;
+  await watcher.tick(); // due at the fast pace; sees everything settled
+  assert.equal(world.reads, 2);
+  assert.deepEqual(
+    [watcher.status().mode, watcher.status().intervalSeconds],
+    ["slow", 300],
+  );
+  world.clock += 299_000;
+  await watcher.tick();
+  assert.equal(world.reads, 2);
+  world.clock += 1_000;
+  await watcher.tick();
+  assert.equal(world.reads, 3);
+});
+
+test("a changed interval takes effect on the next tick", async () => {
+  const { store, world, watcher } = setup();
+  await watcher.pass(); // settled, so slow: 300s
+  store.updateSettings({ slowSeconds: 60 });
+  world.clock += 60_000;
+  await watcher.tick();
+  assert.equal(world.reads, 2);
+});
+
+test("opening the panel checks at once, but not twice in a row", async () => {
+  const { world, watcher } = setup();
+  await watcher.pass();
+  world.clock += 60_000;
+  await watcher.notePresence(true); // back after being away
+  assert.equal(world.reads, 2);
+  assert.equal(watcher.status().reason, "panel open");
+  world.clock += 5_000;
+  await watcher.notePresence(true); // still open: no extra read
+  assert.equal(world.reads, 2);
+  await watcher.notePresence(false);
+  world.clock += 2_000;
+  await watcher.notePresence(true); // reopened seconds after a pass
+  assert.equal(world.reads, 2);
+});
+
+test("the hold time comes from the saved settings", async () => {
+  const { store, key, sent, world, watcher } = setup();
+  store.updateSettings({ holdSeconds: 0 });
+  world.snap = snapshot(
+    "sha1",
+    "OPEN",
+    run("lint", "FAILURE"),
+    run("test", null, "IN_PROGRESS"),
+  );
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+});
+
+test("settings are saved, clamped and survive a restart", () => {
+  const { store, file } = setup();
+  assert.equal(store.settings().fastSeconds, 30);
+  store.updateSettings({ fastSeconds: 3, mergeMethod: "rebase" });
+  const reloaded = new Store(file).settings();
+  assert.equal(reloaded.fastSeconds, 10);
+  assert.equal(reloaded.mergeMethod, "rebase");
+  assert.equal(reloaded.slowSeconds, 300);
+});
+
+test("setAutoMerge asks GitHub plainly, then names a method if it must", async () => {
+  const calls = [];
+  const queue = async (args) => void calls.push(args.join(" "));
+  await setAutoMerge("o/r", 7, true, "squash", queue);
+  await setAutoMerge("o/r", 7, false, "squash", queue);
+  assert.deepEqual(calls, [
+    "pr merge 7 -R o/r --auto",
+    "pr merge 7 -R o/r --disable-auto",
+  ]);
+
+  calls.length = 0;
+  const noQueue = async (args) => {
+    calls.push(args.join(" "));
+    if (!args.includes("--rebase"))
+      throw new Error(
+        "--merge, --rebase, or --squash required when not running interactively",
+      );
+  };
+  await setAutoMerge("o/r", 7, true, "rebase", noQueue);
+  assert.deepEqual(calls, [
+    "pr merge 7 -R o/r --auto",
+    "pr merge 7 -R o/r --auto --rebase",
+  ]);
+
+  await assert.rejects(
+    setAutoMerge("o/r", 7, true, "squash", async () => {
+      throw new Error(
+        "GraphQL: Pull request Pull request is a draft (enablePullRequestAutoMerge)",
+      );
+    }),
+    /Mark it ready for review first/,
+  );
 });

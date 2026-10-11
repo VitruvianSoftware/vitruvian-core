@@ -8,16 +8,38 @@ switch in Claude Code's desktop app.
 ## What it does
 
 - A background process, started by Antigravity when the plugin is enabled,
-  asks GitHub for the state of each watched pull request every 30 seconds.
+  asks GitHub for the state of each watched pull request. It checks every 30
+  seconds while a check is still running or the panel is open, and every 5
+  minutes once every watched pull request has settled.
 - When a check fails, the owning conversation gets one message naming the
   failing checks. It is told once per failing check per commit, never twice.
 - If one check fails while others in the same workflow are still running, it
   waits up to 5 minutes so the failures arrive in one message.
-- A side panel lists the watched pull requests with their check counts, and
-  has a switch per pull request to turn the wake-ups off.
+- A side panel lists the watched pull requests with their check counts. Each
+  has a switch for the wake-ups and a switch for GitHub's auto-merge.
+- Opening the panel after it was closed checks everything at once.
 
-It does not merge anything and does not read review comments. Those are
-planned, along with adjustable polling speeds.
+It does not read review comments or report merge conflicts yet.
+
+## Settings
+
+Open **Settings** at the bottom of the panel. Changes apply on the next tick,
+without restarting anything.
+
+| Setting | Default | Range |
+| --- | --- | --- |
+| Check every, while CI is running or the panel is open | 30 s | 10–600 s |
+| Check every, once all checks have settled | 300 s | 30–3600 s |
+| Wait for related checks before waking the agent | 300 s | 0–1800 s |
+| Auto-merge method, for repositories without a merge queue | squash | squash, merge, rebase |
+
+## Auto-merge
+
+The auto-merge switch turns GitHub's own auto-merge on or off for that pull
+request (`gh pr merge --auto`). GitHub does the merging, once the required
+checks and reviews are in; the plugin never merges anything itself. A
+repository with a merge queue decides how to merge, so the method setting only
+matters where there is none. Draft pull requests cannot auto-merge.
 
 ## Requirements
 
@@ -54,6 +76,7 @@ Watching only works while Antigravity is running.
 | `sidecars/panel/main.mjs` | Panel backend: HTTP routes, starts the watcher |
 | `sidecars/panel/lib/decide.mjs` | When to wake and when to wait (pure logic) |
 | `sidecars/panel/lib/watcher.mjs` | The polling loop |
+| `sidecars/panel/lib/pace.mjs` | How often to poll, and the settings limits (pure logic) |
 | `sidecars/panel/lib/github.mjs` | Reads pull requests through `gh` |
 | `sidecars/panel/lib/store.mjs` | The saved watch list |
 | `sidecars/panel/{index.html,app.js,styles.css}` | The side panel |

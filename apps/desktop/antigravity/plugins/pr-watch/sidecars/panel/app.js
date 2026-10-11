@@ -27,6 +27,7 @@ const sidecar = window.sidecar;
 const $ = (id) => document.getElementById(id);
 const FONT_KEY = "cowork-artifact-fontscale";
 const REDRAW_MS = 5000;
+const PRESENCE_MS = 10000;
 
 async function callApi(path, { method = "GET", body } = {}) {
   const res = await sidecar.fetch(path, {
@@ -119,6 +120,14 @@ function card(watch) {
   toggle.checked = watch.autoFix === true;
   toggle.disabled = watch.closed === true;
 
+  const merge = el("input", {
+    type: "checkbox",
+    onchange: (event) =>
+      act("/api/automerge", { key: watch.key, enabled: event.target.checked }),
+  });
+  merge.checked = watch.autoMerge === true;
+  merge.disabled = watch.closed === true;
+
   const mine =
     sidecar.conversationId && watch.conversationId === sidecar.conversationId;
   const lines = [
@@ -175,7 +184,17 @@ function card(watch) {
     el(
       "div",
       { class: "row spread" },
-      el("label", { class: "check" }, toggle, "Wake the agent when CI fails"),
+      el(
+        "div",
+        { class: "checks" },
+        el("label", { class: "check" }, toggle, "Wake the agent when CI fails"),
+        el(
+          "label",
+          { class: "check" },
+          merge,
+          "Auto-merge on GitHub when ready",
+        ),
+      ),
       el(
         "button",
         {
@@ -193,11 +212,16 @@ function render(state) {
   const watches = [...state.watches].sort((a, b) =>
     a.closed === b.closed ? b.addedAt - a.addedAt : a.closed ? 1 : -1,
   );
-  $("list").replaceChildren(...watches.map(card));
+  // Leave the rows alone while one of their controls has focus, so a redraw
+  // never takes a checkbox out from under the keyboard.
+  if (!$("list").contains(document.activeElement))
+    $("list").replaceChildren(...watches.map(card));
   $("empty").hidden = watches.length > 0;
   const open = watches.filter((w) => !w.closed).length;
+  const pace = state.pace;
   $("summary").textContent =
-    `${open} open · checked every ${state.pollSeconds}s while Antigravity is running`;
+    `${open} open · checking every ${pace.intervalSeconds}s (${pace.reason})`;
+  fillSettings(state);
 }
 
 async function load() {
@@ -208,14 +232,87 @@ async function load() {
   }
 }
 
+function notice(message) {
+  const box = $("notice");
+  box.textContent = message ?? "";
+  box.hidden = !message;
+}
+
 async function act(path, body) {
+  notice(null);
   try {
     await callApi(path, { method: "POST", body });
   } catch (err) {
-    $("summary").textContent = err.message;
+    notice(err.message);
   }
   await load();
 }
+
+// --- Settings ---------------------------------------------------------------
+
+const FIELDS = ["fastSeconds", "slowSeconds", "holdSeconds"];
+let settingsFilled = false;
+
+// Fills the form once, and again after a save, so a redraw never overwrites
+// what the user is typing.
+function fillSettings(state) {
+  if (settingsFilled) return;
+  for (const name of FIELDS) {
+    const input = $(name);
+    const [min, max] = state.limits[name];
+    input.min = min;
+    input.max = max;
+    input.value = state.settings[name];
+  }
+  $("mergeMethod").replaceChildren(
+    ...state.mergeMethods.map((method) =>
+      el("option", { value: method }, method),
+    ),
+  );
+  $("mergeMethod").value = state.settings.mergeMethod;
+  settingsFilled = true;
+}
+
+$("settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const saved = $("settings-saved");
+  const body = { mergeMethod: $("mergeMethod").value };
+  for (const name of FIELDS) {
+    const input = $(name);
+    if (input.value.trim() === "" || !input.checkValidity()) {
+      saved.textContent = `Enter a whole number from ${input.min} to ${input.max}`;
+      saved.className = "error small";
+      input.focus();
+      return;
+    }
+    body[name] = Number(input.value);
+  }
+  try {
+    await callApi("/api/settings", { method: "POST", body });
+    saved.textContent = "Saved";
+    saved.className = "muted small";
+  } catch (err) {
+    saved.textContent = err.message;
+    saved.className = "error small";
+  }
+  settingsFilled = false;
+  await load();
+});
+
+// --- Presence ---------------------------------------------------------------
+
+// Tells the watcher whether this panel is showing, so it polls at the fast
+// pace while someone is looking and re-checks at once when they come back.
+function reportPresence() {
+  const visible = document.visibilityState === "visible";
+  callApi("/api/presence", { method: "POST", body: { visible } })
+    .then(() => (visible ? load() : undefined))
+    .catch(() => undefined);
+}
+document.addEventListener("visibilitychange", reportPresence);
+setInterval(() => {
+  if (document.visibilityState === "visible") reportPresence();
+}, PRESENCE_MS);
 
 // --- Adding a pull request --------------------------------------------------
 
@@ -256,4 +353,5 @@ $("add-ref").addEventListener("input", () => {
 $("refresh").addEventListener("click", () => act("/api/refresh", {}));
 
 load();
+reportPresence();
 setInterval(load, REDRAW_MS);

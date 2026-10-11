@@ -39,11 +39,30 @@
       <p id="add-error" class="error small" role="alert" hidden></p>
     </section>
 
+    <p id="notice" class="error small" role="alert" hidden></p>
+
     <section aria-labelledby="list-title">
       <h2 id="list-title" class="sr-only">Watched pull requests</h2>
       <div id="list"></div>
       <p id="empty" class="muted" hidden>Nothing is being watched yet.</p>
     </section>
+    <details class="card">
+      <summary>Settings</summary>
+      <form id="settings-form" class="settings" novalidate>
+        <label for="fastSeconds">Check every (seconds) while CI is running or this panel is open</label>
+        <input id="fastSeconds" type="number" step="1" required>
+        <label for="slowSeconds">Check every (seconds) once all checks have settled</label>
+        <input id="slowSeconds" type="number" step="1" required>
+        <label for="holdSeconds">Wait up to (seconds) for related checks before waking the agent</label>
+        <input id="holdSeconds" type="number" step="1" required>
+        <label for="mergeMethod">Auto-merge method, for repositories without a merge queue</label>
+        <select id="mergeMethod"></select>
+        <div class="row">
+          <button type="submit">Save</button>
+          <span id="settings-saved" class="muted small" role="status"></span>
+        </div>
+      </form>
+    </details>
   </main>
 
   <script src="/app.js"></script>
