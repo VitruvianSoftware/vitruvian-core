@@ -472,6 +472,16 @@ MUTATIONS = [
      "            transport.kill()\n",
      "",
      "and one second later it is killed"),
+    ("a flood is put up with for ever", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "        if busySeconds + 1 >= limits.floodSeconds { fail(.flood) }\n",
+     "",
+     "more than 200 messages a second for five seconds in a row is a flood, and stops the tool"),
+    ("the app works for a tool that is over its limit", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "        guard !tooMany else {\n            write(.failure(id: id, error: RefusalCode.unavailable.error()))\n            return\n        }\n",
+     "",
+     "past the limit for a second, what a tool asks is refused as not available and nothing is done"),
 ]
 
 

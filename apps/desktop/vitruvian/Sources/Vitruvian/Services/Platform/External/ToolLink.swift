@@ -124,6 +124,14 @@ package final class ToolLink {
     private var step = 0
     private var stepTimer: (any ToolTimer)?
 
+    // The second being counted, how many lines it has had, and how many
+    // seconds before it, in a row, had too many.
+    private var secondStart: TimeInterval = 0
+    private var linesThisSecond = 0
+    private var busySeconds = 0
+    /// When each recent line that was not a message arrived.
+    private var junk: [TimeInterval] = []
+
     package init(transport: any ToolTransport, clock: any ToolClock, limits: ToolLimits = .standard,
                  hello: InitializeParams, serve: @escaping Serve, events: Events) {
         self.transport = transport
@@ -140,6 +148,7 @@ package final class ToolLink {
     package func start() {
         guard state == .idle else { return }
         state = .starting
+        secondStart = clock.now
         let started = transport.start(
             onItems: { [weak self] items in self?.receive(items) },
             onErrorOutput: { [weak self] bytes in
@@ -227,17 +236,19 @@ package final class ToolLink {
     private func receive(_ items: [ToolInbound]) {
         for item in items {
             guard state == .starting || state == .ready else { return }
+            let tooMany = countLine()
+            guard state == .starting || state == .ready else { return }
             switch item {
-            case .tooLong, .notAMessage:
-                // Dropped and counted. What each costs a tool comes with
-                // the limits.
+            case .tooLong:
+                fail(.lineTooLong)
+            case .notAMessage:
                 drop()
             case .message(.result(let id, let value)):
                 answered(id, .success(value))
             case .message(.failure(let id, let error)):
                 if let id { answered(id, .failure(.refused(error))) } else { drop() }
             case .message(.request(let id, let method, let params)):
-                asked(id, method, params)
+                asked(id, method, params, tooMany: tooMany)
             case .message(.notice(let method, let params)):
                 told(method, params)
             }
@@ -255,7 +266,7 @@ package final class ToolLink {
         }
     }
 
-    private func asked(_ id: RPCID, _ name: String, _ params: JSONValue?) {
+    private func asked(_ id: RPCID, _ name: String, _ params: JSONValue?, tooMany: Bool) {
         // Until the greeting is done, neither side says anything else.
         guard state == .ready else {
             fail(.badHandshake)
@@ -269,6 +280,12 @@ package final class ToolLink {
         guard !serving.contains(id) else {
             write(.failure(id: id, error: RPCErrorObject(code: RPCErrorCode.invalidRequest,
                                                          message: "this id is still being answered")))
+            return
+        }
+        // Over the limit for this second: the tool is answered, and the app
+        // does no work for it.
+        guard !tooMany else {
+            write(.failure(id: id, error: RefusalCode.unavailable.error()))
             return
         }
         serving.insert(id)
@@ -310,11 +327,33 @@ package final class ToolLink {
         }
     }
 
-    // MARK: - Counting
+    // MARK: - Limits
+
+    /// Counts one line against the second it arrived in. True when that
+    /// second has had too many. Enough such seconds in a row is a flood.
+    private func countLine() -> Bool {
+        let now = clock.now
+        let elapsed = now - secondStart
+        if elapsed >= 1 {
+            // The second that just closed was busy or not; a second with
+            // nothing in it breaks the run.
+            let wasBusy = linesThisSecond > limits.messagesPerSecond
+            busySeconds = wasBusy && elapsed < 2 ? busySeconds + 1 : 0
+            secondStart = elapsed < 2 ? secondStart + 1 : now
+            linesThisSecond = 0
+        }
+        linesThisSecond += 1
+        guard linesThisSecond > limits.messagesPerSecond else { return false }
+        if busySeconds + 1 >= limits.floodSeconds { fail(.flood) }
+        return true
+    }
 
     /// Drops something that made no sense, and counts it.
     private func drop() {
         dropped += 1
+        let now = clock.now
+        junk = junk.filter { now - $0 < limits.junkWindow } + [now]
+        if junk.count >= limits.junkLines { fail(.notMessages) }
     }
 
     // MARK: - Writing

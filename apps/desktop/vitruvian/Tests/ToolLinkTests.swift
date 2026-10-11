@@ -18,6 +18,7 @@ enum ToolLinkTests {
         notices(suite)
         goodbye(suite)
         endings(suite)
+        limits(suite)
     }
 
     /// A link, its tool and its clock, and everything the link reported.
@@ -353,5 +354,67 @@ enum ToolLinkTests {
         asked.link.shutdown()
         asked.tool.ends(0)
         suite.expect(asked.ends == [.stopped], "a tool the app asked to stop was stopped, whatever else it did")
+    }
+
+    static func limits(_ suite: TestSuite) {
+        let long = Bench.ready()
+        long.tool.exitsOnTerminate = 15
+        long.tool.writes(Data(repeating: 0x78, count: WireLimits.maxLineBytes + 1))
+        suite.expect(long.ends == [.misbehaved(.lineTooLong)] && long.tool.inputClosed
+                         && long.tool.signals == ["terminate"],
+                     "a line over 1 MB stops the tool, before its line break ever comes")
+
+        let junk = Bench.ready()
+        junk.tool.exitsOnTerminate = 15
+        for _ in 0..<19 { junk.tool.says("not a message") }
+        suite.expect(junk.link.state == .ready && junk.link.dropped == 19,
+                     "a line that is not a message is dropped and counted, and the link carries on")
+        junk.tool.says("not a message")
+        suite.expect(junk.ends == [.misbehaved(.notMessages)], "twenty of them within a minute stop the tool")
+
+        let slow = Bench.ready()
+        for _ in 0..<19 { slow.tool.says("not a message") }
+        slow.clock.advance(by: 60)
+        for _ in 0..<19 { slow.tool.says(#"{"jsonrpc":"2.0","id":99,"result":{}}"#) }
+        suite.expect(slow.link.state == .ready && slow.link.dropped == 38,
+                     "nineteen a minute, lines or answers to nothing, is put up with for as long as it lasts")
+
+        let note = #"{"jsonrpc":"2.0","method":"log","params":{"message":"x"}}"#
+        let flood = Bench.ready()
+        flood.tool.exitsOnTerminate = 15
+        for _ in 0..<4 {
+            for _ in 0..<201 { flood.tool.says(note) }
+            flood.clock.advance(by: 1)
+        }
+        for _ in 0..<200 { flood.tool.says(note) }
+        suite.expect(flood.link.state == .ready && flood.ends.isEmpty,
+                     "four seconds of more than 200 messages, and a fifth of exactly 200, are put up with")
+        flood.tool.says(note)
+        suite.expect(flood.ends == [.misbehaved(.flood)] && flood.tool.signals == ["terminate"],
+                     "more than 200 messages a second for five seconds in a row is a flood, and stops the tool")
+
+        let bursty = Bench.ready()
+        for _ in 0..<3 {
+            for _ in 0..<4 {
+                for _ in 0..<201 { bursty.tool.says(note) }
+                bursty.clock.advance(by: 1)
+            }
+            bursty.clock.advance(by: 1)
+        }
+        suite.expect(bursty.link.state == .ready && bursty.ends.isEmpty,
+                     "a quiet second breaks the run: bursts of four busy seconds are not a flood")
+
+        var few = ToolLimits()
+        few.messagesPerSecond = 10
+        let greedy = Bench.ready(limits: few)
+        greedy.clock.advance(by: 1)
+        for id in 0..<15 { greedy.tool.says(#"{"jsonrpc":"2.0","id":\#(id),"method":"notify/beep"}"#) }
+        suite.expect(greedy.served.count == 10
+                         && greedy.tool.sent.suffix(5)
+                         == (10..<15).map { .failure(id: .number($0), error: error(-32004, "not available right now")) },
+                     "past the limit for a second, what a tool asks is refused as not available and nothing is done")
+        greedy.clock.advance(by: 1)
+        greedy.tool.says(#"{"jsonrpc":"2.0","id":15,"method":"notify/beep"}"#)
+        suite.expect(greedy.served.count == 11, "the next second starts afresh")
     }
 }
