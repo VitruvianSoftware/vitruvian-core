@@ -15,7 +15,8 @@ flowchart LR
     end
     panel <-- "watch list, switches" --> watcher
     watcher -- "gh pr view, every 30s or 5 min" --> github["GitHub"]
-    watcher -- "message on a new failure" --> conv
+    watcher -- "message when something needs attention" --> conv
+    conv -- "hook: ran gh pr create" --> watcher
     conv -- "pushes a fix" --> github
 ```
 
@@ -50,6 +51,30 @@ The rules follow what Claude Code's desktop auto-fix does.
 | The message could not be delivered | Tried again on the next pass |
 | The pull request is merged or closed | Watching stops |
 | GitHub cannot be read | Retried less and less often, down to every 16th pass |
+
+Merge conflicts and review comments follow the same idea:
+
+| Situation | What happens |
+| --- | --- |
+| The pull request starts conflicting with its base | One message asking the agent to merge the base in |
+| It still conflicts on the same commit | Up to three reminders, after 30, 60 and 120 minutes |
+| A push leaves the conflict in place | Told again |
+| GitHub has not worked out mergeability yet | Nothing changes |
+| A collaborator or bot leaves a new comment or review | Passed on, quoted |
+| A comment from you, or from someone outside the repository | Never passed on |
+| Comments that existed before watching began | Not passed on |
+
+Everything that needs attention on one pass goes into one message.
+
+## Automatic sign-up
+
+Antigravity runs `hooks/note-pr-create.sh` after every shell command an
+agent runs. For anything but `gh pr create` it does nothing. For that command
+it leaves a note in the watcher's data folder; the watcher looks up the pull
+request for the branch in the folder the command ran in, and starts watching
+it for the conversation that ran the command. It never takes over a pull
+request that is already watched. The hook only ever answers `{}`, so it
+cannot allow, block or change a command.
 
 The message arrives in the conversation as a system notice, not as something
 the user typed. It says it comes from pr-watch, lists the failing checks with

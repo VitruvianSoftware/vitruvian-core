@@ -24,7 +24,14 @@
 
 // The polling loop. All I/O is injected, so the loop itself is unit tested.
 
-import { countChecks, decide, emptyState, wakeMessage } from "./decide.mjs";
+import { countChecks, decide, emptyState } from "./decide.mjs";
+import { NOTE_TTL_MS, parseNote } from "./inbox.mjs";
+import {
+  composeMessage,
+  decideConflict,
+  decideFeedback,
+  messageTitle,
+} from "./notices.mjs";
 import {
   RETURN_FLOOR_MS,
   intervalMs,
@@ -41,6 +48,9 @@ const MAX_BACKOFF_PASSES = 16;
 export class Watcher {
   #store;
   #fetchPr;
+  #fetchFeedback;
+  #resolvePr;
+  #inbox;
   #sendMessage;
   #now;
   #pass = 0;
@@ -49,9 +59,20 @@ export class Watcher {
   #lastPassAt = 0;
   #panelSeenAt = 0;
 
-  constructor({ store, fetchPr, sendMessage, now = Date.now }) {
+  constructor({
+    store,
+    fetchPr,
+    fetchFeedback = async () => [],
+    resolvePr = null,
+    inbox = null,
+    sendMessage,
+    now = Date.now,
+  }) {
     this.#store = store;
     this.#fetchPr = fetchPr;
+    this.#fetchFeedback = fetchFeedback;
+    this.#resolvePr = resolvePr;
+    this.#inbox = inbox;
     this.#sendMessage = sendMessage;
     this.#now = now;
   }
@@ -68,8 +89,49 @@ export class Watcher {
     this.#timer = null;
   }
 
+  // Starts watching the pull requests agents have just opened, from the
+  // notes the sign-up hook leaves. A note whose pull request cannot be found
+  // yet is kept and tried again until it is too old.
+  async signUp() {
+    if (!this.#inbox || !this.#resolvePr) return;
+    const enabled = this.#store.settings().autoWatch;
+    for (const note of this.#inbox.list()) {
+      const parsed = enabled ? parseNote(note.text) : null;
+      if (!parsed) {
+        this.#inbox.remove(note.file);
+        continue;
+      }
+      let snap;
+      try {
+        snap = await this.#resolvePr("", parsed.cwd);
+      } catch {
+        if (this.#now() - note.at > NOTE_TTL_MS) this.#inbox.remove(note.file);
+        continue;
+      }
+      this.#inbox.remove(note.file);
+      if (snap.state !== "OPEN") continue;
+      const key = `${snap.repo.toLowerCase()}#${snap.number}`;
+      // Never take over a pull request someone is already watching.
+      if (this.#store.get(key)) continue;
+      this.#store.put({
+        key,
+        repo: snap.repo,
+        number: snap.number,
+        conversationId: parsed.conversationId,
+        autoFix: true,
+        comments: true,
+        addedAt: this.#now(),
+        addedBy: "hook",
+        closed: false,
+        readFailures: 0,
+      });
+      await this.check(key);
+    }
+  }
+
   // Runs a pass if one is due at the current pace.
   async tick() {
+    await this.signUp();
     const { mode } = this.status();
     const due = passDue({
       now: this.#now(),
@@ -167,44 +229,78 @@ export class Watcher {
       checkedAt: now,
     };
 
-    if (next.closed || !watch.autoFix) {
-      // Status only. Turning auto-fix on later reports whatever is failing
-      // at that point.
+    if (next.closed) {
       this.#store.put(next);
       return;
     }
 
-    const { wake, state } = decide(watch.decision ?? emptyState(), snap, now, {
-      holdMs: this.#store.settings().holdSeconds * 1000,
-    });
-    if (wake.length === 0) {
-      this.#store.put({ ...next, decision: state });
+    // Failing checks and merge conflicts share the auto-fix switch.
+    let failing = [];
+    let conflict = null;
+    if (watch.autoFix) {
+      const ci = decide(watch.decision ?? emptyState(), snap, now, {
+        holdMs: this.#store.settings().holdSeconds * 1000,
+      });
+      failing = ci.wake;
+      next.decision = ci.state;
+      const merge = decideConflict(watch.conflict ?? null, snap, now);
+      conflict = merge.notice;
+      next.conflict = merge.state;
+    }
+    next.conflicting = snap.mergeable === "CONFLICTING";
+
+    // Review feedback has its own switch. A failed read only costs this
+    // pass: the same feedback is still new on the next one.
+    let feedback = [];
+    if (watch.comments) {
+      try {
+        const items = await this.#fetchFeedback(watch.repo, watch.number);
+        const seen = decideFeedback(watch.seenFeedback, items);
+        feedback = seen.fresh;
+        next.seenFeedback = seen.seen;
+      } catch (err) {
+        next.lastError = `Could not read review comments: ${err.message}`;
+      }
+    }
+
+    if (failing.length === 0 && !conflict && feedback.length === 0) {
+      this.#store.put(next);
       return;
     }
 
+    const parts = { failing, conflict, feedback };
     try {
       await this.#sendMessage(
         watch.conversationId,
-        wakeMessage({ ...snap }, wake),
-        {
-          title: `CI failing on ${snap.repo}#${snap.number}`,
-        },
+        composeMessage(snap, parts),
+        { title: messageTitle(snap, parts) },
       );
     } catch (err) {
-      // Not delivered: leave the decision state as it was so the next pass
-      // tries again.
+      // Not delivered: keep what was decided before this pass so the next
+      // one tries again.
       this.#store.put({
         ...next,
+        decision: watch.decision,
+        conflict: watch.conflict,
+        seenFeedback: watch.seenFeedback,
         lastError: `Could not wake the conversation: ${err.message}`,
       });
       return;
     }
+    const about = [
+      ...failing.map((c) => c.name),
+      ...(conflict ? ["merge conflicts"] : []),
+      ...(feedback.length > 0
+        ? [
+            `${feedback.length} review comment${feedback.length === 1 ? "" : "s"}`,
+          ]
+        : []),
+    ];
     this.#store.put({
       ...next,
-      decision: state,
       wakes: (watch.wakes ?? 0) + 1,
       lastWakeAt: now,
-      lastWakeChecks: wake.map((c) => c.name),
+      lastWakeChecks: about,
     });
   }
 }

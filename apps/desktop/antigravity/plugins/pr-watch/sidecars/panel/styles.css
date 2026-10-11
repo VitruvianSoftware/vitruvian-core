@@ -124,3 +124,4 @@ input[type="number"], select {
   width: 100%;
   box-sizing: border-box;
 }
+.settings input[type="checkbox"] { justify-self: start; }

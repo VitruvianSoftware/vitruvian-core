@@ -21,13 +21,14 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
 import { normaliseChecks } from "./decide.mjs";
 import { parsePrUrl, setAutoMerge } from "./github.mjs";
+import { Inbox, NOTE_TTL_MS, parseNote } from "./inbox.mjs";
 import { Store, watchKey } from "./store.mjs";
 import { Watcher } from "./watcher.mjs";
 
@@ -51,11 +52,18 @@ const snapshot = (headSha, state, ...raw) => ({
   checks: normaliseChecks(raw),
 });
 
-function setup({ autoFix = true } = {}) {
+function setup({ autoFix = true, comments = false } = {}) {
   const file = join(mkdtempSync(join(tmpdir(), "pr-watch-")), "watches.json");
   const store = new Store(file);
   const key = watchKey("o/r", 7);
-  store.put({ key, repo: "o/r", number: 7, conversationId: "conv-1", autoFix });
+  store.put({
+    key,
+    repo: "o/r",
+    number: 7,
+    conversationId: "conv-1",
+    autoFix,
+    comments,
+  });
   const sent = [];
   const world = {
     snap: snapshot("sha1", "OPEN", run("lint", "SUCCESS")),
@@ -63,6 +71,8 @@ function setup({ autoFix = true } = {}) {
     failRead: false,
     clock: 1000,
     reads: 0,
+    feedback: [],
+    failFeedback: false,
   };
   const watcher = new Watcher({
     store,
@@ -71,6 +81,10 @@ function setup({ autoFix = true } = {}) {
       world.reads += 1;
       if (world.failRead) throw new Error("boom");
       return world.snap;
+    },
+    fetchFeedback: async () => {
+      if (world.failFeedback) throw new Error("graphql down");
+      return world.feedback;
     },
     sendMessage: async (conversationId, message, opts) => {
       if (world.failSend) throw new Error("offline");
@@ -267,4 +281,210 @@ test("setAutoMerge asks GitHub plainly, then names a method if it must", async (
     }),
     /Mark it ready for review first/,
   );
+});
+
+const conflicting = (headSha) => ({
+  ...snapshot(headSha, "OPEN", run("lint", "SUCCESS")),
+  mergeable: "CONFLICTING",
+  base: "main",
+});
+
+test("a merge conflict wakes once, and again only after a push that keeps it", async () => {
+  const { store, key, sent, world, watcher } = setup();
+  world.snap = conflicting("sha1");
+  await watcher.check(key);
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.match(
+    sent[0].message,
+    /now has merge conflicts with its base branch `main`/,
+  );
+  assert.equal(sent[0].opts.title, "o/r#7: merge conflicts");
+  assert.equal(store.get(key).conflicting, true);
+
+  world.snap = conflicting("sha2");
+  await watcher.check(key);
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].message, /still has merge conflicts/);
+
+  world.snap = snapshot("sha3", "OPEN", run("lint", "SUCCESS"));
+  await watcher.check(key);
+  assert.equal(sent.length, 2);
+  assert.equal(store.get(key).conflicting, false);
+  assert.equal(store.get(key).conflict, null);
+});
+
+test("an undelivered conflict notice is sent again, not lost", async () => {
+  const { key, sent, world, watcher } = setup();
+  world.snap = conflicting("sha1");
+  world.failSend = true;
+  await watcher.check(key);
+  world.failSend = false;
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /now has merge conflicts/);
+});
+
+test("review feedback: stock-take first, then only new comments", async () => {
+  const { store, key, sent, world, watcher } = setup({ comments: true });
+  const item = (n) => ({
+    id: `comment:${n}`,
+    kind: "comment",
+    author: "alice",
+    body: `note ${n}`,
+    url: "u",
+  });
+  world.feedback = [item(1)];
+  await watcher.check(key); // comment 1 was already there
+  assert.equal(sent.length, 0);
+
+  world.feedback = [item(1), item(2)];
+  await watcher.check(key);
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /note 2/);
+  assert.doesNotMatch(sent[0].message, /note 1/);
+  assert.deepEqual(store.get(key).lastWakeChecks, ["1 review comment"]);
+});
+
+test("review feedback is not read when its switch is off", async () => {
+  const { key, sent, world, watcher } = setup({ comments: false });
+  world.failFeedback = true; // would surface as an error if it were read
+  await watcher.check(key);
+  assert.equal(sent.length, 0);
+});
+
+test("a failed feedback read is reported and does not block CI wakes", async () => {
+  const { store, key, sent, world, watcher } = setup({ comments: true });
+  world.failFeedback = true;
+  world.snap = snapshot("sha1", "OPEN", run("lint", "FAILURE"));
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /- lint/);
+  assert.match(store.get(key).lastError, /Could not read review comments/);
+});
+
+test("with auto-fix off, comments can still be forwarded but conflicts are not", async () => {
+  const { key, sent, world, watcher } = setup({
+    autoFix: false,
+    comments: true,
+  });
+  world.snap = conflicting("sha1");
+  world.feedback = [];
+  await watcher.check(key);
+  world.feedback = [
+    { id: "comment:9", kind: "comment", author: "alice", body: "hi", url: "u" },
+  ];
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.doesNotMatch(sent[0].message, /merge conflicts/);
+});
+
+const note = (command, extra = {}) =>
+  JSON.stringify({
+    conversationId: "conv-9",
+    error: "",
+    toolCall: {
+      name: "run_command",
+      args: { CommandLine: command, Cwd: "/work/repo" },
+    },
+    workspacePaths: ["/work/repo"],
+    ...extra,
+  });
+
+test("parseNote accepts a successful gh pr create and nothing else", () => {
+  assert.deepEqual(parseNote(note("gh pr create --fill")), {
+    conversationId: "conv-9",
+    cwd: "/work/repo",
+  });
+  assert.deepEqual(parseNote(note("git push && gh pr create --draft")), {
+    conversationId: "conv-9",
+    cwd: "/work/repo",
+  });
+  assert.equal(parseNote(note("echo gh pr created")), null);
+  assert.equal(parseNote(note("gh pr view")), null);
+  assert.equal(
+    parseNote(note("gh pr create", { error: "exit status 1" })),
+    null,
+  );
+  assert.equal(parseNote(note("gh pr create", { conversationId: "" })), null);
+  assert.equal(parseNote("not json"), null);
+});
+
+function signUpWorld() {
+  const dir = mkdtempSync(join(tmpdir(), "pr-watch-inbox-"));
+  const inboxDir = join(dir, "inbox");
+  mkdirSync(inboxDir);
+  const store = new Store(join(dir, "watches.json"));
+  const world = { clock: Date.now(), found: true, state: "OPEN", lookedIn: [] };
+  const watcher = new Watcher({
+    store,
+    inbox: new Inbox(inboxDir),
+    now: () => world.clock,
+    fetchPr: async () => snapshot("sha1", world.state, run("lint", "SUCCESS")),
+    resolvePr: async (ref, cwd) => {
+      world.lookedIn.push(cwd);
+      if (!world.found) throw new Error("no pull requests found");
+      return snapshot("sha1", world.state, run("lint", "SUCCESS"));
+    },
+    sendMessage: async () => undefined,
+  });
+  const drop = (name, text) => writeFileSync(join(inboxDir, name), text);
+  return { store, world, watcher, drop, inbox: new Inbox(inboxDir), inboxDir };
+}
+
+test("a note from the hook starts a watch for the conversation that opened the PR", async () => {
+  const { store, world, watcher, drop, inbox } = signUpWorld();
+  drop("1.json", note("gh pr create --fill"));
+  await watcher.signUp();
+  const watch = store.get(watchKey("o/r", 7));
+  assert.equal(watch.conversationId, "conv-9");
+  assert.equal(watch.addedBy, "hook");
+  assert.equal(watch.autoFix, true);
+  assert.deepEqual(world.lookedIn, ["/work/repo"]);
+  assert.equal(inbox.list().length, 0);
+});
+
+test("a note never takes over a pull request that is already watched", async () => {
+  const { store, watcher, drop } = signUpWorld();
+  store.put({
+    key: watchKey("o/r", 7),
+    repo: "o/r",
+    number: 7,
+    conversationId: "mine",
+    autoFix: false,
+  });
+  drop("1.json", note("gh pr create"));
+  await watcher.signUp();
+  assert.equal(store.get(watchKey("o/r", 7)).conversationId, "mine");
+});
+
+test("a note is retried until the pull request shows up, then given up on", async () => {
+  const { store, world, watcher, drop, inbox, inboxDir } = signUpWorld();
+  drop("1.json", note("gh pr create"));
+  world.found = false;
+  await watcher.signUp();
+  assert.equal(inbox.list().length, 1);
+  world.found = true;
+  await watcher.signUp();
+  assert.ok(store.get(watchKey("o/r", 7)));
+
+  drop("2.json", note("gh pr create"));
+  const old = new Date(world.clock - NOTE_TTL_MS - 1000);
+  utimesSync(join(inboxDir, "2.json"), old, old);
+  world.found = false;
+  await watcher.signUp();
+  assert.equal(inbox.list().length, 0);
+});
+
+test("notes are discarded when automatic watching is switched off, or are not PR creations", async () => {
+  const { store, watcher, drop, inbox } = signUpWorld();
+  drop("1.json", note("ls"));
+  await watcher.signUp();
+  assert.equal(inbox.list().length, 0);
+  store.updateSettings({ autoWatch: false });
+  drop("2.json", note("gh pr create"));
+  await watcher.signUp();
+  assert.equal(inbox.list().length, 0);
+  assert.equal(store.list().length, 0);
 });

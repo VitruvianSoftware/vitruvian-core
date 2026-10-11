@@ -30,7 +30,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Response, SidecarApp } from "sidecar_sdk";
 
-import { fetchPr, resolvePr, setAutoMerge } from "./lib/github.mjs";
+import {
+  fetchFeedback,
+  fetchPr,
+  resolvePr,
+  setAutoMerge,
+} from "./lib/github.mjs";
+import { Inbox } from "./lib/inbox.mjs";
 import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
 import { Store, watchKey } from "./lib/store.mjs";
 import { Watcher } from "./lib/watcher.mjs";
@@ -44,6 +50,10 @@ const store = new Store(join(DATA_DIR, "watches.json"));
 const watcher = new Watcher({
   store,
   fetchPr,
+  fetchFeedback,
+  resolvePr,
+  // Where hooks/note-pr-create.sh leaves its notes.
+  inbox: new Inbox(join(DATA_DIR, "inbox")),
   sendMessage: async (conversationId, message, opts) =>
     app.sendMessage(conversationId, message, opts),
 });
@@ -83,7 +93,8 @@ app.api("/api/presence", async (data) => {
   return { pace: watcher.status() };
 });
 
-// POST /api/settings {fastSeconds?, slowSeconds?, holdSeconds?, mergeMethod?}
+// POST /api/settings {fastSeconds?, slowSeconds?, holdSeconds?, mergeMethod?,
+// autoWatch?}
 // Out-of-range values are clamped; the reply is what was actually stored.
 app.api("/api/settings", (data) => ({
   settings: store.updateSettings(data),
@@ -138,6 +149,7 @@ app.api("/api/watch", async (data) => {
     number: snap.number,
     conversationId,
     autoFix: existing?.autoFix ?? true,
+    comments: existing?.comments ?? true,
     addedAt: existing?.addedAt ?? Date.now(),
     closed: false,
     readFailures: 0,
@@ -152,6 +164,18 @@ app.api("/api/autofix", async (data) => {
   if (!watch) return fail("That pull request is not being watched", 404);
   store.put({ ...watch, autoFix: data.enabled === true });
   if (data.enabled === true) await watcher.check(watch.key);
+  return { watch: store.get(watch.key) };
+});
+
+// POST /api/comments {key, enabled}: forward new review feedback or not.
+// Turning it on takes stock again, so comments written while it was off are
+// not all sent at once.
+app.api("/api/comments", async (data) => {
+  const watch = store.get(String(data.key ?? ""));
+  if (!watch) return fail("That pull request is not being watched", 404);
+  const enabled = data.enabled === true;
+  store.put({ ...watch, comments: enabled, seenFeedback: undefined });
+  if (enabled) await watcher.check(watch.key);
   return { watch: store.get(watch.key) };
 });
 

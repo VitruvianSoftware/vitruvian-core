@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   slowSeconds: 300,
   holdSeconds: 300,
   mergeMethod: "squash",
+  autoWatch: true,
 });
 
 export const LIMITS = Object.freeze({
@@ -80,7 +81,8 @@ export function cleanSettings(input = {}, base = DEFAULT_SETTINGS) {
   const mergeMethod = MERGE_METHODS.includes(merged.mergeMethod)
     ? merged.mergeMethod
     : DEFAULT_SETTINGS.mergeMethod;
-  return { fastSeconds, slowSeconds, holdSeconds, mergeMethod };
+  const autoWatch = merged.autoWatch !== false;
+  return { fastSeconds, slowSeconds, holdSeconds, mergeMethod, autoWatch };
 }
 
 export function panelOpen(panelSeenAt, now) {

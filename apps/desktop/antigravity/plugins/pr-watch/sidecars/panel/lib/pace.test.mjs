@@ -44,6 +44,12 @@ test("cleanSettings falls back to defaults and clamps to limits", () => {
   assert.equal(cleanSettings({ holdSeconds: 0 }).holdSeconds, 0);
   assert.equal(cleanSettings({ mergeMethod: "yolo" }).mergeMethod, "squash");
   assert.equal(cleanSettings({ mergeMethod: "rebase" }).mergeMethod, "rebase");
+  assert.equal(cleanSettings().autoWatch, true);
+  assert.equal(cleanSettings({ autoWatch: false }).autoWatch, false);
+  assert.equal(
+    cleanSettings({ fastSeconds: 20 }, { autoWatch: false }).autoWatch,
+    false,
+  );
 });
 
 test("the slow interval is never shorter than the fast one", () => {

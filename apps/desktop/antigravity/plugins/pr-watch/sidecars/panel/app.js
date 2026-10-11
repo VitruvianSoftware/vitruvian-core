@@ -85,6 +85,7 @@ function statusOf(watch) {
   if (watch.prState === "MERGED") return { text: "Merged", tone: "done" };
   if (watch.closed) return { text: "Closed", tone: "done" };
   if (!watch.counts) return { text: "Not read yet", tone: "wait" };
+  if (watch.conflicting) return { text: "Conflicts", tone: "bad" };
   if (watch.counts.fail > 0) return { text: "Failing", tone: "bad" };
   if (watch.counts.pending > 0) return { text: "Running", tone: "run" };
   return { text: "Passing", tone: "good" };
@@ -128,13 +129,21 @@ function card(watch) {
   merge.checked = watch.autoMerge === true;
   merge.disabled = watch.closed === true;
 
+  const comments = el("input", {
+    type: "checkbox",
+    onchange: (event) =>
+      act("/api/comments", { key: watch.key, enabled: event.target.checked }),
+  });
+  comments.checked = watch.comments === true;
+  comments.disabled = watch.closed === true;
+
   const mine =
     sidecar.conversationId && watch.conversationId === sidecar.conversationId;
   const lines = [
     el(
       "p",
       { class: "muted small" },
-      `Checked ${ago(watch.checkedAt)} · wakes ${mine ? "this conversation" : "another conversation"}`,
+      `Checked ${ago(watch.checkedAt)} · wakes ${mine ? "this conversation" : "another conversation"}${watch.addedBy === "hook" ? " · added automatically" : ""}`,
     ),
   ];
   if (watch.failing?.length)
@@ -187,7 +196,18 @@ function card(watch) {
       el(
         "div",
         { class: "checks" },
-        el("label", { class: "check" }, toggle, "Wake the agent when CI fails"),
+        el(
+          "label",
+          { class: "check" },
+          toggle,
+          "Wake the agent when CI fails or the branch conflicts",
+        ),
+        el(
+          "label",
+          { class: "check" },
+          comments,
+          "Tell the agent about new review comments",
+        ),
         el(
           "label",
           { class: "check" },
@@ -270,13 +290,17 @@ function fillSettings(state) {
     ),
   );
   $("mergeMethod").value = state.settings.mergeMethod;
+  $("autoWatch").checked = state.settings.autoWatch;
   settingsFilled = true;
 }
 
 $("settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const saved = $("settings-saved");
-  const body = { mergeMethod: $("mergeMethod").value };
+  const body = {
+    mergeMethod: $("mergeMethod").value,
+    autoWatch: $("autoWatch").checked,
+  };
   for (const name of FIELDS) {
     const input = $(name);
     if (input.value.trim() === "" || !input.checkValidity()) {

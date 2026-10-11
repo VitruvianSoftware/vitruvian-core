@@ -26,9 +26,10 @@
 import { execFile } from "node:child_process";
 
 import { normaliseChecks } from "./decide.mjs";
+import { collectFeedback } from "./notices.mjs";
 
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,headRefOid,mergeable,autoMergeRequest,statusCheckRollup";
+  "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,autoMergeRequest,statusCheckRollup";
 const PR_URL = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
 
 function gh(args, { cwd, timeoutMs = 20_000 } = {}) {
@@ -71,6 +72,7 @@ function toSnapshot(raw) {
     state: (raw.state ?? "OPEN").toUpperCase(),
     isDraft: raw.isDraft === true,
     branch: raw.headRefName ?? "",
+    base: raw.baseRefName ?? "",
     headSha: raw.headRefOid ?? "",
     mergeable: raw.mergeable ?? "UNKNOWN",
     autoMerge: raw.autoMergeRequest != null,
@@ -139,4 +141,55 @@ export async function setAutoMerge(repo, number, enabled, method, run = gh) {
     if (!NEEDS_METHOD.test(err.message)) throw err;
     await run([...base, "--auto", `--${method}`]);
   }
+}
+
+let cachedLogin = null;
+
+// The GitHub account `gh` is signed in as, read once.
+export async function getLogin(run = gh) {
+  if (cachedLogin === null) {
+    cachedLogin = (await run(["api", "user", "--jq", ".login"])).trim();
+  }
+  return cachedLogin;
+}
+
+const PERSON =
+  "databaseId url body authorAssociation author { login __typename }";
+const FEEDBACK_QUERY = `
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      comments(last: 50) { nodes { ${PERSON} } }
+      reviews(last: 30) { nodes { state ${PERSON} } }
+      reviewThreads(last: 50) {
+        nodes {
+          isResolved
+          isOutdated
+          comments(first: 10) { nodes { path line ${PERSON} } }
+        }
+      }
+    }
+  }
+}`;
+
+// Reads the review feedback on a pull request that is worth showing the
+// agent: see collectFeedback for what is kept.
+export async function fetchFeedback(repo, number, run = gh) {
+  const [owner, name] = repo.split("/");
+  const out = await run([
+    "api",
+    "graphql",
+    "-f",
+    `query=${FEEDBACK_QUERY}`,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `name=${name}`,
+    "-F",
+    `number=${number}`,
+  ]);
+  const pr = JSON.parse(out)?.data?.repository?.pullRequest;
+  if (!pr)
+    throw new Error("GitHub returned no pull request for the feedback read");
+  return collectFeedback(pr, await getLogin(run));
 }
