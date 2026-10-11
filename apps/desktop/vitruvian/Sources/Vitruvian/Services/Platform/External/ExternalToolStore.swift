@@ -170,6 +170,13 @@ package final class ExternalToolStore {
         tools[id]
     }
 
+    /// The app's copy of an added tool's files, for showing where it is;
+    /// nil for a tool nobody added.
+    package func folder(of id: ToolID) -> URL? {
+        guard records.contains(where: { $0.id == id.rawValue }) else { return nil }
+        return parts.folders?.place(for: id)?.files
+    }
+
     /// Every tool the person added, in the order they added them.
     package var listed: [Listed] {
         records.compactMap { record in

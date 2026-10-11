@@ -83,6 +83,10 @@ package struct FeatureHubSettings: View {
                 ForEach(FeatureGroup.allCases.filter { $0 != .dynamicIsland }, id: \.self) { group in
                     groupCard(group)
                 }
+                // Tools that run as their own programs, which the person
+                // adds from a folder. They are no hub feature, so they are
+                // in no group above.
+                ExternalToolsSection()
                 VStack(alignment: .leading, spacing: 4) {
                     Text(hub.footerNote)
                     Text(hub.energyHelp)

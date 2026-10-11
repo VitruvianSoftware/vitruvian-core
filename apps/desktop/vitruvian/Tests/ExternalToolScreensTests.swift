@@ -16,6 +16,11 @@ enum ExternalToolScreensTests {
         anUpdate(suite)
         refusalWords(suite)
         asWritten(suite)
+        rows(suite)
+        detailAndRemoval(suite)
+        beforeAgreeing(suite)
+        removalChoices(suite)
+        switchAndOwnWords(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -250,5 +255,232 @@ enum ExternalToolScreensTests {
                                          strings: english)
         suite.expect(echoed == paths && newline.command == "xattr -dr com.apple.quarantine '/tmp/a\nb c'",
                      "a quote, a space, a newline and a command in a folder's name reach a shell as one plain word")
+    }
+
+    /// The rows of the Features hub's section, one for each added tool.
+    static func rows(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        func rows(_ language: AppLanguage = .enUS) -> [ExternalToolRow] {
+            ExternalToolRow.all(store: bench.store, language: language, strings: FeatureStrings.externalTools(language))
+        }
+        suite.expect(rows().isEmpty, "with no tool added the section has no row: it shows its one quiet line")
+
+        let picked = bench.folder()
+        bench.add(picked)
+        let other = bench.folder("other", manifest: ExternalToolManifestTests.file(
+            #"{"id": "com.acme.other", "name": {"en": "Other"}, "icon": "no.such.symbol"}"#))
+        bench.add(other)
+        suite.expect(rows().map(\.name) == ["Deploys", "Other"] && rows(.fr).map(\.name) == ["Déploiements", "Other"]
+                         && rows()[0].byline == "Acme · 1.2.0" && rows()[0].symbol == "shippingbox"
+                         && rows()[1].symbol == "puzzlepiece.extension"
+                         && rows().allSatisfy { $0.isOn && $0.status == .quiet && $0.statusText == nil },
+                     "each added tool has a row, in the order added, by the name it gives itself in the person's "
+                         + "language; a tool waiting for its first command says nothing about how it stands")
+
+        bench.registry.run(ExternalToolTests.copy)
+        suite.expect(rows()[0].status == .running && rows()[0].statusText == "Running" && rows()[1].status == .quiet,
+                     "a tool whose program is up says Running")
+        bench.current.ends(1)
+        suite.expect(rows()[0].status == .stopped(canStartAgain: false) && rows()[0].statusText == "Stopped working",
+                     "a tool that crashed says so, with no button while the app will start it again by itself")
+        for wait in [1.0, 2.0] {
+            bench.clock.advance(by: wait)
+            bench.registry.run(ExternalToolTests.copy)
+            bench.current.ends(1)
+        }
+        suite.expect(rows()[0].status == .stopped(canStartAgain: true) && rows()[0].statusText == "Stopped working",
+                     "once the app has given up on it, the row offers Start Again")
+        bench.store.startAgain(id)
+        suite.expect(rows()[0].status == .quiet, "and after Start Again it waits for its next command")
+
+        bench.store.setOn(id, false)
+        suite.expect(rows()[0].isOn == false && rows()[0].status == .quiet && rows()[0].name == "Deploys"
+                         && rows().count == 2,
+                     "a tool that is switched off keeps its row, with its switch off")
+
+        try? Data("{}".utf8).write(to: bench.files.appendingPathComponent("vitruvian-tool.json"))
+        let next = bench.relaunched()
+        next.store.restore()
+        let held = ExternalToolRow.all(store: next.store, language: .enUS, strings: english)
+        suite.expect(held[0].status == .changed && held[0].name == "Deploys" && held[0].byline == "Acme · 1.2.0"
+                         && held[0].statusText == "Changed since you added it. Update it to use it again."
+                         && held[1].status == .quiet,
+                     "a tool whose copy is not what was agreed to says so, under the name and version agreed to")
+    }
+
+    /// A tool's detail view, and the question before it is removed.
+    static func detailAndRemoval(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        bench.add(bench.folder())
+        guard let listed = bench.store.listed.first else { return }
+        let home = bench.root.resolvingSymlinksInPath().path
+        let detail = ExternalToolDetail(listed, files: bench.store.folder(of: id), language: .enUS, strings: english,
+                                        home: home)
+        suite.expect(detail.row.name == "Deploys" && detail.summary == "Copies the address of your latest deploy."
+                         && detail.commands == ["Copy latest deploy"] && detail.offersShortcuts
+                         && detail.uses == ["Write to the clipboard", "Show messages and play the alert sound",
+                                            "Save its own settings"]
+                         && detail.usesNote == english.usesNote,
+                     "a tool's detail lists its commands and what it says it uses, with the same note as the sheet, "
+                         + "and offers the Shortcuts page when a command may have a shortcut")
+        suite.expect(detail.files == "~/support/Tools/com.acme.deploys"
+                         && bench.store.folder(of: ToolID("com.acme.other")!) == nil,
+                     "it says where the app's copy of the tool is, and has no folder for a tool nobody added")
+
+        bench.store.setOn(id, false)
+        if let off = bench.store.listed.first {
+            let quiet = ExternalToolDetail(off, files: bench.store.folder(of: id), language: .enUS, strings: english,
+                                           home: home)
+            suite.expect(quiet.commands == ["Copy latest deploy"] && !quiet.offersShortcuts,
+                         "a tool that is switched off still says what it would add, and offers no shortcut: "
+                             + "it has no command to give one")
+        }
+
+        let removal = ToolRemovalContent(name: detail.row.name, strings: english, cancel: "Cancel")
+        suite.expect(removal.title == "Remove “Deploys”?"
+                         && removal.message == "Vitruvian deletes its copy of the tool. The folder you added it from is not touched."
+                         && removal.keepData == "Remove, Keep What It Saved"
+                         && removal.deleteData == "Remove and Delete What It Saved" && removal.cancel == "Cancel",
+                     "removing a tool asks first, says what is deleted and what is not, and offers to keep what it saved")
+        suite.expect(ToolRemovalContent.defaultChoice == .cancel, "Return presses Cancel there too")
+    }
+
+    /// From the folder picker to the sheet: nothing is copied, recorded or
+    /// started until the person agrees.
+    static func beforeAgreeing(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        func untouched() -> Bool {
+            !bench.exists(bench.support) && bench.store.listed.isEmpty && bench.store.installed.isEmpty
+                && bench.runs.isEmpty && bench.started.isEmpty && bench.registry.tool(id) == nil
+                && bench.host.manifest(for: id) == nil
+        }
+        suite.expect(ToolPicked.after(nil, store: bench.store) == .nothing && untouched(),
+                     "closing the folder picker without choosing asks nothing and changes nothing")
+
+        let empty = bench.root.appendingPathComponent("empty", isDirectory: true)
+        try? FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        suite.expect(ToolPicked.after(empty, store: bench.store) == .refuse(.manifest(.noManifest)) && untouched(),
+                     "a folder that is no tool is refused, and closing the refusal leaves nothing copied, recorded or started")
+
+        guard case .ask(let offer) = ToolPicked.after(bench.folder(), store: bench.store) else {
+            suite.expect(false, "a tool's folder is taken to the agreement sheet")
+            return
+        }
+        // The sheet is made, read and cancelled: the offer is dropped.
+        let sheet = content(offer)
+        suite.expect(sheet.title == "Add “Deploys” to Vitruvian?" && untouched(),
+                     "cancelling the agreement sheet leaves nothing copied, recorded or started")
+        suite.expect(bench.store.add(ToolConsent(to: offer)).map(\.tool.manifest.id) == .success(id)
+                         && bench.store.listed.map(\.id) == [id] && bench.exists(bench.files),
+                     "only the consent the sheet's button makes adds the tool")
+    }
+
+    /// The two buttons that remove a tool, and which of them deletes what
+    /// the tool saved.
+    static func removalChoices(_ suite: TestSuite) {
+        let removal = ToolRemovalContent(name: "Deploys", strings: english, cancel: "Cancel")
+        suite.expect(removal.label(.keepData) == "Remove, Keep What It Saved"
+                         && removal.label(.deleteData) == "Remove and Delete What It Saved"
+                         && removal.label(.cancel) == "Cancel"
+                         && ToolRemovalContent.Choice.cancel.deletesData == nil,
+                     "each button of the question carries its own words, and Cancel removes nothing")
+
+        func saved(after choice: ToolRemovalContent.Choice) -> (removed: Bool, data: Bool, preference: Bool)? {
+            let bench = ExternalToolStoreTests.Bench()
+            defer { bench.close() }
+            bench.add(bench.folder())
+            try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+            bench.box.values["com.acme.deploys/project"] = "api"
+            guard let deletingData = choice.deletesData else { return nil }
+            bench.store.remove(id, deletingData: deletingData)
+            return (bench.store.listed.isEmpty && !bench.exists(bench.files),
+                    bench.exists(bench.data.appendingPathComponent("saved")),
+                    bench.box.values["com.acme.deploys/project"] != nil)
+        }
+        let kept = saved(after: .keepData)
+        suite.expect(kept?.removed == true && kept?.data == true && kept?.preference == true,
+                     "the button that says Keep What It Saved removes the tool and keeps its data folder and its settings")
+        let deleted = saved(after: .deleteData)
+        suite.expect(deleted?.removed == true && deleted?.data == false && deleted?.preference == false,
+                     "the button that says Delete What It Saved removes the tool with its data folder and its settings")
+    }
+
+    /// A row's switch, across launches; and a tool's own words and log,
+    /// which are carried as plain text and cannot grow a screen without end.
+    static func switchAndOwnWords(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        bench.add(bench.folder())
+        func row(_ bench: ExternalToolStoreTests.Bench) -> ExternalToolRow? {
+            ExternalToolRow.all(store: bench.store, language: .enUS, strings: english).first
+        }
+        bench.registry.run(ExternalToolTests.copy)
+        bench.current.greets()
+        let running = row(bench)
+        bench.store.setOn(id, false)
+        suite.expect(running?.status == .running && running?.canSwitch == true
+                         && row(bench)?.isOn == false && row(bench)?.status == .quiet && row(bench)?.canSwitch == true
+                         && bench.current.inputClosed && !bench.registry.canRun(ExternalToolTests.copy),
+                     "switching a running tool off stops its program and takes its command away; the switch still works")
+        let next = bench.relaunched()
+        next.store.restore()
+        suite.expect(row(next)?.isOn == false && next.runs.isEmpty && !next.registry.canRun(ExternalToolTests.copy),
+                     "a tool that was switched off is still off, and not started, at the next launch")
+        next.store.setOn(id, true)
+        suite.expect(row(next)?.isOn == true && row(next)?.status == .quiet && next.registry.canRun(ExternalToolTests.copy),
+                     "switching it on brings its command back, and it waits for its first command")
+        try? Data("{}".utf8).write(to: next.files.appendingPathComponent("vitruvian-tool.json"))
+        let later = next.relaunched()
+        later.store.restore()
+        suite.expect(row(later)?.status == .changed && row(later)?.canSwitch == false && later.runs.isEmpty
+                         && !later.registry.canRun(ExternalToolTests.copy),
+                     "a tool that is held back has a switch that does nothing, and is never started")
+
+        let loud = ExternalToolStoreTests.Bench()
+        defer { loud.close() }
+        let commands = ExternalToolManifestTests.list(32) {
+            #"{"id": "c\#($0)", "title": {"en": "**Command** [\#($0)](https://example.invalid)"}, "surfaces": ["commandBar"]}"#
+        }
+        loud.add(loud.folder(manifest: ExternalToolManifestTests.file(#"""
+            {"name": {"en": "**Bold** [free](https://example.invalid)"}, "publisher": "_Acme_ `x`",
+             "description": {"en": "~~struck~~ <b>tag</b>"},
+             "uses": ["notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage"],
+             "contributes": {"commands": \#(commands)}}
+            """#)))
+        if let listed = loud.store.listed.first {
+            let detail = ExternalToolDetail(listed, files: loud.store.folder(of: listed.id), language: .enUS,
+                                            strings: english, home: "/nowhere")
+            suite.expect(detail.row.name == "**Bold** [free](https://example.invalid)"
+                             && detail.row.byline == "_Acme_ `x` · 1.2.0" && detail.summary == "~~struck~~ <b>tag</b>"
+                             && detail.commands.first == "**Command** [0](https://example.invalid)",
+                         "markdown, a link and a tag in a tool's name, publisher, description and command titles "
+                             + "reach the row and the detail as the plain text the tool wrote")
+            suite.expect(detail.commands.count == 32 && detail.uses.count == 7 && detail.listRows == 39 && detail.listsScroll,
+                         "a tool with the most a tool may have scrolls its two lists in the detail, as on the sheet")
+        } else {
+            suite.expect(false, "a tool with marked-up words and 32 commands is added")
+        }
+        let few = ExternalToolStoreTests.Bench()
+        defer { few.close() }
+        few.add(few.folder())
+        if let listed = few.store.listed.first {
+            let detail = ExternalToolDetail(listed, files: nil, language: .enUS, strings: english)
+            suite.expect(detail.listRows == 4 && !detail.listsScroll && detail.files == nil,
+                         "the design's example has four rows in the detail's two lists, drawn whole")
+        }
+
+        let lines = (1...1_000).map { "line \($0)" }.joined(separator: "\n")
+        let shown = ExternalToolDetail.shownLog(lines).split(separator: "\n", omittingEmptySubsequences: false)
+        let wide = ExternalToolDetail.shownLog(String(repeating: "é", count: 200_000) + "\nlast **line**")
+        suite.expect(shown.count == ExternalToolDetail.logLines && shown.last == "line 1000" && shown.first == "line 801"
+                         && wide.utf8.count <= ExternalToolDetail.logBytes && wide.hasSuffix("\nlast **line**")
+                         && !wide.unicodeScalars.contains("\u{FFFD}")
+                         && ExternalToolDetail.shownLog("one\n[two](x)") == "one\n[two](x)"
+                         && ExternalToolDetail.shownLog("").isEmpty,
+                     "the log a detail shows is the newest of what the tool wrote, at most so many lines and bytes, "
+                         + "as plain text")
     }
 }
