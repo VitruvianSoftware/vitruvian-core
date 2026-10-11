@@ -1,0 +1,137 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// SPDX-License-Identifier: MIT
+
+// Pure decision logic for pr-watch: no I/O, so it runs under `node --test`.
+//
+// The rules mirror what Claude Code's desktop auto-fix does:
+//   * wake once per failing check per commit, never twice for the same one;
+//   * when a check fails while others in the same workflow are still running,
+//     wait (up to holdMs) so the failures arrive together.
+
+export const DEFAULT_HOLD_MS = 5 * 60 * 1000;
+
+const FAIL_CONCLUSIONS = new Set([
+  "FAILURE",
+  "TIMED_OUT",
+  "ACTION_REQUIRED",
+  "STARTUP_FAILURE",
+]);
+const SKIP_CONCLUSIONS = new Set(["SKIPPED", "NEUTRAL"]);
+
+// Maps one entry of `gh pr view --json statusCheckRollup` to a bucket:
+// 'pass' | 'fail' | 'pending' | 'skip' | 'cancel'.
+export function bucketOf(raw) {
+  if (raw.__typename === "StatusContext") {
+    const state = (raw.state ?? "").toUpperCase();
+    if (state === "SUCCESS") return "pass";
+    if (state === "FAILURE" || state === "ERROR") return "fail";
+    return "pending";
+  }
+  if ((raw.status ?? "").toUpperCase() !== "COMPLETED") return "pending";
+  const conclusion = (raw.conclusion ?? "").toUpperCase();
+  if (conclusion === "SUCCESS") return "pass";
+  if (FAIL_CONCLUSIONS.has(conclusion)) return "fail";
+  if (SKIP_CONCLUSIONS.has(conclusion)) return "skip";
+  if (conclusion === "CANCELLED") return "cancel";
+  return "pending";
+}
+
+const RANK = { fail: 4, pending: 3, cancel: 2, pass: 1, skip: 0 };
+
+// Normalises the rollup into one entry per check name. A name that appears
+// more than once (re-runs, matrix legs) keeps its worst bucket.
+export function normaliseChecks(rollup) {
+  const byName = new Map();
+  for (const raw of rollup ?? []) {
+    const name = raw.name ?? raw.context;
+    if (!name) continue;
+    const check = {
+      name,
+      bucket: bucketOf(raw),
+      workflow: raw.workflowName || undefined,
+      url: raw.detailsUrl ?? raw.targetUrl ?? undefined,
+      waiting: (raw.status ?? "").toUpperCase() === "WAITING",
+    };
+    const seen = byName.get(name);
+    if (!seen || RANK[check.bucket] > RANK[seen.bucket])
+      byName.set(name, check);
+  }
+  return [...byName.values()];
+}
+
+export function countChecks(checks) {
+  const counts = { pass: 0, fail: 0, pending: 0, skip: 0, cancel: 0 };
+  for (const check of checks) counts[check.bucket] += 1;
+  return counts;
+}
+
+export function emptyState() {
+  return { headSha: null, notified: [], held: null };
+}
+
+// Decides whether to wake the conversation.
+//   prev: { headSha, notified: string[], held: { since } | null }
+//   snap: { headSha, checks: normalised checks }
+// Returns { wake: checks to report (empty = stay quiet), state: next state }.
+// The caller commits `state` only once the wake was delivered.
+export function decide(prev, snap, now, { holdMs = DEFAULT_HOLD_MS } = {}) {
+  const sameHead = prev?.headSha === snap.headSha;
+  const notified = new Set(sameHead ? prev.notified : []);
+  const held = sameHead ? prev.held : null;
+
+  // Forget a notified check once it has passed, so a later failure of the
+  // same check on the same commit (a re-run) is reported again.
+  const stillOpen = new Set(
+    snap.checks
+      .filter((c) => c.bucket === "fail" || c.bucket === "pending")
+      .map((c) => c.name),
+  );
+  for (const name of [...notified])
+    if (!stillOpen.has(name)) notified.delete(name);
+
+  const fresh = snap.checks.filter(
+    (c) => c.bucket === "fail" && !notified.has(c.name),
+  );
+  const quiet = { headSha: snap.headSha, notified: [...notified], held: null };
+  if (fresh.length === 0) return { wake: [], state: quiet };
+
+  const workflows = new Set(fresh.map((c) => c.workflow).filter(Boolean));
+  const siblingsRunning = snap.checks.some(
+    (c) =>
+      c.bucket === "pending" &&
+      !c.waiting &&
+      c.workflow &&
+      workflows.has(c.workflow),
+  );
+  const since = held?.since ?? now;
+  if (siblingsRunning && now - since < holdMs) {
+    return { wake: [], state: { ...quiet, held: { since } } };
+  }
+
+  for (const check of fresh) notified.add(check.name);
+  return {
+    wake: fresh,
+    state: { headSha: snap.headSha, notified: [...notified], held: null },
+  };
+}
+
+// The text sent into the conversation. It arrives as a system notice, so it
+// says who is speaking and exactly what is being asked.
+export function wakeMessage(pr, failing) {
+  const lines = [
+    `Automated notice from the pr-watch plugin: CI is failing on ${pr.repo}#${pr.number} ("${pr.title}").`,
+    `PR: ${pr.url}`,
+    `Branch: ${pr.branch}  Commit: ${(pr.headSha ?? "").slice(0, 12)}`,
+    "",
+    `Newly failing checks (${failing.length}):`,
+    ...failing.map(
+      (c) =>
+        `- ${c.name}${c.workflow ? ` [${c.workflow}]` : ""}${c.url ? ` ${c.url}` : ""}`,
+    ),
+    "",
+    "Please look at the failing logs (for example `gh run view --log-failed`), fix the cause on this branch and push.",
+    "You will not be told about these checks again for this commit. If the failure is not caused by this PR, say so instead of changing code.",
+  ];
+  return lines.join("\n");
+}

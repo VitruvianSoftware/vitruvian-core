@@ -1,0 +1,5 @@
+{
+  "name": "pr-watch",
+  "description": "Watches your pull requests on GitHub and wakes the conversation that owns one when its CI starts failing.",
+  "logo": "assets/logo.svg"
+}
