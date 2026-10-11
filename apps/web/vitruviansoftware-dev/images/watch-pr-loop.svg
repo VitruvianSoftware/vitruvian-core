@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="100%" height="auto" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; border-radius: 6px;">
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .step-box { fill: #151d26; stroke: #26384a; stroke-width: 1.5; rx: 6px; }
+      .step-box-active { fill: #182533; stroke: #3a5c80; stroke-width: 1.5; rx: 6px; }
+      .step-box-ok { fill: #13241c; stroke: #2a5a3e; stroke-width: 1.5; rx: 6px; }
+      .step-box-err { fill: #261614; stroke: #5c2c26; stroke-width: 1.5; rx: 6px; }
+      .box-head { fill: #e7e4dd; font-size: 12px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .accent { fill: #93b0ca; font-weight: 500; }
+      .ok { fill: #7fbf9a; font-weight: 500; }
+      .warn { fill: #d9b264; font-weight: 500; }
+      .err { fill: #d2907b; font-weight: 500; }
+      .flow-arrow { stroke: #4f6e8d; stroke-width: 1.5; fill: none; }
+      .flow-arrow-green { stroke: #7fbf9a; stroke-width: 1.5; fill: none; }
+      .flow-arrow-red { stroke: #d2907b; stroke-width: 1.5; fill: none; stroke-dasharray: 4,4; }
+    </style>
+    <marker id="ar-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+    <marker id="ar-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="ar-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#d2907b" />
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <rect x="20" y="20" width="920" height="50" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="36" y="42" class="title">The Autonomous Verification &amp; Watch Loop (tools/watch-pr)</text>
+  <text x="36" y="60" class="subtitle">From Pull Request Creation to Post-Merge Trunk Verification Without Human Waiting</text>
+
+  <!-- Step 1: PR Creation -->
+  <rect x="20" y="90" width="165" height="120" class="step-box" />
+  <text x="32" y="112" class="box-head">1. OPEN PR</text>
+  <text x="32" y="132" class="accent">Agent Identity</text>
+  <text x="32" y="150" class="box-body">wren pushes branch</text>
+  <text x="32" y="168" class="box-body">gh pr create</text>
+  <text x="32" y="186" class="box-body">self-contained body</text>
+
+  <!-- Arrow 1 -> 2 -->
+  <path d="M 185 150 L 215 150" class="flow-arrow" marker-end="url(#ar-blue)" />
+
+  <!-- Step 2: watch-pr Launched -->
+  <rect x="215" y="90" width="175" height="120" class="step-box-active" />
+  <text x="227" y="112" class="box-head">2. WATCH-PR DAEMON</text>
+  <text x="227" y="132" class="accent">Delegated to scout</text>
+  <text x="227" y="150" class="box-body">bazel run //tools/watch-pr</text>
+  <text x="227" y="168" class="box-body">Polls checks every 15s</text>
+  <text x="227" y="186" class="box-body">45m safety timeout</text>
+
+  <!-- Arrow 2 -> 3 (Checks Pass) -->
+  <path d="M 390 150 L 425 150" class="flow-arrow-green" marker-end="url(#ar-green)" />
+  <text x="395" y="142" class="ok" style="font-size:10px;">PASS</text>
+
+  <!-- Cycle: Downward from Step 2 to Failure Triage (CI FAIL) -->
+  <path d="M 325 210 L 325 260" class="flow-arrow-red" marker-end="url(#ar-red)" />
+  <text x="333" y="238" class="err" style="font-size:10px; font-weight:600;">CI FAIL</text>
+
+  <!-- Failure Triage Box -->
+  <rect x="215" y="260" width="175" height="130" class="step-box-err" />
+  <text x="227" y="282" class="box-head" fill="#d2907b">DIAGNOSE &amp; REPAIR</text>
+  <text x="227" y="302" class="box-body">gh run view --job=&lt;id&gt; --log</text>
+  <text x="227" y="320" class="box-body">Agent inspects trace</text>
+  <text x="227" y="338" class="box-body">Locally tests fix with Bazel</text>
+  <text x="227" y="356" class="box-body">Pushes remediation commit</text>
+  <text x="227" y="374" class="accent" style="font-size:10px;">Autonomously cycles</text>
+
+  <!-- Cycle: Upward from Failure Triage to Step 2 (PUSH FIX & RESUME) -->
+  <path d="M 260 260 L 260 210" class="flow-arrow" marker-end="url(#ar-blue)" />
+  <text x="222" y="238" class="accent" style="font-size:10px; font-weight:600;">PUSH FIX</text>
+
+  <!-- Step 3: Peer Bot Approval -->
+  <rect x="425" y="90" width="165" height="120" class="step-box" />
+  <text x="437" y="112" class="box-head">3. PEER REVIEW</text>
+  <text x="437" y="132" class="accent">Cross-App Sign-off</text>
+  <text x="437" y="150" class="box-body">aegis reviews Wren's PR</text>
+  <text x="437" y="168" class="ok">gh pr review --approve</text>
+  <text x="437" y="186" class="box-body">Ruleset gate satisfied</text>
+
+  <!-- Arrow 3 -> 4 -->
+  <path d="M 590 150 L 620 150" class="flow-arrow" marker-end="url(#ar-blue)" />
+
+  <!-- Step 4: Merge Queue -->
+  <rect x="620" y="90" width="160" height="120" class="step-box-active" />
+  <text x="632" y="112" class="box-head">4. MERGE QUEUE</text>
+  <text x="632" y="132" class="accent">Squash &amp; Merge</text>
+  <text x="632" y="150" class="box-body">gh pr merge --auto</text>
+  <text x="632" y="168" class="box-body">Trial commit evaluated</text>
+  <text x="632" y="186" class="warn">Admin bypass blocked!</text>
+
+  <!-- Arrow 4 -> 5 -->
+  <path d="M 780 150 L 815 150" class="flow-arrow-green" marker-end="url(#ar-green)" />
+  <text x="783" y="142" class="ok" style="font-size:10px;">SQUASH</text>
+
+  <!-- Step 5: Post-Merge Verification -->
+  <rect x="815" y="90" width="125" height="120" class="step-box-ok" />
+  <text x="827" y="112" class="box-head" fill="#7fbf9a">5. VERIFIED</text>
+  <text x="827" y="132" class="accent">Pipeline Status</text>
+  <text x="827" y="150" class="box-body">pipeline-status</text>
+  <text x="827" y="168" class="box-body">Main push green</text>
+  <text x="827" y="186" class="ok">Prune worktree</text>
+
+  <!-- Bottom Legend / Callout -->
+  <rect x="425" y="260" width="515" height="130" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="441" y="286" class="box-head" fill="#d9b264">KEY ARCHITECTURAL PRINCIPLE: ZERO UNCHECKED ASSUMPTIONS</text>
+  <text x="441" y="310" class="box-body">• <tspan fill="#e7e4dd">Squash-only main:</tspan> Branch SHAs are never ancestors of main. Checked via PR number (#N).</text>
+  <text x="441" y="332" class="box-body">• <tspan fill="#e7e4dd">Fail-closed watchdog:</tspan> watch-pr exits with non-zero code on CI failure or queue eviction.</text>
+  <text x="441" y="354" class="box-body">• <tspan fill="#e7e4dd">True Autonomy:</tspan> Scout runs the monitor asynchronously while the lead agent stays unblocked.</text>
+</svg>
