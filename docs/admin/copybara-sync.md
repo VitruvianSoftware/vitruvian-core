@@ -440,8 +440,10 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
     custom domain (`cname`), `build_type`, `protected_domain_state` and the certificate. For
     `site-vitruviansoftware-dev` on 2026-10-10 that was `vitruviansoftware.dev`, `workflow`,
     `verified`, certificate approved. The zone is on Cloudflare, and the apex has GitHub's four A
-    and four AAAA Pages addresses. `devx sites init` creates subdomain CNAMEs, so it is not what
-    created the apex records, and no Pulumi program in this repo declares them.
+    and four AAAA Pages addresses. Those records, the verification TXT record and the Pages setting
+    were created by hand, before this repo had Pulumi, and **no Pulumi program declares them**. If
+    one is lost, the fix is to recreate it (`devx sites init` / `verify` for a subdomain; the apex
+    A and AAAA records by hand), not to re-run an apply.
 
 #### Variant: one-way with PR-import
 
