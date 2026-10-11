@@ -1,0 +1,142 @@
+{
+  "about": "Every message of protocol version 1. `sender` is who sends it. A `request` is answered; a `notice` is not. `uses` is the entry the tool's manifest must list in `uses` before the app will do it. `params` and `result` name a definition in messages.schema.json; null means the message carries none.",
+  "protocol": "1",
+  "methods": [
+    {
+      "method": "initialize",
+      "sender": "app",
+      "kind": "request",
+      "uses": null,
+      "params": "initializeParams",
+      "result": "initializeResult"
+    },
+    {
+      "method": "command/run",
+      "sender": "app",
+      "kind": "request",
+      "uses": null,
+      "params": "commandRunParams",
+      "result": "empty"
+    },
+    {
+      "method": "preferences/changed",
+      "sender": "app",
+      "kind": "notice",
+      "uses": null,
+      "params": "preferencesChangedParams",
+      "result": null
+    },
+    {
+      "method": "language/changed",
+      "sender": "app",
+      "kind": "notice",
+      "uses": null,
+      "params": "languageChangedParams",
+      "result": null
+    },
+    {
+      "method": "shutdown",
+      "sender": "app",
+      "kind": "notice",
+      "uses": null,
+      "params": null,
+      "result": null
+    },
+    {
+      "method": "commands/state",
+      "sender": "tool",
+      "kind": "notice",
+      "uses": null,
+      "params": "commandsStateParams",
+      "result": null
+    },
+    {
+      "method": "notify/hud",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "notify",
+      "params": "notifyHUDParams",
+      "result": "empty"
+    },
+    {
+      "method": "notify/beep",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "notify",
+      "params": null,
+      "result": "empty"
+    },
+    {
+      "method": "open/url",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "open",
+      "params": "openURLParams",
+      "result": "openURLResult"
+    },
+    {
+      "method": "clipboard/readText",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "clipboard.read",
+      "params": null,
+      "result": "clipboardReadTextResult"
+    },
+    {
+      "method": "clipboard/writeText",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "clipboard.write",
+      "params": "clipboardWriteTextParams",
+      "result": "clipboardWriteTextResult"
+    },
+    {
+      "method": "keystrokes/paste",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "keystrokes",
+      "params": "keystrokesPasteParams",
+      "result": "empty"
+    },
+    {
+      "method": "keystrokes/pressMenuItem",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "keystrokes",
+      "params": "keystrokesPressMenuItemParams",
+      "result": "keystrokesPressMenuItemResult"
+    },
+    {
+      "method": "processes/terminate",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "processes",
+      "params": "processesTerminateParams",
+      "result": "empty"
+    },
+    {
+      "method": "storage/get",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "storage",
+      "params": "storageGetParams",
+      "result": "storageGetResult"
+    },
+    {
+      "method": "storage/set",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "storage",
+      "params": "storageSetParams",
+      "result": "empty"
+    },
+    {
+      "method": "log",
+      "sender": "tool",
+      "kind": "notice",
+      "uses": null,
+      "params": "logParams",
+      "result": null
+    }
+  ]
+}

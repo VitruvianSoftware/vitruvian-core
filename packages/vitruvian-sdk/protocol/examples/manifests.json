@@ -1,0 +1,316 @@
+{
+  "about": "Manifests the schema and the Swift reader must judge alike. Each example is `base` with the top-level fields in `change` replaced; a field changed to null is left out. `problem` is the case of ManifestProblem the Swift reader gives, and `names` are words its reason carries. `schema: false` marks the two rules JSON Schema cannot say, so the schema accepts those manifests.",
+  "base": {
+    "id": "com.acme.deploys",
+    "name": { "en": "Deploys", "fr": "Déploiements" },
+    "description": { "en": "Copies the address of your latest deploy." },
+    "version": "1.2.0",
+    "protocol": "1",
+    "publisher": "Acme",
+    "license": "MIT",
+    "icon": "shippingbox",
+    "uses": ["clipboard.write", "notify", "storage"],
+    "contributes": {
+      "commands": [
+        {
+          "id": "copyLatest",
+          "title": { "en": "Copy latest deploy" },
+          "icon": "link",
+          "surfaces": ["commandBar", "radial", "shortcut"]
+        }
+      ]
+    },
+    "preferences": [{ "id": "project", "type": "string", "default": "" }],
+    "activation": ["onCommand"],
+    "runtime": { "kind": "external", "exec": "bin/deploys" }
+  },
+  "examples": [
+    { "about": "the example in the design", "valid": true, "change": {} },
+    {
+      "about": "only what is required",
+      "valid": true,
+      "change": {
+        "description": null,
+        "license": null,
+        "icon": null,
+        "uses": null,
+        "contributes": null,
+        "preferences": null,
+        "activation": null
+      }
+    },
+    {
+      "about": "fields a later version might add are ignored",
+      "valid": true,
+      "change": {
+        "future": { "anything": 1 },
+        "runtime": {
+          "kind": "external",
+          "exec": "bin/deploys",
+          "arguments": ["--fast"]
+        }
+      }
+    },
+    {
+      "about": "every kind of preference, every surface, both activations",
+      "valid": true,
+      "change": {
+        "contributes": {
+          "commands": [
+            {
+              "id": "copy.latest",
+              "title": { "en": "Copy latest deploy" },
+              "surfaces": ["commandBar", "radial", "quickPanel", "shortcut"]
+            },
+            {
+              "id": "open-dashboard",
+              "title": { "en": "Open the dashboard", "pt-BR": "Abrir o painel" }
+            }
+          ]
+        },
+        "preferences": [
+          { "id": "project", "type": "string", "default": "acme" },
+          { "id": "notify", "type": "boolean", "default": true },
+          { "id": "limit", "type": "integer", "default": 20 },
+          { "id": "ratio", "type": "number", "default": 0.5 },
+          { "id": "whole", "type": "number", "default": 3 }
+        ],
+        "activation": ["onLaunch", "onCommand"]
+      }
+    },
+    {
+      "about": "an id with no dot is a built-in feature's",
+      "valid": false,
+      "problem": "idWithoutDot",
+      "names": ["deploys"],
+      "change": { "id": "deploys" }
+    },
+    {
+      "about": "an id with a character ids do not have",
+      "valid": false,
+      "problem": "idNotWellFormed",
+      "names": ["com.acme/deploys"],
+      "change": { "id": "com.acme/deploys" }
+    },
+    {
+      "about": "an id that ends with a dot",
+      "valid": false,
+      "problem": "idNotWellFormed",
+      "change": { "id": "com.acme." }
+    },
+    {
+      "about": "a protocol the app does not speak",
+      "valid": false,
+      "problem": "unsupportedProtocol",
+      "names": ["2"],
+      "change": { "protocol": "2" }
+    },
+    {
+      "about": "a kind of runtime a file may not name",
+      "valid": false,
+      "problem": "unsupportedRuntime",
+      "names": ["bundled"],
+      "change": { "runtime": { "kind": "bundled", "exec": "bin/deploys" } }
+    },
+    {
+      "about": "a program above the folder",
+      "valid": false,
+      "problem": "programLeavesFolder",
+      "names": ["../deploys"],
+      "change": { "runtime": { "kind": "external", "exec": "../deploys" } }
+    },
+    {
+      "about": "a program that climbs out part way along",
+      "valid": false,
+      "problem": "programLeavesFolder",
+      "change": {
+        "runtime": { "kind": "external", "exec": "bin/../../deploys" }
+      }
+    },
+    {
+      "about": "a program named from the root of the disk",
+      "valid": false,
+      "problem": "programLeavesFolder",
+      "change": { "runtime": { "kind": "external", "exec": "/usr/bin/true" } }
+    },
+    {
+      "about": "no program",
+      "valid": false,
+      "problem": "programLeavesFolder",
+      "change": { "runtime": { "kind": "external", "exec": "" } }
+    },
+    {
+      "about": "no runtime",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["runtime"],
+      "change": { "runtime": null }
+    },
+    {
+      "about": "no publisher",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["publisher"],
+      "change": { "publisher": null }
+    },
+    {
+      "about": "a name that is not a language map",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["name"],
+      "change": { "name": "Deploys" }
+    },
+    {
+      "about": "a name with no English",
+      "valid": false,
+      "problem": "noEnglish",
+      "names": ["name"],
+      "change": { "name": { "fr": "Déploiements" } }
+    },
+    {
+      "about": "a name that is only spaces",
+      "valid": false,
+      "problem": "blankText",
+      "names": ["name"],
+      "change": { "name": { "en": "  " } }
+    },
+    {
+      "about": "a version that is only spaces",
+      "valid": false,
+      "problem": "blankText",
+      "names": ["version"],
+      "change": { "version": " " }
+    },
+    {
+      "about": "a service the app does not have",
+      "valid": false,
+      "problem": "unknownService",
+      "names": ["camera"],
+      "change": { "uses": ["notify", "camera"] }
+    },
+    {
+      "about": "a service built-in tools have and version 1 does not offer",
+      "valid": false,
+      "problem": "unknownService",
+      "names": ["hotkey"],
+      "change": { "uses": ["hotkey"] }
+    },
+    {
+      "about": "a service listed twice",
+      "valid": false,
+      "problem": "duplicateService",
+      "names": ["notify"],
+      "change": { "uses": ["notify", "notify"] }
+    },
+    {
+      "about": "a way of starting that version 1 does not have",
+      "valid": false,
+      "problem": "unknownActivation",
+      "names": ["onShown"],
+      "change": { "activation": ["onShown"] }
+    },
+    {
+      "about": "a surface the app does not have",
+      "valid": false,
+      "problem": "unknownSurface",
+      "names": ["copyLatest", "island"],
+      "change": {
+        "contributes": {
+          "commands": [
+            {
+              "id": "copyLatest",
+              "title": { "en": "Copy" },
+              "surfaces": ["commandBar", "island"]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a command id with a space",
+      "valid": false,
+      "problem": "commandNotWellFormed",
+      "names": ["copy latest"],
+      "change": {
+        "contributes": {
+          "commands": [{ "id": "copy latest", "title": { "en": "Copy" } }]
+        }
+      }
+    },
+    {
+      "about": "a command title with no English",
+      "valid": false,
+      "problem": "noEnglish",
+      "names": ["copyLatest"],
+      "change": {
+        "contributes": {
+          "commands": [{ "id": "copyLatest", "title": { "de": "Kopieren" } }]
+        }
+      }
+    },
+    {
+      "about": "two commands with one id",
+      "valid": false,
+      "schema": false,
+      "problem": "duplicateCommand",
+      "names": ["copyLatest"],
+      "change": {
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy" } },
+            { "id": "copyLatest", "title": { "en": "Copy again" } }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a kind of preference the app does not have",
+      "valid": false,
+      "problem": "unknownPreferenceType",
+      "names": ["project", "color"],
+      "change": {
+        "preferences": [{ "id": "project", "type": "color", "default": "red" }]
+      }
+    },
+    {
+      "about": "a default of another type",
+      "valid": false,
+      "problem": "defaultOfWrongType",
+      "names": ["limit"],
+      "change": {
+        "preferences": [{ "id": "limit", "type": "integer", "default": "20" }]
+      }
+    },
+    {
+      "about": "a whole-number preference with a fraction for its default",
+      "valid": false,
+      "problem": "defaultOfWrongType",
+      "names": ["limit"],
+      "change": {
+        "preferences": [{ "id": "limit", "type": "integer", "default": 1.5 }]
+      }
+    },
+    {
+      "about": "a preference id with a slash",
+      "valid": false,
+      "problem": "preferenceNotWellFormed",
+      "names": ["a/b"],
+      "change": {
+        "preferences": [{ "id": "a/b", "type": "string", "default": "" }]
+      }
+    },
+    {
+      "about": "two preferences with one id",
+      "valid": false,
+      "schema": false,
+      "problem": "duplicatePreference",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          { "id": "project", "type": "string", "default": "" },
+          { "id": "project", "type": "boolean", "default": false }
+        ]
+      }
+    }
+  ]
+}

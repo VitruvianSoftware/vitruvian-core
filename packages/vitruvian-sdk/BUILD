@@ -36,9 +36,14 @@
 # why). The Swift targets are constrained to macOS so a Linux
 # `bazel build //...` skips them.
 
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
+
+# The protocol as it is written down: the schemas, the table of messages, and
+# the examples both halves of the drift test read.
+PROTOCOL_FILES = glob(["protocol/**/*.json"])
 
 # The one list of the protocol's Swift sources: it is both what the module
 # compiles and what the Vitruvian app's pin hashes
@@ -69,16 +74,31 @@ swift_test(
     name = "VitruvianToolProtocolTests",
     size = "small",
     srcs = glob(["Tests/VitruvianToolProtocolTests/**/*.swift"]),
+    data = PROTOCOL_FILES,
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":VitruvianToolProtocol"],
+)
+
+# The examples, judged by the schemas. Not `manual` and not tied to macOS: it
+# is plain Python, so the Linux lane runs it too.
+py_test(
+    name = "protocol_examples_test",
+    size = "small",
+    srcs = ["protocol/protocol_examples_test.py"],
+    data = PROTOCOL_FILES,
+    main = "protocol/protocol_examples_test.py",
+    deps = ["@pip//jsonschema"],
 )
 
 pipeline_unit(
     name = "vitruvian-sdk",
     persona = "platform",
     runner = "xcode-27",
-    test_targets = [":VitruvianToolProtocolTests"],
+    test_targets = [
+        ":VitruvianToolProtocolTests",
+        ":protocol_examples_test",
+    ],
     tier = "L1",
     timeout_minutes = 30,
 )
