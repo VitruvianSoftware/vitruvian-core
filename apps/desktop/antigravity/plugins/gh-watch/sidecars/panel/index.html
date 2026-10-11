@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GH Watch</title>
+  <link rel="stylesheet" href="/styles.css">
+  <!-- Bridge to Antigravity: applies the host theme and defines window.sidecar. -->
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>GH Watch</h1>
+        <p id="summary" class="muted small">Loading…</p>
+      </div>
+      <div class="header-actions">
+        <button id="font-down" type="button" class="secondary" aria-label="Smaller text">A−</button>
+        <span id="font-size" class="muted small" aria-live="polite">100%</span>
+        <button id="font-up" type="button" class="secondary" aria-label="Larger text">A+</button>
+        <button id="refresh" type="button" class="secondary">Check now</button>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="add-title">
+      <h2 id="add-title">Watch a pull request</h2>
+      <p id="add-hint" class="muted small"></p>
+      <form id="add-form" class="row">
+        <label class="sr-only" for="add-ref">Pull request URL or number</label>
+        <input id="add-ref" type="text" autocomplete="off" placeholder="PR URL or number (blank = this branch)">
+        <button id="add-submit" type="submit">Watch</button>
+      </form>
+      <p id="add-error" class="error small" role="alert" hidden></p>
+    </section>
+
+    <p id="notice" class="error small" role="alert" hidden></p>
+
+    <section aria-labelledby="list-title">
+      <h2 id="list-title" class="sr-only">Watched pull requests</h2>
+      <div id="list"></div>
+      <p id="empty" class="muted" hidden>Nothing is being watched yet.</p>
+    </section>
+    <!-- Closed by default: these lists can be long, and the watched pull
+         requests above are what the panel is for. -->
+    <details id="reviews" class="card" hidden>
+      <summary>Waiting on your review (<span id="reviews-count">0</span>)</summary>
+      <p id="reviews-error" class="error small" hidden></p>
+      <ul id="reviews-list" class="plain"></ul>
+    </details>
+
+    <details id="flaky" class="card" hidden>
+      <summary>Known flaky checks (<span id="flaky-count">0</span>)</summary>
+      <p class="muted small">These failed and then passed on a re-run with no code change. The agent is told to re-run them before changing code.</p>
+      <ul id="flaky-list" class="plain"></ul>
+    </details>
+
+    <details class="card">
+      <summary>Settings</summary>
+      <form id="settings-form" class="settings" novalidate>
+        <label for="fastSeconds">Check every (seconds) while CI is running or this panel is open</label>
+        <input id="fastSeconds" type="number" step="1" required>
+        <label for="slowSeconds">Check every (seconds) once all checks have settled</label>
+        <input id="slowSeconds" type="number" step="1" required>
+        <label for="holdSeconds">Wait up to (seconds) for related checks before waking the agent</label>
+        <input id="holdSeconds" type="number" step="1" required>
+        <label for="removeClosedHours">Keep a merged or closed pull request in this list for (hours)</label>
+        <input id="removeClosedHours" type="number" step="1" required>
+        <label for="mergeMethod">Auto-merge method, for repositories without a merge queue</label>
+        <select id="mergeMethod"></select>
+        <label for="autoWatch">Watch pull requests automatically when an agent opens one</label>
+        <input id="autoWatch" type="checkbox">
+        <div class="row">
+          <button type="submit">Save</button>
+          <span id="settings-saved" class="muted small" role="status"></span>
+        </div>
+      </form>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

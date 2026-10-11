@@ -29,6 +29,7 @@
 /packages/pulumi/ @VitruvianSoftware/platform-team
 /apps/cli/devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
 /apps/cli/homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
+/apps/desktop/antigravity/ @VitruvianSoftware/platform-team
 /apps/desktop/nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
 /apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
 /apps/mcp/roborock/ @VitruvianSoftware/platform-team
