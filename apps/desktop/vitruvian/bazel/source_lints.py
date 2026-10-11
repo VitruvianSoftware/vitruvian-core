@@ -2599,6 +2599,58 @@ def a_release_build_adds_no_outside_tool(repo):
     return problems
 
 
+# The one file of the app that may say the person agreed to add a tool: the
+# sheet that asks. Until that sheet exists the development switch says it
+# too, in the tool store, inside the runtime's own folder.
+AGREEMENT_SHEET = APP_PREFIX + "UI/Settings/ExternalToolAgreementSheet.swift"
+CONSENT_MAKERS = [
+    AGREEMENT_SHEET,
+    RUNTIME_PREFIX + "ExternalToolStore.swift",
+]
+_CONSENTS = re.compile(r"\bToolConsent\(")
+
+
+def consents_made(path, text):
+    """Each line of `text` that makes a `ToolConsent` in code."""
+    found = []
+    for number, line in enumerate(text.split("\n"), start=1):
+        _, code = code_and_blanked(line)
+        if _CONSENTS.search(code):
+            found.append(f"{path}:{number}")
+    return found
+
+
+def only_the_agreement_sheet_consents(repo):
+    """Adding a tool from outside takes a `ToolConsent`: that the person
+    agreed to one offer. Only the sheet that asks the person may make one.
+    Any other file that does has found a way to add a tool nobody agreed
+    to."""
+    problems = []
+    sample = "\n".join(
+        [
+            "store.add(ToolConsent(to: offer))",
+            "// ToolConsent(to: offer), in prose",
+            'let text = "ToolConsent(to: offer)"',
+            "func add(_ consent: ToolConsent) {}",
+            "package struct ToolConsent: Equatable {",
+        ]
+    )
+    if consents_made("sample", sample) != ["sample:1"]:
+        problems.append(
+            "the scan finds a consent made in code, and not one in prose, in "
+            "a string, or named as a type"
+        )
+    found = []
+    for path in repo.app_sources():
+        if path not in CONSENT_MAKERS:
+            found.extend(consents_made(path, repo.source(path)))
+    if found:
+        problems.append(
+            f"only the agreement sheet says the person agreed to add a tool: {found}"
+        )
+    return problems
+
+
 # UPSTREAM.md's sections, in order. "Modifications" is the dated notice
 # GPL-3.0 section 5(a) asks for.
 UPSTREAM_SECTIONS = [
@@ -2720,6 +2772,7 @@ RULES = [
     migrated_tools_reach_services_through_the_broker,
     the_broker_names_no_tool,
     a_release_build_adds_no_outside_tool,
+    only_the_agreement_sheet_consents,
     modification_log_is_whole,
 ]
 

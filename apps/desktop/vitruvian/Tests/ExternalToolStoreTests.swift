@@ -15,6 +15,8 @@ enum ExternalToolStoreTests {
     static func run(_ suite: TestSuite) {
         folders(suite)
         links(suite)
+        offering(suite)
+        tooBigOrQuarantined(suite)
         adding(suite)
         throughTheBroker(suite)
         refusals(suite)
@@ -45,7 +47,7 @@ enum ExternalToolStoreTests {
         private(set) var host: ToolHost!
         private(set) var store: ExternalToolStore!
 
-        init(supportFolder: Bool = true) {
+        init(supportFolder: Bool = true, limits: ToolLimits = .standard) {
             root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("vitruvian-tool-store-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -63,7 +65,7 @@ enum ExternalToolStoreTests {
             store = ExternalToolStore(parts: .init(
                 folders: supportFolder ? ToolFolders(root: support) : nil,
                 host: { [unowned self] in host }, registry: { [unowned self] in registry }, broker: { broker },
-                clock: clock,
+                clock: clock, limits: limits,
                 makeTransport: { [unowned self] program, data in
                     started.append((program, data))
                     if let transport { return transport(program, data) }
@@ -104,8 +106,7 @@ enum ExternalToolStoreTests {
         }
     }
 
-    static func refusal(_ result: Result<ExternalToolStore.Installed, ExternalToolStore.Refusal>)
-        -> ExternalToolStore.Refusal? {
+    static func refusal<Added>(_ result: Result<Added, ExternalToolStore.Refusal>) -> ExternalToolStore.Refusal? {
         if case .failure(let refusal) = result { return refusal }
         return nil
     }
@@ -196,6 +197,107 @@ enum ExternalToolStoreTests {
         suite.expect(folders.install(id, from: picked) == .failure(.linkedElsewhere) && !bench.exists(bench.files)
                          && mode(theirs.deletingLastPathComponent()) == 0o755,
                      "a data folder that is a link to another place is refused before anything is copied or changed")
+    }
+
+    /// The first of the two steps: reading a folder, with nothing done.
+    static func offering(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let picked = bench.folder()
+        let bytes = (try? Data(contentsOf: picked.appendingPathComponent("vitruvian-tool.json"))) ?? Data()
+        guard case .success(let offer) = bench.store.offer(from: picked) else {
+            suite.expect(false, "a tool's folder is read into an offer")
+            return
+        }
+        suite.expect(offer.tool.manifest.id == id && offer.tool.version == "1.2.0"
+                         && offer.folder == picked.resolvingSymlinksInPath().standardizedFileURL
+                         && offer.fingerprint == ToolFingerprint.of(bytes) && offer.fingerprint.count == 64
+                         && ToolFingerprint.of(Data("abc".utf8))
+                         == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                     "an offer says what the folder holds, where it is, and names its manifest's exact bytes")
+        suite.expect(!bench.exists(bench.support) && bench.store.installed.isEmpty && !bench.store.isInstalled(id)
+                         && bench.registry.tool(id) == nil && bench.host.manifest(for: id) == nil
+                         && bench.started.isEmpty,
+                     "making an offer copies nothing, adds nothing and starts nothing: the person has not agreed yet")
+
+        // The folder changes while the person reads the sheet.
+        try? ExternalToolManifestTests.file(#"{"version": "6.6.6"}"#)
+            .write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        suite.expect(refusal(bench.store.add(ToolConsent(to: offer))) == .changedSinceOffered
+                         && !bench.exists(bench.support) && bench.store.installed.isEmpty,
+                     "a folder whose manifest changed after it was shown is not added: what is added is what was agreed to")
+        try? bytes.write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        if case .success(let installed) = bench.store.add(ToolConsent(to: offer)) {
+            suite.expect(installed.tool == offer.tool && bench.store.isInstalled(id) && bench.registry.canRun(copy),
+                         "with the person's consent to that offer, the tool is added")
+        } else {
+            suite.expect(false, "with the person's consent to that offer, the tool is added")
+        }
+        suite.expect(refusal(bench.store.offer(from: bench.files)) == .files(.insideTheApp),
+                     "the app's own copy of a tool is not offered: it cannot be added over itself")
+
+        // The person picks a link to the tool's folder.
+        let linked = Bench()
+        defer { linked.close() }
+        let real = linked.folder()
+        let alias = linked.root.appendingPathComponent("alias")
+        try? FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
+        guard case .success(let followed) = linked.store.offer(from: alias),
+              case .success = linked.store.add(ToolConsent(to: followed)) else {
+            suite.expect(false, "a link to a tool's folder is followed, and the tool added")
+            return
+        }
+        let kind = (try? FileManager.default.attributesOfItem(atPath: linked.files.path))?[.type] as? FileAttributeType
+        let followedTo = real.resolvingSymlinksInPath().standardizedFileURL
+        try? FileManager.default.removeItem(at: real)
+        suite.expect(followed.folder == followedTo && kind == .typeDirectory
+                         && linked.exists(linked.files.appendingPathComponent("bin/deploys")),
+                     "picking a link to a folder copies the folder, not the link: the copy outlives the folder it came from")
+    }
+
+    /// The two things an offer refuses that the manifest cannot know: a
+    /// folder too large to copy, and a program macOS has quarantined.
+    static func tooBigOrQuarantined(_ suite: TestSuite) {
+        var limits = ToolLimits.standard
+        // The folder a bench makes holds three things: the manifest, `bin`
+        // and the program in it. The manifest is its only bytes.
+        let manifest = ExternalToolManifestTests.file()
+        limits.folderItems = 4
+        limits.folderBytes = manifest.count + 10
+        let bench = Bench(limits: limits)
+        defer { bench.close() }
+        let picked = bench.folder()
+        try? Data(count: 10).write(to: picked.appendingPathComponent("fourth"))
+        suite.expect(ToolFolders.weight(of: picked, within: .init(bytes: .max, items: .max))
+                         == .init(bytes: manifest.count + 10, items: 4)
+                         && refusal(bench.store.offer(from: picked)) == nil,
+                     "a folder that holds exactly as much as a tool's folder may is offered")
+        try? Data(count: 11).write(to: picked.appendingPathComponent("fourth"))
+        suite.expect(refusal(bench.store.offer(from: picked)) == .tooBig(bytes: manifest.count + 10, items: 4),
+                     "one byte more is refused, with the most a folder may hold")
+        try? Data(count: 10).write(to: picked.appendingPathComponent("fourth"))
+        try? FileManager.default.createSymbolicLink(at: picked.appendingPathComponent("fifth"),
+                                                    withDestinationURL: bench.root)
+        suite.expect(refusal(bench.store.offer(from: picked)) == .tooBig(bytes: manifest.count + 10, items: 4)
+                         && !bench.exists(bench.support),
+                     "one thing more is refused too, a link counted as one thing and not followed; nothing is copied")
+        suite.expect(ToolLimits.standard.folderBytes == 256 * 1_048_576 && ToolLimits.standard.folderItems == 10_000,
+                     "the app's own limits are 256 MB and 10,000 things")
+
+        let downloaded = Bench()
+        defer { downloaded.close() }
+        let folder = downloaded.folder()
+        let program = folder.appendingPathComponent("bin/deploys")
+        let mark = Array("0081;00000000;Safari;".utf8)
+        suite.expect(setxattr(program.path, "com.apple.quarantine", mark, mark.count, 0, 0) == 0
+                         && ToolFolders.isQuarantined(program)
+                         && refusal(downloaded.store.offer(from: folder))
+                         == .quarantined(folder.resolvingSymlinksInPath().standardizedFileURL)
+                         && !downloaded.exists(downloaded.support),
+                     "a program macOS has quarantined is refused before anything is copied, with the folder to clear")
+        suite.expect(removexattr(program.path, "com.apple.quarantine", 0) == 0 && !ToolFolders.isQuarantined(program)
+                         && refusal(downloaded.store.offer(from: folder)) == nil,
+                     "once the person has cleared the quarantine themselves, the folder is offered")
     }
 
     static func adding(_ suite: TestSuite) {

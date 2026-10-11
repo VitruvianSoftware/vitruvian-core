@@ -49,6 +49,13 @@ package struct ToolLimits: Equatable, Sendable {
     /// second, at most. A tool that writes faster waits on its pipe. It is
     /// well over `messagesPerSecond`, so a flood is still seen as one.
     package var linesHandedPerSecond = 2_000
+    /// The most a tool's folder may weigh when it is added, in bytes. The
+    /// folder is copied whole, on the main thread, so this is what keeps
+    /// picking the wrong folder, a home folder or a project with its
+    /// dependencies, from stalling the app or filling the disk.
+    package var folderBytes = 256 * 1_048_576
+    /// The most things it may hold: files, folders and links together.
+    package var folderItems = 10_000
 
     package init() {}
 

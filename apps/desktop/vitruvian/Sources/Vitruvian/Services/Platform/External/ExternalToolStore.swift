@@ -25,6 +25,14 @@ package final class ExternalToolStore {
         case files(ToolFolders.Problem)
         /// A tool with this id is there already.
         case alreadyInstalled(ToolID)
+        /// The folder holds more than a tool's folder may. These are the
+        /// most it may: so many bytes, and so many things.
+        case tooBig(bytes: Int, items: Int)
+        /// macOS has quarantined the tool's program, as it does to what is
+        /// downloaded, and will not start it. The folder is the one picked.
+        case quarantined(URL)
+        /// The folder's manifest is no longer the one the person was shown.
+        case changedSinceOffered
     }
 
     package struct Installed: Equatable, Sendable {
@@ -106,29 +114,60 @@ package final class ExternalToolStore {
         tools[id]
     }
 
-    /// Adds the tool in `folder`: reads its manifest, copies the folder
-    /// into the app's own, and hands the tool to the host and the registry.
-    /// Its program is started by the host's run rule, or by its first
-    /// command. Nothing is copied, and nothing changes, when it is refused.
-    @discardableResult
-    package func install(from folder: URL) -> Result<Installed, Refusal> {
-        let source: ExternalToolManifest
+    /// The first of the two steps of adding a tool: reads the tool in the
+    /// folder the person picked and says what adding it would mean. Nothing
+    /// is copied, nothing is run and nothing is saved. The second step is
+    /// `add`, and it takes the person's consent to what this returns.
+    package func offer(from picked: URL) -> Result<ToolOffer, Refusal> {
+        // A picked folder that is a link is followed first, so that what is
+        // read, shown and copied is the folder, never the link to it.
+        let folder = picked.resolvingSymlinksInPath().standardizedFileURL
+        let tool: ExternalToolManifest
         switch ExternalToolManifest.read(folder: folder) {
-        case .success(let tool): source = tool
+        case .success(let read): tool = read
         case .failure(let refusal): return .failure(.manifest(refusal))
         }
-        let id = source.manifest.id
+        guard let fingerprint = ToolFingerprint.ofManifest(in: folder) else { return .failure(.manifest(.noManifest)) }
+        if let folders = parts.folders, folders.holds(folder) { return .failure(.files(.insideTheApp)) }
+        if ToolFolders.isQuarantined(folder.appendingPathComponent(tool.program)) {
+            return .failure(.quarantined(folder))
+        }
+        let most = ToolFolders.Weight(bytes: parts.limits.folderBytes, items: parts.limits.folderItems)
+        guard ToolFolders.weight(of: folder, within: most) != nil else {
+            return .failure(.tooBig(bytes: most.bytes, items: most.items))
+        }
+        return .success(ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint))
+    }
+
+    /// The second step: the person agreed to an offer, so the tool is
+    /// added. Copies the folder into the app's own and hands the tool to
+    /// the host and the registry. Its program is started by the host's run
+    /// rule, or by its first command. Nothing is copied, and nothing
+    /// changes, when it is refused.
+    @discardableResult
+    package func add(_ consent: ToolConsent) -> Result<Installed, Refusal> {
+        let offer = consent.offer
+        let id = offer.tool.manifest.id
+        // What is added is what was shown. The folder could have changed
+        // while the person read the sheet, so its manifest is read again.
+        guard ToolFingerprint.ofManifest(in: offer.folder) == offer.fingerprint else {
+            return .failure(.changedSinceOffered)
+        }
         guard installed[id] == nil, parts.registry().tool(id) == nil, parts.host().manifest(for: id) == nil else {
             return .failure(.alreadyInstalled(id))
         }
         guard let folders = parts.folders else { return .failure(.noSupportFolder) }
         let place: ToolFolders.Place
-        switch folders.install(id, from: folder) {
+        switch folders.install(id, from: offer.folder) {
         case .success(let made): place = made
         case .failure(let problem): return .failure(.files(problem))
         }
         // The copy is what runs, so the copy is what is read: a link that
-        // pointed inside the picked folder may point outside the copy.
+        // pointed inside the picked folder may point outside the copy. And
+        // the copy's manifest must be the one agreed to, byte for byte.
+        guard ToolFingerprint.ofManifest(in: place.files) == offer.fingerprint else {
+            return .failure(.changedSinceOffered)
+        }
         let tool: ExternalToolManifest
         switch ExternalToolManifest.read(folder: place.files) {
         case .success(let copied) where copied.manifest.id == id: tool = copied
@@ -188,6 +227,13 @@ package final class ExternalToolStore {
 }
 
 extension ExternalToolStore {
+    /// Both steps at once, with no person asked. Only the development
+    /// switch below may use it; the screen that asks replaces both.
+    @discardableResult
+    package func install(from folder: URL) -> Result<Installed, Refusal> {
+        offer(from: folder).flatMap { add(ToolConsent(to: $0)) }
+    }
+
     /// The preference a development build reads a tool's folder from. No
     /// screen sets it, and a release build never reads it.
     package static let developmentToolFolderKey = "developmentToolFolder"

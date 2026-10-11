@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import Darwin
 import Foundation
 import VitruvianCore
 
@@ -43,6 +44,18 @@ package struct ToolFolders: Equatable, Sendable {
         }
     }
 
+    /// How much a folder holds: the bytes of its files, and how many things
+    /// are in it, files, folders and links together.
+    package struct Weight: Equatable, Sendable {
+        package let bytes: Int
+        package let items: Int
+
+        package init(bytes: Int, items: Int) {
+            self.bytes = bytes
+            self.items = items
+        }
+    }
+
     /// The app's support folder.
     package let root: URL
 
@@ -71,11 +84,8 @@ package struct ToolFolders: Equatable, Sendable {
     package func install(_ id: ToolID, from source: URL,
                          fileManager: FileManager = .default) -> Result<Place, Problem> {
         guard let place = place(for: id) else { return .failure(.notAnOutsideTool) }
-        let from = source.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        guard !holds(source) else { return .failure(.insideTheApp) }
         let home = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
-        for folder in ["Tools", "ToolData"] where Array(from.prefix(home.count + 1)) == home + [folder] {
-            return .failure(.insideTheApp)
-        }
         // With every link followed, each folder this writes to or deletes
         // from is still where it is said to be, under the support folder.
         for (folder, names) in [(place.files.deletingLastPathComponent(), ["Tools"]),
@@ -96,6 +106,43 @@ package struct ToolFolders: Equatable, Sendable {
         guard (try? fileManager.moveItem(at: copy, to: place.files)) != nil,
               PrivateFileStore.createDirectory(at: place.data, container: root) else { return .failure(.notCopied) }
         return .success(place)
+    }
+
+    /// Whether `folder` is, with every link followed, one of the app's own
+    /// tool folders or inside one.
+    package func holds(_ folder: URL) -> Bool {
+        let from = folder.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        let home = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        return ["Tools", "ToolData"].contains { Array(from.prefix(home.count + 1)) == home + [$0] }
+    }
+
+    /// Adds up what `folder` holds, and stops as soon as it holds more than
+    /// `limit` in bytes or in things: nil then. A link is counted as one
+    /// thing and never followed, which is also how the folder is copied. A
+    /// folder that cannot be read weighs nothing; copying it fails later.
+    package static func weight(of folder: URL, within limit: Weight,
+                               fileManager: FileManager = .default) -> Weight? {
+        var bytes = 0
+        var items = 0
+        let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey]
+        guard let walk = fileManager.enumerator(at: folder, includingPropertiesForKeys: keys, options: [],
+                                                errorHandler: { _, _ in true }) else {
+            return Weight(bytes: 0, items: 0)
+        }
+        for case let url as URL in walk {
+            items += 1
+            if let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true {
+                bytes += values.fileSize ?? 0
+            }
+            if bytes > limit.bytes || items > limit.items { return nil }
+        }
+        return Weight(bytes: bytes, items: items)
+    }
+
+    /// Whether macOS has quarantined the file at `url`, as it does to what
+    /// is downloaded from the web. It will not start such a program.
+    package static func isQuarantined(_ url: URL) -> Bool {
+        getxattr(url.path, "com.apple.quarantine", nil, 0, 0, 0) >= 0
     }
 
     /// False when something is at `url` and, with every link followed, it
