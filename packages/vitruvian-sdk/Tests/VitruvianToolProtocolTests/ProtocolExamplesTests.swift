@@ -179,7 +179,13 @@ final class ProtocolExamplesTests: XCTestCase {
         case .failure(_, let error):
             guard let refusal = RefusalCode(error), refusal == .notInUses || refusal == .permissionMissing,
                   let data = error.data else { return }
-            try same(Self.again(data, as: RefusalData.self), data)
+            // The message was read, so its data was taken. Data that is
+            // not what a refusal carries is a message the envelope should
+            // have refused: the test's own reading of it is no refusal.
+            guard let read = try? Self.again(data, as: RefusalData.self) else {
+                throw Changed(from: data, to: .null)
+            }
+            try same(read, data)
         }
     }
 

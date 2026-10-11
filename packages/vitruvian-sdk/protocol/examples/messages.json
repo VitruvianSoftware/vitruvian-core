@@ -455,6 +455,51 @@
       "valid": false,
       "answers": "open/url",
       "message": { "jsonrpc": "2.0", "id": 4, "result": { "opened": "yes" } }
+    },
+    {
+      "about": "a key held with Command that is not shift, option or control",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "keystrokes/pressMenuItem",
+        "params": {
+          "equivalents": [{ "character": "V", "modifiers": ["command"] }]
+        }
+      }
+    },
+    {
+      "about": "a preference saved as a list",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "storage/set",
+        "params": { "key": "limit", "value": [20] }
+      }
+    },
+    {
+      "about": "a preference's value that is an object",
+      "valid": false,
+      "answers": "storage/get",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "result": { "value": { "limit": 20 } }
+      }
+    },
+    {
+      "about": "refused for a service, named as text and not as an object",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "error": {
+          "code": -32001,
+          "message": "not listed in uses",
+          "data": "clipboard.write"
+        }
+      }
     }
   ]
 }

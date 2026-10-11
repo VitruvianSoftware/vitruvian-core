@@ -58,6 +58,27 @@ public struct RPCErrorObject: Codable, Equatable, Sendable, Error {
         self.message = message
         self.data = data
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case code, message, data
+    }
+
+    /// The two refusals that say more (`notInUses`, `permissionMissing`)
+    /// say it as a `RefusalData`. With either code, data that is anything
+    /// else is not read.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        code = try container.decode(Int.self, forKey: .code)
+        message = try container.decode(String.self, forKey: .message)
+        data = try container.decodeIfPresent(JSONValue.self, forKey: .data)
+        let named = code == RefusalCode.notInUses.rawValue || code == RefusalCode.permissionMissing.rawValue
+        if named, container.contains(.data) {
+            guard let data, data.objectValue != nil, (try? data.decode(RefusalData.self)) != nil else {
+                throw DecodingError.dataCorruptedError(forKey: .data, in: container,
+                                                       debugDescription: "not what this refusal carries")
+            }
+        }
+    }
 }
 
 /// The JSON-RPC 2.0 codes for a message that could not be handled at all.

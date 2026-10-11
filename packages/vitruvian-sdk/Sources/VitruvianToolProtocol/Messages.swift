@@ -305,16 +305,17 @@ public struct KeystrokesPasteParams: Codable, Equatable, Sendable {
 /// A menu item's key equivalent. Command is always part of it.
 public struct KeyEquivalent: Codable, Equatable, Sendable {
     /// The names `modifiers` may hold.
-    public enum Modifier: String, CaseIterable, Sendable {
+    public enum Modifier: String, CaseIterable, Codable, Sendable {
         case shift, option, control
     }
 
     /// The key, as the menu shows it.
     public let character: String
-    /// The keys held with Command, by `Modifier` name.
-    public let modifiers: [String]
+    /// The keys held with Command. A name that is not a `Modifier` is not
+    /// read.
+    public let modifiers: [Modifier]
 
-    public init(character: String, modifiers: [String]) {
+    public init(character: String, modifiers: [Modifier]) {
         self.character = character
         self.modifiers = modifiers
     }
@@ -359,21 +360,55 @@ public struct StorageGetParams: Codable, Equatable, Sendable {
     }
 }
 
+/// What a preference may hold on the wire: text, yes or no, or a number.
+/// A list, an object or null is not read.
+enum StoredValue {
+    static func read<Key: CodingKey>(_ container: KeyedDecodingContainer<Key>, _ key: Key) throws -> JSONValue {
+        let value = try container.decode(JSONValue.self, forKey: key)
+        switch value {
+        case .string, .bool, .number: return value
+        case .null, .array, .object:
+            throw DecodingError.dataCorruptedError(forKey: key, in: container,
+                                                   debugDescription: "not text, yes or no, or a number")
+        }
+    }
+}
+
 public struct StorageGetResult: Codable, Equatable, Sendable {
+    /// Text, yes or no, or a number.
     public let value: JSONValue
 
     public init(value: JSONValue) {
         self.value = value
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case value
+    }
+
+    public init(from decoder: any Decoder) throws {
+        value = try StoredValue.read(decoder.container(keyedBy: CodingKeys.self), .value)
+    }
 }
 
 public struct StorageSetParams: Codable, Equatable, Sendable {
     public let key: String
+    /// Text, yes or no, or a number.
     public let value: JSONValue
 
     public init(key: String, value: JSONValue) {
         self.key = key
         self.value = value
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, value
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = try container.decode(String.self, forKey: .key)
+        value = try StoredValue.read(container, .value)
     }
 }
 
