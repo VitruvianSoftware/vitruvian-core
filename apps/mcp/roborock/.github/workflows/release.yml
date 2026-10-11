@@ -1,0 +1,123 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Publish-on-version-bump, to PyPI.
+#
+# This file is developed in the vitruvian-core monorepo and exported to the
+# VitruvianSoftware/mcp-roborock mirror, which is where it runs. It never runs
+# in the monorepo: a workflow only runs from a repository's root .github/.
+#
+# On every push to the mirror's main it reads the package version from
+# src/vitruvian_roborock/__init__.py and asks PyPI whether that version
+# exists. If it does not, this is a new release: build, publish, tag. If it
+# does, there is nothing to do. So a release is cut by bumping __version__ in
+# the monorepo, and nothing else.
+#
+# Publishing uses PyPI TRUSTED PUBLISHING: no token is stored anywhere. PyPI is
+# told once, by hand, to trust this repository + this workflow file + the
+# `pypi` environment, and exchanges the runner's OIDC identity for a
+# short-lived upload credential. If any of those three is renamed, publishing
+# fails until PyPI is updated to match.
+name: release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect an unpublished version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - id: detect
+        run: |
+          V="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/vitruvian_roborock/__init__.py)"
+          if [ -z "$V" ]; then
+            echo "::error::could not read __version__ from src/vitruvian_roborock/__init__.py"
+            exit 1
+          fi
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/vitruvian-roborock/${V}/json")"
+          case "$CODE" in
+            200)
+              echo "vitruvian-roborock ${V} is already on PyPI -- nothing to do."
+              ;;
+            404)
+              echo "version=${V}" >> "$GITHUB_OUTPUT"
+              echo "Detected UNPUBLISHED release ${V}."
+              ;;
+            *)
+              echo "::error::PyPI returned HTTP ${CODE} for vitruvian-roborock ${V}; refusing to guess whether it is published."
+              exit 1
+              ;;
+          esac
+
+  publish:
+    name: Build and publish to PyPI
+    needs: detect
+    if: needs.detect.outputs.version
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Must match the environment named in the PyPI trusted publisher.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/vitruvian-roborock/${{ needs.detect.outputs.version }}/
+    permissions:
+      # OIDC for PyPI trusted publishing. Without it the runner cannot mint
+      # the identity token PyPI exchanges for an upload credential.
+      id-token: write
+      # To create the release tag once the upload has succeeded.
+      contents: write
+    env:
+      VERSION: ${{ needs.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
+      - name: Build
+        run: uv build
+      - name: Check the built files are the version we detected
+        run: |
+          ls -l dist
+          test -f "dist/vitruvian_roborock-${VERSION}-py3-none-any.whl"
+          test -f "dist/vitruvian_roborock-${VERSION}.tar.gz"
+          uvx twine check dist/*
+      - name: Publish
+        run: uv publish --trusted-publishing always
+      - name: Tag the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${VERSION}" \
+            --target "$GITHUB_SHA" \
+            --title "v${VERSION}" \
+            --notes "Published to PyPI: https://pypi.org/project/vitruvian-roborock/${VERSION}/" \
+            dist/*

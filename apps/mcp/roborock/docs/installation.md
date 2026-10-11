@@ -14,11 +14,34 @@ Welcome to the **Vitruvian Roborock** integration! This guide walks you through 
 
 ---
 
-## 2. Installation Options
+## 2. Installation
 
-### Option A: Install in Claude Code (Zero-Checkout)
+### Step 1: Install the server (required for every option)
 
-You can add our repository as a plugin marketplace and install `vitruvian-roborock` directly:
+```bash
+# Installs rrctl and vitruvian-roborock into ~/.local/bin
+uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
+```
+
+Verify it:
+
+```bash
+rrctl --help
+```
+
+Everything else depends on this step. The plugins start the MCP server with
+`uvx vitruvian-roborock mcp`, and the package is not published to PyPI, so
+`uvx` can only find it once it is installed. If you skip it, the plugin still
+installs, but its tools never appear in your agent.
+
+If the terminal CLI and local web dashboard are all you want, you are done:
+this step is the whole standalone install.
+
+---
+
+### Step 2, option A: Add the plugin to Claude Code
+
+Add our repository as a plugin marketplace and install `vitruvian-roborock`:
 
 ```bash
 # 1. Register the Vitruvian Roborock marketplace
@@ -28,45 +51,26 @@ claude plugin marketplace add VitruvianSoftware/mcp-roborock
 claude plugin install vitruvian-roborock
 ```
 
-Once installed, Claude Code automatically has access to:
+Once installed, Claude Code has access to:
 - **Skills**: `/roborock-control` (clean rooms, dock, wash mop) and `/roborock-setup` (first-time login).
 - **FastMCP Tools**: `get_status`, `start_clean`, `control`, `return_to_dock`, `wash_mop`, `get_map`, `setup_login`.
 
 ---
 
-### Option B: Install in Antigravity
-
-To install the plugin in Antigravity:
+### Step 2, option B: Add the plugin to Antigravity
 
 ```bash
-# Clone or download the repository
-git clone https://github.com/VitruvianSoftware/mcp-roborock.git ~/.config/plugins/mcp-roborock
-
-# Install and enable via agy CLI
-agy plugin install ~/.config/plugins/mcp-roborock/plugin
+agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
 ```
+
+No clone is needed: Antigravity finds the plugin in the repository's `plugin/`
+folder and installs it as `vitruvian-roborock`.
 
 To verify the installation:
 ```bash
 agy plugin list
 ```
-You will see `vitruvian-roborock` listed with its active skills and FastMCP server.
-
----
-
-### Option C: Standalone CLI Tool (`rrctl`)
-
-If you want the terminal CLI and local web dashboard on your machine without requiring an AI agent:
-
-```bash
-# Install rrctl globally into ~/.local/bin
-uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
-```
-
-Verify the CLI is available:
-```bash
-rrctl --help
-```
+You will see `vitruvian-roborock` listed with its skills and FastMCP server.
 
 ---
 
