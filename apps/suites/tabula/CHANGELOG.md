@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.40](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.39...tabula-shared-v0.1.40) (2026-10-11)
+
+
+### Bug Fixes
+
+* **backstage:** CPU and memory for apps on the Docker nodes, and alerts scoped to each component ([#3028](https://github.com/VitruvianSoftware/vitruvian-core/issues/3028)) ([dd05e05](https://github.com/VitruvianSoftware/vitruvian-core/commit/dd05e0529235f95065b75b090f178a8526447c94))
+* **backstage:** the Prometheus graphs on component pages were always empty ([#3021](https://github.com/VitruvianSoftware/vitruvian-core/issues/3021)) ([a5cf945](https://github.com/VitruvianSoftware/vitruvian-core/commit/a5cf945ba50e2ada0da6d792884bd5ecee5f111d))
+
 ## [0.1.39](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.38...tabula-shared-v0.1.39) (2026-09-29)
 
 
