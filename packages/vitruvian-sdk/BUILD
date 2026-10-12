@@ -87,6 +87,39 @@ swift_library(
     deps = [":VitruvianToolProtocol"],
 )
 
+# Folders the command-line tool and the app must judge alike. The app's own
+# tests read the same file, which is why it can see it.
+filegroup(
+    name = "folder_examples",
+    srcs = ["protocol/examples/folders.json"],
+    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+)
+
+# Everything the `vitruvian-tool` command does, as a library so the tests can
+# link it without the executable's top-level code, which would collide with
+# XCTest's `main`.
+swift_library(
+    name = "VitruvianToolCLI",
+    srcs = glob(["Sources/VitruvianToolCLI/**/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "VitruvianToolCLI",
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":VitruvianToolProtocol"],
+)
+
+# bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool -- validate <a tool's folder>
+#
+# `manual` and macOS-only, like the app's own swift_binary targets.
+swift_binary(
+    name = "vitruvian-tool",
+    srcs = glob(["Sources/vitruvian-tool/**/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "VitruvianToolCommandLine",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":VitruvianToolCLI"],
+)
+
 # macOS-only and `manual`, like every swift_test in the repository, so the
 # Linux lane never names it; the `vitruvian-sdk` pipeline unit below runs it by
 # explicit label on xcode-27.
@@ -108,6 +141,20 @@ swift_test(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":VitruvianToolKit"],
+)
+
+# The command against folders it makes in the temporary folder.
+swift_test(
+    name = "VitruvianToolCLITests",
+    size = "small",
+    srcs = glob(["Tests/VitruvianToolCLITests/**/*.swift"]),
+    data = PROTOCOL_FILES,
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":VitruvianToolCLI",
+        ":VitruvianToolProtocol",
+    ],
 )
 
 # The examples, judged by the schemas. Not `manual` and not tied to macOS: it
@@ -249,6 +296,7 @@ pipeline_unit(
     persona = "platform",
     runner = "xcode-27",
     test_targets = [
+        ":VitruvianToolCLITests",
         ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
         ":conformance_test",

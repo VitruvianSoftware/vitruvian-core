@@ -27,6 +27,7 @@ let package = Package(
     products: [
         .library(name: "VitruvianToolProtocol", targets: ["VitruvianToolProtocol"]),
         .library(name: "VitruvianToolKit", targets: ["VitruvianToolKit"]),
+        .executable(name: "vitruvian-tool", targets: ["VitruvianToolCommandLine"]),
     ],
     targets: [
         // MUST MIRROR packages/vitruvian-sdk/BUILD, target for target. These
@@ -46,6 +47,18 @@ let package = Package(
             dependencies: ["VitruvianToolProtocol"],
             path: "Sources/VitruvianToolKit"
         ),
+        // Everything the `vitruvian-tool` command does, as a library so the
+        // tests can link it without the executable's top-level code.
+        .target(
+            name: "VitruvianToolCLI",
+            dependencies: ["VitruvianToolProtocol"],
+            path: "Sources/VitruvianToolCLI"
+        ),
+        .executableTarget(
+            name: "VitruvianToolCommandLine",
+            dependencies: ["VitruvianToolCLI"],
+            path: "Sources/vitruvian-tool"
+        ),
         // The two samples written in Swift. Their manifests are beside them.
         .executableTarget(
             name: "HelloSwiftSample",
@@ -63,6 +76,12 @@ let package = Package(
             name: "VitruvianToolProtocolTests",
             dependencies: ["VitruvianToolProtocol"],
             path: "Tests/VitruvianToolProtocolTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "VitruvianToolCLITests",
+            dependencies: ["VitruvianToolCLI", "VitruvianToolProtocol"],
+            path: "Tests/VitruvianToolCLITests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
