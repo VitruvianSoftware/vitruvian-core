@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.21.2...mcp-slack-v1.22.0) (2026-10-12)
+
+
+### Features
+
+* **mcp-slack:** list unread conversations and mark them read ([#3126](https://github.com/VitruvianSoftware/vitruvian-core/issues/3126)) ([e1d37a4](https://github.com/VitruvianSoftware/vitruvian-core/commit/e1d37a4b2155328ac42599dc6b392f4e52eadddf))
+
 ## [1.21.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.21.1...mcp-slack-v1.21.2) (2026-10-10)
 
 
