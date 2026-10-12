@@ -120,6 +120,8 @@ package final class ExternalToolStore {
         package var stoppedWorking: @MainActor (ToolID) -> Void
         /// Deletes every preference a tool saved.
         package var forgetPreferences: @MainActor (ToolID) -> Void
+        /// Clears the shortcuts the person gave a tool's commands.
+        package var forgetShortcuts: @MainActor (ToolID) -> Void
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -128,7 +130,8 @@ package final class ExternalToolStore {
                      makeTransport: @escaping @MainActor (URL, URL) -> any ToolTransport,
                      language: @escaping @MainActor () -> String,
                      stoppedWorking: @escaping @MainActor (ToolID) -> Void,
-                     forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in }) {
+                     forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     forgetShortcuts: @escaping @MainActor (ToolID) -> Void = { _ in }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -139,6 +142,7 @@ package final class ExternalToolStore {
             self.language = language
             self.stoppedWorking = stoppedWorking
             self.forgetPreferences = forgetPreferences
+            self.forgetShortcuts = forgetShortcuts
         }
 
         /// The app as it is. That a tool stopped working is also a line
@@ -156,7 +160,8 @@ package final class ExternalToolStore {
                 Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
                     .error("the tool \(id.rawValue, privacy: .public) stopped working")
             },
-            forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) })
+            forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) },
+            forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) })
     }
 
     /// Deletes every preference saved under a tool's id: the keys that
@@ -408,6 +413,10 @@ package final class ExternalToolStore {
     /// there after the kill, what it saved is kept whatever was asked, so
     /// that a program is never left writing into a folder that is gone.
     ///
+    /// The shortcuts the person gave the tool's commands are cleared either
+    /// way: a tool that is removed has no row to show or clear them on.
+    /// Switching a tool off, or updating it, clears none.
+    ///
     /// The folder the tool was added from is never touched. What it gives
     /// back says which of these happened, so that the person can be told
     /// when what a tool saved was kept against what they asked.
@@ -421,6 +430,9 @@ package final class ExternalToolStore {
         let gone = deactivate(id, seeingItOut: true)
         held.remove(id)
         resting[id] = nil
+        // Its commands have no row on the Shortcuts page any more, so the
+        // keys the person gave them are given back, whatever else is kept.
+        parts.forgetShortcuts(id)
         let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
         // What it saved goes only once its program is gone.
         let data = deletingData && gone

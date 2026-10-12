@@ -25,6 +25,7 @@ enum ExternalToolStoreTests {
         removing(suite)
         goneBeforeDeleted(suite)
         saysWhatWasKept(suite)
+        shortcutsOfARemovedTool(suite)
         installedOrNot(suite)
         remembering(suite)
         switching(suite)
@@ -59,6 +60,9 @@ enum ExternalToolStoreTests {
         /// only really waits for a real program: a tool that is no program
         /// changes when the test says so, never while the host looks.
         var waits: [TimeInterval] = []
+        /// The shortcuts people gave to tool commands, over this bench's
+        /// registry: what is saved, and hotkeys that register nothing.
+        private(set) lazy var keys = ToolPlatformTests.RegistrarBench(registry: registry)
         private(set) var host: ToolHost!
         private(set) var store: ExternalToolStore!
 
@@ -100,7 +104,8 @@ enum ExternalToolStoreTests {
                 stoppedWorking: { [unowned self] in stoppedWorking.append($0) },
                 forgetPreferences: { id in
                     box.values = box.values.filter { !$0.key.hasPrefix(id.rawValue + "/") }
-                }))
+                },
+                forgetShortcuts: { [unowned self] in keys.registrar.forget($0) }))
         }
 
         /// The app's support folder, as the store sees it.
@@ -710,6 +715,66 @@ enum ExternalToolStoreTests {
         suite.expect(nobody.store.remove(id, deletingData: true) == .notAdded
                          && !nobody.store.remove(id, deletingData: true).removed,
                      "removing a tool nobody added says nothing was removed")
+    }
+
+    /// The shortcut the person gave a tool's command: gone with a tool
+    /// they remove, kept for one they switch off or update.
+    static func shortcutsOfARemovedTool(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        let other = CommandID("com.acme.other/open")!
+        func bench() -> (Bench, URL) {
+            let bench = Bench()
+            let picked = bench.folder()
+            bench.add(picked)
+            try? bench.registry.register(ToolDescriptor(id: other.tool, name: "Other", symbol: "star", commands: [
+                CommandDescriptor(id: other, title: "Open", symbol: "star", surfaces: [.shortcut])!,
+            ])!)
+            try? bench.registry.setHandler(.init(title: { _ in "Open" }, run: {}), for: other)
+            bench.keys.registrar.assign(optionB, to: copy)
+            bench.keys.registrar.assign(optionN, to: other)
+            return (bench, picked)
+        }
+        func key(_ bench: Bench, _ shortcut: GlobalShortcut) -> Bool {
+            bench.keys.live.contains { $0.registered?.shortcut == shortcut }
+        }
+
+        for deletingData in [false, true] {
+            let (removed, _) = bench()
+            defer { removed.close() }
+            suite.expect(key(removed, optionB) && removed.keys.registrar.assign(optionB, to: other) == .occupied(copy.rawValue),
+                         "the command of a tool that is added holds the keys the person gave it")
+            removed.keys.takeOvers = []
+            removed.store.remove(id, deletingData: deletingData)
+            suite.expect(removed.keys.saved == [other.rawValue: optionN] && !key(removed, optionB) && key(removed, optionN)
+                             && removed.keys.takeOvers == ["\(ToolCommandShortcuts.takeOverKey(for: copy))=false"],
+                         "removing a tool clears the shortcut of each of its commands, whether or not what it saved "
+                             + "is kept, and no other command's")
+            suite.expect(removed.keys.registrar.assign(optionB, to: other) == nil && key(removed, optionB),
+                         "and the keys can be given to another command")
+        }
+
+        let (switched, _) = bench()
+        defer { switched.close() }
+        switched.store.setOn(id, false)
+        suite.expect(switched.keys.saved[copy.rawValue] == optionB && !key(switched, optionB)
+                         && switched.keys.registrar.heldShortcuts == [other.rawValue: optionN],
+                     "a tool that is switched off keeps its shortcut saved; meanwhile it is no key and holds no combination")
+        switched.store.setOn(id, true)
+        suite.expect(switched.keys.saved[copy.rawValue] == optionB && key(switched, optionB)
+                         && switched.keys.registrar.assign(optionB, to: other) == .occupied(copy.rawValue),
+                     "and switched on again it has its key back")
+
+        let (updated, picked) = bench()
+        defer { updated.close() }
+        try? ExternalToolManifestTests.file(#"{"version": "1.3.0"}"#).write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        updated.add(picked)
+        suite.expect(updated.store.installed[id]?.tool.version == "1.3.0" && updated.keys.saved[copy.rawValue] == optionB
+                         && key(updated, optionB),
+                     "a tool that is updated keeps its shortcut, and its key")
+        suite.expect(updated.store.remove(ToolID("com.acme.nobody")!, deletingData: true) == .notAdded
+                         && updated.keys.saved[copy.rawValue] == optionB,
+                     "removing a tool nobody added clears nothing")
     }
 
     static func installedOrNot(_ suite: TestSuite) {

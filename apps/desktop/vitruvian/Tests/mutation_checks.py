@@ -372,7 +372,7 @@ MUTATIONS = [
      "let id = CommandID(text), asking.contains(id),",
      "let id = CommandID(text),",
      "a shortcut whose command is not registered holds no key"),
-    ("a command that is not registered frees its combination", "platform",
+    ("a tool command holds no combination at all", "platform",
      "Sources/Vitruvian/Services/ShortcutConflicts.swift",
      "        if let command = ToolCommandShortcuts.holder(of: shortcut, in: named, excluding: excludingCommand) {\n            return .toolCommand(command)\n        }\n",
      "",
@@ -763,6 +763,17 @@ MUTATIONS = [
      "            guard !isEditing else { return }\n",
      "a tile whose command cannot run does nothing when clicked, on Return or by its digit, "
      "and the panel stays as it is"),
+    ("a removed tool keeps the shortcuts of its commands", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        parts.forgetShortcuts(id)\n",
+     "",
+     "removing a tool clears the shortcut of each of its commands, whether or not what it saved "
+     "is kept, and no other command's"),
+    ("a saved shortcut whose command is not here still takes its keys", "platform",
+     "Sources/Vitruvian/Services/Platform/ToolCommandShortcuts.swift",
+     "        shortcuts.filter { CommandID($0.key).map(asking.contains) ?? false }\n",
+     "        shortcuts\n",
+     "the shortcut of a tool that is switched off stays saved, holds no key and holds no combination"),
 ]
 
 

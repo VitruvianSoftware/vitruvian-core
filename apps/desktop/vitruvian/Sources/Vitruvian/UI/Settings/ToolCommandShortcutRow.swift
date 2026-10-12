@@ -104,13 +104,17 @@ package enum ToolCommandShortcutSave: Equatable {
     /// rules, the ones `ToolShortcutRegistrar.assign` enforces. macOS is
     /// asked last, so an offer is only made for a combination that would be
     /// kept if accepted.
+    ///
+    /// `saved` is every saved shortcut and `held` those of the commands that
+    /// are here (`ToolShortcutRegistrar.heldShortcuts`): only one of those
+    /// can refuse a combination.
     package static func decide(_ shortcut: GlobalShortcut, for id: CommandID,
-                               saved: [String: GlobalShortcut], checks: Checks) -> ToolCommandShortcutSave {
+                               saved: [String: GlobalShortcut], held: [String: GlobalShortcut],
+                               checks: Checks) -> ToolCommandShortcutSave {
         if let holder = checks.roleHolder(shortcut) { return .refuse(.held(by: holder)) }
         if let holder = checks.windowLayoutHolder(shortcut) { return .refuse(.held(by: holder)) }
         if let holder = checks.otherHolder(shortcut) { return .refuse(.held(by: holder)) }
-        if let issue = ShortcutMap.assignmentIssue(shortcut, for: id.rawValue, in: saved,
-                                                   limit: ToolCommandShortcuts.limit) {
+        if let issue = ToolCommandShortcuts.assignmentIssue(shortcut, for: id, in: saved, held: held) {
             return .refuse(refusal(for: issue, commandName: checks.commandName))
         }
         switch SystemShortcutTakeoverSupport.recorderDecision(
@@ -368,7 +372,8 @@ package struct ToolCommandShortcutRow: View {
     }
 
     private func save(_ shortcut: GlobalShortcut) {
-        switch ToolCommandShortcutSave.decide(shortcut, for: id, saved: registrar.shortcuts, checks: checks) {
+        switch ToolCommandShortcutSave.decide(shortcut, for: id, saved: registrar.shortcuts,
+                                              held: registrar.heldShortcuts, checks: checks) {
         case .refuse(let refusal):
             errorText = message(refusal)
         case .offerTakeOver:

@@ -760,6 +760,7 @@ opened the app.
 | The loose end | Met? | What shows it |
 |---|---|---|
 | A command that is listed and cannot run looked clickable | Met in tests, not by hand. True of the Quick panel only | The command bar and the wheel already leave such a command out, each for a reason its code states (`CommandBarCatalog.toolEntries`: the bar records a use before it runs a row; `RadialMenuService.availableItems`: no dead slice), and tests held that before. The Quick panel kept the tile, drew it like any other, and did nothing when it was picked. It now keeps the tile in its place and draws it as a disabled button (`QuickLauncherService.isUnavailable`), which SwiftUI dims as it dims every disabled button; no click, Return or digit runs it and the panel stays open. Seven checks in the `launcher` suite and two planted regressions. How the dimmed tile looks is by-hand check 34. |
+| A removed tool kept its shortcut, and nothing could clear it | Met in tests, not by hand | The premise held: the saved combination registered no key (`ToolShortcutRegistrar.wantedShortcuts`) and still refused the same keys to every other command (`ShortcutConflicts.holder`, `ToolShortcutRegistrar.assign`), with no row to clear it on. Now Remove clears the shortcuts of the tool's commands (`ExternalToolStore.remove`, `ToolShortcutRegistrar.forget`), whether or not what the tool saved is kept. A tool that is switched off, updated, or not registered this launch keeps its shortcut saved; it holds no key and refuses nobody meanwhile (`heldShortcuts`), and is a key again when the tool returns. Keys given to another tool command meanwhile stay with that command. `platform` 766 to 781 checks, `tool-runtime` 581 to 591, two planted regressions. By-hand check 35. |
 
 **The five "done when" items of section 1, as they stand.** None is marked
 met here by a person, because none of the checks by hand has been done.
@@ -1095,6 +1096,16 @@ chmod +x "$TMPDIR/never/bin/tool.py"
     no row for it. Click Edit on the panel: the tile is no longer dimmed and
     can be hidden and dragged. Delete `$TMPDIR/never` with the others in
     check 28.
+35. **Add the Python sample, record Option-Shift-9 for "Say hello from
+    Python" on the Shortcuts page, and press it. Switch the tool off in
+    Settings, look at
+    the Shortcuts page, and switch it on again. Then Remove the tool, and
+    record Option-Shift-9 for any other command there.** The key shows the
+    sample's message. Switched off, the tool has no row and the key does
+    nothing; switched on, the row shows Option-Shift-9 again and the key
+    works. After Remove the row is gone, and the other command takes
+    Option-Shift-9 with no "already used" line. Add the sample again: its
+    row shows no shortcut.
 
 ## 16. Open questions
 

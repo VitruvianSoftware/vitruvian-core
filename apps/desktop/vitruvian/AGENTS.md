@@ -159,9 +159,20 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   not also ask for the `shortcut` surface: that would give one action two
   combinations.
 - `ToolShortcutRegistrar.assign` refuses a combination another tool command
-  has saved and returns why; it never moves one. Its hotkey ids run from
+  that is here holds, and returns why; it never moves one away from a
+  command that has a row. Its hotkey ids run from
   `ToolShortcutRegistrar.firstHotkeyID`, and `bazel/source_lints.py` keeps
   that run clear of the others.
+- A saved tool-command shortcut holds its combination only while its
+  command is here and asks for one, which is exactly while it has a row on
+  the Shortcuts page (`ToolShortcutRegistrar.heldShortcuts`). The shortcut
+  of a tool that is switched off, or not registered this launch, stays
+  saved, is no key, and refuses nobody; it is a key again when the tool
+  returns. If the keys were given to another tool command meanwhile, the
+  absent entry goes. Ask `heldShortcuts`, never `shortcuts`, whether a
+  combination is taken. Removing a tool from outside clears its commands'
+  shortcuts (`ToolShortcutRegistrar.forget`); switching it off or updating
+  it clears none.
 - A feature that has become a tool has a manifest (`ToolManifest`), conforms
   to `BundledTool`, and is built by `ToolHost` with a `ToolServices`. It has
   no `static let shared`. Everything outside its own logic, it reaches
