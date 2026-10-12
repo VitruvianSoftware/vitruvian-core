@@ -624,6 +624,69 @@ of it but the protocol.
   - Nobody has opened the app with this stage in it. The plan's list "By
     hand" is what is left to see.
 
+## Checking the app by hand, from the shell
+
+`Tools/ByHand.swift` is a command that lists and presses the controls of the
+running app through the macOS Accessibility API. It is how the checks by
+hand of the tools from outside (the spec's section 15) were done on
+2026-10-12. It is a development tool: `manual`, in no bundle and no release,
+built in CI so it keeps compiling, and run by no test.
+
+```sh
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- open-settings
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- tools
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- add-tool "$PWD/bazel-bin/packages/vitruvian-sdk/built/hello-swift" --agree
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- run-command "Say hello from Swift"
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- remove-tool "Hello, in Swift" --delete-data
+```
+
+Run it with no command for the whole list: `windows`, `dump`, `find`,
+`focused` and `message` only look; `press`, `select`, `set-value`,
+`focus-field`, `choose` and `scroll-end` do one thing; `open-settings`,
+`page`, `tools`, `add-tool`, `remove-tool`, `run-command`, `quit` and
+`launch` each do one step of a check. It exits with 0 when done, 1 when
+what was asked for is not there, 2 when the app is not running, 3 when the
+terminal has no Accessibility.
+
+Before you use it:
+
+- **It drives the app that is running, the person's own.** Tell them before
+  you start, and do not use it while they or another session are using the
+  Mac: three commands send keys, and keys go to whichever app is in front.
+  The command brings Vitruvian forward and sends nothing unless the
+  keyboard is then on it.
+- **Save first, compare after.** The clipboard
+  (`pbpaste > "$TMPDIR/clip.before"`), the app's settings
+  (`defaults export com.vitruviansoftware.vitruvian "$TMPDIR/settings.before.plist"`)
+  and a listing of its support folder. A check that copies, or flips a
+  switch by mistake, shows up in the comparison and nowhere else.
+- It finds the app by its bundle id and needs the terminal to have
+  Accessibility already. It never asks for, grants or changes a permission.
+  The app must be in English: it presses buttons by their English names
+  (`ByHandRules.Words`).
+
+What doing the checks taught, each held in `Tools/ByHandRules.swift` and by
+`ByHandRulesTests`:
+
+- Press by exact name, and of several controls with that name the last: a
+  sheet's controls come after its window's. A loose match for a button once
+  turned an unrelated feature off. `press` takes no part of a name.
+- The Features page is lazy. The last card is not there to find until the
+  page is scrolled to its end, twice (`tools` does it).
+- In the command bar Return runs the top result, which is often a longer
+  title that starts the same. `run-command` reads the results and moves to
+  the row that is the command before Return, and runs nothing when the bar
+  does not offer it. Pressing a result through the Accessibility API does
+  nothing.
+- A tool's row is found by the tool's whole name, and only when one row has
+  it.
+
+Not proven: the command was ported from the scripts that did the checks and
+compiles, but nobody has run this version against the app. `page`,
+`open-settings`, `quit` and the keys are new code for what the scripts did
+with a row's number and AppleScript; `select N`, from `dump`, is the way
+the scripts selected a page. It takes no screenshots: use `screencapture`.
+
 ## Porting from upstream
 
 - Follow `UPSTREAM.md`, "Tracking and porting upstream". Start a port with

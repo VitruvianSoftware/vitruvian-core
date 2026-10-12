@@ -843,7 +843,11 @@ path. `Tools` and `ToolData` are under
 must already have Accessibility. Do the checks of the app in light and in
 dark appearance, with stage C's mock-up page open beside it. Three checks
 need a tool no sample is, `many`, `long` and `stays`: the stage D plan's
-section "By hand" gives the commands that make them in `$TMPDIR`.
+section "By hand" gives the commands that make them in `$TMPDIR`. Since
+2026-10-12 a command in the repository presses the app's controls from the
+shell for these checks, `bazel run --config=macos-app //apps/desktop/vitruvian:by-hand`:
+`apps/desktop/vitruvian/AGENTS.md`, "Checking the app by hand, from the
+shell", says how to use it and what to save first.
 
 *The command, with no app*
 
