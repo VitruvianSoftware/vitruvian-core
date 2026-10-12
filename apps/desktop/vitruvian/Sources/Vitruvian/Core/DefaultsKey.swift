@@ -899,6 +899,7 @@ package enum DefaultsKey {
     package static let notchHideUntilHover = "notchHideUntilHover"
     package static let notchCoversMenus = "notchCoversMenus"
     package static let notchHoverDelay = "notchHoverDelay"
+    package static let notchCloseDelay = "notchCloseDelay"
     package static let notchReturnHome = "notchReturnHome"
     package static let notchHomeModule = "notchHomeModule"
     package static let notchOpensActivity = "notchOpensActivity"

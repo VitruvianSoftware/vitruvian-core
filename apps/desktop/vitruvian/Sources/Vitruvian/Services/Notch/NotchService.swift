@@ -1904,7 +1904,8 @@ package final class NotchService: ObservableObject {
                 self.collapse()
             }
             hoverWork = work
-            schedule((expanded || noticeExpanded ? NotchQuickAccessLayout.hoverExitDelay : 0.12), work)
+            let delay = NotchSupport.closeDelay(in: defaults)
+            schedule((expanded || noticeExpanded ? delay : 0.12), work)
         }
     }
 

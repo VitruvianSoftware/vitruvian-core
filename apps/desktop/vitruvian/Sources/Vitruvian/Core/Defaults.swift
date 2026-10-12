@@ -536,6 +536,7 @@ package enum Defaults {
         DefaultsKey.notchHideUntilHover: Preferences.notchHideUntilHover.defaultValue,
         DefaultsKey.notchCoversMenus: Preferences.notchCoversMenus.defaultValue,
         DefaultsKey.notchHoverDelay: Preferences.notchHoverDelay.defaultValue,
+        DefaultsKey.notchCloseDelay: Preferences.notchCloseDelay.defaultValue,
         DefaultsKey.notchReturnHome: Preferences.notchReturnHome.defaultValue,
         DefaultsKey.notchHomeModule: Preferences.notchHomeModule.defaultValue,
         DefaultsKey.notchOpensActivity: Preferences.notchOpensActivity.defaultValue,

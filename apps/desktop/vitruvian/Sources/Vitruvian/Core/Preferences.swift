@@ -667,6 +667,7 @@ package enum Preferences {
     package static let notchAgentsTelemetryFilter = Preference(DefaultsKey.notchAgentsTelemetryFilter, default: "antigravity")
     package static let notchDisplay = Preference(DefaultsKey.notchDisplay, default: NotchDisplay.automatic.rawValue)
     package static let notchHoverDelay = Preference(DefaultsKey.notchHoverDelay, default: NotchSupport.defaultHoverDelay)
+    package static let notchCloseDelay = Preference(DefaultsKey.notchCloseDelay, default: NotchSupport.defaultCloseDelay)
     package static let notchQuickAccessLayout = Preference(DefaultsKey.notchQuickAccessLayout, default: Data())
     package static let radialMenuActivationMode = Preference(DefaultsKey.radialMenuActivationMode, default: RadialMenuActivationMode.pressOrHold.rawValue)
     package static let appUpdatesCheckFrequency = Preference(DefaultsKey.appUpdatesCheckFrequency, default: AppUpdatesSupport.CheckFrequency.off.rawValue)
