@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.41.2...vitruvian-v3.42.0) (2026-10-12)
+
+
+### Features
+
+* **desktop:** fill metric parity gaps for Antigravity and Claude ([#3138](https://github.com/VitruvianSoftware/vitruvian-core/issues/3138)) ([5cc823e](https://github.com/VitruvianSoftware/vitruvian-core/commit/5cc823e9e2cf285c365c20a928c95bf9a4011a34))
+
 ## [3.41.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.41.1...vitruvian-v3.41.2) (2026-10-12)
 
 
