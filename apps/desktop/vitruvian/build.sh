@@ -262,6 +262,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/NotchActivityStrings.swift
         Sources/Vitruvian/Core/Notch/NotchTimerSupport.swift
         Sources/Vitruvian/Services/Notch/NotchTimerAlert.swift
+        Sources/Vitruvian/Services/Notch/NotchIslandAlert.swift
         Sources/Vitruvian/Core/Notch/NotchAccessorySupport.swift
         Sources/Vitruvian/Services/QuickTools/CameraPreviewSupport.swift
         Sources/Vitruvian/Core/NotchMusicExtrasStrings.swift
