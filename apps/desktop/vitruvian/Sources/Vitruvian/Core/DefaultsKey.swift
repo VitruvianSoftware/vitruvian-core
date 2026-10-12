@@ -438,6 +438,7 @@ package enum DefaultsKey {
     // System monitor — per-item visibility inside each panel section.
     package static let monitorSysTemps = "monitorSysTemps"
     package static let monitorSysCPU = "monitorSysCPU"
+    package static let monitorSysCPUCores = "monitorSysCPUCores"
     package static let monitorSysGPU = "monitorSysGPU"
     package static let monitorSysBattery = "monitorSysBattery"
     package static let monitorSysMemory = "monitorSysMemory"

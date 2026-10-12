@@ -216,6 +216,7 @@ enum SourceNames {
         "confirmKillFormat",
         "confirmKillTreeFormat",
         "copySelectedFormat",
+        "coreFormat",
         "countdownSecondsFormat",
         "cpuBodyFormat",
         "cpuTemperatureBodyFormat",

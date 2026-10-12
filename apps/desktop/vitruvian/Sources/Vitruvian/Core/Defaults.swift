@@ -708,6 +708,7 @@ package enum Defaults {
         // Every per-item block shows by default; users hide what they don't want.
         DefaultsKey.monitorSysTemps: Preferences.monitorSysTemps.defaultValue,
         DefaultsKey.monitorSysCPU: Preferences.monitorSysCPU.defaultValue,
+        DefaultsKey.monitorSysCPUCores: Preferences.monitorSysCPUCores.defaultValue,
         DefaultsKey.monitorSysGPU: Preferences.monitorSysGPU.defaultValue,
         DefaultsKey.monitorSysBattery: Preferences.monitorSysBattery.defaultValue,
         DefaultsKey.monitorSysMemory: Preferences.monitorSysMemory.defaultValue,
