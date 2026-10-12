@@ -246,3 +246,136 @@ describe("transport visibility for the membership and emoji tools", () => {
     expect(advertised).toContain("slack_invite_to_channel");
   });
 });
+
+describe("unread listing", () => {
+  type Reply = Record<string, unknown>;
+  function routeFetch(route: (method: string, q: URLSearchParams) => Reply) {
+    const calls: { method: string; auth: string | undefined }[] = [];
+    const spy = jest
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = new URL(String(input));
+          const method = url.pathname.replace("/api/", "");
+          const headers = (init?.headers ?? {}) as Record<string, string>;
+          calls.push({ method, auth: headers.Authorization });
+          return new Response(JSON.stringify(route(method, url.searchParams)), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        },
+      );
+    return { calls, restore: () => spy.mockRestore() };
+  }
+
+  const LAST_READ: Record<string, string> = {
+    C_QUIET: "200.0",
+    C_BUSY: "100.0",
+    C_LIMITED: "100.0",
+    C_JOINS: "100.0",
+  };
+  let capture: ReturnType<typeof routeFetch>;
+  afterEach(() => capture.restore());
+
+  function workspace(method: string, q: URLSearchParams): Reply {
+    if (method === "users.conversations") {
+      const types = q.get("types");
+      if (types === "im") return { ok: false, error: "missing_scope" };
+      if (types === "mpim") return { ok: true, channels: [] };
+      return {
+        ok: true,
+        channels: [
+          { id: "C_QUIET" },
+          { id: "C_BUSY" },
+          { id: "C_LIMITED" },
+          { id: "C_JOINS" },
+        ],
+      };
+    }
+    const id = q.get("channel")!;
+    if (method === "conversations.info") {
+      return {
+        ok: true,
+        channel: { name: id.toLowerCase(), last_read: LAST_READ[id] },
+      };
+    }
+    // conversations.history: the unread check must start at the read cursor.
+    expect(q.get("oldest")).toBe(LAST_READ[id]);
+    if (id === "C_LIMITED") return { ok: false, error: "ratelimited" };
+    if (id === "C_JOINS") {
+      return { ok: true, messages: [{ ts: "400.0", subtype: "channel_join" }] };
+    }
+    if (id === "C_BUSY") {
+      return {
+        ok: true,
+        has_more: true,
+        messages: [{ ts: "300.0" }, { ts: "250.0" }],
+      };
+    }
+    return { ok: true, messages: [] };
+  }
+
+  it("reports only conversations with messages after the read cursor", async () => {
+    capture = routeFetch(workspace);
+    const result = await clientFor(STDIO_ENV).listUnread();
+    expect(result.conversations).toEqual([
+      {
+        id: "C_BUSY",
+        name: "c_busy",
+        type: "public_channel",
+        unread_count: 2,
+        unread_count_is_minimum: true,
+        last_read: "100.0",
+        latest_ts: "300.0",
+      },
+    ]);
+    expect(result.checked).toBe(4);
+  });
+
+  it("does not call a channel unread when only join notices are new", async () => {
+    capture = routeFetch(workspace);
+    const result = await clientFor(STDIO_ENV).listUnread();
+    expect(result.conversations.map((c) => c.id)).not.toContain("C_JOINS");
+  });
+
+  it("names what it could not check instead of failing the listing", async () => {
+    capture = routeFetch(workspace);
+    const result = await clientFor(STDIO_ENV).listUnread();
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toEqual([{ types: "im", error: "missing_scope" }]);
+    expect(result.errors).toEqual([{ id: "C_LIMITED", error: "ratelimited" }]);
+  });
+
+  it("reads cursors with the user token only, never the bot's", async () => {
+    capture = routeFetch(workspace);
+    await clientFor(STDIO_ENV).listUnread();
+    expect(capture.calls.length).toBeGreaterThan(0);
+    for (const call of capture.calls) {
+      expect(call.auth).toBe("Bearer xoxp-test");
+    }
+  });
+
+  it("checks only the allow-listed channels when an allow-list is set", async () => {
+    capture = routeFetch(workspace);
+    const result = await clientFor({
+      ...STDIO_ENV,
+      SLACK_CHANNEL_IDS: "C_BUSY",
+    }).listUnread();
+    expect(capture.calls.map((c) => c.method)).toEqual([
+      "conversations.info",
+      "conversations.history",
+    ]);
+    expect(result.conversations.map((c) => c.id)).toEqual(["C_BUSY"]);
+  });
+
+  it("is refused and hidden on a transport without a user token", async () => {
+    capture = routeFetch(workspace);
+    await expect(clientFor(HTTP_ENV).listUnread()).rejects.toBeInstanceOf(
+      UserTokenUnavailableError,
+    );
+    expect(capture.calls).toHaveLength(0);
+    expect(toolsFor(resolveConfig(HTTP_ENV)).map((t) => t.name)).not.toContain(
+      "slack_list_unread",
+    );
+  });
+});

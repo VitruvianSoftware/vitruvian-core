@@ -188,6 +188,7 @@ export const handlers: Readonly<Record<ToolName, ToolHandler>> = {
     ),
   slack_invite_to_channel: (c, a) =>
     c.inviteToChannel(str(a, "channel_id"), strArray(a, "user_ids")),
+  slack_list_unread: (c, a) => c.listUnread(optNum(a, "max_per_conversation")),
   slack_mark_read: (c, a) =>
     c.markRead(str(a, "channel_id"), str(a, "timestamp")),
 

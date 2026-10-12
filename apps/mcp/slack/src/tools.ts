@@ -259,6 +259,22 @@ export const tools = [
   },
 
   {
+    name: "slack_list_unread",
+    description:
+      "List the conversations the authenticated user has unread messages in, newest first, with an unread count and the latest_ts to hand to slack_mark_read. Slow: Slack has no single call for this, so it checks each conversation in turn (two API calls each). Conversation types the token cannot enumerate are named under 'skipped' and per-conversation failures under 'errors' rather than failing the listing; DMs and group DMs need the im:read and mpim:read user scopes. Counts top-level messages only, not thread replies, and ignores join/leave notices.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        max_per_conversation: {
+          type: "number",
+          description:
+            "Stop counting a conversation's unread messages at this many (default 100, max 200)",
+          default: 100,
+        },
+      },
+    },
+  },
+  {
     name: "slack_mark_read",
     description:
       "Mark a conversation as read up to a message, as the authenticated user. Clears the unread badge for everything at or before that message; pass the timestamp of the newest message you have handled. Works for channels and private channels; DMs and group DMs need the im:write and mpim:write user scopes.",
@@ -910,6 +926,8 @@ export const HTTP_WITHHELD_WITHOUT_USER_TOKEN = new Set([
   // The bot token would be accepted and move the bot's read cursor instead of
   // the human's — a call that reports ok and changes nothing anyone can see.
   "slack_mark_read",
+  // Same reason in the other direction: read cursors belong to a person.
+  "slack_list_unread",
   "slack_add_reaction",
   "slack_pin_message",
   "slack_unpin_message",
