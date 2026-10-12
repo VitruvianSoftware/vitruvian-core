@@ -281,11 +281,17 @@ and this app holds only what is specific to it.
 
 A tool can be a separate program the app starts and talks to
 (`docs/superpowers/specs/2026-10-10-vitruvian-external-tools-design.md`).
-Stages A, B and C of that work are built: the protocol, reading a tool's
-manifest, the runtime that starts a tool, talks to it and stops it, and the
-screens. A person adds a tool in Settings, under Features, in the section
-"Tools from outside": they pick its folder and agree on one sheet. Every
-build has that section. There is no store of tools.
+All four stages of that work are built: the protocol, reading a tool's
+manifest, the runtime that starts a tool, talks to it and stops it, the
+screens, and what a tool's author works with. A person adds a tool in
+Settings, under Features, in the section "Tools from outside": they pick its
+folder and agree on one sheet. Every build has that section. There is no
+store of tools.
+
+What a tool's author works with is all in `packages/vitruvian-sdk`: a Swift
+kit, the `vitruvian-tool` command, three samples and a guide
+(`docs/writing-a-tool.md`). None of it is in the app, and the app links none
+of it but the protocol.
 
 - The protocol lives in `packages/vitruvian-sdk`, under MIT: JSON Schema in
   `protocol/`, the same messages as Swift in `Sources/VitruvianToolProtocol`.
@@ -296,6 +302,16 @@ build has that section. There is no store of tools.
   name. It is not re-exported from `Core`, and it never imports a
   `Vitruvian*` module. Nothing is copied between the two folders: the
   package is MIT and this app is GPL.
+- The rules the app refuses a tool's folder by are written twice: here, in
+  `ExternalToolManifest.read(folder:)` and `ExternalToolStore.offer(from:)`,
+  and in the package's `FolderCheck`, for `vitruvian-tool validate`. The
+  package cannot use this app's code. One file of example folders,
+  `packages/vitruvian-sdk/protocol/examples/folders.json`, is judged by both:
+  `ToolFolderExamplesTests` here, `FolderCheckTests` there. It holds 22
+  folders, and an example whose verdict is `manifest` also names the rule
+  that is broken. Change such a rule in both places and add an example, in
+  one commit. One rule came from there: a tool's program must be a file, so
+  a named pipe with the execute permission is refused as no program.
 - After changing a file under
   `packages/vitruvian-sdk/Sources/VitruvianToolProtocol`, run
   `bazel run //apps/desktop/vitruvian:pin_tool_protocol` and add a line to the
