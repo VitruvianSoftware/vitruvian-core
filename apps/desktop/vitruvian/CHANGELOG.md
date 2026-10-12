@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.39.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.38.3...vitruvian-v3.39.0) (2026-10-12)
+
+
+### Features
+
+* **desktop:** add tools from outside in Settings, after agreeing on one sheet ([#3096](https://github.com/VitruvianSoftware/vitruvian-core/issues/3096)) ([633580c](https://github.com/VitruvianSoftware/vitruvian-core/commit/633580c7f022d08b8198b439b9dfb7fb69f998b2))
+
+
+### Bug Fixes
+
+* **vitruvian:** release a stuck DMG image by its device, not its mount path ([#3107](https://github.com/VitruvianSoftware/vitruvian-core/issues/3107)) ([394c5d3](https://github.com/VitruvianSoftware/vitruvian-core/commit/394c5d3b71b39a1f4fbfbff89f2bb6ca89b77a10))
+
 ## [3.38.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.38.2...vitruvian-v3.38.3) (2026-10-11)
 
 

@@ -45,7 +45,7 @@
     "better-sqlite3": "^11.8.1",
     "express-promise-router": "^4.1.1",
     "google-auth-library": "^10.5.0",
-    "pg": "^8.13.3"
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@backstage/cli": "^0.36.6",
@@ -54,7 +54,7 @@
     "@types/node": "^22",
     "jest": "catalog:",
     "jest-cli": "^30.4.2",
-    "jest-environment-node": "^30.4.1",
+    "jest-environment-node": "^30.5.2",
     "js-yaml": "^4.1.0",
     "ts-jest": "^29.4.14",
     "typescript": "~5.8.0"

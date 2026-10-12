@@ -107,7 +107,7 @@ records here must declare named records, never "the zone".
 
 | Records | Written by |
 | --- | --- |
-| apex CNAME, and the `_github-pages-challenge-vitruviansoftware` TXT | `repo-config`, `internal/site_domain` (when `SITE_DOMAIN_MANAGED` is on; hand-made before that) |
+| apex CNAME, `www` CNAME, and the `_github-pages-challenge-vitruviansoftware` TXT | `repo-config`, `internal/site_domain` (protected; the apex and TXT were hand-made before 2026-10-12, `www` was created by it) |
 | `tabula`, `tabula.dev`, `tabula.staging`, `tabula-api`, `tabula-api.dev`, `tabula-api.staging` | the tabula Pulumi stacks (`apps/suites/tabula/infra`) |
 | three apex `google-site-verification` TXT, marked "do not delete" | `tools/ci/ensure-site-verification.sh` |
 | `backstage`, `storybook` (with their `heritage=external-dns` ownership TXT) | external-dns in the cluster |
@@ -116,10 +116,11 @@ records here must declare named records, never "the zone".
 | `adk-agents`, and `_github-pages-challenge-bluecentre` | another GitHub account's Pages, by hand |
 | `opensource` (Vercel), `_tailscale-challenge`, `sandbox` TXT | by hand |
 
-The apex is **one CNAME**, `vitruviansoftware.dev` to `bluecentre.github.io`,
+The apex is **one CNAME**, `vitruviansoftware.dev` to `vitruviansoftware.github.io`,
 DNS-only. Cloudflare flattens it, so resolvers see GitHub's eight Pages
-addresses; the zone holds no A or AAAA records. The target is another GitHub
-account's Pages hostname, which works because GitHub routes by the custom domain.
+addresses; the zone holds no A or AAAA records. GitHub routes by the custom
+domain, not by the CNAME target. (It pointed at another account's hostname,
+`bluecentre.github.io`, until 2026-10-12.)
 
 ## Guardrails
 

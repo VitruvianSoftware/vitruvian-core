@@ -21,6 +21,7 @@ package site_domain
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
@@ -34,7 +35,13 @@ type seen struct {
 	importID  string
 }
 
-type mocks struct{ got *[]seen }
+// Pulumi registers resources concurrently, so the mock must serialise its own
+// bookkeeping: an unlocked append loses entries and fails a count assertion
+// intermittently.
+type mocks struct {
+	got *[]seen
+	mu  *sync.Mutex
+}
 
 func (m mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	s := seen{typeToken: args.TypeToken, name: args.Name}
@@ -42,7 +49,9 @@ func (m mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.Prope
 		s.protect = rpc.GetProtect()
 		s.importID = rpc.GetImportId()
 	}
+	m.mu.Lock()
 	*m.got = append(*m.got, s)
+	m.mu.Unlock()
 	return args.Name + "_id", args.Inputs, nil
 }
 
@@ -53,7 +62,7 @@ func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 func run(t *testing.T) []seen {
 	t.Helper()
 	var got []seen
-	if err := pulumi.RunErr(Manage, pulumi.WithMocks("repo-config", "dev", mocks{&got})); err != nil {
+	if err := pulumi.RunErr(Manage, pulumi.WithMocks("repo-config", "dev", mocks{&got, &sync.Mutex{}})); err != nil {
 		t.Fatalf("Manage: %v", err)
 	}
 	return got
@@ -65,6 +74,21 @@ func TestDormantByDefault(t *testing.T) {
 	t.Setenv(Switch, "")
 	if got := run(t); len(got) != 0 {
 		t.Fatalf("declared %d resources with the switch off: %+v", len(got), got)
+	}
+}
+
+// Switched on without the token must fail with a message that names the
+// missing secret, not with the provider's generic error.
+func TestSwitchOnWithoutTokenFailsNamingTheSecret(t *testing.T) {
+	t.Setenv(Switch, "true")
+	t.Setenv("CLOUDFLARE_API_TOKEN", "")
+	var got []seen
+	err := pulumi.RunErr(Manage, pulumi.WithMocks("repo-config", "dev", mocks{&got, &sync.Mutex{}}))
+	if err == nil {
+		t.Fatal("Manage succeeded with the switch on and no token")
+	}
+	if !strings.Contains(err.Error(), "DNS_CLOUDFLARE_API_TOKEN") {
+		t.Fatalf("error does not name the secret: %v", err)
 	}
 }
 
@@ -83,15 +107,19 @@ func TestOnlyTrueTurnsItOn(t *testing.T) {
 
 // Everything it declares is a live resource being adopted, and every one is
 // protected: a stray edit that would delete or replace one must fail the run.
-func TestDeclaresExactlyTheThreeResourcesImportedAndProtected(t *testing.T) {
+func TestDeclaresExactlyTheFourResourcesProtectedAndImportedWhereTheyExist(t *testing.T) {
 	t.Setenv(Switch, "true")
+	t.Setenv("CLOUDFLARE_API_TOKEN", "test-not-a-real-token")
 	got := run(t)
 
 	want := map[string]string{
 		"site-apex-cname":          "cloudflare:index/record:Record",
 		"site-pages-challenge-txt": "cloudflare:index/record:Record",
+		"site-www-cname":           "cloudflare:index/record:Record",
 		"site-pages":               "github:index/repositoryPages:RepositoryPages",
 	}
+	// www did not exist before this package, so it is created, not imported.
+	created := map[string]bool{"site-www-cname": true}
 	// The mocks also see the default providers; only count real resources.
 	var real []seen
 	for _, s := range got {
@@ -114,7 +142,11 @@ func TestDeclaresExactlyTheThreeResourcesImportedAndProtected(t *testing.T) {
 		if !s.protect {
 			t.Errorf("%s must be protected", s.name)
 		}
-		if s.importID == "" {
+		if created[s.name] {
+			if s.importID != "" {
+				t.Errorf("%s is created by this package, not imported (import id %q)", s.name, s.importID)
+			}
+		} else if s.importID == "" {
 			t.Errorf("%s must be imported by id: it already exists", s.name)
 		}
 	}
@@ -123,11 +155,13 @@ func TestDeclaresExactlyTheThreeResourcesImportedAndProtected(t *testing.T) {
 // The zone also carries mail, identity and other tools' records. This package
 // may own the apex CNAME and this organisation's Pages challenge, nothing else.
 func TestOwnsOnlyTheSiteRecords(t *testing.T) {
-	apexCNAMEs, challenges := 0, 0
+	apexCNAMEs, challenges, www := 0, 0, 0
 	for _, r := range Records() {
 		switch {
 		case r.Type == "CNAME" && r.Name == Apex:
 			apexCNAMEs++
+		case r.Type == "CNAME" && r.Name == "www":
+			www++
 		case r.Type == "TXT" && r.Name == challengePrefix+"vitruviansoftware":
 			challenges++
 		default:
@@ -135,11 +169,12 @@ func TestOwnsOnlyTheSiteRecords(t *testing.T) {
 				"MX, SPF, DKIM, Google verification and other tools' records "+
 				"must stay out of this package", r.Resource, r.Type, r.Name)
 		}
-		if r.ID == "" {
+		// Only www is created here; everything else is adopted and needs its id.
+		if r.ID == "" && r.Name != "www" {
 			t.Errorf("record %q has no id to adopt", r.Resource)
 		}
 	}
-	if apexCNAMEs != 1 || challenges != 1 {
-		t.Errorf("want exactly one apex CNAME and one challenge TXT, got %d and %d", apexCNAMEs, challenges)
+	if apexCNAMEs != 1 || challenges != 1 || www != 1 {
+		t.Errorf("want exactly one apex CNAME, one challenge TXT and one www CNAME, got %d, %d and %d", apexCNAMEs, challenges, www)
 	}
 }

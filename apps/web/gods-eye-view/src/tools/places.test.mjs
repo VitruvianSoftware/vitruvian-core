@@ -68,7 +68,9 @@ test('a lookup every caller abandoned is cancelled and not reused', async () => 
       if (signals.length === 1)
         return new Promise((resolve, reject) => {
           if (signal?.aborted) return reject(signal.reason);
-          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          });
         });
       return Promise.resolve(Response.json(answer));
     },
