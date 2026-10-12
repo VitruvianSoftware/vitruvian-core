@@ -20,6 +20,11 @@ package struct NotchMusicAutomationCapabilities: Equatable {
     package struct Position: Equatable { package let code: UInt32; package let integer: Bool }
     package var commands: [String: Event] = [:]
     package var position: Position?
+    /// The player's own shuffle switch, a writable Boolean of the application.
+    package var shuffle: UInt32?
+    /// Some players' read-only answer to whether the songs playing can be
+    /// shuffled at all. Players that do not declare it always can.
+    package var shuffleAllowed: UInt32?
 
     package var canToggle: Bool { commands["playpause"] != nil || (commands["play"] != nil && commands["pause"] != nil) }
 
@@ -66,9 +71,12 @@ package struct NotchMusicAutomationCapabilities: Equatable {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(commands: [String: Event] = [:], position: Position? = nil) {
+    package init(commands: [String: Event] = [:], position: Position? = nil, shuffle: UInt32? = nil,
+                  shuffleAllowed: UInt32? = nil) {
         self.commands = commands
         self.position = position
+        self.shuffle = shuffle
+        self.shuffleAllowed = shuffleAllowed
     }
 }
 
@@ -81,7 +89,12 @@ private final class MusicDictionaryReader: NSObject, XMLParserDelegate {
     private var command: (name: String, event: NotchMusicAutomationCapabilities.Event, valid: Bool)?
     private var seenCommands = Set<String>()
     private var seenPosition = false
+    private var seenShuffle = false
+    private var seenShuffleAllowed = false
     private let names: Set<String> = ["playpause", "play", "pause", "next track", "previous track"]
+    /// Players call it "shuffling" or "shuffle enabled". A read-only
+    /// "shuffling enabled" says whether shuffle is offered at all.
+    private let shuffleNames: Set<String> = ["shuffling", "shuffle enabled"]
 
     private func code(_ value: String?) -> UInt32? {
         guard let value, value.utf8.count == 4,
@@ -117,6 +130,20 @@ private final class MusicDictionaryReader: NSObject, XMLParserDelegate {
                   let property = code(attributes["code"]), let type = attributes["type"],
                   type == "real" || type == "integer" else { result.position = nil; return }
             result.position = .init(code: property, integer: type == "integer")
+        }
+        if element == "property", let name = attributes["name"], shuffleNames.contains(name),
+           let depth = applicationDepth, path.count == depth + 1 {
+            defer { seenShuffle = true }
+            guard !seenShuffle, attributes["access"] == nil || attributes["access"] == "rw",
+                  let property = code(attributes["code"]), attributes["type"] == "boolean" else { result.shuffle = nil; return }
+            result.shuffle = property
+        }
+        if element == "property", attributes["name"] == "shuffling enabled",
+           let depth = applicationDepth, path.count == depth + 1 {
+            defer { seenShuffleAllowed = true }
+            guard !seenShuffleAllowed, let property = code(attributes["code"]),
+                  attributes["type"] == "boolean" else { result.shuffleAllowed = nil; return }
+            result.shuffleAllowed = property
         }
     }
 

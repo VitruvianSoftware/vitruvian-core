@@ -132,6 +132,7 @@ enum NotchMusicAutomationTests {
     static func run(_ suite: TestSuite) {
         parsing(suite)
         descriptors(suite)
+        shuffle(suite)
         lifecycle(suite)
         refresh(suite)
     }
@@ -197,6 +198,76 @@ enum NotchMusicAutomationTests {
         suite.expect(NotchMusicAutomation.event(.seek(.nan), playback: value, capabilities: capabilities, pid: pid) == nil
                && NotchMusicAutomation.event(.queueStop, playback: value, capabilities: capabilities, pid: pid) == nil,
                "non-finite positions and queue operations cannot become unrelated Apple Events")
+    }
+
+    private static func shuffle(_ suite: TestSuite) {
+        func parse(_ source: String) -> NotchMusicAutomationCapabilities? { .parse(Data(source.utf8)) }
+        func with(_ properties: String) -> String {
+            dictionary.replacingOccurrences(of: "type=\"real\"/>", with: "type=\"real\"/>" + properties)
+        }
+        // Some players declare a read-only availability flag beside the switch.
+        let flagged = with("<property name=\"shuffling enabled\" code=\"pReE\" type=\"boolean\" access=\"r\"/>"
+                           + "<property name=\"shuffling\" code=\"pShu\" type=\"boolean\"/>")
+        let unflagged = with("<property name=\"shuffle enabled\" code=\"pShE\" type=\"boolean\"/>"
+                             + "<property name=\"shuffle mode\" code=\"pShM\" type=\"eShM\"/>")
+        suite.expect(parse(flagged)?.shuffle == 0x70536875 && parse(unflagged)?.shuffle == 0x70536845,
+               "the shuffle switch comes from the player's own dictionary, under either name it uses")
+        suite.expect(parse(dictionary)?.shuffle == nil, "a player that declares no shuffle switch shows none")
+        suite.expect(parse(flagged)?.shuffleAllowed == 0x70526545 && parse(unflagged)?.shuffleAllowed == nil,
+               "a player that says when shuffle is offered is asked, and one that does not is not")
+        suite.expect(parse(with("<property name=\"shuffling enabled\" code=\"pReE\" type=\"integer\" access=\"r\"/>"))?.shuffleAllowed == nil,
+               "only a Boolean says whether shuffle is offered")
+        for changed in [with("<property name=\"shuffling\" code=\"pShu\" type=\"integer\"/>"),
+                        with("<property name=\"shuffling\" code=\"pShu\" type=\"boolean\" access=\"r\"/>"),
+                        with("<property name=\"shuffling\" code=\"bad\" type=\"boolean\"/>"),
+                        dictionary.replacingOccurrences(of: "</suite>",
+                            with: "<class name=\"track\" code=\"cTrk\"><property name=\"shuffling\" code=\"pShu\" type=\"boolean\"/></class></suite>")] {
+            suite.expect(parse(changed)?.shuffle == nil, "only a writable Boolean of the application can switch shuffle")
+        }
+        let both = with("<property name=\"shuffling\" code=\"pShu\" type=\"boolean\"/>"
+                        + "<property name=\"shuffle enabled\" code=\"pShE\" type=\"boolean\"/>")
+        suite.expect(parse(both)?.shuffle == nil, "two shuffle switches are ambiguous and fail closed")
+        let only = parse("<dictionary><suite><class name=\"application\" code=\"capp\">"
+                         + "<property name=\"shuffling\" code=\"pShu\" type=\"boolean\"/></class></suite></dictionary>")
+        suite.expect(only == nil,
+               "a dictionary with only the shuffle switch is not a player the island can command")
+
+        let capabilities = parse(flagged)!
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let address = NSAppleEventDescriptor(processIdentifier: pid)
+        // The property the event's object specifier names, so a mixup of the two fails.
+        func property(_ event: NSAppleEventDescriptor?) -> OSType? {
+            event?.paramDescriptor(forKeyword: keyDirectObject)?.forKeyword(AEKeyword(keyAEKeyData))?.typeCodeValue
+        }
+        let read = NotchMusicAutomation.shuffleEvent(nil, capabilities: capabilities, pid: pid)
+        let allowed = NotchMusicAutomation.shuffleAllowedEvent(capabilities: capabilities, pid: pid)
+        suite.expect(allowed?.eventID == kAEGetData && allowed?.paramDescriptor(forKeyword: keyAEData) == nil
+               && property(allowed) == 0x70526545
+               && NotchMusicAutomation.shuffleAllowedEvent(capabilities: parse(unflagged)!, pid: pid) == nil,
+               "whether shuffle is offered is only read, from the availability flag, and only where the player declares it")
+        let set = NotchMusicAutomation.shuffleEvent(false, capabilities: capabilities, pid: pid)
+        suite.expect(read?.eventClass == kAECoreSuite && read?.eventID == kAEGetData
+               && read?.paramDescriptor(forKeyword: keyDirectObject)?.descriptorType == typeObjectSpecifier
+               && property(read) == 0x70536875
+               && read?.paramDescriptor(forKeyword: keyAEData) == nil,
+               "reading shuffle asks for the declared property only")
+        suite.expect(set?.eventClass == kAECoreSuite && set?.eventID == kAESetData
+               && property(set) == 0x70536875
+               && set?.paramDescriptor(forKeyword: keyAEData)?.descriptorType == typeBoolean
+               && set?.paramDescriptor(forKeyword: keyAEData)?.booleanValue == false,
+               "switching shuffle sets the declared property to a Boolean")
+        suite.expect(set?.attributeDescriptor(forKeyword: keyAddressAttr)?.data == address.data,
+               "the shuffle event is addressed to the playing process")
+        suite.expect(NotchMusicAutomation.shuffleEvent(true, capabilities: parse(dictionary)!, pid: pid) == nil
+               && NotchMusicAutomation.shuffleEvent(true, capabilities: capabilities, pid: 0) == nil,
+               "no shuffle event exists without a declared switch or a process")
+        let on = NSAppleEventDescriptor.record()
+        on.setDescriptor(NSAppleEventDescriptor(boolean: true), forKeyword: keyDirectObject)
+        let wrong = NSAppleEventDescriptor.record()
+        wrong.setDescriptor(NSAppleEventDescriptor(string: "true"), forKeyword: keyDirectObject)
+        suite.expect(NotchMusicAutomation.shuffleState(in: on) == true && NotchMusicAutomation.shuffleState(in: wrong) == nil
+               && NotchMusicAutomation.shuffleState(in: NSAppleEventDescriptor.record()) == nil,
+               "only a Boolean reply is taken as the shuffle state")
     }
 
     private static func lifecycle(_ suite: TestSuite) {
