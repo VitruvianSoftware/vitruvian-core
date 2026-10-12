@@ -867,7 +867,7 @@ history. Nothing was added to the app that was not removed again.
 | 30, 31 | 3.41.2 | Pass. |
 | 32 | | Not done. It needs a program the app may not signal. Nobody has made one; the alert is shown by tests of its words and by a stand-in. |
 | 33 | 3.41.2 | Pass. |
-| 34 | 3.41.2 | Pass in the island's Tools tab: the tile is dimmed, a click and its digit do nothing, and the command bar has no row. Edit mode, the arrows with Return, and light appearance were not done. |
+| 34 | 3.41.2, then 3.42.0 | Pass in the island's Tools tab: the tile is dimmed, a click and its digit do nothing, and the command bar has no row. On 3.42.0, in edit mode ("Customize tools") the tile is not dimmed and has its hide button like the others, and it is dimmed again on leaving. Dragging it, the arrows with Return, and light appearance were not done. |
 | 35, 36, 37, 38, 39 | 3.41.2 | Pass. Check 38 was run again on 3.42.0 as check 20. |
 | Light appearance | 3.42.0 | The card, the agreement sheet, a tool's detail and the removal question were looked at once in light appearance. Nothing was wrong. |
 
