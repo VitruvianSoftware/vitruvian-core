@@ -437,8 +437,8 @@ package enum AgentAntigravityReader {
     }
 
     /// Returns the account identity and plan tier badge for Antigravity.
-    package static func probeIdentity() -> AgentIdentity {
-        AgentIdentity(email: "james.nguyen@gmail.com", planTier: "Google AI Ultra")
+    package static func probeIdentity(email: String? = nil, planTier: String? = "Google AI Ultra") -> AgentIdentity {
+        AgentIdentity(email: email, planTier: planTier)
     }
 
     private final class InsecureCertificateDelegate: NSObject, URLSessionDelegate, Sendable {

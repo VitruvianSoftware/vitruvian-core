@@ -567,11 +567,13 @@ package enum AgentLimitSupport {
 
         var summaryParts: [String] = [reserveText]
         summaryParts.append(willLast ? "Lasts until reset" : "Will exhaust early")
-        if let sessionQuotas {
-            summaryParts.append("Est. \(String(format: "%.1f", locale: Locale.current, sessionQuotas)) session quotas left")
-        }
-        if let windowsCount {
-            summaryParts.append("\(windowsCount) windows until reset")
+        if window.kind == .weekly {
+            if let sessionQuotas {
+                summaryParts.append("Est. \(String(format: "%.1f", locale: Locale.current, sessionQuotas)) session quotas left")
+            }
+            if let windowsCount {
+                summaryParts.append("\(windowsCount) windows until reset")
+            }
         }
         let summary = summaryParts.joined(separator: " · ")
 

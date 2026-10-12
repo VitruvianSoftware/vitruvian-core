@@ -106,11 +106,11 @@ package enum AgentClaudeAppUsage {
         guard let data = try? Data(contentsOf: file),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let oauth = json["oauthAccount"] as? [String: Any] else {
-            return AgentIdentity(email: "james.nguyen@gmail.com", planTier: "Max 20x")
+            return AgentIdentity(email: nil, planTier: nil)
         }
-        let email = (oauth["emailAddress"] as? String) ?? "james.nguyen@gmail.com"
+        let email = oauth["emailAddress"] as? String
         let rawTier = (oauth["organizationRateLimitTier"] as? String) ?? ""
-        let tier: String
+        let tier: String?
         if rawTier.contains("max_20x") {
             tier = "Max 20x"
         } else if rawTier.contains("max_5x") {
@@ -120,7 +120,7 @@ package enum AgentClaudeAppUsage {
         } else if !rawTier.isEmpty {
             tier = rawTier.replacingOccurrences(of: "default_claude_", with: "").replacingOccurrences(of: "_", with: " ").capitalized
         } else {
-            tier = "Max 20x"
+            tier = nil
         }
         return AgentIdentity(email: email, planTier: tier)
     }

@@ -2721,8 +2721,9 @@ enum NotchAgentTests {
             suite.expect(abs(p.reservePercent - 30.0) < 0.1, "Reserve percent is 30%")
             suite.expect(p.reserveText == "30% in reserve", "Reserve text reads 30% in reserve")
             suite.expect(p.willLastToReset == true, "Under pace lasts until reset")
-            suite.expect(p.summary.contains("30% in reserve") && p.summary.contains("Lasts until reset"),
-                         "Pace summary combines reserve and runway feasibility")
+            suite.expect(p.summary.contains("30% in reserve") && p.summary.contains("Lasts until reset")
+                         && !p.summary.contains("windows until reset"),
+                         "Pace summary combines reserve and runway feasibility without weekly window counts")
         }
 
         let wOverPace = AgentLimitWindow(id: "test.session", kind: .session, minutes: 300, scope: nil, usedPercent: 80.0, resetsAt: halfWindowResets)
@@ -2753,13 +2754,26 @@ enum NotchAgentTests {
                          "Weekly summary contains session quotas and window count")
         }
 
-        // 4. Identity Badges
-        let agIdentity = AgentAntigravityReader.probeIdentity()
-        suite.expect(agIdentity.email == "james.nguyen@gmail.com" && agIdentity.planTier == "Google AI Ultra",
+        // 4. Dynamic Identity Badges
+        let agIdentity = AgentAntigravityReader.probeIdentity(email: "gemini-dev@example.com", planTier: "Google AI Ultra")
+        suite.expect(agIdentity.email == "gemini-dev@example.com" && agIdentity.planTier == "Google AI Ultra",
                      "Antigravity identity badge matches Google AI Ultra")
-        let claudeIdentity = AgentClaudeAppUsage.readIdentity()
-        suite.expect(claudeIdentity.email == "james.nguyen@gmail.com" && claudeIdentity.planTier == "Max 20x",
-                     "Claude identity badge matches Max 20x")
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let mockClaudeJSON = """
+        {
+          "oauthAccount": {
+            "emailAddress": "claude-dev@example.com",
+            "organizationRateLimitTier": "default_claude_max_20x"
+          }
+        }
+        """
+        try? mockClaudeJSON.data(using: .utf8)?.write(to: tempDir.appendingPathComponent(".claude.json"))
+        let claudeIdentity = AgentClaudeAppUsage.readIdentity(home: tempDir)
+        suite.expect(claudeIdentity.email == "claude-dev@example.com" && claudeIdentity.planTier == "Max 20x",
+                     "Claude identity badge dynamically parses from ~/.claude.json")
 
         // 5. Cost Metrics Grid
         let costMetrics = AgentCostMetrics(
