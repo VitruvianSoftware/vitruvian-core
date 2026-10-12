@@ -360,6 +360,21 @@ public struct StorageGetParams: Codable, Equatable, Sendable {
     }
 }
 
+/// The limits on what `storage/set` saves. They are the app's: a value
+/// over one is a message the app reads and then refuses, with -32602.
+public enum StorageLimits {
+    /// The longest text a preference may be set to, in characters as JSON
+    /// Schema counts them: Unicode code points.
+    public static let maxTextLength = 4_096
+
+    /// Whether `value` is one a preference may be set to, as far as its
+    /// size goes. Only text has a size.
+    public static func allows(_ value: JSONValue) -> Bool {
+        if case .string(let text) = value { return text.unicodeScalars.count <= maxTextLength }
+        return true
+    }
+}
+
 /// What a preference may hold on the wire: text, yes or no, or a number.
 /// A list, an object or null is not read.
 enum StoredValue {

@@ -223,7 +223,14 @@ if __name__ == "__main__":
       }
     ]
   },
-  "preferences": [{ "id": "count", "type": "integer", "default": 0 }],
+  "preferences": [
+    {
+      "id": "count",
+      "title": { "en": "Counted so far" },
+      "type": "integer",
+      "default": 0
+    }
+  ],
   "activation": ["onCommand"],
   "runtime": { "kind": "external", "exec": "bin/tool" }
 }

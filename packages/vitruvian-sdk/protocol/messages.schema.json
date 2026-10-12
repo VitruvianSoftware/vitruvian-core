@@ -485,7 +485,7 @@
       "properties": {
         "key": { "description": "The preference's id.", "type": "string" },
         "value": {
-          "description": "The new value, of the type the manifest names.",
+          "description": "The new value, of the type the manifest names. Text is at most 4,096 characters: the app answers a longer one with failure -32602 and saves nothing.",
           "type": ["string", "boolean", "number"]
         }
       }

@@ -202,7 +202,9 @@ refuses its command and says why.
       }
     ]
   },
-  "preferences": [{ "id": "project", "type": "string", "default": "" }],
+  "preferences": [
+    { "id": "project", "title": { "en": "Project" }, "type": "string", "default": "" }
+  ],
   "activation": ["onCommand"],
   "runtime": { "kind": "external", "exec": "bin/deploys" }
 }
@@ -220,7 +222,7 @@ refuses its command and says why.
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
 | `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. |
-| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. The app has no screen for them yet: only the tool reads and writes them, with `storage/get` and `storage/set`. |
+| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with no title is the tool's alone and is never shown to the person. The app has no screen for them yet: only the tool reads and writes them, with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
 
@@ -230,6 +232,11 @@ refuses its command and says why.
 - **A field the app does not know is ignored.** A service, a surface, a
   preference type or an activation it does not know refuses the whole tool,
   and the reason names it.
+- **A preference's `title` is newer than the rest of the manifest.** An app
+  from before it ignores the field, as it ignores any field it does not
+  know: the tool is added and runs there as before, and the person is shown
+  no setting. The manifest has no field for the oldest app a tool needs, and
+  a title needs none.
 - **The file is at most 65,536 bytes.**
 
 ## Every message
@@ -342,7 +349,9 @@ it at once; false asks it to quit.
 ```
 
 `storage/get` and `storage/set` read and write a preference the manifest
-declares, by its id. A value is text, yes or no, or a number.
+declares, by its id. A value is text, yes or no, or a number. Text is at most
+4,096 characters: a longer one is answered with failure -32602, and nothing
+is saved.
 
 ```json message
 {"jsonrpc":"2.0","id":"i","method":"storage/get","params":{"key":"project"}}
@@ -371,7 +380,7 @@ Any request can be refused, at any time. Your tool must cope.
 | -32004 | Not available right now. |
 | -32010 | Yours: you will not run the command. |
 | -32601 | A method the other side does not know. |
-| -32602 | Params that are not the message's own, a command you do not have, a preference the manifest does not declare, or a value of the wrong kind. |
+| -32602 | Params that are not the message's own, a command you do not have, a preference the manifest does not declare, a value of the wrong kind, or text over 4,096 characters. |
 
 ## Limits, and what happens when a tool crosses them
 

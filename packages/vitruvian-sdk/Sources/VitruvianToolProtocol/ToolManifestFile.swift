@@ -29,6 +29,9 @@ public enum ManifestLimits {
     public static let maxPreferences = 16
     /// The longest tool id, command id or preference id, in characters.
     public static let maxNameLength = 128
+    /// The longest title of a preference, in each language, in characters
+    /// as JSON Schema counts them: Unicode code points.
+    public static let maxPreferenceTitleLength = 60
 }
 
 /// A piece of text in one or more languages, keyed by language tag (`en`,
@@ -110,6 +113,10 @@ public struct ToolManifestFile: Codable, Equatable, Sendable {
     public struct Preference: Codable, Equatable, Sendable {
         /// The setting's name within the tool.
         public let id: String
+        /// What the setting is called where the person changes it. Left
+        /// out, the app shows no such setting: only the tool reads and
+        /// writes it.
+        public let title: LocalizedText?
         public let type: String
         public let `default`: JSONValue
     }
@@ -167,6 +174,10 @@ public enum ManifestProblem: Error, Equatable, Sendable {
     case tooManyPreferences(Int)
     case preferenceNotWellFormed(String)
     case duplicatePreference(String)
+    /// A preference's title that is, in some language, longer than
+    /// `ManifestLimits.maxPreferenceTitleLength` or holds a control
+    /// character, a line break among them.
+    case preferenceTitleNotWellFormed(preference: String)
     case unknownPreferenceType(preference: String, type: String)
     case defaultOfWrongType(preference: String)
     /// `runtime.exec` is not a path that stays inside the tool's folder.
@@ -195,6 +206,14 @@ public enum ManifestRules {
     public static func staysInsideFolder(_ path: String) -> Bool {
         let parts = path.split(separator: "/", omittingEmptySubsequences: false)
         return !path.isEmpty && parts.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+    }
+
+    /// Whether `text` can be a preference's title in one language: at most
+    /// `ManifestLimits.maxPreferenceTitleLength` code points, none of them
+    /// a control character. That it is not blank is another rule.
+    public static func isWellFormedTitle(_ text: String) -> Bool {
+        text.unicodeScalars.count <= ManifestLimits.maxPreferenceTitleLength
+            && !text.unicodeScalars.contains { $0.properties.generalCategory == .control }
     }
 
     static func isBlank(_ text: String) -> Bool {
@@ -270,6 +289,12 @@ extension ToolManifestFile {
             }
             if !preferenceNames.insert(preference.id).inserted {
                 found.append(.duplicatePreference(preference.id))
+            }
+            if let title = preference.title {
+                found += Self.textProblems(title, field: "preferences[\(preference.id)].title")
+                if !title.byLanguage.values.allSatisfy(ManifestRules.isWellFormedTitle) {
+                    found.append(.preferenceTitleNotWellFormed(preference: preference.id))
+                }
             }
             guard let kind = PreferenceKind(rawValue: preference.type) else {
                 found.append(.unknownPreferenceType(preference: preference.id, type: preference.type))

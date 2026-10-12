@@ -78,7 +78,7 @@ app has. These messages are for what is better done through the app.
 | `keystrokes/paste` | request | `keystrokes` | Paste this text into the app in front. |
 | `keystrokes/pressMenuItem` | request | `keystrokes` | Press the menu item with one of these key equivalents in the app in front. |
 | `processes/terminate` | request | `processes` | End this process, with the app's checks and its administrator prompt. |
-| `storage/get`, `storage/set` | request | `storage` | Read or write one of the preferences the manifest declares. |
+| `storage/get`, `storage/set` | request | `storage` | Read or write one of the preferences the manifest declares. Text is at most 4,096 characters; a longer one is refused with -32602. |
 | `log` | notice | | A line for the tool's log in Settings. |
 
 ## Being refused
@@ -112,7 +112,15 @@ the person as it is.
 - **A name the app does not know refuses the tool**: a service, a surface, a
   kind of preference, a way of starting. The reason names it.
 - **`runtime.exec` stays inside the folder.**
-- **Limits**: the file 65,536 bytes, 32 commands, 16 preferences.
+- **A preference may carry a `title`**, text in several languages like any
+  other. It is what the setting is called to the person. One with no title
+  is the tool's alone, and the app never shows it. The field was added
+  after the first version 1, with no new version: an app from before it
+  ignores it, and shows no setting.
+- **Limits**: the file 65,536 bytes, 32 commands, 16 preferences, a
+  preference's title 60 characters in each language with no control
+  character, and text saved with `storage/set` 4,096 characters. A
+  character here is a Unicode code point, as JSON Schema counts.
 
 ## Changing the protocol
 

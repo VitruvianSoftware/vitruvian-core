@@ -143,6 +143,10 @@ enum Words {
             return "the preference id `\(id)` is not a well-formed name"
         case .duplicatePreference(let id):
             return "two preferences have the id `\(id)`"
+        case .preferenceTitleNotWellFormed(let preference):
+            return "the title of the preference `\(preference)` is, in some language, over "
+                + "\(ManifestLimits.maxPreferenceTitleLength) characters, or holds a line break or another "
+                + "control character"
         case .unknownPreferenceType(let preference, let type):
             return "the preference `\(preference)` has the type `\(type)`, which is not one: "
                 + PreferenceKind.allCases.map(\.rawValue).joined(separator: ", ")

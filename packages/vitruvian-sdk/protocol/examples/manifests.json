@@ -69,8 +69,18 @@
           ]
         },
         "preferences": [
-          { "id": "project", "type": "string", "default": "acme" },
-          { "id": "notify", "type": "boolean", "default": true },
+          {
+            "id": "project",
+            "title": { "en": "Project", "fr": "Projet" },
+            "type": "string",
+            "default": "acme"
+          },
+          {
+            "id": "notify",
+            "title": { "en": "Tell me when a deploy ends" },
+            "type": "boolean",
+            "default": true
+          },
           { "id": "limit", "type": "integer", "default": 20 },
           { "id": "ratio", "type": "number", "default": 0.5 },
           { "id": "whole", "type": "number", "default": 3 }
@@ -309,6 +319,163 @@
         "preferences": [
           { "id": "project", "type": "string", "default": "" },
           { "id": "project", "type": "boolean", "default": false }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title of exactly 60 characters",
+      "valid": true,
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "en": "A title that is as long as a title may be: sixty characters."
+            },
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a title's characters are counted whole, also the ones outside the basic plane",
+      "valid": true,
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "en": "Letters and two pictures that each count as one character 🚀🛰"
+            },
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title that is not a language map",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["title"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": "Project",
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title with no English",
+      "valid": false,
+      "problem": "noEnglish",
+      "names": ["project", "title"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "fr": "Projet"
+            },
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title that is only spaces",
+      "valid": false,
+      "problem": "blankText",
+      "names": ["project", "title"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "en": "  "
+            },
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title of 61 characters",
+      "valid": false,
+      "problem": "preferenceTitleNotWellFormed",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "en": "A title that is as long as a title may be: sixty characters.."
+            },
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title that is too long in one language only",
+      "valid": false,
+      "problem": "preferenceTitleNotWellFormed",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "en": "Project",
+              "de": "A title that is as long as a title may be: sixty characters.."
+            },
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title with a line break in it",
+      "valid": false,
+      "problem": "preferenceTitleNotWellFormed",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "en": "Pro\nject"
+            },
+            "type": "string",
+            "default": ""
+          }
+        ]
+      }
+    },
+    {
+      "about": "a preference's title with a control character in it",
+      "valid": false,
+      "problem": "preferenceTitleNotWellFormed",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": {
+              "en": "Project\u0085"
+            },
+            "type": "string",
+            "default": ""
+          }
         ]
       }
     }

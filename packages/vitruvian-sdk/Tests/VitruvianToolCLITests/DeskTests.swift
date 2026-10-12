@@ -82,6 +82,15 @@ final class DeskTests: XCTestCase {
         XCTAssertEqual(code(desk.serve("storage/set", try params(#"{"key":"count"}"#)).answer), -32602)
         XCTAssertEqual(desk.values["count"], .number(0), "a refused value is not kept")
 
+        let most = String(repeating: "é", count: StorageLimits.maxTextLength)
+        XCTAssertEqual(StorageLimits.maxTextLength, 4_096)
+        XCTAssertNotNil(try? desk.serve("storage/set", .object(["key": .string("project"), "value": .string(most)]))
+            .answer.get(), "the longest text the app saves is saved here too")
+        let over = desk.serve("storage/set", .object(["key": .string("project"), "value": .string(most + "é")]))
+        XCTAssertEqual(code(over.answer), -32602)
+        XCTAssertEqual(over.said, "refused: `project` would be over 4096 characters, the most the app saves")
+        XCTAssertEqual(desk.values["project"], .string(most), "and a longer one is refused, as the app refuses it")
+
         for unknown in ["island/draw", "initialize", "command/run", "log", "commands/state"] {
             XCTAssertEqual(code(desk.serve(unknown, nil).answer), -32601, unknown)
         }
