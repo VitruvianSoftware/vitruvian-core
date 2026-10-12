@@ -21,6 +21,7 @@ enum ExternalToolScreensTests {
         beforeAgreeing(suite)
         removalChoices(suite)
         switchAndOwnWords(suite)
+        ownWordsInAlerts(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -482,5 +483,84 @@ enum ExternalToolScreensTests {
                          && ExternalToolDetail.shownLog("").isEmpty,
                      "the log a detail shows is the newest of what the tool wrote, at most so many lines and bytes, "
                          + "as plain text")
+    }
+
+    /// A tool's own words inside one of the app's sentences, in an alert or
+    /// in the app's short on-screen message: one line, cut short, and with
+    /// no character that turns the sentence round.
+    static func ownWordsInAlerts(_ suite: TestSuite) {
+        let limit = ToolOwnWords.limit
+        let exact = String(repeating: "a", count: limit)
+        suite.expect(limit == 120 && ToolOwnWords.oneLine("Deploys") == "Deploys" && ToolOwnWords.oneLine("") == ""
+                         && ToolOwnWords.oneLine(exact) == exact
+                         && ToolOwnWords.oneLine(exact + "b") == String(repeating: "a", count: limit - 1) + "…",
+                     "a tool's words in an alert are shown whole up to 120 characters, and cut there with an ellipsis")
+        let huge = ToolOwnWords.oneLine(String(repeating: "é", count: 50_000))
+        let stacked = ToolOwnWords.oneLine("a" + String(repeating: "\u{301}", count: 50_000) + "b")
+        suite.expect(huge.count == limit && huge.hasSuffix("…")
+                         && stacked.unicodeScalars.count <= limit * ToolOwnWords.scalarsPerCharacter + 1
+                         && stacked.hasSuffix("…"),
+                     "tens of kilobytes of a tool's words become one short text, however the characters are built")
+        suite.expect(ToolOwnWords.oneLine("a\nb\r\nc\u{2028}d\u{2029}e\tf\u{0}g\u{85}h\u{7F}i") == "a b  c d e f g h i",
+                     "a line break, a tab and every other control character in a tool's words is shown as a space")
+        let turners = ["\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}", "\u{202E}", "\u{2066}", "\u{2067}",
+                       "\u{2068}", "\u{2069}", "\u{200E}", "\u{200F}", "\u{061C}"]
+        suite.expect(turners.allSatisfy { ToolOwnWords.oneLine("safe" + $0 + "gnp.exe") == "safegnp.exe" }
+                         && ToolOwnWords.oneLine("שלום 👨‍👩‍👧‍👦 e\u{301}") == "שלום 👨‍👩‍👧‍👦 e\u{301}",
+                     "the characters that turn a line of text round are taken out, so a tool's name cannot reorder "
+                         + "the sentence it is put in; letters of any script, and an emoji made of several, stay")
+
+        func message(_ refusal: ExternalToolStore.Refusal) -> String {
+            ToolRefusalMessage(refusal, language: .enUS, strings: english, numbers: Locale(identifier: "en_US")).message
+        }
+        let long = String(repeating: "camera", count: 8_500)
+        let hostile = "is\nland\u{202E}" + long
+        let mistake = message(.manifest(.invalid(.unknownService(long))))
+        let newer = message(.manifest(.notOfferedHere(hostile)))
+        let program = message(.manifest(.programMissing("bin/\n\u{202E}" + long)))
+        // The longest of the three sentences, and the most of a tool's words it may carry.
+        let room = english.refusalMistakeFormat.count + limit
+        suite.expect(long.utf8.count > 50_000 && [mistake, newer, program].allSatisfy { text in
+                         text.count <= room && !text.contains("\n") && !text.unicodeScalars.contains("\u{202E}")
+                     }
+                         && mistake.hasPrefix(#"Its vitruvian-tool.json file has a mistake. Tell whoever made the tool: unknownService("cameracamera"#)
+                         && mistake.hasSuffix("…")
+                         && newer.hasPrefix("It needs something this version of Vitruvian does not have: is landcamera")
+                         && program.hasPrefix("Its program, bin/ camera") && program.hasSuffix("…, is missing or macOS will not run it."),
+                     "a manifest with a 50 KB service name, surface or program path is refused in one short line")
+
+        let name = "De\nploys\u{202E}" + long
+        let removal = ToolRemovalContent(name: name, strings: english, cancel: "Cancel")
+        suite.expect(removal.title.hasPrefix("Remove “De ployscamera") && removal.title.hasSuffix("…”?")
+                         && removal.title.count == english.removeTitle("").count + limit && !removal.title.contains("\n")
+                         && !removal.title.unicodeScalars.contains("\u{202E}"),
+                     "the question before a tool is removed names it in one short line, whatever the tool calls itself")
+
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        let named = ExternalToolManifestTests.file(
+            #"{"uses": [], "name": {"en": "Deploys", "fr": "Dé\nploie\u202Ements \#(String(repeating: "x", count: 4_000))"}}"#)
+        let picked = bench.folder(manifest: named)
+        bench.add(picked)
+        bench.registry.run(ExternalToolTests.copy)
+        bench.current.greets()
+        bench.current.ends(1)
+        let said = bench.said.first ?? ""
+        let french = FeatureStrings.externalTools(.fr)
+        suite.expect(bench.said.count == 1 && said.hasPrefix("exclamationmark.triangle: «\u{00A0}Dé ploiements xxx")
+                         && said.hasSuffix("…\u{00A0}» a cessé de fonctionner") && !said.contains("\n")
+                         && !said.unicodeScalars.contains("\u{202E}")
+                         && said.count == "exclamationmark.triangle: ".count + french.stopped("").count + limit,
+                     "the short message that says a tool stopped working names it in one short line too")
+
+        if case .success(let offer) = bench.store.offer(from: picked) {
+            let sheet = content(offer, .fr)
+            suite.expect(sheet.isUpdate && sheet.title.hasPrefix("Mettre à jour «\u{00A0}Dé ploiements xxx")
+                             && sheet.title.count == french.updateTitle("").count + limit
+                             && !sheet.title.contains("\n") && !sheet.title.unicodeScalars.contains("\u{202E}"),
+                         "the sheet's own sentence that names the tool is held to the same bound")
+        } else {
+            suite.expect(false, "the sheet's own sentence that names the tool is held to the same bound")
+        }
     }
 }

@@ -698,6 +698,17 @@ MUTATIONS = [
      "    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole }\n",
      "    package var listsScroll: Bool { false }\n",
      "a tool with the most a tool may have scrolls its two lists in the detail, as on the sheet"),
+    ("a manifest's long words fill the alert that refuses it", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+     "            message = strings.refusalMistake(ToolOwnWords.oneLine(String(describing: problem)))\n",
+     "            message = strings.refusalMistake(String(describing: problem))\n",
+     "a manifest with a 50 KB service name, surface or program path is refused in one short line"),
+    ("a tool's name turns the app's sentence round", "tool-runtime",
+     "Sources/Vitruvian/Core/Platform/ExternalToolManifest.swift",
+     "        for scalar in text.unicodeScalars where !turnsTextRound(scalar) {\n",
+     "        for scalar in text.unicodeScalars {\n",
+     "the characters that turn a line of text round are taken out, so a tool's name cannot reorder "
+     "the sentence it is put in; letters of any script, and an emoji made of several, stay"),
 ]
 
 

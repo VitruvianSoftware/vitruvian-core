@@ -85,13 +85,18 @@ package struct ToolAgreementContent: Equatable {
         let tag = language.rawValue
         let name = tool.name.text(for: tag) ?? tool.manifest.tool.name
         isUpdate = offer.replaces != nil
-        title = isUpdate ? strings.updateTitle(name) : strings.agreeTitle(name)
+        // The name stands inside the app's own sentence, so it is one short
+        // line there and cannot turn the sentence round.
+        let named = ToolOwnWords.oneLine(name)
+        title = isUpdate ? strings.updateTitle(named) : strings.agreeTitle(named)
         symbol = hasSymbol(tool.manifest.tool.symbol) ? tool.manifest.tool.symbol : ExternalToolManifest.defaultSymbol
         byline = "\(tool.publisher) · \(tool.version)"
         summary = tool.summary?.text(for: tag)
         from = strings.agreeFrom(Self.abbreviated(offer.folder.path, home: home))
         ownWords = strings.agreeOwnWords
-        versions = offer.replaces.map { strings.updateVersions(agreed: $0.version, offered: tool.version) }
+        versions = offer.replaces.map {
+            strings.updateVersions(agreed: ToolOwnWords.oneLine($0.version), offered: ToolOwnWords.oneLine(tool.version))
+        }
         changed = offer.manifestChanged ? strings.updateChanged : nil
         keepsData = isUpdate ? strings.updateKeepsData : nil
         headline = strings.agreeHeadline
@@ -113,7 +118,9 @@ package struct ToolAgreementContent: Equatable {
     }
 }
 
-/// Why a folder was not added, in the app's words.
+/// Why a folder was not added, in the app's words. It is shown in an alert,
+/// which has no line limit of its own: whatever the manifest wrote that a
+/// sentence carries is one short line there (`ToolOwnWords`).
 package struct ToolRefusalMessage: Equatable {
     package let title: String
     package let message: String
@@ -131,12 +138,12 @@ package struct ToolRefusalMessage: Equatable {
         case .manifest(.noManifest):
             message = strings.refusalNoManifest
         case .manifest(.invalid(let problem)):
-            message = strings.refusalMistake(String(describing: problem))
+            message = strings.refusalMistake(ToolOwnWords.oneLine(String(describing: problem)))
         case .manifest(.notOfferedHere(let name)):
-            message = strings.refusalNeedsNewer(name)
+            message = strings.refusalNeedsNewer(ToolOwnWords.oneLine(name))
         case .manifest(.programMissing(let program)), .manifest(.programOutsideFolder(let program)),
              .manifest(.programNotExecutable(let program)):
-            message = strings.refusalProgram(program)
+            message = strings.refusalProgram(ToolOwnWords.oneLine(program))
         case .quarantined(let folder):
             message = strings.refusalQuarantined
             command = "xattr -dr com.apple.quarantine " + Self.quoted(folder.path)

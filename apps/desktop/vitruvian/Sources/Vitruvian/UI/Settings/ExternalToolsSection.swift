@@ -160,7 +160,8 @@ package struct ToolRemovalContent: Equatable {
     package let cancel: String
 
     package init(name: String, strings: ExternalToolStrings, cancel: String) {
-        title = strings.removeTitle(name)
+        // An alert's title has no line limit of its own.
+        title = strings.removeTitle(ToolOwnWords.oneLine(name))
         message = strings.removeMessage
         keepData = strings.removeKeepData
         deleteData = strings.removeDeleteData

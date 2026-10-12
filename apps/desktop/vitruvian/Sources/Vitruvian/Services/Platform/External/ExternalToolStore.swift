@@ -411,7 +411,7 @@ package final class ExternalToolStore {
         let tag = parts.language()
         let name = installed[id]?.tool.name.text(for: tag) ?? installed[id]?.tool.manifest.tool.name ?? id.rawValue
         let strings = FeatureStrings.externalTools(AppLanguage(rawValue: tag) ?? .enUS)
-        parts.broker().backings.notify.hud(Self.stoppedSymbol, strings.stopped(name))
+        parts.broker().backings.notify.hud(Self.stoppedSymbol, strings.stopped(ToolOwnWords.oneLine(name)))
         parts.stoppedWorking(id)
     }
 

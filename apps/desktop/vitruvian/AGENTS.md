@@ -450,6 +450,13 @@ of it but the protocol.
   the two lists scroll in a region 200 points high
   (`ToolAgreementContent.rowsDrawnWhole`, `listsHeight`), on the sheet and
   in the detail, so the statement and the buttons stay in view.
+- A tool's own words inside one of the app's sentences that has no line
+  limit go through `ToolOwnWords.oneLine` first: an alert's title or
+  message, and the app's short on-screen message. It gives one line of at
+  most 120 characters, with every control character a space and the
+  characters that set the direction of text taken out, so a name cannot
+  reorder the sentence. The sheet's title and its line of versions use it
+  too. A new alert that names a tool does the same.
 - The detail shows the end of a tool's log: the newest 200 lines and at
   most 32 KB (`ExternalToolDetail.shownLog`), as plain text that can be
   selected. It is read when the detail opens and does not follow a running
