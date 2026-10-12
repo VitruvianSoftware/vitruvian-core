@@ -423,6 +423,21 @@ export class SlackClient {
     return this.api("conversations.leave", { channel: channelId }, as, "POST");
   }
 
+  /**
+   * Moves the authenticated human's read cursor in a conversation, which is
+   * what clears its unread badge. Always the user token: with the bot token
+   * Slack accepts the call and moves the *bot's* cursor, so the badge the
+   * human sees would stay exactly where it was while the call reported ok.
+   */
+  async markRead(channelId: string, timestamp: string) {
+    return this.api(
+      "conversations.mark",
+      { channel: channelId, ts: timestamp },
+      "user",
+      "POST",
+    );
+  }
+
   async listChannelMembers(channelId: string, limit = 100, cursor?: string) {
     const params: Record<string, unknown> = {
       channel: channelId,

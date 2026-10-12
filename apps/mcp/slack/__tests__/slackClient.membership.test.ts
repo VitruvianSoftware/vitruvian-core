@@ -131,7 +131,30 @@ describe("channel membership", () => {
     });
   });
 
+  it("marks read as the user, because the bot token would move the bot's cursor", async () => {
+    await clientFor(STDIO_ENV).markRead("C0ALLOWED1", "1712345678.123456");
+    expect(capture.calls).toHaveLength(1);
+    expect(capture.calls[0]!.url).toContain("conversations.mark");
+    expect(capture.calls[0]!.method).toBe("POST");
+    expect(capture.calls[0]!.auth).toBe("Bearer xoxp-test");
+    expect(JSON.parse(capture.calls[0]!.body!)).toEqual({
+      channel: "C0ALLOWED1",
+      ts: "1712345678.123456",
+    });
+  });
+
+  it("refuses to mark read on a transport without a user token", async () => {
+    await expect(
+      clientFor(HTTP_ENV).markRead("C0ALLOWED1", "1712345678.123456"),
+    ).rejects.toBeInstanceOf(UserTokenUnavailableError);
+    expect(capture.calls).toHaveLength(0);
+    expect(toolsFor(resolveConfig(HTTP_ENV)).map((t) => t.name)).not.toContain(
+      "slack_mark_read",
+    );
+  });
+
   it.each([
+    ["markRead", (c: SlackClient) => c.markRead("G0PRIVATE1", "1.2")],
     ["joinChannel", (c: SlackClient) => c.joinChannel("G0PRIVATE1")],
     ["leaveChannel", (c: SlackClient) => c.leaveChannel("G0PRIVATE1")],
     [

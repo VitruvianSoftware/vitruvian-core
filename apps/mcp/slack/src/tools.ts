@@ -258,6 +258,27 @@ export const tools = [
     },
   },
 
+  {
+    name: "slack_mark_read",
+    description:
+      "Mark a conversation as read up to a message, as the authenticated user. Clears the unread badge for everything at or before that message; pass the timestamp of the newest message you have handled. Works for channels and private channels; DMs and group DMs need the im:write and mpim:write user scopes.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel, private channel or DM",
+        },
+        timestamp: {
+          type: "string",
+          description:
+            "Timestamp (ts) of the newest message to mark as read, e.g. 1712345678.123456",
+        },
+      },
+      required: ["channel_id", "timestamp"],
+    },
+  },
+
   // ── Custom emoji ────────────────────────────────────────────────────
   {
     name: "slack_list_emoji",
@@ -886,6 +907,9 @@ export const HTTP_WITHHELD_ALWAYS = new Set<string>(["slack_download_file"]);
 export const HTTP_WITHHELD_WITHOUT_USER_TOKEN = new Set([
   "slack_set_channel_topic",
   "slack_invite_to_channel",
+  // The bot token would be accepted and move the bot's read cursor instead of
+  // the human's — a call that reports ok and changes nothing anyone can see.
+  "slack_mark_read",
   "slack_add_reaction",
   "slack_pin_message",
   "slack_unpin_message",

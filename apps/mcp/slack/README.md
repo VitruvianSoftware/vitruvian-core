@@ -7,7 +7,7 @@ Custom Slack MCP server with **dual-token support** — reads via Bot Token, wri
 The official `@modelcontextprotocol/server-slack` provides a great foundation, but this repository was built to solve two major limitations for advanced AI agents:
 
 1. **User Impersonation (Dual-Token Architecture):** The official server uses only a Bot Token, meaning every message the AI sends appears as a generic "Bot" user. This implementation uses a **Dual-Token** architecture. Read-only and infrastructure tasks use the Bot token, while write operations (posting messages, reacting, pinning, editing) and searches use the User token. This allows the AI agent to truly act *as you*, preserving your identity in threads and direct messages.
-2. **Expanded Capabilities (39 Tools vs 9 Tools):** The official server is limited to basic read/reply functions. This server expands the toolkit to 39 specialized tools, adding native support for:
+2. **Expanded Capabilities (40 Tools vs 9 Tools):** The official server is limited to basic read/reply functions. This server expands the toolkit to 40 specialized tools, adding native support for:
    - **Canvas Management:** Full CRUD operations for Slack Canvases (create, read, edit sections, delete).
    - **Workspace Orchestration:** Read and manage channel pins, bookmarks, and topics.
    - **Advanced Search:** Utilize user-context search modifiers for both messages and files across the workspace.
@@ -24,7 +24,7 @@ flowchart TD
     subgraph Service["mcp-slack HTTP Server"]
         B --> C["Validate JWT against Zitadel JWKS"]
         C --> D{"User Token Present?"}
-        D -->|Yes - Impersonation Mode| E["Expose 38 Tools (all but local download) + Unrestricted Channels/DMs"]
+        D -->|Yes - Impersonation Mode| E["Expose 39 Tools (all but local download) + Unrestricted Channels/DMs"]
         D -->|No - Bot Only| F["Expose 10 Bot Tools + Enforce Allowlist"]
     end
 
@@ -68,6 +68,7 @@ flowchart TD
 | `slack_leave_channel` | Bot (or User) | Leave a channel; the bot by default |
 | `slack_list_channel_members` | Bot | List a channel's member IDs |
 | `slack_invite_to_channel` | **User** | Invite users to a channel |
+| `slack_mark_read` | **User** | Mark a conversation as read up to a message (clears the unread badge) |
 | `slack_list_emoji` | Bot | List custom emoji, optionally filtered by name |
 | `slack_get_file_info` | Bot | File metadata by ID or file URL (no private URLs) |
 | `slack_read_file` | Bot | Read a text file's content |
@@ -79,6 +80,13 @@ flowchart TD
 | `slack_update_user_group` | **User** | Rename or re-describe a user group |
 | `slack_set_user_group_members` | **User** | Replace a user group's member list |
 | `slack_set_user_group_enabled` | **User** | Enable or disable a user group |
+
+> **Adding a tool that needs a new scope means reinstalling the app.** A Slack
+> token keeps the scopes it was issued with; editing `manifest.json` changes
+> nothing until the app is reinstalled to the workspace and the new `xoxp-`
+> token is put in the config. `slack_mark_read` needs `channels:write` and
+> `groups:write` for channels, plus `im:write` and `mpim:write` for DMs — a
+> token without them gets `missing_scope` back, not a silent success.
 
 ## 🤖 For AI Agents: Auto-Configuration Instructions
 
@@ -163,7 +171,7 @@ manifest first.
 **User-token impersonation mode.** The HTTP transport supports an optional
 `SLACK_USER_TOKEN` for impersonation mode, where operations act as the
 authenticated human rather than the bot. When the user token is available,
-**38 of the 39 tools** are unlocked on HTTP — including workspace message & file search,
+**39 of the 40 tools** are unlocked on HTTP — including workspace message & file search,
 canvases, user directory lookup, pins, bookmarks, topics, user groups, and direct
 messages (DMs). The one exception is `slack_download_file`, which writes to the
 local disk and is never offered on HTTP under any credential.
@@ -352,7 +360,7 @@ To connect your hosted `mcp-slack` server to Gemini Spark as a Custom MCP App:
 | **Authentication** | Local process environment variables | RFC 9728 metadata discovery + Zitadel OAuth (JWT) |
 | **Identity & Writes** | Dual-Token: Posts *as you* (User Token `xoxp-...`) | Configurable: Posts *as you* (default, `SLACK_WRITE_MODE=user`) or as bot (`SLACK_WRITE_MODE=bot`) |
 | **Security Controls** | Local machine boundary; optional channel filter | Strict per-request Zitadel `sub` allowlist + channel allowlist |
-| **Tool Surface** | All 39 tools (messaging, search, canvases, pins, files, user groups) | 38 tools with user token (everything but local file download) or 20 without |
+| **Tool Surface** | All 40 tools (messaging, search, canvases, pins, files, user groups) | 39 tools with user token (everything but local file download) or 20 without |
 
 ---
 
