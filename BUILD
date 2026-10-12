@@ -81,7 +81,10 @@ exports_files(
 filegroup(
     name = "workflow_files",
     srcs = glob([".github/workflows/*.yaml"]),
-    visibility = ["//tools/delivery/gen:__pkg__"],
+    visibility = [
+        "//tools/ci/actionpins:__pkg__",
+        "//tools/delivery/gen:__pkg__",
+    ],
 )
 
 filegroup(
@@ -90,6 +93,12 @@ filegroup(
     # empty glob arm is a hard error under --incompatible_disallow_empty_glob.
     srcs = glob([".github/actions/*/action.yml"]),
     visibility = ["//tools/delivery/gen:__pkg__"],
+)
+
+filegroup(
+    name = "pins_manifest",
+    srcs = [".github/actions/pins/action.yml"],
+    visibility = ["//visibility:public"],
 )
 
 exports_files(
