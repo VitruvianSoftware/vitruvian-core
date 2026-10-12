@@ -341,5 +341,26 @@ enum ExternalToolSettingsTests {
             suite.expect(none.settings.isEmpty && none.listRows == 4,
                          "with no settings handed to it the detail is as it was: four rows for the design's example")
         }
+
+        // Where the keyboard starts. With "Keyboard navigation" on, macOS
+        // would put it on the detail's first control: a tool's own setting.
+        let switchFirst = self.bench(#"""
+            {"preferences": [
+              {"id": "notify", "title": {"en": "Tell me when a deploy ends"}, "type": "boolean", "default": true},
+              {"id": "project", "title": {"en": "Project"}, "type": "string", "default": "web"}]}
+            """#)
+        defer { switchFirst.close() }
+        let opened = [shown, many, detail(switchFirst)].compactMap { $0 }
+        suite.expect(opened.count == 3 && opened.allSatisfy { $0.initialFocus == .close }
+                         && opened.last?.settings.first?.control == .toggle(true)
+                         && shown?.settings.map { ExternalToolDetail.Focus.setting($0.id) }
+                             == [.setting("project"), .setting("notify"), .setting("limit"), .setting("ratio")],
+                     "a tool's detail opens with Close focused, whatever its settings are: a switch first, a "
+                         + "field first, one of each kind, or sixteen switches, so Space cannot flip a setting")
+        if let listed = bench.store.listed.first {
+            let none = ExternalToolDetail(listed, files: nil, language: .enUS, strings: english)
+            suite.expect(none.settings.isEmpty && none.initialFocus == .close,
+                         "a detail with no settings opens with Close focused too, not with a button that leaves it")
+        }
     }
 }

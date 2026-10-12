@@ -368,6 +368,38 @@ swift_binary(
     target_compatible_with = MACOS_ONLY,
 )
 
+# Looks at, and presses, the controls of the running Vitruvian app from the
+# shell, through the macOS Accessibility API: how the checks by hand of the
+# tools from outside are done. AGENTS.md says how to use it.
+#   bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- <command>
+# A development tool. Nothing depends on it, so it is in no bundle and no
+# release; the pipeline unit below builds it, so it cannot stop compiling
+# unnoticed, and no test runs it: it drives the app that is running. It links
+# nothing of the app. A script like MakeIcon, so its first file is compiled as
+# main.swift the same way; Tools/ByHandRules.swift holds the choices it makes
+# before it presses anything, and the unit tests compile that file too.
+genrule(
+    name = "by_hand_main",
+    srcs = ["Tools/ByHand.swift"],
+    outs = ["by_hand_src/main.swift"],
+    cmd = "cp $< $@",
+)
+
+swift_binary(
+    name = "by-hand",
+    srcs = [
+        "Tools/ByHandRules.swift",
+        ":by_hand_main",
+    ],
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+)
+
 # Draws the Nexus Agent chat in fixed states and writes each as a PNG, to
 # compare before and after a change that should not alter its look:
 #   bazel run --config=macos-app //apps/desktop/vitruvian:nexus_agent_chat_snapshots -- <output folder>
@@ -582,7 +614,11 @@ swift_test(
         TEST_PRODUCTION_SOURCES,
         allow_empty = True,
         exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + UI_SRCS + FAN_CONTROL_KIT_SRCS,
-    ) + glob(["Tests/*.swift"]) + glob(["Tests/SwiftTesting/*.swift"]) + [":generated_test_sources"],
+    ) + glob(["Tests/*.swift"]) + glob(["Tests/SwiftTesting/*.swift"]) + [
+        # What the by-hand command decides before it presses anything.
+        "Tools/ByHandRules.swift",
+        ":generated_test_sources",
+    ],
     copts = [
         "-default-isolation",
         "MainActor",
@@ -848,6 +884,7 @@ pipeline_unit(
         ":Vitruvian",
         ":VitruvianLibWithSampleTool",
         ":app_holds_mermaid_test",
+        ":by-hand",
         ":fan_helper_selftest",
         ":selftest",
         ":source_lints_test",

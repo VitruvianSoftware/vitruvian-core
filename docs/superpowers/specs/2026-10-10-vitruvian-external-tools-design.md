@@ -550,7 +550,7 @@ Each is its own plan and pull request.
 | A | **Built.** The SDK package with the protocol, its Swift types and the conformance script. The manifest read from JSON, and a pin of the protocol's sources in the app. | No |
 | B | **Built.** The runtime, tested against the fake tool and, on a Mac runner, a real child process. The tool host's two kinds. The broker's forms for outside tools; `storage` writing and the folder. A development switch installs one tool from a folder with no screen. | No, without the switch |
 | C | **Built.** The tool store, the agreement sheet, the tools section of Settings, the privacy section. Mock-ups first. | Yes |
-| D | **Built.** The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks: gathered into one list, below; none has been done. | Only to a tool's author |
+| D | **Built.** The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks: gathered into one list, below, and run in part on 2026-10-12. | Only to a tool's author |
 
 **Stage A, as built (2026-10-10).** Each line is marked met only where a
 command that was run shows it. Run on macOS 27.0 with Xcode 27 and Swift 6.4.
@@ -618,9 +618,9 @@ rewritten: stage C settles the first three, and they stay open until it does.
 **Stage C, as built (2026-10-11).** Each line is marked met only where a
 command that was run shows it. Run on one Mac (Mac16,5, Apple M4 Max) with
 macOS 27.0, Xcode 27.0 and Swift 6.4. Nothing here was run on a CI runner.
-Nobody opened the app: how a screen looks, and which button a key presses,
-was not checked. The stage C plan's list "By hand" has twelve checks, and
-none has been done.
+Nobody opened the app when this table was written: how a screen looks, and
+which button a key presses, was not checked then. It was on 2026-10-12: see
+the results under "By hand: every check of the sub-project" below.
 
 | What stage C was to deliver | Met? | What shows it |
 |---|---|---|
@@ -678,12 +678,12 @@ is in `packages/vitruvian-sdk` but one check in the app and its tests.
 | What stage D was to deliver | Met? | What shows it |
 |---|---|---|
 | The tool kit | Met | `bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolKitTests` passes with 13 tests. Both Swift samples are written with it and pass the conformance script in `swift_samples_test`; `RunTests.testTheSwiftSampleRuns` puts one through `run`. |
-| The command-line tool: `init` | Met in tests. The Swift template is built by hand only | `NewToolTests`, 10 of the 38 tests of `VitruvianToolCLITests`: it writes only in the folder named, refuses a folder that is not empty and a path that is a symbolic link, writes over nothing, takes a path with spaces, quotation marks and a slash at its end, and writes nothing for an id the app would refuse. `init_test` runs the built command: what it writes from the Python template passes `validate`, the conformance script and `run`. `templates_in_sync_test` compares the text the command holds with the two hello samples, byte for byte; it was seen to fail for one changed line of the held text and for one changed line of a sample. No test builds the Swift template: that takes `swift build`. It was built once by hand, by the agent that built this stage, with Swift 6.4: `Build complete!`, three `ok` lines from `validate`, `run: OK`, five `ok` lines from the conformance script. |
+| The command-line tool: `init` | Met in tests. The Swift template is built by a test since 2026-10-12 | `NewToolTests`, 10 of the 38 tests of `VitruvianToolCLITests`: it writes only in the folder named, refuses a folder that is not empty and a path that is a symbolic link, writes over nothing, takes a path with spaces, quotation marks and a slash at its end, and writes nothing for an id the app would refuse. `init_test` runs the built command: what it writes from the Python template passes `validate`, the conformance script and `run`. `templates_in_sync_test` compares the text the command holds with the two hello samples, byte for byte; it was seen to fail for one changed line of the held text and for one changed line of a sample. When this stage was built no test built the Swift template: that takes `swift build`. It was built once by hand, by the agent that built this stage, with Swift 6.4: `Build complete!`, three `ok` lines from `validate`, `run: OK`, five `ok` lines from the conformance script. Since 2026-10-12 `swift_template_test` does it on the Mac runner: `init --template swift` against a copy of the package, the `build.sh` it wrote as it stands, then `validate` and `run --command hello`, each with a time limit, in a folder of its own with a home and a temporary folder of its own. It needs no network. It was seen to fail for a product name changed in the template's `Package.swift`. The conformance script is still run on such a tool by hand only. Known: a clean `swift build` on Swift 6.4 leaves one empty `TemporaryDirectory.XXXXXX` folder in the Mac's real temporary folder, whatever the environment says, and the test does not delete it. |
 | The command-line tool: `validate` | Met | `FolderCheckTests`. `protocol/examples/folders.json` holds 22 folders, and every verdict there is has one. The package's test and the app's `ToolFolderExamplesTests` each make all 22 and ask their own code: 23 checks in the app's `tool-runtime` suite, which passes with 525. An example whose verdict is `manifest` names the broken rule, and both sides are held to that too. |
 | The command-line tool: `run` | Met in tests. Control-C in a real terminal not checked: by hand | `DeskTests` and `RunTests`, 20 of the 38: a command, each refusal, a tool that hangs, floods, dies, will not leave, or speaks out of turn, and an interrupt sent with a signal, after which the tool's process is gone and its folder deleted. `testTheCommandCanReachNothingOfThePersons` holds that the command's sources name no pasteboard, workspace, sound, script or event API. Each test that starts a process was run ten times in a row: ten passes each. By-hand check 3 is the key itself. |
 | The three samples | Met in tests. In the app, not checked: by hand | `samples_test` and `swift_samples_test`: every sample's manifest against the schema, and each sample through the conformance script. For `front-window` the test printed `a command: showTitle: ran`: the Mac's test runner has Accessibility. Its refusal without Accessibility was not seen, and the title it read was not looked at. No sample has been added to the app: by-hand checks 7 to 12 and 19 to 21. |
 | The documentation | Met for its examples. The prose is not checked | `packages/vitruvian-sdk/docs/writing-a-tool.md`. `guide_test` checks each of its 29 fenced blocks: 17 of messages and 1 manifest against the schemas, 4 pieces of code against the sample each is taken from, 5 of commands against the verbs, flags and targets that exist, 2 of the command's own words against its source. No block is unchecked. Six mistakes planted one at a time were each caught with the block's line, and each was undone. The guide's first tool was followed step by step with the built command, in a folder that was then removed. The numbers in its table of limits were read against `ToolLimits`, not tested. |
-| The by-hand checks | Not checked: by hand | The list below: 29 checks, every one of the sub-project. None has been done. |
+| The by-hand checks | Done in part on 2026-10-12 | The list below, and the table of results under its first paragraph. Checks 21, 29 and 32 were not done. |
 | A person sees no change | Met in tests, not by hand | `platform` is unchanged at 766 checks and a full run reports `TESTS OK (49 suites)`; `selftest` passes. The app has no new text. Under the app's `Sources/` this stage changed one comment and one check: a program must be a file. |
 
 Where stage D differs from the sections above it, and from its own plan:
@@ -801,36 +801,86 @@ Limits of these five that are known and accepted:
   while the bar or the wheel is open can still be picked once, and then
   does nothing.
 
-**The five "done when" items of section 1, as they stand.** None is marked
-met here by a person, because none of the checks by hand has been done.
+**The five "done when" items of section 1, as they stand** after the checks
+by hand of 2026-10-12, which were run on the released app (3.41.0, 3.41.2 and
+3.42.0) and are recorded below.
 
 1. *A sample installs from a folder, shows its sheet, and runs from four
-   places.* Not met. It needs the app: by-hand checks 7 to 12. What tests
-   show: the store adds the folder of a tool and the runtime starts a real
-   child process, runs its command and stops it.
+   places.* Met. By-hand checks 7 to 12: the Python sample was added from a
+   folder after its sheet, and its command ran from the command bar, the
+   Quick panel, the radial menu and a recorded shortcut.
 2. *A second sample reads the front window's title with no prompt of its
-   own.* Not met. By-hand checks 20 and 29, and 21 for the refusal. What
-   tests show: `front-window` ran its command through the conformance script
-   on a Mac whose test runner has Accessibility. Nobody looked at the title.
+   own.* Met, but for the refusal. By-hand checks 20 and 38: `front-window`
+   showed the title of a Finder window, with no prompt. Check 21, what it
+   says with Accessibility switched off, and check 29, after a later update,
+   are a person's and have not been done.
 3. *Killing, hanging or flooding a tool leaves the app responsive, and the
-   person is told once.* Met in tests, not by hand: the `tool-runtime` suite,
-   525 checks, against a fake tool and a real process. That the person is
-   told once on screen is by-hand checks 15 and 16.
+   person is told once.* Met for killing, by hand (checks 15 and 16: told
+   once, started again, then "Stopped working" and Start Again). Hanging and
+   flooding are met in tests only: the `tool-runtime` suite, against a fake
+   tool and a real process.
 4. *A release build with no outside tool looks and behaves as it does
-   today.* Met in tests, not by hand, and with stage C's one difference: the
-   Features page of Settings has one more card. By-hand check 6.
-5. *The by-hand checks are recorded with the Mac and macOS version.* Not
-   met. None is recorded, because none has been done.
+   today.* Met, with stage C's one difference: the Features page of Settings
+   has one more card. By-hand check 6, and the app's settings were compared
+   before and after each sitting.
+5. *The by-hand checks are recorded with the Mac and macOS version.* Met for
+   the checks that were run; the table below says which were not.
 
-**By hand: every check of the sub-project.** No agent can do these. The app
-is a menu-bar app the automation cannot see, and granting or taking away
-Accessibility is a security setting only a person changes. This is stage B's
-three checks, stage C's fourteen and stage D's own in one list, with the
+**By hand: every check of the sub-project.** Most of these have now been
+run, by an agent, from a shell: see "What was run, and where" just below.
+Granting or taking away Accessibility is a security setting only a person
+changes, so the checks that need that are still a person's. This is stage
+B's three checks, stage C's fourteen and stage D's own in one list, with the
 ones that say the same thing joined, four more for the three gaps
 closed on 2026-10-12, and after those the checks for the five loose ends
 closed the same day, at the end. Each is one action and what to expect,
 in an order that can be done top to bottom in one sitting. Record each in
 the pull request with the Mac and the macOS version, or say it was not done.
+
+**What was run, and where.** The checks were run on 2026-10-12 against the
+released app as installed in `/Applications`, on a Mac16,5 with macOS 27.0, in
+dark appearance unless a check says otherwise, with "Keyboard navigation" on.
+They were driven from a shell that already had Accessibility, with the dev
+command described in `apps/desktop/vitruvian/AGENTS.md` ("Checking the app by
+hand, from the shell"): it reads and presses the app's own controls through
+the macOS Accessibility API, types keys, and takes pictures of the window. The
+sentence above that no agent can do these was wrong and is kept only as
+history. Nothing was added to the app that was not removed again.
+
+| Checks | Release | Result |
+|---|---|---|
+| 1, 2, 4, 5 | 3.41.0 | Pass. |
+| 3 | 3.41.0 | Pass with an interrupt signal. Control-C in a real terminal was not pressed. |
+| 6, 7 | 3.41.0 | Pass. The card and the sheet match mock-ups (a) and (e). |
+| 8 | 3.41.0, then 3.41.2 | **Failed on 3.41.0: Space added the tool**, because the keyboard was on "Add Tool". Fixed in 3.41.2 and passed there: the sheet and the update sheet open with the keyboard on Cancel; Space, Return and Escape add nothing; Tab then Space adds. |
+| 9, 10, 12 | 3.41.0 | Pass. |
+| 11 | 3.42.0 | Pass: the command ran from the Quick panel's tile, from a slice of the radial menu, and from a recorded shortcut (check 35). |
+| 13, 14, 15, 16, 17, 18, 19 | 3.41.0 | Pass. |
+| 20 | 3.41.0, then 3.42.0 | Pass. On 3.42.0 by a recorded shortcut with a Finder window in front: the message was that window's title. No prompt. |
+| 21 | | Not done. It needs Accessibility switched off, a security setting only the person changes. |
+| 22, 23, 24 | 3.41.0 | Pass. |
+| 25 | 3.41.0, then 3.42.0 | Pass. Measured on 3.42.0: the sheet for a tool with 32 commands is 480 by 518 points, so it fits a display 900 points high. No small display was used. |
+| 26 | 3.41.0 | Pass. Two lines on the sheet, one in the row, plain text. |
+| 27 | 3.41.0 | Pass. Remove took about 1.1 seconds and the program was gone. |
+| 28 | 3.41.0, 3.41.2, 3.42.0 | Pass after each sitting. |
+| 29 | | Not done. It needs a later update and Accessibility granted again by the person. |
+| 30, 31 | 3.41.2 | Pass. |
+| 32 | | Cannot be done without an administrator. It needs a program the app may not signal, and a person's own program always dies when killed: one that suspended its whole task was tried on macOS 27.0, and the kill signal ended it at once. Only a program of another user or of root would do. The alert is shown by tests of its words and by a stand-in. |
+| 33 | 3.41.2 | Pass. |
+| 34 | 3.41.2, then 3.42.0 | Pass in the island's Tools tab: the tile is dimmed, a click and its digit do nothing, and the command bar has no row. On 3.42.0, in edit mode ("Customize tools") the tile is not dimmed and has its hide button like the others, and it is dimmed again on leaving. Dragging it, the arrows with Return, and light appearance were not done. |
+| 35, 36, 37, 38, 39 | 3.41.2 | Pass. Check 38 was run again on 3.42.0 as check 20. |
+| Light appearance | 3.42.0 | The card, the agreement sheet, a tool's detail and the removal question were looked at once in light appearance. Nothing was wrong. |
+
+Three older lists of checks by hand, from the plans of the tool registry and
+of the broker, were run in part on 3.42.0, with each feature installed for
+the check and removed again. The Port manager lists a listening port, ends
+that one process when asked, and has no end buttons while Kill Process is not
+installed. Clean URL cleans a copied link by itself and from the command bar,
+and leaves it alone once the feature is removed. Paste as plain text pastes a
+bold copy in the style of the text around it, and a copy that is only HTML as
+its words, and the clipboard keeps the rich copy afterwards. Not done: the
+checks that compare with a build from before a change, the ones that need a
+build with the sample tool, and anything that switches Accessibility off.
 
 Before you start, build this branch's app, and the samples and the command:
 `bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders //packages/vitruvian-sdk:vitruvian-tool`.
@@ -843,7 +893,11 @@ path. `Tools` and `ToolData` are under
 must already have Accessibility. Do the checks of the app in light and in
 dark appearance, with stage C's mock-up page open beside it. Three checks
 need a tool no sample is, `many`, `long` and `stays`: the stage D plan's
-section "By hand" gives the commands that make them in `$TMPDIR`.
+section "By hand" gives the commands that make them in `$TMPDIR`. Since
+2026-10-12 a command in the repository presses the app's controls from the
+shell for these checks, `bazel run --config=macos-app //apps/desktop/vitruvian:by-hand`:
+`apps/desktop/vitruvian/AGENTS.md`, "Checking the app by hand, from the
+shell", says how to use it and what to save first.
 
 *The command, with no app*
 
@@ -1249,6 +1303,12 @@ run when this was written.
     nothing then either, because the tool was stopped for being idle and
     took its helper with it. Delete `$TMPDIR/helper` with the others in
     check 28.
+40. **With "Keyboard navigation" on in System Settings, open the detail of
+    a tool whose first setting is a switch, and press Space.** The switch
+    does not change: the keyboard is on Close, and Space closes the
+    detail. Open it again and press Tab until a field has the keyboard:
+    every field and switch is still reached, and a field still saves when
+    you move on from it.
 
 ## 16. Open questions
 

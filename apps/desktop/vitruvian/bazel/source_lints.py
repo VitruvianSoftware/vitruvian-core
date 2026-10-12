@@ -2635,6 +2635,78 @@ def the_agreement_sheet_places_its_focus(repo):
     return problems
 
 
+TOOLS_SECTION = APP_PREFIX + "UI/Settings/ExternalToolsSection.swift"
+_DETAIL_FOCUS_PLACED = re.compile(r"\bfocus\s*=\s*detail\.initialFocus\b")
+_DETAIL_CLOSE_BOUND = re.compile(r"\.focused\(\$focus,\s*equals:\s*\.close\)")
+_DETAIL_SETTING_BOUND = re.compile(
+    r"\.focused\(\$focus,\s*equals:\s*\.setting\(setting\.id\)\)"
+)
+
+
+def detail_focus_problems(text):
+    """What a tool's detail lacks of the three things that keep the keyboard
+    off a setting as it opens: its switches and its fields bound to its
+    focus, Close bound to it, and that focus set from `initialFocus`. Prose
+    and strings do not count."""
+    code = "\n".join(code_and_blanked(line)[1] for line in text.split("\n"))
+    problems = []
+    if len(_DETAIL_SETTING_BOUND.findall(code)) < 2:
+        problems.append(
+            "a setting's switch and its field are not both bound to the "
+            "detail's focus (`.focused($focus, equals: .setting(setting.id))`)"
+        )
+    if not _DETAIL_CLOSE_BOUND.search(code):
+        problems.append(
+            "Close is not bound to its focus (`.focused($focus, equals: .close)`)"
+        )
+    if not _DETAIL_FOCUS_PLACED.search(code):
+        problems.append(
+            "its focus is not set from what the detail says "
+            "(`focus = detail.initialFocus`)"
+        )
+    return problems
+
+
+def a_tools_detail_places_its_focus(repo):
+    """A tool's detail lists the tool's own settings first. With "Keyboard
+    navigation" on, macOS puts the keyboard on the first of them as the
+    detail opens, and Space turns a switch. `ExternalToolDetail.initialFocus`
+    says where the keyboard starts instead, and a test holds it to Close.
+    That is worth nothing unless the view uses it, which no test can see: so
+    the detail's file must bind its settings and Close to its focus and set
+    that focus from `initialFocus`."""
+    problems = []
+    whole = "\n".join(
+        [
+            ".onChange(of: focus) { _, placed in",
+            "    if placed != detail.initialFocus { focus = detail.initialFocus }",
+            "}",
+            "Toggle(title, isOn: on).focused($focus, equals: .setting(setting.id))",
+            "field.focused($focus, equals: .setting(setting.id))",
+            "Button(title) {}.focused($focus, equals: .close)",
+        ]
+    )
+    prose = "\n".join(
+        [
+            "// focus = detail.initialFocus",
+            'let text = ".focused($focus, equals: .close)"',
+            "if placed != detail.initialFocus { return }",
+            "field.focused($focus, equals: .setting(setting.id))",
+        ]
+    )
+    if detail_focus_problems(whole) or len(detail_focus_problems(prose)) != 3:
+        problems.append(
+            "the scan finds a detail's focus bound and set in code, and not "
+            "one in prose, in a string, only compared, or bound for one kind "
+            "of setting alone"
+        )
+    problems.extend(
+        f"{TOOLS_SECTION}: {problem}"
+        for problem in detail_focus_problems(repo.source(TOOLS_SECTION))
+    )
+    return problems
+
+
 # UPSTREAM.md's sections, in order. "Modifications" is the dated notice
 # GPL-3.0 section 5(a) asks for.
 UPSTREAM_SECTIONS = [
@@ -2757,6 +2829,7 @@ RULES = [
     the_broker_names_no_tool,
     only_the_agreement_sheet_consents,
     the_agreement_sheet_places_its_focus,
+    a_tools_detail_places_its_focus,
     modification_log_is_whole,
 ]
 

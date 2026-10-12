@@ -376,6 +376,15 @@ of it but the protocol.
 - "Can it run?" for an outside tool is answered from the last
   `commands/state` and how the tool stands. It never sends a message: lists
   ask while they draw.
+- A pick that cannot run is never silent. The command bar and the wheel
+  leave out a command that cannot run, but both are made when they open,
+  and a command can stop being runnable while one is open. Picking it then
+  runs nothing and plays the alert sound, as a shortcut does
+  (`CommandBarCatalog.toolEntries`, `RadialMenuService.run(_:registry:refuse:)`,
+  `ToolShortcutRegistrar`). The row or slice itself stays until the surface
+  is opened again: neither follows the registry while it is open. A new
+  surface that runs a registry command checks what `ToolRegistry.run`
+  gives back.
 - What a tool asks of the app is done in `ExternalToolCalls`, through the
   tool's own `ToolServices`, so the broker refuses a service the manifest
   does not list in `uses`. Its `switch` over `ToolMethod` is exhaustive on
@@ -571,6 +580,16 @@ of it but the protocol.
   closes; a value the store refuses is put back. The values are read when
   the detail opens and do not follow a running tool that changes its own.
   The agreement sheet does not list preferences.
+- The detail opens with the keyboard on Close
+  (`ExternalToolDetail.initialFocus`), by the agreement sheet's mechanism:
+  every control of the detail is bound to one focus
+  (`ExternalToolDetail.Focus`), and the first focus macOS places, which
+  would be the tool's first setting, is moved once
+  (`a_tools_detail_places_its_focus`). So Space at open cannot turn a
+  tool's switch. A control added to the detail gets a case of `Focus` and
+  `.focused($focus, equals:)`, or the first focus can land on it unseen.
+  A field saves when the detail's focus leaves it, read from that same
+  focus. Only pressing Space in the app proves it.
 - A tool's own words inside one of the app's sentences that has no line
   limit go through `ToolOwnWords.oneLine` first: an alert's title or
   message, and the app's short on-screen message. It gives one line of at
@@ -604,6 +623,99 @@ of it but the protocol.
     an earlier file of that name.
   - Nobody has opened the app with this stage in it. The plan's list "By
     hand" is what is left to see.
+
+## Checking the app by hand, from the shell
+
+`Tools/ByHand.swift` is a command that lists and presses the controls of the
+running app through the macOS Accessibility API. It is how the checks by
+hand of the tools from outside (the spec's section 15) were done on
+2026-10-12. It is a development tool: `manual`, in no bundle and no release,
+built in CI so it keeps compiling, and run by no test.
+
+```sh
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- open-settings
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- tools
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- add-tool "$PWD/bazel-bin/packages/vitruvian-sdk/built/hello-swift" --agree
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- run-command "Say hello from Swift"
+bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- remove-tool "Hello, in Swift" --delete-data
+```
+
+Run it with no command for the whole list: `windows`, `dump`, `find`,
+`focused` and `message` only look; `press`, `select`, `set-value`,
+`focus-field`, `choose` and `scroll-end` do one thing; `open-settings`,
+`page`, `tools`, `add-tool`, `remove-tool`, `run-command`, `quit` and
+`launch` each do one step of a check. It exits with 0 when done, 1 when
+what was asked for is not there, 2 when the app is not running, 3 when the
+terminal has no Accessibility.
+
+Before you use it:
+
+- **It drives the app that is running, the person's own.** Tell them before
+  you start, and do not use it while they or another session are using the
+  Mac: three commands send keys, and keys go to whichever app is in front.
+  The command brings Vitruvian forward and sends nothing unless the
+  keyboard is then on it.
+- **Save first, compare after.** The clipboard
+  (`pbpaste > "$TMPDIR/clip.before"`), the app's settings
+  (`defaults export com.vitruviansoftware.vitruvian "$TMPDIR/settings.before.plist"`)
+  and a listing of its support folder. A check that copies, or flips a
+  switch by mistake, shows up in the comparison and nowhere else.
+- It finds the app by its bundle id and needs the terminal to have
+  Accessibility already. It never asks for, grants or changes a permission.
+  The app must be in English: it presses buttons by their English names
+  (`ByHandRules.Words`).
+- **Keys go through System Events** (`osascript`), as the terminal's own
+  would. Posting raw key events was tried first: a folder picker took
+  neither Command-Shift-G nor the typed path that way, and chose whatever
+  folder it was showing. Run against the released app (3.42.0) on
+  2026-10-12: `open-settings`, `page`, `tools`, `add-tool` with a path that
+  holds a space, `focused`, `press`, `run-command` for a command that is
+  there and one that is not, `remove-tool`, `quit` and `launch`.
+- **Do not script another app to help a check.** `tell application "Finder"`
+  from the shell put a macOS prompt on the person's screen asking to let the
+  terminal control Finder. Open a folder with `open`, close a window through
+  System Events, and leave that prompt to the person if it ever appears.
+- **Never click a place on the screen by its coordinates.** A panel that had
+  closed left the click to land on another app's window.
+
+What doing the checks taught, each held in `Tools/ByHandRules.swift` and by
+`ByHandRulesTests`:
+
+- Press by exact name, and of several controls with that name the last: a
+  sheet's controls come after its window's. A loose match for a button once
+  turned an unrelated feature off. `press` takes no part of a name.
+- The Features page is lazy. The last card is not there to find until the
+  page is scrolled to its end, twice (`tools` does it).
+- In the command bar Return runs the top result, which is often a longer
+  title that starts the same. `run-command` reads the results and moves to
+  the row that is the command before Return, and runs nothing when the bar
+  does not offer it. Pressing a result through the Accessibility API does
+  nothing.
+- A tool's row is found by the tool's whole name, and only when one row has
+  it.
+- A press that opens a folder picker, an alert or a sheet is answered late
+  or not at all: the app is held in what it opened, and the Accessibility
+  API gives back "cannot complete" (-25204) for a press that worked. That
+  answer counts as pressed (`ByHandRules.answer(toPress:)`), and the step
+  then waits, a few seconds at most, for what the press was to open, and
+  says what it pressed and did not see when it never comes.
+- Every cell and row of a list says it is focused. `focused` lists only
+  what a key acts on, a button, field, switch, pop-up or slider, and with a
+  sheet open only what is in the last sheet (`ByHandRules.keyTargets`).
+- A step goes where it needs to be by itself: `tools`, `add-tool` and
+  `remove-tool` open Settings and the Features page and scroll to the card;
+  `run-command` opens Settings on Command Bar, and leaves the bar closed.
+- `add-tool` types the folder's whole path into the picker as it is, so a
+  space in it is a character. Without `--agree` it leaves the agreement
+  sheet open and says where the keyboard is: the start of the Space and
+  Return check.
+
+How far it is proven: against the app (3.42.0, macOS 27, 2026-10-12)
+`windows`, `open-settings`, `page` and `tools` worked. That run found four
+faults in `add-tool`, `run-command` and `focused`, mended since; nobody has
+run those three, `remove-tool`, `quit` or `launch` against the app after
+the mending. `select N`, from `dump`, is the way the first scripts selected
+a page. It takes no screenshots: use `screencapture`.
 
 ## Porting from upstream
 
