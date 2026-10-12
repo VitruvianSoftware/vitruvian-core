@@ -68,6 +68,21 @@ func TestDormantByDefault(t *testing.T) {
 	}
 }
 
+// Switched on without the token must fail with a message that names the
+// missing secret, not with the provider's generic error.
+func TestSwitchOnWithoutTokenFailsNamingTheSecret(t *testing.T) {
+	t.Setenv(Switch, "true")
+	t.Setenv("CLOUDFLARE_API_TOKEN", "")
+	var got []seen
+	err := pulumi.RunErr(Manage, pulumi.WithMocks("repo-config", "dev", mocks{&got}))
+	if err == nil {
+		t.Fatal("Manage succeeded with the switch on and no token")
+	}
+	if !strings.Contains(err.Error(), "DNS_CLOUDFLARE_API_TOKEN") {
+		t.Fatalf("error does not name the secret: %v", err)
+	}
+}
+
 func TestOnlyTrueTurnsItOn(t *testing.T) {
 	for _, v := range []string{"1", "yes", "TRUE", "True"} {
 		t.Setenv(Switch, v)
@@ -85,6 +100,7 @@ func TestOnlyTrueTurnsItOn(t *testing.T) {
 // protected: a stray edit that would delete or replace one must fail the run.
 func TestDeclaresExactlyTheThreeResourcesImportedAndProtected(t *testing.T) {
 	t.Setenv(Switch, "true")
+	t.Setenv("CLOUDFLARE_API_TOKEN", "test-not-a-real-token")
 	got := run(t)
 
 	want := map[string]string{

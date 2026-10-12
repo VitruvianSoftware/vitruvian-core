@@ -1349,6 +1349,9 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 //	                            hand-apply after every change).
 //	PULUMI_PREVIEW_ENABLED      pulumi-preview.yaml posts advisory app-stack
 //	                            previews (tabula / oauth-user-inspector) on PRs.
+//	SITE_DOMAIN_MANAGED         turns on internal/site_domain: the website's
+//	                            apex CNAME, Pages verification TXT and Pages
+//	                            setting. Requires DNS_CLOUDFLARE_API_TOKEN.
 //
 // The first two variables already exist (hand-set) and use the mandatory
 // import-then-manage pattern (the provider's variable Create is a create-only
@@ -1368,6 +1371,9 @@ func pipelineGates(ctx *pulumi.Context, cfg *config.Config, repo *github.Reposit
 		"REPO_CONFIG_PREVIEW_ENABLED": true,
 		"SYNC_AUTH_AUTO_APPLY":        false,
 		"PULUMI_PREVIEW_ENABLED":      false,
+		// Turns on internal/site_domain (the website's custom domain).
+		// Needs the DNS_CLOUDFLARE_API_TOKEN secret to exist first.
+		"SITE_DOMAIN_MANAGED": false,
 	}
 	var overrides map[string]string
 	_ = cfg.GetObject("pipelineGates", &overrides)

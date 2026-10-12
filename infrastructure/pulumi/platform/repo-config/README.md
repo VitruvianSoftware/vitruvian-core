@@ -83,7 +83,7 @@ also holds mail, identity and other tools' records (see
 
 | Input | Kind | What it does |
 |---|---|---|
-| `SITE_DOMAIN_MANAGED` | repo **variable** | The switch. Anything other than `true` declares nothing. |
+| `SITE_DOMAIN_MANAGED` | repo **variable**, declared as code in `pipelineGates` | The switch. Anything other than `true` declares nothing. With it on and no token, the run fails and names the missing secret. |
 | `DNS_CLOUDFLARE_API_TOKEN` | repo **secret** | Passed to the job as `CLOUDFLARE_API_TOKEN`. DNS:Edit and Zone:Read on the one zone. |
 
 All three resources already exist, so each is **imported** and **protected**.
