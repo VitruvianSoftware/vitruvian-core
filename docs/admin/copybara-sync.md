@@ -440,10 +440,10 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
     custom domain (`cname`), `build_type`, `protected_domain_state` and the certificate. For
     `site-vitruviansoftware-dev` on 2026-10-10 that was `vitruviansoftware.dev`, `workflow`,
     `verified`, certificate approved. The zone is on Cloudflare. The apex is **one CNAME record**,
-    `vitruviansoftware.dev` to `bluecentre.github.io`, DNS-only. Cloudflare flattens it, so a resolver
-    sees GitHub's four A and four AAAA Pages addresses, but the zone itself holds **no A or AAAA
-    records**. The target is another GitHub account's Pages hostname; that works because GitHub routes
-    by the custom domain, not by the CNAME target. The apex CNAME, the
+    `vitruviansoftware.dev` to `vitruviansoftware.github.io`, DNS-only. Cloudflare flattens it, so a
+    resolver sees GitHub's four A and four AAAA Pages addresses, but the zone itself holds **no A or
+    AAAA records**. GitHub routes by the custom domain, not by the CNAME target. (It pointed at
+    another account's hostname, `bluecentre.github.io`, until 2026-10-12.) The apex CNAME, the
     `_github-pages-challenge-VitruvianSoftware` TXT record and the Pages setting were created by hand,
     before this repo had Pulumi. Since 2026-10-12 `repo-config` manages them (`internal/site_domain`,
     switched on by the `SITE_DOMAIN_MANAGED` repo variable, which is declared in `pipelineGates`). They

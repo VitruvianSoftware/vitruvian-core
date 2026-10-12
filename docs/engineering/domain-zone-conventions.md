@@ -116,10 +116,11 @@ records here must declare named records, never "the zone".
 | `adk-agents`, and `_github-pages-challenge-bluecentre` | another GitHub account's Pages, by hand |
 | `opensource` (Vercel), `_tailscale-challenge`, `sandbox` TXT | by hand |
 
-The apex is **one CNAME**, `vitruviansoftware.dev` to `bluecentre.github.io`,
+The apex is **one CNAME**, `vitruviansoftware.dev` to `vitruviansoftware.github.io`,
 DNS-only. Cloudflare flattens it, so resolvers see GitHub's eight Pages
-addresses; the zone holds no A or AAAA records. The target is another GitHub
-account's Pages hostname, which works because GitHub routes by the custom domain.
+addresses; the zone holds no A or AAAA records. GitHub routes by the custom
+domain, not by the CNAME target. (It pointed at another account's hostname,
+`bluecentre.github.io`, until 2026-10-12.)
 
 ## Guardrails
 

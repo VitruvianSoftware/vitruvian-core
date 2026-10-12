@@ -86,14 +86,17 @@ type Record struct {
 	TTL int
 }
 
-// Records is the whole DNS surface of this package, exactly as it is live.
+// Records is the whole DNS surface of this package.
 //
 // The apex is a CNAME, not A and AAAA records. Cloudflare flattens a CNAME at
-// the zone apex, so a resolver sees GitHub's eight Pages addresses. Its target
-// is another GitHub account's Pages hostname; that works because GitHub routes
-// by the custom domain and not by the CNAME target. It is imported as it is, so
-// the first apply changes nothing. Repointing it at vitruviansoftware.github.io
-// is a separate, reviewable edit.
+// the zone apex, so a resolver sees GitHub's eight Pages addresses. GitHub
+// routes by the custom domain and not by the CNAME target, so the target only
+// has to resolve to Pages.
+//
+// It points at this organisation's own Pages hostname. It was adopted pointing
+// at another GitHub account's (bluecentre.github.io), imported unchanged so the
+// first apply changed nothing, and repointed afterwards as its own edit. Both
+// names resolve to the same eight addresses, which is why the move is safe.
 func Records() []Record {
 	return []Record{
 		{
@@ -101,7 +104,7 @@ func Records() []Record {
 			ID:       "a3e45075c39e5ff202f1db62ffbcb733",
 			Type:     "CNAME",
 			Name:     Apex,
-			Content:  "bluecentre.github.io",
+			Content:  "vitruviansoftware.github.io",
 			TTL:      1,
 		},
 		{
