@@ -416,7 +416,8 @@ final class RunTests: XCTestCase {
     func testTheCommandCanReachNothingOfThePersons() throws {
         let sources = PackageFiles.url("Sources/VitruvianToolCLI/Command.swift").deletingLastPathComponent()
         let files = try FileManager.default.contentsOfDirectory(at: sources, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
+            // Templates.swift is the samples as text, not code of the command.
+            .filter { $0.pathExtension == "swift" && $0.lastPathComponent != "Templates.swift" }
         XCTAssertGreaterThanOrEqual(files.count, 5)
         for file in files {
             let text = try String(contentsOf: file, encoding: .utf8)

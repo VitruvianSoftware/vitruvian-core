@@ -40,6 +40,9 @@ public enum VitruvianToolCommand {
             guard let (folder, options) = runArguments(rest) else { return usage(say) }
             return run(folder: url(folder, environment), options: options, environment: environment,
                        typing: typing, say: say)
+        case "init"?:
+            guard let tool = initArguments(rest, environment) else { return usage(say) }
+            return start(tool, say: say)
         case "help"?, "--help"?, "-h"?:
             say(Words.usage)
             return 0
@@ -107,6 +110,45 @@ public enum VitruvianToolCommand {
         say("")
         say(status == 0 ? "run: OK" : "run: FAILED")
         return status
+    }
+
+    /// What follows `init`: the folder, and `--id`, `--name` and
+    /// `--publisher`, all three needed. Nil when it cannot be read.
+    public static func initArguments(_ arguments: ArraySlice<String>, _ environment: [String: String]) -> NewTool? {
+        var named: [String: String] = [:]
+        var folder: String?
+        var rest = arguments
+        while let argument = rest.popFirst() {
+            if ["--id", "--name", "--publisher", "--template", "--sdk"].contains(argument) {
+                guard let value = rest.popFirst() else { return nil }
+                named[argument] = value
+            } else {
+                guard folder == nil, !argument.hasPrefix("-") else { return nil }
+                folder = argument
+            }
+        }
+        guard let folder, let id = named["--id"], let name = named["--name"], let publisher = named["--publisher"],
+              let template = ToolTemplate(rawValue: named["--template"] ?? ToolTemplate.python.rawValue)
+        else { return nil }
+        var tool = NewTool(folder: url(folder, environment), id: id, name: name, publisher: publisher)
+        tool.template = template
+        tool.sdk = named["--sdk"].map { url($0, environment) }
+        return tool
+    }
+
+    static func start(_ tool: NewTool, say: (String) -> Void) -> Int32 {
+        switch NewToolWriter.write(tool) {
+        case .failure(let problem):
+            say("NOT OK   " + Words.problem(problem, tool))
+            say("")
+            say("Nothing was written.")
+            return 1
+        case .success(let written):
+            for path in written { say("wrote    " + path) }
+            say("")
+            say(Words.next(tool))
+            return 0
+        }
     }
 
     static func validate(_ folder: URL, say: (String) -> Void) -> Int32 {

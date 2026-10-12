@@ -150,7 +150,10 @@ swift_test(
     name = "VitruvianToolCLITests",
     size = "small",
     srcs = glob(["Tests/VitruvianToolCLITests/**/*.swift"]),
-    data = PROTOCOL_FILES + glob(["Sources/VitruvianToolCLI/**/*.swift"]) + [
+    data = PROTOCOL_FILES + glob([
+        "Sources/VitruvianToolCLI/**/*.swift",
+        "samples/**",
+    ]) + [
         "built/hello-swift/vitruvian-tool.json",
         ":hello-swift-folder",
         ":vitruvian-tool",
@@ -301,6 +304,47 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+# `vitruvian-tool init` starts a new tool from a copy of a hello sample, and
+# the copies are compiled into the command as text. This writes that text:
+#
+#   bazel run //packages/vitruvian-sdk:sync-templates
+py_binary(
+    name = "sync-templates",
+    srcs = ["samples/sync_templates.py"],
+    data = glob(["samples/hello-*/**"]),
+    main = "samples/sync_templates.py",
+)
+
+# The committed text is what the samples are now. Not `manual` and not tied
+# to macOS, so the Linux lane runs it too.
+py_test(
+    name = "templates_in_sync_test",
+    size = "small",
+    srcs = ["samples/sync_templates.py"],
+    args = ["--check"],
+    data = glob(["samples/hello-*/**"]) + ["Sources/VitruvianToolCLI/Templates.swift"],
+    main = "samples/sync_templates.py",
+)
+
+# What `init` writes passes `validate`, the conformance script and `run`. It
+# starts the built command and real processes. `manual` and macOS-only.
+py_test(
+    name = "init_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/init_test.py",
+    ],
+    args = ["$(rootpath :vitruvian-tool)"],
+    data = [
+        "Package.swift",
+        ":vitruvian-tool",
+    ],
+    main = "samples/init_test.py",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 pipeline_unit(
     name = "vitruvian-sdk",
     persona = "platform",
@@ -310,9 +354,11 @@ pipeline_unit(
         ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
         ":conformance_test",
+        ":init_test",
         ":protocol_examples_test",
         ":samples_test",
         ":swift_samples_test",
+        ":templates_in_sync_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

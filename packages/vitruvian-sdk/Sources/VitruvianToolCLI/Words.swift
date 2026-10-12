@@ -48,6 +48,56 @@ enum Words {
         }
     }
 
+    static func problem(_ problem: NewToolProblem, _ tool: NewTool) -> String {
+        switch problem {
+        case .folderInUse:
+            return "\(tool.folder.path) is already there, and is not an empty folder. Name a new one"
+        case .folderIsALink:
+            return "\(tool.folder.path) is a symbolic link. A new tool is written into a folder of its own, "
+                + "never through a link. Name a new folder"
+        case .manifest(let broken):
+            return "that would not make a manifest the app takes: " + manifest(broken)
+        case .noSDK:
+            return "the Swift template needs --sdk, the path of packages/vitruvian-sdk, which holds the kit. "
+                + "It is published nowhere yet, so a tool's package names it by where it is"
+        case .notWritten(let why):
+            return "the files could not be written: \(why)"
+        }
+    }
+
+    /// What to do with a tool `init` has just written.
+    static func next(_ tool: NewTool) -> String {
+        let folder = shell(tool.folder.path)
+        switch tool.template {
+        case .python:
+            return """
+                Next, from anywhere:
+                  vitruvian-tool validate \(folder)
+                  vitruvian-tool run \(folder)
+                Then add the folder in Vitruvian: Settings, Features, Tools from outside.
+                """
+        case .swift:
+            return """
+                Next:
+                  \(folder)/build.sh
+                  vitruvian-tool validate \(folder)/tool
+                  vitruvian-tool run \(folder)/tool
+                Then add \(folder)/tool in Vitruvian: Settings, Features, Tools from outside.
+                Build again after each change to the code.
+                """
+        }
+    }
+
+    /// A path as it can be typed after a command: as it is when it is plain,
+    /// between single quotation marks when it holds a space or a mark the
+    /// shell reads.
+    static func shell(_ path: String) -> String {
+        let plain = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            + "0123456789/._-+=:@%,")
+        if !path.isEmpty, path.unicodeScalars.allSatisfy(plain.contains) { return path }
+        return "'" + path.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+    }
+
     static func manifest(_ problem: ManifestProblem) -> String {
         switch problem {
         case .tooLarge(let bytes):
@@ -105,6 +155,14 @@ enum Words {
 
     static let usage = """
         vitruvian-tool: check and try a Vitruvian tool without the app.
+
+          vitruvian-tool init <folder> --id ID --name NAME --publisher WHO [--template python|swift] [--sdk PATH]
+              Starts a new tool in a folder that is not there yet, or is
+              empty. It writes in that folder and nowhere else.
+                --id ID         the tool's id, with a dot: com.you.tool
+                --template      python, the default: one file, runs as it is.
+                                swift: a package that uses the kit, to build
+                --sdk PATH      for swift: where packages/vitruvian-sdk is
 
           vitruvian-tool validate <folder>
               Reads a tool's folder the way the app does before it offers to
