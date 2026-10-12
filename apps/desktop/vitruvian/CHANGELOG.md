@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.42.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.42.1...vitruvian-v3.42.2) (2026-10-12)
+
+
+### Bug Fixes
+
+* **desktop:** resolve notch agents ui alignment, picker wrapping, and card overlap ([#3144](https://github.com/VitruvianSoftware/vitruvian-core/issues/3144)) ([00d3b4f](https://github.com/VitruvianSoftware/vitruvian-core/commit/00d3b4f8d7bbcb68da9efe6d3e732f7457a516b1))
+* **desktop:** wrap up the loose ends of tools from outside ([#3143](https://github.com/VitruvianSoftware/vitruvian-core/issues/3143)) ([928d24b](https://github.com/VitruvianSoftware/vitruvian-core/commit/928d24ba47a65b02fce01fac5525a2d2a2b25b2e))
+
 ## [3.42.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.42.0...vitruvian-v3.42.1) (2026-10-12)
 
 
