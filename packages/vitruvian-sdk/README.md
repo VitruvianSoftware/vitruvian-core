@@ -145,14 +145,14 @@ Passing is not proof that the app will accept everything your tool does.
 ## Working on the package
 
 ```sh
-bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:init_test
+bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:init_test //packages/vitruvian-sdk:swift_template_test
 bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test
 ```
 
 The first line needs a Mac: the Swift types against the example files, the
 kit against a link made of two files, the command against folders and real
-processes, the two Swift samples against the conformance script, and what
-`init` writes. The second runs anywhere: the example files against the
+processes, the two Swift samples against the conformance script, what
+`init` writes, and the Swift tool `init` writes, built. The second runs anywhere: the example files against the
 schemas, the conformance script against the reference tool, the Python sample,
 the templates `init` holds against the samples they are copies of, and every
 example in the guide. Together the first two tests keep the schemas and the
@@ -171,10 +171,21 @@ On a Mac, building everything here also needs the flag:
 `bazel build --config=macos-app //packages/vitruvian-sdk/...`.
 
 `BUILD` and `Package.swift` describe the same targets and must be changed
-together. CI builds with Bazel only. `Package.swift` was built by hand
-(`swift build`, Swift 6.4, 2026-10-12), and a tool started with
-`init --template swift` was built against it, validated, run and put through
-the conformance script. Its tests have not been run with `swift test`.
+together. CI builds with Bazel, with one exception: `swift_template_test`
+starts a tool with `init --template swift`, runs the `build.sh` that wrote,
+and holds `validate` and `run` to pass on the result. That is `swift build`
+with the Mac's own Swift, against a copy of this package, so it builds the
+kit and the protocol from `Package.swift` too. It builds no other target of
+`Package.swift`, and the package's tests have not been run with
+`swift test`. Put through the conformance script, such a tool passed once,
+by hand (Swift 6.4, 2026-10-12).
+
+That test needs a Mac with Xcode and no network. It gives `swift build` a
+home and a temporary folder of its own and deletes them. One thing it
+cannot hold back: on Swift 6.4 a clean `swift build` leaves one empty
+folder, `TemporaryDirectory.XXXXXX`, in the Mac's real temporary folder,
+whatever the environment says. The test leaves it there, because it cannot
+tell its own from another build's.
 
 After changing a file under `Sources/VitruvianToolProtocol`, the Vitruvian app
 must take the change too:

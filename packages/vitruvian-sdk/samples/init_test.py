@@ -23,9 +23,9 @@
 
 The command is run as a person would run it. The tool it writes from the
 Python template must pass `validate`, pass the conformance script, and run
-under `run`. The Swift template is written and looked at, not built: building
-it needs `swift build`, which a test does not run. Every program started here
-has thirty seconds at most.
+under `run`. The Swift template is written and looked at here, not built:
+`swift_template_test.py` builds it. Every program started here has thirty
+seconds at most.
 """
 
 import contextlib

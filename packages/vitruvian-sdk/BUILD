@@ -354,6 +354,50 @@ py_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# The Swift tool `init --template swift` writes, built the way its author
+# builds it: the test runs the `build.sh` it wrote, which is `swift build`
+# with the Mac's own Swift toolchain, not Bazel's. It builds against a copy of
+# this package, so the package's `Package.swift` is built here too. Then
+# `validate` and `run` are held to pass on what was built.
+#
+# Not hermetic, so `no-sandbox` and `no-remote`, as the app's unit tests are,
+# and `manual` and macOS-only: the pipeline unit names it. It needs no
+# network: the tool's one dependency is the copy of this package beside it.
+# What it gives `swift build`, and why, all of it inside the test's own
+# temporary folder, which it deletes:
+#   HOME, CFFIXED_USER_HOME  SwiftPM's caches and configuration go under the
+#                            home folder, and Foundation asks the second.
+#   TMPDIR                   SwiftPM's own temporary folders and lock files.
+#   CLANG_MODULE_CACHE_PATH  the compiler's module cache.
+# PATH, and DEVELOPER_DIR when set, are passed on. Nothing else is.
+# Known, and not this test's to mend: on Swift 6.4 a clean `swift build`
+# leaves one empty folder, `TemporaryDirectory.XXXXXX` holding an empty
+# `.keep-directory`, in the Mac's real per-user temporary folder, whatever
+# the environment says. The test does not delete it: it cannot tell its own
+# from another build's.
+py_test(
+    name = "swift_template_test",
+    size = "large",
+    timeout = "long",
+    srcs = ["samples/swift_template_test.py"],
+    args = ["$(rootpath :vitruvian-tool)"],
+    data = [
+        "Package.swift",
+        ":vitruvian-tool",
+    ] + glob([
+        "Sources/**",
+        "Tests/**",
+        "samples/**",
+    ]),
+    main = "samples/swift_template_test.py",
+    tags = [
+        "manual",
+        "no-remote",
+        "no-sandbox",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 # The guide's examples: every message and manifest in it against the schemas,
 # every piece of code in it against the sample it is taken from, every
 # command in it against what exists, and what it quotes the command as saying
@@ -386,6 +430,7 @@ pipeline_unit(
         ":protocol_examples_test",
         ":samples_test",
         ":swift_samples_test",
+        ":swift_template_test",
         ":templates_in_sync_test",
     ],
     tier = "L1",
