@@ -2,6 +2,17 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.2.0
+
+- "Waiting on your review" has a tick box per repository, so you can choose
+  which repositories are listed. The choice is remembered. A repository that
+  asks for your review for the first time is listed until you untick it.
+- The list now reads up to 100 review requests instead of 20, and its heading
+  shows how many are listed out of how many there are.
+- The panel shows the plugin's version next to its title.
+- Releases are now tagged. Each version in this file has a matching `v` tag
+  and GitHub release, so an install can be pinned to one.
+
 ## 0.1.0
 
 First public release.

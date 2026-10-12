@@ -43,6 +43,7 @@ import {
 import { listFlaky } from "./lib/flakes.mjs";
 import { Inbox } from "./lib/inbox.mjs";
 import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
+import { summariseReviews } from "./lib/reviews.mjs";
 import { Store, watchKey } from "./lib/store.mjs";
 import { Watcher } from "./lib/watcher.mjs";
 
@@ -74,6 +75,19 @@ const watcher = new Watcher({
 });
 
 const readLocal = (name) => readFileSync(join(HERE, name), "utf8");
+
+// The plugin's version, shown in the panel so a bug report can name it.
+function readVersion() {
+  try {
+    return String(
+      JSON.parse(readFileSync(join(HERE, "..", "..", "plugin.json"), "utf8"))
+        .version ?? "",
+    );
+  } catch {
+    return "";
+  }
+}
+const VERSION = readVersion();
 const fail = (message, status = 400) =>
   new Response(JSON.stringify({ error: message }), {
     contentType: "application/json",
@@ -117,7 +131,11 @@ app.api(
       mergeMethods: MERGE_METHODS,
       pace: watcher.status(),
       flaky: listFlaky(store.flakes(), Date.now()),
-      reviews: { items: reviews.items, error: reviews.error },
+      reviews: {
+        ...summariseReviews(reviews.items, store.settings().hiddenReviewRepos),
+        error: reviews.error,
+      },
+      version: VERSION,
     };
   },
   "GET",
@@ -131,7 +149,7 @@ app.api("/api/presence", async (data) => {
 });
 
 // POST /api/settings {fastSeconds?, slowSeconds?, holdSeconds?, mergeMethod?,
-// autoWatch?}
+// autoWatch?, removeClosedHours?, hiddenReviewRepos?}
 // Out-of-range values are clamped; the reply is what was actually stored.
 app.api("/api/settings", (data) => ({
   settings: store.updateSettings(data),

@@ -30,7 +30,8 @@ switch in Claude Code's desktop app.
   commit. Once a check has done that twice in 30 days it is called flaky, and
   the next time it fails the agent is told to re-run it before changing code.
 - The panel also lists the pull requests waiting on your review, anywhere on
-  GitHub, and marks a watched pull request "Ready to merge" when it is green
+  GitHub, with a tick box per repository so you can choose which ones are
+  listed. It marks a watched pull request "Ready to merge" when it is green
   and mergeable but nothing is set to merge it.
 - When an agent runs `gh pr create`, the new pull request is watched
   automatically for the conversation that opened it.
@@ -119,6 +120,21 @@ are kept; they live outside the plugin folder.
 If you disable the plugin and later reinstall it, it comes back disabled,
 because Antigravity remembers that choice by folder name. Enable it again.
 
+### Versions
+
+The panel shows the installed version next to its title. Each version has a
+`v` tag and a [GitHub release](https://github.com/VitruvianSoftware/gh-watch/releases)
+with its notes, which are also in [CHANGELOG.md](CHANGELOG.md).
+
+A plain install follows the newest code. To stay on one version instead,
+disable the plugin, check out its tag, then enable it again:
+
+```bash
+git -C ~/.gemini/config/plugins/gh-watch checkout v0.2.0
+```
+
+To go back to following the newest code, check out `main` the same way.
+
 ## Use
 
 A pull request an agent opens with `gh pr create` is watched without you
@@ -167,6 +183,7 @@ pull request until you turn it on.
 | `sidecars/panel/lib/inbox.mjs` | Reads the notes the hook leaves |
 | `sidecars/panel/lib/watcher.mjs` | The polling loop |
 | `sidecars/panel/lib/pace.mjs` | How often to poll, and the settings limits (pure logic) |
+| `sidecars/panel/lib/reviews.mjs` | Which review requests to list (pure logic) |
 | `sidecars/panel/lib/github.mjs` | Reads pull requests through `gh` |
 | `sidecars/panel/lib/store.mjs` | The saved watch list |
 | `sidecars/panel/{index.html,app.js,styles.css}` | The side panel |
@@ -205,3 +222,15 @@ bazel test //apps/desktop/antigravity/plugins/gh-watch/...
 After changing `main.mjs` or anything under `lib/`, disable and re-enable the
 plugin so Antigravity restarts the background process. Changes to the panel's
 HTML, CSS and `app.js` show up on reload.
+
+## Release
+
+A release is cut by a version change, with nothing to run by hand:
+
+1. Raise `version` in `plugin.json` and in `sidecars/panel/package.json`.
+2. Add a `## <version>` section at the top of `CHANGELOG.md`.
+
+Once that lands and is published to the public repository, a workflow there
+(`.github/workflows/release.yml`) sees a version with no tag, tags the commit
+`v<version>` and creates a GitHub release with that changelog section as its
+notes. A test (`version_test`) fails if the three files disagree.

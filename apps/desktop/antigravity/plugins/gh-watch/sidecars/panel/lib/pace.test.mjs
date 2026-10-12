@@ -58,6 +58,21 @@ test("cleanSettings falls back to defaults and clamps to limits", () => {
   );
 });
 
+test("the repositories left out of the review list are kept clean", () => {
+  assert.deepEqual(cleanSettings().hiddenReviewRepos, []);
+  const saved = cleanSettings({ hiddenReviewRepos: ["acme/api", "junk", 7] });
+  assert.deepEqual(saved.hiddenReviewRepos, ["acme/api"]);
+  // Another setting changing leaves the list alone; an empty list clears it.
+  assert.deepEqual(
+    cleanSettings({ fastSeconds: 45 }, saved).hiddenReviewRepos,
+    ["acme/api"],
+  );
+  assert.deepEqual(
+    cleanSettings({ hiddenReviewRepos: [] }, saved).hiddenReviewRepos,
+    [],
+  );
+});
+
 test("the slow interval is never shorter than the fast one", () => {
   const s = cleanSettings({ fastSeconds: 120, slowSeconds: 60 });
   assert.equal(s.fastSeconds, 120);

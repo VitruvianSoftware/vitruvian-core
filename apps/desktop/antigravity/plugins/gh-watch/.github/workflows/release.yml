@@ -1,0 +1,113 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Release-on-version-bump.
+#
+# This file is developed in the vitruvian-core monorepo and exported to the
+# VitruvianSoftware/gh-watch mirror, which is where it runs. It never runs in
+# the monorepo: a workflow only runs from a repository's root .github/.
+#
+# On every push to the mirror's main it reads the version from plugin.json and
+# asks whether the tag v<version> exists. If it does not, this is a new
+# release: it tags the commit and publishes a GitHub release whose notes are
+# that version's section of CHANGELOG.md. If the tag exists there is nothing
+# to do. So a release is cut by bumping "version" in plugin.json and adding a
+# CHANGELOG.md section in the monorepo, and nothing else. A test in the
+# monorepo (version_test) fails if the two disagree.
+#
+# There is nothing to build or upload: the plugin is installed by cloning this
+# repository, so the tag is the release.
+name: release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag an unreleased version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # To create the tag and the release.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Detect an unreleased version
+        id: detect
+        run: |
+          V="$(jq -r '.version // empty' plugin.json)"
+          if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::plugin.json has no usable version (got '${V}')"
+            exit 1
+          fi
+          # Exit 0: the tag exists. Exit 2: it does not. Anything else is a
+          # failure to ask, and is not treated as "unreleased".
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/v${V}" >/dev/null
+          RC=$?
+          set -e
+          case "$RC" in
+            0)
+              echo "gh-watch ${V} is already released -- nothing to do."
+              ;;
+            2)
+              echo "version=${V}" >> "$GITHUB_OUTPUT"
+              echo "Detected UNRELEASED version ${V}."
+              ;;
+            *)
+              echo "::error::could not list tags (git ls-remote exited ${RC}); refusing to guess whether ${V} is released."
+              exit 1
+              ;;
+          esac
+      - name: Read the release notes from the changelog
+        if: steps.detect.outputs.version
+        env:
+          VERSION: ${{ steps.detect.outputs.version }}
+        run: |
+          awk -v want="## ${VERSION}" '
+            $0 == want { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no section '## ${VERSION}'"
+            exit 1
+          fi
+          cat notes.md
+      - name: Publish the release
+        if: steps.detect.outputs.version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.detect.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --target "$GITHUB_SHA" \
+            --title "v${VERSION}" \
+            --notes-file notes.md

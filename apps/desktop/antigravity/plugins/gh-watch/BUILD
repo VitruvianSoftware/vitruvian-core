@@ -29,6 +29,7 @@ js_library(
         "sidecars/panel/lib/landing.mjs",
         "sidecars/panel/lib/notices.mjs",
         "sidecars/panel/lib/pace.mjs",
+        "sidecars/panel/lib/reviews.mjs",
         "sidecars/panel/lib/store.mjs",
         "sidecars/panel/lib/watcher.mjs",
     ],
@@ -71,6 +72,31 @@ js_test(
 )
 
 js_test(
+    name = "reviews_test",
+    size = "small",
+    data = [":lib"],
+    entry_point = "sidecars/panel/lib/reviews.test.mjs",
+)
+
+# The files that name the plugin's version. A release is cut by changing the
+# version in plugin.json; version_test keeps the others in step with it.
+js_library(
+    name = "release_files",
+    srcs = [
+        "CHANGELOG.md",
+        "plugin.json",
+        "sidecars/panel/package.json",
+    ],
+)
+
+js_test(
+    name = "version_test",
+    size = "small",
+    data = [":release_files"],
+    entry_point = "sidecars/panel/lib/version.test.mjs",
+)
+
+js_test(
     name = "watcher_test",
     size = "small",
     data = [":lib"],
@@ -96,6 +122,8 @@ pipeline_unit(
         ":note-pr-create_test",
         ":notices_test",
         ":pace_test",
+        ":reviews_test",
+        ":version_test",
         ":watcher_test",
     ],
     tier = "L1",

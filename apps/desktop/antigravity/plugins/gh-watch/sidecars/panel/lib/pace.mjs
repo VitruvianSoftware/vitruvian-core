@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+import { cleanRepoList } from "./reviews.mjs";
+
 // How often to poll, as pure logic so it runs under `node --test`.
 //
 // Fast while something can change soon (the panel is showing, a check is
@@ -33,6 +35,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mergeMethod: "squash",
   autoWatch: true,
   removeClosedHours: 24,
+  // Repositories left out of "Waiting on your review".
+  hiddenReviewRepos: Object.freeze([]),
 });
 
 export const LIMITS = Object.freeze({
@@ -96,6 +100,7 @@ export function cleanSettings(input = {}, base = DEFAULT_SETTINGS) {
     mergeMethod,
     autoWatch,
     removeClosedHours,
+    hiddenReviewRepos: cleanRepoList(merged.hiddenReviewRepos),
   };
 }
 

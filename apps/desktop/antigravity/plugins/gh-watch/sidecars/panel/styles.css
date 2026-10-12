@@ -128,3 +128,8 @@ input[type="number"], select {
 
 ul.plain { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.3rem; font-size: 0.85rem; }
 ul.plain a { color: inherit; overflow-wrap: anywhere; }
+
+fieldset.filter { border: 0; margin: 0.5rem 0 0; padding: 0; min-width: 0; }
+fieldset.filter legend { padding: 0; }
+.filter-options { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; margin-top: 0.25rem; }
+#version { font-weight: 400; }
