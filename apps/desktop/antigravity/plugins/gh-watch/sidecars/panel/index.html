@@ -17,7 +17,7 @@
   <main class="panel">
     <header class="panel-header">
       <div>
-        <h1>GH Watch</h1>
+        <h1>GH Watch <span id="version" class="muted small"></span></h1>
         <p id="summary" class="muted small">Loading…</p>
       </div>
       <div class="header-actions">
@@ -51,6 +51,11 @@
     <details id="reviews" class="card" hidden>
       <summary>Waiting on your review (<span id="reviews-count">0</span>)</summary>
       <p id="reviews-error" class="error small" hidden></p>
+      <fieldset id="reviews-filter" class="filter" hidden>
+        <legend class="muted small">Repositories to list</legend>
+        <div id="reviews-repos" class="filter-options"></div>
+      </fieldset>
+      <p id="reviews-none" class="muted small" hidden>Nothing is waiting in the repositories you have ticked.</p>
       <ul id="reviews-list" class="plain"></ul>
     </details>
 

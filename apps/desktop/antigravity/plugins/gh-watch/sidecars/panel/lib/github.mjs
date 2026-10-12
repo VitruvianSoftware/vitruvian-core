@@ -27,6 +27,7 @@ import { execFile } from "node:child_process";
 
 import { normaliseChecks } from "./decide.mjs";
 import { collectFeedback } from "./notices.mjs";
+import { REVIEW_LIMIT } from "./reviews.mjs";
 
 const FIELDS =
   "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup";
@@ -250,7 +251,7 @@ export async function fetchCommitChecks(repo, sha, run = gh) {
 
 // Open pull requests, anywhere on GitHub, where a review has been asked of
 // the signed-in account.
-export async function fetchReviewRequests(run = gh) {
+export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
   const out = await run([
     "search",
     "prs",
@@ -259,7 +260,7 @@ export async function fetchReviewRequests(run = gh) {
     "--json",
     "number,title,url,repository,author,updatedAt,isDraft",
     "--limit",
-    "20",
+    String(limit),
   ]);
   return (JSON.parse(out) ?? [])
     .filter((pr) => pr.isDraft !== true)

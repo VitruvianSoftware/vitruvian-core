@@ -101,7 +101,10 @@ Two things in the panel are about what is waiting on a person, not an agent:
 
 - **Waiting on your review** lists open, non-draft pull requests anywhere on
   GitHub where your review has been asked. It is read only while the panel
-  is open, at most every two minutes.
+  is open, at most every two minutes, and up to 100 at a time. Each
+  repository in the list has a tick box; untick one to leave it out. The
+  choice is remembered, and a repository that asks for your review for the
+  first time is listed until you untick it.
 - **Ready to merge** marks a watched pull request that is green and
   mergeable, but is not in the merge queue and has no auto-merge set, so it
   will sit there until someone merges it.

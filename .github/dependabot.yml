@@ -68,6 +68,7 @@ updates:
       - "/.github/actions/*"
       - "/apps/cli/devx/.github/workflows"
       - "/apps/cli/homelab/.github/workflows"
+      - "/apps/desktop/antigravity/plugins/gh-watch/.github/workflows"
       - "/apps/desktop/nexus-agent/.github/workflows"
       - "/apps/mcp/roborock/.github/workflows"
       - "/apps/mcp/slack/.github/workflows"

@@ -263,6 +263,19 @@ function card(watch) {
   );
 }
 
+// Replaces a container's children and puts keyboard focus back on the control
+// that had it, matched by its data-focus name.
+function redraw(container, children) {
+  const focused = container.contains(document.activeElement)
+    ? document.activeElement.dataset.focus
+    : undefined;
+  container.replaceChildren(...children);
+  if (!focused) return;
+  for (const control of container.querySelectorAll("[data-focus]")) {
+    if (control.dataset.focus === focused) control.focus();
+  }
+}
+
 function render(state) {
   const watches = [...state.watches].sort((a, b) =>
     a.closed === b.closed ? b.addedAt - a.addedAt : a.closed ? 1 : -1,
@@ -270,35 +283,63 @@ function render(state) {
   // The rows are rebuilt on every redraw. Put keyboard focus back on the
   // control that had it, so a redraw never takes a checkbox out from under
   // the keyboard and never has to be skipped.
-  const list = $("list");
-  const focused = list.contains(document.activeElement)
-    ? document.activeElement.dataset.focus
-    : undefined;
-  list.replaceChildren(...watches.map(card));
-  if (focused) {
-    for (const control of list.querySelectorAll("[data-focus]")) {
-      if (control.dataset.focus === focused) control.focus();
-    }
-  }
+  redraw($("list"), watches.map(card));
   $("empty").hidden = watches.length > 0;
   const open = watches.filter((w) => !w.closed).length;
   const pace = state.pace;
   $("summary").textContent =
     `${open} open · checking every ${pace.intervalSeconds}s (${pace.reason})`;
+  $("version").textContent = state.version ? `v${state.version}` : "";
   fillSettings(state);
   renderReviews(state.reviews ?? { items: [] });
   renderFlaky(state.flaky ?? []);
 }
 
-// Pull requests where someone is waiting on the user's review.
+// Pull requests where someone is waiting on the user's review, with a tick
+// box per repository to choose which ones are listed.
 function renderReviews(reviews) {
   const items = reviews.items ?? [];
-  $("reviews").hidden = items.length === 0 && !reviews.error;
-  // The search returns at most 20, so 20 means "20 or more".
+  const repos = reviews.repos ?? [];
+  const total = reviews.total ?? items.length;
+  $("reviews").hidden = total === 0 && repos.length === 0 && !reviews.error;
+  // GitHub is asked for one page, so a full page means "that many or more".
+  const more = reviews.capped ? "+" : "";
   $("reviews-count").textContent =
-    items.length >= 20 ? "20+" : String(items.length);
+    items.length === total
+      ? `${total}${more}`
+      : `${items.length} of ${total}${more}`;
   $("reviews-error").textContent = reviews.error ?? "";
   $("reviews-error").hidden = !reviews.error;
+
+  // One repository needs no filter, unless it is the one switched off.
+  $("reviews-filter").hidden =
+    repos.length < 2 && repos.every((row) => row.shown);
+  redraw(
+    $("reviews-repos"),
+    repos.map((row) =>
+      el(
+        "label",
+        { class: "check" },
+        el("input", {
+          type: "checkbox",
+          checked: row.shown,
+          "data-focus": `review-repo:${row.repo}`,
+          onchange: (event) =>
+            act("/api/settings", {
+              hiddenReviewRepos: repos
+                .filter((other) =>
+                  other.repo === row.repo
+                    ? !event.target.checked
+                    : !other.shown,
+                )
+                .map((other) => other.repo),
+            }),
+        }),
+        `${row.repo} (${row.count})`,
+      ),
+    ),
+  );
+  $("reviews-none").hidden = !(items.length === 0 && total > 0);
   $("reviews-list").replaceChildren(
     ...items.map((pr) =>
       el(
