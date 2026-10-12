@@ -124,8 +124,6 @@ not the upstream cache, and `~/.roborock` is left untouched so the upstream CLI 
 - **One vacuum at a time.** With several on an account, the first is used unless
   `VITRUVIAN_ROBOROCK_DEVICE` names another.
 - **No zones, schedules, suction or water settings.**
-- **Not published to PyPI**, so the plugin's `uvx vitruvian-roborock mcp` does not
-  resolve until it is.
 - **The MCP App dashboard is untested in a real host.** Served by the daemon, the
   dashboard uses plain HTTP. Embedded by an MCP host as `ui://dashboard`, it talks
   to the host over `postMessage` instead; that path follows the MCP Apps spec but

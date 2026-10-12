@@ -16,30 +16,11 @@ Welcome to the **Vitruvian Roborock** integration! This guide walks you through 
 
 ## 2. Installation
 
-### Step 1: Install the server (required for every option)
+The package is published on [PyPI](https://pypi.org/project/vitruvian-roborock/).
+The plugins fetch and run it themselves with `uvx vitruvian-roborock mcp`, so
+with `uv` installed there is nothing else to set up first.
 
-```bash
-# Installs rrctl and vitruvian-roborock into ~/.local/bin
-uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
-```
-
-Verify it:
-
-```bash
-rrctl --help
-```
-
-Everything else depends on this step. The plugins start the MCP server with
-`uvx vitruvian-roborock mcp`, and the package is not published to PyPI, so
-`uvx` can only find it once it is installed. If you skip it, the plugin still
-installs, but its tools never appear in your agent.
-
-If the terminal CLI and local web dashboard are all you want, you are done:
-this step is the whole standalone install.
-
----
-
-### Step 2, option A: Add the plugin to Claude Code
+### Option A: Claude Code
 
 Add our repository as a plugin marketplace and install `vitruvian-roborock`:
 
@@ -57,7 +38,7 @@ Once installed, Claude Code has access to:
 
 ---
 
-### Step 2, option B: Add the plugin to Antigravity
+### Option B: Antigravity
 
 ```bash
 agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
@@ -71,6 +52,23 @@ To verify the installation:
 agy plugin list
 ```
 You will see `vitruvian-roborock` listed with its skills and FastMCP server.
+
+---
+
+### Option C: Standalone CLI (`rrctl`)
+
+If you want the terminal CLI and local web dashboard without an AI agent:
+
+```bash
+# Installs rrctl and vitruvian-roborock into ~/.local/bin
+uv tool install vitruvian-roborock
+```
+
+Verify it:
+
+```bash
+rrctl --help
+```
 
 ---
 

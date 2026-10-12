@@ -23,20 +23,9 @@ flowchart LR
 
 ## Quick Installation
 
-### Step 1: Install the server
-
-```bash
-uv tool install git+https://github.com/VitruvianSoftware/mcp-roborock
-```
-
-Everything else depends on this. The plugins start the MCP server with
-`uvx vitruvian-roborock mcp`, and the package is not published to PyPI, so
-`uvx` can only find it once it is installed. Skip this step and the plugin
-still installs, but its tools never appear.
-
-This step alone gives you the standalone CLI, `rrctl`.
-
-### Step 2: Add the plugin to your tool
+You need [`uv`](https://docs.astral.sh/uv/). The package is on
+[PyPI](https://pypi.org/project/vitruvian-roborock/), and the plugins fetch
+and run it themselves with `uvx`, so there is nothing to install first.
 
 Claude Code:
 
@@ -49,6 +38,12 @@ Antigravity:
 
 ```bash
 agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
+```
+
+Just the CLI, `rrctl`, without an agent:
+
+```bash
+uv tool install vitruvian-roborock
 ```
 
 ---
