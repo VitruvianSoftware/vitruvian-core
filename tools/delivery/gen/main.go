@@ -93,6 +93,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/VitruvianSoftware/vitruvian-core/tools/ci/actionpins"
 )
 
 // schemaVersion is the delivery() metadata contract this generator understands
@@ -170,15 +173,20 @@ func concurrencyGroupExpr(phase int) string {
 	return concurrencyGroupExprBase
 }
 
-// checkoutPin / setupBazel / uploadArtifactPin mirror the pins the rest of
-// .github/workflows already uses, so Dependabot's github-actions ecosystem
-// bumps this file's output the same day it bumps every hand-written lane. A
-// divergent pin here would be invisible: nobody reviews a generated file's
-// action versions by eye.
+// Action pins are resolved from .github/actions/pins/action.yml via
+// tools/ci/actionpins so Dependabot's github-actions ecosystem bumps the
+// manifest natively and both delivery and presubmit generators inherit the
+// bump without code changes.
+var actionPins = sync.OnceValue(func() *actionpins.Pins {
+	return actionpins.MustLoadDefault()
+})
+
+func pin(action string) string {
+	return actionPins().Resolve(action)
+}
+
 const (
-	checkoutPin       = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
 	setupBazelAction  = "./.github/actions/setup-bazel"
-	uploadArtifactPin = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
 	// selectXcodeAction pins the Xcode the macOS pipeline unit builds with.
 	selectXcodeAction = "./.github/actions/select-xcode"
 )
@@ -276,28 +284,7 @@ const buildRung = "build"
 // `default-region` in workflow_inputs wins over this (same fact, one source).
 const defaultRegion = "us-central1"
 
-// setupGcloudPin is the SHA-pinned Cloud SDK action, byte-identical to the
-// hand-written build job's. Kept as a constant beside the other pins so
-// Dependabot's bump lands in one place (see the DEPENDABOT note rendered into
-// the generated file).
-const setupGcloudPin = "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
-
-// setupBuildxPin is the buildx setup action tabula's build job uses before its
-// (non-Bazel) web image build. Same Dependabot reasoning as the pins above.
-const setupBuildxPin = "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1"
-
-// setupHelmPin / pulumiActionsPin / pulumiRunCapturedAction /
-// pulumiSummaryAction are the remaining pins the transcribed B2 jobs use.
-// Same Dependabot reasoning as the pins above: a bump has to land on the
-// constant, not on the generated file.
 const (
-	setupHelmPin = "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1"
-	// setupUvPin installs uv for the esp32-s3 publish (PlatformIO is a uv
-	// tool). Same SHA as .github/workflows/iot-esp32-s3.yaml's pr-check.
-	setupUvPin = "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0"
-	// cachePin is actions/cache, as pinned by the existing workflows.
-	cachePin                = "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6"
-	pulumiActionsPin        = "pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0"
 	pulumiRunCapturedAction = "./.github/actions/pulumi-run-captured"
 	pulumiSummaryAction     = "./.github/actions/pulumi-summary"
 )
@@ -415,7 +402,7 @@ var sharedBuilds = map[string]sharedBuildSpec{
 // `:latest` read that could hand one run another run's digest).
 func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -428,7 +415,7 @@ func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("          service-account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Set up Cloud SDK\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupGcloudPin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("google-github-actions/setup-gcloud"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Configure docker for Artifact Registry\n")
 	b.WriteString("        run: gcloud auth configure-docker \"${GCP_REGION}-docker.pkg.dev\" --quiet\n")
@@ -453,7 +440,7 @@ func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("\n")
 	b.WriteString("      # ---- tabula/web (Docker, not Bazel) ----\n")
 	b.WriteString("      - name: Set up Docker Buildx\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupBuildxPin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("docker/setup-buildx-action"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Build and push tabula-web image\n")
 	b.WriteString("        id: web-image\n")
@@ -632,7 +619,7 @@ var transcribedJobs = map[string]transcribedSpec{
 // workflow and a runbook.
 func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -662,7 +649,7 @@ func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string) {
 // can never satisfy.
 func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("          # The per-chart scoping inside publish.sh diffs against the\n")
@@ -670,7 +657,7 @@ func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          # the script would fail open to republishing every chart.\n")
 	b.WriteString("          fetch-depth: 0\n")
 	b.WriteString("      - name: Install Helm\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupHelmPin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("azure/setup-helm"))
 	b.WriteString("      - name: Log in to GHCR\n")
 	b.WriteString("        run: echo \"${{ secrets.GITHUB_TOKEN }}\" | helm registry login ghcr.io -u \"${{ github.actor }}\" --password-stdin\n")
 	b.WriteString("      - name: Package and push charts\n")
@@ -701,17 +688,17 @@ func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 // from a different commit onto a release.
 func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Install uv\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupUvPin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("astral-sh/setup-uv"))
 	b.WriteString("      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into\n")
 	b.WriteString("      # ~/.platformio on first use; cache it on the project file so a\n")
 	b.WriteString("      # firmware-only change does not re-fetch it.\n")
 	b.WriteString("      - name: Cache the PlatformIO toolchain\n")
-	fmt.Fprintf(b, "        uses: %s\n", cachePin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("actions/cache"))
 	b.WriteString("        with:\n")
 	b.WriteString("          path: ~/.platformio\n")
 	b.WriteString("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}\n")
@@ -750,7 +737,7 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 // set; without them the app is signed ad-hoc and the DMG is not notarized.
 func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -804,7 +791,7 @@ func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string) {
 // release never ships without its formula unnoticed.
 func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -841,7 +828,7 @@ func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
 // transcribed verbatim (its lines 82-112).
 func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -852,7 +839,7 @@ func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          service-account: ${{ vars.GCP_SERVICE_ACCOUNT }}\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Install Pulumi\n")
-	fmt.Fprintf(b, "        uses: %s\n", pulumiActionsPin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("pulumi/actions"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Pulumi up (tabula-build / production)\n")
 	b.WriteString("        id: pulumi\n")
@@ -1543,7 +1530,7 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	fmt.Fprintf(b, "    timeout-minutes: %d\n", timeout)
 	renderOrchestrateOutputs(b, units)
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("          # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs\n")
@@ -1604,7 +1591,7 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	fmt.Fprintf(b, "          ORCHESTRATE_UNITS: %s\n", strings.Join(unitNames(units), " "))
 	b.WriteString("        run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json\n")
 	b.WriteString("      - name: Upload the delivery manifest\n")
-	fmt.Fprintf(b, "        uses: %s\n", uploadArtifactPin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("actions/upload-artifact"))
 	b.WriteString("        with:\n")
 	b.WriteString("          name: delivery-manifest\n")
 	b.WriteString("          path: delivery-manifest.json\n")
@@ -1949,7 +1936,7 @@ func renderSoakJob(b *strings.Builder, job string, u unit, opts renderOpts) erro
 	b.WriteString("      # history; it is safe on an ordinary job (see the header note).\n")
 	b.WriteString("      actions: read\n")
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("      - env:\n")
@@ -2060,7 +2047,7 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	b.WriteString("    outputs:\n")
 	b.WriteString("      image-digest: ${{ steps.push.outputs.image-digest }}\n")
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -2071,7 +2058,7 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	b.WriteString("          service-account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Set up Cloud SDK\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupGcloudPin)
+	fmt.Fprintf(b, "        uses: %s\n", pin("google-github-actions/setup-gcloud"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Configure docker for Artifact Registry\n")
 	b.WriteString("        run: gcloud auth configure-docker \"${GCP_REGION}-docker.pkg.dev\" --quiet\n")

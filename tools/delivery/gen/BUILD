@@ -33,10 +33,12 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/delivery/gen",
     visibility = ["//visibility:private"],
+    deps = ["//tools/ci/actionpins"],
 )
 
 go_binary(
     name = "gen",
+    data = ["//:pins_manifest"],
     embed = [":gen_lib"],
     visibility = ["//visibility:public"],
 )
@@ -66,6 +68,7 @@ go_test(
         "parity_test.go",
     ],
     data = glob(["testdata/**"]) + [
+        "//:pins_manifest",
         # The whole workflow surface and every composite action, so the Phase-3
         # guards can prove what they claim: every `uses:` resolves, every
         # `with:` key is declared by its callee, and no workflow actively
