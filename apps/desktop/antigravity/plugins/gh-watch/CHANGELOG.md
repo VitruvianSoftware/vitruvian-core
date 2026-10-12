@@ -2,6 +2,15 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.3.0
+
+- Review status badge: shows whether a pull request is Approved, Changes requested,
+  or Review required, falling back gracefully to latest reviews and review requests
+  on branches without required review protection.
+- Inline failure log drawer: expand any failing check in the side panel to view a
+  cleaned failure excerpt directly, without opening GitHub Actions in a browser.
+- One-click rerun for failed checks: rerun failed jobs directly from the card.
+
 ## 0.2.0
 
 - "Waiting on your review" has a tick box per repository, so you can choose

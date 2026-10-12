@@ -81,3 +81,30 @@ export function summariseReviews(all, hidden = [], limit = REVIEW_LIMIT) {
     capped: all.length >= limit,
   };
 }
+
+// Determines the review status badge for a pull request snapshot.
+// Returns null if there is no review activity.
+export function reviewStatus(pr) {
+  if (!pr) return null;
+  const decision = (pr.reviewDecision ?? "").toUpperCase();
+  if (decision === "APPROVED") return { text: "Approved", tone: "good" };
+  if (decision === "CHANGES_REQUESTED")
+    return { text: "Changes requested", tone: "bad" };
+  if (decision === "REVIEW_REQUIRED")
+    return { text: "Review required", tone: "wait" };
+
+  // Fallback when reviewDecision is not populated (e.g. branches without required reviews)
+  const reviews = pr.latestReviews ?? [];
+  if (
+    reviews.some((r) => (r.state ?? "").toUpperCase() === "CHANGES_REQUESTED")
+  ) {
+    return { text: "Changes requested", tone: "bad" };
+  }
+  if (reviews.some((r) => (r.state ?? "").toUpperCase() === "APPROVED")) {
+    return { text: "Approved", tone: "good" };
+  }
+  if ((pr.reviewRequests ?? []).length > 0) {
+    return { text: "Review requested", tone: "wait" };
+  }
+  return null;
+}

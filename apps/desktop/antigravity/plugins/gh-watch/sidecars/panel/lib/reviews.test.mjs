@@ -26,6 +26,7 @@ import { test } from "node:test";
 import {
   MAX_HIDDEN_REPOS,
   cleanRepoList,
+  reviewStatus,
   summariseReviews,
 } from "./reviews.mjs";
 
@@ -116,4 +117,42 @@ test("cleanRepoList caps the list", () => {
     (_, i) => `o/r${i}`,
   );
   assert.equal(cleanRepoList(many).length, MAX_HIDDEN_REPOS);
+});
+
+test("reviewStatus reflects reviewDecision when present", () => {
+  assert.deepEqual(reviewStatus({ reviewDecision: "APPROVED" }), {
+    text: "Approved",
+    tone: "good",
+  });
+  assert.deepEqual(reviewStatus({ reviewDecision: "CHANGES_REQUESTED" }), {
+    text: "Changes requested",
+    tone: "bad",
+  });
+  assert.deepEqual(reviewStatus({ reviewDecision: "REVIEW_REQUIRED" }), {
+    text: "Review required",
+    tone: "wait",
+  });
+});
+
+test("reviewStatus falls back to latestReviews and reviewRequests", () => {
+  assert.deepEqual(
+    reviewStatus({
+      latestReviews: [{ state: "APPROVED" }],
+    }),
+    { text: "Approved", tone: "good" },
+  );
+  assert.deepEqual(
+    reviewStatus({
+      latestReviews: [{ state: "APPROVED" }, { state: "CHANGES_REQUESTED" }],
+    }),
+    { text: "Changes requested", tone: "bad" },
+  );
+  assert.deepEqual(
+    reviewStatus({
+      reviewRequests: [{ login: "octocat" }],
+    }),
+    { text: "Review requested", tone: "wait" },
+  );
+  assert.equal(reviewStatus({}), null);
+  assert.equal(reviewStatus(null), null);
 });
