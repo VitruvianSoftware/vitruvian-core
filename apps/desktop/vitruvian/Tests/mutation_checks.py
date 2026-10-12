@@ -352,6 +352,18 @@ MUTATIONS = [
      "        case .screenshot: return .screenshotCapture\n",
      "        case .screenshot: return .screenRecorderToggle\n",
      "every radial tool runs the command of its own feature"),
+    ("a bar row whose command stopped being runnable is picked in silence", "platform",
+     "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
+     "                    if !registry.run(command.id) { refuse() }\n",
+     "                    _ = registry.run(command.id)\n",
+     "Return on a row whose command stopped being runnable since the bar opened runs nothing, "
+     "and is refused aloud, once: it is never silent"),
+    ("a wheel slice whose command stopped being runnable is picked in silence", "platform",
+     "Sources/Vitruvian/Services/RadialMenu/RadialMenuService.swift",
+     "        if !registry.run(id) { refuse() }\n",
+     "        _ = registry.run(id)\n",
+     "a slice whose command stopped being runnable since the wheel opened runs nothing, "
+     "and is refused aloud, once: it is never silent"),
     ("switched-off tool still runs", "platform",
      "Sources/Vitruvian/Services/Platform/ToolRegistry.swift",
      "        guard isToolAvailable(id.tool) else { return false }\n",

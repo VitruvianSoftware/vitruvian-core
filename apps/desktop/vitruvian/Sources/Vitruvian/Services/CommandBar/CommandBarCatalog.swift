@@ -208,8 +208,15 @@ package enum CommandBarCatalog {
     /// cannot run gets no row. The app's own commands do not ask: their rows
     /// are the hand-built ones above, with their arguments, confirmations and
     /// live states.
+    ///
+    /// The rows are made when the bar opens, and a command can stop being
+    /// runnable while it is open: its tool says so, stops, is switched off
+    /// or is removed. Return on such a row runs nothing, and `refuse` says
+    /// so with the alert sound, as a shortcut does for a command that cannot
+    /// run. A pick is never silent.
     @MainActor
-    package static func toolEntries(registry: ToolRegistry, language: AppLanguage) -> [CommandBarEntry] {
+    package static func toolEntries(registry: ToolRegistry, language: AppLanguage,
+                                    refuse: @escaping @MainActor () -> Void = { NSSound.beep() }) -> [CommandBarEntry] {
         registry.commands(on: .commandBar).filter { registry.canRun($0.id) }.map { command in
             let title = registry.title(for: command.id, language: language) ?? command.title
             return CommandBarEntry(
@@ -218,7 +225,9 @@ package enum CommandBarCatalog {
                 subtitle: registry.name(for: command.id.tool, language: language) ?? "",
                 keywords: title,
                 icon: .symbol(command.symbol),
-                run: { _ in registry.run(command.id) })
+                run: { _ in
+                    if !registry.run(command.id) { refuse() }
+                })
         }
     }
 

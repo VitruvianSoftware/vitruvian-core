@@ -144,6 +144,10 @@ enum ToolPlatformTests {
     final class World {
         var off: Set<AppFeature> = []
         var ran: [String] = []
+        /// Commands that could run when they were added and cannot now.
+        var stopped: Set<String> = []
+        /// How often a surface said "that did not run".
+        var refused = 0
         var language = "first"
         lazy var registry = ToolRegistry(isAvailable: { [unowned self] in !self.off.contains($0) })
 
@@ -153,7 +157,7 @@ enum ToolPlatformTests {
             let command = CommandDescriptor(id: id, title: "plain \(name)", symbol: "star", surfaces: surfaces)!
             try registry.register(ToolDescriptor(id: tool, name: toolID, symbol: "star", commands: [command])!)
             try registry.setHandler(.init(title: { [unowned self] _ in "\(self.language) \(name)" },
-                                          isRunnable: { runnable },
+                                          isRunnable: { [unowned self] in runnable && !self.stopped.contains(id.rawValue) },
                                           run: { [unowned self] in self.ran.append(id.rawValue) }),
                                     for: id)
         }
@@ -179,6 +183,25 @@ enum ToolPlatformTests {
                      "a row's name and pin survive under its command id")
         rows.first?.run(nil)
         suite.expect(world.ran == ["com.acme.deploys/open"], "Return on a row runs its command")
+
+        // The bar's rows are made when it opens. A command can stop being
+        // runnable while it is open, and its row is still there to pick.
+        let open = CommandBarCatalog.toolEntries(registry: world.registry, language: .systemDefault,
+                                                 refuse: { world.refused += 1 })
+        open.first?.run(nil)
+        suite.expect(world.ran.count == 2 && world.refused == 0,
+                     "a row whose command runs is not refused: there is no sound for a command that ran")
+        world.stopped = ["com.acme.deploys/open"]
+        open.first?.run(nil)
+        suite.expect(open.count == 1 && world.ran.count == 2 && world.refused == 1,
+                     "Return on a row whose command stopped being runnable since the bar opened runs nothing, "
+                         + "and is refused aloud, once: it is never silent")
+        world.stopped = []
+        world.registry.unregister(ToolID("com.acme.deploys")!)
+        open.first?.run(nil)
+        suite.expect(world.ran.count == 2 && world.refused == 2,
+                     "Return on a row whose tool was removed since the bar opened is refused aloud too")
+        try? world.add("com.acme.deploys", "open", surfaces: [.commandBar])
 
         world.registry.unregister(ToolID("com.acme.deploys")!)
         suite.expect(CommandBarCatalog.toolEntries(registry: world.registry, language: .systemDefault).isEmpty,
@@ -354,6 +377,23 @@ enum ToolPlatformTests {
         }
         suite.expect(shown([open, paused, gone, app]) == [open, app],
                      "the wheel shows a command slice only while its command can run")
+
+        // The wheel's slices are chosen when it opens. A command can stop
+        // being runnable while it is open, and its slice is still there.
+        let deploys = CommandID(tool: ToolID("com.acme.deploys")!, name: "open")!
+        func pick(_ id: CommandID) { RadialMenuService.run(id, registry: world.registry, refuse: { world.refused += 1 }) }
+        pick(deploys)
+        suite.expect(world.ran == ["com.acme.deploys/open"] && world.refused == 0,
+                     "a slice whose command runs is not refused: there is no sound for a command that ran")
+        world.stopped = ["com.acme.deploys/open"]
+        pick(deploys)
+        suite.expect(world.ran.count == 1 && world.refused == 1,
+                     "a slice whose command stopped being runnable since the wheel opened runs nothing, "
+                         + "and is refused aloud, once: it is never silent")
+        world.stopped = []
+        pick(CommandID(tool: ToolID("com.acme.gone")!, name: "open")!)
+        suite.expect(world.ran.count == 1 && world.refused == 2,
+                     "a slice whose tool was removed since the wheel opened is refused aloud too")
         suite.expect(shown([screenshot]) == [screenshot] && shown([screenshot], toolsRun: false).isEmpty,
                      "a built-in tool slice follows its own rule, as before")
         let kept = shown([folder, emptyFolder])

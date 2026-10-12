@@ -376,6 +376,15 @@ of it but the protocol.
 - "Can it run?" for an outside tool is answered from the last
   `commands/state` and how the tool stands. It never sends a message: lists
   ask while they draw.
+- A pick that cannot run is never silent. The command bar and the wheel
+  leave out a command that cannot run, but both are made when they open,
+  and a command can stop being runnable while one is open. Picking it then
+  runs nothing and plays the alert sound, as a shortcut does
+  (`CommandBarCatalog.toolEntries`, `RadialMenuService.run(_:registry:refuse:)`,
+  `ToolShortcutRegistrar`). The row or slice itself stays until the surface
+  is opened again: neither follows the registry while it is open. A new
+  surface that runs a registry command checks what `ToolRegistry.run`
+  gives back.
 - What a tool asks of the app is done in `ExternalToolCalls`, through the
   tool's own `ToolServices`, so the broker refuses a service the manifest
   does not list in `uses`. Its `switch` over `ToolMethod` is exhaustive on

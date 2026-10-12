@@ -799,8 +799,23 @@ package final class RadialMenuService: ObservableObject {
     }
 
     private func run(_ tool: RadialMenuTool) {
-        guard tool.isRunnable() else { return }
+        // A tool that could run when the wheel opened and cannot now: the
+        // slice is still there, and picking it is said aloud.
+        guard tool.isRunnable() else {
+            NSSound.beep()
+            return
+        }
         run(tool.command.id)
+    }
+
+    /// Runs a command a slice was picked for. The wheel's slices are chosen
+    /// when it opens (`availableItems`), and a command can stop being
+    /// runnable while it is open: its tool says so, stops, is switched off
+    /// or is removed. Picking such a slice runs nothing, and `refuse` says
+    /// so, as a shortcut does for a command that cannot run. A pick is
+    /// never silent.
+    package static func run(_ id: CommandID, registry: ToolRegistry, refuse: () -> Void) {
+        if !registry.run(id) { refuse() }
     }
 
     private func run(_ id: CommandID) {
@@ -808,7 +823,7 @@ package final class RadialMenuService: ObservableObject {
         // wheel is really gone before anything captures or presents.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             // The main queue's block runs on the main thread.
-            MainActor.assumeIsolated { _ = ToolRegistry.shared.run(id) }
+            MainActor.assumeIsolated { Self.run(id, registry: .shared, refuse: { NSSound.beep() }) }
         }
     }
 
