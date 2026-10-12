@@ -26,8 +26,6 @@ package enum ManifestRefusal: Error, Equatable, Sendable {
 /// the manifest the platform already has for a built-in tool, and what only
 /// an outside tool carries.
 ///
-/// Nothing in the app reads one yet. The runtime that starts such a tool,
-/// and the sheet that asks before adding it, come later.
 package struct ExternalToolManifest: Equatable, Sendable {
     /// The tool as the rest of the platform knows a tool. Its name and its
     /// commands' titles are the English ones.
@@ -38,6 +36,11 @@ package struct ExternalToolManifest: Equatable, Sendable {
     package let summary: LocalizedText?
     /// Each command's title in every language its author wrote it in.
     package let commandTitles: [CommandID: LocalizedText]
+    /// The title of each preference its author gave one, in every language
+    /// they wrote it in, by the key the preference is saved under. A
+    /// preference with no title is not here: it is the tool's alone, and
+    /// the person is never shown it.
+    package let preferenceTitles: [String: LocalizedText]
     package let version: String
     package let publisher: String
     package let license: String?
@@ -120,12 +123,14 @@ package struct ExternalToolManifest: Equatable, Sendable {
         }
 
         var preferences: [PreferenceDeclaration] = []
+        var preferenceTitles: [String: LocalizedText] = [:]
         for preference in file.preferences ?? [] {
             guard let value = value(preference.default, ofKind: preference.type) else {
                 return .failure(.notOfferedHere(preference.type))
             }
-            preferences.append(PreferenceDeclaration(key: storageKey(tool: id, preference: preference.id),
-                                                     default: value))
+            let key = storageKey(tool: id, preference: preference.id)
+            preferences.append(PreferenceDeclaration(key: key, default: value))
+            preferenceTitles[key] = preference.title
         }
 
         var activation: [Activation] = []
@@ -144,7 +149,8 @@ package struct ExternalToolManifest: Equatable, Sendable {
         else { return .failure(.invalid(.malformed(field: "id"))) }
 
         return .success(ExternalToolManifest(manifest: manifest, name: file.name, summary: file.description,
-                                             commandTitles: titles, version: file.version,
+                                             commandTitles: titles, preferenceTitles: preferenceTitles,
+                                             version: file.version,
                                              publisher: file.publisher, license: file.license,
                                              protocolVersion: file.`protocol`, program: file.runtime.exec))
     }
@@ -187,5 +193,60 @@ package struct ExternalToolManifest: Equatable, Sendable {
         guard inside else { return .programOutsideFolder(program) }
         guard fileManager.isExecutableFile(atPath: file.path) else { return .programNotExecutable(program) }
         return nil
+    }
+}
+
+/// A tool's own words, made fit to stand inside one of the app's sentences
+/// where there is no room to cut them: an alert, and the app's short
+/// on-screen message. A manifest may hold a name, a service or a path of
+/// tens of kilobytes, with line breaks in it, and with the characters that
+/// turn a line of text round, which would let a tool's name reorder the
+/// sentence it is put in.
+package enum ToolOwnWords {
+    /// The most characters of a tool's words such a sentence shows.
+    package static let limit = 120
+    /// A character may be built of many parts, an accent upon an accent
+    /// without end. So the parts are bounded too: this many for each
+    /// character the limit allows.
+    package static let scalarsPerCharacter = 4
+
+    /// `text` as one short line of plain text: every line break and control
+    /// character a space, the characters that turn text round taken out,
+    /// and at most `limit` characters, the last an ellipsis when it was cut.
+    /// Letters of any script stay as they are.
+    package static func oneLine(_ text: String, limit: Int = limit) -> String {
+        let most = max(limit, 1) * scalarsPerCharacter
+        var kept = String.UnicodeScalarView()
+        var count = 0
+        var more = false
+        for scalar in text.unicodeScalars where !turnsTextRound(scalar) {
+            guard count < most else {
+                more = true
+                break
+            }
+            kept.append(breaksTheLine(scalar) ? " " : scalar)
+            count += 1
+        }
+        let line = String(kept)
+        guard more || line.count > limit else { return line }
+        return String(line.prefix(max(limit, 1) - 1)) + "…"
+    }
+
+    /// A line break, a tab, or any other control character.
+    private static func breaksTheLine(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .control, .lineSeparator, .paragraphSeparator: return true
+        default: return false
+        }
+    }
+
+    /// The marks, embeddings, overrides and isolates that set the direction
+    /// text is drawn in. Text in a script written from the right needs none
+    /// of them to be drawn from the right.
+    private static func turnsTextRound(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x061C, 0x200E, 0x200F, 0x202A...0x202E, 0x2066...0x2069: return true
+        default: return false
+        }
     }
 }

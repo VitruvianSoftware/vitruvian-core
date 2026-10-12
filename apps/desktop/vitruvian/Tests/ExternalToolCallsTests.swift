@@ -283,6 +283,15 @@ enum ExternalToolCallsTests {
         bench.box.values["com.acme.deploys/count"] = "four"
         suite.expect(result(bench.ask(.storageGet, #"{"key": "count"}"#)) == .object(["value": .number(3)]),
                      "a saved value of another kind reads as the default")
+
+        let most = String(repeating: "é", count: StorageLimits.maxTextLength)
+        let fits = bench.ask(.storageSet, #"{"key": "project", "value": "\#(most)"}"#)
+        let over = bench.ask(.storageSet, #"{"key": "project", "value": "\#(most)é"}"#)
+        suite.expect(StorageLimits.maxTextLength == 4_096 && result(fits) == done && code(over) == -32602
+                         && error(over)?.message == "longer than a preference may be"
+                         && bench.box.values[project] as? String == most,
+                     "storage/set saves text of 4,096 characters, and answers one character more as invalid params "
+                         + "with nothing saved")
     }
 
     static func refusals(_ suite: TestSuite) {

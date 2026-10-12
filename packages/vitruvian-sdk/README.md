@@ -75,6 +75,11 @@ That leaves `bazel-bin/packages/vitruvian-sdk/built/hello-swift` and
 `built/front-window`, each with its manifest and `bin/tool`. Those are the
 folders to add.
 
+`hello-swift` declares one preference with a title, its count. Once the tool
+is added, its detail in Settings lists "Counted so far" with a number field;
+change it, run "Count one more", and the tool counts on from the new number
+without being started again.
+
 `front-window` needs the Accessibility permission of whoever starts it.
 Started by Vitruvian, it has Vitruvian's. Nothing in this package asks for a
 permission or grants one.

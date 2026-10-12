@@ -359,8 +359,26 @@ of it but the protocol.
   purpose. A refusal is one of the protocol's codes, from
   `ExternalToolCalls.error(for:)`.
 - A preference a tool saves goes to the app's own preferences under
-  `<tool id>/<preference id>`. No file is written for it. A saved string has
-  no limit of its own: the 1 MB line is the only one.
+  `<tool id>/<preference id>`. No file is written for it. Text saved that
+  way is at most 4,096 characters, the protocol's
+  `StorageLimits.maxTextLength`: `StorageAccess.set(_:for:)` refuses a
+  longer one, for a tool's `storage/set` and for the person's own change
+  alike. That number is the protocol's, not one of `ToolLimits`, because a
+  tool's author is told it and `vitruvian-tool run` holds to it too.
+- A tool's own settings are the preferences its manifest gives a `title`
+  (`ExternalToolManifest.preferenceTitles`). `ExternalToolStore.settings(of:)`
+  lists them and `setSetting(_:for:of:)` is the one way the person changes
+  one. It saves under the key the tool reads, by the tool's own rules, but
+  not behind the tool's `uses` or its switch: those say what the tool may
+  ask, and here the person acts. A preference with no title is never
+  listed and cannot be changed there, so no screen can show a raw id. A
+  tool that is held back has no settings.
+- After a change is saved, a tool that is running is sent the protocol's
+  `preferences/changed`, once, with that one preference's id and value. It
+  is a notice: the app does not wait. A tool that is not running, or has
+  not answered `initialize`, is sent nothing and is not started; it reads
+  the value when it next starts. Saving the value a setting already has
+  does nothing. `language/changed` is still never sent.
 - A tool is added in two steps, and there is no third way.
   `ExternalToolStore.offer(from:)` reads the folder the person picked and
   changes nothing: no copy, no program, no file. `ExternalToolStore.add`
@@ -408,7 +426,8 @@ of it but the protocol.
   never the app's real support folder.
 - A screen for tools from outside is a view over a plain value that says
   everything the view shows: `ToolAgreementContent`, `ToolRefusalMessage`,
-  `ExternalToolRow`, `ExternalToolDetail`, `ToolRemovalContent`
+  `ExternalToolRow`, `ExternalToolDetail`, `ExternalToolSetting`,
+  `ToolRemovalContent`, `ToolRemovalNotice`
   (`UI/Settings/ExternalToolAgreementSheet.swift` and
   `ExternalToolsSection.swift`). The tests check the value. No test draws a
   view, and how a screen looks is checked by hand.
@@ -436,8 +455,17 @@ of it but the protocol.
   wait is on the main thread, so removing a tool that ignores everything
   holds the app for up to one second. A program still there after the kill
   keeps what it saved, whatever was asked: its copy and its record go, and
-  `remove` logs it. `remove` returns true either way, so the screen cannot
-  say the data was kept. No text exists for that yet.
+  `remove` logs it.
+- `remove` says what happened (`ExternalToolStore.Removal`): nobody added
+  it, kept as asked, deleted, or kept although deleting was asked, with
+  the folder. For that last one the person is told once, in an alert,
+  after the tool's detail has closed and its row has gone
+  (`ToolRemovalNotice`), with a button that shows the folder in the Finder.
+  The preferences under `<tool id>/` are kept with the folder then, and
+  nothing deletes either later: the person deletes the folder, and adding
+  the tool again finds both. `.deleted` means deleting was asked and the
+  program was gone; a file that then could not be deleted is still only a
+  line in the system log.
 - Which button of the question before removal deletes what a tool saved is
   `ToolRemovalContent.Choice.deletesData`, and the view passes it on
   unchanged. What follows the folder picker is `ToolPicked.after`: nothing,
@@ -447,9 +475,25 @@ of it but the protocol.
   written. Each has a line limit: on the sheet and in the detail the title
   takes 2 lines, the publisher and version 2, the description 3, a command
   2; in a row the name and the publisher each take 1. With 7 or more rows
-  the two lists scroll in a region 200 points high
+  the lists scroll in a region 200 points high
   (`ToolAgreementContent.rowsDrawnWhole`, `listsHeight`), on the sheet and
   in the detail, so the statement and the buttons stay in view.
+- The detail lists a tool's settings first, under the app's existing word
+  for Settings (`panelSettings`), then its commands and what it says it
+  uses. Each setting is one row of those lists, so sixteen of them scroll
+  in the same region. A title takes 2 lines and is bounded to 60
+  characters where it is drawn. A switch saves as it is turned; a field
+  saves on Return, when the person moves on from it, and when the detail
+  closes; a value the store refuses is put back. The values are read when
+  the detail opens and do not follow a running tool that changes its own.
+  The agreement sheet does not list preferences.
+- A tool's own words inside one of the app's sentences that has no line
+  limit go through `ToolOwnWords.oneLine` first: an alert's title or
+  message, and the app's short on-screen message. It gives one line of at
+  most 120 characters, with every control character a space and the
+  characters that set the direction of text taken out, so a name cannot
+  reorder the sentence. The sheet's title and its line of versions use it
+  too. A new alert that names a tool does the same.
 - The detail shows the end of a tool's log: the newest 200 lines and at
   most 32 KB (`ExternalToolDetail.shownLog`), as plain text that can be
   selected. It is read when the detail opens and does not follow a running
@@ -466,8 +510,9 @@ of it but the protocol.
     English and checked by rule. No reader of them has reviewed them.
   - That the sheet stays under 800 points high is arithmetic from the line
     limits. Nobody has seen it on a small display.
-  - A tool's preferences have no screen, and nothing tells a running tool
-    that a preference or the language changed.
+  - Nothing tells a running tool that the language changed. A tool's
+    preferences have a screen since 2026-10-12, built and not seen in the
+    app.
   - A records file that cannot be read is kept until the next tool is
     added. Then it is moved to `InstalledTools.unreadable.json`, replacing
     an earlier file of that name.

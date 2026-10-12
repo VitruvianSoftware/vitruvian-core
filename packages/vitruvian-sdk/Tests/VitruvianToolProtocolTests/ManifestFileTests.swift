@@ -98,6 +98,10 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(schema["properties"]?["id"]?["maxLength"]?.numberValue, Double(ManifestLimits.maxNameLength))
         XCTAssertEqual(command?["id"]?["maxLength"]?.numberValue, Double(ManifestLimits.maxNameLength))
         XCTAssertEqual(preference?["id"]?["maxLength"]?.numberValue, Double(ManifestLimits.maxNameLength))
+        XCTAssertEqual(preference?["title"]?["additionalProperties"]?["maxLength"]?.numberValue,
+                       Double(ManifestLimits.maxPreferenceTitleLength))
+        XCTAssertEqual(preference?["title"]?["$ref"]?.stringValue, "#/$defs/localizedText",
+                       "a preference's title is text in several languages, as a command's is")
         XCTAssertEqual(schema["$defs"]?["contributes"]?["properties"]?["commands"]?["maxItems"]?.numberValue,
                        Double(ManifestLimits.maxCommands))
         XCTAssertEqual(schema["properties"]?["preferences"]?["maxItems"]?.numberValue,
@@ -109,6 +113,7 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(ManifestLimits.maxCommands, 32)
         XCTAssertEqual(ManifestLimits.maxPreferences, 16)
         XCTAssertEqual(ManifestLimits.maxNameLength, 128)
+        XCTAssertEqual(ManifestLimits.maxPreferenceTitleLength, 60)
 
         func commands(_ count: Int) -> JSONValue {
             .object(["commands": .array((0..<count).map { index in
@@ -168,6 +173,7 @@ final class ManifestFileTests: XCTestCase {
         case noEnglish, blankText, unknownService, duplicateService, unknownActivation, tooManyCommands
         case commandNotWellFormed, duplicateCommand, unknownSurface, tooManyPreferences, preferenceNotWellFormed
         case duplicatePreference, unknownPreferenceType, defaultOfWrongType, programLeavesFolder
+        case preferenceTitleNotWellFormed
 
         init(_ problem: ManifestProblem) {
             switch problem {
@@ -193,6 +199,7 @@ final class ManifestFileTests: XCTestCase {
             case .unknownPreferenceType: self = .unknownPreferenceType
             case .defaultOfWrongType: self = .defaultOfWrongType
             case .programLeavesFolder: self = .programLeavesFolder
+            case .preferenceTitleNotWellFormed: self = .preferenceTitleNotWellFormed
             }
         }
     }
@@ -232,7 +239,7 @@ final class ManifestFileTests: XCTestCase {
         let missing = Set(ProblemName.allCases).subtracting(names).map(\.rawValue).sorted()
         XCTAssertEqual(missing, [], "no test gives these problems")
         XCTAssertEqual(names.count, ProblemName.allCases.count)
-        XCTAssertEqual(ProblemName.allCases.count, 22)
+        XCTAssertEqual(ProblemName.allCases.count, 23)
     }
 
     func testNamesAndPaths() {
@@ -259,6 +266,63 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(text.text(for: "en-US"), "Deploys")
         XCTAssertEqual(text.text(for: "ja"), "Deploys", "anything else is English")
         XCTAssertNil(LocalizedText(["fr": "Déploiements"]).text(for: "de"))
+    }
+
+    func testAPreferenceMayCarryATitle() throws {
+        func preference(_ title: JSONValue?) -> [String: JSONValue] {
+            var fields: [String: JSONValue] = ["id": .string("project"), "type": .string("string"), "default": .string("")]
+            fields["title"] = title
+            return ["preferences": .array([.object(fields)])]
+        }
+        func titled(_ text: String, in language: String = "en") -> [String: JSONValue] {
+            preference(.object(language == "en" ? ["en": .string(text)] : ["en": .string("Project"), language: .string(text)]))
+        }
+        // The example manifest has no title, and is read as it always was.
+        let plain = try ToolManifestFile.read(manifest()).get()
+        XCTAssertEqual(plain.preferences?.map(\.id), ["project"])
+        XCTAssertNil(plain.preferences?.first?.title, "a title is optional: a manifest with none is as valid as before")
+
+        let read = try ToolManifestFile.read(manifest(changing: preference(.object(["en": .string("Project"),
+                                                                                    "fr": .string("Projet")])))).get()
+        XCTAssertEqual(read.preferences?.first?.title, LocalizedText(["en": "Project", "fr": "Projet"]))
+        XCTAssertEqual(read.preferences?.first?.title?.text(for: "fr-CA"), "Projet")
+        XCTAssertEqual(read.preferences?.first?.title?.text(for: "de"), "Project")
+
+        let longest = String(repeating: "a", count: ManifestLimits.maxPreferenceTitleLength)
+        XCTAssertNil(problem(titled(longest)))
+        XCTAssertEqual(problem(titled(longest + "a")), .preferenceTitleNotWellFormed(preference: "project"))
+        XCTAssertNil(problem(titled(longest, in: "de")))
+        XCTAssertEqual(problem(titled(longest + "a", in: "de")), .preferenceTitleNotWellFormed(preference: "project"),
+                       "every language is held to the length, not English alone")
+        // Sixty characters as JSON Schema counts them, whatever each is made of.
+        XCTAssertNil(problem(titled(String(repeating: "\u{1F680}", count: ManifestLimits.maxPreferenceTitleLength))))
+        XCTAssertEqual(problem(titled(String(repeating: "e\u{301}", count: 31))),
+                       .preferenceTitleNotWellFormed(preference: "project"), "an accent written apart counts")
+        for control in ["\n", "\r", "\t", "\u{0}", "\u{1B}", "\u{7F}", "\u{85}", "\u{9F}"] {
+            XCTAssertEqual(problem(titled("Pro" + control + "ject")), .preferenceTitleNotWellFormed(preference: "project"),
+                           "\(control.unicodeScalars.map(\.value))")
+            XCTAssertFalse(ManifestRules.isWellFormedTitle("Pro" + control + "ject"))
+        }
+        XCTAssertTrue(ManifestRules.isWellFormedTitle("Projet d\u{2019}équipe \u{00A0}: 部署"))
+        XCTAssertEqual(problem(preference(.object(["fr": .string("Projet")]))),
+                       .noEnglish(field: "preferences[project].title"))
+        XCTAssertEqual(problem(preference(.object(["en": .string("Project"), "fr": .string(" ")]))),
+                       .blankText(field: "preferences[project].title"))
+        XCTAssertEqual(problem(preference(.string("Project"))), .malformed(field: "preferences[0].title"),
+                       "a title is a map of languages, not bare text")
+        XCTAssertEqual(problem(preference(.object([:]))), .noEnglish(field: "preferences[project].title"))
+    }
+
+    func testTheMostTextAPreferenceMayBeSetTo() {
+        XCTAssertEqual(StorageLimits.maxTextLength, 4_096)
+        let most = String(repeating: "\u{1F680}", count: StorageLimits.maxTextLength)
+        XCTAssertTrue(StorageLimits.allows(.string(most)))
+        XCTAssertFalse(StorageLimits.allows(.string(most + "a")))
+        XCTAssertTrue(StorageLimits.allows(.string("")) && StorageLimits.allows(.bool(true))
+            && StorageLimits.allows(.number(1e300)), "only text has a size")
+        let said = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["storageSetParams"]?["properties"]?["value"]?[
+            "description"]?.stringValue ?? ""
+        XCTAssertTrue(said.contains("4,096 characters"), "the schema says the number the code holds: \(said)")
     }
 
     func testAKindOfPreferenceTakesItsOwnValues() {

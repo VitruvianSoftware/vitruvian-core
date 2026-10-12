@@ -125,7 +125,7 @@
       }
     },
     "preference": {
-      "description": "One setting. The tool reads and writes it with storage/get and storage/set.",
+      "description": "One setting. The tool reads and writes it with storage/get and storage/set. The person sees and changes it in the tool's detail in Settings when it has a title, and the tool is then sent preferences/changed.",
       "type": "object",
       "required": ["id", "type", "default"],
       "properties": {
@@ -134,6 +134,14 @@
           "type": "string",
           "maxLength": 128,
           "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$"
+        },
+        "title": {
+          "description": "What the setting is called where the person changes it, shown as written. At most 60 characters in each language, with no line break and no other control character. Left out, the app does not show the setting: the tool alone reads and writes it. An app older than this field ignores it, and shows no setting.",
+          "$ref": "#/$defs/localizedText",
+          "additionalProperties": {
+            "maxLength": 60,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+          }
         },
         "type": {
           "description": "What kind of value it holds.",

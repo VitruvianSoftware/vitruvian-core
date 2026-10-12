@@ -128,6 +128,12 @@ public struct Desk {
                                                 message: "not the kind of value this preference holds")),
                         "refused: `\(asked.key)` holds \(kind.rawValue), not \(Self.text(asked.value))")
             }
+            guard StorageLimits.allows(asked.value) else {
+                return (.failure(RPCErrorObject(code: RPCErrorCode.invalidParams,
+                                                message: "longer than a preference may be")),
+                        "refused: `\(asked.key)` would be over \(StorageLimits.maxTextLength) characters, "
+                            + "the most the app saves")
+            }
             values[asked.key] = asked.value
             return (Self.done, "`\(asked.key)` is now \(Self.text(asked.value)), for this run only")
         }

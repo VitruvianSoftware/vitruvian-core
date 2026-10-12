@@ -39,6 +39,43 @@ package final class ExternalToolStore {
         case notRemembered
     }
 
+    /// What removing a tool did, so that whoever asked can say so.
+    package enum Removal: Equatable, Sendable {
+        /// Nobody added a tool with this id. Nothing changed.
+        case notAdded
+        /// The tool is removed, and what it saved is kept, as was asked.
+        case keptAsAsked
+        /// The tool is removed, and what it saved was to be deleted too, and
+        /// its program was gone, so that was done.
+        case deleted
+        /// The tool is removed. What it saved was to be deleted too, and is
+        /// kept all the same, its preferences with it, because the tool's
+        /// program was still there after the kill. `data` is the folder
+        /// that holds what it saved.
+        case keptStillRunning(data: URL?)
+
+        /// True when the tool was removed.
+        package var removed: Bool { self != .notAdded }
+    }
+
+    /// One of a tool's own settings that its author gave a title, as the
+    /// tool's detail shows it.
+    package struct Setting: Equatable, Sendable {
+        /// The preference's id within the tool, as its manifest and the
+        /// protocol's messages name it.
+        package let id: String
+        /// What it is called, in every language its author wrote.
+        package let title: LocalizedText
+        /// The saved value, or the manifest's default when none is saved.
+        package let value: PreferenceDeclaration.Value
+
+        package init(id: String, title: LocalizedText, value: PreferenceDeclaration.Value) {
+            self.id = id
+            self.title = title
+            self.value = value
+        }
+    }
+
     package struct Installed: Equatable, Sendable {
         package let tool: ExternalToolManifest
         /// The app's copy of the tool's folder. The program runs from here.
@@ -371,14 +408,15 @@ package final class ExternalToolStore {
     /// there after the kill, what it saved is kept whatever was asked, so
     /// that a program is never left writing into a folder that is gone.
     ///
-    /// The folder the tool was added from is never touched. False, with
-    /// nothing changed, for a tool nobody added.
+    /// The folder the tool was added from is never touched. What it gives
+    /// back says which of these happened, so that the person can be told
+    /// when what a tool saved was kept against what they asked.
     @discardableResult
-    package func remove(_ id: ToolID, deletingData: Bool) -> Bool {
-        guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return false }
+    package func remove(_ id: ToolID, deletingData: Bool) -> Removal {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return .notAdded }
         var next = records
         next.remove(at: known)
-        guard save(next) else { return false }
+        guard save(next) else { return .notAdded }
         records = next
         let gone = deactivate(id, seeingItOut: true)
         held.remove(id)
@@ -394,7 +432,65 @@ package final class ExternalToolStore {
         }
         if data { parts.forgetPreferences(id) }
         parts.registry().noteAvailabilityChanged()
-        return true
+        guard deletingData else { return .keptAsAsked }
+        guard gone else {
+            return .keptStillRunning(data: parts.folders?.place(for: id)?.data)
+        }
+        return .deleted
+    }
+
+    // MARK: - A tool's own settings
+
+    /// The settings of an added tool that the person may see and change:
+    /// the preferences its manifest gives a title, in the manifest's order,
+    /// each with its saved value or its default. A preference with no title
+    /// is never here. None for a tool that is held back, whose manifest is
+    /// not the one agreed to, and for a tool nobody added.
+    package func settings(of id: ToolID) -> [Setting] {
+        guard let tool = installed[id]?.tool ?? resting[id] else { return [] }
+        let storage = storage(of: tool)
+        return tool.manifest.preferences.compactMap { declared in
+            // The id within the tool: what follows the tool's id and a slash.
+            let name = String(declared.key.dropFirst(id.rawValue.count + 1))
+            guard let title = tool.preferenceTitles[declared.key] else { return nil }
+            guard case .success(let value) = storage.value(for: declared.key) else { return nil }
+            return Setting(id: name, title: title, value: value)
+        }
+    }
+
+    /// The person changed one of a tool's settings in its detail. Returns
+    /// why it was not saved, or nil when it was, or was that value already.
+    ///
+    /// It is saved where the tool itself saves it, under the same key and
+    /// by the same rules: a value of another kind is refused, and so is
+    /// text over the protocol's limit. Only a preference with a title can
+    /// be changed here, since only those are shown. A tool whose program
+    /// is running and has answered `initialize` is then sent the
+    /// protocol's `preferences/changed`, a notice the app does not wait
+    /// on. Any other tool is sent nothing and nothing is started: it reads
+    /// the value when it next starts.
+    @discardableResult
+    package func setSetting(_ value: PreferenceDeclaration.Value, for preference: String,
+                            of id: ToolID) -> StorageProblem? {
+        guard let tool = installed[id]?.tool ?? resting[id] else { return .undeclared(preference) }
+        let key = ExternalToolManifest.storageKey(tool: id, preference: preference)
+        guard tool.preferenceTitles[key] != nil else { return .undeclared(preference) }
+        // No message can carry a number that is no number.
+        if case .double(let number) = value, !number.isFinite { return .wrongKind(key) }
+        let storage = storage(of: tool)
+        if case .success(let saved) = storage.value(for: key), saved == value { return nil }
+        if let problem = storage.set(value, for: key) { return problem }
+        tools[id]?.preferencesChanged([preference: ExternalToolCalls.json(value)])
+        return nil
+    }
+
+    /// A tool's preferences as the person reaches them from its detail:
+    /// the keys, kinds and limits the tool's own `storage` has, over the
+    /// same saved values. It is not behind the tool's `uses` or its switch.
+    /// Those say what the tool may ask of the app, and here it is the
+    /// person who acts.
+    private func storage(of tool: ExternalToolManifest) -> StorageAccess {
+        StorageAccess(gate: { nil }, manifest: tool.manifest, backing: parts.broker().backings.storage)
     }
 
     // MARK: - A tool that stopped working
@@ -411,7 +507,7 @@ package final class ExternalToolStore {
         let tag = parts.language()
         let name = installed[id]?.tool.name.text(for: tag) ?? installed[id]?.tool.manifest.tool.name ?? id.rawValue
         let strings = FeatureStrings.externalTools(AppLanguage(rawValue: tag) ?? .enUS)
-        parts.broker().backings.notify.hud(Self.stoppedSymbol, strings.stopped(name))
+        parts.broker().backings.notify.hud(Self.stoppedSymbol, strings.stopped(ToolOwnWords.oneLine(name)))
         parts.stoppedWorking(id)
     }
 

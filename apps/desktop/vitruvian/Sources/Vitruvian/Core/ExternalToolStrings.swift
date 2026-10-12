@@ -67,6 +67,11 @@ package struct ExternalToolStrings {
     package let removeMessage: String
     package let removeKeepData: String
     package let removeDeleteData: String
+    /// The title of the alert after a tool is removed and what it saved could not be
+    /// deleted. `%@` is the tool's name, as the tool wrote it.
+    package let removeKeptTitleFormat: String
+    /// Shown above the folder that holds what the tool saved.
+    package let removeKeptMessage: String
     /// The app's short on-screen message. `%@` is the tool's name, as the tool wrote it.
     package let stoppedFormat: String
 
@@ -88,6 +93,10 @@ package struct ExternalToolStrings {
 
     package func removeTitle(_ name: String) -> String {
         String(format: removeTitleFormat, locale: Locale.current, name)
+    }
+
+    package func removeKeptTitle(_ name: String) -> String {
+        String(format: removeKeptTitleFormat, locale: Locale.current, name)
     }
 
     package func stopped(_ name: String) -> String {
@@ -170,6 +179,8 @@ package struct ExternalToolStrings {
             ("removeMessage", removeMessage),
             ("removeKeepData", removeKeepData),
             ("removeDeleteData", removeDeleteData),
+            ("removeKeptTitleFormat", removeKeptTitleFormat),
+            ("removeKeptMessage", removeKeptMessage),
             ("stoppedFormat", stoppedFormat),
         ]
     }
@@ -218,6 +229,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian deletes its copy of the tool. The folder you added it from is not touched.",
         removeKeepData: "Remove, Keep What It Saved",
         removeDeleteData: "Remove and Delete What It Saved",
+        removeKeptTitleFormat: "What “%@” saved was kept",
+        removeKeptMessage: "Its program would not stop, so Vitruvian did not delete what the tool saved. It is in this folder:",
         stoppedFormat: "“%@” stopped working")
 
     package static let ptBR = ExternalToolStrings(
@@ -262,6 +275,8 @@ extension ExternalToolStrings {
         removeMessage: "O Vitruvian apaga a cópia que ele tem da ferramenta. A pasta de onde você a adicionou não é alterada.",
         removeKeepData: "Remover e manter o que ela salvou",
         removeDeleteData: "Remover e apagar o que ela salvou",
+        removeKeptTitleFormat: "O que “%@” salvou foi mantido",
+        removeKeptMessage: "O programa dela não parou, então o Vitruvian não apagou o que a ferramenta salvou. Está nesta pasta:",
         stoppedFormat: "“%@” parou de funcionar")
 
     package static let tr = ExternalToolStrings(
@@ -306,6 +321,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian, aracın kendisindeki kopyasını siler. Aracı eklediğiniz klasöre dokunulmaz.",
         removeKeepData: "Kaldır, kaydettiklerini koru",
         removeDeleteData: "Kaldır ve kaydettiklerini sil",
+        removeKeptTitleFormat: "“%@” aracının kaydettikleri korundu",
+        removeKeptMessage: "Programı durmadığı için Vitruvian aracın kaydettiklerini silmedi. Kaydettikleri şu klasörde:",
         stoppedFormat: "“%@” çalışmayı durdurdu")
 
     package static let ru = ExternalToolStrings(
@@ -350,6 +367,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian удалит свою копию инструмента. Папка, из которой вы его добавили, не будет затронута.",
         removeKeepData: "Удалить, сохранив его данные",
         removeDeleteData: "Удалить вместе с его данными",
+        removeKeptTitleFormat: "Данные «%@» не удалены",
+        removeKeptMessage: "Его программа не завершилась, поэтому Vitruvian не удалил сохранённые инструментом данные. Они в этой папке:",
         stoppedFormat: "«%@» перестал работать")
 
     package static let es = ExternalToolStrings(
@@ -394,6 +413,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian borra su copia de la herramienta. La carpeta desde la que la añadiste no se toca.",
         removeKeepData: "Eliminar y conservar lo que guardó",
         removeDeleteData: "Eliminar y borrar lo que guardó",
+        removeKeptTitleFormat: "Lo que “%@” guardó se ha conservado",
+        removeKeptMessage: "Su programa no se detuvo, así que Vitruvian no borró lo que la herramienta guardó. Está en esta carpeta:",
         stoppedFormat: "“%@” dejó de funcionar")
 
     package static let sk = ExternalToolStrings(
@@ -438,6 +459,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian vymaže svoju kópiu nástroja. Priečinok, z ktorého ste ho pridali, zostane nedotknutý.",
         removeKeepData: "Odstrániť a ponechať uložené údaje",
         removeDeleteData: "Odstrániť a vymazať uložené údaje",
+        removeKeptTitleFormat: "Údaje nástroja „%@“ zostali zachované",
+        removeKeptMessage: "Jeho program sa nezastavil, preto Vitruvian nevymazal to, čo si nástroj uložil. Nachádza sa to v tomto priečinku:",
         stoppedFormat: "„%@“ prestal fungovať")
 
     package static let de = ExternalToolStrings(
@@ -482,6 +505,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian löscht seine Kopie des Werkzeugs. Der Ordner, aus dem du es hinzugefügt hast, bleibt unberührt.",
         removeKeepData: "Entfernen, Gespeichertes behalten",
         removeDeleteData: "Entfernen und Gespeichertes löschen",
+        removeKeptTitleFormat: "Was „%@“ gespeichert hat, wurde behalten",
+        removeKeptMessage: "Sein Programm ließ sich nicht beenden, daher hat Vitruvian nicht gelöscht, was das Werkzeug gespeichert hat. Es liegt in diesem Ordner:",
         stoppedFormat: "„%@“ funktioniert nicht mehr")
 
     package static let fr = ExternalToolStrings(
@@ -526,6 +551,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian supprime sa copie de l’outil. Le dossier depuis lequel vous l’avez ajouté n’est pas touché.",
         removeKeepData: "Supprimer et garder ses données",
         removeDeleteData: "Supprimer et effacer ses données",
+        removeKeptTitleFormat: "Les données de «\u{00A0}%@\u{00A0}» ont été conservées",
+        removeKeptMessage: "Son programme ne s’est pas arrêté, donc Vitruvian n’a pas effacé ce que l’outil a enregistré. Cela se trouve dans ce dossier\u{00A0}:",
         stoppedFormat: "«\u{00A0}%@\u{00A0}» a cessé de fonctionner")
 
     package static let it = ExternalToolStrings(
@@ -570,6 +597,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian elimina la propria copia dello strumento. La cartella da cui lo hai aggiunto non viene toccata.",
         removeKeepData: "Rimuovi e conserva i dati salvati",
         removeDeleteData: "Rimuovi ed elimina i dati salvati",
+        removeKeptTitleFormat: "Ciò che “%@” ha salvato è stato conservato",
+        removeKeptMessage: "Il suo programma non si è fermato, quindi Vitruvian non ha eliminato ciò che lo strumento ha salvato. Si trova in questa cartella:",
         stoppedFormat: "“%@” ha smesso di funzionare")
 
     package static let ja = ExternalToolStrings(
@@ -614,6 +643,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvianが持つツールのコピーを削除します。追加元のフォルダには手を加えません。",
         removeKeepData: "削除して保存データを残す",
         removeDeleteData: "削除して保存データも消去",
+        removeKeptTitleFormat: "「%@」が保存したデータは残されました",
+        removeKeptMessage: "プログラムが停止しなかったため、Vitruvianはツールが保存したデータを削除しませんでした。データは次のフォルダにあります:",
         stoppedFormat: "「%@」が動作を停止しました")
 
     package static let ko = ExternalToolStrings(
@@ -658,6 +689,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian이 가진 도구 사본을 삭제합니다. 도구를 추가한 원래 폴더는 건드리지 않습니다.",
         removeKeepData: "제거하고 저장한 내용 유지",
         removeDeleteData: "제거하고 저장한 내용 삭제",
+        removeKeptTitleFormat: "‘%@’이(가) 저장한 내용은 유지되었습니다",
+        removeKeptMessage: "프로그램이 멈추지 않아 Vitruvian이 도구가 저장한 내용을 삭제하지 않았습니다. 저장한 내용은 다음 폴더에 있습니다:",
         stoppedFormat: "‘%@’의 작동이 중지되었습니다")
 
     package static let uk = ExternalToolStrings(
@@ -702,6 +735,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian видалить свою копію інструмента. Папку, з якої ви його додали, не буде змінено.",
         removeKeepData: "Вилучити, зберігши його дані",
         removeDeleteData: "Вилучити разом з його даними",
+        removeKeptTitleFormat: "Дані «%@» не видалено",
+        removeKeptMessage: "Його програма не завершилася, тому Vitruvian не видалив збережені інструментом дані. Вони в цій папці:",
         stoppedFormat: "«%@» перестав працювати")
 
     package static let zhHans = ExternalToolStrings(
@@ -746,6 +781,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian 会删除它保存的工具副本。你添加工具时所用的文件夹不会受影响。",
         removeKeepData: "移除并保留它保存的内容",
         removeDeleteData: "移除并删除它保存的内容",
+        removeKeptTitleFormat: "“%@”保存的内容已保留",
+        removeKeptMessage: "它的程序没有停止，所以 Vitruvian 没有删除工具保存的内容。这些内容在此文件夹中：",
         stoppedFormat: "“%@”已停止工作")
 
     package static let zhTW = ExternalToolStrings(
@@ -790,6 +827,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian 會刪除它保存的工具副本。你加入工具時所用的檔案夾不會受影響。",
         removeKeepData: "移除並保留它儲存的內容",
         removeDeleteData: "移除並刪除它儲存的內容",
+        removeKeptTitleFormat: "「%@」儲存的內容已保留",
+        removeKeptMessage: "它的程式沒有停止，所以 Vitruvian 沒有刪除工具儲存的內容。這些內容在此檔案夾中：",
         stoppedFormat: "「%@」已停止運作")
 
     package static let zhHK = ExternalToolStrings(
@@ -834,6 +873,8 @@ extension ExternalToolStrings {
         removeMessage: "Vitruvian 會刪除它保存的工具副本。你加入工具時所用的資料夾不會受影響。",
         removeKeepData: "移除並保留它儲存的內容",
         removeDeleteData: "移除並刪除它儲存的內容",
+        removeKeptTitleFormat: "「%@」儲存的內容已保留",
+        removeKeptMessage: "它的程式沒有停止，所以 Vitruvian 沒有刪除工具儲存的內容。這些內容在此資料夾中：",
         stoppedFormat: "「%@」已停止運作")
 }
 

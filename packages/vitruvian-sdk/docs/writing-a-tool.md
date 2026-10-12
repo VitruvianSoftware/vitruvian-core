@@ -158,6 +158,11 @@ Three rules of the kit:
 - **Never `print`.** Standard output is the link. Write to standard error,
   or call `app.log`.
 
+To hear that the person changed a preference, set `tool.onPreferencesChanged`
+before `run()`. It is handed the id and the new value of each preference that
+changed. A tool that reads its preferences each time a command runs, as the
+sample above does, needs no such handler.
+
 ### A tool that does not ask the app
 
 A tool may do anything itself. [`../samples/front-window`](../samples/front-window)
@@ -202,7 +207,9 @@ refuses its command and says why.
       }
     ]
   },
-  "preferences": [{ "id": "project", "type": "string", "default": "" }],
+  "preferences": [
+    { "id": "project", "title": { "en": "Project" }, "type": "string", "default": "" }
+  ],
   "activation": ["onCommand"],
   "runtime": { "kind": "external", "exec": "bin/deploys" }
 }
@@ -220,7 +227,7 @@ refuses its command and says why.
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
 | `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. |
-| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. The app has no screen for them yet: only the tool reads and writes them, with `storage/get` and `storage/set`. |
+| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. The tool reads and writes any of them with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
 
@@ -230,6 +237,11 @@ refuses its command and says why.
 - **A field the app does not know is ignored.** A service, a surface, a
   preference type or an activation it does not know refuses the whole tool,
   and the reason names it.
+- **A preference's `title` is newer than the rest of the manifest.** An app
+  from before it ignores the field, as it ignores any field it does not
+  know: the tool is added and runs there as before, and the person is shown
+  no setting. The manifest has no field for the oldest app a tool needs, and
+  a title needs none.
 - **The file is at most 65,536 bytes.**
 
 ## Every message
@@ -262,10 +274,15 @@ have ten seconds; for everything after it, two.
 {"jsonrpc":"2.0","id":3,"error":{"code":-32010,"message":"no deploy yet"}}
 ```
 
-`preferences/changed` and `language/changed` are notices. Today's app has no
-screen that changes a tool's preference and does not send either one: a tool
-learns the language when it starts. Handle them anyway; a later app will send
-them.
+`preferences/changed` is a notice: the person changed one of your preferences
+in the tool's detail in Settings. It carries the id and the new value of each
+preference that changed; today that is one at a time. It is sent only to a
+tool that is running and has answered `initialize`. A tool that is not
+running is not started for it, and reads the value with `storage/get` when it
+next starts. What your own `storage/set` saved is not sent back to you.
+
+`language/changed` is a notice too. Today's app never sends it: a tool learns
+the language when it starts. Handle it anyway; a later app will send it.
 
 ```json message
 {"jsonrpc":"2.0","method":"preferences/changed","params":{"values":{"project":"web"}}}
@@ -342,7 +359,9 @@ it at once; false asks it to quit.
 ```
 
 `storage/get` and `storage/set` read and write a preference the manifest
-declares, by its id. A value is text, yes or no, or a number.
+declares, by its id. A value is text, yes or no, or a number. Text is at most
+4,096 characters: a longer one is answered with failure -32602, and nothing
+is saved.
 
 ```json message
 {"jsonrpc":"2.0","id":"i","method":"storage/get","params":{"key":"project"}}
@@ -371,7 +390,7 @@ Any request can be refused, at any time. Your tool must cope.
 | -32004 | Not available right now. |
 | -32010 | Yours: you will not run the command. |
 | -32601 | A method the other side does not know. |
-| -32602 | Params that are not the message's own, a command you do not have, a preference the manifest does not declare, or a value of the wrong kind. |
+| -32602 | Params that are not the message's own, a command you do not have, a preference the manifest does not declare, a value of the wrong kind, or text over 4,096 characters. |
 
 ## Limits, and what happens when a tool crosses them
 
@@ -423,8 +442,12 @@ folder the program is started in.
 - **A downloaded tool** carries macOS's quarantine mark, and the app refuses
   it. The app never clears the mark. The person can:
   `xattr -dr com.apple.quarantine <the folder>`.
+- **A tool's settings** are in its detail: open its row. Each preference
+  with a title is listed there under "Settings", and a change is saved at
+  once and sent to the tool if it is running.
 - **Removing a tool** deletes the app's copy. What the tool saved is deleted
-  too when the person picks that.
+  too when the person picks that, unless the tool's program will not stop:
+  then it is kept, and the person is told so and where it is.
 
 For the two Swift samples, build their folders first:
 
@@ -501,11 +524,14 @@ opened; close it and open it again to see more.
   reset when the app is updated, and the tool's with them.
 - **Not a shortcut of its own.** Give a command the `shortcut` surface and
   let the person record one, so the app can check it against every other.
-- **Not a screen for its preferences.** There is none yet. A preference is a
-  value your tool keeps with `storage/set`; the person cannot see or change
-  it in the app.
-- **Not to be told what changed.** Today's app never sends
-  `preferences/changed` or `language/changed`.
+- **Not that the person sees every preference.** Only one with a `title` is
+  shown, in the tool's detail in Settings, and can be changed there. One
+  without is a value your tool keeps with `storage/set`, and yours alone.
+- **Not that a preference is as you left it.** The person may change a titled
+  one at any time, also while your tool is not running. Read it when you
+  need it, or hear `preferences/changed`.
+- **Not to be told the language changed.** Today's app never sends
+  `language/changed`.
 - **Not that its last words arrive.** A final line with no line break at its
   end is dropped.
 - **Not an argument.** A command is run by its id, with nothing else.

@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianToolProtocol
 
 /// What a tool reads its preferences with. It is handed out after the
 /// broker's checks pass, reads on any thread, and reads only the keys the
@@ -33,6 +34,8 @@ package enum StorageProblem: Error, Equatable, Sendable {
     case undeclared(String)
     /// The value is not of the kind the manifest gives the preference.
     case wrongKind(String)
+    /// The value is text longer than a preference may be set to.
+    case tooLong(String)
 }
 
 /// The `storage` capability: the preferences a tool's manifest declares.
@@ -97,18 +100,31 @@ package struct StorageAccess {
     }
 
     /// Saves `value` as the preference with this key. Refused, with
-    /// nothing written, for a key the manifest does not declare and for a
-    /// value of another kind than the preference's default.
+    /// nothing written, for a key the manifest does not declare, for a
+    /// value of another kind than the preference's default, and for text
+    /// longer than `StorageLimits.maxTextLength`, the protocol's number.
     @discardableResult
     package func set(_ value: PreferenceDeclaration.Value, for key: String) -> StorageProblem? {
         if let refusal = gate() { return .refused(refusal) }
         guard let fallback = defaults[key] else { return .undeclared(key) }
         switch (fallback, value) {
+        case (.string, .string(let text)) where text.unicodeScalars.count > StorageLimits.maxTextLength:
+            return .tooLong(key)
         case (.bool, .bool), (.string, .string), (.int, .int), (.double, .double):
             backing.write(key, value.defaultsValue)
             return nil
         default:
             return .wrongKind(key)
         }
+    }
+}
+
+extension StorageAccess {
+    /// Access to the preferences `manifest` declares, behind `gate`.
+    init(gate: @escaping () -> BrokerRefusal?, manifest: ToolManifest, backing: Backing) {
+        self.init(gate: gate, keys: Set(manifest.preferences.map(\.key)),
+                  defaults: Dictionary(manifest.preferences.map { ($0.key, $0.defaultValue) },
+                                       uniquingKeysWith: { first, _ in first }),
+                  backing: backing)
     }
 }

@@ -58,8 +58,8 @@ A message is JSON-RPC 2.0. There are four kinds.
 |---|---|---|
 | `initialize` | request | The first message. It carries the protocol versions the app speaks, the language in use and the tool's data folder. The tool answers with the version it picked and its own version. Until it has, neither side sends anything else. |
 | `command/run` | request | Run this command. `command` is the id the manifest gives it. Answer `{}` when it ran, or failure -32010 when you will not run it. |
-| `preferences/changed` | notice | These preferences have new values. |
-| `language/changed` | notice | The person changed the app's language. |
+| `preferences/changed` | notice | The person changed these preferences, in the tool's detail in Settings: each one's id and its new value. Sent only to a tool that is running and has answered `initialize`. |
+| `language/changed` | notice | The person changed the app's language. Today's app does not send it. |
 | `shutdown` | notice | Stop. The app then closes the tool's input. The tool exits with 0 within two seconds. |
 
 ## What a tool sends
@@ -78,7 +78,7 @@ app has. These messages are for what is better done through the app.
 | `keystrokes/paste` | request | `keystrokes` | Paste this text into the app in front. |
 | `keystrokes/pressMenuItem` | request | `keystrokes` | Press the menu item with one of these key equivalents in the app in front. |
 | `processes/terminate` | request | `processes` | End this process, with the app's checks and its administrator prompt. |
-| `storage/get`, `storage/set` | request | `storage` | Read or write one of the preferences the manifest declares. |
+| `storage/get`, `storage/set` | request | `storage` | Read or write one of the preferences the manifest declares. Text is at most 4,096 characters; a longer one is refused with -32602. |
 | `log` | notice | | A line for the tool's log in Settings. |
 
 ## Being refused
@@ -112,7 +112,17 @@ the person as it is.
 - **A name the app does not know refuses the tool**: a service, a surface, a
   kind of preference, a way of starting. The reason names it.
 - **`runtime.exec` stays inside the folder.**
-- **Limits**: the file 65,536 bytes, 32 commands, 16 preferences.
+- **A preference may carry a `title`**, text in several languages like any
+  other. It is what the setting is called to the person. One with no title
+  is the tool's alone, and the app never shows it. One with a title is
+  listed in the tool's detail in Settings, where the person can change it.
+  The field was added
+  after the first version 1, with no new version: an app from before it
+  ignores it, and shows no setting.
+- **Limits**: the file 65,536 bytes, 32 commands, 16 preferences, a
+  preference's title 60 characters in each language with no control
+  character, and text saved with `storage/set` 4,096 characters. A
+  character here is a Unicode code point, as JSON Schema counts.
 
 ## Changing the protocol
 
