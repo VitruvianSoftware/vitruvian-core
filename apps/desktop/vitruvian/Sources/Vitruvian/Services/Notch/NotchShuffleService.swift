@@ -7,7 +7,11 @@ import Foundation
 /// to the system's Now Playing, so the music page asks the player through
 /// its scripting dictionary, with the same Automation consent the playback
 /// controls use. It is read only while the page is open.
-package final class NotchShuffleService: ObservableObject {
+///
+/// Everything published is read and written on the main thread; the serial
+/// queue only runs the player's Apple Events, and each reply returns to the
+/// main thread under a token that drops it once it is stale.
+package final class NotchShuffleService: ObservableObject, @unchecked Sendable {
     package static let shared = NotchShuffleService()
     @Published package private(set) var availability: NotchMusicAutomation.Availability?
     /// Nil until the player answers, or while it has not been allowed to.

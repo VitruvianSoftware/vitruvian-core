@@ -2146,8 +2146,12 @@ private protocol GainEngine: AnyObject {
 /// correction is read again at once, off the audio thread. Without that, an
 /// app moving from a wide output to a stereo one would play several times
 /// too loud until something else refreshed it.
+///
+/// Shared between the HAL callback, the audio engines and its own queue: the
+/// pending flags are guarded by `pendingLock`, and the two values only its
+/// `queue` touches say so where they are declared.
 @available(macOS 14.4, *)
-private final class LevelCompensationWatch {
+private final class LevelCompensationWatch: @unchecked Sendable {
     private let objects: [AudioObjectID]
     private let store: (Float) -> Void
     private var listenedObjects: [AudioObjectID] = []
