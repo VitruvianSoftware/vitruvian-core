@@ -17,7 +17,7 @@ import (
 
 // usesPattern matches:
 //   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-//   uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+//     uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 var usesPattern = regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*([^\s@]+)@([^\s#]+)(?:\s*#\s*(.*))?$`)
 
 // Pins holds the parsed map of action names to their full pinned string.

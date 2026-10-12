@@ -186,7 +186,7 @@ func pin(action string) string {
 }
 
 const (
-	setupBazelAction  = "./.github/actions/setup-bazel"
+	setupBazelAction = "./.github/actions/setup-bazel"
 	// selectXcodeAction pins the Xcode the macOS pipeline unit builds with.
 	selectXcodeAction = "./.github/actions/select-xcode"
 )
