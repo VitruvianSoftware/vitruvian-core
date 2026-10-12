@@ -139,7 +139,7 @@ package final class ScreenTextService: ObservableObject {
         }
     }
 
-    private static func copyToPasteboard(_ value: String) {
+    package static func copyToPasteboard(_ value: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.declareVitruvianSource()

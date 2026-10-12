@@ -119,6 +119,7 @@ package enum Preferences {
     package static let notchScratchpadControlHidden = Preference(DefaultsKey.notchScratchpadControlHidden, default: false)
     package static let notchKeyboardLightControlHidden = Preference(DefaultsKey.notchKeyboardLightControlHidden, default: false)
     package static let notchOutlineEnabled = Preference(DefaultsKey.notchOutlineEnabled, default: false)
+    package static let notchHideMenuBarGap = Preference(DefaultsKey.notchHideMenuBarGap, default: true)
     package static let notchHapticFeedback = Preference(DefaultsKey.notchHapticFeedback, default: true)
     package static let notchTranslucentBackground = Preference(DefaultsKey.notchTranslucentBackground, default: false)
     package static let notchShelf = Preference(DefaultsKey.notchShelf, default: true)
@@ -184,6 +185,7 @@ package enum Preferences {
     package static let notchMascotEnabled = Preference(DefaultsKey.notchMascotEnabled, default: false)
     package static let notchMascotVisits = Preference(DefaultsKey.notchMascotVisits, default: true)
     package static let notchMascotReactions = Preference(DefaultsKey.notchMascotReactions, default: true)
+    package static let notchMascotHidesWhenIdle = Preference(DefaultsKey.notchMascotHidesWhenIdle, default: false)
     package static let notchCommandBar = Preference(DefaultsKey.notchCommandBar, default: true)
     package static let notchHideInCaptures = Preference(DefaultsKey.notchHideInCaptures, default: false)
     package static let panelControlNotch = Preference(DefaultsKey.panelControlNotch, default: true)
@@ -282,6 +284,7 @@ package enum Preferences {
     package static let monitorGraphScale = Preference(DefaultsKey.monitorGraphScale, default: true)
     package static let monitorSysTemps = Preference(DefaultsKey.monitorSysTemps, default: true)
     package static let monitorSysCPU = Preference(DefaultsKey.monitorSysCPU, default: true)
+    package static let monitorSysCPUCores = Preference(DefaultsKey.monitorSysCPUCores, default: true)
     package static let monitorSysGPU = Preference(DefaultsKey.monitorSysGPU, default: true)
     package static let monitorSysBattery = Preference(DefaultsKey.monitorSysBattery, default: true)
     package static let monitorSysMemory = Preference(DefaultsKey.monitorSysMemory, default: true)
@@ -582,6 +585,7 @@ package enum Preferences {
     package static let keyboardDebounceKeyWindows = Preference(DefaultsKey.keyboardDebounceKeyWindows, default: "")
     package static let commandBarDisabledSources = Preference(DefaultsKey.commandBarDisabledSources, default: "")
     package static let windowEdgeSnapDisabledZones = Preference(DefaultsKey.windowEdgeSnapDisabledZones, default: "")
+    package static let windowEdgeSnapZoneActions = Preference(DefaultsKey.windowEdgeSnapZoneActions, default: "")
 
     // MARK: Lists and tables
 
@@ -664,6 +668,7 @@ package enum Preferences {
     package static let notchAgentsTelemetryFilter = Preference(DefaultsKey.notchAgentsTelemetryFilter, default: "antigravity")
     package static let notchDisplay = Preference(DefaultsKey.notchDisplay, default: NotchDisplay.automatic.rawValue)
     package static let notchHoverDelay = Preference(DefaultsKey.notchHoverDelay, default: NotchSupport.defaultHoverDelay)
+    package static let notchCloseDelay = Preference(DefaultsKey.notchCloseDelay, default: NotchSupport.defaultCloseDelay)
     package static let notchQuickAccessLayout = Preference(DefaultsKey.notchQuickAccessLayout, default: Data())
     package static let radialMenuActivationMode = Preference(DefaultsKey.radialMenuActivationMode, default: RadialMenuActivationMode.pressOrHold.rawValue)
     package static let appUpdatesCheckFrequency = Preference(DefaultsKey.appUpdatesCheckFrequency, default: AppUpdatesSupport.CheckFrequency.off.rawValue)

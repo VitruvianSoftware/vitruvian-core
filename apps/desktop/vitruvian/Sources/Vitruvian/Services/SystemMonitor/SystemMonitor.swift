@@ -43,6 +43,7 @@ package struct SystemSnapshot {
     /// value is carried over failed reads, and the hot CPU alert has to tell
     /// those repeats apart from fresh readings.
     package var cpuUsageReadAt: TimeInterval?
+    package var cpuCoreUsage: [Double?] = [] // 0...1 per logical core, only while the menu panel shows the CPU row
     package var gpuUsage: Double?          // 0...1
     package var memoryUsed: UInt64?
     package var memoryAppUsed: UInt64?
@@ -83,7 +84,7 @@ package struct SystemSnapshot {
     package var batteryHistory: [Double] = []      // 0...1 charge level
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(cpuTemperature: Double? = nil, cpuTemperatureReadAt: TimeInterval? = nil, gpuTemperature: Double? = nil, batteryTemperature: Double? = nil, batteryTemperatureReadAt: TimeInterval? = nil, cpuUsage: Double? = nil, cpuUsageReadAt: TimeInterval? = nil, gpuUsage: Double? = nil, memoryUsed: UInt64? = nil, memoryAppUsed: UInt64? = nil, memoryTotal: UInt64? = nil, memoryCompressed: UInt64? = nil, memoryCached: UInt64? = nil, memorySwapUsed: UInt64? = nil, memoryPressure: MemoryPressure = .unknown, fanSpeeds: [Double] = [], netDownBytesPerSec: Double? = nil, netUpBytesPerSec: Double? = nil, netTotalDown: UInt64? = nil, netTotalUp: UInt64? = nil, power: PowerReading? = nil, peripheralBatteries: [PeripheralBatteryDevice] = [], peripheralBatterySample: PeripheralBatterySample = PeripheralBatterySample(), disk: DiskReading? = nil, connectedDevices: [ConnectedUSBDevice] = [], cpuHistory: [Double] = [], gpuHistory: [Double] = [], memoryHistory: [Double] = [], memoryAppHistory: [Double] = [], netDownHistory: [Double] = [], netUpHistory: [Double] = [], diskReadHistory: [Double] = [], diskWriteHistory: [Double] = [], systemPowerHistory: [Double] = [], batteryHistory: [Double] = []) {
+    package init(cpuTemperature: Double? = nil, cpuTemperatureReadAt: TimeInterval? = nil, gpuTemperature: Double? = nil, batteryTemperature: Double? = nil, batteryTemperatureReadAt: TimeInterval? = nil, cpuUsage: Double? = nil, cpuUsageReadAt: TimeInterval? = nil, cpuCoreUsage: [Double?] = [], gpuUsage: Double? = nil, memoryUsed: UInt64? = nil, memoryAppUsed: UInt64? = nil, memoryTotal: UInt64? = nil, memoryCompressed: UInt64? = nil, memoryCached: UInt64? = nil, memorySwapUsed: UInt64? = nil, memoryPressure: MemoryPressure = .unknown, fanSpeeds: [Double] = [], netDownBytesPerSec: Double? = nil, netUpBytesPerSec: Double? = nil, netTotalDown: UInt64? = nil, netTotalUp: UInt64? = nil, power: PowerReading? = nil, peripheralBatteries: [PeripheralBatteryDevice] = [], peripheralBatterySample: PeripheralBatterySample = PeripheralBatterySample(), disk: DiskReading? = nil, connectedDevices: [ConnectedUSBDevice] = [], cpuHistory: [Double] = [], gpuHistory: [Double] = [], memoryHistory: [Double] = [], memoryAppHistory: [Double] = [], netDownHistory: [Double] = [], netUpHistory: [Double] = [], diskReadHistory: [Double] = [], diskWriteHistory: [Double] = [], systemPowerHistory: [Double] = [], batteryHistory: [Double] = []) {
         self.cpuTemperature = cpuTemperature
         self.cpuTemperatureReadAt = cpuTemperatureReadAt
         self.gpuTemperature = gpuTemperature
@@ -91,6 +92,7 @@ package struct SystemSnapshot {
         self.batteryTemperatureReadAt = batteryTemperatureReadAt
         self.cpuUsage = cpuUsage
         self.cpuUsageReadAt = cpuUsageReadAt
+        self.cpuCoreUsage = cpuCoreUsage
         self.gpuUsage = gpuUsage
         self.memoryUsed = memoryUsed
         self.memoryAppUsed = memoryAppUsed
@@ -231,6 +233,7 @@ package final class SystemMonitor: ObservableObject {
     // Samplers
     nonisolated(unsafe) private let networkSampler = NetworkSampler()
     nonisolated(unsafe) private let diskSampler = DiskSampler()
+    nonisolated(unsafe) private let cpuCoreSampler = CPUCoreSampler()
     nonisolated(unsafe) private let peripheralBatterySampler = PeripheralBatterySampler()
     nonisolated(unsafe) private var powerSampler: PowerSampler?
     nonisolated(unsafe) private let usbSampler = USBDeviceSampler()
@@ -532,6 +535,7 @@ package final class SystemMonitor: ObservableObject {
 
     private struct SamplingPlan: Equatable {
         var needCPU = false
+        var needCPUCores = false
         var needMemory = false
         var needNetwork = false
         var needDisk = false
@@ -587,6 +591,17 @@ package final class SystemMonitor: ObservableObject {
                 || defaults[Preferences.menuBarConnectedDevices])
     }
 
+    /// Whether every core is read for the panel's per-core bars: only while a
+    /// panel or the island shows the System card's CPU row with the bars on,
+    /// and the CPU monitor is installed. A CPU shown in the menu bar or
+    /// watched by an alert never reads every core.
+    package static func readsCPUCores(panelNeeds: SystemMonitorPanelNeeds, defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: AppFeature.monitorCPU.availabilityKey)
+            && panelNeeds.system
+            && defaults[Preferences.monitorSysCPU]
+            && defaults[Preferences.monitorSysCPUCores]
+    }
+
     private func currentPlan(defaults: UserDefaults) -> SamplingPlan {
         let menuPanelNeeds = self.menuPanelNeeds.merging(notchDetailNeeds)
         var plan = SamplingPlan()
@@ -611,6 +626,9 @@ package final class SystemMonitor: ObservableObject {
         let alertBattery = hasInternalBattery && defaults[Preferences.monitorAlertBattery]
 
         plan.needCPU = panelCPU || defaults[Preferences.menuBarCPU] || alertCPU
+        // Per-core bars live under the panel's CPU row only: a CPU shown in the
+        // menu bar or watched by an alert never reads every core.
+        plan.needCPUCores = Self.readsCPUCores(panelNeeds: menuPanelNeeds, defaults: defaults)
         plan.needMemory = panelMemory || defaults[Preferences.menuBarMemory] || alertMemory
         plan.needNetwork = panelNeedsNetwork || defaults[Preferences.menuBarNetwork]
         plan.needDisk = panelNeedsDisk
@@ -649,6 +667,7 @@ package final class SystemMonitor: ObservableObject {
         }
         if !available(.monitorCPU) {
             plan.needCPU = false
+            plan.needCPUCores = false
             plan.needCPUTemperature = false
         }
         if !available(.monitorGPU) {
@@ -792,8 +811,16 @@ package final class SystemMonitor: ObservableObject {
                 return sample
             }
 
+            // Per-core reads that pause restart from a fresh baseline.
+            if !plan.needCPUCores {
+                self.cpuCoreSampler.reset()
+            }
             if plan.needCPU {
-                if take(.cpu),
+                let readsCPU = take(.cpu)
+                if readsCPU, plan.needCPUCores {
+                    next.cpuCoreUsage = self.cpuCoreSampler.sample(now: now)
+                }
+                if readsCPU,
                    let cpu = self.readCPUUsage(now: now) {
                     self.lastCPUUsage = cpu
                     self.lastCPUUsageReadAt = now

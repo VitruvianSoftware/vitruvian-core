@@ -8,7 +8,8 @@ import VitruvianServices
 
 /// The "System" section of the panel: component temperatures, hardware usage
 /// and memory pressure, only the readings that matter, presented cleanly.
-/// Tapping CPU, GPU or Memory expands the top consumers of that resource.
+/// Tapping CPU, GPU or Memory expands the top consumers of that resource;
+/// CPU also shows the load of each core.
 package struct SystemSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
@@ -17,6 +18,7 @@ package struct SystemSection: View {
     package let showConnectedDevices: () -> Void
     @State private var expanded: BreakdownKind?
     @State private var alertsExpanded = false
+    @State private var cpuAppsExpanded = true
     @State private var breakdownRows: [ProcessUsage] = []
     @State private var breakdownIsLoading = false
     @State private var lastBreakdownRefresh = Date.distantPast
@@ -28,6 +30,7 @@ package struct SystemSection: View {
     @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
     @AppStorage(Preferences.monitorSysTemps) private var sysTemps: Bool
     @AppStorage(Preferences.monitorSysCPU) private var sysCPU: Bool
+    @AppStorage(Preferences.monitorSysCPUCores) private var sysCPUCores: Bool
     @AppStorage(Preferences.monitorSysGPU) private var sysGPU: Bool
     @AppStorage(Preferences.monitorSysMemory) private var sysMemory: Bool
     @AppStorage(Preferences.monitorSysAlerts) private var sysAlerts: Bool
@@ -137,6 +140,7 @@ package struct SystemSection: View {
         systemOrderRaw = ""
         sysTemps = true
         sysCPU = true
+        sysCPUCores = true
         sysGPU = true
         sysMemory = true
         sysAlerts = true
@@ -215,8 +219,18 @@ package struct SystemSection: View {
         }
     }
 
+    /// Opening the folded CPU apps list starts from the same recent reading
+    /// expanding a row does, not from rows kept while it was folded.
+    private func toggleCPUApps() {
+        cpuAppsExpanded.toggle()
+        if cpuAppsExpanded {
+            breakdownRows = ProcessUsageService.shared.cachedTop(.cpu, limit: breakdownLimit) ?? []
+        }
+        refreshBreakdown()
+    }
+
     private func refreshBreakdown() {
-        guard let kind = expanded else { return }
+        guard let kind = expanded, kind != .cpu || !sysCPUCores || cpuAppsExpanded else { return }
         lastBreakdownRefresh = Date()
         breakdownIsLoading = breakdownRows.isEmpty
         let sampleInterval = percentageSampleInterval
@@ -357,7 +371,30 @@ package struct SystemSection: View {
                         .frame(height: 30)
                         .graphCeilingLabel(MetricFormat.percent(1))
                 }
-                breakdownList(for: .cpu)
+                // The apps list folds only under the per-core bars; without
+                // them CPU expands straight to its apps, like GPU and Memory.
+                if sysCPUCores, expanded == .cpu {
+                    if !monitor.snapshot.cpuCoreUsage.isEmpty {
+                        CPUCoreMatrix(usage: monitor.snapshot.cpuCoreUsage)
+                    }
+                    Button {
+                        toggleCPUApps()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(cpuAppsExpanded ? 90 : 0))
+                            subsectionLabel(FeatureStrings.cpuCores(l10n.language).apps)
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                if !sysCPUCores || cpuAppsExpanded {
+                    breakdownList(for: .cpu)
+                }
             } else if editing, cpuAvailable {
                 PanelHiddenItemRow(title: l10n.s.cpuLabel, systemImage: "cpu", isVisible: $sysCPU)
             }

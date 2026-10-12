@@ -1030,6 +1030,20 @@ private struct PermissionPortalRow: View {
     }
 }
 
+// MARK: - Options that need a feature
+
+extension AppFeature {
+    /// What an option that needs this feature says while it is uninstalled.
+    package func enableReason(_ l10n: L10n) -> String {
+        FeatureStrings.notchEditor(l10n.language).enableFeature(hubTitle(l10n.s, hub: FeatureStrings.hub(l10n.language)))
+    }
+
+    /// Features, at this feature, for an option that needs it.
+    package func showInFeatures() {
+        SettingsRouter.shared.request(FeatureSettingsDestination(.features), targetFeature: self)
+    }
+}
+
 // MARK: - Permission names
 
 extension AppPermission {

@@ -262,6 +262,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/NotchActivityStrings.swift
         Sources/Vitruvian/Core/Notch/NotchTimerSupport.swift
         Sources/Vitruvian/Services/Notch/NotchTimerAlert.swift
+        Sources/Vitruvian/Services/Notch/NotchIslandAlert.swift
         Sources/Vitruvian/Core/Notch/NotchAccessorySupport.swift
         Sources/Vitruvian/Services/QuickTools/CameraPreviewSupport.swift
         Sources/Vitruvian/Core/NotchMusicExtrasStrings.swift
@@ -344,6 +345,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/GeneralSettingsStrings.swift
         Sources/Vitruvian/Core/SettingsPageStrings.swift
         Sources/Vitruvian/Core/BatteryTimeStrings.swift
+        Sources/Vitruvian/Core/CPUCoreStrings.swift
         Sources/Vitruvian/Core/MonitorLayoutStrings.swift
         Sources/Vitruvian/Core/KeepAwakeStrings.swift
         Sources/Vitruvian/Core/BluetoothSleepStrings.swift
@@ -526,6 +528,7 @@ if (( TEST )); then
         Sources/Vitruvian/Services/Metrics/DiskSupport.swift
         Sources/Vitruvian/Services/Metrics/MonitorSamplingPolicy.swift
         Sources/Vitruvian/Services/Metrics/USBDeviceSampler.swift
+        Sources/Vitruvian/Services/Metrics/CPUCoreSampler.swift
         Sources/Vitruvian/Services/Metrics/MaxCapacityProbe.swift
         Sources/Vitruvian/FanControlKit/TemperatureSensorSelector.swift
         Sources/Vitruvian/Services/Metrics/SustainedAlertGate.swift

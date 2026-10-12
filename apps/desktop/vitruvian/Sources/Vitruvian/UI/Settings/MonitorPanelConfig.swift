@@ -21,6 +21,7 @@ package struct MonitorPanelConfig: View {
     @AppStorage(Preferences.monitorShowSystem) private var showSystem: Bool
     @AppStorage(Preferences.monitorSysTemps) private var sysTemps: Bool
     @AppStorage(Preferences.monitorSysCPU) private var sysCPU: Bool
+    @AppStorage(Preferences.monitorSysCPUCores) private var sysCPUCores: Bool
     @AppStorage(Preferences.monitorSysGPU) private var sysGPU: Bool
     @AppStorage(Preferences.monitorPwrTemperature) private var pwrTemperature: Bool
     @AppStorage(Preferences.monitorSysBattery) private var sysBattery: Bool
@@ -124,7 +125,14 @@ package struct MonitorPanelConfig: View {
             }
             if AppFeature.monitorCPU.isAvailable {
                 itemTile(l10n.s.cpuLabel, symbol: MenuBarMetric.cpu.symbolName, value: $sysCPU, available: available,
-                         options: AnyView(chartOption($graphCPU)), summary: chartSummary(graphCPU))
+                         options: AnyView(VStack(spacing: 10) {
+                             chartOption($graphCPU)
+                             MonitorTokenOption(symbol: "square.grid.3x2",
+                                                title: FeatureStrings.cpuCores(l10n.language).perCore,
+                                                isOn: $sysCPUCores)
+                         }),
+                         summary: summary([(l10n.s.monitorGraphsSection, graphCPU),
+                                           (FeatureStrings.cpuCores(l10n.language).perCore, sysCPUCores)]))
             }
             if AppFeature.monitorGPU.isAvailable {
                 itemTile(l10n.s.gpuLabel, symbol: MenuBarMetric.gpu.symbolName, value: $sysGPU, available: available,

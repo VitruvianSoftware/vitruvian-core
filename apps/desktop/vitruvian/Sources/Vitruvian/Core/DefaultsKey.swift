@@ -438,6 +438,7 @@ package enum DefaultsKey {
     // System monitor — per-item visibility inside each panel section.
     package static let monitorSysTemps = "monitorSysTemps"
     package static let monitorSysCPU = "monitorSysCPU"
+    package static let monitorSysCPUCores = "monitorSysCPUCores"
     package static let monitorSysGPU = "monitorSysGPU"
     package static let monitorSysBattery = "monitorSysBattery"
     package static let monitorSysMemory = "monitorSysMemory"
@@ -747,6 +748,7 @@ package enum DefaultsKey {
     package static let pointerDisplayShortcut = "pointerDisplayShortcut"
     package static let windowEdgeSnapEnabled = "windowEdgeSnapEnabled"
     package static let windowEdgeSnapDisabledZones = "windowEdgeSnapDisabledZones" // comma-separated visual zone ids
+    package static let windowEdgeSnapZoneActions = "windowEdgeSnapZoneActions" // zone=action entries, + between split areas
     package static let windowGestureEnabled = "windowGestureEnabled"
     package static let windowGestureModifiers = "windowGestureModifiers"
     package static let windowGestureRaiseWindow = "windowGestureRaiseWindow"
@@ -813,6 +815,7 @@ package enum DefaultsKey {
     package static let notchControlOrder = "notchControlOrder"
     package static let notchSize = "notchSize"
     package static let notchOutlineEnabled = "notchOutlineEnabled"
+    package static let notchHideMenuBarGap = "notchHideMenuBarGap"
     package static let notchCustomWidth = "notchCustomWidth"
     package static let notchCustomHeight = "notchCustomHeight"
     // Fits the island to one Mac's camera housing; never backed up.
@@ -897,6 +900,7 @@ package enum DefaultsKey {
     package static let notchHideUntilHover = "notchHideUntilHover"
     package static let notchCoversMenus = "notchCoversMenus"
     package static let notchHoverDelay = "notchHoverDelay"
+    package static let notchCloseDelay = "notchCloseDelay"
     package static let notchReturnHome = "notchReturnHome"
     package static let notchHomeModule = "notchHomeModule"
     package static let notchOpensActivity = "notchOpensActivity"
@@ -928,6 +932,7 @@ package enum DefaultsKey {
     package static let notchMascotPalette = "notchMascotPalette" // NotchMascotPalette.rawValue
     package static let notchMascotSide = "notchMascotSide" // NotchMascotSide.rawValue, beside the camera
     package static let notchMascotVisitFrequency = "notchMascotVisitFrequency" // NotchMascotVisitFrequency.rawValue
+    package static let notchMascotHidesWhenIdle = "notchMascotHidesWhenIdle" // hops into the island after a quiet while
     package static let notchCommandBar = "notchCommandBar" // the Command Bar comes out of the island
     package static let notchCommandBarStyle = "notchCommandBarStyle" // NotchCommandBarStyle.rawValue
     // Legacy inverse preference; the explicit visibility switch supersedes it.

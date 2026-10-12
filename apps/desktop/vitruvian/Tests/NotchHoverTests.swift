@@ -35,6 +35,7 @@ enum NotchHoverTests {
         defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
         defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
         defaults.set(NotchSupport.defaultHoverDelay, forKey: DefaultsKey.notchHoverDelay)
+        defaults.set(NotchSupport.defaultCloseDelay, forKey: DefaultsKey.notchCloseDelay)
         let fixture = NotchIslandFixture(defaults: defaults)
         fixture.displays = [display(physical: physical)]
         fixture.menusReadable = true
@@ -627,6 +628,31 @@ enum NotchHoverTests {
         adjusted.advance(0.36)
         suite.expect(adjusted.island.expanded, "the updated activation time completes normally")
 
+        for delay in [0.10, 0.18, 0.65, 1.5, 2.0] {
+            let custom = island()
+            defaults.set(delay, forKey: DefaultsKey.notchCloseDelay)
+            custom.island.hover(true)
+            custom.advance(0.26)
+            leave(custom)
+            custom.advance(delay - 0.01)
+            suite.expect(custom.island.expanded, "a hover-opened island waits for the selected closing time")
+            custom.advance(0.02)
+            suite.expect(!custom.island.expanded, "the selected closing time closes the island once it has passed")
+        }
+
+        let changedClosing = island()
+        changedClosing.island.hover(true)
+        changedClosing.advance(0.26)
+        defaults.set(1.5, forKey: DefaultsKey.notchCloseDelay)
+        leave(changedClosing)
+        changedClosing.advance(1.0)
+        suite.expect(changedClosing.island.expanded, "a changed closing time applies on the next exit without restarting")
+        changedClosing.pointer = top(changedClosing)
+        changedClosing.island.hover(true)
+        changedClosing.advance(1.0)
+        suite.expect(changedClosing.island.expanded && changedClosing.pendingWork == 0,
+                     "returning during a custom closing delay cancels the close without reopening")
+
         let active = island(before: playMusic)
         let reopening = active.island.reopeningModule
         active.island.hover(true)
@@ -647,13 +673,15 @@ enum NotchHoverTests {
 
         let preview = island()
         defaults.set(false, forKey: DefaultsKey.notchHoverExpands)
+        defaults.set(2.0, forKey: DefaultsKey.notchCloseDelay)
         preview.island.hover(true)
         preview.advance(0.26)
         suite.expect(preview.island.peeking && !preview.island.expanded && preview.pendingWork == 0,
                "preview-only mode responds promptly without expanding the panel")
         leave(preview)
         preview.advance(0.13)
-        suite.expect(!preview.island.peeking, "a preview closes within 130 ms of leaving")
+        suite.expect(!preview.island.peeking,
+                     "a preview keeps its own closing delay when a longer one was saved")
 
         for protect: (NotchIslandFixture) -> Void in [
             { $0.island.pinned = true }, { $0.island.fileDragChanged(true, internalDrag: true) },

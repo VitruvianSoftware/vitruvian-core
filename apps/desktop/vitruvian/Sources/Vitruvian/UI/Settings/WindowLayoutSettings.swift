@@ -21,6 +21,7 @@ package struct WindowLayoutSettings: View {
     @AppStorage(Preferences.windowDirectionalShortcut) private var directionalShortcutRaw: String
     @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled: Bool
     @AppStorage(Preferences.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones: String
+    @AppStorage(Preferences.windowEdgeSnapZoneActions) private var edgeSnapZoneActions: String
     @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled: Bool
     @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers: String
     @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow: Bool
@@ -75,6 +76,7 @@ package struct WindowLayoutSettings: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     WindowEdgeSnapZonePicker(disabledZonesStorage: $edgeSnapDisabledZones,
+                                             zoneActionsStorage: $edgeSnapZoneActions,
                                              text: text,
                                              resetTitle: l10n.s.shortcutReset)
                         .disabled(!edgeSnapEnabled)

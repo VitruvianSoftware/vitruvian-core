@@ -14,6 +14,15 @@ import VitruvianServices
 /// so ⌘C on a fragment keeps working.
 package struct ClipboardTextPreview: NSViewRepresentable {
     package let text: String
+    var font: NSFont = .systemFont(ofSize: 12)
+
+    /// The font last applied. The text view's own `font` reads the first
+    /// character, which a fallback font replaces for emoji or CJK text.
+    package final class Coordinator {
+        var font: NSFont?
+    }
+
+    package func makeCoordinator() -> Coordinator { Coordinator() }
 
     package func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
@@ -26,7 +35,8 @@ package struct ClipboardTextPreview: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = false
-        textView.font = .systemFont(ofSize: 12)
+        textView.font = font
+        context.coordinator.font = font
         textView.textContainerInset = NSSize(width: 8, height: 12)
         textView.textContainer?.lineFragmentPadding = 4
         textView.textContainer?.widthTracksTextView = true
@@ -35,8 +45,16 @@ package struct ClipboardTextPreview: NSViewRepresentable {
     }
 
     package func updateNSView(_ scroll: NSScrollView, context: Context) {
-        guard let textView = scroll.documentView as? NSTextView, textView.string != text else { return }
-        textView.string = text
-        textView.scroll(.zero)
+        guard let textView = scroll.documentView as? NSTextView else { return }
+        if textView.string != text {
+            textView.string = text
+            textView.scroll(.zero)
+        }
+        // Setting the font restyles the whole text, so only a new font does
+        // it, after any new text so all of that text takes it too.
+        if context.coordinator.font != font {
+            textView.font = font
+            context.coordinator.font = font
+        }
     }
 }

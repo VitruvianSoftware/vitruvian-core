@@ -5,8 +5,8 @@ import Foundation
 import VitruvianCore
 import VitruvianServices
 
-/// When the monitor reads connected devices, through the rule its sampling
-/// plan uses, against a scratch defaults suite.
+/// When the monitor reads connected devices and every CPU core, through the
+/// rules its sampling plan uses, against a scratch defaults suite.
 enum SystemMonitorPlanTests {
     static func run(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.system-monitor-plan"
@@ -39,5 +39,25 @@ enum SystemMonitorPlanTests {
         defaults.set(false, forKey: AppFeature.connectedDevices.availabilityKey)
         suite.expect(!reads(fullMonitorVisible: true, panel: SystemMonitorPanelNeeds(connectedDevices: true)),
                      "an uninstalled connected devices feature is not read, even for the preview")
+
+        let system = SystemMonitorPanelNeeds(system: true)
+        func readsCores(_ needs: SystemMonitorPanelNeeds) -> Bool {
+            SystemMonitor.readsCPUCores(panelNeeds: needs, defaults: defaults)
+        }
+        defaults.set(true, forKey: AppFeature.monitorCPU.availabilityKey)
+        defaults.set(true, forKey: DefaultsKey.menuBarCPU)
+        defaults.set(true, forKey: DefaultsKey.monitorSysCPU)
+        defaults.set(true, forKey: DefaultsKey.monitorSysCPUCores)
+        suite.expect(readsCores(system), "the panel's CPU row reads every core for its per-core bars")
+        defaults.set(false, forKey: DefaultsKey.monitorSysCPU)
+        suite.expect(!readsCores(system),
+                     "a CPU shown only in the menu bar does not read every core while the panel hides its CPU row")
+        defaults.set(true, forKey: DefaultsKey.monitorSysCPU)
+        defaults.set(false, forKey: DefaultsKey.monitorSysCPUCores)
+        suite.expect(!readsCores(system), "the Per core switch stops reading every core")
+        defaults.set(true, forKey: DefaultsKey.monitorSysCPUCores)
+        suite.expect(!readsCores(.none), "a closed panel does not read every core")
+        defaults.set(false, forKey: AppFeature.monitorCPU.availabilityKey)
+        suite.expect(!readsCores(system), "an uninstalled CPU monitor does not read every core")
     }
 }

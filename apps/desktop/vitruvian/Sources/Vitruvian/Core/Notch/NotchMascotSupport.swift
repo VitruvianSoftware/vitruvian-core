@@ -1197,6 +1197,15 @@ package enum NotchMascotSupport {
     /// with a ready face at most this often, since agents start many turns.
     package static let agentStartInterval: TimeInterval = 600
 
+    /// Hiding when idle, it goes into the island this long after it last did
+    /// anything, before it would doze off where it rests, even late at night.
+    package static let hideDelay: TimeInterval = 30
+    /// Busy just then, or under the pointer, it tries again this much later.
+    package static let hideRetry: TimeInterval = 3
+    /// How it goes into the island to hide: a yawn where it rests, then in
+    /// behind the camera, or out at a capsule's far end.
+    package static let hideAway = NotchMascotVisit.Kind.linger(.yawn)
+
     /// How it takes a countdown running out: startled by a plain timer's
     /// ring, glad at the end of a focus session, and ready to go again when
     /// a break is over.
@@ -1259,6 +1268,12 @@ package enum NotchMascotSupport {
     /// countdown run out.
     package static func reacts(in defaults: UserDefaults = .standard) -> Bool {
         isEnabled(in: defaults) && defaults[Preferences.notchMascotReactions]
+    }
+
+    /// Whether it hides in the island once nothing has happened for a
+    /// while, and comes out only to visit or to react.
+    package static func hidesWhenIdle(in defaults: UserDefaults = .standard) -> Bool {
+        isEnabled(in: defaults) && defaults[Preferences.notchMascotHidesWhenIdle]
     }
 
     package static func visitFrequency(in defaults: UserDefaults = .standard) -> NotchMascotVisitFrequency {

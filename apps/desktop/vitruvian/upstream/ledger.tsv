@@ -198,3 +198,73 @@ dd6e62a843508f5bfda3e72eff0a9e993f918577	ed2d232063e7c46beeaa0ab12f25b7e1123cf20
 0b428c4d2aab60507e28c9967f76078ec5fa57be	7530b84f719b410357b3950a8543824e643a6015	2026-10-07	ported	#2852	feat(network): add a bits per second option for network speeds (#2748)
 0ee0099c49ca12cfd94bbe652116711058062cee	252ee72a426deb6e90d320e882e92935280f9128	2026-10-07	ported	#2852	fix(screenshot): keep the editor footer inside small windows (#2735)
 1d32501ef3248fb3bf807b685f84864a12ab5e56	1ff3217341bd491bda1590f90250e996e4cd0583	2026-10-07	skipped	touches only upstream-only paths	Record and credit the second October 7 batch in the changelog
+dffc16c8b8de0ea499a12001d2f79097fa6fcbc2	b66fb8533b23119ac01d00fcc2b86758ee618d71	2026-10-08	ported	#3120	fix(audio): preserve mute keys when output controls change (#2789)
+d606f9fdffa33df5b9a87d26affe98d037a5fde6	bd0766f8b7b9019a6966e35460e9fb9e0a808e84	2026-10-07	ported	#3120	feat(notch): let the companion hide in the island when idle (#2798)
+6d0c0865796962a3e0368a22e019c823b313fab0	e8b5eadb9692fff26bfffe6f92a6b017801e115c	2026-10-07	ported	#3120	feat(window-layout): choose what each snap zone does and split edges into areas (#2797)
+23b2ce4e707bd145955cfbb97c606407c746f26e	bfeccfc120870039a1d3727b5611c09df679f137	2026-10-08	ported	#3120	feat(monitor): show per-core CPU load in the panel (#2682)
+33f3e4f0646fed29fd2b7344fe42cc1651d314ab	1727b74d844845bd895f6abba86a239098d09f89	2026-10-08	ported	#3120	feat(clipboard): format JSON and copy text from images in the preview (#2723)
+b22ef8b92990214e3a6ab257c60a442a39542a3d	e3665685e20263f96407ccbf2c42583f58cbd6b4	2026-10-07	ported	#3120	feat(notch): switch shuffle from the island's music page (#2770)
+de21cefd40200712116fa835a2ebff33b52b6df3	0cf766fa62426f0ee6e42bee32e2332160d3f843	2026-10-07	skipped	touches only upstream-only paths	Record and credit the third October 7 batch in the changelog
+c699f21d6975e4543707fd6cb94078abd9324c86	32421bc1fd8275084c99a51fcc47fbd224eec301	2026-10-07	ported	#3120	feat(notch): let the closing time after hover be adjusted (#2492)
+af8ca9ce3363641cbe184856bdae349e605a0faf	4cafdd15ccd506d973cfb78def89a88a75268260	2026-10-07	skipped	touches only upstream-only paths	Document the hover closing time setting
+44ba22c77a9a3232ff5e3003df20f75013832a21	608e1de254608635996e4e2814c43ddb7019d819	2026-10-07	ported	#3120	feat(notch): put a microphone fader beside the output in the mixer (#2490)
+81aa3cc95c66b260540ff0f7646f9ad7e9ad2610	6d429b1ac659556fc68ac0d0be60f69057abca22	2026-10-07	skipped	touches only upstream-only paths	Document the microphone fader in Dynamic Island
+724e3ac81b73a0a80cb913a6f0fea852c72b0610	81102ebec42f4f12ec06074a2bebfb14bcdc7ab5	2026-10-07	ported	#3120	feat(notch): give the Tools page the quick panel's icon (#2491)
+e974300199c03d83790133aaee75e66238148709	74b3c4ba7333c7d626d0d85087f8cd4401a9e2d2	2026-10-07	skipped	touches only upstream-only paths	Document the Tools icon in Dynamic Island
+3bdbf1adeaed7c340a1d59985ce75008fef8a733	9bda8006ef359f1a718cef25418265eb0f663635	2026-10-07	ported	#3120	fix(recorder): release the output device listener when a recording stops (#2814)
+6cded33214de6af360b0b3c498ebea621fe122d8	9f9bb93229bc1d2e2ffaa4b16ee4eb2a308cc658	2026-10-07	ported	#3120	fix(notch): keep the trash confirmation above the island (#2818)
+449942feb5eb69ab22f4633fdc69979ca6ccd7ab	24ae27c2bbaa9b4e4f888b080a23e81954b14b28	2026-10-08	ported	#3120	Fix Cleaner action scrolling in compact panels (#2808)
+20f962db8b9bb8460f9530412c0e344b9c027e8d	710b8dd0711badf5297db7f9a81c7bca33787ece	2026-10-08	ported	#3120	fix(notch): add an option to hide the menu bar gap (#2807)
+fe23c92d3a6d0dc0a9a2819f2270f35c22c0ba29	327b06d591fa7cef0d281270bbb91742cb922547	2026-10-07	ported	#3120	fix(screenshot): preserve closed pen drawings (#2819)
+360d8f40564169987072bee0592c19a457785c36	ca214e6ef44a931698f2307823ce2e83e3679b60	2026-10-07	ported	#3120	fix(mixer): give back the level the mixdown tap takes on wide outputs (#2821)
+29322c93c96f9890fbe8c3bbf6cf65990cb80fef	3abd88bcb8f98b2cb5547ab58b80dceb99438a51	2026-10-07	ported	#3120	fix(notch): gray out options and island buttons that cannot be used (#2815)
+6031041f2ddac7aaae4756f69ce6f71c4fa4d8c3	f8db665e162f03edb3cf7a29e3686453847e13d7	2026-10-08	pending	-	feat(screenshot): send captures to the shelf and edit shelf images (#2820)
+9dfc74a9fc13f7ad1717c36477e20b5c501373e7	25eff25bbd0cf9c0e72f36f76bb5b048dbde94f6	2026-10-08	pending	-	feat(notch): name the song and play or pause from the closed music strip (#2823)
+83f0cc9eb9ba237cb2dbeeb1949a8373f9de8fee	7f6c4a118c7867e3b0e8917f698c3255032477f8	2026-10-07	pending	-	feat(notch): warn in amber and red when the battery runs low (#2804)
+93f0a6f91bf6d564e021946f66cca5957a9ca4da	b558838821c1a95ed5b02f34c65fd77d59cecc39	2026-10-08	pending	-	fix(recorder): give back the level the mixdown tap takes on wide outputs (#2824)
+8886ba376499b71fe78c0d4db42172de0cb4b7a6	49bfa9a5aa5f0e68b7ba1117d6895c6e69d5e1a7	2026-10-08	skipped	touches only upstream-only paths	Update changelog and credits for the reviewed PR batch
+a5e761a9251d357e030007005f05f879b7f6ce70	29db1e420e7942d247248b284fe9364e85e81bb6	2026-10-08	pending	-	Prepare v3.4.1-beta.3 with audited fixes and idle companion default
+7ad9b5dfc8a9d0149cca9dd3bcc7c6ec7b61d1cd	d8801feecff410a32c83481c58ab80889e3f336d	2026-10-08	skipped	touches only upstream-only paths	Reopen Unreleased after v3.4.1-beta.3
+ec11ec7da2010f34d56851ee83905c3dfef55cda	de72843f00f6706a0e66c677ea2120100f77de4a	2026-10-08	pending	-	fix(wine): preserve output routing and avoid activation clicks (#2842)
+f0a2cf62e793bbe256e12fd65501d7648a43baa2	9d7228e7dcba9c6d88d1f983d3d85cda3bd65641	2026-10-08	pending	-	fix(shortcuts): preserve media pastes and brightness key releases (#2838)
+41a4550cdaad6b6d493629ac5142073f0c16f808	e240d6cc9615c68a65a6bec78c640fed0225b5f6	2026-10-08	pending	-	fix(dock-preview): stop scroll jumps on hover (#2836)
+7871bc9c7427b35d2277ebd3d0adadb4102310e8	0bce74eafb5e0fab6b0fcae6072830fad86cae71	2026-10-08	pending	-	fix(command-bar): take the keyboard again when the drop shows the bar (#2840)
+ec33cc62dc525232c445eaaa280681d03d73b47b	673a56be5d9e7e80007264580bb3245b325921a3	2026-10-08	pending	-	feat(notch): open preview files in their default app (#2835)
+2094fd67fe78000b224177629892b96034c7cbe9	ba36889700d3e8f9b6195184593ad8dd844057cf	2026-10-08	pending	-	fix(notch): show Safari downloads and announce them when they finish (#2841)
+b6d8d2db8715108138462ec6b5c5857eeb67375a	8bbb6564cc6db1531ceedd034ae2c5e5736572a0	2026-10-08	skipped	touches only upstream-only paths	Consolidate changelog for the reviewed PR batch
+ef03edf5ef83228f65f91f9fe495ed02c5713ec4	633ae853174e3291da0781d7be37a9551ee21085	2026-10-08	pending	-	fix(notch): read a watched percentage with all its digits and its minus sign (#2802)
+6657999815a14e47007cb0d702e6dcd70badbd33	855d0fa1c4e8061bff436763b5610e5a3e26ab8f	2026-10-08	pending	-	fix(command-bar): answer three numbers spaced around a minus or a slash (#2801)
+b129efc4dfd108ef48c5d39c01be19faa63fcdd7	16b36f45c54d363667ea357fa0bd2a2054d00234	2026-10-08	pending	-	fix(cleaner): end a protected shared domain at a dot (#2800)
+13985a0aac44cd9b25f700ed126af910938a44b1	3688edb426415ef65f25c5f3570aaade7d1e238e	2026-10-08	pending	-	fix(cleaner): remove only an entry's own extension from its identifier (#2799)
+c62a9bd05a5682dd4b411bf9339b2e37172cd4cb	1277b27029ae85d5f13ef328aa868eeeb4f192e6	2026-10-08	pending	-	fix(command-bar): persist learned search ranking across launches (#2780)
+96b3bbb8543fa0f017c0be1d4b5c67d46cd6f8f8	f733de52d7b62714ac148a424b2553cdfc049204	2026-10-08	pending	-	fix(notch): detect Now Playing clients missing process bundle identifiers (#2777)
+2ae5f801596bd6fc4020675734c9d331846b6ddb	3de6390bb9da8fff2f467f18f1bb99e74dbc2ec9	2026-10-08	pending	-	feat(clipboard): bring back the list window as the default history layout (#2851)
+66b934a655aebad420e7186b0253e2bc7e6b0e15	67c6c7c5bf006c2c59b419a30a343919a9667167	2026-10-08	pending	-	fix(screenshot): show the island in Vorssaint captures when it shows in captures (#2849)
+45424c5ac445574d35fd61e6f4a79940562f7ba8	06e4cab868081d0a9d879b3d4e757fb245f75fce	2026-10-08	pending	-	fix(settings): add a button to show and hide the sidebar (#2848)
+b393e746135efc0b1b5bbde29821f9c53bd1c6b0	f83d25de7be0d8ec30b99dcd906289bb494e4880	2026-10-08	pending	-	fix(popover): reopen the panel on the next click after closing (#2846)
+aa67cfd7eab70b39a0aebcbdfb5d5fc61a1137a4	20950f77becd6178686261d3e6f121d25bb188b0	2026-10-08	pending	-	fix(uninstall): clear application shortcuts and preferences on uninstall (#2727) (#2788)
+06a8f256da901647981e2b4eeab24206842d2ff6	36f6ded5c39b4011a67501a9928dfed6e8d59d93	2026-10-08	pending	-	feat(notch): open the music app from the island when nothing is playing (#2774)
+07099bf38653db3eefc614c50b4f6ebf137bf35b	5103ae7370b672ddbc3b13b3cd87d51b6b9373b3	2026-10-08	skipped	touches only upstream-only paths	Document reviewed improvements and contributor credits
+b1d9ae350fd88a5bdf05245423fb99c77f41f25b	782da946e7ab445145b3f77f946810bcdd14ab6f	2026-10-08	pending	-	Maintenance update
+54fc205b6471811c4da78a174acdd3114c66849c	be908b8737071e5cd3b5d156463c4b9cfeef3c05	2026-10-08	pending	-	Update release
+4dc8c9e3d3dbd906eddc74a33c6454585032f243	3563ce005481f1b933cf82d5a5cc8e5b3a79e2e2	2026-10-08	pending	-	Update release
+b0599423cbf38dd0e28415ccd3f9874a2548668f	95b310a3565edecd2cc905ddaf3105528039cdb4	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
+1cd568e7087779ff4b2e6f7e6f63812cf8515639	18b7a3c8a33bf0aef39b8fc701553fe27cae28fd	2026-10-08	pending	-	Maintenance update
+e08b648a148670dede7fec3e22010bcd483089d1	9e3c4e9d5d6e8f690ae2abb05dbdbeb61a98498e	2026-10-08	pending	-	feat(screenshot): make window highlighting optional (#2867)
+c7d053e9765e1bdf422b32f80bf80c1cb1eae47d	1be11c75e6fe853586820dce10e13bbfac476fd0	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
+8a850ec7bc64e17ed7e0d13b1d66a6195f90d202	67b3545f88ca717d08944cab998d2e421aa78e75	2026-10-08	pending	-	Maintenance update
+75b6341ac96b1fffe8d4cf5fc27df43a612e4638	9b04241eb309191a3e3d9f657617754303c85eb6	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
+7a60c1f4a5e4938ca93c29093dcd949b69617051	2e755046a071134eb743574d7e4336811559867c	2026-10-08	pending	-	Maintenance update
+25aa41f6960ba1273762f7b3903ddd980b889f84	c6ff3a36b387f5f627a7c5c7b111cc147961cb4c	2026-10-08	pending	-	Maintenance update
+aea106cb5d52045c99810cf672da891d2a20b67d	13f358c55f397e9e06e196d9516f7d5c32a439a2	2026-10-08	pending	-	Update release
+cb84ea01410710350dc373417715990351f79f00	78054bcd650581d100e99b687e83f9c34183eeb5	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
+47c2653c3ced7b0118ff88b653ebb2425c690021	cc4c89821a8c850e2db8fcd33178181ed2b24986	2026-10-09	pending	-	chore(agents): update AI price list
+21eb10b80c4cb81fb4ff81c93a6d3afb18e74651	caf6d4954498a8fa69a0a71f00b8ee4d5430fead	2026-10-10	skipped	touches only upstream-only paths	Update README
+98666d8c609a660263b3fe08ab0441ea4691ec3d	4f016c1ccb0fab2b0621b08c94e6edf954878a3a	2026-10-11	pending	-	fix(settings): restore feature install and uninstall buttons
+147684e9be89b1f12878630824a78fee431db54f	c5648e2960bf8f0ab4d028a9c554e413e1d8b0d8	2026-10-11	pending	-	fix(mouse): press Back and Forward before the menu re-enables them (#2893)
+f4997b1a77d8e8be6a3a60e5558a4abe3f0a8b08	06bae72536d1db17264e385b5d9f9d3e32511268	2026-10-12	pending	-	fix(notch): show the active output icon in volume feedback (#2951)
+98b7d89d9d5d475cd1674b64b5948b8d8f7f0d0e	6850b49559194e35b2fe89f48526a8398fac4b14	2026-10-11	pending	-	fix(command-bar): count days until 29 february to the next leap year (#2869)
+d4db8939ceb8432bc8c2d10ca3d9348b83204036	6babdd3e347bedf9006b4170aaa7559a7e5b8b89	2026-10-11	pending	-	fix(mouse): give side clicks back to apps without Back and Forward (#2894)
+e124c91f439b588de033ba0900e2f3e670ba7103	49052fa20aab16620c77c7592569b416721dbd09	2026-10-11	pending	-	fix(notch): recover lyrics across catalog and artist metadata variants (#2963)
+f6149ab06f510e7c9036337c1a63983e3bb03680	aa313801a07d03094c9730bd0ac026634b67bfda	2026-10-11	pending	-	feat(notch): Show current input source in Dynamic Island while switching (#2898)
+fe24c1766d568b132c1c78c554cc422381a3a17d	8617f348451229ef5e88608053bb48917323469e	2026-10-11	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates

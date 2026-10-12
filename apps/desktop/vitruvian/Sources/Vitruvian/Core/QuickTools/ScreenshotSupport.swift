@@ -1428,6 +1428,32 @@ package enum ScreenshotSupport {
 
     // MARK: - Annotation model
 
+    /// Movement in view points, so clicks keep the same tolerance at every
+    /// zoom. Only the pen keeps its path when it returns to the start; other
+    /// tools still discard a shape whose endpoints form a click.
+    package struct EditorDrag {
+        private var start: CGPoint = .zero
+        private var stayedNearStart = true
+        private var endsNearStart = true
+
+        package init() {}
+
+        package mutating func begin(at point: CGPoint) {
+            start = point
+            stayedNearStart = true
+            endsNearStart = true
+        }
+
+        package mutating func update(to point: CGPoint) {
+            endsNearStart = hypot(point.x - start.x, point.y - start.y) < 7
+            stayedNearStart = stayedNearStart && endsNearStart
+        }
+
+        package func isTap(for tool: Tool) -> Bool {
+            tool == .freehand ? stayedNearStart : endsNearStart
+        }
+    }
+
     package enum Tool: String, CaseIterable {
         // Case order is the default rail order and therefore the default
         // mapping for keys 1 through 9. Put the common actions first.
