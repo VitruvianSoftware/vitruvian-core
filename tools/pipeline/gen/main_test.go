@@ -589,7 +589,7 @@ func TestRenderArtifactUpload(t *testing.T) {
 	withJob, withoutJob := splitJob(t, got, "  unit-with-artifacts:", "  unit-without-artifacts:")
 
 	for _, want := range []string{
-		"uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2",
+		"uses: " + pin("actions/upload-artifact"),
 		"name: alpha",
 		// Resolved through `bazel info`, not the workspace symlink: the unit's
 		// own flags decide which bin directory Bazel actually writes to.
@@ -817,7 +817,7 @@ func TestPlannerIsBuiltWithGoNotBazel(t *testing.T) {
 			!strings.Contains(job, "go build -o \"$planner\" ./tools/pipeline/plan") {
 			t.Errorf("%s job must build the planner with go build", name)
 		}
-		if !strings.Contains(job, "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e") {
+		if !strings.Contains(job, pin("actions/setup-go")) {
 			t.Errorf("%s job must set up Go with the SHA-pinned action", name)
 		}
 	}

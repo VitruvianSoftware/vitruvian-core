@@ -32,11 +32,15 @@ go_library(
         "unit.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/pipeline/gen",
-    deps = ["//tools/pipeline/unitfile"],
+    deps = [
+        "//tools/ci/actionpins",
+        "//tools/pipeline/unitfile",
+    ],
 )
 
 go_binary(
     name = "gen",
+    data = ["//:pins_manifest"],
     embed = [":gen_lib"],
     visibility = ["//visibility:public"],
 )
@@ -49,6 +53,8 @@ go_test(
     ],
     data = glob([
         "testdata/**",
-    ]),
+    ]) + [
+        "//:pins_manifest",
+    ],
     embed = [":gen_lib"],
 )
