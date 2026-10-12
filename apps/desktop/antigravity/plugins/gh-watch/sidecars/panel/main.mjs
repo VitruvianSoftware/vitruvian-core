@@ -33,13 +33,16 @@ import { Response, SidecarApp } from "sidecar_sdk";
 
 import {
   fetchCommitChecks,
+  fetchFailureLog,
   fetchFeedback,
   fetchPr,
   fetchQueue,
   fetchReviewRequests,
+  rerunFailedJobs,
   resolvePr,
   setAutoMerge,
 } from "./lib/github.mjs";
+import { extractFailureExcerpt, parseCheckUrl } from "./lib/logs.mjs";
 import { listFlaky } from "./lib/flakes.mjs";
 import { Inbox } from "./lib/inbox.mjs";
 import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
@@ -250,6 +253,47 @@ app.api("/api/updates", (data) => {
 app.api("/api/unwatch", (data) => {
   store.remove(String(data.key ?? ""));
   return { ok: true };
+});
+
+// POST /api/failure-log {key, checkName}: fetches the failed log excerpt for a check.
+app.api("/api/failure-log", async (data) => {
+  const watch = store.get(String(data.key ?? ""));
+  if (!watch) return fail("That pull request is not being watched", 404);
+  const checks = watch.failingChecks ?? [];
+  const check = checks.find((c) => c.name === data.checkName) ?? checks[0];
+  if (!check?.url) return fail("No run URL found for that check", 404);
+  const parsed = parseCheckUrl(check.url);
+  if (!parsed?.runId)
+    return fail("Could not parse workflow run ID from check URL", 400);
+  try {
+    const raw = await fetchFailureLog(watch.repo, parsed.runId);
+    const excerpt = extractFailureExcerpt(raw, 50);
+    return { checkName: check.name, runId: parsed.runId, excerpt };
+  } catch (err) {
+    return fail(err.message);
+  }
+});
+
+// POST /api/rerun {key, checkName?}: reruns failed jobs for failing checks on a PR.
+app.api("/api/rerun", async (data) => {
+  const watch = store.get(String(data.key ?? ""));
+  if (!watch) return fail("That pull request is not being watched", 404);
+  let checks = watch.failingChecks ?? [];
+  if (data.checkName) checks = checks.filter((c) => c.name === data.checkName);
+  const runIds = [
+    ...new Set(checks.map((c) => parseCheckUrl(c.url)?.runId).filter(Boolean)),
+  ];
+  if (runIds.length === 0)
+    return fail("No rerun targets found for failing checks", 400);
+  try {
+    for (const runId of runIds) {
+      await rerunFailedJobs(watch.repo, runId);
+    }
+    await watcher.check(watch.key);
+    return { watch: store.get(watch.key), reruns: runIds.length };
+  } catch (err) {
+    return fail(err.message);
+  }
 });
 
 // POST /api/refresh: check every open pull request now.

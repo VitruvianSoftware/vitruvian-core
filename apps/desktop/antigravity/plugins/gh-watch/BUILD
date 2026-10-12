@@ -27,6 +27,7 @@ js_library(
         "sidecars/panel/lib/github.mjs",
         "sidecars/panel/lib/inbox.mjs",
         "sidecars/panel/lib/landing.mjs",
+        "sidecars/panel/lib/logs.mjs",
         "sidecars/panel/lib/notices.mjs",
         "sidecars/panel/lib/pace.mjs",
         "sidecars/panel/lib/reviews.mjs",
@@ -55,6 +56,13 @@ js_test(
     size = "small",
     data = [":lib"],
     entry_point = "sidecars/panel/lib/landing.test.mjs",
+)
+
+js_test(
+    name = "logs_test",
+    size = "small",
+    data = [":lib"],
+    entry_point = "sidecars/panel/lib/logs.test.mjs",
 )
 
 js_test(
@@ -119,6 +127,7 @@ pipeline_unit(
         ":decide_test",
         ":flakes_test",
         ":landing_test",
+        ":logs_test",
         ":note-pr-create_test",
         ":notices_test",
         ":pace_test",

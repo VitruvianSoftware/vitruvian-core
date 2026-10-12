@@ -28,6 +28,8 @@ const $ = (id) => document.getElementById(id);
 const FONT_KEY = "cowork-artifact-fontscale";
 const REDRAW_MS = 5000;
 const PRESENCE_MS = 10000;
+const openLogs = new Map();
+const rerunInFlight = new Set();
 
 async function callApi(path, { method = "GET", body } = {}) {
   const res = await sidecar.fetch(path, {
@@ -174,10 +176,109 @@ function card(watch) {
       `Checked ${ago(watch.checkedAt)} · wakes ${mine ? "this conversation" : "another conversation"}${watch.addedBy === "hook" ? " · added automatically" : ""}`,
     ),
   ];
-  if (watch.failing?.length)
+  const failingList =
+    watch.failingChecks?.length > 0
+      ? watch.failingChecks
+      : (watch.failing ?? []).map((name) => ({ name }));
+  if (failingList.length > 0) {
+    const checkItems = failingList.map((check) => {
+      const logKey = `${watch.key}:${check.name}`;
+      const logState = openLogs.get(logKey);
+      const toggleBtn = el(
+        "button",
+        {
+          type: "button",
+          class: "failing-btn",
+          onclick: async (e) => {
+            e.preventDefault();
+            if (logState) {
+              openLogs.delete(logKey);
+              await load();
+              return;
+            }
+            openLogs.set(logKey, { loading: true });
+            await load();
+            try {
+              const res = await callApi("/api/failure-log", {
+                method: "POST",
+                body: { key: watch.key, checkName: check.name },
+              });
+              openLogs.set(logKey, { loading: false, excerpt: res.excerpt });
+            } catch (err) {
+              openLogs.set(logKey, { loading: false, error: err.message });
+            }
+            await load();
+          },
+        },
+        logState ? "Hide log" : "View log",
+      );
+
+      const itemChildren = [
+        el("span", { class: "bad" }, check.name),
+        check.url ? el("span", { class: "small" }, " · ", toggleBtn) : null,
+      ];
+
+      if (logState) {
+        if (logState.loading) {
+          itemChildren.push(
+            el(
+              "div",
+              { class: "log-box muted small" },
+              "Fetching failure logs...",
+            ),
+          );
+        } else if (logState.error) {
+          itemChildren.push(
+            el(
+              "div",
+              { class: "log-box error small" },
+              `Error: ${logState.error}`,
+            ),
+          );
+        } else if (logState.excerpt) {
+          itemChildren.push(el("pre", { class: "log-box" }, logState.excerpt));
+        }
+      }
+      return el("li", { class: "failing-item" }, ...itemChildren);
+    });
+
     lines.push(
-      el("p", { class: "small" }, `Failing: ${watch.failing.join(", ")}`),
+      el(
+        "div",
+        { class: "failing-section" },
+        el("p", { class: "small" }, "Failing checks:"),
+        el("ul", { class: "failing-list" }, ...checkItems),
+      ),
     );
+
+    const isRerunning = rerunInFlight.has(watch.key);
+    const rerunBtn = el(
+      "button",
+      {
+        type: "button",
+        class: "btn-rerun secondary",
+        disabled: isRerunning,
+        onclick: async () => {
+          rerunInFlight.add(watch.key);
+          notice(null);
+          await load();
+          try {
+            await callApi("/api/rerun", {
+              method: "POST",
+              body: { key: watch.key },
+            });
+          } catch (err) {
+            notice(err.message);
+          } finally {
+            rerunInFlight.delete(watch.key);
+            await load();
+          }
+        },
+      },
+      isRerunning ? "Rerunning..." : "↺ Rerun Failed Checks",
+    );
+    lines.push(rerunBtn);
+  }
   if (watch.lastWakeAt) {
     lines.push(
       el(
@@ -189,6 +290,13 @@ function card(watch) {
   }
   if (watch.lastError)
     lines.push(el("p", { class: "error small" }, watch.lastError));
+
+  const badges = [el("span", { class: `badge ${status.tone}` }, status.text)];
+  if (watch.review) {
+    badges.push(
+      el("span", { class: `badge ${watch.review.tone}` }, watch.review.text),
+    );
+  }
 
   return el(
     "article",
@@ -206,7 +314,7 @@ function card(watch) {
         },
         `#${watch.number} ${watch.title ?? watch.repo}`,
       ),
-      el("span", { class: `badge ${status.tone}` }, status.text),
+      el("div", { class: "card-badges" }, ...badges),
     ),
     el("p", { class: "muted small" }, `${watch.repo} · ${watch.branch ?? ""}`),
     el(

@@ -179,6 +179,7 @@ pull request until you turn it on.
 | `sidecars/panel/lib/decide.mjs` | When to wake and when to wait (pure logic) |
 | `sidecars/panel/lib/flakes.mjs` | Remembering flaky checks (pure logic) |
 | `sidecars/panel/lib/landing.mjs` | Green, queued, merged, landed (pure logic) |
+| `sidecars/panel/lib/logs.mjs` | Failure log parsing and excerpt extraction (pure logic) |
 | `sidecars/panel/lib/notices.mjs` | Merge conflicts, review feedback and the message text (pure logic) |
 | `sidecars/panel/lib/inbox.mjs` | Reads the notes the hook leaves |
 | `sidecars/panel/lib/watcher.mjs` | The polling loop |

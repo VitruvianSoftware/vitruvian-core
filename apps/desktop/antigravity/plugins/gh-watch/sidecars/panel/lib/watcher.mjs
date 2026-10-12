@@ -46,6 +46,7 @@ import {
   panelOpen,
   passDue,
 } from "./pace.mjs";
+import { reviewStatus } from "./reviews.mjs";
 
 // How often the watcher looks at the clock. A pass only runs when one is due,
 // so this costs nothing and lets a changed setting take effect at once.
@@ -258,6 +259,13 @@ export class Watcher {
       failing: snap.checks
         .filter((c) => c.bucket === "fail")
         .map((c) => c.name),
+      failingChecks: snap.checks
+        .filter((c) => c.bucket === "fail")
+        .map((c) => ({ name: c.name, url: c.url })),
+      review: reviewStatus(snap),
+      reviewDecision: snap.reviewDecision,
+      latestReviews: snap.latestReviews,
+      reviewRequests: snap.reviewRequests,
       closed: snap.state !== "OPEN",
       closedAt: snap.state !== "OPEN" ? (watch.closedAt ?? now) : undefined,
       readFailures: 0,

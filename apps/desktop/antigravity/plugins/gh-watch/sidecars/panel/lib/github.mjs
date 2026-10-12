@@ -30,7 +30,7 @@ import { collectFeedback } from "./notices.mjs";
 import { REVIEW_LIMIT } from "./reviews.mjs";
 
 const FIELDS =
-  "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup";
+  "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup,reviewDecision,latestReviews,reviewRequests";
 const PR_URL = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
 
 function gh(args, { cwd, timeoutMs = 20_000 } = {}) {
@@ -80,6 +80,9 @@ function toSnapshot(raw) {
     autoMerge: raw.autoMergeRequest != null,
     mergeCommit: raw.mergeCommit?.oid ?? null,
     checks: normaliseChecks(raw.statusCheckRollup),
+    reviewDecision: raw.reviewDecision ?? "",
+    latestReviews: raw.latestReviews ?? [],
+    reviewRequests: raw.reviewRequests ?? [],
   };
 }
 
@@ -272,4 +275,14 @@ export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
       author: pr.author?.login ?? "",
       updatedAt: pr.updatedAt ?? null,
     }));
+}
+
+// Fetches the failed log for a workflow run.
+export async function fetchFailureLog(repo, runId, run = gh) {
+  return run(["run", "view", String(runId), "--log-failed", "-R", repo]);
+}
+
+// Reruns all failed jobs in a workflow run.
+export async function rerunFailedJobs(repo, runId, run = gh) {
+  return run(["run", "rerun", String(runId), "--failed", "-R", repo]);
 }
