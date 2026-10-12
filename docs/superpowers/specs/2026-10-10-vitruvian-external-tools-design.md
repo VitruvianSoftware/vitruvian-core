@@ -23,7 +23,7 @@ It delivers four things:
   tools;
 - an **agreement sheet** and a place in Settings to see and remove them;
 - an **SDK**: the protocol written down, a Swift library, a command-line
-  tool, two samples, and tests any tool can be run against.
+  tool, three samples, and tests any tool can be run against.
 
 **Done when** all of these hold:
 
@@ -449,7 +449,7 @@ pipeline unit.
 | `Sources/VitruvianToolKit` | A library a Swift tool is written with: declare commands, handle them, call the app. |
 | `Sources/vitruvian-tool` | A command-line tool: `init` (a new tool from a template), `validate` (check a folder the way the app will), `run` (play the app's side in a terminal, so a tool can be developed without the app). |
 | `samples/` | Three sample tools: one in Swift using the kit; one in plain Python using nothing, to prove the protocol does not need the kit; one that reads the front window's title directly, to prove decision 1. |
-| `conformance/` | A scripted app's side that any tool can be run against. As built: Python 3 with no dependencies. It checks five things: the handshake, a command, an unknown command, the command again with every request refused, and shutdown. It also checks the params of the twelve messages a tool may send, against a table written by hand in the script. It does not read what a tool writes after its last answer. The tool it is proven against is `conformance/reference-tool`; stage D's plain-Python sample grows from it or replaces it. |
+| `conformance/` | A scripted app's side that any tool can be run against. As built: Python 3 with no dependencies. It checks five things: the handshake, a command, an unknown command, the command again with every request refused, and shutdown. It also checks the params of the twelve messages a tool may send, against a table written by hand in the script. The tool it is proven against is `conformance/reference-tool`. Stage D: it reads to the end of a tool's output, with a time limit on that last read, and the Python sample, `samples/hello-python`, grew from the reference tool, which stays. |
 
 `conformance/` and `samples/` are lower case because the repository's naming
 lint wants that outside a Swift source tree.
@@ -500,6 +500,9 @@ By hand, recorded in each pull request with the Mac and macOS version:
 - Update the app (permissions reset, as today); once Vitruvian has them
   back, the tool does too, with nothing extra to do.
 
+Stage D gathers these, and each stage's own checks by hand, into one
+numbered list: "By hand: every check of the sub-project", in section 15.
+
 ## 13. Out of scope, and where it goes
 
 None of these is held back for safety. Each is its own piece of work.
@@ -538,7 +541,7 @@ Each is its own plan and pull request.
 | A | **Built.** The SDK package with the protocol, its Swift types and the conformance script. The manifest read from JSON, and a pin of the protocol's sources in the app. | No |
 | B | **Built.** The runtime, tested against the fake tool and, on a Mac runner, a real child process. The tool host's two kinds. The broker's forms for outside tools; `storage` writing and the folder. A development switch installs one tool from a folder with no screen. | No, without the switch |
 | C | **Built.** The tool store, the agreement sheet, the tools section of Settings, the privacy section. Mock-ups first. | Yes |
-| D | The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks. | Only to a tool's author |
+| D | **Built.** The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks: gathered into one list, below; none has been done. | Only to a tool's author |
 
 **Stage A, as built (2026-10-10).** Each line is marked met only where a
 command that was run shows it. Run on macOS 27.0 with Xcode 27 and Swift 6.4.
@@ -654,6 +657,220 @@ Limits of stage C that are known and accepted:
 - A records file that cannot be read is kept until the next tool is added.
   Then it is moved aside, replacing an earlier moved-aside file.
 
+**Stage D, as built (2026-10-12).** Each line is marked met only where a
+command that was run shows it. Run on one Mac (Mac16,5, Apple M4 Max) with
+macOS 27.0, Xcode 27.0 and Swift 6.4. Nothing here was run on a CI runner or
+on Linux. Nobody opened the app, and no sample was added to it. Everything
+is in `packages/vitruvian-sdk` but one check in the app and its tests.
+
+| What stage D was to deliver | Met? | What shows it |
+|---|---|---|
+| The tool kit | Met | `bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolKitTests` passes with 13 tests. Both Swift samples are written with it and pass the conformance script in `swift_samples_test`; `RunTests.testTheSwiftSampleRuns` puts one through `run`. |
+| The command-line tool: `init` | Met in tests. The Swift template is built by hand only | `NewToolTests`, 10 of the 38 tests of `VitruvianToolCLITests`: it writes only in the folder named, refuses a folder that is not empty and a path that is a symbolic link, writes over nothing, takes a path with spaces, quotation marks and a slash at its end, and writes nothing for an id the app would refuse. `init_test` runs the built command: what it writes from the Python template passes `validate`, the conformance script and `run`. `templates_in_sync_test` compares the text the command holds with the two hello samples, byte for byte; it was seen to fail for one changed line of the held text and for one changed line of a sample. No test builds the Swift template: that takes `swift build`. It was built once by hand, by the agent that built this stage, with Swift 6.4: `Build complete!`, three `ok` lines from `validate`, `run: OK`, five `ok` lines from the conformance script. |
+| The command-line tool: `validate` | Met | `FolderCheckTests`. `protocol/examples/folders.json` holds 22 folders, and every verdict there is has one. The package's test and the app's `ToolFolderExamplesTests` each make all 22 and ask their own code: 23 checks in the app's `tool-runtime` suite, which passes with 525. An example whose verdict is `manifest` names the broken rule, and both sides are held to that too. |
+| The command-line tool: `run` | Met in tests. Control-C in a real terminal not checked: by hand | `DeskTests` and `RunTests`, 20 of the 38: a command, each refusal, a tool that hangs, floods, dies, will not leave, or speaks out of turn, and an interrupt sent with a signal, after which the tool's process is gone and its folder deleted. `testTheCommandCanReachNothingOfThePersons` holds that the command's sources name no pasteboard, workspace, sound, script or event API. Each test that starts a process was run ten times in a row: ten passes each. By-hand check 3 is the key itself. |
+| The three samples | Met in tests. In the app, not checked: by hand | `samples_test` and `swift_samples_test`: every sample's manifest against the schema, and each sample through the conformance script. For `front-window` the test printed `a command: showTitle: ran`: the Mac's test runner has Accessibility. Its refusal without Accessibility was not seen, and the title it read was not looked at. No sample has been added to the app: by-hand checks 7 to 12 and 19 to 21. |
+| The documentation | Met for its examples. The prose is not checked | `packages/vitruvian-sdk/docs/writing-a-tool.md`. `guide_test` checks each of its 29 fenced blocks: 17 of messages and 1 manifest against the schemas, 4 pieces of code against the sample each is taken from, 5 of commands against the verbs, flags and targets that exist, 2 of the command's own words against its source. No block is unchecked. Six mistakes planted one at a time were each caught with the block's line, and each was undone. The guide's first tool was followed step by step with the built command, in a folder that was then removed. The numbers in its table of limits were read against `ToolLimits`, not tested. |
+| The by-hand checks | Not checked: by hand | The list below: 29 checks, every one of the sub-project. None has been done. |
+| A person sees no change | Met in tests, not by hand | `platform` is unchanged at 766 checks and a full run reports `TESTS OK (49 suites)`; `selftest` passes. The app has no new text. Under the app's `Sources/` this stage changed one comment and one check: a program must be a file. |
+
+Where stage D differs from the sections above it, and from its own plan:
+
+- `run` does nothing on the Mac, and no flag makes it: each request is
+  printed and answered as done. The clipboard it reads and writes is a piece
+  of text it holds.
+- `run` gives a tool the terminal's environment. `--app-path` gives it the
+  short `PATH` the app has.
+- `run` is one run. It does not stop an idle tool, start a crashed one again
+  or count a flood, and it grants every service the manifest lists. It says
+  so in one line each time it starts a tool. The plan had no such line.
+- The reference tool stays, and the Python sample is beside it.
+- The Swift template names the kit by a path on disk, because the package is
+  published nowhere.
+- The conformance script reads what a tool writes on its way out, and that
+  last read has a time limit. The limit and its two tests are not in the
+  plan; `conformance_test` takes about nine seconds.
+- A preference still has no label and no screen.
+- The app refuses a program that is not a regular file once links are
+  followed: a named pipe or a device with the execute permission is no
+  program. `validate` already said so and the app did not. This is the one
+  change of behaviour in the app in this stage, it is not in the plan, and a
+  planted regression in `Tests/mutation_checks.py` holds it: run through the
+  script's own `main()`, it was detected.
+- The example folders number 22, not 20. The two more are that named pipe,
+  and a manifest that asks for protocol "2".
+- `validate`'s closing sentence also names a folder inside the app's own
+  support folder, which only the app can refuse.
+- `init` refuses a path that is a symbolic link, never writes over a file,
+  and keeps a name that happens to be one of the sample's own values. What it
+  tells the person to type next is quoted for a shell when the path needs it.
+  The plan's listing followed a link to an empty folder and wrote there.
+- `guide_test` checks more than the plan's: a field of a manifest example
+  the schema does not have, the table of the kit's calls against the kit, and
+  what the guide quotes the command as saying. A message that is not in the
+  protocol is reported with its line; the plan's listing stopped with an
+  error there.
+- The package's tests number 30, 13 and 38 for the protocol, the kit and the
+  command. The plan says 30, 12 and 31.
+
+**The five "done when" items of section 1, as they stand.** None is marked
+met here by a person, because none of the checks by hand has been done.
+
+1. *A sample installs from a folder, shows its sheet, and runs from four
+   places.* Not met. It needs the app: by-hand checks 7 to 12. What tests
+   show: the store adds the folder of a tool and the runtime starts a real
+   child process, runs its command and stops it.
+2. *A second sample reads the front window's title with no prompt of its
+   own.* Not met. By-hand checks 20 and 29, and 21 for the refusal. What
+   tests show: `front-window` ran its command through the conformance script
+   on a Mac whose test runner has Accessibility. Nobody looked at the title.
+3. *Killing, hanging or flooding a tool leaves the app responsive, and the
+   person is told once.* Met in tests, not by hand: the `tool-runtime` suite,
+   525 checks, against a fake tool and a real process. That the person is
+   told once on screen is by-hand checks 15 and 16.
+4. *A release build with no outside tool looks and behaves as it does
+   today.* Met in tests, not by hand, and with stage C's one difference: the
+   Features page of Settings has one more card. By-hand check 6.
+5. *The by-hand checks are recorded with the Mac and macOS version.* Not
+   met. None is recorded, because none has been done.
+
+**By hand: every check of the sub-project.** No agent can do these. The app
+is a menu-bar app the automation cannot see, and granting or taking away
+Accessibility is a security setting only a person changes. This is stage B's
+three checks, stage C's fourteen and stage D's own in one list, with the
+ones that say the same thing joined. Each is one action and what to expect,
+in an order that can be done top to bottom in one sitting. Record each in
+the pull request with the Mac and the macOS version, or say it was not done.
+
+Before you start, build this branch's app, and the samples and the command:
+`bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders //packages/vitruvian-sdk:vitruvian-tool`.
+Below, `vitruvian-tool` is `bazel-bin/packages/vitruvian-sdk/vitruvian-tool`,
+the Python sample is `packages/vitruvian-sdk/samples/hello-python`, and the
+two Swift samples are `bazel-bin/packages/vitruvian-sdk/built/hello-swift`
+and `built/front-window`. In the folder picker, Command-Shift-G takes a
+path. `Tools` and `ToolData` are under
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/`. Vitruvian
+must already have Accessibility. Do the checks of the app in light and in
+dark appearance, with stage C's mock-up page open beside it. Three checks
+need a tool no sample is, `many`, `long` and `stays`: the stage D plan's
+section "By hand" gives the commands that make them in `$TMPDIR`.
+
+*The command, with no app*
+
+1. **Run `vitruvian-tool validate` on the Python sample, then on
+   `$TMPDIR/many`.** Each prints three lines that start with `ok` and exits
+   with 0. The Python sample also gets one `note`, about `env python3`.
+2. **Run `vitruvian-tool run` on the Python sample in a real terminal, type
+   `hello` and Return, then `copyTime` and Return, then `quit`.** It first
+   prints one `note` that it is not the app. Each command prints what the app
+   would do and then `ran`. What was on your clipboard before is still there.
+3. **Run it again, and press Control-C while it waits for you to type.** The
+   prompt comes back at once, and `pgrep -fl 'hello-python/bin/tool.py'`
+   prints nothing.
+4. **Run `vitruvian-tool run "$TMPDIR/stays" --command hello`.** It prints
+   `ran      hello`, then within about three seconds
+   `NOT OK   still running 2 seconds after shutdown`, and returns.
+   `pgrep -fl 'stays/bin/tool.py'` prints nothing.
+5. **Run `vitruvian-tool init "$TMPDIR/swifty" --id com.example.swifty --name Swifty --publisher Example --template swift --sdk "$PWD/packages/vitruvian-sdk"`,
+   then `"$TMPDIR/swifty/build.sh"`, then `vitruvian-tool run "$TMPDIR/swifty/tool" --command hello --command count`.**
+   `Build complete!`, then `run: OK`. No test builds that template.
+
+*Adding a tool*
+
+6. **Open Settings, Features, and scroll to the end.** The last card is
+   "Tools from outside", with one quiet line and the button "Add a Tool…", as
+   mock-up (a). Nothing else on the page moved.
+7. **Click "Add a Tool…" and choose the Python sample's folder.** The sheet
+   of mock-up (e) appears, naming "Hello, in Python", its publisher, its two
+   commands and that folder. Cancel is the highlighted button.
+8. **Press Return on that sheet; then open it again and press Escape.** Each
+   time it closes, no row appears, and `Tools` holds no folder for the tool.
+9. **Open the sheet again and click "Add Tool".** A row appears, as mock-up
+   (b).
+10. **Open the command bar and run "Say hello from Python".** The app's short
+    message says "Hello from a Python tool", and the row says "Running". This
+    is the only check that the real tool host, broker and registry are joined
+    up at launch: every test builds its own.
+11. **Add that command to the radial menu and the Quick panel, record a
+    shortcut for it, and run it from each of the three.** The same message,
+    each time.
+12. **Run "Copy the time", then paste into a text field.** The time is
+    pasted, and the short message said "Copied" with that time.
+
+*A tool that stops*
+
+13. **Quit the app with the tool having just run.**
+    `pgrep -fl 'hello-python/bin/tool.py'` prints nothing.
+14. **Open the app again.** The row is still there, and `pgrep` still prints
+    nothing: the tool was not started as the app opened.
+15. **Run "Say hello from Python", then `pkill -f 'hello-python/bin/tool.py'`.**
+    The short message says once that the tool stopped working. Within a
+    second or two the command is offered again, and running it works.
+16. **Run the command and `pkill` it twice more, a few seconds apart, within
+    a minute of check 15.** No second message. After the third kill the row
+    says "Stopped working" and offers "Start Again". Click it, and the
+    command works.
+
+*Updating, switching off, and the other two samples*
+
+17. **Click the row, then "Update from Folder…", and choose the same
+    folder.** The detail of mock-up (c) closes when the picker opens; then
+    the sheet of mock-up (f) appears, titled as an update, with both versions
+    and without the bold "changed" line.
+18. **Switch the row off, then open the command bar.** "Say hello from
+    Python" is not offered. Switch it on: it is.
+19. **Add `built/hello-swift`, run "Count one more" twice, quit the app,
+    open it, and run it once more.** "Counted to 1", "Counted to 2", then
+    "Counted to 3".
+20. **Add `built/front-window`, record a shortcut for "Show the front
+    window's title", bring a Finder window to the front, and press the
+    shortcut.** The short message is that window's title, and no permission
+    prompt appeared, for the tool or for Vitruvian. This is the check of
+    decision 1.
+21. **Switch Vitruvian off under Accessibility in System Settings, run "Show
+    the front window's title" from the command bar, then switch it back
+    on.** The app plays its alert sound and shows no title, and no prompt
+    appears for the tool: the tool refused its command in plain words,
+    "Accessibility is not granted to the program that started this tool".
+    The app does not show a tool's reason for refusing; `vitruvian-tool run`
+    prints it.
+22. **Open the detail of "Hello, in Swift", click Remove, and press Return;
+    then click Remove again and choose "Remove and Delete What It Saved".**
+    Return closes the question of mock-up (g) with the tool still there.
+    After the second, the row goes, and `Tools` and `ToolData` hold nothing
+    for `dev.vitruvian.samples.hello-swift`.
+
+*Folders the app refuses, and the edges of the screens*
+
+23. **Copy the Python sample's folder, run
+    `xattr -w com.apple.quarantine "0081;00000000;Safari;" <copy>/bin/tool.py`,
+    and add the copy.** The alert of mock-up (d) says macOS has quarantined
+    the folder and shows the command; nothing was added.
+    `vitruvian-tool validate <copy>` gives the same reason.
+24. **Change the app's language to German in Settings, General, look at the
+    card, and change it back.** The app's words are German. Each tool's name
+    is as the tool wrote it.
+25. **Add `$TMPDIR/many` on the smallest display you have.** The statement
+    and both buttons of the sheet are visible without scrolling; the list of
+    32 commands scrolls.
+26. **Add `$TMPDIR/long`.** On the sheet, in its row and in its detail, the
+    name and the publisher stay on one line each, cut short, and plain: no
+    bold, no heading, no link.
+27. **Add `$TMPDIR/stays`, run "Say hello and stay" once, then Remove it
+    with "Remove and Delete What It Saved".** The app pauses for less than a
+    second and the row goes. Say in the pull request whether
+    `pgrep -fl 'com.example.stays/bin/tool.py'` still showed the program.
+
+*After the sitting*
+
+28. **Remove every tool you added, delete `$TMPDIR/many`, `long`, `stays`
+    and `swifty`, and run `pgrep -fl 'bin/tool'`.** Nothing of these tools is
+    running, and `Tools` and `ToolData` are empty.
+29. **When the app is next updated and macOS has reset its permissions:
+    grant Vitruvian Accessibility again, add `built/front-window`, and press
+    its shortcut.** The title shows again, with nothing extra to do for the
+    tool. This cannot be done in the sitting; say so until it has been.
+
 ## 16. Open questions
 
 Each had a default. James accepted every one on 2026-10-10. They are
@@ -668,7 +885,11 @@ section 15 says what was built. The stage C plan is
 `docs/superpowers/plans/2026-10-11-vitruvian-external-tools-stage-c.md`. Its
 mock-ups are
 `docs/superpowers/specs/2026-10-11-vitruvian-external-tools-stage-c-mockups.html`.
-Its table of decisions lists what it adds and where it differs.
+Its table of decisions lists what it adds and where it differs. The stage D
+plan is
+`docs/superpowers/plans/2026-10-12-vitruvian-external-tools-stage-d.md`. Its
+table of decisions lists what it adds and where it differs; section 15 says
+what was built, and what was built that the plan's text does not have.
 
 1. **Nothing on the island and no feature moved out in this sub-project**
    (decision 2). *Default: yes. It is about size, not trust.*

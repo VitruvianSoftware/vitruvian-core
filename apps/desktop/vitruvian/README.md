@@ -114,8 +114,11 @@ bazel build --config=macos-app --define=vitruvian_sample_tool=true //apps/deskto
 
 A tool that runs as its own program is added in Settings, under Features,
 in the section "Tools from outside": choose the tool's folder, read the
-sheet, and agree. To try it, choose
-`packages/vitruvian-sdk/conformance/reference-tool`. There is no development
+sheet, and agree. To try it, choose `packages/vitruvian-sdk/samples/hello-python`,
+or build the two Swift samples with
+`bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders` and
+choose one under `bazel-bin/packages/vitruvian-sdk/built/`. To write a tool,
+read `packages/vitruvian-sdk/docs/writing-a-tool.md`. There is no development
 switch and no build define for it: every build adds a tool the same way. The
 tool is a separate program with every permission the app has. The app keeps
 a copy in

@@ -179,6 +179,10 @@ package struct ExternalToolManifest: Equatable, Sendable {
         guard fileManager.fileExists(atPath: file.path, isDirectory: &isFolder), !isFolder.boolValue else {
             return .programMissing(program)
         }
+        // A file, and not only something that is there: a named pipe or a
+        // device can carry the execute permission and is no program.
+        guard (try? fileManager.attributesOfItem(atPath: file.path))?[.type] as? FileAttributeType == .typeRegular
+        else { return .programMissing(program) }
         let inside = file.pathComponents.count > root.count && Array(file.pathComponents.prefix(root.count)) == root
         guard inside else { return .programOutsideFolder(program) }
         guard fileManager.isExecutableFile(atPath: file.path) else { return .programNotExecutable(program) }

@@ -1,0 +1,180 @@
+{
+  "about": "Folders that `vitruvian-tool validate` and the app must judge alike. Each example says what to make in an empty folder, and `verdict`: `ok`, or the name of the first thing wrong with it. The steps of `make` are done in order. `manifest` writes vitruvian-tool.json: `base` with these changes, a field set to null left out. `file` writes a file of `bytes` bytes (none when left out) with the permissions `mode`, making the folders above it. `link` makes a symbolic link to `to`, as written. `pipe` makes a named pipe with the permissions `mode`: something that is there and is not a file. `quarantine` marks a file the way macOS marks a download. `limits` is the most the folder may hold; left out, it is the app's own 256 MB and 10,000 things. `rule`, on each example whose verdict is `manifest`, is the name of the manifest's rule that is broken, and both sides are held to it too. Neither side is given the other's answer: each is run and compared with `verdict`.",
+  "base": {
+    "id": "com.example.folders",
+    "name": { "en": "Folders" },
+    "version": "1.0.0",
+    "protocol": "1",
+    "publisher": "Example",
+    "runtime": { "kind": "external", "exec": "bin/tool" }
+  },
+  "examples": [
+    {
+      "about": "a manifest and a program",
+      "verdict": "ok",
+      "make": [{ "manifest": {} }, { "file": "bin/tool", "mode": "755" }]
+    },
+    {
+      "about": "no manifest",
+      "verdict": "noManifest",
+      "make": [{ "file": "bin/tool", "mode": "755" }]
+    },
+    {
+      "about": "a manifest that breaks one of its own rules",
+      "verdict": "manifest",
+      "rule": "idWithoutDot",
+      "make": [
+        { "manifest": { "id": "nodot" } },
+        { "file": "bin/tool", "mode": "755" }
+      ]
+    },
+    {
+      "about": "a manifest that asks for a newer protocol than there is",
+      "verdict": "manifest",
+      "rule": "unsupportedProtocol",
+      "make": [
+        { "manifest": { "protocol": "2" } },
+        { "file": "bin/tool", "mode": "755" }
+      ]
+    },
+    {
+      "about": "a manifest of more than 65,536 bytes",
+      "verdict": "manifest",
+      "rule": "tooLarge",
+      "make": [
+        { "file": "vitruvian-tool.json", "bytes": 65537, "mode": "644" },
+        { "file": "bin/tool", "mode": "755" }
+      ]
+    },
+    {
+      "about": "a program path that leaves the folder by its text",
+      "verdict": "manifest",
+      "rule": "programLeavesFolder",
+      "make": [
+        { "manifest": { "runtime": { "kind": "external", "exec": "../tool" } } }
+      ]
+    },
+    {
+      "about": "no program",
+      "verdict": "programMissing",
+      "make": [{ "manifest": {} }]
+    },
+    {
+      "about": "a folder where the program should be",
+      "verdict": "programMissing",
+      "make": [{ "manifest": {} }, { "file": "bin/tool/inner", "mode": "755" }]
+    },
+    {
+      "about": "a program that is a link to nothing",
+      "verdict": "programMissing",
+      "make": [{ "manifest": {} }, { "link": "bin/tool", "to": "nowhere" }]
+    },
+    {
+      "about": "a named pipe where the program should be, with the execute permission",
+      "verdict": "programMissing",
+      "make": [{ "manifest": {} }, { "pipe": "bin/tool", "mode": "755" }]
+    },
+    {
+      "about": "a program that is a link out of the folder",
+      "verdict": "programOutsideFolder",
+      "make": [{ "manifest": {} }, { "link": "bin/tool", "to": "/bin/sh" }]
+    },
+    {
+      "about": "a program that is a link to a file inside the folder",
+      "verdict": "ok",
+      "make": [
+        { "manifest": {} },
+        { "file": "lib/real", "mode": "755" },
+        { "link": "bin/tool", "to": "../lib/real" }
+      ]
+    },
+    {
+      "about": "a program with no execute permission",
+      "verdict": "programNotExecutable",
+      "make": [{ "manifest": {} }, { "file": "bin/tool", "mode": "644" }]
+    },
+    {
+      "about": "a program macOS has quarantined",
+      "verdict": "quarantined",
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "mode": "755" },
+        { "quarantine": "bin/tool" }
+      ]
+    },
+    {
+      "about": "a quarantined file that is not the program",
+      "verdict": "ok",
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "mode": "755" },
+        { "file": "notes.txt", "mode": "644" },
+        { "quarantine": "notes.txt" }
+      ]
+    },
+    {
+      "about": "as many things as a folder may hold: the manifest, bin, the program and one more",
+      "verdict": "ok",
+      "limits": { "things": 4 },
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "mode": "755" },
+        { "file": "fourth", "mode": "644" }
+      ]
+    },
+    {
+      "about": "one thing more than a folder may hold",
+      "verdict": "tooBig",
+      "limits": { "things": 3 },
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "mode": "755" },
+        { "file": "fourth", "mode": "644" }
+      ]
+    },
+    {
+      "about": "a link in the folder is one thing, and is not followed",
+      "verdict": "ok",
+      "limits": { "things": 4 },
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "mode": "755" },
+        { "link": "elsewhere", "to": "/usr" }
+      ]
+    },
+    {
+      "about": "fewer bytes than a folder may hold",
+      "verdict": "ok",
+      "limits": { "bytes": 400000 },
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "bytes": 300000, "mode": "755" }
+      ]
+    },
+    {
+      "about": "more bytes than a folder may hold",
+      "verdict": "tooBig",
+      "limits": { "bytes": 200000 },
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "bytes": 300000, "mode": "755" }
+      ]
+    },
+    {
+      "about": "no program and too many things: the program is what is said",
+      "verdict": "programMissing",
+      "limits": { "things": 1 },
+      "make": [{ "manifest": {} }, { "file": "second", "mode": "644" }]
+    },
+    {
+      "about": "quarantined and too many things: the quarantine is what is said",
+      "verdict": "quarantined",
+      "limits": { "things": 2 },
+      "make": [
+        { "manifest": {} },
+        { "file": "bin/tool", "mode": "755" },
+        { "quarantine": "bin/tool" }
+      ]
+    }
+  ]
+}

@@ -34,9 +34,12 @@ package final class CapabilityBroker {
     package struct Environment {
         package var isInstalled: (ToolID) -> Bool
         package var isGranted: (AppPermission) -> Bool
-        /// Whether the person allows this tool this capability. Always true
-        /// for a tool compiled into the app; a consent screen fills this in
-        /// when tools from outside arrive.
+        /// Whether the person allows this tool this capability. Always
+        /// true, for every tool. A tool from outside is trusted like an
+        /// app: the person agrees to the whole tool on one sheet, never to
+        /// one capability at a time, so nothing fills this in. What holds
+        /// such a tool to its manifest is `notDeclared`, as for a built-in
+        /// one.
         package var allows: (ToolID, Capability) -> Bool
         package var reportUndeclared: (ToolID, Capability) -> Void
 

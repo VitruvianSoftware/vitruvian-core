@@ -1,0 +1,25 @@
+{
+  "id": "dev.vitruvian.samples.front-window",
+  "name": { "en": "Front window" },
+  "description": {
+    "en": "Shows the title of the window in front. It asks macOS itself, not the app."
+  },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "macwindow",
+  "uses": ["notify"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "showTitle",
+        "title": { "en": "Show the front window’s title" },
+        "icon": "macwindow",
+        "surfaces": ["commandBar", "shortcut"]
+      }
+    ]
+  },
+  "activation": ["onCommand"],
+  "runtime": { "kind": "external", "exec": "bin/tool" }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "dev.vitruvian.samples.hello-python",
+  "name": { "en": "Hello, in Python" },
+  "description": { "en": "Says hello, and copies the time." },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "terminal",
+  "uses": ["notify", "clipboard.write"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "hello",
+        "title": { "en": "Say hello from Python" },
+        "icon": "hand.wave",
+        "surfaces": ["commandBar", "radial", "quickPanel", "shortcut"]
+      },
+      {
+        "id": "copyTime",
+        "title": { "en": "Copy the time" },
+        "icon": "clock",
+        "surfaces": ["commandBar"]
+      }
+    ]
+  },
+  "activation": ["onCommand"],
+  "runtime": { "kind": "external", "exec": "bin/tool.py" }
+}
