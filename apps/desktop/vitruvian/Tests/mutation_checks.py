@@ -643,6 +643,12 @@ MUTATIONS = [
      "    package var initialFocus: Choice { .cancel }\n",
      "    package var initialFocus: Choice { .agree }\n",
      "the sheet opens with Cancel focused, so Space cannot add the tool"),
+    ("a tool's detail opens with its first setting focused", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+     "    package var initialFocus: Focus { .close }\n",
+     "    package var initialFocus: Focus { settings.first.map { .setting($0.id) } ?? .close }\n",
+     "a tool's detail opens with Close focused, whatever its settings are: a switch first, a "
+     "field first, one of each kind, or sixteen switches, so Space cannot flip a setting"),
     ("the command that clears a quarantine breaks on a quote", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
      "        \"'\" + path.replacingOccurrences(of: \"'\", with: \"'\\\\''\") + \"'\"\n",

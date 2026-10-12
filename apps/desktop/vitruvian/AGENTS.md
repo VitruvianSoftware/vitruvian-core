@@ -571,6 +571,16 @@ of it but the protocol.
   closes; a value the store refuses is put back. The values are read when
   the detail opens and do not follow a running tool that changes its own.
   The agreement sheet does not list preferences.
+- The detail opens with the keyboard on Close
+  (`ExternalToolDetail.initialFocus`), by the agreement sheet's mechanism:
+  every control of the detail is bound to one focus
+  (`ExternalToolDetail.Focus`), and the first focus macOS places, which
+  would be the tool's first setting, is moved once
+  (`a_tools_detail_places_its_focus`). So Space at open cannot turn a
+  tool's switch. A control added to the detail gets a case of `Focus` and
+  `.focused($focus, equals:)`, or the first focus can land on it unseen.
+  A field saves when the detail's focus leaves it, read from that same
+  focus. Only pressing Space in the app proves it.
 - A tool's own words inside one of the app's sentences that has no line
   limit go through `ToolOwnWords.oneLine` first: an alert's title or
   message, and the app's short on-screen message. It gives one line of at

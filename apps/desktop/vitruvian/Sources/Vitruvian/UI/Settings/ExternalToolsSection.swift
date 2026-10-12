@@ -146,6 +146,24 @@ package struct ExternalToolDetail: Equatable {
     /// drawn by its id.
     package let settings: [ExternalToolSetting]
 
+    /// Each control of the detail the keyboard can be on.
+    package enum Focus: Hashable, Sendable {
+        case startAgain
+        /// One of the tool's own settings, by the preference's id.
+        case setting(String)
+        case shortcuts
+        case reveal
+        case remove
+        case update
+        case close
+    }
+
+    /// The control the keyboard is on when the detail opens. It is never
+    /// one that changes anything: with "Keyboard navigation" on in System
+    /// Settings, macOS puts focus on the detail's first control, which is
+    /// the tool's first setting, and Space turns a switch.
+    package var initialFocus: Focus { .close }
+
     /// How many rows the lists hold together.
     package var listRows: Int { settings.count + commands.count + uses.count }
     /// True when the lists are too long to draw whole, and scroll in a
@@ -579,10 +597,14 @@ private struct ExternalToolSettingRow: View {
     /// What the control holds now, and the last value that was saved.
     @State private var draft: ExternalToolSetting.Control
     @State private var saved: ExternalToolSetting.Control
-    @FocusState private var editing: Bool
+    /// The detail's focus: the keyboard is on this row's control while it
+    /// says this setting.
+    @FocusState.Binding private var focus: ExternalToolDetail.Focus?
 
-    init(setting: ExternalToolSetting, save: @escaping (PreferenceDeclaration.Value) -> Bool) {
+    init(setting: ExternalToolSetting, focus: FocusState<ExternalToolDetail.Focus?>.Binding,
+         save: @escaping (PreferenceDeclaration.Value) -> Bool) {
         self.setting = setting
+        _focus = focus
         self.save = save
         _draft = State(initialValue: setting.control)
         _saved = State(initialValue: setting.control)
@@ -595,7 +617,7 @@ private struct ExternalToolSettingRow: View {
             Spacer(minLength: 8)
             control
         }
-        .onChange(of: editing) { _, isEditing in
+        .onChange(of: focus == .setting(setting.id)) { _, isEditing in
             if !isEditing { commit(draft) }
         }
         .onDisappear { commit(draft) }
@@ -609,6 +631,7 @@ private struct ExternalToolSettingRow: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
+                .focused($focus, equals: .setting(setting.id))
         case .text(let text):
             field(TextField(setting.title, text: Binding(get: { text }, set: { draft = .text($0) }), prompt: Text(verbatim: "")),
                   width: 200)
@@ -629,7 +652,7 @@ private struct ExternalToolSettingRow: View {
             .textFieldStyle(.roundedBorder)
             .controlSize(.small)
             .frame(width: width)
-            .focused($editing)
+            .focused($focus, equals: .setting(setting.id))
             .onSubmit { commit(draft) }
     }
 
@@ -664,6 +687,10 @@ private struct ExternalToolDetailView: View {
     let close: () -> Void
     @State private var confirmingRemoval = false
     @State private var logExpanded = false
+    /// The control the keyboard is on. Nil while it is on none of them.
+    @FocusState private var focus: ExternalToolDetail.Focus?
+    /// True once the focus macOS gave the detail as it opened has been seen.
+    @State private var focusPlaced = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -688,6 +715,7 @@ private struct ExternalToolDetailView: View {
                             ExternalToolStatusLabel(status: detail.row.status, text: status)
                             if detail.row.status == .stopped(canStartAgain: true) {
                                 Button(text.startAgain, action: startAgain).controlSize(.small)
+                                    .focused($focus, equals: .startAgain)
                             }
                         }
                     }
@@ -713,6 +741,7 @@ private struct ExternalToolDetailView: View {
                         .textSelection(.enabled)
                     Spacer(minLength: 8)
                     Button(l10n.s.cleanerRevealInFinder, action: reveal).controlSize(.small)
+                        .focused($focus, equals: .reveal)
                 }
             }
             if !log.isEmpty {
@@ -728,14 +757,27 @@ private struct ExternalToolDetailView: View {
             }
             HStack(spacing: 10) {
                 Button(l10n.s.actionRemove, role: .destructive) { confirmingRemoval = true }
+                    .focused($focus, equals: .remove)
                 Button(text.updateButton, action: update)
+                    .focused($focus, equals: .update)
                 Spacer()
                 Button(l10n.s.menuClose, action: close).keyboardShortcut(.defaultAction)
+                    .focused($focus, equals: .close)
             }
         }
         .padding(22)
         .frame(width: 480)
         .onExitCommand(perform: close)
+        // As the agreement sheet does: macOS puts the keyboard on the
+        // detail's first control as it becomes the key window, which is the
+        // tool's first setting, and `onAppear` or `defaultFocus` do not
+        // hold in a sheet. So the detail answers that first placing, once,
+        // and moves it to Close. Tab still reaches every field and switch.
+        .onChange(of: focus) { _, placed in
+            guard !focusPlaced, let placed else { return }
+            focusPlaced = true
+            if placed != detail.initialFocus { focus = detail.initialFocus }
+        }
         .alert(removal.title, isPresented: $confirmingRemoval) {
             removalButton(.keepData)
             removalButton(.deleteData)
@@ -752,7 +794,8 @@ private struct ExternalToolDetailView: View {
             if !detail.settings.isEmpty {
                 section(detail.settingsTitle) {
                     ForEach(detail.settings) { setting in
-                        ExternalToolSettingRow(setting: setting, save: { saveSetting(setting.id, $0) })
+                        ExternalToolSettingRow(setting: setting, focus: $focus,
+                                               save: { saveSetting(setting.id, $0) })
                     }
                 }
             }
@@ -763,6 +806,7 @@ private struct ExternalToolDetailView: View {
                     }
                     if detail.offersShortcuts {
                         Button(l10n.s.shortcutsPageTitle, action: openShortcuts).controlSize(.small)
+                            .focused($focus, equals: .shortcuts)
                     }
                 }
             }

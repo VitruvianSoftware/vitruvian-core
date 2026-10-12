@@ -1249,6 +1249,12 @@ run when this was written.
     nothing then either, because the tool was stopped for being idle and
     took its helper with it. Delete `$TMPDIR/helper` with the others in
     check 28.
+40. **With "Keyboard navigation" on in System Settings, open the detail of
+    a tool whose first setting is a switch, and press Space.** The switch
+    does not change: the keyboard is on Close, and Space closes the
+    detail. Open it again and press Tab until a field has the keyboard:
+    every field and switch is still reached, and a field still saves when
+    you move on from it.
 
 ## 16. Open questions
 
