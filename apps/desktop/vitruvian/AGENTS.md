@@ -680,12 +680,29 @@ What doing the checks taught, each held in `Tools/ByHandRules.swift` and by
   nothing.
 - A tool's row is found by the tool's whole name, and only when one row has
   it.
+- A press that opens a folder picker, an alert or a sheet is answered late
+  or not at all: the app is held in what it opened, and the Accessibility
+  API gives back "cannot complete" (-25204) for a press that worked. That
+  answer counts as pressed (`ByHandRules.answer(toPress:)`), and the step
+  then waits, a few seconds at most, for what the press was to open, and
+  says what it pressed and did not see when it never comes.
+- Every cell and row of a list says it is focused. `focused` lists only
+  what a key acts on, a button, field, switch, pop-up or slider, and with a
+  sheet open only what is in the last sheet (`ByHandRules.keyTargets`).
+- A step goes where it needs to be by itself: `tools`, `add-tool` and
+  `remove-tool` open Settings and the Features page and scroll to the card;
+  `run-command` opens Settings on Command Bar, and leaves the bar closed.
+- `add-tool` types the folder's whole path into the picker as it is, so a
+  space in it is a character. Without `--agree` it leaves the agreement
+  sheet open and says where the keyboard is: the start of the Space and
+  Return check.
 
-Not proven: the command was ported from the scripts that did the checks and
-compiles, but nobody has run this version against the app. `page`,
-`open-settings`, `quit` and the keys are new code for what the scripts did
-with a row's number and AppleScript; `select N`, from `dump`, is the way
-the scripts selected a page. It takes no screenshots: use `screencapture`.
+How far it is proven: against the app (3.42.0, macOS 27, 2026-10-12)
+`windows`, `open-settings`, `page` and `tools` worked. That run found four
+faults in `add-tool`, `run-command` and `focused`, mended since; nobody has
+run those three, `remove-tool`, `quit` or `launch` against the app after
+the mending. `select N`, from `dump`, is the way the first scripts selected
+a page. It takes no screenshots: use `screencapture`.
 
 ## Porting from upstream
 

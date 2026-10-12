@@ -16,6 +16,38 @@ enum ByHandRulesTests {
         results(suite)
         messages(suite)
         commandLine(suite)
+        answers(suite)
+        keyTargets(suite)
+    }
+
+    static func answers(_ suite: TestSuite) {
+        suite.expect(ByHandRules.answer(toPress: 0) == .pressed && ByHandRules.answer(toPress: -25204) == .noAnswer
+                         && ByHandRules.answer(toPress: 0).wasPressed && ByHandRules.answer(toPress: -25204).wasPressed,
+                     "a press the app did not answer in time counts as pressed: a button that opens a panel "
+                         + "holds the app in that panel, and what appears next says whether it worked")
+        suite.expect([-25200, -25202, -25205, -25206, -25211, 1].allSatisfy {
+                         ByHandRules.answer(toPress: $0) == .refused($0) && !ByHandRules.answer(toPress: $0).wasPressed
+                     },
+                     "every other error is a refusal, and is reported with its number: not pressed")
+    }
+
+    static func keyTargets(_ suite: TestSuite) {
+        typealias Seen = ByHandRules.Seen
+        let page = [Seen("AXWindow", true), Seen("AXCell", true), Seen("AXCell", true), Seen("AXRow", true),
+                    Seen("AXTextField", true), Seen("AXButton", false), Seen("AXStaticText", true)]
+        suite.expect(ByHandRules.keyTargets(in: page) == [4],
+                     "the control the keyboard is on is one a key would act on: every cell of a list says it "
+                         + "is focused, and none of them is listed")
+        let sheets = page + [Seen("AXSheet", false), Seen("AXButton", false), Seen("AXCheckBox", true),
+                             Seen("AXSheet", false), Seen("AXCell", true), Seen("AXButton", true), Seen("AXSlider", true)]
+        suite.expect(ByHandRules.keyTargets(in: sheets) == [12, 13]
+                         && ByHandRules.keyTargets(in: Array(sheets.prefix(10))) == [9],
+                     "with a sheet open, only what is in the last sheet is listed: that is where a key goes")
+        suite.expect(ByHandRules.keyTargets(in: Array(sheets.prefix(9))).isEmpty && ByHandRules.keyTargets(in: []).isEmpty
+                         && ["AXButton", "AXTextField", "AXTextArea", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXSlider"]
+                             .allSatisfy { ByHandRules.keyTargets(in: [Seen($0, true)]) == [0] },
+                     "a sheet with the keyboard on none of its controls lists nothing, not the window's field "
+                         + "behind it; buttons, fields, switches, pop-ups and sliders are what a key acts on")
     }
 
     static func pressing(_ suite: TestSuite) {

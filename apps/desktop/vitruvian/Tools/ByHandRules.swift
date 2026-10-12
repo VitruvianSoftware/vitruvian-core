@@ -66,6 +66,55 @@ enum ByHandRules {
         return ranked.prefix(max(0, limit)).map { ($0.element, times[$0.element] ?? 0) }
     }
 
+    /// What the app said to a press.
+    enum PressAnswer: Equatable {
+        case pressed
+        /// The app did not answer in time (`kAXErrorCannotComplete`). A
+        /// button that opens a folder picker, an alert or a sheet holds the
+        /// app there, so the press that worked is answered like this. It
+        /// counts as pressed; what appears next says whether it worked.
+        case noAnswer
+        case refused(Int32)
+
+        var wasPressed: Bool {
+            if case .refused = self { return false }
+            return true
+        }
+    }
+
+    static func answer(toPress error: Int32) -> PressAnswer {
+        switch error {
+        case 0: return .pressed
+        case -25204: return .noAnswer
+        default: return .refused(error)
+        }
+    }
+
+    /// A control as the question "where is the keyboard?" sees it.
+    struct Seen: Equatable {
+        var role: String
+        var isFocused: Bool
+
+        init(_ role: String, _ isFocused: Bool) {
+            self.role = role
+            self.isFocused = isFocused
+        }
+    }
+
+    /// The kinds of control a key acts on. Every cell and row of a list
+    /// says it is focused too, by the hundred, and none is one of these.
+    static let keyRoles: Set<String> = ["AXButton", "AXTextField", "AXTextArea", "AXCheckBox", "AXRadioButton",
+                                        "AXPopUpButton", "AXSlider"]
+
+    /// Which controls the keyboard is on, of all the app's in the order
+    /// `dump` lists them: those a key acts on that say they are focused,
+    /// and with a sheet open only the ones in the last sheet, because that
+    /// is where a key goes.
+    static func keyTargets(in controls: [Seen]) -> [Int] {
+        let start = controls.lastIndex { $0.role == "AXSheet" } ?? 0
+        return controls.indices.filter { $0 >= start && controls[$0].isFocused && keyRoles.contains(controls[$0].role) }
+    }
+
     /// What was asked for on the command line.
     enum Command: Equatable {
         case windows
@@ -104,6 +153,8 @@ enum ByHandRules {
         static let removeDeletingData = "Remove and Delete What It Saved"
         static let commandBarPage = "Command Bar"
         static let openCommandBar = "Open the bar now"
+        /// The title of the folder picker's window.
+        static let folderPicker = "Open"
     }
 
     static let usage = """
@@ -122,7 +173,9 @@ enum ByHandRules {
           windows                       the app's windows
           dump [--from N] [--window W]  every control: number, kind, names, value
           find TEXT [--window W]        the controls whose names or value hold TEXT
-          focused [--window W]          the control the keyboard is on
+          focused [--window W]          the control the keyboard is on: a button,
+                                        field, switch, pop-up or slider, and
+                                        with a sheet open, one in the sheet
           message                       the short on-screen message, watched for 2 s
 
         Press one thing:
@@ -142,13 +195,17 @@ enum ByHandRules {
           tools [--lines N]             the Features page, scrolled to its end,
                                         and the "Tools from outside" card
           add-tool FOLDER [--agree | --agree-with BUTTON]
-                                        Add a Tool…, pick FOLDER; with --agree
-                                        press "Add Tool" on the sheet too
+                                        Add a Tool…, pick FOLDER (its path is
+                                        typed as it is, spaces and all), and
+                                        leave the sheet open, saying where the
+                                        keyboard is; with --agree press
+                                        "Add Tool" on the sheet too
           remove-tool NAME [--delete-data]
                                         open the tool's row, Remove, and keep
                                         or delete what it saved
-          run-command TITLE             open the command bar, type TITLE, move to
-                                        the row that IS that command, Return
+          run-command TITLE             open Settings on Command Bar, open the
+                                        bar, type TITLE, move to the row that
+                                        IS that command, Return, close the bar
           quit | launch                 quit the app from its menu; start it again
 
         W is part of a window's title. Exit status: 0 done; 1 not found, not

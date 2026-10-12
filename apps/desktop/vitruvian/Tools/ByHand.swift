@@ -30,7 +30,9 @@ enum Exit: Int32 {
     case usage = 64
 }
 
-func say(_ text: String) { print(text) }
+/// Written at once, like `stop`'s line: through a pipe `print` holds its
+/// lines back, and a failure then reads as if it came before what led to it.
+func say(_ text: String) { FileHandle.standardOutput.write(Data((text + "\n").utf8)) }
 
 func stop(_ status: Exit, _ text: String) -> Never {
     FileHandle.standardError.write(Data((text + "\n").utf8))
@@ -40,6 +42,17 @@ func stop(_ status: Exit, _ text: String) -> Never {
 /// Waits without stopping the run loop, so what AppKit knows stays current.
 func pause(_ seconds: TimeInterval) {
     RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+}
+
+/// Looks every quarter second until something is there, for at most this
+/// long. False when it never was.
+func appears(within seconds: TimeInterval = 3, _ isThere: () -> Bool) -> Bool {
+    let end = Date().addingTimeInterval(seconds)
+    while !isThere() {
+        guard Date() < end else { return false }
+        pause(0.25)
+    }
+    return true
 }
 
 // MARK: - The app
@@ -155,27 +168,57 @@ let pressable = ["AXButton", "AXCheckBox", "AXRadioButton", "AXSwitch", "AXDiscl
 // MARK: - Acting through Accessibility
 
 @discardableResult
-func press(_ control: Control) -> Bool {
-    AXUIElementPerformAction(control.element, kAXPressAction as CFString) == .success
+func press(_ control: Control) -> ByHandRules.PressAnswer {
+    ByHandRules.answer(toPress: AXUIElementPerformAction(control.element, kAXPressAction as CFString).rawValue)
 }
 
-/// Presses the control with exactly this name, the last of several. False
-/// when there is none.
-@discardableResult
-func press(named name: String, in app: AXUIElement, window: String?) -> Bool {
-    let candidates = controls(of: app, window: window).filter { pressable.contains($0.role) }
-    guard let at = ByHandRules.exact(name, among: candidates.map(\.names)) else { return false }
-    let matches = candidates.filter { $0.title == name || $0.description == name }.count
-    let done = press(candidates[at])
-    say("press \"\(name)\": \(matches) with that name, the last pressed, \(done ? "ok" : "refused by the app")")
-    return done
-}
-
-/// Presses it, or ends the command.
+/// Presses the control with exactly this name, the last of several, or ends
+/// the command when there is none or the app refused. It says one line,
+/// after the press, and it is true: a press the app did not answer in time
+/// is a press, and the caller looks for what it was to open.
 func mustPress(_ name: String, in app: AXUIElement, window: String? = Words.settingsWindow) {
-    guard press(named: name, in: app, window: window) else {
+    let candidates = controls(of: app, window: window).filter { pressable.contains($0.role) }
+    guard let at = ByHandRules.exact(name, among: candidates.map(\.names)) else {
         stop(.notFound, "No button or switch is named exactly \"\(name)\". Nothing was pressed.")
     }
+    let matches = candidates.filter { $0.title == name || $0.description == name }.count
+    let which = matches == 1 ? "" : " (the last of \(matches) with that name)"
+    switch press(candidates[at]) {
+    case .pressed:
+        say("pressed \"\(name)\"\(which)")
+    case .noAnswer:
+        say("pressed \"\(name)\"\(which); the app did not answer in time, as when a press opens a panel")
+    case .refused(let error):
+        stop(.notFound, "\"\(name)\" was found and the app refused the press (error \(error)).")
+    }
+}
+
+/// Ends the command when what a press was to open is not there in time,
+/// saying what was pressed and what was not seen.
+func expect(_ what: String, after pressed: String, in step: String, within seconds: TimeInterval = 3,
+            _ isThere: () -> Bool) {
+    guard appears(within: seconds, isThere) else {
+        stop(.notFound, "\(step): pressed \"\(pressed)\", but \(what) appeared within \(Int(seconds)) s.")
+    }
+}
+
+func hasButton(_ name: String, in app: AXUIElement) -> Bool {
+    controls(of: app, window: Words.settingsWindow).contains {
+        pressable.contains($0.role) && ($0.title == name || $0.description == name)
+    }
+}
+
+/// The folder picker is a window of its own, a dialog titled "Open".
+func folderPickerIsOpen(_ app: AXUIElement) -> Bool {
+    elements(app, kAXWindowsAttribute).contains {
+        text($0, kAXSubroleAttribute) == "AXDialog" || text($0, kAXTitleAttribute) == Words.folderPicker
+    }
+}
+
+/// The controls the keyboard is on, numbered as `dump` numbers them.
+func keyTargets(in app: AXUIElement, window: String?) -> [(number: Int, control: Control)] {
+    let all = controls(of: app, window: window)
+    return ByHandRules.keyTargets(in: all.map { .init($0.role, $0.isFocused) }).map { ($0, all[$0]) }
 }
 
 func scrollToEnd(in app: AXUIElement, window: String?) {
@@ -190,7 +233,7 @@ func pressMenuItem(_ title: String, of app: AXUIElement) -> Bool {
     for bar in [kAXMenuBarAttribute, "AXExtrasMenuBar"] {
         guard let menus = attribute(app, bar) else { continue }
         let items = controls(under: menus as! AXUIElement).filter { $0.role == "AXMenuItem" && $0.title == title }
-        if let item = items.last, press(item) { return true }
+        if let item = items.last, press(item).wasPressed { return true }
     }
     return false
 }
@@ -279,12 +322,26 @@ func watchMessage(_ app: AXUIElement) {
     for (text, times) in seen { say("message: \(times) of 8 looks: \(text)") }
 }
 
+/// Opens the Settings window when it is not open, and its page with this
+/// title. Every step that needs a page goes there itself.
+func showPage(_ title: String, in app: AXUIElement, step: String) {
+    if windows(of: app, titled: Words.settingsWindow).isEmpty {
+        guard pressMenuItem(Words.settingsMenuItem, of: app) else {
+            stop(.notFound, "\(step): Settings is not open, and the app's menu has no \"\(Words.settingsMenuItem)\".")
+        }
+        expect("no \"\(Words.settingsWindow)\" window", after: Words.settingsMenuItem, in: step) {
+            !windows(of: app, titled: Words.settingsWindow).isEmpty
+        }
+    }
+    guard selectPage(title, in: app) else {
+        stop(.notFound, "\(step): the Settings window has no page \"\(title)\".")
+    }
+}
+
 /// Opens the Features page and scrolls it to its end. The page is lazy:
 /// the last card, "Tools from outside", is not there to find until it is.
-func showToolsCard(_ app: AXUIElement) -> [Control] {
-    guard selectPage(Words.featuresPage, in: app) else {
-        stop(.notFound, "The Settings window has no page \"\(Words.featuresPage)\". Is Settings open? Try open-settings.")
-    }
+func showToolsCard(_ app: AXUIElement, step: String) -> [Control] {
+    showPage(Words.featuresPage, in: app, step: step)
     for _ in 0..<2 {
         pause(0.8)
         scrollToEnd(in: app, window: Words.settingsWindow)
@@ -292,7 +349,7 @@ func showToolsCard(_ app: AXUIElement) -> [Control] {
     pause(0.8)
     let all = controls(of: app, window: Words.settingsWindow)
     guard let card = all.firstIndex(where: { $0.value == Words.toolsCard || $0.title == Words.toolsCard }) else {
-        stop(.notFound, "The Features page has no \"\(Words.toolsCard)\" card, even scrolled to its end.")
+        stop(.notFound, "\(step): the Features page has no \"\(Words.toolsCard)\" card, even scrolled to its end.")
     }
     return Array(all[card...])
 }
@@ -304,53 +361,95 @@ func sheetTitle(_ app: AXUIElement) -> String? {
     return all[sheet...].first { $0.role == "AXStaticText" && !$0.value.isEmpty }?.value
 }
 
+/// Where the keyboard is in the sheet, in one line.
+func keyboardLine(_ app: AXUIElement) -> String {
+    let targets = keyTargets(in: app, window: Words.settingsWindow)
+    return targets.isEmpty ? "the keyboard is on no control of the sheet"
+        : "the keyboard is on: " + targets.map { String($0.control.line.prefix(120)) }.joined(separator: "; ")
+}
+
 func addTool(folder: String, agreeWith button: String?, app: (process: NSRunningApplication, element: AXUIElement)) {
-    _ = showToolsCard(app.element)
+    // The picker is given a whole path, typed as it is: no shell reads it,
+    // so a space or a quotation mark in it is just a character.
+    let path = URL(fileURLWithPath: folder).standardizedFileURL.path
+    var isFolder: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue else {
+        stop(.usage, "add-tool: \(path) is not a folder. Nothing was pressed.")
+    }
+    _ = showToolsCard(app.element, step: "add-tool")
     mustPress(Words.addTool, in: app.element)
-    pause(1.5)
-    // The folder picker: Command-Shift-G takes a path, Return goes there,
-    // Return again chooses it.
+    expect("no folder picker", after: Words.addTool, in: "add-tool") { folderPickerIsOpen(app.element) }
+    pause(0.5)
+    // Command-Shift-G takes a path, Return goes there, Return again
+    // chooses it.
     send(.g, with: [.maskCommand, .maskShift], to: app)
     pause(1.0)
-    type(folder, to: app)
+    type(path, to: app)
     pause(0.8)
     send(.return, to: app)
     pause(1.2)
     send(.return, to: app)
-    pause(2.0)
-    guard let title = sheetTitle(app.element) else {
-        say("add-tool: no sheet followed. A refusal is an alert: see `dump`.")
-        exit(Exit.notFound.rawValue)
+    guard appears(within: 4, { sheetTitle(app.element) != nil }), let title = sheetTitle(app.element) else {
+        stop(.notFound, "add-tool: chose \(path), but no sheet appeared within 4 s. A refusal is an alert: see `dump`.")
     }
     say("add-tool: the sheet says: \(title.prefix(160))")
     guard let button else {
-        say("add-tool: left open. Nothing is added until its button is pressed.")
+        say("add-tool: the sheet is left open, and nothing is added. " + keyboardLine(app.element))
         return
     }
     mustPress(button, in: app.element)
-    pause(1.8)
+    guard appears(within: 4, { sheetTitle(app.element) == nil }) else {
+        stop(.notFound, "add-tool: pressed \"\(button)\", but a sheet is still open after 4 s: "
+            + "\((sheetTitle(app.element) ?? "").prefix(120))")
+    }
+    say("add-tool: done, no sheet is open")
 }
 
 func removeTool(_ name: String, deleteData: Bool, app: AXUIElement) {
-    let card = showToolsCard(app).filter { $0.role == "AXButton" }
+    let card = showToolsCard(app, step: "remove-tool").filter { $0.role == "AXButton" }
     let rows = ByHandRules.toolRows(name, among: card.map { $0.description.isEmpty ? $0.title : $0.description })
     guard rows.count == 1 else {
-        stop(.notFound, "\(rows.count) rows of the card are the tool \"\(name)\"; one is needed. Nothing was pressed.")
+        stop(.notFound, "remove-tool: \(rows.count) rows of the card are the tool \"\(name)\"; one is needed. "
+            + "Nothing was pressed.")
     }
-    press(card[rows[0]])
-    pause(1.5)
+    if case .refused(let error) = press(card[rows[0]]) {
+        stop(.notFound, "remove-tool: the app refused the press of the tool's row (error \(error)).")
+    }
+    say("pressed the row of \"\(name)\"")
+    expect("no detail of the tool", after: name, in: "remove-tool") { hasButton(Words.remove, in: app) }
     mustPress(Words.remove, in: app)
-    pause(1.2)
-    mustPress(deleteData ? Words.removeDeletingData : Words.removeKeepingData, in: app)
+    let choice = deleteData ? Words.removeDeletingData : Words.removeKeepingData
+    expect("no question with the button \"\(choice)\"", after: Words.remove, in: "remove-tool") {
+        hasButton(choice, in: app)
+    }
+    mustPress(choice, in: app)
     pause(2.0)
     say("remove-tool: " + (sheetTitle(app).map { "a sheet is still open: \($0.prefix(120))" } ?? "done, no sheet is open"))
 }
 
-func runCommand(_ title: String, app: (process: NSRunningApplication, element: AXUIElement)) {
-    guard selectPage(Words.commandBarPage, in: app.element) else {
-        stop(.notFound, "The Settings window has no page \"\(Words.commandBarPage)\". Is Settings open? Try open-settings.")
+/// The command bar's own controls, when it is open: what is outside the
+/// Settings window, from the list of results on.
+func barResults(_ app: AXUIElement) -> [Control]? {
+    let outside = windows(of: app, except: Words.settingsWindow).flatMap(controls(under:))
+    return outside.firstIndex { $0.role == "AXOpaqueProviderList" }.map { Array(outside[$0...]) }
+}
+
+/// Leaves the bar closed: Escape, twice at most, and only while it is open
+/// and the keyboard is on Vitruvian.
+func closeBar(_ app: (process: NSRunningApplication, element: AXUIElement)) {
+    for _ in 0..<2 where barResults(app.element) != nil && keyboardIsOnTheApp(app.process) {
+        send(.escape, to: app)
+        pause(0.4)
     }
-    pause(0.8)
+    say("run-command: the bar is " + (barResults(app.element) == nil ? "closed" : "still open"))
+}
+
+func runCommand(_ title: String, app: (process: NSRunningApplication, element: AXUIElement)) {
+    showPage(Words.commandBarPage, in: app.element, step: "run-command")
+    guard appears({ hasButton(Words.openCommandBar, in: app.element) }) else {
+        stop(.notFound, "run-command: the page \"\(Words.commandBarPage)\" was selected, but no button "
+            + "\"\(Words.openCommandBar)\" appeared within 3 s.")
+    }
     mustPress(Words.openCommandBar, in: app.element)
     pause(1.0)
     type(title, to: app)
@@ -358,19 +457,21 @@ func runCommand(_ title: String, app: (process: NSRunningApplication, element: A
     // The bar's results, in the order it shows them. Pressing a result
     // through Accessibility does nothing, and Return runs the TOP one: so
     // the keyboard is moved to the row that IS the command first.
-    let outside = windows(of: app.element, except: Words.settingsWindow).flatMap(controls(under:))
-    let list = outside.firstIndex { $0.role == "AXOpaqueProviderList" }.map { Array(outside[$0...]) } ?? []
+    guard let list = barResults(app.element) else {
+        stop(.notFound, "run-command: pressed \"\(Words.openCommandBar)\" and typed, but no list of results was "
+            + "seen. Is the bar open? Nothing was run.")
+    }
     let results = list.filter { $0.role == "AXButton" }.map(\.description)
     guard let row = ByHandRules.resultRow(title, among: results) else {
-        send(.escape, to: app)
-        pause(0.4)
-        send(.escape, to: app)
-        stop(.notFound, "NOT OFFERED: the bar has no result that is \"\(title)\" (\(results.count) results). Nothing was run.")
+        closeBar(app)
+        stop(.notFound, "run-command: NOT OFFERED: the bar has no result that is \"\(title)\" "
+            + "(\(results.count) results). Nothing was run.")
     }
     say("run-command: result \(row + 1) of \(results.count)")
     for _ in 0..<row { send(.down, to: app) }
     send(.return, to: app)
     watchMessage(app.element)
+    closeBar(app)
 }
 
 func quitApp(_ app: (process: NSRunningApplication, element: AXUIElement)) {
@@ -435,17 +536,15 @@ case .find(let wanted, let window):
     for (number, control) in found { say("\(number) \(control.line)") }
     if found.isEmpty { stop(.notFound, "No control's names or value hold \"\(wanted)\".") }
 case .focused(let window):
-    let found = controls(of: theApp().element, window: window).enumerated().filter { _, control in
-        control.isFocused && !["AXWindow", "AXSheet", "AXApplication"].contains(control.role)
-    }
+    // Only what a key would act on, and with a sheet open only what is in
+    // it: every cell of every list says it is focused too.
+    let found = keyTargets(in: theApp().element, window: window)
     for (number, control) in found { say("\(number) \(control.line)") }
-    if found.isEmpty { stop(.notFound, "The keyboard is on no control of the app.") }
+    if found.isEmpty { stop(.notFound, "The keyboard is on no button, field, switch, pop-up or slider of the app.") }
 case .message:
     watchMessage(theApp().element)
 case .press(let name, let window):
-    guard press(named: name, in: theApp().element, window: window) else {
-        stop(.notFound, "No button or switch is named exactly \"\(name)\". Nothing was pressed.")
-    }
+    mustPress(name, in: theApp().element, window: window)
 case .select(let number, let window):
     let control = numbered(number, in: theApp().element, window: window)
     report("select \(number) (\(control.line.prefix(80)))",
@@ -469,7 +568,7 @@ case .choose(let menu, let item, let window):
     let app = theApp().element
     let popups = controls(of: app, window: window).filter { $0.role == "AXPopUpButton" && $0.description == menu }
     guard let popup = popups.last else { stop(.notFound, "No pop-up is described exactly \"\(menu)\".") }
-    press(popup)
+    if case .refused(let error) = press(popup) { stop(.notFound, "The app refused to open the pop-up (error \(error)).") }
     pause(0.7)
     let items = controls(under: popup.element).filter { $0.role == "AXMenuItem" }
     guard let wanted = items.last(where: { $0.title == item }) else {
@@ -491,10 +590,10 @@ case .openSettings:
     }
     say("open-settings: \"\(Words.settingsWindow)\" is open")
 case .page(let title):
-    guard selectPage(title, in: theApp().element) else { stop(.notFound, "The page \"\(title)\" was not selected.") }
+    showPage(title, in: theApp().element, step: "page")
     say("page \"\(title)\": selected")
 case .tools(let lines):
-    let card = showToolsCard(theApp().element).filter { !$0.isSilent && !["AXImage", "AXToolbar"].contains($0.role) }
+    let card = showToolsCard(theApp().element, step: "tools").filter { !$0.isSilent && !["AXImage", "AXToolbar"].contains($0.role) }
     for control in card.prefix(lines) { say(String(control.line.prefix(200))) }
 case .addTool(let folder, let button):
     addTool(folder: folder, agreeWith: button, app: theApp())
