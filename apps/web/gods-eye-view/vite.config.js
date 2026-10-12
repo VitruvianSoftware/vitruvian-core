@@ -40,12 +40,20 @@ import standalone from './server/standalone/vite.config.js';
 // Preserve existing test and tooling imports while provider modules are split.
 export * from './server/providers/local.js';
 
-const CESIUM_TARGETS = ['Assets', 'ThirdParty', 'Workers', 'Widgets', 'Cesium.js'];
+const CESIUM_TARGETS = [
+  'Assets',
+  'ThirdParty',
+  'Workers',
+  'Widgets',
+  'Cesium.js',
+];
 
 function cesiumBuildDir() {
   const local = path.resolve('node_modules/cesium/Build/Cesium');
   if (fs.existsSync(local)) return local;
-  const cesiumDir = path.dirname(createRequire(import.meta.url).resolve('cesium/package.json'));
+  const cesiumDir = path.dirname(
+    createRequire(import.meta.url).resolve('cesium/package.json'),
+  );
   return path.join(cesiumDir, 'Build', 'Cesium');
 }
 
@@ -59,7 +67,10 @@ function bazelSafeCesiumPlugin(base) {
     },
     async closeBundle() {
       if (resolvedConfig?.command !== 'build') return;
-      const outDir = path.resolve(resolvedConfig.root, resolvedConfig.build?.outDir || 'dist');
+      const outDir = path.resolve(
+        resolvedConfig.root,
+        resolvedConfig.build?.outDir || 'dist',
+      );
       const outCesiumDir = path.join(outDir, 'cesium');
       const buildDir = cesiumBuildDir();
       if (!fs.existsSync(buildDir)) {
@@ -68,8 +79,12 @@ function bazelSafeCesiumPlugin(base) {
       await fsp.mkdir(outCesiumDir, { recursive: true });
       for (const target of CESIUM_TARGETS) {
         const src = path.join(buildDir, target);
-        if (!fs.existsSync(src)) throw new Error(`Required Cesium asset not found: ${src}`);
-        await fsp.cp(src, path.join(outCesiumDir, target), { recursive: true, dereference: true });
+        if (!fs.existsSync(src))
+          throw new Error(`Required Cesium asset not found: ${src}`);
+        await fsp.cp(src, path.join(outCesiumDir, target), {
+          recursive: true,
+          dereference: true,
+        });
       }
     },
   };
@@ -78,7 +93,9 @@ function bazelSafeCesiumPlugin(base) {
 export default function config(env) {
   const resolved = standalone(env);
   resolved.plugins = resolved.plugins.map((plugin) =>
-    plugin?.name === 'vite-plugin-cesium' ? bazelSafeCesiumPlugin(plugin) : plugin,
+    plugin?.name === 'vite-plugin-cesium'
+      ? bazelSafeCesiumPlugin(plugin)
+      : plugin,
   );
   return resolved;
 }
