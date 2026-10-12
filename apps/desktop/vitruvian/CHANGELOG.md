@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.41.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.41.1...vitruvian-v3.41.2) (2026-10-12)
+
+
+### Bug Fixes
+
+* **desktop:** the agreement sheet opens with Cancel focused, so Space cannot add a tool ([#3134](https://github.com/VitruvianSoftware/vitruvian-core/issues/3134)) ([9d7eadb](https://github.com/VitruvianSoftware/vitruvian-core/commit/9d7eadb60c9478c488337af50980043652fd000d))
+
 ## [3.41.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.41.0...vitruvian-v3.41.1) (2026-10-12)
 
 
