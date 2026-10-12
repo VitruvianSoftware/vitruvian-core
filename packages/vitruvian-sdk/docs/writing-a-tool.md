@@ -163,6 +163,11 @@ before `run()`. It is handed the id and the new value of each preference that
 changed. A tool that reads its preferences each time a command runs, as the
 sample above does, needs no such handler.
 
+The same goes for the app's language. `app.language` is always the current
+one: the kit follows `language/changed` by itself. Set
+`tool.onLanguageChanged` before `run()` only when your tool must do
+something at that moment.
+
 ### A tool that does not ask the app
 
 A tool may do anything itself. [`../samples/front-window`](../samples/front-window)
@@ -281,8 +286,13 @@ tool that is running and has answered `initialize`. A tool that is not
 running is not started for it, and reads the value with `storage/get` when it
 next starts. What your own `storage/set` saved is not sent back to you.
 
-`language/changed` is a notice too. Today's app never sends it: a tool learns
-the language when it starts. Handle it anyway; a later app will send it.
+`language/changed` is a notice too: the person changed the app's language in
+Settings. It carries the new language as a tag, the same kind `initialize`
+carries. Like `preferences/changed` it is sent only to a tool that is
+running and has answered `initialize`, once for each change. A tool that is
+not running is not started for it: `initialize` tells it the language when
+it next starts. An app from before 2026-10-12 never sent it, so a tool
+there learns the language only when it starts.
 
 ```json message
 {"jsonrpc":"2.0","method":"preferences/changed","params":{"values":{"project":"web"}}}
@@ -411,6 +421,7 @@ the tool.
 | Ends its last line with no line break | That line is never read. |
 | Is told `shutdown` and stays | Asked to end after 2 seconds, killed 1 second after that. |
 | Is still running when the person removes it | The same, faster: asked to end after half a second, killed a quarter of a second later. Do not count on time to tidy up. |
+| Starts a program of its own and leaves it running | The program is ended with the tool: asked to end when the tool is, killed when the tool is, and killed when the tool exits by itself, crashes or is stopped for being idle. Only a program that left the tool's process group is not. |
 
 A folder is refused, before anything is copied, when it holds more than
 256 MB or more than 10,000 files, folders and links together. Keep build
@@ -447,7 +458,10 @@ folder the program is started in.
   once and sent to the tool if it is running.
 - **Removing a tool** deletes the app's copy. What the tool saved is deleted
   too when the person picks that, unless the tool's program will not stop:
-  then it is kept, and the person is told so and where it is.
+  then it is kept, and the person is told so and where it is. A folder that
+  cannot be deleted, such as one the tool made read-only, is left, and the
+  person is told that too. The tool's preferences go only together with
+  the folder of what it saved: while that folder is kept, so are they.
 
 For the two Swift samples, build their folders first:
 
@@ -481,7 +495,8 @@ vitruvian-tool run ~/my-tool --command hello --app-path
   request as done and **does nothing on your Mac**: no message is shown, no
   link opened, nothing pasted or pressed, no process ended, and the clipboard
   it reads and writes is its own, not yours. It gives the tool a folder of its
-  own and deletes it afterwards. Control-C ends the tool.
+  own and deletes it afterwards. Control-C ends the tool. However the run
+  ends, a program the tool started is ended with it, as in the app.
 - `run` is one run, not the app. It grants every service the manifest lists,
   where the app may refuse one at any time. It does not stop an idle tool,
   does not start a crashed one again, and does not count lines a second. A
@@ -518,6 +533,18 @@ opened; close it and open it again to see more.
 - **Not that it keeps running.** An `onCommand` tool is stopped after two
   minutes with nothing asked of it. Keep what matters in a preference or in
   the data folder.
+- **Not that a program it starts outlives it.** Whatever your tool starts
+  is ended with it, however the tool ends: at goodbye, when it is removed
+  or switched off, when the app quits, after two idle minutes, and when it
+  crashes. The app does that by the tool's process group, which a program
+  you start is in unless it leaves: Python's `subprocess`, Node's
+  `child_process` and a shell's `&` all stay in it. A program that must
+  outlive the tool has to leave the group, with a new session
+  (`start_new_session=True`, `detached: true`, `setsid`), and is then
+  yours to end. Foundation's `Process`, in a Swift tool, puts each program
+  it starts in a group of its own, so the app does not reach those: end
+  them yourself. Nothing is ended if the app itself crashes: your tool
+  still ends when its input closes, and should take its helpers with it.
 - **Not that the data folder outlives it.** Removing the tool may delete it.
 - **Not a permission.** A tool has what Vitruvian has, and nothing more. A
   prompt your tool causes says Vitruvian is asking. Vitruvian's permissions
@@ -530,8 +557,9 @@ opened; close it and open it again to see more.
 - **Not that a preference is as you left it.** The person may change a titled
   one at any time, also while your tool is not running. Read it when you
   need it, or hear `preferences/changed`.
-- **Not to be told the language changed.** Today's app never sends
-  `language/changed`.
+- **Not that the language stays.** The person may change it while your
+  tool runs. Hear `language/changed`, or read `app.language` each time you
+  need it. An older app never sends the notice.
 - **Not that its last words arrive.** A final line with no line break at its
   end is dropped.
 - **Not an argument.** A command is run by its id, with nothing else.

@@ -126,6 +126,17 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   command is in it, and each would appear twice. A built-in command asks for
   a surface in `BuiltinTools.install` only when something there already runs
   it.
+- A registry command that is listed and cannot run now (`ToolRegistry.canRun`
+  is false: a grant is missing, its tool said so in `commands/state`, or the
+  tool's program is stopped) is handled by each surface in its own way. The
+  command bar and the wheel leave it out, each for a reason its code states
+  (`CommandBarCatalog.toolEntries`, `RadialMenuService.availableItems`). The
+  Quick panel keeps its tile where it is, so the grid and the digits do not
+  move, and draws it as a disabled button
+  (`QuickLauncherService.isUnavailable`): no click, Return or digit runs it,
+  and the panel stays open. On the Shortcuts page its row says it is
+  inactive, and its key beeps. Do not hide such a tile, and do not give it a
+  colour of its own: `.disabled` is how the app dims.
 - A saved order may hold an id the app does not recognise right now: a tool
   that has not registered yet, or one that is switched off. Keep it where it
   is (`QuickToolsSupport.savedTileOrder`); drop only what is not well formed.
@@ -148,9 +159,20 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   not also ask for the `shortcut` surface: that would give one action two
   combinations.
 - `ToolShortcutRegistrar.assign` refuses a combination another tool command
-  has saved and returns why; it never moves one. Its hotkey ids run from
+  that is here holds, and returns why; it never moves one away from a
+  command that has a row. Its hotkey ids run from
   `ToolShortcutRegistrar.firstHotkeyID`, and `bazel/source_lints.py` keeps
   that run clear of the others.
+- A saved tool-command shortcut holds its combination only while its
+  command is here and asks for one, which is exactly while it has a row on
+  the Shortcuts page (`ToolShortcutRegistrar.heldShortcuts`). The shortcut
+  of a tool that is switched off, or not registered this launch, stays
+  saved, is no key, and refuses nobody; it is a key again when the tool
+  returns. If the keys were given to another tool command meanwhile, the
+  absent entry goes. Ask `heldShortcuts`, never `shortcuts`, whether a
+  combination is taken. Removing a tool from outside clears its commands'
+  shortcuts (`ToolShortcutRegistrar.forget`); switching it off or updating
+  it clears none.
 - A feature that has become a tool has a manifest (`ToolManifest`), conforms
   to `BundledTool`, and is built by `ToolHost` with a `ToolServices`. It has
   no `static let shared`. Everything outside its own logic, it reaches
@@ -379,7 +401,18 @@ of it but the protocol.
   is a notice: the app does not wait. A tool that is not running, or has
   not answered `initialize`, is sent nothing and is not started; it reads
   the value when it next starts. Saving the value a setting already has
-  does nothing. `language/changed` is still never sent.
+  does nothing.
+- When the person changes the app's language, each tool that is running
+  is sent the protocol's `language/changed`, once, with the new tag
+  (`ExternalToolStore.languageChanged`, told by `ExternalToolStore.watch`
+  over `L10n.shared.$language`). It is wired as `preferences/changed` is:
+  a notice the app does not wait on, never sent before a tool has answered
+  `initialize`, never to a tool that is stopped, switched off or held
+  back, and it starts nothing. One thing differs. A tool that was greeted
+  in a language the app changed before it answered is told the new one
+  once it has answered (`ToolLink.languageChanged`), or it would keep the
+  old one for its whole run. A tool started later gets the language from
+  `initialize`, which reads it at each start.
 - A tool is added in two steps, and there is no third way.
   `ExternalToolStore.offer(from:)` reads the folder the person picked and
   changes nothing: no copy, no program, no file. `ExternalToolStore.add`
@@ -420,6 +453,37 @@ of it but the protocol.
   keeps running is noticed only when three requests go unanswered. A tool's
   last line with no line break is dropped. After the last kill at quit the
   app does not wait to see the process gone.
+- Ending a tool ends the programs it started (`ProcessTransport`,
+  `ToolProcessGroup`). A tool is started with `Foundation.Process` and
+  nothing else, which is the whole trust model: an ordinary child has the
+  app's macOS permissions. Never start a tool with a spawn attribute of
+  the app's own, and never one that disclaims responsibility for the
+  child: that is what takes the permissions away. macOS gives a `Process`
+  a process group of its own, led by the child, and `Process.terminate`
+  signals that group. The app makes no group. It looks, once the child
+  runs (`getpgid(child) == child`), and only then: the kill signals the
+  group, and when the tool's process is gone and collected, what is left
+  of its group is killed, once, at that moment (the sweep). A transport
+  counts as running until that is done.
+- The app never signals a group it did not see its own child lead: never
+  group 0 or 1, never its own, never one the child is merely in
+  (`ToolProcessGroup.led`). A tool it did not see lead a group is killed
+  alone and nothing is swept, as before this was built. Nothing signals a
+  tool's id after its process was collected, except the one sweep, and
+  the sweep does nothing while any process has that id. Known and
+  accepted: in the instant between the tool being collected and the
+  sweep, macOS could in principle hand the id to a new process that makes
+  a group of its own and exits again; the same instant always existed for
+  the kill of the process itself.
+- Out of reach, and said in the guide: a program that left the tool's
+  group or session, which includes every program a Swift tool starts
+  with `Process`; and everything, when the app itself crashes. A tool
+  still ends when its input closes.
+- A test that needs a program a tool started uses the fixture's `helper`
+  commands and `ToolProcessTests.Helper`. It ends every helper it started
+  that is still there, by its id and only while that id still runs the
+  fixture. `pgrep -fl 'tool_fixture|bin/fixture'` prints nothing after a
+  run.
 - A test of the runtime uses `FakeTool`, which is no process. A test that
   needs a real one starts `tool_fixture` (`Tools/ToolFixture.swift`), waits
   only through `ToolRuntimeSupport.wait`, and kills the process and sees it
@@ -458,15 +522,27 @@ of it but the protocol.
   keeps what it saved, whatever was asked: its copy and its record go, and
   `remove` logs it.
 - `remove` says what happened (`ExternalToolStore.Removal`): nobody added
-  it, kept as asked, deleted, or kept although deleting was asked, with
-  the folder. For that last one the person is told once, in an alert,
-  after the tool's detail has closed and its row has gone
-  (`ToolRemovalNotice`), with a button that shows the folder in the Finder.
-  The preferences under `<tool id>/` are kept with the folder then, and
-  nothing deletes either later: the person deletes the folder, and adding
-  the tool again finds both. `.deleted` means deleting was asked and the
-  program was gone; a file that then could not be deleted is still only a
-  line in the system log.
+  it, kept as asked, deleted, kept although deleting was asked because the
+  program would not stop, with the folder, or not deleted: the program was
+  gone and a folder that was to go is still there, with each such folder
+  (`notDeleted`, from `ToolFolders.undeleted`). For those last two the
+  person is told once, in one alert, after the tool's detail has closed
+  and its row has gone (`ToolRemovalNotice`), with a button that shows the
+  folder or folders in the Finder. `.deleted` now means nothing is left.
+- A tool's preferences under `<tool id>/` are deleted only together with
+  the folder of what it saved. When that folder stays, for any of three
+  reasons (the person kept it, the program would not stop, it could not be
+  deleted), they stay with it, and adding the tool again finds both.
+  Nothing deletes either later, and there is no cleaner: a person who
+  deletes the folder by hand leaves the preferences in the app's own
+  until the tool is added again and removed with what it saved.
+- The record of a removed tool is written away before anything is
+  deleted, so a tool that is half deleted has no record at the next
+  launch and is never listed or started. Its leftover folder is replaced
+  when the tool is added again.
+- One corner is still only a line in the system log: the program would
+  not stop and the app's copy could not be deleted either. The alert is
+  then the one about what was kept.
 - Which button of the question before removal deletes what a tool saved is
   `ToolRemovalContent.Choice.deletesData`, and the view passes it on
   unchanged. What follows the folder picker is `ToolPicked.after`: nothing,
@@ -503,17 +579,19 @@ of it but the protocol.
   bumps the registry's `revision` whenever a tool is added, removed,
   switched or stands differently. Nothing polls a tool.
 - Limits of stage C that are known and accepted:
-  - Remove waits for the tool's own process only. A child the tool started
-    is not waited for and may outlive it.
+  - Remove waits for the tool's own process only. Since 2026-10-12 a
+    program the tool started is ended with it, when it is still in the
+    tool's process group; one that left the group may outlive it and go on
+    writing into a folder that was deleted.
   - "Changed" compares the manifest file's bytes. The program and the
     other files are not compared.
   - The fourteen languages other than English were written with the
     English and checked by rule. No reader of them has reviewed them.
   - That the sheet stays under 800 points high is arithmetic from the line
     limits. Nobody has seen it on a small display.
-  - Nothing tells a running tool that the language changed. A tool's
-    preferences have a screen since 2026-10-12, built and not seen in the
-    app.
+  - A tool's preferences have a screen since 2026-10-12, and a running
+    tool is told when the language changes since the same day: both built
+    and not seen in the app.
   - A records file that cannot be read is kept until the next tool is
     added. Then it is moved to `InstalledTools.unreadable.json`, replacing
     an earlier file of that name.

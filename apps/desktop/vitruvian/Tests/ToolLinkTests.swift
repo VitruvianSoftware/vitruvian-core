@@ -175,6 +175,36 @@ enum ToolLinkTests {
         quiet.link.start()
         quiet.link.languageChanged("fr")
         suite.expect(quiet.tool.sent.count == 1, "and not before the greeting is done")
+
+        // The language the tool was greeted in changes before it answers.
+        func told(_ tool: FakeTool) -> [JSONValue?] {
+            tool.sent.compactMap { message in
+                guard case .notice("language/changed", let params) = message else { return nil }
+                return params
+            }
+        }
+        let ahead = Bench()
+        ahead.link.start()
+        ahead.link.languageChanged("de")
+        ahead.link.languageChanged("it")
+        suite.expect(ahead.tool.sent.count == 1, "a language that changes before the greeting is done is not sent yet")
+        ahead.tool.greets()
+        suite.expect(told(ahead.tool) == [.object(["language": .string("it")])] && ahead.tool.sent.count == 2,
+                     "once the tool has answered initialize it is told the language the app has now, once, "
+                         + "when that is not the one it was greeted in")
+        ahead.link.languageChanged("it")
+        suite.expect(told(ahead.tool).count == 1, "the language a tool was last told is not sent again")
+        ahead.link.languageChanged("fr")
+        suite.expect(told(ahead.tool).count == 2, "and a new one is")
+
+        let back = Bench()
+        back.link.start()
+        back.link.languageChanged("de")
+        back.link.languageChanged("fr")
+        back.tool.greets()
+        suite.expect(told(back.tool).isEmpty && back.tool.sent.count == 1,
+                     "a language that changed and changed back before the greeting was done is the one the tool "
+                         + "was greeted in: nothing is sent")
     }
 
     static func deadlines(_ suite: TestSuite) {

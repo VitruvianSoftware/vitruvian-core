@@ -275,8 +275,10 @@ A tool that is removed or switched off in Settings is stopped at once.
 
 **Stopping** is: say goodbye, close its input, wait two seconds, end it, wait
 one more, kill it. The app does this for every running tool at quit. A tool
-that started programs of its own is responsible for them; the app ends the
-process it started.
+that started programs of its own was responsible for them, and the app ended
+only the process it started. *Since 2026-10-12 the app ends those programs
+with the tool, as long as they are still in the tool's process group: see
+"Five loose ends of the tool platform, as closed" in section 15.*
 
 **When it misbehaves.** Trusting a tool does not mean letting it take the app
 down. These limits protect the app's responsiveness, not the person's data:
@@ -327,7 +329,8 @@ never clears it for the person.
 **The words.** The app's own sentences here are new and are written in all
 15 languages: about 15 of them, counted at the planning step. Counted: 42;
 the stage C plan's table lists them. Two more came on 2026-10-12, for the
-alert after a removal that kept what a tool saved: 44. The tool's
+alert after a removal that kept what a tool saved: 44. Two more the same
+day, for the same alert when a folder could not be deleted: 46. The tool's
 words are shown as given (decision 10).
 
 **With no outside tool installed** the hub shows one quiet line and the
@@ -656,6 +659,8 @@ Where stage C differs from the sections above it:
 Limits of stage C that are known and accepted:
 
 - Remove waits for the tool's own process only, not for a child it started.
+  *Narrowed on 2026-10-12: a program the tool started is ended with the
+  tool. What is left is a program that left the tool's process group.*
 - "Changed" compares the manifest file, not the program.
 - The translations in fourteen languages were not reviewed by a reader of
   them.
@@ -735,7 +740,8 @@ are built, and none has been seen in the app.
 
 What is still left of these three, and known:
 
-- `language/changed` is still never sent.
+- `language/changed` is still never sent. *Closed on 2026-10-12: see "Five
+  loose ends of the tool platform, as closed".*
 - The fourteen languages of the two new texts were written with the English
   and checked by rule. No reader of them has reviewed them.
 - When what a tool saved is kept because its program would not stop, its
@@ -743,12 +749,57 @@ What is still left of these three, and known:
   The person can delete the folder; the preferences stay until the tool is
   added again and removed.
 - A file of a tool's data that could not be deleted, with the program gone,
-  is still only a line in the system log.
+  is still only a line in the system log. *Closed on 2026-10-12: see "Five
+  loose ends of the tool platform, as closed".*
 - The detail reads a tool's settings when it opens. A tool that changes its
   own preference while the detail is open is not followed.
 - A preference's title is bounded and drawn as plain text. The agreement
   sheet does not list preferences, so a title is not part of what the
   person agrees to, beyond the manifest's bytes being the ones agreed to.
+
+**Five loose ends of the tool platform, as closed (2026-10-12).** There was
+no plan for this change either: each was first checked against the code,
+then closed with the smallest change that holds, test first. Each line is
+marked met only where a command that was run shows it. Run on one Mac
+(Mac16,5, Apple M4 Max) with macOS 27.0, Xcode 27.0 and Swift 6.4. Nobody
+opened the app.
+
+| The loose end | Met? | What shows it |
+|---|---|---|
+| A command that is listed and cannot run looked clickable | Met in tests, not by hand. True of the Quick panel only | The command bar and the wheel already leave such a command out, each for a reason its code states (`CommandBarCatalog.toolEntries`: the bar records a use before it runs a row; `RadialMenuService.availableItems`: no dead slice), and tests held that before. The Quick panel kept the tile, drew it like any other, and did nothing when it was picked. It now keeps the tile in its place and draws it as a disabled button (`QuickLauncherService.isUnavailable`), which SwiftUI dims as it dims every disabled button; no click, Return or digit runs it and the panel stays open. Seven checks in the `launcher` suite and two planted regressions. How the dimmed tile looks is by-hand check 34. |
+| A removed tool kept its shortcut, and nothing could clear it | Met in tests, not by hand | The premise held: the saved combination registered no key (`ToolShortcutRegistrar.wantedShortcuts`) and still refused the same keys to every other command (`ShortcutConflicts.holder`, `ToolShortcutRegistrar.assign`), with no row to clear it on. Now Remove clears the shortcuts of the tool's commands (`ExternalToolStore.remove`, `ToolShortcutRegistrar.forget`), whether or not what the tool saved is kept. A tool that is switched off, updated, or not registered this launch keeps its shortcut saved; it holds no key and refuses nobody meanwhile (`heldShortcuts`), and is a key again when the tool returns. Keys given to another tool command meanwhile stay with that command. `platform` 766 to 781 checks, `tool-runtime` 581 to 591, two planted regressions. By-hand check 35. |
+| At Remove, a file that could not be deleted was only a log line | Met in tests, not by hand | The premise held: `ExternalToolStore.remove` answered `deleted` whatever `ToolFolders.delete` gave back, and it deleted the tool's preferences while the folder of what it saved stayed. It now answers `notDeleted` with each folder that is left, and the alert added for kept data says so, with its own title and sentence and the same Reveal in Finder button (`ToolRemovalNotice`). Two new texts in fifteen languages, 46 in all. A tool's preferences now go only together with the folder of what it saved; when the folder stays, for any reason, they stay, and nothing deletes either later. The record is written away before anything is deleted, so the next launch has no record of a half-deleted tool and starts nothing of it: a test relaunches over a read-only folder and sees that. `tool-runtime` 591 to 606 checks, three planted regressions. Still only a log line: a program that would not stop and a copy that could not be deleted, both at once. By-hand check 36. |
+| The app never told a tool that the language changed | Met in tests, not by hand | The premise held: `ToolLink.languageChanged` and `ExternalTool.languageChanged` were there and nothing called them. Now `ExternalToolStore` hears each change of `L10n.shared.language` (`ExternalToolStore.watch`) and sends `language/changed` to every tool that is running, once, with the schema's params; the last message a test sees is the protocol's own example, whole. It is wired as `preferences/changed` is: never before `initialize` is answered, never to a tool that is stopped, switched off or held back, and it starts nothing. One addition: a tool greeted in a language that changed before it answered is told the new one once it has. `initialize` already carried the language and reads it at each start; a test now holds that for a tool started after a change. The kit already heard the notice (`onLanguageChanged`, `app.language`) and a kit test held it; the protocol's sources, the conformance script and `vitruvian-tool run` are unchanged (`run` sends no notice of either kind). `tool-runtime` 606 to 622 checks, three planted regressions. By-hand check 37. |
+| At Remove and at quit only the tool's own process was ended, not programs it started | Met in tests. That a tool keeps the app's macOS permissions: not checked, by hand only | The premise held in part. The kill reached the tool's process alone, and nothing ended what a tool left running when it exited by itself, crashed or was stopped for being idle. Asking a tool to end already reached its helpers: `Process.terminate` signals the whole process group, which a run on macOS 27.0 showed. And macOS already starts a `Process` in a process group of its own, led by the child, so nothing about how a tool is started changed: still `Foundation.Process`, no spawn attribute, no `posix_spawn` of the app's own, nothing that disclaims the child. The app now looks at the child once it runs and, only when it sees the child lead its own group, kills that group with the tool and, when the tool's process is gone, kills what is left of the group, once. It never signals group 0 or 1, its own group, or a group the child is merely in; a tool it did not see lead a group is killed alone, as before. `vitruvian-tool run` does the same. Tests start the fixture tool, which starts a helper that writes a file every two milliseconds: after goodbye, a crash, a closed input, the kill, Remove, switch-off and quit the helper is gone and its file stops changing; a helper that left the group runs on and is not signalled; a watcher around the signalling sees one group signalled and no other. `tool-runtime` 622 to 654 checks, five planted regressions; the command's tests 38 to 39. By-hand checks 38 and 39. |
+
+Limits of these five that are known and accepted:
+
+- A program that left its tool's process group or session is not ended
+  with the tool. Every program a Swift tool starts with Foundation's
+  `Process` is such a one, because macOS gives it a group of its own. The
+  guide says so. A program like that can still write into a data folder
+  the person asked to be deleted.
+- When the app itself crashes, or is killed, nothing ends a tool's
+  helpers. The tool still ends, because its input closes, as before.
+- A tool that starts a program and is then stopped for being idle, after
+  two minutes, takes the program with it. That is new, and the guide says
+  how a program that must outlive its tool leaves the group.
+- Between the moment a tool's process is collected and the one sweep of
+  its group, macOS could in principle give the tool's id to a new process
+  that makes a group of its own. The sweep does nothing while a process
+  has the id, which leaves only a process that took the id and was gone
+  again within that instant. The kill of the tool's own process always had
+  the same instant.
+- A helper that ended while its tool still runs stays a zombie until the
+  tool ends, as with any program that does not collect its children.
+- A program that would not stop and a copy that could not be deleted, both
+  at once, is still only a line in the system log.
+- When a role, a window-layout action or a Command Bar row took a tool
+  command's keys while the tool was switched off, both stay saved; the one
+  that registers first has the key and the other row says so.
+- On the command bar and the wheel a command that stops being able to run
+  while the bar or the wheel is open can still be picked once, and then
+  does nothing.
 
 **The five "done when" items of section 1, as they stand.** None is marked
 met here by a person, because none of the checks by hand has been done.
@@ -775,8 +826,9 @@ met here by a person, because none of the checks by hand has been done.
 is a menu-bar app the automation cannot see, and granting or taking away
 Accessibility is a security setting only a person changes. This is stage B's
 three checks, stage C's fourteen and stage D's own in one list, with the
-ones that say the same thing joined, and four more for the three gaps
-closed on 2026-10-12, at the end. Each is one action and what to expect,
+ones that say the same thing joined, four more for the three gaps
+closed on 2026-10-12, and after those the checks for the five loose ends
+closed the same day, at the end. Each is one action and what to expect,
 in an order that can be done top to bottom in one sitting. Record each in
 the pull request with the Mac and the macOS version, or say it was not done.
 
@@ -911,9 +963,10 @@ section "By hand" gives the commands that make them in `$TMPDIR`.
 
 *The three gaps closed on 2026-10-12. Do these before check 28.*
 
-Checks 30 and 31 need a tool no sample is, `prefs`: four preferences with
-titles, one of each kind, and one with none. It starts with the app, and
-shows the app's short message each time it is told a preference changed.
+Checks 30, 31 and 37 need a tool no sample is, `prefs`: four preferences
+with titles, one of each kind, and one with none. It starts with the app,
+and shows the app's short message each time it is told a preference or the
+language changed.
 Make it with:
 
 ```sh
@@ -976,6 +1029,8 @@ for line in sys.stdin:
     elif method == "preferences/changed":
         for key, value in message["params"]["values"].items():
             ask("notify/hud", {"icon": "slider.horizontal.3", "message": "%s is now %s" % (key, json.dumps(value))})
+    elif method == "language/changed":
+        ask("notify/hud", {"icon": "globe", "message": "language is now %s" % message["params"]["language"]})
     elif method == "command/run" and message["params"]["command"] == "show":
         values = [json.dumps(ask("storage/get", {"key": key}).get("value")) for key in ("project", "loud", "count", "ratio")]
         ask("notify/hud", {"icon": "list.bullet", "message": " ".join(values)})
@@ -1025,6 +1080,168 @@ chmod +x "$TMPDIR/prefs/bin/tool.py"
     cut with an ellipsis after about 120 characters. The alert is no taller
     than for any other refusal. Delete `$TMPDIR/prefs` and
     `$TMPDIR/longname` with the others in check 28.
+
+*The five loose ends closed on 2026-10-12. Do these before check 28.*
+
+Check 34 needs a tool no sample is, `never`: one command, on the Quick panel
+and the command bar, that the tool says cannot run. It starts with the app.
+Make it with:
+
+```sh
+mkdir -p "$TMPDIR/never/bin"
+cat > "$TMPDIR/never/vitruvian-tool.json" <<'JSON'
+{
+  "id": "com.example.never",
+  "name": { "en": "Never, by hand" },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "Example",
+  "contributes": {
+    "commands": [{ "id": "wait", "title": { "en": "Not now" }, "icon": "hourglass", "surfaces": ["quickPanel", "commandBar"] }]
+  },
+  "activation": ["onLaunch"],
+  "runtime": { "kind": "external", "exec": "bin/tool.py" }
+}
+JSON
+cat > "$TMPDIR/never/bin/tool.py" <<'PY'
+#!/usr/bin/python3
+import json
+import sys
+
+
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\n")
+    sys.stdout.flush()
+
+
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "1", "toolVersion": "0.1.0"}})
+        send({"jsonrpc": "2.0", "method": "commands/state", "params": {"runnable": []}})
+    elif method == "command/run":
+        send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32010, "message": "not now"}})
+    elif method == "shutdown":
+        sys.exit(0)
+PY
+chmod +x "$TMPDIR/never/bin/tool.py"
+```
+
+`vitruvian-tool validate "$TMPDIR/never"` prints three lines that start with
+`ok`, and `vitruvian-tool run "$TMPDIR/never" --command wait` prints
+`state    no command can run now` and ends with `run: OK`: both were run
+when this was written, and so were the two for `prefs` again, with its new
+branch for the language.
+
+34. **Add `$TMPDIR/never`, open the Quick panel, and look at the tile "Not
+    now". Click it, press its digit, move to it with the arrows and press
+    Return. Then type "Not now" in the command bar.** The tile is in the
+    grid, dimmed like a disabled button, in light and in dark appearance and
+    in the island's Tools tab. Nothing happens for the click, the digit or
+    Return, and the panel stays open; the tile beside it still runs by its
+    own digit. The pointer over it shows no highlight. The command bar has
+    no row for it. Click Edit on the panel: the tile is no longer dimmed and
+    can be hidden and dragged. Delete `$TMPDIR/never` with the others in
+    check 28.
+35. **Add the Python sample, record Option-Shift-9 for "Say hello from
+    Python" on the Shortcuts page, and press it. Switch the tool off in
+    Settings, look at
+    the Shortcuts page, and switch it on again. Then Remove the tool, and
+    record Option-Shift-9 for any other command there.** The key shows the
+    sample's message. Switched off, the tool has no row and the key does
+    nothing; switched on, the row shows Option-Shift-9 again and the key
+    works. After Remove the row is gone, and the other command takes
+    Option-Shift-9 with no "already used" line. Add the sample again: its
+    row shows no shortcut.
+36. **Add the Python sample, and in a terminal run
+    `touch "$D/x" && chmod 555 "$D"`, where `D` is
+    `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.samples.hello-python`.
+    Then Remove the tool with "Remove and Delete What It Saved".** The row
+    goes, and then one alert is titled "Some files of “Hello, in Python”
+    could not be deleted", says the tool is removed and what is left is
+    here, names that folder under `ToolData`, and offers "Reveal in
+    Finder", which shows it. Quit the app and open it: the tool is not
+    listed and nothing of it runs. Afterwards run `chmod 755 "$D"` and
+    delete the folder by hand.
+37. **With `$TMPDIR/prefs` added, as in check 30, change the app's language
+    to German in Settings, General, and back.** The app's short message
+    says `language is now de`, once, and then the tag of the language you
+    came from, once (`en-US` for English); the tool's row says it is
+    running throughout. Switch the tool off, change the language and
+    change it back, and switch the tool on: no message came while it was
+    off, and the change did not start it.
+
+Checks 38 and 39 are for ending a tool together with the programs it
+started. Check 39 needs a tool no sample is, `helper`: one command that
+starts `/bin/sleep 611` and leaves it running. Make it with:
+
+```sh
+mkdir -p "$TMPDIR/helper/bin"
+cat > "$TMPDIR/helper/vitruvian-tool.json" <<'JSON'
+{
+  "id": "com.example.helper",
+  "name": { "en": "Helper, by hand" },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "Example",
+  "contributes": {
+    "commands": [{ "id": "start", "title": { "en": "Start a helper" }, "surfaces": ["commandBar"] }]
+  },
+  "runtime": { "kind": "external", "exec": "bin/tool.py" }
+}
+JSON
+cat > "$TMPDIR/helper/bin/tool.py" <<'PY'
+#!/usr/bin/python3
+import json
+import subprocess
+import sys
+
+
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\n")
+    sys.stdout.flush()
+
+
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "1", "toolVersion": "0.1.0"}})
+    elif method == "command/run" and message["params"]["command"] == "start":
+        nowhere = subprocess.DEVNULL
+        helper = subprocess.Popen(["/bin/sleep", "611"], stdin=nowhere, stdout=nowhere, stderr=nowhere)
+        send({"jsonrpc": "2.0", "method": "log", "params": {"message": "helper %d" % helper.pid}})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "command/run":
+        send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
+    elif method == "shutdown":
+        sys.exit(0)
+PY
+chmod +x "$TMPDIR/helper/bin/tool.py"
+```
+
+`vitruvian-tool validate "$TMPDIR/helper"` prints three lines that start
+with `ok`. `vitruvian-tool run "$TMPDIR/helper" --command start` ends with
+`run: OK`, and `pgrep -fl 'sleep 611'` prints nothing afterwards: both were
+run when this was written.
+
+38. **On a build with this change, repeat check 20: add `built/front-window`
+    and press the shortcut of "Show the front window's title".** The short
+    message is the title of the window in front, with no prompt of the
+    tool's own. This is the one thing about ending a tool's programs that
+    no test can show: that a tool still has the app's macOS permissions.
+    Nothing in how a tool is started changed, so it is expected. If it
+    fails, the change must not ship.
+39. **Add `$TMPDIR/helper`, run "Start a helper" from the command bar, and
+    run `pgrep -fl 'sleep 611'`. Then Remove the tool, and run `pgrep`
+    again. Add it again, run the command, quit the app, and run `pgrep`
+    once more.** The first `pgrep` shows one `sleep 611`. After Remove, and
+    after quit, it prints nothing. Add it a third time, run the command,
+    and leave the app alone for a little over two minutes: `pgrep` prints
+    nothing then either, because the tool was stopped for being idle and
+    took its helper with it. Delete `$TMPDIR/helper` with the others in
+    check 28.
 
 ## 16. Open questions
 

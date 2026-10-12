@@ -13,14 +13,17 @@ package enum ShortcutConflicts {
     package enum Holder: Equatable {
         /// A Command Bar row, by its stable key.
         case commandBarRow(String)
-        /// A tool command, by its id text. It may not be registered now.
+        /// A tool command, by its id text.
         case toolCommand(String)
     }
 
-    /// The rule, with everything it reads handed in. Both maps are what is
-    /// saved, not what is a key right now: a command whose tool is switched
-    /// off or not registered still holds its combination. An entry with no
-    /// id at all is nobody's, and holds nothing.
+    /// The rule, with everything it reads handed in. `rows` is what is
+    /// saved. `commands` is what holds a combination now: the saved
+    /// shortcuts of the tool commands that are here
+    /// (`ToolShortcutRegistrar.heldShortcuts`). A command whose tool is
+    /// switched off, removed or not registered has no row on the Shortcuts
+    /// page, so its saved combination blocks nobody. An entry with no id
+    /// at all is nobody's, and holds nothing.
     package static func holder(of shortcut: GlobalShortcut, rows: [String: GlobalShortcut],
                                commands: [String: GlobalShortcut],
                                excludingRow: String?, excludingCommand: CommandID?) -> Holder? {
@@ -79,7 +82,7 @@ package enum ShortcutConflicts {
     package static func title(for shortcut: GlobalShortcut, excludingRow: String? = nil,
                               excludingCommand: CommandID? = nil) -> String? {
         let rows = AppFeature.commandBar.isAvailable ? CommandBarService.shared.rowShortcuts : [:]
-        guard let holder = holder(of: shortcut, rows: rows, commands: ToolShortcutRegistrar.shared.shortcuts,
+        guard let holder = holder(of: shortcut, rows: rows, commands: ToolShortcutRegistrar.shared.heldShortcuts,
                                   excludingRow: excludingRow, excludingCommand: excludingCommand)
         else { return nil }
         let language = L10n.shared.language

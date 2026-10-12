@@ -154,6 +154,17 @@ package struct ToolFolders: Equatable, Sendable {
         return gone
     }
 
+    /// What is still there of a tool that was to be deleted: its copy, and
+    /// with `data` the folder of what it saved, the copy first. Empty when
+    /// `delete` did all it was asked. Asked of each entry itself, not of
+    /// what a link points at.
+    package func undeleted(_ id: ToolID, data: Bool, fileManager: FileManager = .default) -> [URL] {
+        guard let place = place(for: id) else { return [] }
+        return ([place.files] + (data ? [place.data] : [])).filter {
+            (try? fileManager.attributesOfItem(atPath: $0.path)) != nil
+        }
+    }
+
     /// Whether `folder` is, with every link followed, one of the app's own
     /// tool folders or inside one.
     package func holds(_ folder: URL) -> Bool {
