@@ -23,12 +23,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/VitruvianSoftware/vitruvian-core/tools/pipeline/unitfile"
 )
 
 // PipelineUnitDefinition represents a parsed pipeline_unit declaration.
@@ -67,146 +65,51 @@ func NewEngine(repoRoot string, runner QueryRunner) *Engine {
 	}
 }
 
-// DiscoverUnits scans repoRoot for pipeline units either from *.pipeline.json files or by parsing BUILD files.
+// DiscoverUnits returns every pipeline unit declared in a BUILD file under
+// repoRoot. The reading is done by //tools/pipeline/unitfile, the same reader
+// the workflow generator uses, so the two cannot disagree about a unit.
+//
+// A declaration that cannot be read is an error naming the file and the unit.
+// It is never a unit with no test targets: that looks exactly like a unit the
+// change does not affect, and it is how a unit went unselected for weeks.
 func (e *Engine) DiscoverUnits() ([]PipelineUnitDefinition, error) {
-	var units []PipelineUnitDefinition
-	seen := make(map[string]bool)
-
-	// 1. Walk repoRoot for BUILD files containing pipeline_unit declarations
-	err := filepath.Walk(e.RepoRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			name := info.Name()
-			if name == ".git" || name == "bazel-out" || name == "bazel-bin" || name == "bazel-testlogs" || name == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if info.Name() == "BUILD" || info.Name() == "BUILD.bazel" {
-			relDir, err := filepath.Rel(e.RepoRoot, filepath.Dir(path))
-			if err != nil {
-				return nil
-			}
-			relDir = filepath.ToSlash(relDir)
-			if relDir == "." {
-				relDir = ""
-			}
-
-			content, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-
-			parsedUnits := parsePipelineUnitsFromBuild(string(content), relDir)
-			for _, u := range parsedUnits {
-				if !seen[u.Name] {
-					seen[u.Name] = true
-					units = append(units, u)
-				}
-			}
-		}
-		return nil
-	})
+	read, err := unitfile.Discover(e.RepoRoot)
 	if err != nil {
 		return nil, err
 	}
-
-	sort.Slice(units, func(i, j int) bool { return units[i].Name < units[j].Name })
+	units := make([]PipelineUnitDefinition, 0, len(read))
+	for _, u := range read {
+		units = append(units, definitionOf(u))
+	}
 	return units, nil
 }
 
-// regex helpers for parsing pipeline_unit calls in Starlark BUILD files
-var (
-	pipelineUnitCallRegex = regexp.MustCompile(`pipeline_unit\s*\(([^)]+)\)`)
-	nameFieldRegex        = regexp.MustCompile(`name\s*=\s*["']([^"']+)["']`)
-	tierFieldRegex        = regexp.MustCompile(`tier\s*=\s*["']([^"']+)["']`)
-	runnerFieldRegex      = regexp.MustCompile(`runner\s*=\s*["']([^"']+)["']`)
-	personaFieldRegex     = regexp.MustCompile(`persona\s*=\s*["']([^"']+)["']`)
-	timeoutFieldRegex     = regexp.MustCompile(`timeout_minutes\s*=\s*([0-9]+)`)
-	testTargetsFieldRegex = regexp.MustCompile(`test_targets\s*=\s*\[([^\]]*)\]`)
-	dependsOnFieldRegex   = regexp.MustCompile(`depends_on\s*=\s*\[([^\]]*)\]`)
-)
-
-func parsePipelineUnitsFromBuild(content, pkg string) []PipelineUnitDefinition {
-	var units []PipelineUnitDefinition
-	matches := pipelineUnitCallRegex.FindAllStringSubmatch(content, -1)
-
-	for _, m := range matches {
-		body := m[1]
-
-		nameMatch := nameFieldRegex.FindStringSubmatch(body)
-		if len(nameMatch) < 2 {
-			continue
-		}
-		name := nameMatch[1]
-
-		tier := "L1"
-		if tm := tierFieldRegex.FindStringSubmatch(body); len(tm) >= 2 {
-			tier = tm[1]
-		}
-
-		runner := "ubuntu-26.04"
-		if rm := runnerFieldRegex.FindStringSubmatch(body); len(rm) >= 2 {
-			runner = rm[1]
-		}
-
-		persona := "all"
-		if pm := personaFieldRegex.FindStringSubmatch(body); len(pm) >= 2 {
-			persona = pm[1]
-		}
-
-		timeout := 20
-		if tom := timeoutFieldRegex.FindStringSubmatch(body); len(tom) >= 2 {
-			fmt.Sscanf(tom[1], "%d", &timeout)
-		}
-
-		var testTargets []string
-		if ttm := testTargetsFieldRegex.FindStringSubmatch(body); len(ttm) >= 2 {
-			raw := ttm[1]
-			targetItems := regexp.MustCompile(`["']([^"']+)["']`).FindAllStringSubmatch(raw, -1)
-			for _, item := range targetItems {
-				if len(item) >= 2 {
-					t := item[1]
-					if strings.HasPrefix(t, ":") {
-						if pkg == "" {
-							t = "//" + t
-						} else {
-							t = "//" + pkg + t
-						}
-					}
-					testTargets = append(testTargets, t)
-				}
-			}
-		}
-
-		var dependsOn []string
-		if dom := dependsOnFieldRegex.FindStringSubmatch(body); len(dom) >= 2 {
-			raw := dom[1]
-			depItems := regexp.MustCompile(`["']([^"']+)["']`).FindAllStringSubmatch(raw, -1)
-			for _, item := range depItems {
-				if len(item) >= 2 {
-					dependsOn = append(dependsOn, item[1])
-				}
-			}
-		}
-
-		units = append(units, PipelineUnitDefinition{
-			Name:             name,
-			Package:          pkg,
-			TestTargets:      testTargets,
-			Tier:             tier,
-			Runner:           runner,
-			Persona:          persona,
-			ConcurrencyGroup: "pipeline-" + name,
-			TimeoutMinutes:   timeout,
-			DependsOn:        dependsOn,
-		})
+// parsePipelineUnitsFromBuild reads the units declared in one BUILD file's
+// text. pkg is the file's package.
+func parsePipelineUnitsFromBuild(content, pkg string) ([]PipelineUnitDefinition, error) {
+	read, err := unitfile.Parse(content, pkg)
+	if err != nil {
+		return nil, err
 	}
+	var units []PipelineUnitDefinition
+	for _, u := range read {
+		units = append(units, definitionOf(u))
+	}
+	return units, nil
+}
 
-	return units
+func definitionOf(u unitfile.Unit) PipelineUnitDefinition {
+	return PipelineUnitDefinition{
+		Name:             u.Name,
+		Package:          u.Package,
+		TestTargets:      u.TestTargets,
+		Tier:             u.Tier,
+		Runner:           u.Runner,
+		Persona:          u.Persona,
+		ConcurrencyGroup: "pipeline-" + u.Name,
+		TimeoutMinutes:   u.TimeoutMinutes,
+		DependsOn:        u.DependsOn,
+	}
 }
 
 // ComputePlan executes the complete change detection analysis.
@@ -232,7 +135,10 @@ func (e *Engine) ComputePlan(ctx context.Context, files []string, baseRev, headR
 	}
 
 	// 2. Discover all declared pipeline units
-	allUnits, _ := e.DiscoverUnits()
+	allUnits, err := e.DiscoverUnits()
+	if err != nil {
+		return nil, fmt.Errorf("discover pipeline units: %w", err)
+	}
 
 	// 3. Fast-Gate: Global Impact
 	if isGlobal, reason := CheckGlobalImpact(files); isGlobal {

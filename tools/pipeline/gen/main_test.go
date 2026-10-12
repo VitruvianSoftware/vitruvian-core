@@ -404,7 +404,10 @@ pipeline_unit(
     timeout_minutes = 30,
 )
 `
-	units := parseUnitsFromBuildContent(build, "apps/mobile/android-remote")
+	units, err := parseUnitsFromBuildContent(build, "apps/mobile/android-remote")
+	if err != nil {
+		t.Fatalf("reading units: %v", err)
+	}
 	if len(units) != 1 {
 		t.Fatalf("expected 1 unit, got %d", len(units))
 	}
@@ -424,7 +427,10 @@ pipeline_unit(
     tier = "L1",
 )
 `
-	units := parseUnitsFromBuildContent(build, "pkg")
+	units, err := parseUnitsFromBuildContent(build, "pkg")
+	if err != nil {
+		t.Fatalf("reading units: %v", err)
+	}
 	if len(units) != 1 {
 		t.Fatalf("expected 1 unit, got %d", len(units))
 	}
@@ -448,7 +454,10 @@ pipeline_unit(
     tier = "L1",
 )
 `
-	units := parseUnitsFromBuildContent(build, "pkg")
+	units, err := parseUnitsFromBuildContent(build, "pkg")
+	if err != nil {
+		t.Fatalf("reading units: %v", err)
+	}
 	if len(units) != 1 || len(units[0].BuildFlags) != 1 || units[0].BuildFlags[0] != "--fat_apk_cpu=arm64-v8a,x86_64" {
 		t.Fatalf("build_flags not parsed: %#v", units)
 	}
@@ -489,7 +498,10 @@ pipeline_unit(
     tier = "L1",
 )
 `
-	units := parseUnitsFromBuildContent(build, "pkg")
+	units, err := parseUnitsFromBuildContent(build, "pkg")
+	if err != nil {
+		t.Fatalf("reading units: %v", err)
+	}
 	if len(units) != 1 {
 		t.Fatalf("expected 1 unit, got %d", len(units))
 	}
@@ -511,7 +523,10 @@ pipeline_unit(
     tier = "L1",
 )
 `
-	units := parseUnitsFromBuildContent(build, "pkg")
+	units, err := parseUnitsFromBuildContent(build, "pkg")
+	if err != nil {
+		t.Fatalf("reading units: %v", err)
+	}
 	if len(units) != 1 || units[0].Env["REF"] != "main#head" {
 		t.Fatalf("hash inside a string was treated as a comment: %#v", units)
 	}
@@ -526,7 +541,10 @@ pipeline_unit(
     tier = "L1",
 )
 `
-	units := parseUnitsFromBuildContent(build, "pkg")
+	units, err := parseUnitsFromBuildContent(build, "pkg")
+	if err != nil {
+		t.Fatalf("reading units: %v", err)
+	}
 	if len(units) != 1 || units[0].Env["ANDROID_NDK_HOME"] != "${{ env.ANDROID_NDK_ROOT }}" {
 		t.Fatalf("env not parsed from BUILD content: %#v", units)
 	}
