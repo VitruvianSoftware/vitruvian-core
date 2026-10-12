@@ -162,7 +162,25 @@ jobs:
             body="$(printf '%s\n\n### Upstream changes\n\nCould not resolve the upstream commit range for this bump (missing OCI revision label, or the compare API had nothing to report) -- check gitops/argocd/platform/buzz/values.yaml for the raw digest.\n' "$body")"
           fi
 
-          existing="$(gh pr list \
+          # GitHub's API fails now and then with a server-side error that has
+          # nothing to do with the request (2026-10-12: a GraphQL "Something
+          # went wrong" on the description refresh turned PR #2969 red). Both
+          # calls wrapped below are safe to repeat. `gh pr create` is left
+          # alone on purpose: a create that succeeded but reported an error
+          # would fail the second time for a different reason.
+          retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then return 0; fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::'$1 $2 $3' failed (attempt ${attempt} of 3); retrying in $((attempt * 10))s." >&2
+                sleep $((attempt * 10))
+              fi
+            done
+            return 1
+          }
+
+          existing="$(retry gh pr list \
             --head image-updates/buzz \
             --base main \
             --state open \
@@ -171,7 +189,7 @@ jobs:
 
           if [ -n "$existing" ]; then
             echo "PR #${existing} already open for image-updates/buzz -- updating its description with the new commit range."
-            gh pr edit "$existing" --body "$body"
+            retry gh pr edit "$existing" --body "$body"
             exit 0
           fi
 
