@@ -92,6 +92,12 @@ filegroup(
     visibility = ["//tools/delivery/gen:__pkg__"],
 )
 
+filegroup(
+    name = "pins_manifest",
+    srcs = [".github/actions/pins/action.yml"],
+    visibility = ["//visibility:public"],
+)
+
 exports_files(
     [
         ".github/workflows/_changelog-summary.yaml",
