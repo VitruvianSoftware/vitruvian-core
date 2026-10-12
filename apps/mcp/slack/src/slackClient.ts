@@ -50,6 +50,9 @@ import type { SlackCredentials, WriteTokenPreference } from "./config.js";
  */
 /** Conversations inspected at once by listUnread; Slack allows ~50 calls/min. */
 const UNREAD_CONCURRENCY = 4;
+/** Times listUnread re-asks after a rate limit, and the longest single wait. */
+const UNREAD_MAX_RETRIES = 3;
+const UNREAD_MAX_WAIT_SECONDS = 30;
 /** Message subtypes that do not light Slack's unread badge. */
 const UNREAD_IGNORED_SUBTYPES = new Set([
   "channel_join",
@@ -204,7 +207,17 @@ export class SlackClient {
       });
     }
 
-    const data = (await res.json()) as { ok?: boolean; error?: string };
+    const data = (await res.json()) as {
+      ok?: boolean;
+      error?: string;
+      retry_after?: number;
+    };
+    // Slack says how long to back off only in a header; carried into the body
+    // so a caller that can afford to wait knows for how long.
+    if (res.status === 429) {
+      const header = Number(res.headers.get("Retry-After") ?? "1");
+      data.retry_after = Number.isFinite(header) ? header : 1;
+    }
 
     // Fallback: if a bot token read fails with not_in_channel or
     // channel_not_found, retry with user token when available (e.g. for DMs,
@@ -483,7 +496,11 @@ export class SlackClient {
             team_id: this.teamId,
           };
           if (cursor) params.cursor = cursor;
-          const data = (await this.api("users.conversations", params, "user")) as {
+          const data = (await this.api(
+            "users.conversations",
+            params,
+            "user",
+          )) as {
             ok?: boolean;
             error?: string;
             channels?: { id: string }[];
@@ -507,12 +524,31 @@ export class SlackClient {
     const conversations: Record<string, unknown>[] = [];
     const errors: { id: string; error: string }[] = [];
 
+    // A workspace of any size crosses Slack's per-minute limit here, and a
+    // listing that drops the rate-limited conversations reads as "nothing
+    // unread" when it means "did not look". So wait as told and ask again.
+    const patient = async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      for (let attempt = 0; ; attempt++) {
+        const data = (await this.api(method, params, "user")) as {
+          error?: string;
+          retry_after?: number;
+        };
+        if (data.error !== "ratelimited" || attempt >= UNREAD_MAX_RETRIES) {
+          return data;
+        }
+        const seconds = Math.min(
+          data.retry_after ?? 1,
+          UNREAD_MAX_WAIT_SECONDS,
+        );
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+      }
+    };
+
     const inspect = async (id: string) => {
-      const info = (await this.api(
-        "conversations.info",
-        { channel: id },
-        "user",
-      )) as {
+      const info = (await patient("conversations.info", { channel: id })) as {
         ok?: boolean;
         error?: string;
         channel?: {
@@ -535,11 +571,13 @@ export class SlackClient {
       // (not a member), so "unread" has no meaning for it.
       if (channel.is_archived || channel.last_read === undefined) return;
 
-      const history = (await this.api(
-        "conversations.history",
-        { channel: id, oldest: channel.last_read, limit: perConversation },
-        "user",
-      )) as {
+      const history = (await patient("conversations.history", {
+        channel: id,
+        // A conversation never opened reports a cursor of all zeros, which
+        // history rejects as invalid_ts_oldest; "0" asks the same question.
+        oldest: Number(channel.last_read) === 0 ? "0" : channel.last_read,
+        limit: perConversation,
+      })) as {
         ok?: boolean;
         error?: string;
         has_more?: boolean;

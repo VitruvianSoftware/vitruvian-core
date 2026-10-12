@@ -259,9 +259,15 @@ describe("unread listing", () => {
           const method = url.pathname.replace("/api/", "");
           const headers = (init?.headers ?? {}) as Record<string, string>;
           calls.push({ method, auth: headers.Authorization });
-          return new Response(JSON.stringify(route(method, url.searchParams)), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
+          const reply = route(method, url.searchParams);
+          const limited = reply.error === "ratelimited";
+          return new Response(JSON.stringify(reply), {
+            status: limited ? 429 : 200,
+            headers: {
+              "Content-Type": "application/json",
+              // Zero, so the retry path is exercised without a real wait.
+              ...(limited ? { "Retry-After": "0" } : {}),
+            },
           });
         },
       );
@@ -273,6 +279,7 @@ describe("unread listing", () => {
     C_BUSY: "100.0",
     C_LIMITED: "100.0",
     C_JOINS: "100.0",
+    D_NEVER_OPENED: "0000000000.000000",
   };
   let capture: ReturnType<typeof routeFetch>;
   afterEach(() => capture.restore());
@@ -281,7 +288,9 @@ describe("unread listing", () => {
     if (method === "users.conversations") {
       const types = q.get("types");
       if (types === "im") return { ok: false, error: "missing_scope" };
-      if (types === "mpim") return { ok: true, channels: [] };
+      if (types === "mpim") {
+        return { ok: true, channels: [{ id: "D_NEVER_OPENED" }] };
+      }
       return {
         ok: true,
         channels: [
@@ -300,6 +309,12 @@ describe("unread listing", () => {
       };
     }
     // conversations.history: the unread check must start at the read cursor.
+    if (id === "D_NEVER_OPENED") {
+      // What Slack does with the all-zero cursor it hands out itself.
+      if (q.get("oldest") !== "0")
+        return { ok: false, error: "invalid_ts_oldest" };
+      return { ok: true, messages: [{ ts: "500.0" }] };
+    }
     expect(q.get("oldest")).toBe(LAST_READ[id]);
     if (id === "C_LIMITED") return { ok: false, error: "ratelimited" };
     if (id === "C_JOINS") {
@@ -319,6 +334,7 @@ describe("unread listing", () => {
     capture = routeFetch(workspace);
     const result = await clientFor(STDIO_ENV).listUnread();
     expect(result.conversations).toEqual([
+      expect.objectContaining({ id: "D_NEVER_OPENED", unread_count: 1 }),
       {
         id: "C_BUSY",
         name: "c_busy",
@@ -329,7 +345,7 @@ describe("unread listing", () => {
         latest_ts: "300.0",
       },
     ]);
-    expect(result.checked).toBe(4);
+    expect(result.checked).toBe(5);
   });
 
   it("does not call a channel unread when only join notices are new", async () => {
@@ -344,6 +360,25 @@ describe("unread listing", () => {
     expect(result.ok).toBe(true);
     expect(result.skipped).toEqual([{ types: "im", error: "missing_scope" }]);
     expect(result.errors).toEqual([{ id: "C_LIMITED", error: "ratelimited" }]);
+  });
+
+  it("waits out a rate limit and asks again rather than dropping the conversation", async () => {
+    let limitedOnce = false;
+    capture = routeFetch((method, q) => {
+      if (
+        method === "conversations.history" &&
+        q.get("channel") === "C_BUSY" &&
+        !limitedOnce
+      ) {
+        limitedOnce = true;
+        return { ok: false, error: "ratelimited" };
+      }
+      return workspace(method, q);
+    });
+    const result = await clientFor(STDIO_ENV).listUnread();
+    expect(limitedOnce).toBe(true);
+    expect(result.conversations.map((c) => c.id)).toContain("C_BUSY");
+    expect(result.errors.map((e) => e.id)).not.toContain("C_BUSY");
   });
 
   it("reads cursors with the user token only, never the bot's", async () => {
