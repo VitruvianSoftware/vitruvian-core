@@ -94,7 +94,7 @@ overrides:
   uuid@9: ^11.1.1
   yeoman-doctor>twig: ^3.0.0
 
-packageExtensionsChecksum: sha256-vXsQ6/SYHxFWlwxp8oDDTWVL9mnFZP2Q7x0Sk7xb/NQ=
+packageExtensionsChecksum: sha256-q0uOQjt3qnvLwlUOi9Gf9lgJCohi0qIz/t4ywkcmPew=
 
 importers:
 
@@ -23750,7 +23750,11 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@cesium/core@0.1.0': {}
+  '@cesium/core@0.1.0':
+    dependencies:
+      earcut: 3.0.2
+      mersenne-twister: 1.1.0
+      urijs: 1.19.11
 
   '@cesium/engine@22.3.0':
     dependencies:
