@@ -128,7 +128,13 @@ enum Words {
     /// What `validate` cannot know, said once at the end of a pass.
     static let validateLimits = """
         This is what the app checks before it asks the person. It cannot promise the rest: an older app \
-        may not know a service or a surface this one does; the app refuses an id another tool already has; \
-        and nothing here started the program.
+        may not know a service or a surface this one does; the app refuses an id another tool already has, \
+        and a folder inside its own support folder; and nothing here started the program.
+        """
+
+    /// Where `run` is not the app, said once when a run starts.
+    static let runLimits = """
+        This is not the app. Every service the manifest lists is granted, and nothing real is done. \
+        There is no idle stop, no restart after a crash and no flood count.
         """
 }

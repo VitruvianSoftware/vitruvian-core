@@ -23,7 +23,7 @@ enum ToolFolderExamplesTests {
             suite.expect(false, "the folder examples are handed to the tests in VITRUVIAN_FOLDER_EXAMPLES")
             return
         }
-        suite.expect(all.count == 20, "the file holds twenty folders, and each is judged below")
+        suite.expect(all.count == 22, "the file holds twenty-two folders, and each is judged below")
         for (index, example) in all.enumerated() {
             var limits = ToolLimits.standard
             if let bytes = example["limits"]?["bytes"]?.numberValue { limits.folderBytes = Int(bytes) }
@@ -33,10 +33,13 @@ enum ToolFolderExamplesTests {
             let folder = bench.root.appendingPathComponent("example-\(index)", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let made = make(example["make"]?.arrayValue ?? [], in: folder, base: base)
-            let said = verdict(bench.store.offer(from: folder))
+            let offered = bench.store.offer(from: folder)
+            let said = verdict(offered)
             let about = example["about"]?.stringValue ?? "example \(index)"
-            suite.expect(made && said == example["verdict"]?.stringValue && !bench.exists(bench.support),
+            suite.expect(made && said == example["verdict"]?.stringValue
+                             && rule(offered) == example["rule"]?.stringValue && !bench.exists(bench.support),
                          "\(about): the app says \(said), the examples \(example["verdict"]?.stringValue ?? "nothing"); "
+                             + "the rule is \(rule(offered) ?? "none"), the examples' \(example["rule"]?.stringValue ?? "none"); "
                              + "and nothing is copied by looking")
         }
     }
@@ -65,6 +68,13 @@ enum ToolFolderExamplesTests {
         }
     }
 
+    /// The manifest's rule the app says is broken, by its name alone; nil
+    /// when the app refuses for anything else, or not at all.
+    static func rule(_ offered: Result<ToolOffer, ExternalToolStore.Refusal>) -> String? {
+        guard case .failure(.manifest(.invalid(let problem))) = offered else { return nil }
+        return String("\(problem)".prefix { $0 != "(" })
+    }
+
     /// Does an example's steps in `folder`. False for a step this does not
     /// know, or one that could not be done.
     static func make(_ steps: [JSONValue], in folder: URL, base: [String: JSONValue]) -> Bool {
@@ -89,6 +99,11 @@ enum ToolFolderExamplesTests {
                 try? files.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
                 guard (try? files.createSymbolicLink(atPath: link.path, withDestinationPath: target)) != nil
                 else { return false }
+            } else if let path = step["pipe"]?.stringValue {
+                let pipe = folder.appendingPathComponent(path)
+                let mode = mode_t(step["mode"]?.stringValue ?? "644", radix: 8) ?? 0o644
+                try? files.createDirectory(at: pipe.deletingLastPathComponent(), withIntermediateDirectories: true)
+                guard mkfifo(pipe.path, mode) == 0, chmod(pipe.path, mode) == 0 else { return false }
             } else if let path = step["quarantine"]?.stringValue {
                 let mark = Array("0081;00000000;Safari;".utf8)
                 guard setxattr(folder.appendingPathComponent(path).path, "com.apple.quarantine", mark, mark.count,

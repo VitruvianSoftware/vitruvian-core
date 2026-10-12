@@ -29,12 +29,17 @@ final class FolderCheckTests: XCTestCase {
     func testEveryExampleFolderIsJudgedAsTheFileSays() throws {
         let scratch = Scratch()
         let (base, examples) = try FolderExample.all()
-        XCTAssertEqual(examples.count, 20)
+        XCTAssertEqual(examples.count, 22)
         var seen = Set<String>()
         for (index, example) in examples.enumerated() {
             let folder = scratch.folder("example-\(index)")
             try example.build(in: folder, base: base)
-            XCTAssertEqual(FolderCheck.check(folder, limits: example.limits).verdict, example.verdict, example.about)
+            let report = FolderCheck.check(folder, limits: example.limits)
+            XCTAssertEqual(report.verdict, example.verdict, example.about)
+            // A rule's name is its case's, without what the case carries.
+            var rule: String?
+            if case .manifest(let broken)? = report.problems.first { rule = String("\(broken)".prefix { $0 != "(" }) }
+            XCTAssertEqual(rule, example.rule, "\(example.about): the rule of the manifest that is broken")
             seen.insert(example.verdict)
         }
         XCTAssertEqual(seen, ["ok", "noManifest", "manifest", "programMissing", "programOutsideFolder",
@@ -105,6 +110,8 @@ final class FolderCheckTests: XCTestCase {
             "ok       folder: 3 things, 1 KB",
         ])
         XCTAssertTrue(said.last?.contains("It cannot promise the rest") == true, "a pass says what it did not check")
+        XCTAssertTrue(said.last?.contains("a folder inside its own support folder") == true,
+                      "and each thing only the app refuses")
 
         chmod(folder.appendingPathComponent("bin/tool").path, 0o644)
         said = []

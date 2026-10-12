@@ -442,6 +442,12 @@ MUTATIONS = [
      "        guard inside else { return .programOutsideFolder(program) }\n",
      "",
      "a program that is a link to a file outside the folder is refused"),
+    ("a tool's program may be a named pipe", "tool-runtime",
+     "Sources/Vitruvian/Core/Platform/ExternalToolManifest.swift",
+     "        guard (try? fileManager.attributesOfItem(atPath: file.path))?[.type] as? FileAttributeType == .typeRegular\n"
+     "        else { return .programMissing(program) }\n",
+     "",
+     "a named pipe where the program should be, with the execute permission: the app says ok"),
     ("an outside tool waits for a macOS grant before it starts", "platform",
      "Sources/Vitruvian/Core/Platform/ToolManifest.swift",
      "        self.startsWithoutGrant = !capability.ridesOn.isEmpty\n",

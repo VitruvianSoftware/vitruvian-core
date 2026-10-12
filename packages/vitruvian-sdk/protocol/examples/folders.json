@@ -1,5 +1,5 @@
 {
-  "about": "Folders that `vitruvian-tool validate` and the app must judge alike. Each example says what to make in an empty folder, and `verdict`: `ok`, or the name of the first thing wrong with it. The steps of `make` are done in order. `manifest` writes vitruvian-tool.json: `base` with these changes, a field set to null left out. `file` writes a file of `bytes` bytes (none when left out) with the permissions `mode`, making the folders above it. `link` makes a symbolic link to `to`, as written. `quarantine` marks a file the way macOS marks a download. `limits` is the most the folder may hold; left out, it is the app's own 256 MB and 10,000 things. Neither side is given the other's answer: each is run and compared with `verdict`.",
+  "about": "Folders that `vitruvian-tool validate` and the app must judge alike. Each example says what to make in an empty folder, and `verdict`: `ok`, or the name of the first thing wrong with it. The steps of `make` are done in order. `manifest` writes vitruvian-tool.json: `base` with these changes, a field set to null left out. `file` writes a file of `bytes` bytes (none when left out) with the permissions `mode`, making the folders above it. `link` makes a symbolic link to `to`, as written. `pipe` makes a named pipe with the permissions `mode`: something that is there and is not a file. `quarantine` marks a file the way macOS marks a download. `limits` is the most the folder may hold; left out, it is the app's own 256 MB and 10,000 things. `rule`, on each example whose verdict is `manifest`, is the name of the manifest's rule that is broken, and both sides are held to it too. Neither side is given the other's answer: each is run and compared with `verdict`.",
   "base": {
     "id": "com.example.folders",
     "name": { "en": "Folders" },
@@ -22,14 +22,25 @@
     {
       "about": "a manifest that breaks one of its own rules",
       "verdict": "manifest",
+      "rule": "idWithoutDot",
       "make": [
         { "manifest": { "id": "nodot" } },
         { "file": "bin/tool", "mode": "755" }
       ]
     },
     {
+      "about": "a manifest that asks for a newer protocol than there is",
+      "verdict": "manifest",
+      "rule": "unsupportedProtocol",
+      "make": [
+        { "manifest": { "protocol": "2" } },
+        { "file": "bin/tool", "mode": "755" }
+      ]
+    },
+    {
       "about": "a manifest of more than 65,536 bytes",
       "verdict": "manifest",
+      "rule": "tooLarge",
       "make": [
         { "file": "vitruvian-tool.json", "bytes": 65537, "mode": "644" },
         { "file": "bin/tool", "mode": "755" }
@@ -38,6 +49,7 @@
     {
       "about": "a program path that leaves the folder by its text",
       "verdict": "manifest",
+      "rule": "programLeavesFolder",
       "make": [
         { "manifest": { "runtime": { "kind": "external", "exec": "../tool" } } }
       ]
@@ -56,6 +68,11 @@
       "about": "a program that is a link to nothing",
       "verdict": "programMissing",
       "make": [{ "manifest": {} }, { "link": "bin/tool", "to": "nowhere" }]
+    },
+    {
+      "about": "a named pipe where the program should be, with the execute permission",
+      "verdict": "programMissing",
+      "make": [{ "manifest": {} }, { "pipe": "bin/tool", "mode": "755" }]
     },
     {
       "about": "a program that is a link out of the folder",

@@ -101,6 +101,7 @@ public enum VitruvianToolCommand {
             say("Nothing was started: the app would refuse this folder.")
             return 1
         }
+        say("note     " + Words.runLimits)
         let session = Session(manifest: manifest, options: options, typing: typing, say: say)
         let status = session.run(folder: report.folder, environment: environment)
         say("")

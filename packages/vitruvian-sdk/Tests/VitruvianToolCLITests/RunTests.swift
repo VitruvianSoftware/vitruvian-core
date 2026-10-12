@@ -152,8 +152,13 @@ final class RunTests: XCTestCase {
     }
 
     func testACommandRunsAndTheToolIsToldGoodbye() throws {
-        let (said, status) = try run(["hello", "where"])
-        XCTAssertEqual(status, 0, "\(said)")
+        let (all, status) = try run(["hello", "where"])
+        XCTAssertEqual(status, 0, "\(all)")
+        XCTAssertEqual(all.first, "note     This is not the app. Every service the manifest lists is granted, and "
+            + "nothing real is done. There is no idle stop, no restart after a crash and no flood count.",
+                       "where a run is not the app is said once, first")
+        XCTAssertEqual(all.filter { $0.hasPrefix("note") }.count, 1)
+        let said = Array(all.dropFirst())
         XCTAssertTrue(said[0].hasPrefix("started  bin/tool, in "))
         let folder = String(said[0].dropFirst("started  bin/tool, in ".count))
         XCTAssertTrue(folder.contains("vitruvian-tool-run-"))

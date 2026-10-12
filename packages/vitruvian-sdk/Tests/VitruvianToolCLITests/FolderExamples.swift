@@ -92,6 +92,8 @@ enum PackageFiles {
 struct FolderExample {
     let about: String
     let verdict: String
+    /// The manifest's rule that is broken, when the verdict is `manifest`.
+    let rule: String?
     let limits: FolderLimits
     let make: [JSONValue]
 
@@ -100,6 +102,7 @@ struct FolderExample {
         let examples = (file["examples"]?.arrayValue ?? []).map { example in
             FolderExample(about: example["about"]?.stringValue ?? "",
                           verdict: example["verdict"]?.stringValue ?? "",
+                          rule: example["rule"]?.stringValue,
                           limits: FolderLimits(
                               bytes: (example["limits"]?["bytes"]?.numberValue).map { Int($0) } ?? FolderLimits().bytes,
                               things: (example["limits"]?["things"]?.numberValue).map { Int($0) } ?? FolderLimits().things),
@@ -130,6 +133,13 @@ struct FolderExample {
                                                         withIntermediateDirectories: true)
                 try FileManager.default.createSymbolicLink(atPath: link.path,
                                                            withDestinationPath: step["to"]?.stringValue ?? "")
+            } else if let path = step["pipe"]?.stringValue {
+                let pipe = folder.appendingPathComponent(path)
+                try FileManager.default.createDirectory(at: pipe.deletingLastPathComponent(),
+                                                        withIntermediateDirectories: true)
+                let mode = mode_t(step["mode"]?.stringValue ?? "644", radix: 8) ?? 0o644
+                XCTAssertEqual(mkfifo(pipe.path, mode), 0, "the named pipe could not be made")
+                chmod(pipe.path, mode)
             } else if let path = step["quarantine"]?.stringValue {
                 let mark = Array("0081;00000000;Safari;".utf8)
                 XCTAssertEqual(setxattr(folder.appendingPathComponent(path).path, "com.apple.quarantine", mark,
