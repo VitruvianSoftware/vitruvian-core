@@ -97,6 +97,12 @@ packageExtensions:
   "@swaggerexpert/json-pointer":
     dependencies:
       "@swagger-api/apidom-core": "*"
+  "@cesium/core":
+    dependencies:
+      earcut: "*"
+      mersenne-twister: "*"
+      urijs: "*"
+
 
 overrides:
   "brace-expansion@1": "^1.1.18"
