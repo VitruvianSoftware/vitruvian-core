@@ -31,12 +31,14 @@
 # gazelle:exclude Tests
 # gazelle:exclude conformance
 # gazelle:exclude protocol
+# gazelle:exclude samples
 #
 # MUST MIRROR Package.swift target for target (packages/peripherals/BUILD says
 # why). The Swift targets are constrained to macOS so a Linux
 # `bazel build //...` skips them.
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -153,6 +155,95 @@ py_test(
     main = "conformance/conformance_test.py",
 )
 
+# --- The samples ---------------------------------------------------------------
+# Three tools a person can add to the app. Each is a folder with a manifest
+# and a program. The Python one is that folder as it stands in samples/. A
+# Swift one is put together by Bazel, because its program has to be built:
+#
+#   bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders
+#
+# leaves bazel-bin/packages/vitruvian-sdk/built/<sample>/, with the manifest
+# and bin/tool, and that folder is what the app is pointed at.
+
+# The samples written in Swift: the folder under samples/, and the module its
+# program is compiled as.
+SWIFT_SAMPLES = {
+    "front-window": "FrontWindowSample",
+    "hello-swift": "HelloSwiftSample",
+}
+
+# `manual` and macOS-only, like the app's own swift_binary targets: a Linux
+# `bazel build //...` never names them.
+[
+    swift_binary(
+        name = sample,
+        srcs = ["samples/%s/main.swift" % sample],
+        features = ["swift.enable_v6"],
+        module_name = module,
+        tags = ["manual"],
+        target_compatible_with = ["@platforms//os:macos"],
+        deps = [":VitruvianToolKit"],
+    )
+    for sample, module in SWIFT_SAMPLES.items()
+]
+
+[
+    genrule(
+        name = sample + "-folder",
+        srcs = [
+            "samples/%s/vitruvian-tool.json" % sample,
+            ":" + sample,
+        ],
+        outs = [
+            "built/%s/vitruvian-tool.json" % sample,
+            "built/%s/bin/tool" % sample,
+        ],
+        cmd = "cp $(location samples/%s/vitruvian-tool.json) $(RULEDIR)/built/%s/vitruvian-tool.json && cp $(location :%s) $(RULEDIR)/built/%s/bin/tool" % (sample, sample, sample, sample),
+        tags = ["manual"],
+        target_compatible_with = ["@platforms//os:macos"],
+    )
+    for sample in SWIFT_SAMPLES
+]
+
+filegroup(
+    name = "sample-folders",
+    srcs = [":%s-folder" % sample for sample in SWIFT_SAMPLES],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# What needs no build: every sample's manifest against the schema, and the
+# Python sample against the conformance script. Not `manual` and not tied to
+# macOS, so the Linux lane runs it too.
+py_test(
+    name = "samples_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/samples_test.py",
+    ],
+    data = glob(["samples/**"]) + ["protocol/manifest.schema.json"],
+    main = "samples/samples_test.py",
+    deps = ["@pip//jsonschema"],
+)
+
+# The two Swift samples, built, against the conformance script. It starts
+# real processes. `manual` and macOS-only: the pipeline unit names it.
+py_test(
+    name = "swift_samples_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/samples_test.py",
+    ],
+    args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in SWIFT_SAMPLES],
+    data = [":sample-folders"] + ["built/%s/vitruvian-tool.json" % sample for sample in SWIFT_SAMPLES] + glob(["samples/**"]),
+    main = "samples/samples_test.py",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = ["@pip//jsonschema"],
+)
+
 pipeline_unit(
     name = "vitruvian-sdk",
     persona = "platform",
@@ -162,6 +253,8 @@ pipeline_unit(
         ":VitruvianToolProtocolTests",
         ":conformance_test",
         ":protocol_examples_test",
+        ":samples_test",
+        ":swift_samples_test",
     ],
     tier = "L1",
     timeout_minutes = 30,
