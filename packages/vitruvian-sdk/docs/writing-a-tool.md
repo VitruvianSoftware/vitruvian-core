@@ -421,6 +421,7 @@ the tool.
 | Ends its last line with no line break | That line is never read. |
 | Is told `shutdown` and stays | Asked to end after 2 seconds, killed 1 second after that. |
 | Is still running when the person removes it | The same, faster: asked to end after half a second, killed a quarter of a second later. Do not count on time to tidy up. |
+| Starts a program of its own and leaves it running | The program is ended with the tool: asked to end when the tool is, killed when the tool is, and killed when the tool exits by itself, crashes or is stopped for being idle. Only a program that left the tool's process group is not. |
 
 A folder is refused, before anything is copied, when it holds more than
 256 MB or more than 10,000 files, folders and links together. Keep build
@@ -494,7 +495,8 @@ vitruvian-tool run ~/my-tool --command hello --app-path
   request as done and **does nothing on your Mac**: no message is shown, no
   link opened, nothing pasted or pressed, no process ended, and the clipboard
   it reads and writes is its own, not yours. It gives the tool a folder of its
-  own and deletes it afterwards. Control-C ends the tool.
+  own and deletes it afterwards. Control-C ends the tool. However the run
+  ends, a program the tool started is ended with it, as in the app.
 - `run` is one run, not the app. It grants every service the manifest lists,
   where the app may refuse one at any time. It does not stop an idle tool,
   does not start a crashed one again, and does not count lines a second. A
@@ -531,6 +533,18 @@ opened; close it and open it again to see more.
 - **Not that it keeps running.** An `onCommand` tool is stopped after two
   minutes with nothing asked of it. Keep what matters in a preference or in
   the data folder.
+- **Not that a program it starts outlives it.** Whatever your tool starts
+  is ended with it, however the tool ends: at goodbye, when it is removed
+  or switched off, when the app quits, after two idle minutes, and when it
+  crashes. The app does that by the tool's process group, which a program
+  you start is in unless it leaves: Python's `subprocess`, Node's
+  `child_process` and a shell's `&` all stay in it. A program that must
+  outlive the tool has to leave the group, with a new session
+  (`start_new_session=True`, `detached: true`, `setsid`), and is then
+  yours to end. Foundation's `Process`, in a Swift tool, puts each program
+  it starts in a group of its own, so the app does not reach those: end
+  them yourself. Nothing is ended if the app itself crashes: your tool
+  still ends when its input closes, and should take its helpers with it.
 - **Not that the data folder outlives it.** Removing the tool may delete it.
 - **Not a permission.** A tool has what Vitruvian has, and nothing more. A
   prompt your tool causes says Vitruvian is asking. Vitruvian's permissions

@@ -453,6 +453,37 @@ of it but the protocol.
   keeps running is noticed only when three requests go unanswered. A tool's
   last line with no line break is dropped. After the last kill at quit the
   app does not wait to see the process gone.
+- Ending a tool ends the programs it started (`ProcessTransport`,
+  `ToolProcessGroup`). A tool is started with `Foundation.Process` and
+  nothing else, which is the whole trust model: an ordinary child has the
+  app's macOS permissions. Never start a tool with a spawn attribute of
+  the app's own, and never one that disclaims responsibility for the
+  child: that is what takes the permissions away. macOS gives a `Process`
+  a process group of its own, led by the child, and `Process.terminate`
+  signals that group. The app makes no group. It looks, once the child
+  runs (`getpgid(child) == child`), and only then: the kill signals the
+  group, and when the tool's process is gone and collected, what is left
+  of its group is killed, once, at that moment (the sweep). A transport
+  counts as running until that is done.
+- The app never signals a group it did not see its own child lead: never
+  group 0 or 1, never its own, never one the child is merely in
+  (`ToolProcessGroup.led`). A tool it did not see lead a group is killed
+  alone and nothing is swept, as before this was built. Nothing signals a
+  tool's id after its process was collected, except the one sweep, and
+  the sweep does nothing while any process has that id. Known and
+  accepted: in the instant between the tool being collected and the
+  sweep, macOS could in principle hand the id to a new process that makes
+  a group of its own and exits again; the same instant always existed for
+  the kill of the process itself.
+- Out of reach, and said in the guide: a program that left the tool's
+  group or session, which includes every program a Swift tool starts
+  with `Process`; and everything, when the app itself crashes. A tool
+  still ends when its input closes.
+- A test that needs a program a tool started uses the fixture's `helper`
+  commands and `ToolProcessTests.Helper`. It ends every helper it started
+  that is still there, by its id and only while that id still runs the
+  fixture. `pgrep -fl 'tool_fixture|bin/fixture'` prints nothing after a
+  run.
 - A test of the runtime uses `FakeTool`, which is no process. A test that
   needs a real one starts `tool_fixture` (`Tools/ToolFixture.swift`), waits
   only through `ToolRuntimeSupport.wait`, and kills the process and sees it
@@ -548,8 +579,10 @@ of it but the protocol.
   bumps the registry's `revision` whenever a tool is added, removed,
   switched or stands differently. Nothing polls a tool.
 - Limits of stage C that are known and accepted:
-  - Remove waits for the tool's own process only. A child the tool started
-    is not waited for and may outlive it.
+  - Remove waits for the tool's own process only. Since 2026-10-12 a
+    program the tool started is ended with it, when it is still in the
+    tool's process group; one that left the group may outlive it and go on
+    writing into a folder that was deleted.
   - "Changed" compares the manifest file's bytes. The program and the
     other files are not compared.
   - The fourteen languages other than English were written with the

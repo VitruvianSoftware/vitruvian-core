@@ -10,6 +10,19 @@ import os
 /// the tool's data folder with the environment the app itself has, and so
 /// with every macOS permission the app has.
 ///
+/// How it is started is `Foundation.Process` and nothing else: no spawn
+/// attribute of the app's own, and none that disclaims responsibility for
+/// the child, which is what would take the app's permissions from it.
+/// macOS starts a `Process` in a process group of its own, led by the
+/// child, and `Process.terminate` already signals that whole group. The
+/// app does not make the group. It looks, once the child runs, and uses
+/// the group only when it sees it (`ToolProcessGroup`): then the kill
+/// signals the group too, so the programs the tool started end with it;
+/// and when the tool's process is gone, what is left of its group is
+/// killed, once. A program that left the group, or the session, is out of
+/// reach. When the app does not see the group it kills the tool's process
+/// alone and sweeps nothing, as it always did.
+///
 /// The main thread never reads or writes a pipe. What the tool writes is
 /// read and taken apart on a queue of this transport's own, and handed to
 /// the main thread a batch at a time; the queue waits for each batch to be
@@ -18,7 +31,7 @@ import os
 /// another queue.
 @MainActor
 package final class ProcessTransport: ToolTransport {
-    private let program: URL
+    package let program: URL
     private let directory: URL
     private let limits: ToolLimits
     private let process = Process()
@@ -31,11 +44,43 @@ package final class ProcessTransport: ToolTransport {
     private var wasStarted = false
     private var inputOpen = false
 
+    private let groups: ToolProcessGroup.Access
+    /// The group the tool leads, once the app has seen that it does, and
+    /// whether the tool's process is gone and its group dealt with. Read
+    /// where the process ends, which is not the main thread.
+    private let ending = OSAllocatedUnfairLock(initialState: Ending())
+
+    private struct Ending {
+        var group: pid_t?
+        /// The process was collected: nothing may signal its id any more.
+        var collected = false
+        /// And what was left of its group has been ended.
+        var swept = false
+    }
+
     /// `program` is the file to run and `directory` the folder it runs in.
-    package init(program: URL, directory: URL, limits: ToolLimits = .standard) {
+    /// `groups` is how the app asks about and signals a process group; a
+    /// test watches it, or answers for macOS.
+    package init(program: URL, directory: URL, limits: ToolLimits = .standard,
+                 groups: ToolProcessGroup.Access = .live) {
         self.program = program
         self.directory = directory
         self.limits = limits
+        self.groups = groups
+    }
+
+    /// The process group the app signals for this tool: the one the tool
+    /// leads, once the app has seen it. Nil until then, and for a tool the
+    /// app did not see lead one: that tool is signalled alone.
+    package var processGroup: pid_t? { ending.withLock { $0.group } }
+
+    /// The group the app may signal for a child it started: the one the
+    /// child itself leads, and no other. Never group 0 (the caller's own),
+    /// never group 1, never the app's own group, and never a group the
+    /// child is merely in. `group` is the group macOS says the child is
+    /// in, -1 when it is gone; `mine` is the app's own.
+    nonisolated package static func group(ledBy child: pid_t, in group: pid_t, mine: pid_t) -> pid_t? {
+        ToolProcessGroup.led(by: child, in: group, mine: mine)
     }
 
     /// The process's id, once it runs. For the log, and for tests.
@@ -50,7 +95,9 @@ package final class ProcessTransport: ToolTransport {
         return Self.status(of: process)
     }
 
-    package var isRunning: Bool { wasStarted && process.isRunning }
+    /// True from a start that worked until the tool's process is gone and
+    /// what it left of its process group has been ended.
+    package var isRunning: Bool { wasStarted && !ending.withLock { $0.swept } }
 
     package func start(onItems: @escaping @MainActor ([ToolInbound]) -> Void,
                        onErrorOutput: @escaping @MainActor (Data) -> Void,
@@ -66,7 +113,18 @@ package final class ProcessTransport: ToolTransport {
         let pump = OutputPump(output: output.fileHandleForReading, errorOutput: errorOutput.fileHandleForReading,
                               linesPerSecond: limits.linesHandedPerSecond, errorBytes: limits.logBytes,
                               onItems: onItems, onErrorOutput: onErrorOutput, onExit: onExit)
-        process.terminationHandler = { process in pump.finish(status: Self.status(of: process)) }
+        process.terminationHandler = { [ending, groups] process in
+            // The tool's process is gone and collected. Whatever it started
+            // and left in its group is ended now, once, and never later:
+            // from here on its id may come to name another process.
+            let group = ending.withLock { state -> pid_t? in
+                state.collected = true
+                return state.group
+            }
+            if let group { groups.sweep(group) }
+            ending.withLock { $0.swept = true }
+            pump.finish(status: Self.status(of: process))
+        }
         do {
             try process.run()
         } catch {
@@ -75,6 +133,14 @@ package final class ProcessTransport: ToolTransport {
         }
         wasStarted = true
         inputOpen = true
+        // The group is macOS's doing, not the app's: the app only looks.
+        // A tool that is gone already is in none, and none is kept.
+        let child = process.processIdentifier
+        if let group = ToolProcessGroup.led(by: child, in: groups.of(child), mine: getpgrp()) {
+            ending.withLock { state in
+                if !state.collected { state.group = group }
+            }
+        }
         pump.start()
         return true
     }
@@ -106,16 +172,89 @@ package final class ProcessTransport: ToolTransport {
         writing.async { try? handle.close() }
     }
 
+    /// Asks the tool to end. `Process.terminate` signals the tool's whole
+    /// process group itself, so the programs the tool started are asked
+    /// too.
     package func terminate() {
-        if isRunning { process.terminate() }
+        if wasStarted, process.isRunning { process.terminate() }
     }
 
+    /// Ends the tool, and with it the programs it started that are still
+    /// in its process group, when the app saw the tool lead one. Otherwise
+    /// the tool's process alone. Only while the process has not been
+    /// collected: after that its id is not the app's to signal.
     package func kill() {
-        if isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+        guard wasStarted, process.isRunning else { return }
+        let state = ending.withLock { $0 }
+        guard !state.collected else { return }
+        if let group = state.group {
+            groups.signal(group, SIGKILL)
+        } else {
+            Darwin.kill(process.processIdentifier, SIGKILL)
+        }
     }
 
     nonisolated private static func status(of process: Process) -> Int32 {
         process.terminationReason == .uncaughtSignal ? 128 + process.terminationStatus : process.terminationStatus
+    }
+}
+
+/// The process group of a tool: which one the app may signal, and the two
+/// ways it does. Nothing here makes a group or moves a process into one.
+package enum ToolProcessGroup {
+    /// How a transport asks about and signals a process group. A test puts
+    /// a watcher around `live`, or answers for macOS.
+    package struct Access: Sendable {
+        /// The process group macOS says a process is in; -1 when it is gone.
+        package var of: @Sendable (pid_t) -> pid_t
+        package var signal: @Sendable (pid_t, Int32) -> Void
+        package var sweep: @Sendable (pid_t) -> Void
+
+        package init(of: @escaping @Sendable (pid_t) -> pid_t,
+                     signal: @escaping @Sendable (pid_t, Int32) -> Void,
+                     sweep: @escaping @Sendable (pid_t) -> Void) {
+            self.of = of
+            self.signal = signal
+            self.sweep = sweep
+        }
+
+        package static let live = Access(of: { getpgid($0) }, signal: ToolProcessGroup.signal,
+                                         sweep: ToolProcessGroup.sweep)
+    }
+
+    /// The group to signal for `child`, a process the app started, or nil
+    /// to signal the child alone. It is the child's own group or none:
+    /// `group`, the one macOS says the child is in, must be the child's
+    /// own id. An id below 2 names no group of a tool (0 is "my own group"
+    /// to `kill`, 1 is the first process's), and the app's own group is
+    /// never a tool's.
+    static func led(by child: pid_t, in group: pid_t, mine: pid_t) -> pid_t? {
+        guard child > 1, group == child, group != mine, group != getpid() else { return nil }
+        return group
+    }
+
+    /// Signals every process in the group. Called only while the tool's
+    /// process, which leads the group, has not been collected, so the id
+    /// can name nothing else.
+    static func signal(_ group: pid_t, _ number: Int32) {
+        guard group > 1 else { return }
+        _ = Darwin.killpg(group, number)
+    }
+
+    /// Ends what is left of a group whose leader, the tool's process, is
+    /// gone and collected. Called once, at that moment.
+    ///
+    /// The leader's id is free from then on. While a program the tool
+    /// started is still in the group, macOS gives the id to nobody, and
+    /// the kill reaches that program and nothing else. With the group
+    /// empty the kill reaches nobody. The one way to reach a stranger is
+    /// for the id to have been handed out again already, in the instant
+    /// since the leader was collected, to a process that made a group of
+    /// its own: so a process that has the id now stops the sweep.
+    static func sweep(_ group: pid_t) {
+        guard group > 1 else { return }
+        guard Darwin.kill(group, 0) == -1, errno == ESRCH else { return }
+        _ = Darwin.killpg(group, SIGKILL)
     }
 }
 

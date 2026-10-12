@@ -38,6 +38,7 @@ enum ExternalToolStoreTests {
         languageChanges(suite)
         aRealTool(suite)
         aRealToolRemoved(suite)
+        aRealToolWithAHelper(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -1518,5 +1519,86 @@ enum ExternalToolStoreTests {
         suite.expect(!stubborn.exists(saved(stubborn)) && !stubborn.exists(files(stubborn))
                          && !ToolRuntimeSupport.wait(upTo: 0.2, until: { stubborn.exists(saved(stubborn)) }),
                      "and what it saved was deleted after that: the folder it kept writing into is gone, and stays gone")
+    }
+
+    /// A real tool that started a program of its own, which writes into the
+    /// tool's data folder for as long as it lives: removed, switched off,
+    /// and at quit, the helper ends with its tool.
+    static func aRealToolWithAHelper(_ suite: TestSuite) {
+        guard let fixture = ToolProcessTests.fixture else {
+            suite.expect(false, "the fixture tool is built and handed to the tests in VITRUVIAN_TOOL_FIXTURE")
+            return
+        }
+        let manifest = ExternalToolManifestTests.file(#"""
+            {"id": "dev.vitruvian.fixture", "uses": [],
+             "runtime": {"kind": "external", "exec": "bin/fixture"},
+             "contributes": {"commands": [
+               {"id": "helper", "title": {"en": "Helper"}, "surfaces": ["commandBar"]},
+               {"id": "helper-deaf", "title": {"en": "Deaf helper"}, "surfaces": ["commandBar"]}]}}
+            """#)
+        let tool = ToolID("dev.vitruvian.fixture")!
+        var processes: [ProcessTransport] = []
+        var benches: [Bench] = []
+        var helpers: [ToolProcessTests.Helper] = []
+        defer {
+            for process in processes { process.kill() }
+            _ = ToolRuntimeSupport.wait { processes.allSatisfy { !$0.isRunning } }
+            for helper in helpers { helper.end() }
+            for bench in benches { bench.close() }
+        }
+        /// A bench with the fixture added and running, and the helper it
+        /// started with `command`, once the helper has written its file.
+        func running(_ command: String) -> (Bench, ToolProcessTests.Helper)? {
+            let bench = Bench()
+            benches.append(bench)
+            bench.transport = { program, data in
+                let process = ProcessTransport(program: program, directory: data)
+                processes.append(process)
+                return process
+            }
+            let program = bench.support.appendingPathComponent("Tools/dev.vitruvian.fixture/bin/fixture")
+            var helper: ToolProcessTests.Helper?
+            guard case .success = bench.add(bench.folder(manifest: manifest, exec: "bin/fixture", program: fixture)),
+                  let run = CommandID(tool: tool, name: command), bench.registry.run(run),
+                  ToolRuntimeSupport.wait(until: {
+                      helper = ToolProcessTests.Helper(logged: bench.store.tool(tool)?.log.entries.map(\.text) ?? [],
+                                                       program: program)
+                      return (helper?.count ?? 0) > 0
+                  }), let helper else {
+                // A helper that was started is ended, whatever went wrong after.
+                if let helper { helpers.append(helper) }
+                suite.expect(false, "the fixture tool is added and starts a helper (\(command)): it stands "
+                    + "\(String(describing: bench.store.tool(tool)?.standing)) and logged "
+                    + "\(bench.store.tool(tool)?.log.entries.map(\.text) ?? [])")
+                return nil
+            }
+            helpers.append(helper)
+            return (bench, helper)
+        }
+        func saved(_ bench: Bench) -> URL { bench.support.appendingPathComponent("ToolData/dev.vitruvian.fixture") }
+
+        // Removed, with what it saved.
+        guard let (removed, writer) = running("helper") else { return }
+        suite.expect(writer.file.deletingLastPathComponent().standardizedFileURL.path == saved(removed).standardizedFileURL.path
+                         && writer.stillWrites(),
+                     "a real tool's helper writes into the tool's data folder while the tool runs")
+        let outcome = removed.store.remove(tool, deletingData: true)
+        suite.expect(outcome == .deleted && writer.isGone && !removed.exists(saved(removed))
+                         && !ToolRuntimeSupport.wait(upTo: 0.2, until: { removed.exists(saved(removed)) }),
+                     "removing a real tool with what it saved ends the helper it started: the helper is gone, and "
+                         + "the folder it wrote into is deleted and stays gone")
+
+        // Switched off.
+        guard let (switched, idle) = running("helper") else { return }
+        switched.store.setOn(tool, false)
+        suite.expect(ToolRuntimeSupport.wait { processes.allSatisfy { !$0.isRunning } } && idle.isGone
+                         && !idle.stillWrites(upTo: 0.2),
+                     "switching a real tool off ends its helper with it: its file stops changing")
+
+        // At quit, with a helper that ignores being asked to end.
+        guard let (quitting, deaf) = running("helper-deaf") else { return }
+        quitting.host.stopAll()
+        suite.expect(processes.allSatisfy { !$0.isRunning } && deaf.isGone,
+                     "at quit the host stops a real tool and waits for it, and no helper of it is left")
     }
 }

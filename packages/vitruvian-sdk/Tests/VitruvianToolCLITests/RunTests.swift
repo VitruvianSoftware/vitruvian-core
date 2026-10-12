@@ -27,9 +27,10 @@ import VitruvianToolProtocol
 /// speak the protocol, each behaving one way a tool can.
 ///
 /// None can hang the test. Every wait in `run` has a limit, and the tests
-/// make the limits short. A script never starts a program of its own, so
-/// killing it leaves nothing; each test that makes a tool stay checks that
-/// its process is gone when `run` returns.
+/// make the limits short. A script starts a program of its own only when a
+/// test asks for one, a `sleep` that ends by itself after a minute, and
+/// that test sees it gone, or ends it. Each test that makes a tool stay
+/// checks that its process is gone when `run` returns.
 final class RunTests: XCTestCase {
     /// A tool in `/bin/sh`. `n` counts what the app has asked, which is the
     /// id the app gave it: 1 for `initialize`, 2 for the first command.
@@ -45,6 +46,10 @@ final class RunTests: XCTestCase {
           case "$answer" in *'"error"'*) return 1 ;; esac
         }
         [ -n "$PIDFILE" ] && echo $$ > "$PIDFILE"
+        if [ -n "$HELPERFILE" ]; then
+          /bin/sleep 60 < /dev/null > /dev/null 2>&1 &
+          echo $! > "$HELPERFILE"
+        fi
         [ "$HOW" = gone ] && exit 0
         while IFS= read -r line; do
           case "$line" in
@@ -123,8 +128,30 @@ final class RunTests: XCTestCase {
         return folder
     }
 
-    /// Runs the tool, and gives back what was printed and the status.
-    private func run(_ commands: [String] = [], how: String = "", typing: String? = nil,
+    /// The process id a script wrote into `file`, or 0.
+    private static func pid(in file: String) -> pid_t {
+        pid_t((try? String(contentsOfFile: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
+    }
+
+    /// Waits a moment for the `sleep` a script started to be gone, and says
+    /// whether it is. One that is still there is ended here, when it is
+    /// still that `sleep` and not a process that took its id since.
+    private static func helperIsGone(_ helper: pid_t) -> Bool {
+        let limit = Date().addingTimeInterval(5)
+        func gone() -> Bool { kill(helper, 0) == -1 && errno == ESRCH }
+        while !gone(), Date() < limit { usleep(10000) }
+        if gone() { return true }
+        var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        if proc_pidpath(helper, &path, UInt32(path.count)) > 0, String(cString: path) == "/bin/sleep" {
+            kill(helper, SIGKILL)
+        }
+        return false
+    }
+
+    /// Runs the tool, and gives back what was printed and the status. With
+    /// `helper`, the tool starts a program of its own first, and that
+    /// program too must be gone by the time `run` returns.
+    private func run(_ commands: [String] = [], how: String = "", typing: String? = nil, helper: Bool = false,
                      change: (inout RunOptions) -> Void = { _ in }) throws -> (said: [String], status: Int32) {
         var options = RunOptions()
         options.commands = commands
@@ -139,16 +166,42 @@ final class RunTests: XCTestCase {
         defer { try? handle.close() }
         var said: [String] = []
         let pidFile = scratch.url.appendingPathComponent("pid").path
+        let helperFile = scratch.url.appendingPathComponent("helper-\(UUID().uuidString)").path
+        var environment = ["HOW": how, "PIDFILE": pidFile, "PATH": "/usr/bin:/bin:/opt/extra"]
+        if helper { environment["HELPERFILE"] = helperFile }
         let started = Date()
         let status = VitruvianToolCommand.run(folder: toolFolder(), options: options,
-                                              environment: ["HOW": how, "PIDFILE": pidFile, "PATH": "/usr/bin:/bin:/opt/extra"],
+                                              environment: environment,
                                               typing: handle.fileDescriptor, say: { said.append($0) })
         XCTAssertLessThan(Date().timeIntervalSince(started), 10, "no run waits for long")
         // The tool's process is gone by the time `run` returns.
         let pid = pid_t((try? String(contentsOfFile: pidFile, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
         XCTAssertTrue(pid > 0 && kill(pid, 0) == -1 && errno == ESRCH, "process \(pid) is still there")
+        if helper {
+            let started = Self.pid(in: helperFile)
+            XCTAssertGreaterThan(started, 1, "the tool started a program of its own")
+            XCTAssertTrue(started > 1 && Self.helperIsGone(started),
+                          "the program the tool started, process \(started), is still there (\(how))")
+        }
         return (said, status)
+    }
+
+    /// `run` plays the app's side here too: a program the tool started is
+    /// ended with the tool, however the tool ends.
+    func testTheProgramsAToolStartedEndWithIt() throws {
+        let (left, status) = try run(["hello"], helper: true)
+        XCTAssertEqual(status, 0, "a tool that leaves when told goodbye: \(left)")
+        XCTAssertTrue(left.contains("stopped  exited with 0"), "\(left)")
+
+        let (killed, failed) = try run(["hello"], how: "stubborn", helper: true)
+        XCTAssertEqual(failed, 1)
+        XCTAssertTrue(killed.contains { $0.hasPrefix("NOT OK   still running 0.3 seconds after shutdown") }, "\(killed)")
+
+        let (crashed, crash) = try run(["crash"], helper: true)
+        XCTAssertEqual(crash, 1)
+        XCTAssertTrue(crashed.contains { $0.hasPrefix("NOT OK   the tool exited while `crash` ran, with status 3") },
+                      "\(crashed)")
     }
 
     func testACommandRunsAndTheToolIsToldGoodbye() throws {
@@ -287,10 +340,11 @@ final class RunTests: XCTestCase {
         let folder = toolFolder()
         for (name, number) in [("interrupt", SIGINT), ("terminate", SIGTERM)] {
             let pidFile = scratch.url.appendingPathComponent("pid-\(name)").path
+            let helperFile = scratch.url.appendingPathComponent("helper-\(name)").path
             let command = Process()
             command.executableURL = binary
             command.arguments = ["run", folder.path]
-            command.environment = environment.merging(["PIDFILE": pidFile, "HOW": ""]) { $1 }
+            command.environment = environment.merging(["PIDFILE": pidFile, "HELPERFILE": helperFile, "HOW": ""]) { $1 }
             // Nothing is typed, and the typing does not end: the run waits.
             let typing = Pipe()
             let printed = Pipe()
@@ -331,6 +385,9 @@ final class RunTests: XCTestCase {
             let gone = wait(5) { kill(tool, 0) == -1 && errno == ESRCH }
             if !gone, started { kill(tool, SIGKILL) }
             XCTAssertTrue(gone, "\(name): process \(tool) is still there")
+            let helper = Self.pid(in: helperFile)
+            XCTAssertTrue(helper > 1 && Self.helperIsGone(helper),
+                          "\(name): the program the tool started, process \(helper), is still there")
 
             let said = String(decoding: printed.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                 .split(separator: "\n").map(String.init)
@@ -428,10 +485,12 @@ final class RunTests: XCTestCase {
                          "/usr/bin/open", "osascript", "pbcopy"] {
                 XCTAssertFalse(text.contains(name), "\(file.lastPathComponent) names \(name)")
             }
-            // The one process this command may signal is the one it started.
-            let kills = text.split(separator: "\n").filter { $0.contains("kill(") }
-            XCTAssertTrue(kills.allSatisfy { $0.contains("kill(process.processIdentifier,") || $0.contains("kill(tool,") },
-                          "\(file.lastPathComponent): \(kills)")
+            // The one process this command may signal is the one it started,
+            // and the one process group, the group that process leads.
+            let kills = text.split(separator: "\n").filter { $0.contains("kill(") || $0.contains("killpg(") }
+            XCTAssertTrue(kills.allSatisfy {
+                $0.contains("kill(process.processIdentifier,") || $0.contains("kill(tool,") || $0.contains("killpg(group,")
+            }, "\(file.lastPathComponent): \(kills)")
         }
     }
 }

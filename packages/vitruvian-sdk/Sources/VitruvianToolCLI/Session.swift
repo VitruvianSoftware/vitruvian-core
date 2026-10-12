@@ -41,13 +41,50 @@ public struct RunOptions: Equatable, Sendable {
     public init() {}
 }
 
+/// The tool's program as this command ends it, the way the app does: with
+/// the programs it started. macOS starts a `Process` in a process group of
+/// its own, which the programs it starts share unless they leave it. When
+/// this command sees that the tool leads such a group, it signals the group;
+/// when it does not, it signals the tool's process alone.
+struct ToolFamily: Sendable {
+    let tool: pid_t
+    /// The process group the tool leads; nil when it was not seen to lead
+    /// one, when the group is this command's own, or when its id is one no
+    /// tool's group can have.
+    let group: pid_t?
+
+    init(tool: pid_t) {
+        self.tool = tool
+        let own = getpgid(tool)
+        group = tool > 1 && own == tool && own != getpgrp() && own != getpid() ? own : nil
+    }
+
+    /// Sends a signal to the tool and to what it started. Only for a tool
+    /// that has not been waited for yet.
+    func signal(_ number: Int32) {
+        if let group {
+            _ = killpg(group, number)
+        } else {
+            _ = kill(tool, number)
+        }
+    }
+
+    /// Ends what the tool left running, once the tool itself has exited and
+    /// been waited for. A process that has the tool's id by then is another
+    /// program, and its group is left alone.
+    func endWhatIsLeft() {
+        guard let group, kill(tool, 0) == -1, errno == ESRCH else { return }
+        _ = killpg(group, SIGKILL)
+    }
+}
+
 /// One run of a tool's program with this command in the app's place.
 ///
 /// It works on one thread. Every wait is a `poll` with a time limit, but
 /// one: the wait for the person to type the next command, which also ends
 /// when the tool exits or the person's input does. However a run ends, the
-/// tool's program is killed if it is still there and waited for, and the
-/// folder made for it is deleted.
+/// tool's program is killed if it is still there and waited for, with the
+/// programs it started, and the folder made for it is deleted.
 final class Session {
     private enum Event {
         case message(RPCMessage)
@@ -83,6 +120,8 @@ final class Session {
     private var lastID = 0
     private var runnable: Set<String>?
     private var failed = false
+    /// The tool's program and what it started, once it runs.
+    private var family: ToolFamily?
 
     init(manifest: ToolManifestFile, options: RunOptions, typing: Int32?, say: @escaping (String) -> Void) {
         self.manifest = manifest
@@ -133,12 +172,16 @@ final class Session {
             notOK("macOS would not start `\(manifest.runtime.exec)`: \(error.localizedDescription)")
             return 1
         }
-        // Whatever happens from here on, the program is ended and waited for.
+        let family = ToolFamily(tool: process.processIdentifier)
+        self.family = family
+        // Whatever happens from here on, the program is ended and waited
+        // for, and so is what it started.
         defer {
-            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            if process.isRunning { family.signal(SIGKILL) }
             process.waitUntilExit()
+            family.endWhatIsLeft()
         }
-        let interrupt = Self.endOnInterrupt(process.processIdentifier, dataFolder.path)
+        let interrupt = Self.endOnInterrupt(family, dataFolder.path)
         defer {
             interrupt.forEach { $0.cancel() }
             signal(SIGINT, SIG_DFL)
@@ -162,15 +205,16 @@ final class Session {
         return failed ? 1 : 0
     }
 
-    /// Control-C, or being asked to end: the tool's program is killed, its
-    /// folder deleted, and this command exits. The handler runs on a queue
-    /// of its own, because the main thread is waiting in `poll`.
-    private static func endOnInterrupt(_ tool: pid_t, _ folder: String) -> [any DispatchSourceSignal] {
+    /// Control-C, or being asked to end: the tool's program is killed, with
+    /// the programs it started, its folder deleted, and this command exits.
+    /// The handler runs on a queue of its own, because the main thread is
+    /// waiting in `poll`.
+    private static func endOnInterrupt(_ family: ToolFamily, _ folder: String) -> [any DispatchSourceSignal] {
         [SIGINT, SIGTERM].map { number in
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
             source.setEventHandler {
-                kill(tool, SIGKILL)
+                family.signal(SIGKILL)
                 try? FileManager.default.removeItem(atPath: folder)
                 exit(130)
             }
@@ -415,8 +459,8 @@ final class Session {
         }
         notOK("still running \(Self.seconds(options.exitSeconds)) after shutdown. The app then asks it to end, "
             + "and kills it a second later")
-        kill(process.processIdentifier, SIGTERM)
-        if !gone(within: options.endSeconds) { kill(process.processIdentifier, SIGKILL) }
+        family?.signal(SIGTERM)
+        if !gone(within: options.endSeconds) { family?.signal(SIGKILL) }
     }
 
     /// Reads what the tool still writes until its program has exited, for

@@ -17,6 +17,19 @@
 //             folder again and writes a file into it
 //   flood     writes log lines for as long as it lives
 //   crash     exits with status 3
+//   helper    starts a program of its own, a helper, and logs its process
+//             id and the file it writes; then answers
+//   helper-deaf   the same, with a helper that ignores being asked to end
+//   helper-away   the same, with a helper that leaves the tool's process
+//                 group for one of its own
+//
+// A helper is this same program, started with `--helper <file>`. It keeps
+// none of the tool's pipes, and for as long as it lives it writes a count
+// into its file every two milliseconds, each time as a whole new file. It
+// is started with `posix_spawn`
+// and no attribute, as a script's `&` or Python's `subprocess` starts one,
+// so it is in the tool's process group. (Foundation's `Process` would give
+// it a group of its own.)
 //
 // It is a script: top-level code that reads lines until its input ends.
 // Nothing here starts a task. A `Task` in top-level code inherits the main
@@ -24,8 +37,43 @@
 
 import Foundation
 
-// A test run that died must not leave this behind.
+// A test run that died must not leave this behind, nor a helper of it.
 alarm(120)
+
+if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "--helper" {
+    let file = URL(fileURLWithPath: CommandLine.arguments[2])
+    let how = Set(CommandLine.arguments.dropFirst(3))
+    if how.contains("deaf") { signal(SIGTERM, SIG_IGN) }
+    if how.contains("away") { setpgid(0, 0) }
+    var count = 0
+    while true {
+        count += 1
+        // Whole or not at all: whoever reads the file never finds it empty
+        // between two counts.
+        try? Data("\(count)".utf8).write(to: file, options: .atomic)
+        usleep(2_000)
+    }
+}
+
+/// Starts a helper that writes into `file`, in this program's own process
+/// group, with none of its pipes. Gives back the helper's process id.
+func startHelper(writing file: String, _ how: [String]) -> pid_t? {
+    guard let program = Bundle.main.executablePath else { return nil }
+    var actions: posix_spawn_file_actions_t?
+    guard posix_spawn_file_actions_init(&actions) == 0 else { return nil }
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    for descriptor in [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO] {
+        posix_spawn_file_actions_addopen(&actions, descriptor, "/dev/null", O_RDWR, 0)
+    }
+    var arguments: [UnsafeMutablePointer<CChar>?] = ([program, "--helper", file] + how).map { strdup($0) }
+    arguments.append(nil)
+    var environment: [UnsafeMutablePointer<CChar>?] = ProcessInfo.processInfo.environment.map { strdup($0 + "=" + $1) }
+    environment.append(nil)
+    defer { (arguments + environment).forEach { free($0) } }
+    var pid: pid_t = 0
+    guard posix_spawn(&pid, program, &actions, nil, &arguments, &environment) == 0 else { return nil }
+    return pid
+}
 
 func send(_ message: [String: Any]) {
     guard var line = try? JSONSerialization.data(withJSONObject: message, options: [.withoutEscapingSlashes])
@@ -48,7 +96,8 @@ func log(_ message: String) {
     send(["jsonrpc": "2.0", "method": "log", "params": ["message": message]])
 }
 
-let commands = ["hello", "quick", "where", "mutter", "hang", "stubborn", "scribble", "flood", "crash"]
+let commands = ["hello", "quick", "where", "mutter", "hang", "stubborn", "scribble", "flood", "crash",
+                "helper", "helper-deaf", "helper-away"]
 var greeting: [String: Any] = [:]
 /// The `command/run` that waits for the app to answer `notify/hud`.
 var waitingRun: Any?
@@ -106,6 +155,16 @@ while let line = readLine() {
             while true { log("flood") }
         case "crash"?:
             exit(3)
+        case let command? where command.hasPrefix("helper"):
+            let how = command.split(separator: "-").dropFirst().map(String.init)
+            let folder = greeting["dataFolder"] as? String ?? FileManager.default.currentDirectoryPath
+            let file = folder + "/" + command
+            if let pid = startHelper(writing: file, how) {
+                log("helper pid=\(pid) file=\(file)")
+                answer(id)
+            } else {
+                refuse(id, -32010, "no helper could be started")
+            }
         default:
             refuse(id, -32602, "no such command")
         }

@@ -806,6 +806,33 @@ MUTATIONS = [
      "        guard language != self.language else { return }\n",
      "",
      "the language a tool was last told is not sent again"),
+    ("killing a tool does not kill the programs it started", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "            groups.signal(group, SIGKILL)\n",
+     "            Darwin.kill(process.processIdentifier, SIGKILL)\n",
+     "killing a tool kills the programs it started in the same stroke: nothing has to be "
+     "looked over afterwards for them to be gone"),
+    ("what a tool left running outlives it", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "            if let group { groups.sweep(group) }\n",
+     "            _ = group\n",
+     "a tool that crashes does not leave its helper behind"),
+    ("a process group the tool does not lead is signalled", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "        guard child > 1, group == child, group != mine, group != getpid() else { return nil }\n",
+     "        guard child > 1, group != mine, group != getpid() else { return nil }\n",
+     "a child in the app's own group, in another's, or already gone, has no group the app may signal"),
+    ("the app's own process group may be signalled", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "        guard child > 1, group == child, group != mine, group != getpid() else { return nil }\n",
+     "        guard child > 1, group == child else { return nil }\n",
+     "group 0, group 1, a group that is no group and the app's own are never signalled, whatever is asked"),
+    ("a group is looked over while a process has its leader's id", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+     "        guard Darwin.kill(group, 0) == -1, errno == ESRCH else { return }\n",
+     "",
+     "what is left of a process group is ended only when no process has its leader's id: "
+     "while one has, nothing is signalled"),
 ]
 
 
