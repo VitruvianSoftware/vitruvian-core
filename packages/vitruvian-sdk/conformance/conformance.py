@@ -404,6 +404,11 @@ class Run:
         count = 0
         deadline = time.monotonic() + EXIT_SECONDS
         while True:
+            # A line that is already waiting is handed over whatever the time,
+            # so the time is asked here: a program the tool left behind that
+            # writes without end must not hold this past its limit.
+            if time.monotonic() >= deadline:
+                raise Failure(f"still writing {EXIT_SECONDS} seconds after it exited")
             message = self.link.receive(deadline, EXIT_SECONDS, leaving=True)
             if message is None:
                 return count

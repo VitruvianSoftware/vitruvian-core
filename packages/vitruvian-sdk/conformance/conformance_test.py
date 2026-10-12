@@ -24,6 +24,7 @@ import contextlib
 import io
 import json
 import os
+import signal
 import sys
 import tempfile
 import time
@@ -40,6 +41,7 @@ REFERENCE = os.path.join(HERE, "reference-tool")
 BROKEN_TOOL = """
 import json, os, sys, time
 how = os.environ["BROKEN_HOW"]
+LEFT_BEHIND = os.environ.get("BROKEN_LEFT_BEHIND", "")
 def send(message):
     sys.stdout.write(json.dumps(message) + "\\n")
     sys.stdout.flush()
@@ -80,8 +82,30 @@ for line in sys.stdin:
         sys.stdout.write('{"jsonrpc": "2.0", "method": "log"')
         sys.stdout.flush()
         sys.exit(0)
+    elif method == "shutdown" and how == "never stops writing":
+        # A program the tool leaves behind, which holds its output and writes
+        # good messages as fast as it can. It ends by itself after a while,
+        # and the test ends it sooner.
+        import subprocess
+        left = subprocess.Popen([sys.executable, "-c", LEFT_BEHIND], stdin=subprocess.DEVNULL)
+        with open(os.environ["BROKEN_PIDFILE"], "w") as handle:
+            handle.write(str(left.pid))
+        sys.exit(0)
 if how == "will not exit":
     time.sleep(30)
+"""
+
+# What a tool that never stops writing leaves behind. It writes for longer
+# than the script reads a tool's last words, and no longer.
+LEFT_BEHIND = """
+import os, time
+line = b'{"jsonrpc": "2.0", "method": "log", "params": {"message": "still here"}}\\n'
+end = time.monotonic() + 2.5
+try:
+    while time.monotonic() < end:
+        os.write(1, line)
+except OSError:
+    pass
 """
 
 # The longest the script may spend on one broken tool. Its own deadlines are
@@ -112,6 +136,86 @@ def check(folder, *options):
     with contextlib.redirect_stdout(printed):
         status = conformance.main([folder, "--via", sys.executable, *options])
     return status, printed.getvalue()
+
+
+def end_left_behind(pid_file):
+    """Ends the program a broken tool left behind, if it left one."""
+    if not os.path.exists(pid_file):
+        return
+    with open(pid_file, encoding="utf-8") as handle:
+        pid = int(handle.read())
+    os.remove(pid_file)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+class AlwaysWaiting:
+    """A link with a good line always waiting, as a program that writes faster
+    than the script reads leaves it. It gives up a while after the script
+    should have, so that a script that reads on cannot hold the test."""
+
+    def __init__(self):
+        self.give_up = time.monotonic() + 2 * conformance.EXIT_SECONDS
+
+    def receive(self, deadline, seconds, leaving=False):
+        if time.monotonic() >= self.give_up:
+            raise conformance.Failure("read on past its limit")
+        return {"jsonrpc": "2.0", "method": "log", "params": {"message": "still here"}}
+
+
+def a_line_always_waiting():
+    """The script's last read ends at its limit even when a line is always
+    waiting, and says why. This is the rule itself, with no process and so no
+    race in it."""
+    run = conformance.Run(AlwaysWaiting(), {}, "")
+    started = time.monotonic()
+    try:
+        said = f"read {run.last_words()} messages and was content"
+    except conformance.Failure as failure:
+        said = str(failure)
+    took = time.monotonic() - started
+    wanted = f"still writing {conformance.EXIT_SECONDS} seconds after it exited"
+    if said != wanted or took > conformance.EXIT_SECONDS + 1:
+        return [f"a line always waiting: {said}, after {took:.1f} seconds"]
+    return []
+
+
+def never_stops_writing(folder):
+    """A real tool that leaves a program behind, writing without end.
+
+    The script ends within its bound and names the check. Which of two things
+    it says is a matter of timing: `still writing` when a line was waiting as
+    the time ran out, and a count when, at that instant, none was. Both end
+    the read; `a_line_always_waiting` holds the rule without the timing.
+    """
+    pid_file = os.path.join(folder, "left-behind.pid")
+    os.environ["BROKEN_HOW"] = "never stops writing"
+    os.environ["BROKEN_PIDFILE"] = pid_file
+    os.environ["BROKEN_LEFT_BEHIND"] = LEFT_BEHIND
+    started = time.monotonic()
+    try:
+        status, printed = check(folder)
+    finally:
+        end_left_behind(pid_file)
+    took = time.monotonic() - started
+    last = printed.splitlines()[-1] if printed else ""
+    caught = status == 1 and last == (
+        f"NOT OK   shutdown: still writing {conformance.EXIT_SECONDS} seconds"
+        " after it exited"
+    )
+    counted = status == 0 and last.startswith(
+        "ok       shutdown: exited with 0, after "
+    )
+    problems = []
+    if not (caught or counted):
+        problems.append(f"a tool that never stops writing:\n{printed}")
+    if took > SLOWEST_SECONDS:
+        problems.append(
+            f"a tool that never stops writing held the script {took:.1f} seconds"
+        )
+    return problems
 
 
 def main():
@@ -169,6 +273,8 @@ def main():
             problems.append(
                 f"a tool that says a last good word does not pass:\n{printed}"
             )
+        problems += never_stops_writing(folder)
+    problems += a_line_always_waiting()
 
     for problem in problems:
         print(problem, file=sys.stderr)
