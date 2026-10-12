@@ -81,7 +81,10 @@ exports_files(
 filegroup(
     name = "workflow_files",
     srcs = glob([".github/workflows/*.yaml"]),
-    visibility = ["//tools/delivery/gen:__pkg__"],
+    visibility = [
+        "//tools/ci/actionpins:__pkg__",
+        "//tools/delivery/gen:__pkg__",
+    ],
 )
 
 filegroup(

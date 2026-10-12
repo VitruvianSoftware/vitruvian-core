@@ -15,6 +15,9 @@ go_test(
     name = "actionpins_test",
     size = "small",
     srcs = ["actionpins_test.go"],
-    data = ["//:pins_manifest"],
+    data = [
+        "//:pins_manifest",
+        "//:workflow_files",
+    ],
     embed = [":actionpins"],
 )
