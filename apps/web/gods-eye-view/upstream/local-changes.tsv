@@ -33,3 +33,4 @@ src/data/bundledJson.test.mjs	modified	git grep exits 128 in the Bazel sandbox, 
 src/services/requests.test.mjs	modified	The stalled request holds a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
 src/tools/places.test.mjs	modified	The stalled lookups hold a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
 vite.config.js	modified	Replaces vite-plugin-cesium's asset copy with a dereferencing one, because the rules_js fs patches reject its walk over pnpm's symlinks and the bundle shipped without dist/cesium.
+src/cyberSonarGpu.js	modified	CYBER_SONAR_CESIUM_VERSION names the cesium release the repository resolves (package.json pins it at the monorepo version), so it follows that version, not upstream's.
