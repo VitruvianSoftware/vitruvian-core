@@ -32,6 +32,7 @@ go_library(
         "unit.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/pipeline/gen",
+    deps = ["//tools/pipeline/unitfile"],
 )
 
 go_binary(

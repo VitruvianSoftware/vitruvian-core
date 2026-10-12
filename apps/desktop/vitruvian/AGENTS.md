@@ -320,9 +320,10 @@ of it but the protocol.
   presubmit planner lists `tool_protocol_pin_test` among the affected tests.
   That test is in this app's pipeline unit, so the unit is selected and the
   app's tests run; the pin test fails until the pin is updated here.
-  This held only once a comment with a round bracket was taken out of the
-  `pipeline_unit` call in `BUILD`: the planner reads the call up to the first
-  closing bracket. Keep brackets out of that call's comments.
+  The planner reads the unit's targets from the `pipeline_unit` call in
+  `BUILD`, so a target has to be written out in that call's `test_targets`
+  to count; a call the planner cannot read stops the plan with an error
+  instead of dropping the unit.
 - A manifest's own rules are in the package (`ToolManifestFile.read`), so
   the command-line tool a tool's author runs applies the same ones. This app
   adds what only it can know, in `Core/Platform/ExternalToolManifest.swift`:

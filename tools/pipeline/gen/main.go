@@ -26,9 +26,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
+
+	"github.com/VitruvianSoftware/vitruvian-core/tools/pipeline/unitfile"
 )
 
 func main() {
@@ -182,240 +182,52 @@ func main() {
 	}
 }
 
+// discoverUnitsFromWorkspace returns every pipeline unit declared in a BUILD
+// file under root. The reading is done by //tools/pipeline/unitfile, the same
+// reader the presubmit planner uses, so the workflow and the plan cannot
+// disagree about a unit. A declaration it cannot read is an error naming the
+// file and the unit, which fails `--check` on the pull request that wrote it.
 func discoverUnitsFromWorkspace(root string) ([]Unit, error) {
-	var units []Unit
-	seen := make(map[string]bool)
-
-	// Walk workspace for BUILD files
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			name := info.Name()
-			if name == ".git" || name == "bazel-out" || name == "bazel-bin" || name == "node_modules" || name == ".claude" || strings.HasPrefix(name, "bazel-") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if info.Name() == "BUILD" || info.Name() == "BUILD.bazel" {
-			relDir, err := filepath.Rel(root, filepath.Dir(path))
-			if err != nil {
-				return nil
-			}
-			relDir = filepath.ToSlash(relDir)
-			if relDir == "." {
-				relDir = ""
-			}
-
-			content, err := os.ReadFile(path)
-			if err != nil {
-				return nil
-			}
-
-			parsedUnits := parseUnitsFromBuildContent(string(content), relDir)
-			for _, u := range parsedUnits {
-				if !seen[u.Name] {
-					seen[u.Name] = true
-					units = append(units, u)
-				}
-			}
-		}
-		return nil
-	})
+	read, err := unitfile.Discover(root)
 	if err != nil {
 		return nil, err
 	}
-
-	sort.Slice(units, func(i, j int) bool { return units[i].Name < units[j].Name })
+	units := make([]Unit, 0, len(read))
+	for _, u := range read {
+		units = append(units, unitOf(u))
+	}
 	return units, nil
 }
 
-var (
-	pipelineCallPattern = regexp.MustCompile(`pipeline_unit\s*\(([^)]+)\)`)
-	nameAttrPattern     = regexp.MustCompile(`name\s*=\s*["']([^"']+)["']`)
-	tierAttrPattern     = regexp.MustCompile(`tier\s*=\s*["']([^"']+)["']`)
-	runnerAttrPattern   = regexp.MustCompile(`runner\s*=\s*["']([^"']+)["']`)
-	personaAttrPattern  = regexp.MustCompile(`persona\s*=\s*["']([^"']+)["']`)
-	timeoutAttrPattern  = regexp.MustCompile(`timeout_minutes\s*=\s*([0-9]+)`)
-	testTargetsPattern  = regexp.MustCompile(`test_targets\s*=\s*\[([^\]]*)\]`)
-	dependsOnPattern    = regexp.MustCompile(`depends_on\s*=\s*\[([^\]]*)\]`)
-	// Starlark bools only, so True/False literally -- an expression here would
-	// need a real parser, and pipeline_unit's contract is literal attributes.
-	needsEmulatorPattern = regexp.MustCompile(`needs_emulator\s*=\s*(True|False)`)
-	// A dict, so the body is matched first and the pairs picked out of it --
-	// same two-step shape as test_targets above.
-	artifactsPattern     = regexp.MustCompile(`artifacts\s*=\s*\{([^}]*)\}`)
-	artifactsPairPattern = regexp.MustCompile(`["']([^"']+)["']\s*:\s*["']([^"']+)["']`)
-	buildFlagsPattern    = regexp.MustCompile(`build_flags\s*=\s*\[([^\]]*)\]`)
-	// The value may itself contain braces -- a GitHub expression like
-	// ${{ env.ANDROID_NDK_ROOT }} -- so a plain [^}]* stops at the wrong place
-	// and the attribute silently parses as empty.
-	envPattern = regexp.MustCompile(`env\s*=\s*\{((?:[^{}]|\{\{[^{}]*\}\})*)\}`)
-)
-
-func parseUnitsFromBuildContent(content, pkg string) []Unit {
-	var units []Unit
-
-	// Comments are stripped first. pipelineCallPattern stops at the first ")",
-	// so a comment containing one -- a version in parentheses, say -- truncates
-	// the body and every attribute after it silently disappears. That produced
-	// a workflow running `bazel test` with NO targets, which passes while
-	// building nothing.
-	content = stripStarlarkComments(content)
-
-	matches := pipelineCallPattern.FindAllStringSubmatch(content, -1)
-
-	for _, m := range matches {
-		body := m[1]
-
-		nameMatch := nameAttrPattern.FindStringSubmatch(body)
-		if len(nameMatch) < 2 {
-			continue
-		}
-		name := nameMatch[1]
-
-		tier := "L1"
-		if tm := tierAttrPattern.FindStringSubmatch(body); len(tm) >= 2 {
-			tier = tm[1]
-		}
-
-		runner := "ubuntu-26.04"
-		if rm := runnerAttrPattern.FindStringSubmatch(body); len(rm) >= 2 {
-			runner = rm[1]
-		}
-
-		persona := "all"
-		if pm := personaAttrPattern.FindStringSubmatch(body); len(pm) >= 2 {
-			persona = pm[1]
-		}
-
-		timeout := 20
-		if tom := timeoutAttrPattern.FindStringSubmatch(body); len(tom) >= 2 {
-			fmt.Sscanf(tom[1], "%d", &timeout)
-		}
-
-		needsEmulator := false
-		if em := needsEmulatorPattern.FindStringSubmatch(body); len(em) >= 2 {
-			needsEmulator = em[1] == "True"
-		}
-
-		// env is a dict like artifacts. Without this the renderer's env support
-		// is dead code from the BUILD-file discovery path: a unit could declare
-		// env = {...} and the workflow would come out without it, silently.
-		var env map[string]string
-		if em := envPattern.FindStringSubmatch(body); len(em) >= 2 {
-			for _, pair := range artifactsPairPattern.FindAllStringSubmatch(em[1], -1) {
-				if len(pair) >= 3 {
-					if env == nil {
-						env = map[string]string{}
-					}
-					env[pair[1]] = pair[2]
-				}
-			}
-		}
-
-		var buildFlags []string
-		if bm := buildFlagsPattern.FindStringSubmatch(body); len(bm) >= 2 {
-			for _, item := range regexp.MustCompile(`["']([^"']+)["']`).FindAllStringSubmatch(bm[1], -1) {
-				if len(item) >= 2 {
-					buildFlags = append(buildFlags, item[1])
-				}
-			}
-		}
-
-		var artifacts map[string]string
-		if am := artifactsPattern.FindStringSubmatch(body); len(am) >= 2 {
-			for _, pair := range artifactsPairPattern.FindAllStringSubmatch(am[1], -1) {
-				if len(pair) >= 3 {
-					if artifacts == nil {
-						artifacts = map[string]string{}
-					}
-					artifacts[pair[1]] = pair[2]
-				}
-			}
-		}
-
-		var testTargets []string
-		if ttm := testTargetsPattern.FindStringSubmatch(body); len(ttm) >= 2 {
-			raw := ttm[1]
-			targetItems := regexp.MustCompile(`["']([^"']+)["']`).FindAllStringSubmatch(raw, -1)
-			for _, item := range targetItems {
-				if len(item) >= 2 {
-					t := item[1]
-					if strings.HasPrefix(t, ":") {
-						if pkg == "" {
-							t = "//" + t
-						} else {
-							t = "//" + pkg + t
-						}
-					}
-					testTargets = append(testTargets, t)
-				}
-			}
-		}
-
-		var dependsOn []string
-		if dom := dependsOnPattern.FindStringSubmatch(body); len(dom) >= 2 {
-			raw := dom[1]
-			depItems := regexp.MustCompile(`["']([^"']+)["']`).FindAllStringSubmatch(raw, -1)
-			for _, item := range depItems {
-				if len(item) >= 2 {
-					dependsOn = append(dependsOn, item[1])
-				}
-			}
-		}
-
-		units = append(units, Unit{
-			Schema:           SchemaVersion,
-			Name:             name,
-			Package:          pkg,
-			TestTargets:      testTargets,
-			Tier:             tier,
-			Runner:           runner,
-			Persona:          persona,
-			ConcurrencyGroup: "pipeline-" + name,
-			TimeoutMinutes:   timeout,
-			DependsOn:        dependsOn,
-			NeedsEmulator:    needsEmulator,
-			Artifacts:        artifacts,
-			Env:              env,
-			BuildFlags:       buildFlags,
-		})
+// parseUnitsFromBuildContent reads the units declared in one BUILD file's
+// text. pkg is the file's package.
+func parseUnitsFromBuildContent(content, pkg string) ([]Unit, error) {
+	read, err := unitfile.Parse(content, pkg)
+	if err != nil {
+		return nil, err
 	}
-
-	return units
+	var units []Unit
+	for _, u := range read {
+		units = append(units, unitOf(u))
+	}
+	return units, nil
 }
 
-// stripStarlarkComments removes whole-line and trailing # comments. Quoted
-// strings are left alone: a "#" inside one is data, not a comment.
-func stripStarlarkComments(content string) string {
-	var out strings.Builder
-	for _, line := range strings.Split(content, "\n") {
-		inStr := byte(0)
-		cut := -1
-		for i := 0; i < len(line); i++ {
-			c := line[i]
-			switch {
-			case inStr != 0:
-				if c == inStr && (i == 0 || line[i-1] != '\\') {
-					inStr = 0
-				}
-			case c == '"' || c == '\'':
-				inStr = c
-			case c == '#':
-				cut = i
-			}
-			if cut >= 0 {
-				break
-			}
-		}
-		if cut >= 0 {
-			line = line[:cut]
-		}
-		out.WriteString(line)
-		out.WriteString("\n")
+func unitOf(u unitfile.Unit) Unit {
+	return Unit{
+		Schema:           SchemaVersion,
+		Name:             u.Name,
+		Package:          u.Package,
+		TestTargets:      u.TestTargets,
+		Tier:             u.Tier,
+		Runner:           u.Runner,
+		Persona:          u.Persona,
+		ConcurrencyGroup: "pipeline-" + u.Name,
+		TimeoutMinutes:   u.TimeoutMinutes,
+		DependsOn:        u.DependsOn,
+		NeedsEmulator:    u.NeedsEmulator,
+		Artifacts:        u.Artifacts,
+		Env:              u.Env,
+		BuildFlags:       u.BuildFlags,
 	}
-	return out.String()
 }
