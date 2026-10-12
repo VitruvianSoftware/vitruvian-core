@@ -8,7 +8,7 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	b461ca1eebd0e9e0d792692c9bd7eff68d73e805	tree	e907cb68db95afee070308a9ed98963e4f0f1692
+# base	591f299d11f38a612629a274463196d57ae3862e	tree	9c7662951151d7b949f99851571369687f018ea4
 # path	change	why
 .dockerignore	added	Build context for the monorepo's Dockerfile.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
@@ -33,3 +33,4 @@ src/data/bundledJson.test.mjs	modified	git grep exits 128 in the Bazel sandbox, 
 src/services/requests.test.mjs	modified	The stalled request holds a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
 src/tools/places.test.mjs	modified	The stalled lookups hold a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
 vite.config.js	modified	Replaces vite-plugin-cesium's asset copy with a dereferencing one, because the rules_js fs patches reject its walk over pnpm's symlinks and the bundle shipped without dist/cesium.
+src/cyberSonarGpu.js	modified	CYBER_SONAR_CESIUM_VERSION names the cesium release the repository resolves (package.json pins it at the monorepo version), so it follows that version, not upstream's.
