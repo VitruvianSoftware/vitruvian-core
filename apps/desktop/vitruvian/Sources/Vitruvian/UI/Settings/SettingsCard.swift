@@ -101,6 +101,66 @@ package struct SettingsRow<Accessory: View>: View {
     }
 }
 
+/// A switch for an option that needs another feature. While it cannot be
+/// used, its feature uninstalled or something else ruling it out, the option
+/// reads greyed and off, since a disabled switch looks like one that is just
+/// off, and a readable line under it says why.
+package struct SettingsFeatureSwitchRow: View {
+    package let symbol: String
+    package let title: String
+    package var caption: String? = nil
+    @Binding package var isOn: Bool
+    package let feature: AppFeature
+    /// False while something else rules the option out, as the caption says.
+    package var enabled = true
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var features: FeatureRuntime
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    /// `runtime` is the app's own except in a test, which passes one over its
+    /// own defaults.
+    package init(symbol: String, title: String, caption: String? = nil, isOn: Binding<Bool>,
+                 feature: AppFeature, enabled: Bool = true, runtime: FeatureRuntime = .shared) {
+        self.symbol = symbol
+        self.title = title
+        self.caption = caption
+        self._isOn = isOn
+        self.feature = feature
+        self.enabled = enabled
+        self.features = runtime
+    }
+
+    package var body: some View {
+        let installed = features.isAvailable(feature)
+        let usable = installed && enabled
+        VStack(alignment: .leading, spacing: 6) {
+            SettingsRow(symbol: symbol, title: title, caption: usable ? caption : nil) {
+                Toggle(title, isOn: usable ? $isOn : .constant(false)).labelsHidden().toggleStyle(.switch)
+            }
+            .disabled(!usable)
+            .saturation(usable ? 1 : 0)
+            .opacity(usable ? 1 : 0.45)
+            if !installed {
+                HStack(spacing: 10) {
+                    Text(feature.enableReason(l10n))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(FeatureStrings.notchEditor(l10n.language).openFeatures) { feature.showInFeatures() }
+                        .controlSize(.small)
+                }
+                .padding(.leading, settingsRowTextInset)
+            } else if !usable, let caption {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, settingsRowTextInset)
+            }
+        }
+    }
+}
+
 /// A row that picks one of a few options: segments beside the title while the
 /// row fits on one line, under the title otherwise, and a menu there when the
 /// segments don't fit either. A row wider than its column would center the page
