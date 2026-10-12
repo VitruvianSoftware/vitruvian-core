@@ -750,6 +750,17 @@ What is still left of these three, and known:
   sheet does not list preferences, so a title is not part of what the
   person agrees to, beyond the manifest's bytes being the ones agreed to.
 
+**Five loose ends of the tool platform, as closed (2026-10-12).** There was
+no plan for this change either: each was first checked against the code,
+then closed with the smallest change that holds, test first. Each line is
+marked met only where a command that was run shows it. Run on one Mac
+(Mac16,5, Apple M4 Max) with macOS 27.0, Xcode 27.0 and Swift 6.4. Nobody
+opened the app.
+
+| The loose end | Met? | What shows it |
+|---|---|---|
+| A command that is listed and cannot run looked clickable | Met in tests, not by hand. True of the Quick panel only | The command bar and the wheel already leave such a command out, each for a reason its code states (`CommandBarCatalog.toolEntries`: the bar records a use before it runs a row; `RadialMenuService.availableItems`: no dead slice), and tests held that before. The Quick panel kept the tile, drew it like any other, and did nothing when it was picked. It now keeps the tile in its place and draws it as a disabled button (`QuickLauncherService.isUnavailable`), which SwiftUI dims as it dims every disabled button; no click, Return or digit runs it and the panel stays open. Seven checks in the `launcher` suite and two planted regressions. How the dimmed tile looks is by-hand check 34. |
+
 **The five "done when" items of section 1, as they stand.** None is marked
 met here by a person, because none of the checks by hand has been done.
 
@@ -775,8 +786,9 @@ met here by a person, because none of the checks by hand has been done.
 is a menu-bar app the automation cannot see, and granting or taking away
 Accessibility is a security setting only a person changes. This is stage B's
 three checks, stage C's fourteen and stage D's own in one list, with the
-ones that say the same thing joined, and four more for the three gaps
-closed on 2026-10-12, at the end. Each is one action and what to expect,
+ones that say the same thing joined, four more for the three gaps
+closed on 2026-10-12, and after those the checks for the five loose ends
+closed the same day, at the end. Each is one action and what to expect,
 in an order that can be done top to bottom in one sitting. Record each in
 the pull request with the Mac and the macOS version, or say it was not done.
 
@@ -1025,6 +1037,64 @@ chmod +x "$TMPDIR/prefs/bin/tool.py"
     cut with an ellipsis after about 120 characters. The alert is no taller
     than for any other refusal. Delete `$TMPDIR/prefs` and
     `$TMPDIR/longname` with the others in check 28.
+
+*The five loose ends closed on 2026-10-12. Do these before check 28.*
+
+Check 34 needs a tool no sample is, `never`: one command, on the Quick panel
+and the command bar, that the tool says cannot run. It starts with the app.
+Make it with:
+
+```sh
+mkdir -p "$TMPDIR/never/bin"
+cat > "$TMPDIR/never/vitruvian-tool.json" <<'JSON'
+{
+  "id": "com.example.never",
+  "name": { "en": "Never, by hand" },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "Example",
+  "contributes": {
+    "commands": [{ "id": "wait", "title": { "en": "Not now" }, "icon": "hourglass", "surfaces": ["quickPanel", "commandBar"] }]
+  },
+  "activation": ["onLaunch"],
+  "runtime": { "kind": "external", "exec": "bin/tool.py" }
+}
+JSON
+cat > "$TMPDIR/never/bin/tool.py" <<'PY'
+#!/usr/bin/python3
+import json
+import sys
+
+
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\n")
+    sys.stdout.flush()
+
+
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "1", "toolVersion": "0.1.0"}})
+        send({"jsonrpc": "2.0", "method": "commands/state", "params": {"runnable": []}})
+    elif method == "command/run":
+        send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32010, "message": "not now"}})
+    elif method == "shutdown":
+        sys.exit(0)
+PY
+chmod +x "$TMPDIR/never/bin/tool.py"
+```
+
+34. **Add `$TMPDIR/never`, open the Quick panel, and look at the tile "Not
+    now". Click it, press its digit, move to it with the arrows and press
+    Return. Then type "Not now" in the command bar.** The tile is in the
+    grid, dimmed like a disabled button, in light and in dark appearance and
+    in the island's Tools tab. Nothing happens for the click, the digit or
+    Return, and the panel stays open; the tile beside it still runs by its
+    own digit. The pointer over it shows no highlight. The command bar has
+    no row for it. Click Edit on the panel: the tile is no longer dimmed and
+    can be hidden and dragged. Delete `$TMPDIR/never` with the others in
+    check 28.
 
 ## 16. Open questions
 

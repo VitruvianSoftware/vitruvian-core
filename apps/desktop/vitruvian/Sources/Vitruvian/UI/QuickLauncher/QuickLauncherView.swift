@@ -231,7 +231,7 @@ package struct QuickLauncherView: View {
     private func cell(_ item: QuickLauncherTile) -> some View {
         let index = launcher.visibleTiles.firstIndex(of: item)
         let isSelected = !launcher.isEditing && index != nil && index == launcher.selectedIndex
-        let isHovered = hoveredItem == item
+        let isHovered = hoveredItem == item && !launcher.isUnavailable(item)
 
         Button {
             if launcher.isEditing {
@@ -325,10 +325,13 @@ package struct QuickLauncherView: View {
             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(.plain)
+        // A command that cannot run now keeps its tile, dimmed as any
+        // disabled button of the app is, and takes no click.
+        .disabled(launcher.isUnavailable(item))
         .accessibilityLabel(title(for: item))
         .onHover { hovering in
             hoveredItem = hovering ? item : (hoveredItem == item ? nil : hoveredItem)
-            if hovering, !launcher.isEditing {
+            if hovering, !launcher.isEditing, !launcher.isUnavailable(item) {
                 launcher.select(item)
             }
         }

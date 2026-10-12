@@ -115,13 +115,15 @@ enum QuickLauncherContract {
         var saved: [String] = []
         var commands: [CommandDescriptor] = []
         var runnable = true
+        /// How often the panel was closed.
+        var hides = 0
         var jobs: [(delay: TimeInterval, work: @MainActor () -> Void)] = []
 
         lazy var launcher: QuickLauncherService = QuickLauncherService(environment: .init(
             isAvailable: { [unowned self] in !self.unavailable.contains($0) },
             itemOrder: { [.keepAwake, .screenshot] },
-            islandShowsTools: { false },
-            collapseIsland: {},
+            islandShowsTools: { true },
+            collapseIsland: { [unowned self] in self.hides += 1 },
             showCameraInIsland: { false },
             perform: { [unowned self] in self.events.append("perform \($0.rawValue)") },
             after: { [unowned self] delay, work in self.jobs.append((delay, work)) },
@@ -209,7 +211,54 @@ enum QuickLauncherContract {
                          && (launcher.selectedIndex ?? 0) < launcher.visibleTiles.count,
                      "a command that goes away takes its tile, and the selection stays inside the grid")
 
+        unavailableCommandTileContracts(suite)
         savedBuiltinOrderContracts(suite)
+    }
+
+    /// A command that is listed and cannot run now: a tool whose program
+    /// crashed, or that said so itself. Its tile keeps its place, so the
+    /// grid and the digits under it do not jump around, and it is drawn as
+    /// unavailable and answers to nothing.
+    private static func unavailableCommandTileContracts(_ suite: TestSuite) {
+        let hello = CommandID("dev.vitruvian.sample/hello")!
+        let world = TileWorld()
+        world.commands = [CommandDescriptor(id: hello, title: "Say hello", symbol: "hand.wave", surfaces: [.quickPanel])!]
+        world.saved = ["dev.vitruvian.sample/hello", "keepAwake", "screenshot"]
+        let launcher = world.launcher
+        launcher.prepareForPresentation()
+        suite.expect(!launcher.isUnavailable(.command(hello)) && !launcher.isUnavailable(.builtin(.keepAwake)),
+                     "a tile whose command can run, and each of the app's own tiles, is drawn as usual")
+
+        world.runnable = false
+        suite.expect(launcher.visibleTiles == [.command(hello), .builtin(.keepAwake), .builtin(.screenshot)]
+                         && launcher.isUnavailable(.command(hello)) && !launcher.isUnavailable(.builtin(.keepAwake)),
+                     "a command that cannot run now keeps its tile and its place, and the tile is drawn as unavailable")
+
+        // A click, Return on the selection, and its digit: none runs it, and
+        // none closes the panel as a tile that ran would.
+        let hides = world.hides
+        launcher.run(.command(hello))
+        launcher.select(.command(hello))
+        let returnTaken = launcher.takesPanelKey(Key(keyCode: UInt16(kVK_Return)))
+        let digitTaken = launcher.takesPanelKey(Key(keyCode: UInt16(kVK_ANSI_1)))
+        world.drain()
+        suite.expect(world.events.isEmpty && world.jobs.isEmpty && world.hides == hides && returnTaken && digitTaken,
+                     "a tile whose command cannot run does nothing when clicked, on Return or by its digit, "
+                         + "and the panel stays as it is")
+        suite.expect(launcher.takesPanelKey(Key(keyCode: UInt16(kVK_ANSI_2))) && world.events == ["perform keepAwake"],
+                     "the tile after it still answers to its own digit")
+        world.events = []
+
+        launcher.isEditing = true
+        suite.expect(!launcher.isUnavailable(.command(hello)),
+                     "while the grid is edited the tile is as the others, so it can still be moved or hidden")
+        launcher.isEditing = false
+
+        world.runnable = true
+        suite.expect(!launcher.isUnavailable(.command(hello)), "a command that can run again has its tile back")
+        launcher.run(.command(hello))
+        world.drain()
+        suite.expect(world.events == ["command dev.vitruvian.sample/hello"], "and the tile runs it")
     }
 
     /// What a person already has stored: only the app's own tile ids, as

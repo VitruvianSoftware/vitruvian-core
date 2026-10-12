@@ -126,6 +126,17 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   command is in it, and each would appear twice. A built-in command asks for
   a surface in `BuiltinTools.install` only when something there already runs
   it.
+- A registry command that is listed and cannot run now (`ToolRegistry.canRun`
+  is false: a grant is missing, its tool said so in `commands/state`, or the
+  tool's program is stopped) is handled by each surface in its own way. The
+  command bar and the wheel leave it out, each for a reason its code states
+  (`CommandBarCatalog.toolEntries`, `RadialMenuService.availableItems`). The
+  Quick panel keeps its tile where it is, so the grid and the digits do not
+  move, and draws it as a disabled button
+  (`QuickLauncherService.isUnavailable`): no click, Return or digit runs it,
+  and the panel stays open. On the Shortcuts page its row says it is
+  inactive, and its key beeps. Do not hide such a tile, and do not give it a
+  colour of its own: `.disabled` is how the app dims.
 - A saved order may hold an id the app does not recognise right now: a tool
   that has not registered yet, or one that is switched off. Keep it where it
   is (`QuickToolsSupport.savedTileOrder`); drop only what is not well formed.

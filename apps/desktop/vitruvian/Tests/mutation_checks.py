@@ -752,6 +752,17 @@ MUTATIONS = [
      "",
      "storage/set saves text of 4,096 characters, and answers one character more as invalid params "
      "with nothing saved"),
+    ("a command tile that cannot run looks like one that can", "launcher",
+     "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
+     "        case .command(let id): return !isEditing && !environment.canRunCommand(id)\n",
+     "        case .command: return false\n",
+     "a command that cannot run now keeps its tile and its place, and the tile is drawn as unavailable"),
+    ("a command tile that cannot run is run all the same", "launcher",
+     "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
+     "            guard !isEditing, environment.canRunCommand(id) else { return }\n",
+     "            guard !isEditing else { return }\n",
+     "a tile whose command cannot run does nothing when clicked, on Return or by its digit, "
+     "and the panel stays as it is"),
 ]
 
 

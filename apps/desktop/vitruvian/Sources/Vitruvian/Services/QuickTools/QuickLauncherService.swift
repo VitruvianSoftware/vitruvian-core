@@ -384,6 +384,20 @@ package final class QuickLauncherService: ObservableObject {
         select(.builtin(item))
     }
 
+    /// True for a tile that is listed and cannot be run now: a command
+    /// whose tool says it cannot run, or whose program is stopped. The tile
+    /// keeps its place, so the grid and the digits under it do not jump
+    /// around; the view draws it as a disabled button, and `run` does
+    /// nothing for it. Never while the grid is edited: there a tile is
+    /// moved or hidden, not run. One of the app's own tiles is listed only
+    /// while its feature is switched on, so it is never one of these.
+    package func isUnavailable(_ tile: QuickLauncherTile) -> Bool {
+        switch tile {
+        case .builtin: return false
+        case .command(let id): return !isEditing && !environment.canRunCommand(id)
+        }
+    }
+
     package func run(_ tile: QuickLauncherTile) {
         switch tile {
         case .builtin(let item):
