@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import Combine
 import Foundation
 import os
 import VitruvianCore
@@ -128,6 +129,11 @@ package final class ExternalToolStore {
         package var forgetPreferences: @MainActor (ToolID) -> Void
         /// Clears the shortcuts the person gave a tool's commands.
         package var forgetShortcuts: @MainActor (ToolID) -> Void
+        /// Has the store told each time the person changes the app's
+        /// language, with the new language's tag. What it gives back is
+        /// kept for as long as the store is: letting go of it ends the
+        /// watching.
+        package var watchLanguage: @MainActor (@escaping @MainActor (String) -> Void) -> Any?
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -137,7 +143,8 @@ package final class ExternalToolStore {
                      language: @escaping @MainActor () -> String,
                      stoppedWorking: @escaping @MainActor (ToolID) -> Void,
                      forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in },
-                     forgetShortcuts: @escaping @MainActor (ToolID) -> Void = { _ in }) {
+                     forgetShortcuts: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     watchLanguage: @escaping @MainActor (@escaping @MainActor (String) -> Void) -> Any? = { _ in nil }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -149,6 +156,7 @@ package final class ExternalToolStore {
             self.stoppedWorking = stoppedWorking
             self.forgetPreferences = forgetPreferences
             self.forgetShortcuts = forgetShortcuts
+            self.watchLanguage = watchLanguage
         }
 
         /// The app as it is. That a tool stopped working is also a line
@@ -167,7 +175,18 @@ package final class ExternalToolStore {
                     .error("the tool \(id.rawValue, privacy: .public) stopped working")
             },
             forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) },
-            forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) })
+            forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
+            watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) })
+    }
+
+    /// Hears each language the app changes to, as its tag, on the main
+    /// thread. The language it starts with is not a change, and neither is
+    /// the same language set again. The watching ends when what this gives
+    /// back is let go.
+    package static func watch(_ languages: Published<AppLanguage>.Publisher,
+                              then changed: @escaping @MainActor (String) -> Void) -> AnyCancellable {
+        languages.removeDuplicates().dropFirst().receive(on: DispatchQueue.main)
+            .sink { language in MainActor.assumeIsolated { changed(language.rawValue) } }
     }
 
     /// Deletes every preference saved under a tool's id: the keys that
@@ -201,9 +220,12 @@ package final class ExternalToolStore {
     /// The tools the person has been told stopped working, in this run of
     /// the app.
     private var told: Set<ToolID> = []
+    /// Keeps the store told of a change of the app's language.
+    private var watchingLanguage: Any?
 
     package init(parts: Parts) {
         self.parts = parts
+        watchingLanguage = parts.watchLanguage { [weak self] in self?.languageChanged($0) }
     }
 
     /// True for a tool that is added, switched on, and what the person
@@ -524,6 +546,18 @@ package final class ExternalToolStore {
     /// person who acts.
     private func storage(of tool: ExternalToolManifest) -> StorageAccess {
         StorageAccess(gate: { nil }, manifest: tool.manifest, backing: parts.broker().backings.storage)
+    }
+
+    // MARK: - The app's language
+
+    /// The person changed the app's language. Each tool whose program is
+    /// running is sent the protocol's `language/changed`, a notice the app
+    /// does not wait on, once for each change; one that has not answered
+    /// `initialize` yet hears it when it has. Any other tool, one that is
+    /// resting, stopped, switched off or held back, is sent nothing and is
+    /// not started: `initialize` carries the language when it next starts.
+    package func languageChanged(_ language: String) {
+        for id in tools.keys.sorted(by: { $0.rawValue < $1.rawValue }) { tools[id]?.languageChanged(language) }
     }
 
     // MARK: - A tool that stopped working

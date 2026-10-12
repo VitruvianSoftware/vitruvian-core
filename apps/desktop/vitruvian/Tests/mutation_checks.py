@@ -789,6 +789,23 @@ MUTATIONS = [
      "        if data, !left.contains(where: { $0 == dataFolder }) { parts.forgetPreferences(id) }\n",
      "        if data { parts.forgetPreferences(id) }\n",
      "its record and its copy are gone; the tool's settings stay as long as the folder of what it saved does"),
+    ("a running tool is not told that the language changed", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        for id in tools.keys.sorted(by: { $0.rawValue < $1.rawValue }) { tools[id]?.languageChanged(language) }\n",
+     "",
+     "a running tool is sent language/changed once for each change, and what it is sent is the "
+     "protocol's own example of the message: a notice with no id, whose params hold the tag"),
+    ("a tool greeted in a language that changed meanwhile is never told", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "            if language != hello.language { tell(.languageChanged, LanguageChangedParams(language: language)) }\n",
+     "",
+     "once the tool has answered initialize it is told the language the app has now, once, "
+     "when that is not the one it was greeted in"),
+    ("the language a tool already has is sent again", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "        guard language != self.language else { return }\n",
+     "",
+     "the language a tool was last told is not sent again"),
 ]
 
 

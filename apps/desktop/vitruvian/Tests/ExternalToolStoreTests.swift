@@ -35,6 +35,7 @@ enum ExternalToolStoreTests {
         unreadableRecords(suite)
         toldOnce(suite)
         saysNothing(suite)
+        languageChanges(suite)
         aRealTool(suite)
         aRealToolRemoved(suite)
     }
@@ -61,6 +62,10 @@ enum ExternalToolStoreTests {
         /// only really waits for a real program: a tool that is no program
         /// changes when the test says so, never while the host looks.
         var waits: [TimeInterval] = []
+        /// The language the app is in, as the store reads it.
+        var language = "fr"
+        /// What the store asked to be told of a change of language with.
+        var languageWatcher: (@MainActor (String) -> Void)?
         /// The shortcuts people gave to tool commands, over this bench's
         /// registry: what is saved, and hotkeys that register nothing.
         private(set) lazy var keys = ToolPlatformTests.RegistrarBench(registry: registry)
@@ -101,12 +106,16 @@ enum ExternalToolStoreTests {
                     runs.append(run)
                     return run
                 },
-                language: { "fr" },
+                language: { [unowned self] in language },
                 stoppedWorking: { [unowned self] in stoppedWorking.append($0) },
                 forgetPreferences: { id in
                     box.values = box.values.filter { !$0.key.hasPrefix(id.rawValue + "/") }
                 },
-                forgetShortcuts: { [unowned self] in keys.registrar.forget($0) }))
+                forgetShortcuts: { [unowned self] in keys.registrar.forget($0) },
+                watchLanguage: { [unowned self] in
+                    languageWatcher = $0
+                    return nil
+                }))
         }
 
         /// The app's support folder, as the store sees it.
@@ -815,6 +824,120 @@ enum ExternalToolStoreTests {
         suite.expect(folder == running.data.standardizedFileURL.path
                          && running.box.values["com.acme.deploys/project"] as? String == "api",
                      "a tool whose program would not stop is still said to have kept what it saved, with its settings")
+    }
+
+    /// Every `language/changed` the app has sent a run of a tool, as the
+    /// tag each carried.
+    static func languages(_ tool: FakeTool) -> [String] {
+        tool.sent.compactMap { message in
+            guard case .notice(let method, let params) = message, method == "language/changed" else { return nil }
+            return params?["language"]?.stringValue ?? "?"
+        }
+    }
+
+    /// The person changes the app's language: each tool that is running
+    /// is told once, with the protocol's own params, and no other tool is
+    /// told or started.
+    static func languageChanges(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder())
+        let other = ToolID("com.acme.other")!
+        bench.add(bench.folder("other", manifest: ExternalToolManifestTests.file(#"{"id": "com.acme.other"}"#)))
+        suite.expect(bench.languageWatcher != nil, "the store asks to be told when the app's language changes")
+
+        // Nothing runs yet.
+        bench.language = "de"
+        bench.languageWatcher?("de")
+        suite.expect(bench.runs.isEmpty && bench.started.isEmpty
+                         && bench.store.listed.allSatisfy { $0.standing == .resting },
+                     "a change of language starts no tool: one that is not running is told nothing")
+
+        // Started after the change: it is greeted in the new language.
+        bench.registry.run(copy)
+        let run = bench.current
+        var greeted: String?
+        if case .request(_, "initialize", let params)? = run.sent.first { greeted = params?["language"]?.stringValue }
+        suite.expect(greeted == "de" && run.sent.count == 1,
+                     "a tool started after the language changed is greeted in the new language")
+
+        // Changed while it has not answered initialize yet.
+        bench.language = "it"
+        bench.languageWatcher?("it")
+        suite.expect(run.sent.count == 1 && languages(run).isEmpty,
+                     "a tool that has not answered initialize yet is told nothing of the language: "
+                         + "until then neither side says anything else")
+        run.greets()
+        suite.expect(languages(run) == ["it"],
+                     "once it has answered, a tool greeted in a language that changed meanwhile is told the new one, once")
+
+        // Running: once for each change.
+        bench.language = "de"
+        bench.languageWatcher?("de")
+        bench.language = "fr"
+        bench.languageWatcher?("fr")
+        let whole = run.sent.last.flatMap { try? JSONValue(encoding: $0) }
+        let example = ExternalToolSettingsTests.example(of: "language/changed")
+        suite.expect(languages(run) == ["it", "de", "fr"] && example != nil && whole == example
+                         && whole == .object(["jsonrpc": .string("2.0"), "method": .string("language/changed"),
+                                              "params": .object(["language": .string("fr")])]),
+                     "a running tool is sent language/changed once for each change, and what it is sent is the "
+                         + "protocol's own example of the message: a notice with no id, whose params hold the tag")
+        bench.languageWatcher?("fr")
+        bench.store.languageChanged("fr")
+        suite.expect(languages(run) == ["it", "de", "fr"] && !run.inputClosed
+                         && bench.store.listed.first?.standing == .running && bench.runs.count == 1,
+                     "the language it already has is not sent again, and the tool runs on: it is not restarted to hear it")
+
+        // Two tools running: each is told, once.
+        bench.registry.run(CommandID(tool: other, name: "copyLatest")!)
+        let second = bench.current
+        second.greets()
+        bench.language = "ja"
+        bench.languageWatcher?("ja")
+        suite.expect(bench.runs.count == 2 && languages(second) == ["ja"] && languages(run) == ["it", "de", "fr", "ja"],
+                     "every tool that is running is told, each once")
+
+        // Crashed and waiting, switched off, and being stopped: nobody to tell.
+        run.ends(1)
+        let sent = run.sent.count
+        bench.store.setOn(other, false)
+        let goodbye = second.sent.count
+        bench.language = "ko"
+        bench.languageWatcher?("ko")
+        suite.expect(run.sent.count == sent && second.sent.count == goodbye && bench.runs.count == 2
+                         && bench.store.listed.first?.standing == .waiting
+                         && second.sent.last == .notice(method: "shutdown", params: nil),
+                     "a tool that stopped, and one that is switched off and being told goodbye, are told nothing "
+                         + "and are not started")
+
+        // What the app hands the store: each change, and only a change.
+        final class Setting: ObservableObject {
+            @Published var language: AppLanguage = .enUS
+        }
+        let setting = Setting()
+        var heard: [String] = []
+        let watching = ExternalToolStore.watch(setting.$language) { heard.append($0) }
+        setting.language = .enUS
+        setting.language = .de
+        setting.language = .de
+        setting.language = .ptBR
+        ToolRuntimeSupport.wait { heard.count >= 2 }
+        suite.expect(heard == ["de", "pt-BR"],
+                     "the store hears each language the app changes to, as its tag: not the one it starts with, "
+                         + "and not the same one set again")
+        watching.cancel()
+
+        // Held back: never started, never told.
+        let held = Bench()
+        defer { held.close() }
+        held.add(held.folder())
+        try? Data("{}".utf8).write(to: held.files.appendingPathComponent("vitruvian-tool.json"))
+        let after = held.relaunched()
+        after.store.restore()
+        after.languageWatcher?("de")
+        suite.expect(after.store.listed.map(\.isHeld) == [true] && after.runs.isEmpty && after.started.isEmpty,
+                     "a tool that is held back is told nothing and is not started")
     }
 
     /// The shortcut the person gave a tool's command: gone with a tool

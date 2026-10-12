@@ -736,7 +736,8 @@ are built, and none has been seen in the app.
 
 What is still left of these three, and known:
 
-- `language/changed` is still never sent.
+- `language/changed` is still never sent. *Closed on 2026-10-12: see "Five
+  loose ends of the tool platform, as closed".*
 - The fourteen languages of the two new texts were written with the English
   and checked by rule. No reader of them has reviewed them.
 - When what a tool saved is kept because its program would not stop, its
@@ -764,6 +765,7 @@ opened the app.
 | A command that is listed and cannot run looked clickable | Met in tests, not by hand. True of the Quick panel only | The command bar and the wheel already leave such a command out, each for a reason its code states (`CommandBarCatalog.toolEntries`: the bar records a use before it runs a row; `RadialMenuService.availableItems`: no dead slice), and tests held that before. The Quick panel kept the tile, drew it like any other, and did nothing when it was picked. It now keeps the tile in its place and draws it as a disabled button (`QuickLauncherService.isUnavailable`), which SwiftUI dims as it dims every disabled button; no click, Return or digit runs it and the panel stays open. Seven checks in the `launcher` suite and two planted regressions. How the dimmed tile looks is by-hand check 34. |
 | A removed tool kept its shortcut, and nothing could clear it | Met in tests, not by hand | The premise held: the saved combination registered no key (`ToolShortcutRegistrar.wantedShortcuts`) and still refused the same keys to every other command (`ShortcutConflicts.holder`, `ToolShortcutRegistrar.assign`), with no row to clear it on. Now Remove clears the shortcuts of the tool's commands (`ExternalToolStore.remove`, `ToolShortcutRegistrar.forget`), whether or not what the tool saved is kept. A tool that is switched off, updated, or not registered this launch keeps its shortcut saved; it holds no key and refuses nobody meanwhile (`heldShortcuts`), and is a key again when the tool returns. Keys given to another tool command meanwhile stay with that command. `platform` 766 to 781 checks, `tool-runtime` 581 to 591, two planted regressions. By-hand check 35. |
 | At Remove, a file that could not be deleted was only a log line | Met in tests, not by hand | The premise held: `ExternalToolStore.remove` answered `deleted` whatever `ToolFolders.delete` gave back, and it deleted the tool's preferences while the folder of what it saved stayed. It now answers `notDeleted` with each folder that is left, and the alert added for kept data says so, with its own title and sentence and the same Reveal in Finder button (`ToolRemovalNotice`). Two new texts in fifteen languages, 46 in all. A tool's preferences now go only together with the folder of what it saved; when the folder stays, for any reason, they stay, and nothing deletes either later. The record is written away before anything is deleted, so the next launch has no record of a half-deleted tool and starts nothing of it: a test relaunches over a read-only folder and sees that. `tool-runtime` 591 to 606 checks, three planted regressions. Still only a log line: a program that would not stop and a copy that could not be deleted, both at once. By-hand check 36. |
+| The app never told a tool that the language changed | Met in tests, not by hand | The premise held: `ToolLink.languageChanged` and `ExternalTool.languageChanged` were there and nothing called them. Now `ExternalToolStore` hears each change of `L10n.shared.language` (`ExternalToolStore.watch`) and sends `language/changed` to every tool that is running, once, with the schema's params; the last message a test sees is the protocol's own example, whole. It is wired as `preferences/changed` is: never before `initialize` is answered, never to a tool that is stopped, switched off or held back, and it starts nothing. One addition: a tool greeted in a language that changed before it answered is told the new one once it has. `initialize` already carried the language and reads it at each start; a test now holds that for a tool started after a change. The kit already heard the notice (`onLanguageChanged`, `app.language`) and a kit test held it; the protocol's sources, the conformance script and `vitruvian-tool run` are unchanged (`run` sends no notice of either kind). `tool-runtime` 606 to 622 checks, three planted regressions. By-hand check 37. |
 
 **The five "done when" items of section 1, as they stand.** None is marked
 met here by a person, because none of the checks by hand has been done.
@@ -927,9 +929,10 @@ section "By hand" gives the commands that make them in `$TMPDIR`.
 
 *The three gaps closed on 2026-10-12. Do these before check 28.*
 
-Checks 30 and 31 need a tool no sample is, `prefs`: four preferences with
-titles, one of each kind, and one with none. It starts with the app, and
-shows the app's short message each time it is told a preference changed.
+Checks 30, 31 and 37 need a tool no sample is, `prefs`: four preferences
+with titles, one of each kind, and one with none. It starts with the app,
+and shows the app's short message each time it is told a preference or the
+language changed.
 Make it with:
 
 ```sh
@@ -992,6 +995,8 @@ for line in sys.stdin:
     elif method == "preferences/changed":
         for key, value in message["params"]["values"].items():
             ask("notify/hud", {"icon": "slider.horizontal.3", "message": "%s is now %s" % (key, json.dumps(value))})
+    elif method == "language/changed":
+        ask("notify/hud", {"icon": "globe", "message": "language is now %s" % message["params"]["language"]})
     elif method == "command/run" and message["params"]["command"] == "show":
         values = [json.dumps(ask("storage/get", {"key": key}).get("value")) for key in ("project", "loud", "count", "ratio")]
         ask("notify/hud", {"icon": "list.bullet", "message": " ".join(values)})
@@ -1089,6 +1094,12 @@ PY
 chmod +x "$TMPDIR/never/bin/tool.py"
 ```
 
+`vitruvian-tool validate "$TMPDIR/never"` prints three lines that start with
+`ok`, and `vitruvian-tool run "$TMPDIR/never" --command wait` prints
+`state    no command can run now` and ends with `run: OK`: both were run
+when this was written, and so were the two for `prefs` again, with its new
+branch for the language.
+
 34. **Add `$TMPDIR/never`, open the Quick panel, and look at the tile "Not
     now". Click it, press its digit, move to it with the arrows and press
     Return. Then type "Not now" in the command bar.** The tile is in the
@@ -1119,6 +1130,13 @@ chmod +x "$TMPDIR/never/bin/tool.py"
     Finder", which shows it. Quit the app and open it: the tool is not
     listed and nothing of it runs. Afterwards run `chmod 755 "$D"` and
     delete the folder by hand.
+37. **With `$TMPDIR/prefs` added, as in check 30, change the app's language
+    to German in Settings, General, and back.** The app's short message
+    says `language is now de`, once, and then the tag of the language you
+    came from, once (`en-US` for English); the tool's row says it is
+    running throughout. Switch the tool off, change the language and
+    change it back, and switch the tool on: no message came while it was
+    off, and the change did not start it.
 
 ## 16. Open questions
 

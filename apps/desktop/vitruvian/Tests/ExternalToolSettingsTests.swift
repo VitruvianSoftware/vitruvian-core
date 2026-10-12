@@ -57,14 +57,17 @@ enum ExternalToolSettingsTests {
 
     /// The protocol's own example of `preferences/changed`, from the file
     /// the schema is tested against.
-    static var example: JSONValue? {
+    static var example: JSONValue? { example(of: "preferences/changed") }
+
+    /// The protocol's own valid example of one message, by its method.
+    static func example(of method: String) -> JSONValue? {
         let environment = ProcessInfo.processInfo.environment
         guard let path = environment["VITRUVIAN_MESSAGE_EXAMPLES"], let runfiles = environment["TEST_SRCDIR"],
               let workspace = environment["TEST_WORKSPACE"],
               let data = FileManager.default.contents(atPath: "\(runfiles)/\(workspace)/\(path)"),
               let file = try? JSONDecoder().decode(JSONValue.self, from: data) else { return nil }
         return file["examples"]?.arrayValue?.first {
-            $0["valid"] == .bool(true) && $0["message"]?["method"]?.stringValue == "preferences/changed"
+            $0["valid"] == .bool(true) && $0["message"]?["method"]?.stringValue == method
         }?["message"]
     }
 

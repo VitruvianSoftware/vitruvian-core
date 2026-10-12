@@ -163,6 +163,11 @@ before `run()`. It is handed the id and the new value of each preference that
 changed. A tool that reads its preferences each time a command runs, as the
 sample above does, needs no such handler.
 
+The same goes for the app's language. `app.language` is always the current
+one: the kit follows `language/changed` by itself. Set
+`tool.onLanguageChanged` before `run()` only when your tool must do
+something at that moment.
+
 ### A tool that does not ask the app
 
 A tool may do anything itself. [`../samples/front-window`](../samples/front-window)
@@ -281,8 +286,13 @@ tool that is running and has answered `initialize`. A tool that is not
 running is not started for it, and reads the value with `storage/get` when it
 next starts. What your own `storage/set` saved is not sent back to you.
 
-`language/changed` is a notice too. Today's app never sends it: a tool learns
-the language when it starts. Handle it anyway; a later app will send it.
+`language/changed` is a notice too: the person changed the app's language in
+Settings. It carries the new language as a tag, the same kind `initialize`
+carries. Like `preferences/changed` it is sent only to a tool that is
+running and has answered `initialize`, once for each change. A tool that is
+not running is not started for it: `initialize` tells it the language when
+it next starts. An app from before 2026-10-12 never sent it, so a tool
+there learns the language only when it starts.
 
 ```json message
 {"jsonrpc":"2.0","method":"preferences/changed","params":{"values":{"project":"web"}}}
@@ -533,8 +543,9 @@ opened; close it and open it again to see more.
 - **Not that a preference is as you left it.** The person may change a titled
   one at any time, also while your tool is not running. Read it when you
   need it, or hear `preferences/changed`.
-- **Not to be told the language changed.** Today's app never sends
-  `language/changed`.
+- **Not that the language stays.** The person may change it while your
+  tool runs. Hear `language/changed`, or read `app.language` each time you
+  need it. An older app never sends the notice.
 - **Not that its last words arrive.** A final line with no line break at its
   end is dropped.
 - **Not an argument.** A command is run by its id, with nothing else.

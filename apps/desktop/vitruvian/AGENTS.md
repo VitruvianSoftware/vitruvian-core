@@ -401,7 +401,18 @@ of it but the protocol.
   is a notice: the app does not wait. A tool that is not running, or has
   not answered `initialize`, is sent nothing and is not started; it reads
   the value when it next starts. Saving the value a setting already has
-  does nothing. `language/changed` is still never sent.
+  does nothing.
+- When the person changes the app's language, each tool that is running
+  is sent the protocol's `language/changed`, once, with the new tag
+  (`ExternalToolStore.languageChanged`, told by `ExternalToolStore.watch`
+  over `L10n.shared.$language`). It is wired as `preferences/changed` is:
+  a notice the app does not wait on, never sent before a tool has answered
+  `initialize`, never to a tool that is stopped, switched off or held
+  back, and it starts nothing. One thing differs. A tool that was greeted
+  in a language the app changed before it answered is told the new one
+  once it has answered (`ToolLink.languageChanged`), or it would keep the
+  old one for its whole run. A tool started later gets the language from
+  `initialize`, which reads it at each start.
 - A tool is added in two steps, and there is no third way.
   `ExternalToolStore.offer(from:)` reads the folder the person picked and
   changes nothing: no copy, no program, no file. `ExternalToolStore.add`
@@ -545,9 +556,9 @@ of it but the protocol.
     English and checked by rule. No reader of them has reviewed them.
   - That the sheet stays under 800 points high is arithmetic from the line
     limits. Nobody has seen it on a small display.
-  - Nothing tells a running tool that the language changed. A tool's
-    preferences have a screen since 2026-10-12, built and not seen in the
-    app.
+  - A tool's preferences have a screen since 2026-10-12, and a running
+    tool is told when the language changes since the same day: both built
+    and not seen in the app.
   - A records file that cannot be read is kept until the next tool is
     added. Then it is moved to `InstalledTools.unreadable.json`, replacing
     an earlier file of that name.
