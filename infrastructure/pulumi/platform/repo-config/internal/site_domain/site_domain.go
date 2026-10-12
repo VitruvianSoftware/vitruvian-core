@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 
 // Package site_domain declares how the vitruviansoftware.dev website is
-// published on its own root domain: the two Cloudflare records that point the
+// published on its own root domain: the Cloudflare records that point the
 // apex at GitHub Pages and prove the domain to GitHub, and the Pages setting
 // on the website's mirror repository.
 //
@@ -29,16 +29,17 @@
 // repo-config is the platform stack that is already applied through CI, gated
 // and previewed on every pull request.
 //
-// WHAT IT OWNS, AND DELIBERATELY NOTHING ELSE. Two records and one setting.
+// WHAT IT OWNS, AND DELIBERATELY NOTHING ELSE. Three records and one setting.
 // The zone also holds MX, SPF, DKIM and Google verification records, records
 // written by external-dns, records written by the tabula stacks and by
 // tools/ci/ensure-site-verification.sh, and another GitHub account's Pages
 // verification. None of those is declared here, and TestOwnsOnlyTheSiteRecords
 // fails if one ever is.
 //
-// ADOPTION. All three already exist (they were made by hand, before this repo
-// had Pulumi), so each is imported by id, and protected: a mistaken edit that
-// would delete or replace one fails the run instead of taking the site down.
+// ADOPTION. Everything but www already existed (it was made by hand, before
+// this repo had Pulumi), so each is imported by id. Every resource is
+// protected: a mistaken edit that would delete or replace one fails the run
+// instead of taking the site down.
 //
 // DORMANT UNTIL SWITCHED ON. The package does nothing unless SITE_DOMAIN_MANAGED
 // is "true". Once on it must stay on: in Pulumi a resource that is not declared
@@ -77,7 +78,8 @@ type Record struct {
 	// Resource is the Pulumi resource name. It is part of the resource's
 	// identity: renaming it plans a replace, so it is fixed.
 	Resource string
-	// ID is the Cloudflare record id, used once to adopt the live record.
+	// ID is the Cloudflare record id, used once to adopt the live record. It
+	// is empty for a record this package creates (www).
 	ID      string
 	Type    string
 	Name    string
@@ -121,6 +123,17 @@ func Records() []Record {
 			Content: "02d06225bae50f50c8258a17eae46b",
 			TTL:     1,
 		},
+		{
+			// www. GitHub's guidance is a CNAME to the organisation's Pages
+			// hostname; with the apex as the custom domain, GitHub then
+			// redirects www to it and adds www to the certificate. It did not
+			// exist before 2026-10-12, so it is created, not imported (no ID).
+			Resource: "site-www-cname",
+			Type:     "CNAME",
+			Name:     "www",
+			Content:  "vitruviansoftware.github.io",
+			TTL:      1,
+		},
 	}
 }
 
@@ -146,6 +159,10 @@ func Manage(ctx *pulumi.Context) error {
 	}
 
 	for _, r := range Records() {
+		opts := []pulumi.ResourceOption{pulumi.Protect(true)}
+		if r.ID != "" {
+			opts = append(opts, pulumi.Import(pulumi.ID(ZoneID+"/"+r.ID)))
+		}
 		_, err := cloudflare.NewRecord(
 			ctx, r.Resource, &cloudflare.RecordArgs{
 				ZoneId:  pulumi.String(ZoneID),
@@ -158,8 +175,7 @@ func Manage(ctx *pulumi.Context) error {
 				// would break that.
 				Proxied: pulumi.Bool(false),
 			},
-			pulumi.Import(pulumi.ID(ZoneID+"/"+r.ID)),
-			pulumi.Protect(true),
+			opts...,
 		)
 		if err != nil {
 			return err
