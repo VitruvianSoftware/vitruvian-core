@@ -265,7 +265,10 @@ func keyboardIsOnTheApp(_ process: NSRunningApplication) -> Bool {
 /// to whichever app is in front, so no key is sent until it is this one:
 /// otherwise the command ends, with nothing typed anywhere.
 func bringForward(_ app: (process: NSRunningApplication, element: AXUIElement)) {
+    // Both ways are asked. While the app is inside a panel it does not answer
+    // the Accessibility request in time, and then only the second one works.
     AXUIElementSetAttributeValue(app.element, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    if !keyboardIsOnTheApp(app.process) { app.process.activate(options: [.activateAllWindows]) }
     for _ in 0..<20 where !keyboardIsOnTheApp(app.process) { pause(0.1) }
     guard keyboardIsOnTheApp(app.process) else {
         stop(.notFound, "Vitruvian did not come to the front, so no key was sent.")
@@ -279,26 +282,42 @@ enum Key: CGKeyCode {
     case g = 5
 }
 
+/// Keys go through System Events, as a person's would. Posting them as raw
+/// events was tried first: a folder picker took neither Command-Shift-G nor
+/// the typed path that way, and went on to choose whatever folder it showed.
+@discardableResult
+func systemEvents(_ line: String) -> Bool {
+    let script = Process()
+    script.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    script.arguments = ["-e", "tell application \"System Events\" to \(line)"]
+    script.standardOutput = FileHandle.nullDevice
+    script.standardError = FileHandle.nullDevice
+    do { try script.run() } catch { return false }
+    script.waitUntilExit()
+    return script.terminationStatus == 0
+}
+
 func send(_ key: Key, with flags: CGEventFlags = [], to app: (process: NSRunningApplication, element: AXUIElement)) {
     bringForward(app)
-    for down in [true, false] {
-        let event = CGEvent(keyboardEventSource: nil, virtualKey: key.rawValue, keyDown: down)
-        event?.flags = flags
-        event?.post(tap: .cghidEventTap)
+    var held: [String] = []
+    if flags.contains(.maskCommand) { held.append("command down") }
+    if flags.contains(.maskShift) { held.append("shift down") }
+    if flags.contains(.maskAlternate) { held.append("option down") }
+    if flags.contains(.maskControl) { held.append("control down") }
+    let using = held.isEmpty ? "" : " using {\(held.joined(separator: ", "))}"
+    if !systemEvents("key code \(key.rawValue)\(using)") {
+        stop(.notFound, "System Events would not send a key. Nothing more was done.")
     }
     pause(0.05)
 }
 
+/// Types `text` as it is: a quote and a backslash are escaped for the
+/// script, and nothing in it is read as a command.
 func type(_ text: String, to app: (process: NSRunningApplication, element: AXUIElement)) {
     bringForward(app)
-    for character in text {
-        let units = Array(String(character).utf16)
-        for down in [true, false] {
-            let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)
-            event?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
-            event?.post(tap: .cghidEventTap)
-        }
-        pause(0.01)
+    let quoted = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    if !systemEvents("keystroke \"\(quoted)\"") {
+        stop(.notFound, "System Events would not type. Nothing more was done.")
     }
 }
 
@@ -431,17 +450,25 @@ func removeTool(_ name: String, deleteData: Bool, app: AXUIElement) {
 /// Settings window, from the list of results on.
 func barResults(_ app: AXUIElement) -> [Control]? {
     let outside = windows(of: app, except: Words.settingsWindow).flatMap(controls(under:))
-    return outside.firstIndex { $0.role == "AXOpaqueProviderList" }.map { Array(outside[$0...]) }
+    return outside.firstIndex { $0.subrole == "AXOpaqueProviderList" || $0.role == "AXOpaqueProviderList" }.map { Array(outside[$0...]) }
 }
 
 /// Leaves the bar closed: Escape, twice at most, and only while it is open
 /// and the keyboard is on Vitruvian.
+func barIsOpen(_ app: AXUIElement) -> Bool {
+    windows(of: app, except: Words.settingsWindow).flatMap(controls(under:))
+        .contains { $0.role == "AXTextField" && $0.description == Words.commandBarPage }
+}
+
 func closeBar(_ app: (process: NSRunningApplication, element: AXUIElement)) {
-    for _ in 0..<2 where barResults(app.element) != nil && keyboardIsOnTheApp(app.process) {
+    // One Escape empties the field and the next closes the bar, so it can
+    // take a few. The bar is open while its field is there: with nothing to
+    // offer it has no list of results to go by.
+    for _ in 0..<4 where barIsOpen(app.element) {
         send(.escape, to: app)
         pause(0.4)
     }
-    say("run-command: the bar is " + (barResults(app.element) == nil ? "closed" : "still open"))
+    say("run-command: the bar is " + (barIsOpen(app.element) ? "still open" : "closed"))
 }
 
 func runCommand(_ title: String, app: (process: NSRunningApplication, element: AXUIElement)) {
@@ -457,9 +484,10 @@ func runCommand(_ title: String, app: (process: NSRunningApplication, element: A
     // The bar's results, in the order it shows them. Pressing a result
     // through Accessibility does nothing, and Return runs the TOP one: so
     // the keyboard is moved to the row that IS the command first.
+    // With nothing to offer the bar draws no list at all.
     guard let list = barResults(app.element) else {
-        stop(.notFound, "run-command: pressed \"\(Words.openCommandBar)\" and typed, but no list of results was "
-            + "seen. Is the bar open? Nothing was run.")
+        closeBar(app)
+        stop(.notFound, "run-command: NOT OFFERED: the bar showed no results for \"\(title)\". Nothing was run.")
     }
     let results = list.filter { $0.role == "AXButton" }.map(\.description)
     guard let row = ByHandRules.resultRow(title, among: results) else {

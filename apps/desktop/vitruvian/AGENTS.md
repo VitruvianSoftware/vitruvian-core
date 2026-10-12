@@ -664,6 +664,19 @@ Before you use it:
   Accessibility already. It never asks for, grants or changes a permission.
   The app must be in English: it presses buttons by their English names
   (`ByHandRules.Words`).
+- **Keys go through System Events** (`osascript`), as the terminal's own
+  would. Posting raw key events was tried first: a folder picker took
+  neither Command-Shift-G nor the typed path that way, and chose whatever
+  folder it was showing. Run against the released app (3.42.0) on
+  2026-10-12: `open-settings`, `page`, `tools`, `add-tool` with a path that
+  holds a space, `focused`, `press`, `run-command` for a command that is
+  there and one that is not, `remove-tool`, `quit` and `launch`.
+- **Do not script another app to help a check.** `tell application "Finder"`
+  from the shell put a macOS prompt on the person's screen asking to let the
+  terminal control Finder. Open a folder with `open`, close a window through
+  System Events, and leave that prompt to the person if it ever appears.
+- **Never click a place on the screen by its coordinates.** A panel that had
+  closed left the click to land on another app's window.
 
 What doing the checks taught, each held in `Tools/ByHandRules.swift` and by
 `ByHandRulesTests`:
