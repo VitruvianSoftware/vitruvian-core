@@ -26,6 +26,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/VitruvianSoftware/vitruvian-core/tools/ci/actionpins"
 )
 
 func TestDecodeUnit(t *testing.T) {
@@ -200,7 +202,12 @@ func TestGoldenPresubmitValidation(t *testing.T) {
 		t.Fatalf("LoadUnits error: %v", err)
 	}
 
-	renderedYAML, err := RenderPresubmitWorkflow(units)
+	fixturePins, err := actionpins.Load("testdata/action-pins.yml")
+	if err != nil {
+		t.Fatalf("actionpins.Load fixture error: %v", err)
+	}
+
+	renderedYAML, err := RenderPresubmitWorkflow(units, fixturePins)
 	if err != nil {
 		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
 	}

@@ -57,4 +57,5 @@ go_test(
         "//:pins_manifest",
     ],
     embed = [":gen_lib"],
+    deps = ["//tools/ci/actionpins"],
 )

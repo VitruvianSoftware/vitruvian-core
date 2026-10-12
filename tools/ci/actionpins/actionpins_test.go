@@ -1,15 +1,29 @@
 // Copyright (c) 2026 VitruvianSoftware
 //
-// SPDX-License-Identifier: MIT
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 package actionpins_test
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -50,7 +64,57 @@ runs:
 	}
 }
 
-func TestResolveUnknownPanics(t *testing.T) {
+func TestEmptyManifestErrors(t *testing.T) {
+	manifest := `# Empty manifest
+runs:
+  using: "composite"
+  steps: []
+`
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "action.yml")
+	if err := os.WriteFile(path, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("failed to write temp manifest: %v", err)
+	}
+
+	if _, err := actionpins.Load(path); err == nil {
+		t.Fatal("expected error loading empty manifest, got nil")
+	}
+}
+
+func TestDuplicateActionErrors(t *testing.T) {
+	manifest := `runs:
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+`
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "action.yml")
+	if err := os.WriteFile(path, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("failed to write temp manifest: %v", err)
+	}
+
+	if _, err := actionpins.Load(path); err == nil {
+		t.Fatal("expected error loading manifest with duplicate action, got nil")
+	}
+}
+
+func TestInvalidShaRefErrors(t *testing.T) {
+	manifest := `runs:
+  steps:
+    - uses: actions/checkout@v4 # tag not SHA
+`
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "action.yml")
+	if err := os.WriteFile(path, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("failed to write temp manifest: %v", err)
+	}
+
+	if _, err := actionpins.Load(path); err == nil {
+		t.Fatal("expected error loading manifest with tag reference instead of SHA, got nil")
+	}
+}
+
+func TestResolveUnknown(t *testing.T) {
 	manifest := `runs:
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,6 +128,10 @@ func TestResolveUnknownPanics(t *testing.T) {
 	pins, err := actionpins.Load(path)
 	if err != nil {
 		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if _, err := pins.Lookup("unknown/action"); err == nil {
+		t.Error("expected Lookup(unknown) to return error, got nil")
 	}
 
 	defer func() {
@@ -88,6 +156,7 @@ func TestMustLoadDefault(t *testing.T) {
 		"actions/upload-artifact",
 		"actions/setup-go",
 		"actions/cache",
+		"actions/cache/restore",
 		"actions/cache/save",
 		"google-github-actions/setup-gcloud",
 		"docker/setup-buildx-action",
@@ -104,34 +173,42 @@ func TestMustLoadDefault(t *testing.T) {
 
 func findWorkflowsDir() (string, error) {
 	relPath := filepath.Join(".github", "workflows")
-	if runfiles := os.Getenv("RUNFILES_DIR"); runfiles != "" {
-		p := filepath.Join(runfiles, "_main", relPath)
-		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-			return p, nil
+	if srcdir := os.Getenv("TEST_SRCDIR"); srcdir != "" {
+		ws := os.Getenv("TEST_WORKSPACE")
+		if ws == "" {
+			ws = "_main"
+		}
+		candidates := []string{
+			filepath.Join(srcdir, ws, relPath),
+			filepath.Join(srcdir, relPath),
+		}
+		for _, c := range candidates {
+			if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+				return c, nil
+			}
 		}
 	}
-	if ws := os.Getenv("TEST_WORKSPACE"); ws != "" {
-		p := filepath.Join(ws, relPath)
-		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-			return p, nil
-		}
-	}
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		candidate := filepath.Join(dir, relPath)
+	if ws := os.Getenv("BUILD_WORKSPACE_DIRECTORY"); ws != "" {
+		candidate := filepath.Join(ws, relPath)
 		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
 			return candidate, nil
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
 	}
-	return "", fmt.Errorf("could not locate %s", relPath)
+	dir, err := os.Getwd()
+	if err == nil {
+		for {
+			candidate := filepath.Join(dir, relPath)
+			if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
+				return candidate, nil
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	return "", os.ErrNotExist
 }
 
 // TestGeneratedWorkflowsOnlyUseManifestPins proves that all third-party GitHub Actions
@@ -151,8 +228,6 @@ func TestGeneratedWorkflowsOnlyUseManifestPins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read workflows dir: %v", err)
 	}
-
-	usesRegex := regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*([^\s@]+)@([^\s#]+)(?:\s*#\s*(.*))?$`)
 
 	checkedCount := 0
 	for _, entry := range entries {
@@ -176,19 +251,18 @@ func TestGeneratedWorkflowsOnlyUseManifestPins(t *testing.T) {
 		for scanner.Scan() {
 			lineNo++
 			line := scanner.Text()
-			matches := usesRegex.FindStringSubmatch(line)
-			if len(matches) == 0 {
+			action, parsedPin, err := actionpins.ParsePinLine(line)
+			if err != nil {
+				t.Errorf("%s:%d: invalid action pin syntax: %v", entry.Name(), lineNo, err)
 				continue
 			}
-			action := matches[1]
+			if action == "" {
+				continue
+			}
 			// Skip local composite actions or reusable workflows
 			if strings.HasPrefix(action, ".") || strings.HasPrefix(action, "/") {
 				continue
 			}
-
-			lineTrimmed := strings.TrimSpace(line)
-			lineTrimmed = strings.TrimPrefix(lineTrimmed, "- ")
-			lineTrimmed = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "uses:"))
 
 			manifestPin, ok := allPins[action]
 			if !ok {
@@ -196,8 +270,8 @@ func TestGeneratedWorkflowsOnlyUseManifestPins(t *testing.T) {
 				continue
 			}
 
-			if lineTrimmed != manifestPin {
-				t.Errorf("%s:%d: mismatched pin for action %q in %s:\n  got:  %s\n  want: %s", entry.Name(), lineNo, action, entry.Name(), lineTrimmed, manifestPin)
+			if parsedPin != manifestPin {
+				t.Errorf("%s:%d: mismatched pin for action %q in %s:\n  got:  %s\n  want: %s", entry.Name(), lineNo, action, entry.Name(), parsedPin, manifestPin)
 			}
 		}
 	}

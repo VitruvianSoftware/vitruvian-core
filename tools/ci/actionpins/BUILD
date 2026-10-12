@@ -19,5 +19,5 @@ go_test(
         "//:pins_manifest",
         "//:workflow_files",
     ],
-    embed = [":actionpins"],
+    deps = [":actionpins"],
 )

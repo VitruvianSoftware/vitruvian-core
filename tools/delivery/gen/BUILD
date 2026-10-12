@@ -92,4 +92,5 @@ go_test(
         "//tools/ci:resolve-unit-bases.sh",
     ],
     embed = [":gen_lib"],
+    deps = ["//tools/ci/actionpins"],
 )

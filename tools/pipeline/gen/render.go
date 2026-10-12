@@ -61,7 +61,7 @@ const mitLicenseHeader = `# Copyright (c) 2026 VitruvianSoftware
 # SOFTWARE.`
 
 // RenderPresubmitWorkflow compiles declared units into a GitHub Actions dynamic workflow DAG.
-func RenderPresubmitWorkflow(units []Unit) (string, error) {
+func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string, error) {
 	dag, err := BuildDAG(units)
 	if err != nil {
 		return "", err
@@ -70,6 +70,14 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	orderedUnits, err := dag.TopologicalOrder()
 	if err != nil {
 		return "", err
+	}
+
+	p := actionPins()
+	if len(optPins) > 0 && optPins[0] != nil {
+		p = optPins[0]
+	}
+	pin := func(action string) string {
+		return p.Resolve(action)
 	}
 
 	var b strings.Builder
