@@ -591,6 +591,17 @@ package final class SystemMonitor: ObservableObject {
                 || defaults[Preferences.menuBarConnectedDevices])
     }
 
+    /// Whether every core is read for the panel's per-core bars: only while a
+    /// panel or the island shows the System card's CPU row with the bars on,
+    /// and the CPU monitor is installed. A CPU shown in the menu bar or
+    /// watched by an alert never reads every core.
+    package static func readsCPUCores(panelNeeds: SystemMonitorPanelNeeds, defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: AppFeature.monitorCPU.availabilityKey)
+            && panelNeeds.system
+            && defaults[Preferences.monitorSysCPU]
+            && defaults[Preferences.monitorSysCPUCores]
+    }
+
     private func currentPlan(defaults: UserDefaults) -> SamplingPlan {
         let menuPanelNeeds = self.menuPanelNeeds.merging(notchDetailNeeds)
         var plan = SamplingPlan()
@@ -617,9 +628,7 @@ package final class SystemMonitor: ObservableObject {
         plan.needCPU = panelCPU || defaults[Preferences.menuBarCPU] || alertCPU
         // Per-core bars live under the panel's CPU row only: a CPU shown in the
         // menu bar or watched by an alert never reads every core.
-        plan.needCPUCores = menuPanelNeeds.system
-            && defaults[Preferences.monitorSysCPU]
-            && defaults[Preferences.monitorSysCPUCores]
+        plan.needCPUCores = Self.readsCPUCores(panelNeeds: menuPanelNeeds, defaults: defaults)
         plan.needMemory = panelMemory || defaults[Preferences.menuBarMemory] || alertMemory
         plan.needNetwork = panelNeedsNetwork || defaults[Preferences.menuBarNetwork]
         plan.needDisk = panelNeedsDisk
