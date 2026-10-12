@@ -94,9 +94,14 @@ the value already live). It must show no create, replace or delete.
 **Once on, leave it on.** An undeclared resource is deleted; protect turns that
 into a failed run, not a deleted record.
 
-To turn it on: store the token (`docs/operations/key-rotation.md`), run a
-`workflow_dispatch` preview with `SITE_DOMAIN_MANAGED=true` and read it, then
-set the variable and apply.
+**Status: on since 2026-10-12.** The first apply imported the three resources
+(3 imports, 2 no-op updates, nothing created, replaced or deleted). A live
+comparison before and after found no record field changed, an identical Pages
+configuration and certificate, and all mail records intact.
+
+To turn it on elsewhere: store the token (`docs/operations/key-rotation.md`),
+declare the variable in `pipelineGates`, merge, then dispatch
+`Repo Config Apply` once and read the plan.
 
 ### Tabula deploy environments
 
