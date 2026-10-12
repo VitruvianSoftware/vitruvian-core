@@ -6,13 +6,14 @@ import os
 import VitruvianCore
 import VitruvianToolProtocol
 
-/// The tools from outside that are installed, and where their files are.
-/// It answers "installed?" for the capability broker.
+/// The tools from outside that the person added: which they are, that the
+/// person agreed to each, whether each is switched on, and where their
+/// files are. It answers "installed?" for the capability broker.
 ///
-/// For now it holds them for the life of the app only, and nothing but a
-/// development build's switch adds one (`installDevelopmentTool`). Keeping
-/// them from one launch to the next, and recording that the person agreed,
-/// come with the screen that asks.
+/// A tool is added in two steps. `offer(from:)` reads a folder and changes
+/// nothing. `add` takes the person's consent to that offer, copies the
+/// folder and remembers the tool in a file, so the next launch has it too
+/// (`restore`).
 @MainActor
 package final class ExternalToolStore {
     /// Why a folder was not added.
@@ -23,8 +24,19 @@ package final class ExternalToolStore {
         case noSupportFolder
         /// The tool's files could not be put in the app's folder.
         case files(ToolFolders.Problem)
-        /// A tool with this id is there already.
+        /// Something else in the app already answers to this id.
         case alreadyInstalled(ToolID)
+        /// The folder holds more than a tool's folder may. These are the
+        /// most it may: so many bytes, and so many things.
+        case tooBig(bytes: Int, items: Int)
+        /// macOS has quarantined the tool's program, as it does to what is
+        /// downloaded, and will not start it. The folder is the one picked.
+        case quarantined(URL)
+        /// The folder's manifest is no longer the one the person was shown.
+        case changedSinceOffered
+        /// The tool could not be written to the file of records, so the
+        /// next launch would not have it.
+        case notRemembered
     }
 
     package struct Installed: Equatable, Sendable {
@@ -33,6 +45,24 @@ package final class ExternalToolStore {
         package let files: URL
         /// The folder the tool keeps what it saves in, and runs in.
         package let data: URL
+    }
+
+    /// A tool the person added, as Settings lists it.
+    package struct Listed: Equatable, Sendable {
+        package let id: ToolID
+        /// What the app remembers of it: its switch, and what was agreed.
+        package let record: ToolRecord
+        /// The tool as the app's copy describes it. Nil for a tool that is
+        /// held back.
+        package let tool: ExternalToolManifest?
+        /// True when the app's copy is not what the person agreed to: its
+        /// manifest has other bytes, cannot be read, or is gone. Such a
+        /// tool is never started. Updating it from its folder, with the
+        /// person's consent, is what brings it back.
+        package let isHeld: Bool
+        /// How its program stands; nil for a tool that is switched off or
+        /// held back.
+        package let standing: ExternalTool.Standing?
     }
 
     /// Everything the store reaches, so a test can stand in for each.
@@ -48,8 +78,11 @@ package final class ExternalToolStore {
         package var makeTransport: @MainActor (_ program: URL, _ dataFolder: URL) -> any ToolTransport
         /// The language the app is in, as a tag such as `en-US`.
         package var language: @MainActor () -> String
-        /// Told, once for each tool, that it stopped working.
+        /// Told, once for each tool, that it stopped working, after the
+        /// person has been.
         package var stoppedWorking: @MainActor (ToolID) -> Void
+        /// Deletes every preference a tool saved.
+        package var forgetPreferences: @MainActor (ToolID) -> Void
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -57,7 +90,8 @@ package final class ExternalToolStore {
                      limits: ToolLimits = .standard,
                      makeTransport: @escaping @MainActor (URL, URL) -> any ToolTransport,
                      language: @escaping @MainActor () -> String,
-                     stoppedWorking: @escaping @MainActor (ToolID) -> Void) {
+                     stoppedWorking: @escaping @MainActor (ToolID) -> Void,
+                     forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -67,11 +101,11 @@ package final class ExternalToolStore {
             self.makeTransport = makeTransport
             self.language = language
             self.stoppedWorking = stoppedWorking
+            self.forgetPreferences = forgetPreferences
         }
 
-        /// The app as it is. The sentence that tells the person a tool
-        /// stopped working comes with the screens; until then it is a line
-        /// in the system log.
+        /// The app as it is. That a tool stopped working is also a line
+        /// in the system log, for whoever is making the tool.
         ///
         /// The type is written out, here and on `shared`: the broker's own
         /// `live` asks this store what is installed, and without it the
@@ -84,19 +118,49 @@ package final class ExternalToolStore {
             stoppedWorking: { id in
                 Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
                     .error("the tool \(id.rawValue, privacy: .public) stopped working")
-            })
+            },
+            forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) })
+    }
+
+    /// Deletes every preference saved under a tool's id: the keys that
+    /// start with the id and a slash (`ExternalToolManifest.storageKey`).
+    /// No preference of the app's own, and none of another tool, has such
+    /// a key: an id holds no slash.
+    package static func forgetPreferences(of id: ToolID, in defaults: UserDefaults) {
+        let prefix = id.rawValue + "/"
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     package static let shared: ExternalToolStore = ExternalToolStore(parts: .live)
 
     private let parts: Parts
+    /// Every tool the person added, in the order they added them.
+    private var records: [ToolRecord] = []
+    /// The tools that are switched on and are what the person agreed to:
+    /// the ones the host and the registry hold.
     package private(set) var installed: [ToolID: Installed] = [:]
     private var tools: [ToolID: ExternalTool] = [:]
+    /// The manifests of the tools that are switched off, so Settings can
+    /// still name them and list their commands.
+    private var resting: [ToolID: ExternalToolManifest] = [:]
+    /// The tools whose copy is not what the person agreed to.
+    private var held: Set<ToolID> = []
+    /// True when the file of records was there and could not be read. It
+    /// is set aside, not written over, the first time a record is saved.
+    private var recordsUnreadable = false
+    /// The tools the person has been told stopped working, in this run of
+    /// the app.
+    private var told: Set<ToolID> = []
 
     package init(parts: Parts) {
         self.parts = parts
     }
 
+    /// True for a tool that is added, switched on, and what the person
+    /// agreed to. A tool that is switched off is refused everything, as
+    /// one that was never added is.
     package func isInstalled(_ id: ToolID) -> Bool {
         installed[id] != nil
     }
@@ -106,63 +170,313 @@ package final class ExternalToolStore {
         tools[id]
     }
 
-    /// Adds the tool in `folder`: reads its manifest, copies the folder
-    /// into the app's own, and hands the tool to the host and the registry.
-    /// Its program is started by the host's run rule, or by its first
-    /// command. Nothing is copied, and nothing changes, when it is refused.
-    @discardableResult
-    package func install(from folder: URL) -> Result<Installed, Refusal> {
-        let source: ExternalToolManifest
+    /// The app's copy of an added tool's files, for showing where it is;
+    /// nil for a tool nobody added.
+    package func folder(of id: ToolID) -> URL? {
+        guard records.contains(where: { $0.id == id.rawValue }) else { return nil }
+        return parts.folders?.place(for: id)?.files
+    }
+
+    /// Every tool the person added, in the order they added them.
+    package var listed: [Listed] {
+        records.compactMap { record in
+            guard let id = ToolID(record.id) else { return nil }
+            return Listed(id: id, record: record, tool: installed[id]?.tool ?? resting[id],
+                          isHeld: held.contains(id), standing: tools[id]?.standing)
+        }
+    }
+
+    // MARK: - At launch
+
+    /// Brings back the tools the person added before: reads the file of
+    /// records and hands each tool that is switched on to the host and the
+    /// registry. Called once, at launch. With no file it does nothing.
+    ///
+    /// A file that cannot be read means no tools, and nothing is deleted:
+    /// the file stays, each tool's copy stays, and what each tool saved
+    /// stays.
+    package func restore() {
+        guard records.isEmpty, let folders = parts.folders else { return }
+        switch ToolRecords.read(at: folders.records) {
+        case .none:
+            return
+        case .unreadable:
+            recordsUnreadable = true
+            Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+                .error("the record of added tools could not be read: no tool from outside is loaded")
+            return
+        case .records(let saved):
+            records = saved
+        }
+        for record in records { load(record) }
+        parts.registry().noteAvailabilityChanged()
+    }
+
+    /// Hands one remembered tool to the host and the registry, when its
+    /// copy is what the person agreed to and its switch is on.
+    private func load(_ record: ToolRecord) {
+        guard let id = ToolID(record.id) else { return }
+        held.remove(id)
+        resting[id] = nil
+        // The copy is what runs, so the copy is what is checked: its
+        // manifest must be, byte for byte, the one the person agreed to.
+        guard let place = parts.folders?.existing(id),
+              ToolFingerprint.ofManifest(in: place.files) == record.agreement.fingerprint,
+              case .success(let tool) = ExternalToolManifest.read(folder: place.files),
+              tool.manifest.id == id else {
+            held.insert(id)
+            return
+        }
+        guard record.isOn else {
+            resting[id] = tool
+            return
+        }
+        if !activate(Installed(tool: tool, files: place.files, data: place.data)) { held.insert(id) }
+    }
+
+    // MARK: - Adding
+
+    /// The first of the two steps of adding a tool: reads the tool in the
+    /// folder the person picked and says what adding it would mean. Nothing
+    /// is copied, nothing is run and nothing is saved. The second step is
+    /// `add`, and it takes the person's consent to what this returns.
+    package func offer(from picked: URL) -> Result<ToolOffer, Refusal> {
+        // A picked folder that is a link is followed first, so that what is
+        // read, shown and copied is the folder, never the link to it.
+        let folder = picked.resolvingSymlinksInPath().standardizedFileURL
+        let tool: ExternalToolManifest
         switch ExternalToolManifest.read(folder: folder) {
-        case .success(let tool): source = tool
+        case .success(let read): tool = read
         case .failure(let refusal): return .failure(.manifest(refusal))
         }
-        let id = source.manifest.id
-        guard installed[id] == nil, parts.registry().tool(id) == nil, parts.host().manifest(for: id) == nil else {
+        guard let fingerprint = ToolFingerprint.ofManifest(in: folder) else { return .failure(.manifest(.noManifest)) }
+        if let folders = parts.folders, folders.holds(folder) { return .failure(.files(.insideTheApp)) }
+        if ToolFolders.isQuarantined(folder.appendingPathComponent(tool.program)) {
+            return .failure(.quarantined(folder))
+        }
+        let most = ToolFolders.Weight(bytes: parts.limits.folderBytes, items: parts.limits.folderItems)
+        guard ToolFolders.weight(of: folder, within: most) != nil else {
+            return .failure(.tooBig(bytes: most.bytes, items: most.items))
+        }
+        let before = records.first { $0.id == tool.manifest.id.rawValue }?.agreement
+        return .success(ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint, replaces: before))
+    }
+
+    /// The second step: the person agreed to an offer, so the tool is
+    /// added, in place of the one with its id when there is one. Copies the
+    /// folder into the app's own, remembers the tool and what was agreed,
+    /// and hands it to the host and the registry. Its program is started by
+    /// the host's run rule, or by its first command.
+    ///
+    /// When it is refused before anything is copied, nothing changes: a
+    /// tool that was there before is as it was. A copy that turns out not
+    /// to be what was agreed to is left in place and held back.
+    @discardableResult
+    package func add(_ consent: ToolConsent) -> Result<Installed, Refusal> {
+        let offer = consent.offer
+        let id = offer.tool.manifest.id
+        // What is added is what was shown. The folder could have changed
+        // while the person read the sheet, so its manifest is read again.
+        guard ToolFingerprint.ofManifest(in: offer.folder) == offer.fingerprint else {
+            return .failure(.changedSinceOffered)
+        }
+        let known = records.firstIndex { $0.id == id.rawValue }
+        // An id the store does not hold and something else answers to.
+        guard installed[id] != nil || (parts.registry().tool(id) == nil && parts.host().manifest(for: id) == nil) else {
             return .failure(.alreadyInstalled(id))
         }
         guard let folders = parts.folders else { return .failure(.noSupportFolder) }
+        // The program of the tool this replaces is stopped before its
+        // files are.
+        deactivate(id)
+        func failed(_ refusal: Refusal) -> Result<Installed, Refusal> {
+            // Whatever is in the tool's place now is judged afresh against
+            // what the person agreed to before.
+            if let known { load(records[known]) }
+            parts.registry().noteAvailabilityChanged()
+            return .failure(refusal)
+        }
         let place: ToolFolders.Place
-        switch folders.install(id, from: folder) {
+        switch folders.install(id, from: offer.folder) {
         case .success(let made): place = made
-        case .failure(let problem): return .failure(.files(problem))
+        case .failure(let problem): return failed(.files(problem))
         }
         // The copy is what runs, so the copy is what is read: a link that
-        // pointed inside the picked folder may point outside the copy.
+        // pointed inside the picked folder may point outside the copy. And
+        // the copy's manifest must be the one agreed to, byte for byte.
+        guard ToolFingerprint.ofManifest(in: place.files) == offer.fingerprint else {
+            return failed(.changedSinceOffered)
+        }
         let tool: ExternalToolManifest
         switch ExternalToolManifest.read(folder: place.files) {
         case .success(let copied) where copied.manifest.id == id: tool = copied
-        case .success: return .failure(.manifest(.noManifest))
-        case .failure(let refusal): return .failure(.manifest(refusal))
+        case .success: return failed(.manifest(.noManifest))
+        case .failure(let refusal): return failed(.manifest(refusal))
         }
 
+        let agreement = ToolAgreement(date: consent.date, name: tool.manifest.tool.name, version: tool.version,
+                                      publisher: tool.publisher, fingerprint: offer.fingerprint,
+                                      source: offer.folder.path)
+        var next = records
+        if let known {
+            next[known].agreement = agreement
+        } else {
+            next.append(ToolRecord(id: id.rawValue, isOn: true, agreement: agreement))
+        }
+        guard save(next) else { return failed(.notRemembered) }
+        records = next
+        held.remove(id)
+        resting[id] = nil
         let entry = Installed(tool: tool, files: place.files, data: place.data)
+        let record = records.first { $0.id == id.rawValue }
+        if record?.isOn == false {
+            // Updated while switched off: it stays off.
+            resting[id] = tool
+        } else if !activate(entry) {
+            held.insert(id)
+            parts.registry().noteAvailabilityChanged()
+            return .failure(.alreadyInstalled(id))
+        }
+        parts.registry().noteAvailabilityChanged()
+        return .success(entry)
+    }
+
+    // MARK: - Switching and removing
+
+    /// The tool's switch in Settings. Off stops its program at once and
+    /// takes its commands out of every list; on brings them back. The
+    /// tool's files, and what it saved, are not touched either way.
+    package func setOn(_ id: ToolID, _ isOn: Bool) {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }), records[known].isOn != isOn else {
+            return
+        }
+        var next = records
+        next[known].isOn = isOn
+        guard save(next) else { return }
+        records = next
+        deactivate(id)
+        load(records[known])
+        parts.registry().noteAvailabilityChanged()
+    }
+
+    /// Removes a tool the person added: stops its program, takes it out of
+    /// the host and the registry, forgets it, and deletes the app's copy of
+    /// its files. With `deletingData`, what the tool saved goes too: its
+    /// data folder, and the preferences saved under its id. Without, both
+    /// stay, and adding the tool again finds them.
+    ///
+    /// Nothing is deleted while the tool's program runs: it is told
+    /// goodbye, then asked to end, then killed, and the app waits a short
+    /// while for each (`ToolHost.removeAndSeeOut`). Should it still be
+    /// there after the kill, what it saved is kept whatever was asked, so
+    /// that a program is never left writing into a folder that is gone.
+    ///
+    /// The folder the tool was added from is never touched. False, with
+    /// nothing changed, for a tool nobody added.
+    @discardableResult
+    package func remove(_ id: ToolID, deletingData: Bool) -> Bool {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return false }
+        var next = records
+        next.remove(at: known)
+        guard save(next) else { return false }
+        records = next
+        let gone = deactivate(id, seeingItOut: true)
+        held.remove(id)
+        resting[id] = nil
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+        // What it saved goes only once its program is gone.
+        let data = deletingData && gone
+        if deletingData, !gone {
+            logger.error("the removed tool \(id.rawValue, privacy: .public) is still running: what it saved is kept")
+        }
+        if parts.folders?.delete(id, data: data) != true {
+            logger.error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
+        }
+        if data { parts.forgetPreferences(id) }
+        parts.registry().noteAvailabilityChanged()
+        return true
+    }
+
+    // MARK: - A tool that stopped working
+
+    /// The symbol beside the sentence that says a tool stopped working.
+    package static let stoppedSymbol = "exclamationmark.triangle"
+
+    /// Tells the person, once for each tool in each run of the app, that a
+    /// tool stopped working: one sentence, in the app's short on-screen
+    /// message, at the tool's first crash. The message is the app's own, so
+    /// it does not depend on what the tool's manifest lists in `uses`.
+    private func tellStopped(_ id: ToolID) {
+        guard told.insert(id).inserted else { return }
+        let tag = parts.language()
+        let name = installed[id]?.tool.name.text(for: tag) ?? installed[id]?.tool.manifest.tool.name ?? id.rawValue
+        let strings = FeatureStrings.externalTools(AppLanguage(rawValue: tag) ?? .enUS)
+        parts.broker().backings.notify.hud(Self.stoppedSymbol, strings.stopped(name))
+        parts.stoppedWorking(id)
+    }
+
+    /// Lets a tool that crashed too often try again, as if it had never
+    /// crashed. For the button in Settings beside a tool that stopped
+    /// working. It does nothing for a tool that has not given up.
+    package func startAgain(_ id: ToolID) {
+        tools[id]?.revive()
+    }
+
+    // MARK: - The host, the registry and the file
+
+    /// Hands a tool to the host and the registry. False, with nothing
+    /// changed, when either already holds something with its id.
+    private func activate(_ entry: Installed) -> Bool {
+        let manifest = entry.tool.manifest
+        let id = manifest.id
         let hosted = makeTool(entry)
-        guard parts.host().add(hosted, manifest: tool.manifest) else { return .failure(.alreadyInstalled(id)) }
+        guard parts.host().add(hosted, manifest: manifest) else { return false }
         do {
-            try parts.registry().register(tool, host: parts.host)
+            try parts.registry().register(entry.tool, host: parts.host)
         } catch {
             parts.host().remove(id)
             parts.registry().unregister(id)
-            return .failure(.alreadyInstalled(id))
+            return false
         }
         installed[id] = entry
         tools[id] = hosted
         parts.host().sync(id)
-        return .success(entry)
+        return true
     }
 
-    /// Stops the tool and takes it out of the host and the registry. Its
-    /// files, and what it saved, stay where they are.
-    package func remove(_ id: ToolID) {
-        guard installed.removeValue(forKey: id) != nil else { return }
+    /// Stops a tool's program and takes it out of the host and the
+    /// registry. The store still remembers it. With `seeingItOut` it also
+    /// waits a short while for the program to be gone. True when nothing
+    /// of the tool is left running, as far as was asked.
+    @discardableResult
+    private func deactivate(_ id: ToolID, seeingItOut: Bool = false) -> Bool {
+        guard installed.removeValue(forKey: id) != nil else { return true }
         tools[id] = nil
-        parts.host().remove(id)
         parts.registry().unregister(id)
+        guard seeingItOut else {
+            parts.host().remove(id)
+            return true
+        }
+        return parts.host().removeAndSeeOut(id)
+    }
+
+    /// Writes the records to their file. A file that could not be read at
+    /// launch is moved aside first, never written over.
+    private func save(_ next: [ToolRecord]) -> Bool {
+        guard let folders = parts.folders,
+              PrivateFileStore.createDirectory(at: folders.root, container: folders.root) else { return false }
+        if recordsUnreadable {
+            let aside = folders.root.appendingPathComponent(ToolRecords.unreadableFileName)
+            try? FileManager.default.removeItem(at: aside)
+            guard (try? FileManager.default.moveItem(at: folders.records, to: aside)) != nil else { return false }
+            recordsUnreadable = false
+        }
+        return ToolRecords.write(next, to: folders.records)
     }
 
     private func makeTool(_ entry: Installed) -> ExternalTool {
         let parts = self.parts
+        let told: @MainActor (ToolID) -> Void = { [weak self] in self?.tellStopped($0) }
         let manifest = entry.tool.manifest
         let id = manifest.id
         let program = entry.files.appendingPathComponent(entry.tool.program)
@@ -181,37 +495,8 @@ package final class ExternalToolStore {
             events: .init(
                 // Whoever lists its commands looks again.
                 onChange: { parts.registry().noteAvailabilityChanged() },
-                onStoppedWorking: { parts.stoppedWorking(id) },
+                onStoppedWorking: { told(id) },
                 // A command that did not run beeps, as a built-in one does.
                 onCommandFailed: { parts.broker().backings.notify.beep() }))
-    }
-}
-
-extension ExternalToolStore {
-    /// The preference a development build reads a tool's folder from. No
-    /// screen sets it, and a release build never reads it.
-    package static let developmentToolFolderKey = "developmentToolFolder"
-
-    /// The development switch: adds the one tool whose folder the hidden
-    /// preference names, with no screen and no question. `main.swift` calls
-    /// this only in a build made with `--define=vitruvian_external_tools=true`.
-    ///
-    /// The store forgets its tools when the app quits, so this adds the
-    /// folder afresh at each launch: the app's copy is the folder as it is
-    /// now, and what the tool saved is kept. Nil when the preference is not
-    /// set; then nothing happens at all.
-    @discardableResult
-    package func installDevelopmentTool(defaults: UserDefaults = .standard) -> Result<Installed, Refusal>? {
-        guard let path = defaults.string(forKey: Self.developmentToolFolderKey), !path.isEmpty else { return nil }
-        let folder = URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
-        let result = install(from: folder)
-        let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
-        switch result {
-        case .success(let installed):
-            log.notice("added the development tool \(installed.tool.manifest.id.rawValue, privacy: .public)")
-        case .failure(let refusal):
-            log.error("the development tool at \(folder.path, privacy: .public) was not added: \(String(describing: refusal), privacy: .public)")
-        }
-        return result
     }
 }

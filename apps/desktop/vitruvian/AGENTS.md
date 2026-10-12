@@ -281,11 +281,11 @@ and this app holds only what is specific to it.
 
 A tool can be a separate program the app starts and talks to
 (`docs/superpowers/specs/2026-10-10-vitruvian-external-tools-design.md`).
-Stages A and B of that work are built: the protocol, reading a tool's
-manifest, and the runtime that starts a tool, talks to it and stops it. No
-screen adds a tool yet. Only a build made with
-`--define=vitruvian_external_tools=true` can add one, from the folder the
-hidden preference `developmentToolFolder` names (`README.md` says how).
+Stages A, B and C of that work are built: the protocol, reading a tool's
+manifest, the runtime that starts a tool, talks to it and stops it, and the
+screens. A person adds a tool in Settings, under Features, in the section
+"Tools from outside": they pick its folder and agree on one sheet. Every
+build has that section. There is no store of tools.
 
 - The protocol lives in `packages/vitruvian-sdk`, under MIT: JSON Schema in
   `protocol/`, the same messages as Swift in `Sources/VitruvianToolProtocol`.
@@ -345,25 +345,42 @@ hidden preference `developmentToolFolder` names (`README.md` says how).
 - A preference a tool saves goes to the app's own preferences under
   `<tool id>/<preference id>`. No file is written for it. A saved string has
   no limit of its own: the 1 MB line is the only one.
-- An outside tool reaches the host through `ToolHost.add`, and only
-  `ExternalToolStore.install(from:)` calls it. Only the development switch in
-  `main.swift` calls that, inside `#if VITRUVIAN_EXTERNAL_TOOLS`; the source
-  rule `a_release_build_adds_no_outside_tool` fails for any other caller.
-  The stage that adds the screen that asks the person replaces that rule.
-- A release build still holds the switch's function
-  (`ExternalToolStore.installDevelopmentTool`): it is in `Services`, which
-  has no define, so that the unit tests can run it. Nothing in a release
-  build calls it. Do not read that as "the code is not there".
-- The store forgets its tools when the app quits and never deletes a tool's
-  files. `Tools/<id>/` is the app's copy of a tool's folder and
-  `ToolData/<id>/` is what the tool saved, both under the app's support
-  folder. Adding a tool again replaces `Tools/<id>/` whole and keeps
-  `ToolData/<id>/`. That replacement is the only thing the runtime deletes.
-- `ToolFolders.install` is the only code that copies or deletes for a tool.
+- A tool is added in two steps, and there is no third way.
+  `ExternalToolStore.offer(from:)` reads the folder the person picked and
+  changes nothing: no copy, no program, no file. `ExternalToolStore.add`
+  takes a `ToolConsent` to that offer. Only the agreement sheet may make a
+  `ToolConsent`: the source rule `only_the_agreement_sheet_consents` fails
+  for any other file of the app that does. There is no development switch
+  and no build define for tools from outside: every build adds one the same
+  way.
+- What is added is what was shown. An offer names its manifest's exact
+  bytes (`ToolFingerprint`, their SHA-256). `add` reads the folder again and
+  refuses when they differ, and checks the app's copy the same way. That is
+  also all "changed" means for an update: one byte of the manifest differs.
+  The program and the other files are not compared.
+- The store remembers. `InstalledTools.json`, in the app's support folder,
+  holds each added tool's id, its switch and what was agreed (`ToolRecord`,
+  `ToolAgreement`). `main.swift` calls `restore()` once at launch. A file
+  that cannot be read means no tools and deletes nothing; it is moved aside,
+  never written over, the first time a tool is added after. It is not a
+  preference and is in no settings backup.
+- A copy that is not what the person agreed to is held back
+  (`Listed.isHeld`): never started, still listed. Only choosing its folder
+  again, and agreeing again, brings it back.
+- A tool that is switched off is out of the host and the registry, so
+  `isInstalled` is false for it and every request is refused.
+- `Tools/<id>/` is the app's copy of a tool's folder and `ToolData/<id>/`
+  is what the tool saved, both under the app's support folder. Adding a
+  tool again replaces `Tools/<id>/` whole and keeps `ToolData/<id>/`.
+  Nothing else is deleted until the person removes the tool.
+- `ToolFolders.install` and `ToolFolders.delete` are the only code that
+  copies or deletes for a tool.
   An id is one folder name: no slash, no two dots in a row, no dot first. A
   `Tools` or `ToolData` folder that is a link to another place is refused
   (`linkedElsewhere`). A link inside the picked folder is copied as a link.
-  The folder's size is not limited.
+  A folder over `ToolLimits.folderBytes` or `folderItems` is refused before
+  anything is copied (`ToolFolders.weight`), and so is one whose program
+  macOS has quarantined. The app never clears a quarantine.
 - Three limits are known and accepted. A tool that closes its output and
   keeps running is noticed only when three requests go unanswered. A tool's
   last line with no line break is dropped. After the last kill at quit the
@@ -373,8 +390,73 @@ hidden preference `developmentToolFolder` names (`README.md` says how).
   only through `ToolRuntimeSupport.wait`, and kills the process and sees it
   gone before it returns. A test's folders are under the temporary folder,
   never the app's real support folder.
-- The runtime adds no sentence a person reads. A tool that stops working is
-  a line in the system log until the screens exist.
+- A screen for tools from outside is a view over a plain value that says
+  everything the view shows: `ToolAgreementContent`, `ToolRefusalMessage`,
+  `ExternalToolRow`, `ExternalToolDetail`, `ToolRemovalContent`
+  (`UI/Settings/ExternalToolAgreementSheet.swift` and
+  `ExternalToolsSection.swift`). The tests check the value. No test draws a
+  view, and how a screen looks is checked by hand.
+- The agreement sheet is the one safety moment. It says, in the app's words,
+  that the tool can do anything the app can. It lists what the tool says it
+  uses as the tool's statement, under a note that it is no limit. Its
+  default button is Cancel (`ToolAgreementContent.defaultChoice`): Return
+  must never add a tool. The same holds for removing one.
+- The app's words about these tools are `ExternalToolStrings`
+  (`Core/ExternalToolStrings.swift`), in all fifteen languages. A tool's
+  name, publisher, description and command titles are shown as the tool
+  wrote them and are never translated by the app. A text added there
+  changes `ExternalToolStringsTests.count`.
+- The person is told once per tool, per run of the app, that a tool stopped
+  working: at its first crash, in the app's short on-screen message
+  (`ExternalToolStore.tellStopped`). It is also a line in the system log.
+- `ExternalToolStore.remove(_:deletingData:)` deletes the app's copy of a
+  tool and, when asked, what it saved: `ToolData/<id>/` and the preferences
+  under `<tool id>/`. `ToolFolders.delete` can reach `Tools/<id>` and
+  `ToolData/<id>` and nothing else.
+- Remove waits for the tool's program to be gone before it deletes
+  anything (`ToolHost.removeAndSeeOut`). The program is told goodbye, asked
+  to end after half a second, and killed a quarter of a second later; the
+  app looks for a quarter more. The three waits are in `ToolLimits`. The
+  wait is on the main thread, so removing a tool that ignores everything
+  holds the app for up to one second. A program still there after the kill
+  keeps what it saved, whatever was asked: its copy and its record go, and
+  `remove` logs it. `remove` returns true either way, so the screen cannot
+  say the data was kept. No text exists for that yet.
+- Which button of the question before removal deletes what a tool saved is
+  `ToolRemovalContent.Choice.deletesData`, and the view passes it on
+  unchanged. What follows the folder picker is `ToolPicked.after`: nothing,
+  the sheet, or a refusal. Both are values so the tests can check them.
+- A tool's own words are drawn as plain `String` values, never as a
+  `LocalizedStringKey` literal, so markdown and links in them are shown as
+  written. Each has a line limit: on the sheet and in the detail the title
+  takes 2 lines, the publisher and version 2, the description 3, a command
+  2; in a row the name and the publisher each take 1. With 7 or more rows
+  the two lists scroll in a region 200 points high
+  (`ToolAgreementContent.rowsDrawnWhole`, `listsHeight`), on the sheet and
+  in the detail, so the statement and the buttons stay in view.
+- The detail shows the end of a tool's log: the newest 200 lines and at
+  most 32 KB (`ExternalToolDetail.shownLog`), as plain text that can be
+  selected. It is read when the detail opens and does not follow a running
+  tool.
+- The card redraws because it observes `ToolRegistry.shared`. The store
+  bumps the registry's `revision` whenever a tool is added, removed,
+  switched or stands differently. Nothing polls a tool.
+- Limits of stage C that are known and accepted:
+  - Remove waits for the tool's own process only. A child the tool started
+    is not waited for and may outlive it.
+  - "Changed" compares the manifest file's bytes. The program and the
+    other files are not compared.
+  - The fourteen languages other than English were written with the
+    English and checked by rule. No reader of them has reviewed them.
+  - That the sheet stays under 800 points high is arithmetic from the line
+    limits. Nobody has seen it on a small display.
+  - A tool's preferences have no screen, and nothing tells a running tool
+    that a preference or the language changed.
+  - A records file that cannot be read is kept until the next tool is
+    added. Then it is moved to `InstalledTools.unreadable.json`, replacing
+    an earlier file of that name.
+  - Nobody has opened the app with this stage in it. The plan's list "By
+    hand" is what is left to see.
 
 ## Porting from upstream
 

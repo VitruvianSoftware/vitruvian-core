@@ -1,0 +1,575 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 VitruvianSoftware
+
+import AppKit
+import SwiftUI
+import VitruvianCore
+import VitruvianDesign
+import VitruvianServices
+import VitruvianToolProtocol
+
+/// One tool from outside, as its row in the Features hub shows it. Plain
+/// values, so the row can be checked without drawing it.
+package struct ExternalToolRow: Identifiable, Equatable {
+    package enum Status: Equatable, Sendable {
+        /// Nothing to say: switched off, or waiting for its first command.
+        case quiet
+        case running
+        /// Its program ended without being asked to. `canStartAgain` once
+        /// the app has given up on it, and only the person can start it.
+        case stopped(canStartAgain: Bool)
+        /// The app's copy is not what the person agreed to. It is not
+        /// started, and its switch does nothing.
+        case changed
+    }
+
+    package let id: ToolID
+    /// The tool's name in the person's language, as the tool wrote it. For
+    /// a tool that is held back, the name the person agreed to.
+    package let name: String
+    /// The publisher and the version, as the tool wrote them.
+    package let byline: String
+    package let symbol: String
+    package let isOn: Bool
+    package let status: Status
+    /// The words beside the row for its status; nil when there are none.
+    package let statusText: String?
+    /// False for a tool that is held back: its switch does nothing until
+    /// the person updates it from its folder.
+    package var canSwitch: Bool { status != .changed }
+
+    package init(_ listed: ExternalToolStore.Listed, language: AppLanguage, strings: ExternalToolStrings,
+                 hasSymbol: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
+        let agreed = listed.record.agreement
+        id = listed.id
+        name = listed.tool?.name.text(for: language.rawValue) ?? agreed.name
+        byline = "\(listed.tool?.publisher ?? agreed.publisher) · \(listed.tool?.version ?? agreed.version)"
+        let wanted = listed.tool?.manifest.tool.symbol ?? ExternalToolManifest.defaultSymbol
+        symbol = hasSymbol(wanted) ? wanted : ExternalToolManifest.defaultSymbol
+        isOn = listed.record.isOn
+        if listed.isHeld {
+            status = .changed
+            statusText = strings.statusChanged
+        } else {
+            switch listed.standing {
+            case .starting?, .running?:
+                status = .running
+                statusText = strings.statusRunning
+            case .waiting?:
+                status = .stopped(canStartAgain: false)
+                statusText = strings.statusStopped
+            case .gaveUp?:
+                status = .stopped(canStartAgain: true)
+                statusText = strings.statusStopped
+            case .off?, .resting?, .stopping?, nil:
+                status = .quiet
+                statusText = nil
+            }
+        }
+    }
+
+    /// A row for each tool the person added, in the order they added them.
+    @MainActor package static func all(store: ExternalToolStore, language: AppLanguage,
+                                       strings: ExternalToolStrings) -> [ExternalToolRow] {
+        store.listed.map { ExternalToolRow($0, language: language, strings: strings) }
+    }
+}
+
+/// What a tool's detail view says, beyond its row.
+package struct ExternalToolDetail: Equatable {
+    package let row: ExternalToolRow
+    /// The tool's own sentence about itself.
+    package let summary: String?
+    package let commandsTitle: String
+    package let commands: [String]
+    package let usesTitle: String
+    package let uses: [String]
+    package let usesNote: String
+    /// Where the app's copy of the tool is, with a tilde for the home
+    /// folder; nil when there is none.
+    package let files: String?
+    /// True when one of its commands may have a shortcut, which the person
+    /// records on the Shortcuts page.
+    package let offersShortcuts: Bool
+
+    /// How many rows the two lists hold together.
+    package var listRows: Int { commands.count + uses.count }
+    /// True when the lists are too long to draw whole, and scroll in a
+    /// region of a fixed height, as on the agreement sheet.
+    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole }
+
+    /// The most of a tool's log the detail shows: its newest lines, and no
+    /// more bytes than this.
+    package static let logLines = 200
+    package static let logBytes = 32 * 1024
+
+    /// The end of what a tool logged, as the detail shows it: plain text,
+    /// cut to the newest `logLines` lines and `logBytes` bytes.
+    package static func shownLog(_ text: String) -> String {
+        var bytes = text.utf8.suffix(logBytes)
+        // The cut may fall inside one character: start at the next whole one.
+        while let first = bytes.first, first & 0b1100_0000 == 0b1000_0000 { bytes = bytes.dropFirst() }
+        let newest = String(decoding: bytes, as: UTF8.self)
+        return newest.split(separator: "\n", omittingEmptySubsequences: false).suffix(logLines).joined(separator: "\n")
+    }
+
+    package init(_ listed: ExternalToolStore.Listed, files: URL?, language: AppLanguage,
+                 strings: ExternalToolStrings, home: String = NSHomeDirectory(),
+                 hasSymbol: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
+        let tag = language.rawValue
+        row = ExternalToolRow(listed, language: language, strings: strings, hasSymbol: hasSymbol)
+        summary = listed.tool?.summary?.text(for: tag)
+        commandsTitle = strings.commandsTitle
+        let declared = listed.tool?.manifest.tool.commands ?? []
+        commands = declared.map { listed.tool?.commandTitles[$0.id]?.text(for: tag) ?? $0.title }
+        usesTitle = strings.usesTitle
+        uses = (listed.tool?.manifest.capabilities ?? []).compactMap { strings.use($0.capability) }
+        usesNote = strings.usesNote
+        self.files = files.map { ToolAgreementContent.abbreviated($0.path, home: home) }
+        // A tool that is switched off or held back has no command anywhere.
+        offersShortcuts = listed.standing != nil && declared.contains { $0.surfaces.contains(.shortcut) }
+    }
+}
+
+/// What the question before a tool is removed says.
+package struct ToolRemovalContent: Equatable {
+    package enum Choice: Equatable, Sendable {
+        case keepData
+        case deleteData
+        case cancel
+
+        /// What the store is told when this button is pressed: whether
+        /// what the tool saved is deleted too. Nil for Cancel, which
+        /// removes nothing.
+        package var deletesData: Bool? {
+            switch self {
+            case .keepData: return false
+            case .deleteData: return true
+            case .cancel: return nil
+            }
+        }
+    }
+
+    /// The button Return presses. Removing takes a deliberate click.
+    package static let defaultChoice: Choice = .cancel
+
+    package let title: String
+    package let message: String
+    package let keepData: String
+    package let deleteData: String
+    package let cancel: String
+
+    package init(name: String, strings: ExternalToolStrings, cancel: String) {
+        title = strings.removeTitle(name)
+        message = strings.removeMessage
+        keepData = strings.removeKeepData
+        deleteData = strings.removeDeleteData
+        self.cancel = cancel
+    }
+
+    /// The words on the button for a choice.
+    package func label(_ choice: Choice) -> String {
+        switch choice {
+        case .keepData: return keepData
+        case .deleteData: return deleteData
+        case .cancel: return cancel
+        }
+    }
+}
+
+/// What follows the folder picker: nothing when the person chose no folder,
+/// the agreement sheet for a tool the store offers, or one sentence that
+/// says why the folder cannot be added. Whichever it is, nothing has been
+/// copied, run or saved.
+package enum ToolPicked: Equatable {
+    case nothing
+    case ask(ToolOffer)
+    case refuse(ExternalToolStore.Refusal)
+
+    @MainActor package static func after(_ folder: URL?, store: ExternalToolStore) -> ToolPicked {
+        guard let folder else { return .nothing }
+        switch store.offer(from: folder) {
+        case .success(let offer): return .ask(offer)
+        case .failure(let refused): return .refuse(refused)
+        }
+    }
+}
+
+/// The tools from outside, in the Features hub: one quiet line and a button
+/// when there are none, a row for each when there are. Adding one opens a
+/// folder picker and then the agreement sheet; nothing is copied or run
+/// before the person agrees there.
+package struct ExternalToolsSection: View {
+    private struct Asked: Identifiable {
+        let id = UUID()
+        let offer: ToolOffer
+    }
+
+    private struct Shown: Identifiable {
+        let tool: ToolID
+        var id: String { tool.rawValue }
+    }
+
+    @ObservedObject private var l10n = L10n.shared
+    /// Bumped whenever a tool is added, removed, switched, or stands
+    /// differently, so the rows are read again.
+    @ObservedObject private var registry = ToolRegistry.shared
+    @State private var asked: Asked?
+    @State private var refusal: ToolRefusalMessage?
+    @State private var shown: Shown?
+
+    package init() {}
+
+    private var text: ExternalToolStrings { FeatureStrings.externalTools(l10n.language) }
+    private var store: ExternalToolStore { .shared }
+
+    package var body: some View {
+        let rows = ExternalToolRow.all(store: store, language: l10n.language, strings: text)
+        SettingsCard {
+            HStack(spacing: 10) {
+                Image(systemName: ExternalToolManifest.defaultSymbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 26, height: 26)
+                    .background(Color.accentColor.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .accessibilityHidden(true)
+                Text(text.sectionTitle).font(.headline)
+                Spacer(minLength: 12)
+                Button(text.addButton) { chooseFolder() }
+                    .controlSize(.small)
+            }
+            if rows.isEmpty {
+                Text(text.sectionEmpty)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(rows) { row in
+                        ExternalToolRowView(row: row, text: text,
+                                            setOn: { store.setOn(row.id, $0) },
+                                            startAgain: { store.startAgain(row.id) },
+                                            open: { shown = Shown(tool: row.id) })
+                        if row.id != rows.last?.id {
+                            Divider().padding(.leading, 8)
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(item: $asked) { asked in
+            ToolAgreementSheet(
+                offer: asked.offer,
+                content: ToolAgreementContent(offer: asked.offer, language: l10n.language, strings: text,
+                                              cancel: l10n.s.uninstallerCancel),
+                onAgree: { consent in
+                    self.asked = nil
+                    if case .failure(let refused) = store.add(consent) { show(refused) }
+                },
+                onCancel: { self.asked = nil })
+        }
+        .background {
+            // A second sheet and the alert hang on a view of their own, so
+            // neither competes with the agreement sheet for the card.
+            Color.clear
+                .sheet(item: $shown) { shown in detail(of: shown.tool) }
+                .alert(refusal?.title ?? "", isPresented: Binding(get: { refusal != nil },
+                                                                 set: { if !$0 { refusal = nil } }),
+                       presenting: refusal) { refusal in
+                    if let command = refusal.command {
+                        Button(l10n.s.menuCopy) {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(command, forType: .string)
+                        }
+                    }
+                    Button(l10n.s.menuClose, role: .cancel) {}
+                } message: { refusal in
+                    Text(refusal.command.map { refusal.message + "\n\n" + $0 } ?? refusal.message)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func detail(of id: ToolID) -> some View {
+        if let listed = store.listed.first(where: { $0.id == id }) {
+            ExternalToolDetailView(
+                detail: ExternalToolDetail(listed, files: store.folder(of: id), language: l10n.language, strings: text),
+                log: ExternalToolDetail.shownLog(store.tool(id)?.log.text ?? ""),
+                removal: ToolRemovalContent(name: ExternalToolRow(listed, language: l10n.language, strings: text).name,
+                                            strings: text, cancel: l10n.s.uninstallerCancel),
+                text: text,
+                startAgain: { store.startAgain(id) },
+                reveal: { if let folder = store.folder(of: id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) } },
+                openShortcuts: {
+                    shown = nil
+                    SettingsRouter.shared.page = .shortcuts
+                },
+                update: {
+                    // The detail closes first: the agreement sheet is the
+                    // card's, and one sheet shows at a time.
+                    shown = nil
+                    DispatchQueue.main.async { chooseFolder() }
+                },
+                remove: { deletingData in
+                    shown = nil
+                    store.remove(id, deletingData: deletingData)
+                },
+                close: { shown = nil })
+        }
+    }
+
+    /// The first step of adding or updating a tool: the person picks its
+    /// folder, and the store reads it. Nothing is copied or run here.
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        switch ToolPicked.after(panel.runModal() == .OK ? panel.url : nil, store: store) {
+        case .nothing: return
+        case .ask(let offer): asked = Asked(offer: offer)
+        case .refuse(let refused): show(refused)
+        }
+    }
+
+    private func show(_ refused: ExternalToolStore.Refusal) {
+        refusal = ToolRefusalMessage(refused, language: l10n.language, strings: text)
+    }
+}
+
+/// One tool's row: its icon, name, publisher and version, how it stands, a
+/// button when only the person can start it again, its switch, and the way
+/// into its detail.
+private struct ExternalToolRowView: View {
+    let row: ExternalToolRow
+    let text: ExternalToolStrings
+    let setOn: (Bool) -> Void
+    let startAgain: () -> Void
+    let open: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: open) {
+                HStack(spacing: 12) {
+                    Image(systemName: row.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 26, height: 26)
+                        .background(Color.accentColor.opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        // The tool's own words can be any length: each
+                        // keeps to one line of the row.
+                        Text(row.name)
+                            .foregroundStyle(row.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                            .lineLimit(1)
+                        Text(row.byline).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        if let status = row.statusText {
+                            ExternalToolStatusLabel(status: row.status, text: status)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel([row.name, row.byline, row.statusText].compactMap { $0 }.joined(separator: ". "))
+            if row.status == .stopped(canStartAgain: true) {
+                Button(text.startAgain, action: startAgain).controlSize(.small)
+            }
+            Toggle(row.name, isOn: Binding(get: { row.isOn }, set: setOn))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .disabled(!row.canSwitch)
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 8)
+        .background(hovering ? Color.primary.opacity(0.04) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .onHover { hovering = $0 }
+    }
+}
+
+/// A status in words, with a dot whose colour says the same: green for
+/// running, red for stopped, orange for changed.
+private struct ExternalToolStatusLabel: View {
+    let status: ExternalToolRow.Status
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 6))
+                .foregroundStyle(color)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var color: Color {
+        switch status {
+        case .running: return .green
+        case .stopped: return .red
+        case .changed: return .orange
+        case .quiet: return .secondary
+        }
+    }
+}
+
+/// One tool's detail: what it adds, what it says it uses, where its files
+/// are, what it logged, and the buttons that update or remove it.
+private struct ExternalToolDetailView: View {
+    @ObservedObject private var l10n = L10n.shared
+    let detail: ExternalToolDetail
+    let log: String
+    let removal: ToolRemovalContent
+    let text: ExternalToolStrings
+    let startAgain: () -> Void
+    let reveal: () -> Void
+    let openShortcuts: () -> Void
+    let update: () -> Void
+    let remove: (_ deletingData: Bool) -> Void
+    let close: () -> Void
+    @State private var confirmingRemoval = false
+    @State private var logExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: detail.row.symbol)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 40, height: 40)
+                    .background(Color.accentColor.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    // The tool's own words are cut short as on the sheet,
+                    // so that none can push the buttons off the view.
+                    Text(detail.row.name).font(.title3.bold()).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text(detail.row.byline).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                    if let summary = detail.summary {
+                        Text(summary).font(.callout).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let status = detail.row.statusText {
+                        HStack(spacing: 10) {
+                            ExternalToolStatusLabel(status: detail.row.status, text: status)
+                            if detail.row.status == .stopped(canStartAgain: true) {
+                                Button(text.startAgain, action: startAgain).controlSize(.small)
+                            }
+                        }
+                    }
+                }
+            }
+            // Only the two lists scroll, and only when they are long: the
+            // buttons below are always in view.
+            if detail.listsScroll {
+                ScrollView(.vertical) {
+                    lists.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: ToolAgreementContent.listsHeight)
+            } else if detail.listRows > 0 {
+                lists
+            }
+            if let files = detail.files {
+                HStack(spacing: 10) {
+                    Text(files)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 8)
+                    Button(l10n.s.cleanerRevealInFinder, action: reveal).controlSize(.small)
+                }
+            }
+            if !log.isEmpty {
+                DisclosureGroup(l10n.s.homebrewLogTitle, isExpanded: $logExpanded) {
+                    ScrollView {
+                        Text(log)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 120)
+                }
+            }
+            HStack(spacing: 10) {
+                Button(l10n.s.actionRemove, role: .destructive) { confirmingRemoval = true }
+                Button(text.updateButton, action: update)
+                Spacer()
+                Button(l10n.s.menuClose, action: close).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(22)
+        .frame(width: 480)
+        .onExitCommand(perform: close)
+        .alert(removal.title, isPresented: $confirmingRemoval) {
+            removalButton(.keepData)
+            removalButton(.deleteData)
+            removalButton(.cancel)
+        } message: {
+            Text(removal.message)
+        }
+    }
+
+    /// What the tool adds and what it says it uses.
+    @ViewBuilder
+    private var lists: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if !detail.commands.isEmpty {
+                section(detail.commandsTitle) {
+                    ForEach(Array(detail.commands.enumerated()), id: \.offset) {
+                        Text($0.element).font(.callout).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if detail.offersShortcuts {
+                        Button(l10n.s.shortcutsPageTitle, action: openShortcuts).controlSize(.small)
+                    }
+                }
+            }
+            if !detail.uses.isEmpty {
+                section(detail.usesTitle) {
+                    ForEach(Array(detail.uses.enumerated()), id: \.offset) { Text($0.element).font(.callout) }
+                    Text(detail.usesNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.subheadline.weight(.semibold))
+            content()
+        }
+    }
+
+    /// Cancel is the default button: Return removes nothing.
+    @ViewBuilder
+    private func removalButton(_ choice: ToolRemovalContent.Choice) -> some View {
+        let role: ButtonRole? = choice == .cancel ? .cancel : choice == .deleteData ? .destructive : nil
+        let plain = Button(removal.label(choice), role: role) {
+            if let deletingData = choice.deletesData { remove(deletingData) }
+        }
+        if choice == ToolRemovalContent.defaultChoice {
+            plain.keyboardShortcut(.defaultAction)
+        } else {
+            plain
+        }
+    }
+}

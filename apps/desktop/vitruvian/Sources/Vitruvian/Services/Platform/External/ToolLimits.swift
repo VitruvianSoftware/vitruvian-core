@@ -30,6 +30,14 @@ package struct ToolLimits: Equatable, Sendable {
     package var goodbyeWait: TimeInterval = 2
     /// After that: how long before it is killed.
     package var endWait: TimeInterval = 1
+    /// When a tool is removed for good the app waits for its program to be
+    /// gone before it deletes anything, and it waits on the main thread. So
+    /// these are short: after the goodbye, how long before the tool is
+    /// asked to end; after that, how long before it is killed; and after
+    /// that, how long the app looks for the kill to have worked.
+    package var removeGoodbyeWait: TimeInterval = 0.5
+    package var removeEndWait: TimeInterval = 0.25
+    package var removeKillWait: TimeInterval = 0.25
     /// A tool that starts on a command is stopped after this long with
     /// nothing asked of it.
     package var idleStop: TimeInterval = 120
@@ -49,6 +57,13 @@ package struct ToolLimits: Equatable, Sendable {
     /// second, at most. A tool that writes faster waits on its pipe. It is
     /// well over `messagesPerSecond`, so a flood is still seen as one.
     package var linesHandedPerSecond = 2_000
+    /// The most a tool's folder may weigh when it is added, in bytes. The
+    /// folder is copied whole, on the main thread, so this is what keeps
+    /// picking the wrong folder, a home folder or a project with its
+    /// dependencies, from stalling the app or filling the disk.
+    package var folderBytes = 256 * 1_048_576
+    /// The most things it may hold: files, folders and links together.
+    package var folderItems = 10_000
 
     package init() {}
 

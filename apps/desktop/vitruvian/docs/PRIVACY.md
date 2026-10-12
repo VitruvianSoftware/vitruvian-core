@@ -79,6 +79,18 @@ Feedback is delivered to private support channels visible to the service owner. 
 
 That is the entire list. There are no hidden beacons or background uploads.
 
+## Tools you add from outside
+
+Everything above is about Vitruvian itself. A tool from outside is different. It is a separate program, made by someone else, that you chose to add from a folder in Settings under Features. Vitruvian has no store that offers tools, and it adds none without asking you first.
+
+- **A tool can do anything Vitruvian can on your Mac.** macOS treats it as part of Vitruvian. Whatever you have allowed Vitruvian, such as reading the screen or controlling other apps, the tool has too, with no prompt of its own.
+- **It can read your files and use the network.** It runs as you. It makes its own connections, which Vitruvian neither lists nor limits. The list of network connections above covers Vitruvian alone.
+- **Vitruvian does not check what a tool does.** The list a tool gives of what it uses is the tool's own statement. It is not a limit, and macOS does not hold the tool to it.
+- **What Vitruvian keeps about a tool stays on your Mac.** That is a copy of the tool's folder, a folder for what the tool saves, the tool's own settings, and a record of what you agreed to: the tool's name, version and publisher as the tool gave them, the folder you added it from, and when. None of it is uploaded, and none of it is in a settings backup.
+- **Removing a tool deletes Vitruvian's copy of it and that record.** What the tool saved is deleted too if you say so. The folder you added the tool from is never touched. Vitruvian cannot undo what a tool did while it ran.
+
+With no tool added, none of this applies: Vitruvian starts no program of this kind. Add a tool only if you trust who made it.
+
 ## Changes to this document
 
 This page describes how the current version of Vitruvian behaves. If the app's behavior around privacy ever changes, this page changes with it.

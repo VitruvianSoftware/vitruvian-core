@@ -13,6 +13,8 @@
 //   mutter    writes to standard error, then answers
 //   hang      never answers
 //   stubborn  never answers, stops reading, and ignores being asked to end
+//   scribble  as stubborn, and for as long as it lives it makes its data
+//             folder again and writes a file into it
 //   flood     writes log lines for as long as it lives
 //   crash     exits with status 3
 //
@@ -46,7 +48,7 @@ func log(_ message: String) {
     send(["jsonrpc": "2.0", "method": "log", "params": ["message": message]])
 }
 
-let commands = ["hello", "quick", "where", "mutter", "hang", "stubborn", "flood", "crash"]
+let commands = ["hello", "quick", "where", "mutter", "hang", "stubborn", "scribble", "flood", "crash"]
 var greeting: [String: Any] = [:]
 /// The `command/run` that waits for the app to answer `notify/hud`.
 var waitingRun: Any?
@@ -87,6 +89,19 @@ while let line = readLine() {
             signal(SIGTERM, SIG_IGN)
             log("stubborn")
             while true { sleep(1) }
+        case "scribble"?:
+            signal(SIGTERM, SIG_IGN)
+            let folder = URL(fileURLWithPath: greeting["dataFolder"] as? String ?? ".", isDirectory: true)
+            var written = false
+            while true {
+                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let wrote = (try? Data("scribble".utf8).write(to: folder.appendingPathComponent("scribbled"))) != nil
+                if wrote, !written {
+                    written = true
+                    log("scribbling")
+                }
+                usleep(500)
+            }
         case "flood"?:
             while true { log("flood") }
         case "crash"?:

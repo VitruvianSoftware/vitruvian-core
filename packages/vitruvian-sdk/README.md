@@ -10,9 +10,10 @@ panel, and as shortcuts.
 **A tool is trusted like an app.** It runs as you, with every permission
 Vitruvian has. The app does not limit or check what it does.
 
-**Only a development build of the app can add a tool so far**, from a folder,
-with no screen (`apps/desktop/vitruvian/README.md` says how). This package is
-being built in stages, and the first is done. What is here today:
+**The app adds a tool from a folder**, in Settings, under Features, in the
+section "Tools from outside". The person picks the folder and agrees on one
+sheet. This package is being built in stages, and the first is done. What is
+here today:
 
 | Folder | What it is |
 |---|---|
@@ -22,7 +23,6 @@ being built in stages, and the first is done. What is here today:
 
 Not yet:
 
-- Any screen in the app for adding a tool.
 - A Swift library to write a tool with.
 - A `vitruvian-tool` command.
 - Samples, beyond the one reference tool.

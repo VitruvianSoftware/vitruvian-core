@@ -2527,74 +2527,49 @@ def the_broker_names_no_tool(repo):
     return problems
 
 
-# The define a development build is made with to add a tool from outside
-# (BUILD, `external_tools`), and what adding one looks like in code.
-DEVELOPMENT_SWITCH = "VITRUVIAN_EXTERNAL_TOOLS"
-_ADDS_A_TOOL = re.compile(r"\binstallDevelopmentTool\b|\.install\(from:")
+# The one file of the app that may say the person agreed to add a tool: the
+# sheet that asks.
+AGREEMENT_SHEET = APP_PREFIX + "UI/Settings/ExternalToolAgreementSheet.swift"
+_CONSENTS = re.compile(r"\bToolConsent\(")
 
 
-def tools_added_outside_the_switch(path, text):
-    """Each line of `text` that adds a tool from outside and is not between
-    `#if VITRUVIAN_EXTERNAL_TOOLS` and its `#endif`."""
+def consents_made(path, text):
+    """Each line of `text` that makes a `ToolConsent` in code."""
     found = []
-    inside = []
     for number, line in enumerate(text.split("\n"), start=1):
-        directive = line.strip()
-        if directive.startswith("#if"):
-            inside.append(directive.split()[1:] == [DEVELOPMENT_SWITCH])
-        elif directive.startswith(("#else", "#elseif")) and inside:
-            inside[-1] = False
-        elif directive.startswith("#endif") and inside:
-            inside.pop()
-        elif not any(inside):
-            written, _ = code_and_blanked(line)
-            if _ADDS_A_TOOL.search(written):
-                found.append(f"{path}:{number}")
+        _, code = code_and_blanked(line)
+        if _CONSENTS.search(code):
+            found.append(f"{path}:{number}")
     return found
 
 
-def a_release_build_adds_no_outside_tool(repo):
-    """A tool that runs as its own program is added in one place: the
-    development switch in main.swift, which only a build made with
-    --define=vitruvian_external_tools=true compiles. Until the screen that
-    asks the person exists, nothing else may add one, so a release build has
-    no way to. The runtime's own folder is where adding is written, and is
-    not scanned."""
+def only_the_agreement_sheet_consents(repo):
+    """Adding a tool from outside takes a `ToolConsent`: that the person
+    agreed to one offer. Only the sheet that asks the person may make one.
+    Any other file that does has found a way to add a tool nobody agreed
+    to."""
     problems = []
     sample = "\n".join(
         [
-            "ExternalToolStore.shared.install(from: folder)",
-            "#if VITRUVIAN_EXTERNAL_TOOLS",
-            "_ = ExternalToolStore.shared.installDevelopmentTool()",
-            "#else",
-            "store.installDevelopmentTool()",
-            "#endif",
-            "#if !VITRUVIAN_EXTERNAL_TOOLS",
-            "store.install(from: folder)",
-            "#endif",
-            "// store.install(from: folder), in prose",
-            "SampleTool.install()",
+            "store.add(ToolConsent(to: offer))",
+            "// ToolConsent(to: offer), in prose",
+            'let text = "ToolConsent(to: offer)"',
+            "func add(_ consent: ToolConsent) {}",
+            "package struct ToolConsent: Equatable {",
         ]
     )
-    if tools_added_outside_the_switch("sample", sample) != [
-        "sample:1",
-        "sample:5",
-        "sample:8",
-    ]:
+    if consents_made("sample", sample) != ["sample:1"]:
         problems.append(
-            "the scan finds a tool added outside the switch, in its #else and "
-            "under its negation, and not inside it, in prose or the sample tool"
+            "the scan finds a consent made in code, and not one in prose, in "
+            "a string, or named as a type"
         )
-    paths = [p for p in repo.app_sources() if not p.startswith(RUNTIME_PREFIX)]
-    main = APP_PREFIX + "main.swift"
-    if DEVELOPMENT_SWITCH not in repo.source(main):
-        problems.append(f"{main} no longer holds the development switch")
     found = []
-    for path in paths:
-        found.extend(tools_added_outside_the_switch(path, repo.source(path)))
+    for path in repo.app_sources():
+        if path != AGREEMENT_SHEET:
+            found.extend(consents_made(path, repo.source(path)))
     if found:
         problems.append(
-            f"a tool from outside is added only inside #if {DEVELOPMENT_SWITCH}: {found}"
+            f"only the agreement sheet says the person agreed to add a tool: {found}"
         )
     return problems
 
@@ -2719,7 +2694,7 @@ RULES = [
     hotkey_ids_are_unique,
     migrated_tools_reach_services_through_the_broker,
     the_broker_names_no_tool,
-    a_release_build_adds_no_outside_tool,
+    only_the_agreement_sheet_consents,
     modification_log_is_whole,
 ]
 

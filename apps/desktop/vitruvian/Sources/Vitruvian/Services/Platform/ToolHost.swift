@@ -85,10 +85,52 @@ package final class ToolHost {
     /// Stops a tool that was handed over with `add`, and lets go of it. A
     /// tool compiled into the app is never removed.
     package func remove(_ id: ToolID) {
-        guard added.removeValue(forKey: id) != nil else { return }
-        tools.removeValue(forKey: id)?.stop()
+        _ = letGo(of: id)
+    }
+
+    /// As `remove`, and then waits for the tool's program to be gone, as
+    /// `stopAll` does at quit, with shorter waits: half a second after the
+    /// goodbye, then it is asked to end, a quarter more, then it is killed,
+    /// and a last quarter for the kill to be seen. A program that leaves
+    /// when told goodbye costs a few milliseconds.
+    ///
+    /// True when nothing of the tool is left running. This is for removing
+    /// a tool for good: its folders may be deleted only after that.
+    @discardableResult
+    package func removeAndSeeOut(_ id: ToolID) -> Bool {
+        guard let tool = letGo(of: id) else { return true }
+        return seeOut([tool], waits: [limits.removeGoodbyeWait, limits.removeEndWait],
+                      last: limits.removeKillWait).isEmpty
+    }
+
+    /// Stops a tool that was handed over with `add` and forgets it.
+    private func letGo(of id: ToolID) -> (any HostedTool)? {
+        guard added.removeValue(forKey: id) != nil else { return nil }
+        let tool = tools.removeValue(forKey: id)
+        tool?.stop()
         built.removeAll { $0 == id }
         running.removeAll { $0 == id }
+        return tool
+    }
+
+    /// Waits, without turning the run loop, for tools that were stopped to
+    /// have nothing left running. After each wait every tool still there
+    /// is ended a step harder: asked to end, then killed. `last` is one
+    /// more wait with no step after it, for the kill to be seen. Gives back
+    /// the tools that are still not gone.
+    private func seeOut(_ stopped: [any HostedTool], waits: [TimeInterval],
+                        last: TimeInterval? = nil) -> [any HostedTool] {
+        var lingering = stopped.filter { !$0.hasEnded }
+        for seconds in waits where !lingering.isEmpty {
+            wait(seconds) { lingering.allSatisfy { $0.hasEnded } }
+            for tool in lingering where !tool.hasEnded { tool.escalate() }
+            lingering = lingering.filter { !$0.hasEnded }
+        }
+        if let last, !lingering.isEmpty {
+            wait(last) { lingering.allSatisfy { $0.hasEnded } }
+            lingering = lingering.filter { !$0.hasEnded }
+        }
+        return lingering
     }
 
     private func build(_ type: any BundledTool.Type) -> any BundledTool {
@@ -168,12 +210,7 @@ package final class ToolHost {
         let rest = built.reversed().filter { !running.contains($0) }
         for id in Array(running.reversed()) + rest { tools[id]?.stop() }
         running = []
-        var lingering = tools.values.filter { !$0.hasEnded }
-        for seconds in [limits.goodbyeWait, limits.endWait] where !lingering.isEmpty {
-            wait(seconds) { lingering.allSatisfy { $0.hasEnded } }
-            for tool in lingering where !tool.hasEnded { tool.escalate() }
-            lingering = lingering.filter { !$0.hasEnded }
-        }
+        _ = seeOut(Array(tools.values), waits: [limits.goodbyeWait, limits.endWait])
     }
 
     // MARK: - Commands
