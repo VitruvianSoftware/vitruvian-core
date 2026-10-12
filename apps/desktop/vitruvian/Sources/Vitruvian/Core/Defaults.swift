@@ -562,6 +562,7 @@ package enum Defaults {
         DefaultsKey.notchMascotPalette: Preferences.notchMascotPalette.defaultValue,
         DefaultsKey.notchMascotSide: Preferences.notchMascotSide.defaultValue,
         DefaultsKey.notchMascotVisitFrequency: Preferences.notchMascotVisitFrequency.defaultValue,
+        DefaultsKey.notchMascotHidesWhenIdle: Preferences.notchMascotHidesWhenIdle.defaultValue,
         DefaultsKey.notchCommandBar: Preferences.notchCommandBar.defaultValue,
         DefaultsKey.notchCommandBarStyle: Preferences.notchCommandBarStyle.defaultValue,
         DefaultsKey.notchHideInCaptures: Preferences.notchHideInCaptures.defaultValue,

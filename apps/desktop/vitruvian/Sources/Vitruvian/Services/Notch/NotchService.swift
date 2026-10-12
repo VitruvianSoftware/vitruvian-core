@@ -534,7 +534,9 @@ package final class NotchService: ObservableObject {
     @Published package private(set) var capsuleMusicTitleShown = false
     /// The companion's stroll through the closed island, or its moment out
     /// over what the island shows.
-    @Published package private(set) var mascotVisit: NotchMascotVisit?
+    @Published package private(set) var mascotVisit: NotchMascotVisit? {
+        didSet { noteMascotStirred() }
+    }
     /// What the island shows steps aside while the companion is out over it,
     /// and comes back as a cameo heads home behind the camera.
     @Published package private(set) var mascotStepsAside = false
@@ -549,8 +551,19 @@ package final class NotchService: ObservableObject {
     private var mascotWasEnabled: Bool?
     /// The side it rested on at the last preference sync, nil before the first.
     private var mascotSideAtSync: NotchMascotSide?
+    /// Whether it hid in the island when idle at the last preference sync,
+    /// nil before the first.
+    private var mascotHidesAtSync: Bool?
+    /// Hidden in the island: the closed island keeps its own size without
+    /// it, and it comes out only to visit or to react.
+    @Published package private(set) var mascotTucked = false
+    /// When it last did something, or came to rest, on the media clock.
+    private var mascotStirred: CFTimeInterval = -.infinity
+    private var mascotTuckWork: DispatchWorkItem?
     /// The last reaction published for the companion to play where it rests.
-    @Published package private(set) var mascotReaction: NotchMascotReactionEvent?
+    @Published package private(set) var mascotReaction: NotchMascotReactionEvent? {
+        didSet { noteMascotStirred() }
+    }
     /// A reaction waiting for the companion to show, until its deadline, and
     /// not before its time when it was asked to wait.
     private var pendingMascotReaction: (reaction: NotchMascotReaction, deadline: CFTimeInterval,
@@ -587,6 +600,7 @@ package final class NotchService: ObservableObject {
             if oldValue, !mascotRestedInView { mascotLeftRest = CACurrentMediaTime() }
             if !oldValue, mascotRestedInView {
                 mascotBackAtRest = CACurrentMediaTime()
+                noteMascotStirred()
                 mascotReturnedToRest()
                 // A reaction asked for as it came back waits for it to show.
                 if pendingMascotReaction != nil { flushMascotReaction() }
@@ -835,8 +849,9 @@ package final class NotchService: ObservableObject {
     /// changed in Settings moves it only together with the stroll across.
     package var mascotSide: NotchMascotSide { mascotSideAtSync ?? NotchMascotSupport.side(in: defaults) }
 
-    /// The companion rests in the closed island when nothing else is there.
-    package var mascotAtRest: Bool { mascotOn && idleContent == .none && !mascotInBar }
+    /// The companion rests in the closed island when nothing else is there,
+    /// unless it hides in the island.
+    package var mascotAtRest: Bool { mascotOn && idleContent == .none && !mascotInBar && !mascotTucked }
 
     /// The face it keeps at rest: wide awake while Keep Awake holds the Mac up.
     package var mascotRestingMood: NotchMascotMood { services.keepAwakeActive ? .alert : .idle }
@@ -1499,12 +1514,14 @@ package final class NotchService: ObservableObject {
         syncNoticeWithPreferences()
         syncVisibleConsumers()
         // Turning the companion on or off grows or folds the wings it rests
-        // in, in view, as music arriving does. Other preferences apply at once.
+        // in, in view, as music arriving does, and so does hiding it in the
+        // island when idle. Other preferences apply at once.
         let mascotEnabled = NotchMascotSupport.isEnabled(in: defaults)
         let mascotToggled = mascotWasEnabled.map { $0 != mascotEnabled } ?? false
         mascotWasEnabled = mascotEnabled
+        let hidingToggled = syncMascotHiding(switchedOn: mascotToggled && mascotEnabled)
         if mascotToggled, !expanded { stageMascotEntrance(arriving: mascotEnabled) }
-        refreshPresentation(animated: mascotToggled && !expanded)
+        refreshPresentation(animated: (mascotToggled || hidingToggled) && !expanded)
         syncMascotVisits()
         syncMascotSide()
         // Pages read their preferences as they draw, and a change that keeps
@@ -1560,6 +1577,8 @@ package final class NotchService: ObservableObject {
         mascotVisitWork?.cancel(); mascotVisitWork = nil
         mascotStepBackWork?.cancel(); mascotStepBackWork = nil
         mascotVisit = nil
+        // Hiding when idle counts its quiet while again once the island is back.
+        mascotTuckWork?.cancel(); mascotTuckWork = nil
         mascotStepsAside = false
         mascotInBar = false
         commandBarHeight = nil
@@ -3589,8 +3608,10 @@ extension NotchService {
         }
         // Without motion a stroll over an activity hides its strip for
         // seconds: it waits for the island to rest, and a hello asked for
-        // plays in its own wing.
-        if reducesMotion(), !mascotRestsInView {
+        // plays in its own wing. Hidden in an island with nothing else to
+        // show, it covers nothing and comes out all the same.
+        let coversNothing = mascotRestsInView || (mascotTucked && idleContent == .none && compactActivity == nil)
+        if reducesMotion(), !coversNothing {
             if asked { beginMascotCameo(.celebrate) } else { scheduleMascotVisit(after: NotchMascotSupport.nextVisitDelay(NotchMascotSupport.visitFrequency(in: defaults))) }
             return
         }
@@ -3667,14 +3688,15 @@ extension NotchService {
 
     /// Turned on while the closed island rests with nothing else to show, it
     /// hops out from behind the camera as its wings open, or into a capsule
-    /// at its near end. Turned off there, it
-    /// gives a glad hop and goes behind the camera, and the wings fold once
-    /// it is gone, since the farewell keeps it drawn until then.
+    /// at its near end, and so it does when it stops hiding in the island.
+    /// Turned off there, it gives a glad hop and goes behind the camera, and
+    /// the wings fold once it is gone, since the farewell keeps it drawn
+    /// until then. Hidden in the island, it is gone already.
     fileprivate func stageMascotEntrance(arriving: Bool) {
         // A stroll under way when it is turned off finishes first and says
         // goodbye after. One turned back on mid-farewell comes out from where it went.
         guard !reducesMotion(), idleContent == .none,
-              compactActivity == nil, !mascotInBar, canHostMascotVisit(),
+              compactActivity == nil, !mascotInBar, arriving || !mascotTucked, canHostMascotVisit(),
               arriving ? mascotVisit == nil || mascotVisit?.kind == .farewell : mascotVisit == nil else { return }
         let visit = NotchMascotVisit(id: UUID(), kind: arriving ? .arrive : .farewell,
                                      greeting: arriving ? .wink : .happy, start: CACurrentMediaTime())
@@ -3686,6 +3708,116 @@ extension NotchService {
         let work = DispatchWorkItem { [weak self] in self?.endMascotVisit() }
         mascotVisitWork = work
         schedule(visit.duration, work)
+    }
+
+    // MARK: Hiding when idle
+
+    /// Hiding in the island when idle, as Settings has it. At launch it starts
+    /// hidden, and switched on it comes out to say hello and hides a quiet
+    /// while later. Turned on, it goes in at once, and turned off, it comes
+    /// back out to rest. True when that changes what the closed island holds.
+    fileprivate func syncMascotHiding(switchedOn: Bool) -> Bool {
+        let hides = NotchMascotSupport.hidesWhenIdle(in: defaults)
+        let previous = mascotHidesAtSync
+        mascotHidesAtSync = hides
+        var toggled = false
+        if previous == nil {
+            mascotTucked = hides
+        } else if switchedOn {
+            mascotTucked = false
+        } else if previous != hides, mascotOn {
+            toggled = true
+            if !hides { untuckMascot() } else if !stageMascotTuck() {
+                scheduleMascotTuck(after: NotchMascotSupport.hideRetry, now: true)
+            }
+        }
+        if !hides {
+            mascotTuckWork?.cancel(); mascotTuckWork = nil
+        } else if !mascotTucked, mascotTuckWork == nil {
+            // Out of the island, a quiet while is always counting.
+            scheduleMascotTuck(after: NotchMascotSupport.hideDelay)
+        }
+        return toggled
+    }
+
+    /// Something happened where it is, or it came to rest: hiding when idle,
+    /// it waits a whole quiet while from now before it goes into the island.
+    fileprivate func noteMascotStirred() {
+        mascotStirred = CACurrentMediaTime()
+    }
+
+    /// `now` hides it as soon as it is free, without waiting for quiet.
+    private func scheduleMascotTuck(after delay: TimeInterval, now: Bool = false) {
+        mascotTuckWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.tuckMascotIfQuiet(now: now) }
+        mascotTuckWork = work
+        schedule(delay, work)
+    }
+
+    /// A quiet while after it last did anything, it goes into the island,
+    /// which takes back its own size. Anything it does meanwhile starts the
+    /// while over, and so one check is planned at a time, never a tick.
+    private func tuckMascotIfQuiet(now: Bool) {
+        mascotTuckWork = nil
+        guard running, mascotHidesAtSync == true, !mascotTucked else { return }
+        let quiet = CACurrentMediaTime() - mascotStirred
+        if !now, quiet < NotchMascotSupport.hideDelay - 0.05 {
+            scheduleMascotTuck(after: NotchMascotSupport.hideDelay - quiet)
+            return
+        }
+        // The pointer on it looks at it or pets it, and it stays meanwhile.
+        if !now, mascotRestsInView, windowHost?.containsHover(pointer()) == true {
+            scheduleMascotTuck(after: NotchMascotSupport.hideRetry)
+            return
+        }
+        guard stageMascotTuck() else {
+            scheduleMascotTuck(after: NotchMascotSupport.hideRetry, now: now)
+            return
+        }
+        refreshPresentation()
+    }
+
+    /// Hides it in the island. Where the closed island shows it at rest, it
+    /// yawns and hops in behind the camera, or walks out at a capsule's far
+    /// end, and the wings fold once it is gone. Anywhere else it is simply
+    /// in there when the island rests again. False while it is busy with a
+    /// visit, a reaction, the Command Bar or the island opening around it.
+    private func stageMascotTuck() -> Bool {
+        // A reaction still waiting to be seen comes first. One past its time never will be.
+        let reacting = pendingMascotReaction.map { CACurrentMediaTime() <= $0.deadline } ?? false
+        guard mascotVisit == nil, !reacting, !mascotBridging, !mascotInBar else { return false }
+        let shown = mascotRestsInView && canHostMascotVisit()
+        mascotTucked = true
+        mascotTuckWork?.cancel(); mascotTuckWork = nil
+        guard shown, !reducesMotion() else { return true }
+        let tuck = NotchMascotVisit(id: UUID(), kind: NotchMascotSupport.hideAway, greeting: .idle,
+                                    start: CACurrentMediaTime())
+        mascotVisitWork?.cancel()
+        mascotStepBackWork?.cancel(); mascotStepBackWork = nil
+        mascotVisit = tuck
+        // An activity arriving as it yawns finds its wing covered, as for any
+        // reaction it stays to play, and has it back as the companion goes
+        // behind the camera, timed as setMascotVisit times every reaction.
+        mascotStepsAside = true
+        if let handBack = NotchMascotMotion.handBack(of: tuck.kind, floats: geometry.floats) {
+            let back = DispatchWorkItem { [weak self] in
+                self?.mascotStepBackWork = nil
+                self?.mascotStepsAside = false
+            }
+            mascotStepBackWork = back
+            schedule(handBack, back)
+        }
+        let work = DispatchWorkItem { [weak self] in self?.endMascotVisit() }
+        mascotVisitWork = work
+        schedule(tuck.duration, work)
+        return true
+    }
+
+    /// Hiding turned off: it comes back out to rest, as when switched on.
+    private func untuckMascot() {
+        guard mascotTucked else { return }
+        mascotTucked = false
+        if !expanded { stageMascotEntrance(arriving: true) }
     }
 
     /// Settings asks it to say hello now: a stroll where it rests or over
@@ -3816,13 +3948,14 @@ extension NotchService {
     /// The companion leaves the island for the Command Bar's drop, and comes
     /// back to rest once the drop has risen into it again. Back from a drop
     /// it saw rise, it hops out from behind the camera to its place,
-    /// wearing `homecoming` until it lands.
+    /// wearing `homecoming` until it lands, unless it hides in the island.
     package func setMascotInBar(_ away: Bool, homecoming: NotchMascotMood? = nil) {
         guard away != mascotInBar else { return }
         if away, mascotVisit != nil { endMascotVisit() }
         let home = homecoming.flatMap { mood -> NotchMascotVisit? in
             guard !away, !reducesMotion(), NotchMascotSupport.isEnabled(in: defaults),
-                  idleContent == .none, compactActivity == nil, canHostMascotVisit(returning: true) else { return nil }
+                  !mascotTucked, idleContent == .none, compactActivity == nil, canHostMascotVisit(returning: true)
+            else { return nil }
             return NotchMascotVisit(id: UUID(), kind: .home, greeting: mood, start: CACurrentMediaTime())
         }
         mutatePresentation {

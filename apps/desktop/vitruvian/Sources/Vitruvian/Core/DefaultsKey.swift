@@ -928,6 +928,7 @@ package enum DefaultsKey {
     package static let notchMascotPalette = "notchMascotPalette" // NotchMascotPalette.rawValue
     package static let notchMascotSide = "notchMascotSide" // NotchMascotSide.rawValue, beside the camera
     package static let notchMascotVisitFrequency = "notchMascotVisitFrequency" // NotchMascotVisitFrequency.rawValue
+    package static let notchMascotHidesWhenIdle = "notchMascotHidesWhenIdle" // hops into the island after a quiet while
     package static let notchCommandBar = "notchCommandBar" // the Command Bar comes out of the island
     package static let notchCommandBarStyle = "notchCommandBarStyle" // NotchCommandBarStyle.rawValue
     // Legacy inverse preference; the explicit visibility switch supersedes it.
