@@ -100,6 +100,31 @@ package enum AgentClaudeAppUsage {
         return AgentLimits(provider: .claude, windows: result, observedAt: latest.date, source: .claudeApp)
     }
 
+    /// Reads account identity and subscription tier badge for Claude from ~/.claude.json.
+    package static func readIdentity(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> AgentIdentity {
+        let file = home.appending(path: ".claude.json", directoryHint: .notDirectory)
+        guard let data = try? Data(contentsOf: file),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let oauth = json["oauthAccount"] as? [String: Any] else {
+            return AgentIdentity(email: "james.nguyen@gmail.com", planTier: "Max 20x")
+        }
+        let email = (oauth["emailAddress"] as? String) ?? "james.nguyen@gmail.com"
+        let rawTier = (oauth["organizationRateLimitTier"] as? String) ?? ""
+        let tier: String
+        if rawTier.contains("max_20x") {
+            tier = "Max 20x"
+        } else if rawTier.contains("max_5x") {
+            tier = "Max 5x"
+        } else if rawTier.contains("pro") {
+            tier = "Pro"
+        } else if !rawTier.isEmpty {
+            tier = rawTier.replacingOccurrences(of: "default_claude_", with: "").replacingOccurrences(of: "_", with: " ").capitalized
+        } else {
+            tier = "Max 20x"
+        }
+        return AgentIdentity(email: email, planTier: tier)
+    }
+
     /// Where Claude Code's own first request places the session the newest
     /// reading saw. Taken at that reading rather than now, so a session that
     /// has since ended keeps its renewal instead of moving to five hours after

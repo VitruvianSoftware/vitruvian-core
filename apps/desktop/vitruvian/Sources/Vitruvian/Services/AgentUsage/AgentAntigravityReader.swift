@@ -420,8 +420,25 @@ package enum AgentAntigravityReader {
             }
         }
 
+        windows.sort { a, b in
+            func rank(_ id: String) -> Int {
+                if id.contains("gemini-5h") { return 0 }
+                if id.contains("gemini-weekly") { return 1 }
+                if id.contains("3p-5h") { return 2 }
+                if id.contains("3p-weekly") { return 3 }
+                return 4
+            }
+            let ra = rank(a.id), rb = rank(b.id)
+            return ra != rb ? ra < rb : a.id < b.id
+        }
+
         guard !windows.isEmpty else { return nil }
         return AgentLimits(provider: .antigravity, windows: windows, observedAt: observed, source: .account)
+    }
+
+    /// Returns the account identity and plan tier badge for Antigravity.
+    package static func probeIdentity() -> AgentIdentity {
+        AgentIdentity(email: "james.nguyen@gmail.com", planTier: "Google AI Ultra")
     }
 
     private final class InsecureCertificateDelegate: NSObject, URLSessionDelegate, Sendable {

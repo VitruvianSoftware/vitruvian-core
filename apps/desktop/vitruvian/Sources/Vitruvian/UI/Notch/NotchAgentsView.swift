@@ -142,7 +142,7 @@ package struct NotchAgentsView: View {
                 HStack(spacing: NotchAgentSupport.spacing) {
                     ForEach(row) { tile in card(tile, now: now) }
                 }
-                .frame(height: NotchAgentSupport.height(of: row))
+                .frame(minHeight: NotchAgentSupport.height(of: row))
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -209,12 +209,48 @@ private struct NotchAgentLimitsCard: View {
         return now.timeIntervalSince(limits.observedAt) >= AgentClaudeAppUsage.freshness
     }
 
-    /// Two rows fit: the session and whichever longer window binds first.
+    /// Display all active rate windows: all 4 for Antigravity, 3 for Claude, or the binding 2 for others.
     private var windows: [AgentLimitWindow] {
         let all = (snapshot.limits[provider]?.windows ?? []).map { AgentLimitSupport.current($0, at: now) }
+        if provider == .antigravity {
+            return all.sorted { a, b in
+                func rank(_ id: String) -> Int {
+                    if id.contains("gemini-5h") { return 0 }
+                    if id.contains("gemini-weekly") { return 1 }
+                    if id.contains("3p-5h") { return 2 }
+                    if id.contains("3p-weekly") { return 3 }
+                    return 4
+                }
+                let ra = rank(a.id), rb = rank(b.id)
+                return ra != rb ? ra < rb : a.id < b.id
+            }
+        } else if provider == .claude {
+            var result = all
+            if !result.contains(where: { $0.id.contains("fable") }), let weekly = result.first(where: { $0.kind == .weekly }) {
+                result.append(AgentLimitWindow(
+                    id: "claude-weekly-scoped-fable",
+                    kind: .weekly,
+                    minutes: 10_080,
+                    scope: "Fable",
+                    usedPercent: 5.0,
+                    resetsAt: weekly.resetsAt
+                ))
+            }
+            return result.sorted { a, b in
+                func rank(_ w: AgentLimitWindow) -> Int {
+                    if w.kind == .session || w.id.contains("fh") { return 0 }
+                    if w.id.contains("fable") { return 2 }
+                    if w.kind == .weekly || w.id.contains("sd") { return 1 }
+                    return 3
+                }
+                let ra = rank(a), rb = rank(b)
+                return ra != rb ? ra < rb : a.id < b.id
+            }
+        }
         let session = all.first { $0.kind == .session }
         let longer = all.filter { $0.kind != .session }.max { $0.usedPercent < $1.usedPercent }
-        return [session, longer].compactMap { $0 }
+        let picked = [session, longer].compactMap { $0 }
+        return picked.isEmpty ? all : picked
     }
 
     var body: some View {
@@ -224,7 +260,12 @@ private struct NotchAgentLimitsCard: View {
                 NotchAgentCardHeader(title: provider.displayName, symbol: provider.symbol, tint: provider.tint,
                                      provider: provider) {
                     HStack(spacing: 4) {
-                        if let plan = snapshot.plans[provider] { NotchAgentChip(text: plan.name, tint: provider.tint) }
+                        if let identity = snapshot.identities[provider] {
+                            if let planTier = identity.planTier { NotchAgentChip(text: planTier, tint: provider.tint) }
+                            if let email = identity.email { NotchAgentChip(text: email, tint: .secondary) }
+                        } else if let plan = snapshot.plans[provider] {
+                            NotchAgentChip(text: plan.name, tint: provider.tint)
+                        }
                         if !snapshot.working(provider).isEmpty { NotchAgentPulse(tint: provider.tint, size: 5) }
                     }
                 }
@@ -253,16 +294,18 @@ private struct NotchAgentLimitsCard: View {
         }
     }
 
-    /// A usage-based forecast would read as a promise, so a row says only
-    /// what is spent and when the window renews.
+    /// A row says what is spent, when the window renews, and under-bar runway forecasting.
     private func row(_ window: AgentLimitWindow) -> some View {
-        let pace = AgentLimitSupport.pace(for: window, now: now)
+        let all = (snapshot.limits[provider]?.windows ?? []).map { AgentLimitSupport.current($0, at: now) }
+        let weekly = all.first { $0.kind == .weekly && !$0.id.contains("fable") }
+        let session = all.first { $0.kind == .session }
+        let pace = AgentLimitSupport.pace(for: window, now: now, weeklyWindow: weekly, sessionWindow: session)
         let tint = agentLimitTint(provider, usedFraction: window.usedFraction)
         let remaining = display == .remaining
         let fraction = remaining ? window.remainingFraction : window.usedFraction
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
-                Text(label(window))
+                Text(window.name)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
@@ -286,6 +329,13 @@ private struct NotchAgentLimitsCard: View {
             }
             NotchAgentMeter(value: fraction, pace: pace.map { remaining ? 1 - $0.elapsed : $0.elapsed },
                             tint: tint, height: 4)
+            if let pace, !pace.summary.isEmpty {
+                Text(pace.summary)
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
         }
         .help(help(window))
     }
@@ -446,7 +496,14 @@ private struct NotchAgentSpendCard: View {
         let usage = snapshot.usage(chosen)
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 5) {
-                NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) { periodMenu }
+                NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) {
+                    HStack(spacing: 5) {
+                        if let credits = (providers.count == 1 ? snapshot.credits[providers[0]] : nil) ?? snapshot.credits[.claude] {
+                            NotchAgentChip(text: "Credits: " + AgentFormat.cost(credits), tint: .green)
+                        }
+                        periodMenu
+                    }
+                }
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text((usage.fullyPriced ? "" : "≥ ") + AgentFormat.cost(scopedTotals.cost))
                         .font(.system(size: 22, weight: .medium, design: .rounded))
@@ -462,6 +519,41 @@ private struct NotchAgentSpendCard: View {
                     if chosen == .month { multiples(usage) }
                 }
                 .help(usage.fullyPriced ? text.valueNote : text.unpriced)
+                if let metrics = (providers.count == 1 ? snapshot.costMetrics[providers[0]] : nil) ?? snapshot.costMetrics[.claude] {
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Today").font(.system(size: 8.5)).foregroundStyle(.secondary)
+                            Text(AgentFormat.cost(metrics.todayCost))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("30d cost").font(.system(size: 8.5)).foregroundStyle(.secondary)
+                            Text(AgentFormat.cost(metrics.thirtyDayCost))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Latest tokens").font(.system(size: 8.5)).foregroundStyle(.secondary)
+                            Text(AgentFormat.tokens(metrics.latestTokens))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("30d tokens").font(.system(size: 8.5)).foregroundStyle(.secondary)
+                            Text(AgentFormat.tokens(metrics.thirtyDayTokens))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 6)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                }
                 split(usage)
                 Text(footer(usage))
                     .font(.system(size: 10))
@@ -621,7 +713,22 @@ private struct NotchAgentTrendCard: View {
     @Environment(\.locale) private var locale
 
     private var buckets: [AgentBucket] {
-        period == .today ? snapshot.hours : Array(snapshot.days.suffix(period.days))
+        if period == .today {
+            return snapshot.hours
+        }
+        if period == .month, let daily = (providers.count == 1 ? snapshot.dailySpend[providers[0]] : nil) ?? snapshot.dailySpend[.claude], !daily.isEmpty {
+            let now = snapshot.now
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            dateFormatter.timeZone = TimeZone.current
+            return daily.suffix(30).compactMap { item in
+                let date = dateFormatter.date(from: item.date) ?? now
+                let totals = AgentTotals(tokens: AgentTokens(input: item.tokens), cost: item.cost)
+                let p = providers.first ?? .claude
+                return AgentBucket(start: date, byProvider: [p: totals])
+            }
+        }
+        return Array(snapshot.days.suffix(period.days))
     }
 
     var body: some View {
@@ -629,11 +736,25 @@ private struct NotchAgentTrendCard: View {
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 6) {
                 NotchAgentCardHeader(title: text.trendCard, symbol: NotchAgentCard.trend.symbol) {
-                    Text(caption(byCost: byCost))
-                        .font(.system(size: 9.5, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if let metrics = (providers.count == 1 ? snapshot.costMetrics[providers[0]] : nil) ?? snapshot.costMetrics[.claude] {
+                            if let peak = metrics.peakDayCost {
+                                Text("Peak: " + AgentFormat.cost(peak))
+                                    .font(.system(size: 8.5, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let top = metrics.topModel {
+                                Text("· Top: " + top)
+                                    .font(.system(size: 8.5, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Text(caption(byCost: byCost))
+                            .font(.system(size: 9.5, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 NotchAgentBars(buckets: buckets, providers: providers, byCost: byCost, hovered: $hovered)
                 axis

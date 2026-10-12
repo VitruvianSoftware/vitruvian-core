@@ -126,6 +126,24 @@ package struct AgentLimitWindow: Equatable, Identifiable {
     package var usedFraction: Double { min(1, max(0, usedPercent / 100)) }
     package var remainingFraction: Double { 1 - usedFraction }
 
+    /// A human-readable display title for this window, matching CodexBar conventions.
+    package var name: String {
+        if id.contains("gemini-5h") { return "Gemini 5-hour" }
+        if id.contains("gemini-weekly") { return "Gemini weekly" }
+        if id.contains("3p-5h") { return "Claude/GPT 5-hour" }
+        if id.contains("3p-weekly") { return "Claude/GPT weekly" }
+        if id.contains("fable") { return "Fable weekly" }
+        if id == "claude.fh" { return "Session" }
+        if id == "claude.sd" { return "Weekly" }
+        if id == "claude.sn" { return "Sonnet weekly" }
+        if id == "claude.so" { return "Opus weekly" }
+        switch kind {
+        case .session: return "Session"
+        case .weekly: return scope.map { "\($0) weekly" } ?? "Weekly"
+        case .other: return scope ?? "Limit"
+        }
+    }
+
     // Spelled out because a memberwise initializer never leaves its module.
     package init(id: String, kind: Kind, minutes: Int?, scope: String?, usedPercent: Double, resetsAt: Date?) {
         self.id = id
@@ -205,3 +223,57 @@ package enum AgentUsageEvent: Equatable {
     case limitReset(provider: AgentProvider, window: AgentLimitWindow)
     case budgetReached(spent: Double, budget: Double)
 }
+
+/// An account's identity and subscription tier badge.
+package struct AgentIdentity: Equatable {
+    package let email: String?
+    package let planTier: String?
+
+    package init(email: String? = nil, planTier: String? = nil) {
+        self.email = email
+        self.planTier = planTier
+    }
+}
+
+/// Detailed token and cost metrics grid matching CodexBar.
+package struct AgentCostMetrics: Equatable {
+    package let todayCost: Double
+    package let thirtyDayCost: Double
+    package let latestTokens: Int
+    package let thirtyDayTokens: Int
+    package let topModel: String?
+    package let peakDayCost: Double?
+
+    package init(
+        todayCost: Double,
+        thirtyDayCost: Double,
+        latestTokens: Int,
+        thirtyDayTokens: Int,
+        topModel: String? = nil,
+        peakDayCost: Double? = nil
+    ) {
+        self.todayCost = todayCost
+        self.thirtyDayCost = thirtyDayCost
+        self.latestTokens = latestTokens
+        self.thirtyDayTokens = thirtyDayTokens
+        self.topModel = topModel
+        self.peakDayCost = peakDayCost
+    }
+}
+
+/// A single day's cost and token usage for the 30-day spend bar chart.
+package struct AgentDailyCost: Equatable, Identifiable {
+    package var id: String { date }
+    package let date: String
+    package let cost: Double
+    package let tokens: Int
+    package let topModel: String?
+
+    package init(date: String, cost: Double, tokens: Int, topModel: String? = nil) {
+        self.date = date
+        self.cost = cost
+        self.tokens = tokens
+        self.topModel = topModel
+    }
+}
+

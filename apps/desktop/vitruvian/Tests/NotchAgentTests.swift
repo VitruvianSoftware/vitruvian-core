@@ -41,6 +41,7 @@ enum NotchAgentTests {
         formatting(suite)
         AgentUsageEventDeliveryTests.run(suite)
         NotchAgentAnimationTests.run { suite.expect($0, $1) }
+        metricParity(suite)
     }
 
     private static func line(_ json: String) -> Data { Data(json.utf8) }
@@ -2651,6 +2652,131 @@ enum NotchAgentTests {
                         && openCodeCardCost(unpriced: 2, cost: 0) == "—"
                         && openCodeCardCost(unpriced: 0, cost: 0) == "$0.00",
                      "OpenCode limits card formats unpriced costs as lower bound or em dash")
+    }
+
+    private static func metricParity(_ suite: TestSuite) {
+        let now = AgentTimestamp.parse("2026-10-12T12:00:00.000Z")!
+
+        // 1. Antigravity Window Names & Parsing
+        let wG5h = AgentLimitWindow(id: "antigravity-quota-summary-gemini-5h", kind: .session, minutes: 300, scope: nil, usedPercent: 15.0, resetsAt: now.addingTimeInterval(2.5 * 3600))
+        let wGWeekly = AgentLimitWindow(id: "antigravity-quota-summary-gemini-weekly", kind: .weekly, minutes: 10080, scope: nil, usedPercent: 24.0, resetsAt: now.addingTimeInterval(33 * 3600))
+        let w3p5h = AgentLimitWindow(id: "antigravity-quota-summary-3p-5h", kind: .session, minutes: 300, scope: "Claude/GPT", usedPercent: 8.0, resetsAt: now.addingTimeInterval(2 * 3600))
+        let w3pWeekly = AgentLimitWindow(id: "antigravity-quota-summary-3p-weekly", kind: .weekly, minutes: 10080, scope: "Claude/GPT", usedPercent: 4.0, resetsAt: now.addingTimeInterval(140 * 3600))
+
+        suite.expect(wG5h.name == "Gemini 5-hour", "Gemini 5-hour window name matches CodexBar")
+        suite.expect(wGWeekly.name == "Gemini weekly", "Gemini weekly window name matches CodexBar")
+        suite.expect(w3p5h.name == "Claude/GPT 5-hour", "Claude/GPT 5-hour window name matches CodexBar")
+        suite.expect(w3pWeekly.name == "Claude/GPT weekly", "Claude/GPT weekly window name matches CodexBar")
+
+        let quotaPayload = """
+        {
+          "response": {
+            "groups": [
+              {
+                "displayName": "Claude/GPT",
+                "buckets": [
+                  {"id": "3p-weekly", "remainingFraction": 0.96, "resetTime": "2026-10-19T15:57:37Z"},
+                  {"id": "3p-5h", "remainingFraction": 0.92, "resetTime": "2026-10-12T21:17:40Z"}
+                ]
+              },
+              {
+                "displayName": "Gemini",
+                "buckets": [
+                  {"id": "gemini-weekly", "remainingFraction": 0.76, "resetTime": "2026-10-14T04:28:57Z"},
+                  {"id": "gemini-5h", "remainingFraction": 0.85, "resetTime": "2026-10-12T22:11:38Z"}
+                ]
+              }
+            ]
+          }
+        }
+        """
+        let parsedAgLimits = AgentAntigravityReader.parseQuotaResponse(Data(quotaPayload.utf8), observed: now)
+        suite.expect(parsedAgLimits != nil && parsedAgLimits!.windows.count == 4, "Antigravity reader parses all 4 quota buckets")
+        if let agWindows = parsedAgLimits?.windows {
+            suite.expect(agWindows[0].name == "Gemini 5-hour"
+                         && agWindows[1].name == "Gemini weekly"
+                         && agWindows[2].name == "Claude/GPT 5-hour"
+                         && agWindows[3].name == "Claude/GPT weekly",
+                         "Antigravity windows are sorted in canonical display order")
+        }
+
+        // 2. Claude Window Names & Scope
+        let wClaudeSession = AgentLimitWindow(id: "claude.fh", kind: .session, minutes: 300, scope: nil, usedPercent: 7.0, resetsAt: now.addingTimeInterval(2 * 3600))
+        let wClaudeWeekly = AgentLimitWindow(id: "claude.sd", kind: .weekly, minutes: 10080, scope: nil, usedPercent: 50.0, resetsAt: now.addingTimeInterval(60 * 3600))
+        let wClaudeFable = AgentLimitWindow(id: "claude-weekly-scoped-fable", kind: .weekly, minutes: 10080, scope: "Fable", usedPercent: 5.0, resetsAt: now.addingTimeInterval(60 * 3600))
+
+        suite.expect(wClaudeSession.name == "Session", "Claude session window name is Session")
+        suite.expect(wClaudeWeekly.name == "Weekly", "Claude weekly window name is Weekly")
+        suite.expect(wClaudeFable.name == "Fable weekly", "Claude Fable window name is Fable weekly")
+
+        // 3. Pacing & Reserve Forecasting Math
+        // Window length = 300 min (5h = 18000s). Resets in 2.5h (9000s) -> elapsed = 9000s = 50% elapsed.
+        // Expected used = 50.0%.
+        let halfWindowResets = now.addingTimeInterval(2.5 * 3600)
+        let wUnderPace = AgentLimitWindow(id: "test.session", kind: .session, minutes: 300, scope: nil, usedPercent: 20.0, resetsAt: halfWindowResets)
+        let paceUnder = AgentLimitSupport.pace(for: wUnderPace, now: now)
+        suite.expect(paceUnder != nil, "Pace calculation succeeds")
+        if let p = paceUnder {
+            suite.expect(abs(p.expectedUsedPercent - 50.0) < 0.1, "Expected used percent is 50%")
+            suite.expect(abs(p.reservePercent - 30.0) < 0.1, "Reserve percent is 30%")
+            suite.expect(p.reserveText == "30% in reserve", "Reserve text reads 30% in reserve")
+            suite.expect(p.willLastToReset == true, "Under pace lasts until reset")
+            suite.expect(p.summary.contains("30% in reserve") && p.summary.contains("Lasts until reset"),
+                         "Pace summary combines reserve and runway feasibility")
+        }
+
+        let wOverPace = AgentLimitWindow(id: "test.session", kind: .session, minutes: 300, scope: nil, usedPercent: 80.0, resetsAt: halfWindowResets)
+        let paceOver = AgentLimitSupport.pace(for: wOverPace, now: now)
+        if let p = paceOver {
+            suite.expect(abs(p.reservePercent - -30.0) < 0.1, "Deficit percent is -30%")
+            suite.expect(p.reserveText == "30% in deficit", "Reserve text reads 30% in deficit")
+            suite.expect(p.willLastToReset == false, "Over pace will exhaust early")
+            suite.expect(p.summary.contains("30% in deficit") && p.summary.contains("Will exhaust early"),
+                         "Deficit summary combines deficit and exhaust warning")
+        }
+
+        let wOnPace = AgentLimitWindow(id: "test.session", kind: .session, minutes: 300, scope: nil, usedPercent: 51.0, resetsAt: halfWindowResets)
+        let paceOn = AgentLimitSupport.pace(for: wOnPace, now: now)
+        if let p = paceOn {
+            suite.expect(p.reserveText == "On pace", "Delta within 2% reads On pace")
+        }
+
+        // Weekly forecasting: resets in 33 hours (118800s) -> 33 / 5 = 6 windows until reset
+        let weekly33h = now.addingTimeInterval(33 * 3600)
+        let wWeekly = AgentLimitWindow(id: "test.weekly", kind: .weekly, minutes: 10080, scope: nil, usedPercent: 24.0, resetsAt: weekly33h)
+        let paceWeekly = AgentLimitSupport.pace(for: wWeekly, now: now)
+        if let pw = paceWeekly {
+            suite.expect(pw.windowsUntilReset == 6, "33 hours calculates 6 windows until reset")
+            // Remaining 76.0% / 8.0 = 9.5 quotas
+            suite.expect(pw.sessionQuotasLeft != nil && abs(pw.sessionQuotasLeft! - 9.5) < 0.1, "76% remaining yields 9.5 session quotas")
+            suite.expect(pw.summary.contains("Est. 9.5 session quotas left") && pw.summary.contains("6 windows until reset"),
+                         "Weekly summary contains session quotas and window count")
+        }
+
+        // 4. Identity Badges
+        let agIdentity = AgentAntigravityReader.probeIdentity()
+        suite.expect(agIdentity.email == "james.nguyen@gmail.com" && agIdentity.planTier == "Google AI Ultra",
+                     "Antigravity identity badge matches Google AI Ultra")
+        let claudeIdentity = AgentClaudeAppUsage.readIdentity()
+        suite.expect(claudeIdentity.email == "james.nguyen@gmail.com" && claudeIdentity.planTier == "Max 20x",
+                     "Claude identity badge matches Max 20x")
+
+        // 5. Cost Metrics Grid
+        let costMetrics = AgentCostMetrics(
+            todayCost: 114.65,
+            thirtyDayCost: 2907.11,
+            latestTokens: 269_000_000,
+            thirtyDayTokens: 6_000_000_000,
+            topModel: "claude-opus-5-5",
+            peakDayCost: 527.0
+        )
+        suite.expect(costMetrics.todayCost == 114.65
+                     && costMetrics.thirtyDayCost == 2907.11
+                     && costMetrics.latestTokens == 269_000_000
+                     && costMetrics.thirtyDayTokens == 6_000_000_000
+                     && costMetrics.topModel == "claude-opus-5-5"
+                     && costMetrics.peakDayCost == 527.0,
+                     "Cost metrics grid holds all required values")
     }
 }
 
