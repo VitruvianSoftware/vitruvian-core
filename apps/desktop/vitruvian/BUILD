@@ -618,14 +618,20 @@ sh_test(
         "build.sh",
         ":tool_fixture",
         ":unit_tests_bin",
+        "//packages/vitruvian-sdk:folder_examples",
     ] + glob([
         "Resources/**",
         "Sources/**",
         "Tests/**",
         "Tools/**",
     ]),
-    # Where ToolProcessTests finds the tool it starts, below the runfiles.
-    env = {"VITRUVIAN_TOOL_FIXTURE": "$(rootpath :tool_fixture)"},
+    # Where ToolProcessTests finds the tool it starts, and where
+    # ToolFolderExamplesTests finds the folders the SDK's command-line tool is
+    # held to as well, below the runfiles.
+    env = {
+        "VITRUVIAN_FOLDER_EXAMPLES": "$(rootpath //packages/vitruvian-sdk:folder_examples)",
+        "VITRUVIAN_TOOL_FIXTURE": "$(rootpath :tool_fixture)",
+    },
     # The tests' UserDefaults suites land in the real ~/Library/Preferences;
     # the sandbox would block sweeping them afterwards.
     tags = [
