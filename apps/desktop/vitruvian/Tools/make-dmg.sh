@@ -81,6 +81,9 @@ if [[ $created -ne 1 ]]; then
 fi
 ATTACH_OUTPUT="$(hdiutil attach "$RW" -nobrowse)"
 MOUNT="$(printf '%s\n' "$ATTACH_OUTPUT" | awk '/\/Volumes\// {print substr($0, index($0, "/Volumes/")); exit}')"
+# The whole-disk device node (/dev/diskN). It still detaches the image after
+# the mount folder is gone, which a detach by mount path cannot.
+DEVICE="$(printf '%s\n' "$ATTACH_OUTPUT" | awk '/^\/dev\/disk[0-9]+[[:space:]]/ {print $1; exit}')"
 if [[ -z "$MOUNT" || ! -d "$MOUNT" ]]; then
     echo "✗ Could not find mounted volume in hdiutil output" >&2
     printf '%s\n' "$ATTACH_OUTPUT" >&2
@@ -161,10 +164,25 @@ MOUNT=""
 
 # The mount point can vanish while the image is still attached, and converting
 # an attached image fails. Wait until the image itself is released.
-for _ in $(seq 1 15); do
+for _ in $(seq 1 5); do
     hdiutil info | grep -qF "$RW" || break
     sleep 2
 done
+# Still attached with the mount folder gone: a detach by path has nothing to
+# act on, so release the image by its device node, forced.
+if hdiutil info | grep -qF "$RW" && [[ -n "$DEVICE" ]]; then
+    for attempt in 1 2 3 4 5; do
+        hdiutil detach "$DEVICE" -force || true
+        hdiutil info | grep -qF "$RW" || break
+        echo "  image still attached after forced detach (attempt $attempt of 5), retrying…" >&2
+        sleep 3
+    done
+fi
+if hdiutil info | grep -qF "$RW"; then
+    echo "✗ The disk image is still attached and cannot be compressed" >&2
+    hdiutil info >&2 || true
+    exit 1
+fi
 
 echo "▸ Compressing…"
 mkdir -p "$(dirname "$OUT")"
