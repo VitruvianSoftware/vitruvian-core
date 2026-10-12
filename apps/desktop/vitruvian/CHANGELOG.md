@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.42.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.42.0...vitruvian-v3.42.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **desktop:** resolve metric parity edge cases, remove hardcoded data, and prevent queue stalling ([#3141](https://github.com/VitruvianSoftware/vitruvian-core/issues/3141)) ([d2ca0fa](https://github.com/VitruvianSoftware/vitruvian-core/commit/d2ca0fa10b2b82c0fa3b1646f858a6ac587d6c60))
+
 ## [3.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.41.2...vitruvian-v3.42.0) (2026-10-12)
 
 
