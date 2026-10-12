@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.20.2...nexus-agent-v1.21.0) (2026-10-12)
+
+
+### Features
+
+* **site:** list NexusAgent on the AI page ([#3133](https://github.com/VitruvianSoftware/vitruvian-core/issues/3133)) ([9a1aadd](https://github.com/VitruvianSoftware/vitruvian-core/commit/9a1aadd41e09ad930129d96cbf83641e70335738))
+
 ## [1.20.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.20.1...nexus-agent-v1.20.2) (2026-10-10)
 
 
