@@ -3148,6 +3148,7 @@ package final class NotchService: ObservableObject {
                       customHeight: defaults[Preferences.notchCustomHeight],
                       cameraFit: NotchCameraFit.current(in: defaults), silhouette: NotchSilhouette.current(in: defaults),
                       capsuleFit: NotchCapsuleFit.current(in: defaults),
+                      hideMenuBarGap: defaults[Preferences.notchHideMenuBarGap],
                       outline: defaults[Preferences.notchOutlineEnabled],
                       barEdge: 1 / max(1, screen.backingScale))
     }

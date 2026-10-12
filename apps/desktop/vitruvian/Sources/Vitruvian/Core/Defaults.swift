@@ -460,6 +460,7 @@ package enum Defaults {
         DefaultsKey.notchControlOrder: Preferences.notchControlOrder.defaultValue,
         DefaultsKey.notchSize: Preferences.notchSize.defaultValue,
         DefaultsKey.notchOutlineEnabled: Preferences.notchOutlineEnabled.defaultValue,
+        DefaultsKey.notchHideMenuBarGap: Preferences.notchHideMenuBarGap.defaultValue,
         DefaultsKey.notchCustomWidth: Preferences.notchCustomWidth.defaultValue,
         DefaultsKey.notchCustomHeight: Preferences.notchCustomHeight.defaultValue,
         DefaultsKey.notchCameraFitWidth: Preferences.notchCameraFitWidth.defaultValue,

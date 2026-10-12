@@ -815,6 +815,7 @@ package enum DefaultsKey {
     package static let notchControlOrder = "notchControlOrder"
     package static let notchSize = "notchSize"
     package static let notchOutlineEnabled = "notchOutlineEnabled"
+    package static let notchHideMenuBarGap = "notchHideMenuBarGap"
     package static let notchCustomWidth = "notchCustomWidth"
     package static let notchCustomHeight = "notchCustomHeight"
     // Fits the island to one Mac's camera housing; never backed up.
