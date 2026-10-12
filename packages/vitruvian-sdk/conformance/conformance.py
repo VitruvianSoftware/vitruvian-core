@@ -34,7 +34,8 @@ Five things are checked, in order, and the first failure stops the run:
   unknown     a command it does not have is answered with a failure
   refusals    the command is run again with every request the tool makes
               refused, and is still answered
-  shutdown    after `shutdown` and the end of its input, the tool exits with 0
+  shutdown    after `shutdown` and the end of its input, the tool exits with 0,
+              and what it wrote on the way out is messages too
 
 Every line the tool writes must be one JSON-RPC 2.0 message, at most 1 MB,
 and a message version 1 has must carry the params version 1 gives it.
@@ -208,14 +209,23 @@ class Link:
         except OSError:
             raise Failure("the tool closed its input") from None
 
-    def receive(self, deadline, seconds):
-        """The tool's next message, before `deadline`, which is `seconds` long."""
+    def receive(self, deadline, seconds, leaving=False):
+        """The tool's next message, before `deadline`, which is `seconds` long.
+
+        With `leaving`, the tool has exited and this reads what it wrote on
+        the way out: None at the end of that, or when the time is up.
+        """
         while True:
             try:
                 line = self.lines.get(timeout=max(0.0, deadline - time.monotonic()))
             except queue.Empty:
+                if leaving:
+                    # A program the tool started may hold its output open.
+                    return None
                 raise Failure(f"no answer within {seconds} seconds") from None
             if not line:
+                if leaving:
+                    return None
                 raise Failure("the tool exited")
             if not line.endswith(b"\n"):
                 raise Failure("a line longer than 1 MB, or one cut short")
@@ -377,7 +387,32 @@ class Run:
             ) from None
         if status != 0:
             raise Failure(f"exited with {status}")
+        more = self.last_words()
+        if more:
+            return f"exited with 0, after {more} more message" + (
+                "s" if more > 1 else ""
+            )
         return "exited with 0"
+
+    def last_words(self):
+        """Reads what the tool wrote after its last answer, to the end.
+
+        The app reads these lines too, so each must be a message that carries
+        its own params. Nothing is waiting for an answer by now, so an answer
+        is a mistake. A request is not answered: the link is closing.
+        """
+        count = 0
+        deadline = time.monotonic() + EXIT_SECONDS
+        while True:
+            message = self.link.receive(deadline, EXIT_SECONDS, leaving=True)
+            if message is None:
+                return count
+            count += 1
+            if kind_of(message) in ("result", "failure"):
+                raise Failure(
+                    f"an answer to a request that was not waiting: {message!r}"
+                )
+            check_params(message)
 
 
 def main(arguments=None):

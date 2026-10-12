@@ -58,7 +58,7 @@ The first failure stops the run.
 | a command | Your first command is run and answered. |
 | unknown | A command you do not have is answered with a failure. |
 | refusals | The command is run again with every request you make refused, and is still answered. |
-| shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. |
+| shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. What it wrote on the way out is read to the end, and each line must be a message. |
 
 It exits with 0 when all five pass. Against the reference tool it prints:
 
@@ -89,8 +89,6 @@ From this repository the same script is
 
 Passing is not proof that the app will accept everything your tool does.
 
-- **It does not read what your tool writes after its last answer.** A bad
-  notice sent just before `shutdown` is not seen.
 - **The params are checked against a table written by hand in the script**,
   not against the schemas. The schemas are the source of truth; if the two
   ever disagree, the schemas are right.
@@ -98,8 +96,9 @@ Passing is not proof that the app will accept everything your tool does.
   `protocol/manifest.schema.json` is what a manifest must satisfy.
 - **It runs your first command only**, and has no check for a tool that
   floods the app or hangs outside an answer.
-- **It has been proven against one tool**, the reference tool, and against
-  ten broken copies of it, each caught by the check meant for it.
+- **It has been proven against** the reference tool, the three samples, and
+  twelve broken copies of the reference tool, each caught by the check meant
+  for it.
 
 ## Working on the package
 

@@ -70,6 +70,16 @@ for line in sys.stdin:
             send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
     elif method == "shutdown" and how == "exits with 3":
         sys.exit(3)
+    elif method == "shutdown" and how == "parts badly":
+        send({"jsonrpc": "2.0", "method": "commands/state", "params": {"runnable": "hello"}})
+        sys.exit(0)
+    elif method == "shutdown" and how == "parts well":
+        send({"jsonrpc": "2.0", "method": "log", "params": {"message": "going"}})
+        sys.exit(0)
+    elif method == "shutdown" and how == "parts mid-line":
+        sys.stdout.write('{"jsonrpc": "2.0", "method": "log"')
+        sys.stdout.flush()
+        sys.exit(0)
 if how == "will not exit":
     time.sleep(30)
 """
@@ -91,6 +101,8 @@ BROKEN = {
     "runs anything": "NOT OK   unknown: a command the tool does not have was answered as done",
     "exits with 3": "NOT OK   shutdown: exited with 3",
     "will not exit": "NOT OK   shutdown: still running 2 seconds after shutdown",
+    "parts badly": "NOT OK   shutdown: commands/state with params that are not its own",
+    "parts mid-line": "NOT OK   shutdown: a line longer than 1 MB, or one cut short",
 }
 
 
@@ -151,6 +163,12 @@ def main():
         status, printed = check(folder)
         if status != 0 or "nothing was refused" not in printed:
             problems.append(f"a tool that only answers does not pass:\n{printed}")
+        os.environ["BROKEN_HOW"] = "parts well"
+        status, printed = check(folder)
+        if status != 0 or "exited with 0, after 1 more message" not in printed:
+            problems.append(
+                f"a tool that says a last good word does not pass:\n{printed}"
+            )
 
     for problem in problems:
         print(problem, file=sys.stderr)
