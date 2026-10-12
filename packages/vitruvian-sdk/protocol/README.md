@@ -10,7 +10,7 @@ written to match it, and tests fail when they stop matching.
 | `manifest.schema.json` | `vitruvian-tool.json`, the file at the top of a tool's folder |
 | `messages.schema.json` | one message, and what each message carries |
 | `methods.json` | every message: who sends it, whether it is answered, what it needs |
-| `examples/` | manifests and messages, valid and not, that both sides are tested against |
+| `examples/` | manifests and messages, valid and not, that both sides are tested against; and `folders.json`, folders the app and `vitruvian-tool validate` must judge alike |
 
 Every field has a description in its schema. This page is the overview.
 

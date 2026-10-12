@@ -12,35 +12,72 @@ Vitruvian has. The app does not limit or check what it does.
 
 **The app adds a tool from a folder**, in Settings, under Features, in the
 section "Tools from outside". The person picks the folder and agrees on one
-sheet. This package is being built in stages, and the first is done. What is
-here today:
+sheet.
+
+**To write a tool, read [`docs/writing-a-tool.md`](docs/writing-a-tool.md).**
+It gets you from nothing to a working tool in ten minutes, and then covers
+the manifest, every message, the limits, and how to find out why a tool does
+not work.
 
 | Folder | What it is |
 |---|---|
-| [`protocol/`](protocol/README.md) | The protocol, version 1: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. Start here. |
-| `Sources/VitruvianToolProtocol` | The same protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
-| `conformance/` | A script that plays the app's side to your tool, and the smallest tool that passes it. |
+| [`docs/`](docs/writing-a-tool.md) | The guide for a tool's author. Its examples are tested. |
+| [`protocol/`](protocol/README.md) | The protocol, version 1: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
+| `samples/` | Three tools: `hello-python`, in plain Python with nothing else; `hello-swift`, written with the kit; `front-window`, which reads the title of the window in front by asking macOS itself. |
+| `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands, handle them, call the app. |
+| `Sources/vitruvian-tool` | A command: `init` starts a new tool from a sample, `validate` reads a folder the way the app will, `run` plays the app's side in a terminal. `Sources/VitruvianToolCLI` is what it is made of. |
+| `Sources/VitruvianToolProtocol` | The protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
+| `conformance/` | A script that plays the app's side to your tool in five scripted checks, and the smallest tool that passes it. |
 
-Not yet:
+Not here: publishing. The package is used from this repository and nowhere
+else. It is in no registry, and it has no release, no mirror and no Homebrew
+formula.
 
-- A Swift library to write a tool with.
-- A `vitruvian-tool` command.
-- Samples, beyond the one reference tool.
-- Publishing. The package is used from this repository and nowhere else.
+## The command
 
-## A tool, in short
-
-A folder with a manifest and a program:
-
+```sh
+bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool -- init ~/my-tool --id com.you.my-tool --name "My tool" --publisher "You"
+bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool -- validate ~/my-tool
+bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool -- run ~/my-tool
 ```
-reference-tool/
-  vitruvian-tool.json
-  bin/reference_tool.py
+
+- **`init`** writes a new tool into a folder that is not there yet, or is
+  empty, and nowhere else. It refuses a path that is a symbolic link, writes
+  over nothing, and writes nothing when the app would refuse the id. `--template swift --sdk packages/vitruvian-sdk`
+  writes a Swift package that uses the kit.
+- **`validate`** reads a folder the way the app does before it offers to add
+  a tool, and says what the app would refuse it for. It starts nothing. The
+  manifest's rules are the code the app itself links. The folder's rules (the program is
+  in the folder and can be run, macOS has not quarantined it, the folder
+  holds at most 256 MB and 10,000 things) are written again here, and
+  `protocol/examples/folders.json` is tested from both sides to keep the two
+  alike: 22 folders today. It cannot promise the rest: an older app may not
+  know a service this one does, and the app refuses an id another tool
+  already has, and a folder inside its own support folder.
+- **`run`** starts the tool and prints what it asks for. It answers every
+  request as done and does nothing on your Mac: nothing is shown, opened,
+  copied, pasted, pressed or ended. No flag changes that. Every wait has a
+  limit but the wait for you to type, and Control-C ends the tool. It is one
+  run, not the app, and says so in its first line: every service the manifest
+  lists is granted, and there is no idle stop, no restart after a crash and no
+  flood count.
+
+## The samples
+
+`samples/hello-python` is a tool as it stands: add that folder to the app. A
+Swift sample has to be built first:
+
+```sh
+bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders
 ```
 
-`conformance/reference-tool` is exactly that: one Python file of under 100
-lines, with no dependencies. Read it beside
-[`protocol/README.md`](protocol/README.md).
+That leaves `bazel-bin/packages/vitruvian-sdk/built/hello-swift` and
+`built/front-window`, each with its manifest and `bin/tool`. Those are the
+folders to add.
+
+`front-window` needs the Accessibility permission of whoever starts it.
+Started by Vitruvian, it has Vitruvian's. Nothing in this package asks for a
+permission or grants one.
 
 ## Checking a tool
 
@@ -103,22 +140,36 @@ Passing is not proof that the app will accept everything your tool does.
 ## Working on the package
 
 ```sh
-bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests
-bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test
+bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:init_test
+bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test
 ```
 
-The first needs a Mac. It checks the Swift types against the example files.
-The second checks the same example files against the schemas, and the
-conformance script against the reference tool. Together they keep the schemas
-and the Swift types from drifting apart: see "Changing the protocol" in
+The first line needs a Mac: the Swift types against the example files, the
+kit against a link made of two files, the command against folders and real
+processes, the two Swift samples against the conformance script, and what
+`init` writes. The second runs anywhere: the example files against the
+schemas, the conformance script against the reference tool, the Python sample,
+the templates `init` holds against the samples they are copies of, and every
+example in the guide. Together the first two tests keep the schemas and the
+Swift types from drifting apart: see "Changing the protocol" in
 [`protocol/README.md`](protocol/README.md).
+
+After changing `samples/hello-python` or `samples/hello-swift`, run
+`bazel run //packages/vitruvian-sdk:sync-templates`: `init` holds a copy of
+each, and a test fails until the copy is the sample again.
+
+`protocol/examples/folders.json` is read by this package's tests and by the
+app's (`ToolFolderExamplesTests`). A rule about a tool's folder that changes
+in the app changes there, and in `Sources/VitruvianToolCLI/FolderCheck.swift`.
 
 On a Mac, building everything here also needs the flag:
 `bazel build --config=macos-app //packages/vitruvian-sdk/...`.
 
 `BUILD` and `Package.swift` describe the same targets and must be changed
-together. CI builds with Bazel only. `Package.swift` was built once by hand
-(`swift build`, Swift 6.4, 2026-10-10); its tests have not been run that way.
+together. CI builds with Bazel only. `Package.swift` was built by hand
+(`swift build`, Swift 6.4, 2026-10-12), and a tool started with
+`init --template swift` was built against it, validated, run and put through
+the conformance script. Its tests have not been run with `swift test`.
 
 After changing a file under `Sources/VitruvianToolProtocol`, the Vitruvian app
 must take the change too:

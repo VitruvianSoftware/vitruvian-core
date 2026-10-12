@@ -30,6 +30,7 @@
 # gazelle:exclude Sources
 # gazelle:exclude Tests
 # gazelle:exclude conformance
+# gazelle:exclude docs
 # gazelle:exclude protocol
 # gazelle:exclude samples
 #
@@ -345,6 +346,24 @@ py_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# The guide's examples: every message and manifest in it against the schemas,
+# every piece of code in it against the sample it is taken from, every
+# command in it against what exists, and what it quotes the command as saying
+# against the command's own words. Not `manual` and not tied to macOS.
+py_test(
+    name = "guide_test",
+    size = "small",
+    srcs = ["docs/guide_test.py"],
+    data = PROTOCOL_FILES + glob(["samples/**"]) + [
+        "BUILD",
+        "Sources/VitruvianToolCLI/Words.swift",
+        "Sources/VitruvianToolKit/Tool.swift",
+        "docs/writing-a-tool.md",
+    ],
+    main = "docs/guide_test.py",
+    deps = ["@pip//jsonschema"],
+)
+
 pipeline_unit(
     name = "vitruvian-sdk",
     persona = "platform",
@@ -354,6 +373,7 @@ pipeline_unit(
         ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
         ":conformance_test",
+        ":guide_test",
         ":init_test",
         ":protocol_examples_test",
         ":samples_test",

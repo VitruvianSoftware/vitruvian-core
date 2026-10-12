@@ -1,0 +1,511 @@
+# Writing a tool for Vitruvian
+
+This is the guide for someone who wants to write a tool. It covers what a
+tool is, how to write one in ten minutes, the manifest, every message, the
+limits, how to add a tool to the app, and how to find out why one does not
+work.
+
+The exact statement of the protocol is [`../protocol/`](../protocol/README.md).
+Where this page and the schemas there disagree, the schemas are right.
+
+## What a tool is
+
+A tool is a folder with two things in it: a file called `vitruvian-tool.json`
+that says what the tool is, and a program. The Vitruvian app starts the
+program when it is needed and talks to it in JSON, one message per line, over
+the program's standard input and output. A tool adds commands to the app: to
+the command bar, the radial menu, the Quick panel, and as shortcuts. It can be
+written in any language.
+
+**A tool can do anything Vitruvian can.** The app starts it as an ordinary
+program. It runs as the person, with every permission Vitruvian has: if
+Vitruvian may read the screen or control other apps, so may the tool, with no
+prompt of its own. It can read the person's files and use the network. The app
+does not limit or check what it does.
+
+**The person agrees once.** They add a tool from a folder, by hand, after
+reading one sheet that says exactly this. Nothing asks again, for any
+command or any service. That is why there is no store of tools.
+
+## Your first tool, in ten minutes
+
+You need this repository and a Mac. Every command below is run from the
+repository's root. `vitruvian-tool` stands for:
+
+```sh
+bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool --
+```
+
+### In Python, with nothing
+
+```sh
+vitruvian-tool init ~/my-tool --id com.you.my-tool --name "My tool" --publisher "You"
+vitruvian-tool validate ~/my-tool
+vitruvian-tool run ~/my-tool
+```
+
+`init` writes two files: the manifest, and `bin/tool.py`, a copy of the sample
+in [`../samples/hello-python`](../samples/hello-python). It writes only in the
+folder you name, and only when that folder is not there yet or is empty.
+`validate` reads the folder the way the app will. `run` starts the tool and
+plays the app's side in your terminal: type `hello` and Return, then `quit`.
+
+`run` is not the app. When it starts a tool it prints one line, after the
+word `note`, that says where it differs:
+
+```text said=Sources/VitruvianToolCLI/Words.swift
+This is not the app. Every service the manifest lists is granted, and nothing real is done. There is no idle stop, no restart after a crash and no flood count.
+```
+
+The first line of `bin/tool.py` is `#!/usr/bin/env python3`. In a terminal
+that finds your Python. The app looks in fewer places: see
+[What a tool must not assume](#what-a-tool-must-not-assume) before you add
+the tool to the app.
+
+The whole of the protocol, for a tool that asks the app for something, is this
+function and the loop that calls it:
+
+```python file=samples/hello-python/bin/tool.py
+def ask(method, params):
+    """Asks the app for something, and waits for its answer."""
+    global asked
+    asked += 1
+    send({"jsonrpc": "2.0", "id": asked, "method": method, "params": params})
+    while True:
+        message = read()
+        if message is None or message.get("method") == "shutdown":
+            sys.exit(0)
+        if "method" not in message and message.get("id") == asked:
+            if "error" in message:
+                raise Refused(message["error"])
+            return message["result"]
+        kept.append(message)
+```
+
+A command is then a few lines:
+
+```python file=samples/hello-python/bin/tool.py
+def copy_time():
+    now = datetime.datetime.now().strftime("%H:%M:%S")
+    ask("clipboard/writeText", {"text": now})
+    ask("notify/hud", {"icon": "clock", "message": "Copied " + now})
+```
+
+To add a command: write its function, add it to `COMMANDS`, and add it to
+`contributes.commands` in the manifest. If it calls a new service of the app,
+add the service to `uses`.
+
+### In Swift, with the kit
+
+```sh
+vitruvian-tool init ~/my-swift-tool --id com.you.my-swift-tool --name "My Swift tool" --publisher "You" --template swift --sdk packages/vitruvian-sdk
+~/my-swift-tool/build.sh
+vitruvian-tool validate ~/my-swift-tool/tool
+vitruvian-tool run ~/my-swift-tool/tool
+```
+
+This writes a Swift package and, beside it, `tool/`: the folder you add to the
+app. `build.sh` builds the package and copies the program into `tool/bin/`.
+The package names the kit by the path you gave in `--sdk`, because the kit is
+published nowhere yet.
+
+The whole tool is one file:
+
+```swift file=samples/hello-swift/main.swift
+import VitruvianToolKit
+
+let tool = Tool(version: "0.1.0")
+
+tool.command("hello") { app in
+    try app.showMessage("Hello from a Swift tool", icon: "hand.wave")
+}
+
+tool.command("count") { app in
+    let next = (try app.value("count").numberValue ?? 0) + 1
+    try app.setValue(.number(next), for: "count")
+    try app.showMessage("Counted to \(Int(next))", icon: "number")
+}
+
+tool.run()
+```
+
+What the kit gives a handler:
+
+| Call on `app` | Message | In `uses` |
+|---|---|---|
+| `showMessage(_:icon:)` | `notify/hud` | `notify` |
+| `beep()` | `notify/beep` | `notify` |
+| `open(_:)` | `open/url` | `open` |
+| `clipboardText()` | `clipboard/readText` | `clipboard.read` |
+| `setClipboardText(_:)` | `clipboard/writeText` | `clipboard.write` |
+| `paste(_:)` | `keystrokes/paste` | `keystrokes` |
+| `pressMenuItem(_:)` | `keystrokes/pressMenuItem` | `keystrokes` |
+| `endProcess(pid:name:force:)` | `processes/terminate` | `processes` |
+| `value(_:)`, `setValue(_:for:)` | `storage/get`, `storage/set` | `storage` |
+| `setRunnable(_:)` | `commands/state` | |
+| `log(_:)` | `log` | |
+| `language`, `dataFolder` | what `initialize` said | |
+
+Three rules of the kit:
+
+- **A call can be refused.** It then throws the failure the app answered
+  with, an `RPCErrorObject`. If your handler lets it through, the command is
+  answered as refused. Throw `CommandRefused("why")` to refuse a command
+  yourself.
+- **The kit works on one thread**, the one that calls `run()`. A handler runs
+  on it, and a call to the app waits on it for the answer, ten seconds at
+  most. Do not use `tool` or `app` from another thread.
+- **Never `print`.** Standard output is the link. Write to standard error,
+  or call `app.log`.
+
+### A tool that does not ask the app
+
+A tool may do anything itself. [`../samples/front-window`](../samples/front-window)
+reads the title of the window in front by asking macOS, through
+Accessibility. The protocol has no message for that, and the tool needs none:
+
+```swift file=samples/front-window/main.swift
+func frontWindowTitle() throws -> String {
+    guard let front = frontApp() else { throw refused("no app is in front") }
+    AXUIElementSetMessagingTimeout(front, 1)
+    guard let window = element(attribute(front, kAXFocusedWindowAttribute)),
+          let title = attribute(window, kAXTitleAttribute) as? String
+    else { throw refused("the app in front has no window with a title") }
+    return title
+}
+```
+
+Started by Vitruvian, it works once Vitruvian has Accessibility, with no
+prompt of its own. Started from a terminal that lacks Accessibility, it
+refuses its command and says why.
+
+## The manifest, field by field
+
+```json manifest
+{
+  "id": "com.acme.deploys",
+  "name": { "en": "Deploys", "fr": "Déploiements" },
+  "description": { "en": "Copies the address of your latest deploy." },
+  "version": "1.2.0",
+  "protocol": "1",
+  "publisher": "Acme",
+  "license": "MIT",
+  "icon": "shippingbox",
+  "uses": ["clipboard.write", "notify", "storage"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "copyLatest",
+        "title": { "en": "Copy latest deploy" },
+        "icon": "link",
+        "surfaces": ["commandBar", "radial", "shortcut"]
+      }
+    ]
+  },
+  "preferences": [{ "id": "project", "type": "string", "default": "" }],
+  "activation": ["onCommand"],
+  "runtime": { "kind": "external", "exec": "bin/deploys" }
+}
+```
+
+| Field | Needed | What it is |
+|---|---|---|
+| `id` | yes | The tool's name to the app. Letters, digits, dots, hyphens and underscores, at most 128 characters, **with a dot**: `com.you.tool`. An id with no dot is one of the app's own tools and is refused. |
+| `name` | yes | What the person sees. A map from a language tag to text. `en` is required. |
+| `description` | no | One sentence, shown on the sheet. A map of languages, like `name`. |
+| `version` | yes | Your own version, as text. Shown on the sheet, and again when the tool is updated. |
+| `protocol` | yes | `"1"`. |
+| `publisher` | yes | Who made it. Shown beside the name. |
+| `license` | no | Text. Not shown yet. |
+| `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
+| `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
+| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. |
+| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. The app has no screen for them yet: only the tool reads and writes them, with `storage/get` and `storage/set`. |
+| `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
+| `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
+
+- **Text in several languages** is looked up by the app's language: its own
+  entry (`pt-BR`), else the language without the region (`pt`), else English.
+  The app shows your words as you wrote them and never translates them.
+- **A field the app does not know is ignored.** A service, a surface, a
+  preference type or an activation it does not know refuses the whole tool,
+  and the reason names it.
+- **The file is at most 65,536 bytes.**
+
+## Every message
+
+A message is one line of JSON-RPC 2.0. A **request** has an `id` and is
+answered, with a result or a failure that carries the same `id`. A **notice**
+has no `id` and is not answered. A request that was simply done is answered
+with `{}`.
+
+### What the app sends
+
+`initialize` is always first. Answer it before you send anything else. You
+have ten seconds; for everything after it, two.
+
+```json message
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys"}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
+```
+
+`command/run` runs a command, named by the id the manifest gives it. Answer
+`{}` when it ran, or failure -32010 when you will not run it.
+
+```json message
+{"jsonrpc":"2.0","id":2,"method":"command/run","params":{"command":"copyLatest"}}
+{"jsonrpc":"2.0","id":2,"result":{}}
+```
+
+```json message
+{"jsonrpc":"2.0","id":3,"method":"command/run","params":{"command":"copyLatest"}}
+{"jsonrpc":"2.0","id":3,"error":{"code":-32010,"message":"no deploy yet"}}
+```
+
+`preferences/changed` and `language/changed` are notices. Today's app has no
+screen that changes a tool's preference and does not send either one: a tool
+learns the language when it starts. Handle them anyway; a later app will send
+them.
+
+```json message
+{"jsonrpc":"2.0","method":"preferences/changed","params":{"values":{"project":"web"}}}
+{"jsonrpc":"2.0","method":"language/changed","params":{"language":"fr"}}
+```
+
+`shutdown` means stop. The app then closes your input. Exit with 0 within two
+seconds.
+
+```json message
+{"jsonrpc":"2.0","method":"shutdown"}
+```
+
+### What a tool sends
+
+`commands/state` says which commands can run now. It carries the whole list
+every time. Until you send one, all of them can. `log` writes a line to the
+tool's log.
+
+```json message
+{"jsonrpc":"2.0","method":"commands/state","params":{"runnable":["copyLatest"]}}
+{"jsonrpc":"2.0","method":"log","params":{"message":"fetched 3 deploys"}}
+```
+
+Everything else is a request, so the app can refuse it. You pick the `id`.
+
+```json message
+{"jsonrpc":"2.0","id":"a","method":"notify/hud","params":{"icon":"link","message":"Copied the address"}}
+{"jsonrpc":"2.0","id":"a","result":{}}
+```
+
+```json message
+{"jsonrpc":"2.0","id":"b","method":"notify/beep"}
+{"jsonrpc":"2.0","id":"b","result":{}}
+```
+
+```json message
+{"jsonrpc":"2.0","id":"c","method":"open/url","params":{"url":"https://example.com/deploys/41"}}
+{"jsonrpc":"2.0","id":"c","result":{"opened":true}}
+```
+
+`clipboard/readText` leaves `text` out when the clipboard holds no text.
+
+```json message
+{"jsonrpc":"2.0","id":"d","method":"clipboard/readText"}
+{"jsonrpc":"2.0","id":"d","result":{"text":"what was copied"}}
+```
+
+```json message
+{"jsonrpc":"2.0","id":"e","method":"clipboard/writeText","params":{"text":"https://example.com/deploys/41"}}
+{"jsonrpc":"2.0","id":"e","result":{"written":true}}
+```
+
+```json message
+{"jsonrpc":"2.0","id":"f","method":"keystrokes/paste","params":{"text":"pasted into the app in front"}}
+{"jsonrpc":"2.0","id":"f","result":{}}
+```
+
+`keystrokes/pressMenuItem` takes a list of key equivalents, and presses the
+menu item of the app in front that has one of them. Command is always part of
+an equivalent; `modifiers` names what is held with it.
+
+```json message
+{"jsonrpc":"2.0","id":"g","method":"keystrokes/pressMenuItem","params":{"equivalents":[{"character":"c","modifiers":[]},{"character":"c","modifiers":["shift"]}]}}
+{"jsonrpc":"2.0","id":"g","result":{"pressed":true}}
+```
+
+`processes/terminate` ends a process with the app's checks. `force` true ends
+it at once; false asks it to quit.
+
+```json message
+{"jsonrpc":"2.0","id":"h","method":"processes/terminate","params":{"pid":4242,"name":"node","force":false}}
+{"jsonrpc":"2.0","id":"h","result":{}}
+```
+
+`storage/get` and `storage/set` read and write a preference the manifest
+declares, by its id. A value is text, yes or no, or a number.
+
+```json message
+{"jsonrpc":"2.0","id":"i","method":"storage/get","params":{"key":"project"}}
+{"jsonrpc":"2.0","id":"i","result":{"value":"web"}}
+```
+
+```json message
+{"jsonrpc":"2.0","id":"j","method":"storage/set","params":{"key":"project","value":"api"}}
+{"jsonrpc":"2.0","id":"j","result":{}}
+```
+
+### Being refused
+
+Any request can be refused, at any time. Your tool must cope.
+
+```json message
+{"jsonrpc":"2.0","id":"k","method":"open/url","params":{"url":"https://example.com"}}
+{"jsonrpc":"2.0","id":"k","error":{"code":-32001,"message":"not listed in uses","data":{"service":"open"}}}
+```
+
+| Code | Meaning |
+|---|---|
+| -32001 | The service is not in your manifest's `uses`. `data.service` names it. |
+| -32002 | The tool is not installed, or is switched off. |
+| -32003 | Vitruvian lacks a macOS permission the service needs. `data.permission` names it. |
+| -32004 | Not available right now. |
+| -32010 | Yours: you will not run the command. |
+| -32601 | A method the other side does not know. |
+| -32602 | Params that are not the message's own, a command you do not have, a preference the manifest does not declare, or a value of the wrong kind. |
+
+## Limits, and what happens when a tool crosses them
+
+The limits keep the app responsive. They are not there to protect anyone from
+the tool.
+
+| What a tool does | What the app does |
+|---|---|
+| Exits or crashes | Its commands grey out. The person is told once, in the app's short on-screen message. It is started again at the next need, after a wait that doubles from 1 second to 5 minutes. |
+| Crashes three times within a minute | It stays stopped until the person clicks Start Again in Settings. |
+| Does not answer `initialize` within 10 seconds, or anything else within 2 | The request fails. Three in a row, and the tool is treated as crashed. |
+| Closes its output and keeps running | Nothing, at first. The app notices only when three requests in a row have gone unanswered. |
+| Sends a line over 1,048,576 bytes (1 MB) | Stopped, and treated as crashed. |
+| Sends more than 200 lines in one second | Each request past the 200th in that second is refused with -32004, and the app does no work for it. |
+| Does that for 5 seconds in a row | Stopped, and treated as crashed. |
+| Sends a line that is not a message | The line is dropped. Twenty in a minute, and the tool is stopped. |
+| Writes to standard error | Kept as its log, up to 256 KB. Never shown as a message. |
+| Ends its last line with no line break | That line is never read. |
+| Is told `shutdown` and stays | Asked to end after 2 seconds, killed 1 second after that. |
+| Is still running when the person removes it | The same, faster: asked to end after half a second, killed a quarter of a second later. Do not count on time to tidy up. |
+
+A folder is refused, before anything is copied, when it holds more than
+256 MB or more than 10,000 files, folders and links together. Keep build
+output and dependencies you do not ship out of it.
+
+## Adding it to the app
+
+1. Open Vitruvian's Settings, then Features, and scroll to **Tools from
+   outside**.
+2. Click **Add a Tool…** and choose the tool's folder.
+3. Read the sheet. It names the tool, its publisher and its commands, and
+   says that the tool can do anything Vitruvian can. Click **Add Tool**.
+
+The app copies the folder and runs the copy, so the original may move. The
+copy is in
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/<id>/`.
+What the tool saves goes in `ToolData/<id>/` beside it, which is also the
+folder the program is started in.
+
+- **To update a tool**, open its row, click **Update from Folder…**, and
+  choose the folder again. The sheet shows the old and the new version.
+- **A changed copy is not run.** If the manifest in the app's copy is not,
+  byte for byte, the one the person agreed to, the tool is listed and never
+  started, until it is updated from its folder.
+- **"Changed" means the manifest, and only the manifest.** The app compares
+  that one file. A program or any other file that changed, with the manifest
+  as it was, is not noticed: not in the app's copy, and not on the sheet when
+  a tool is updated.
+- **A downloaded tool** carries macOS's quarantine mark, and the app refuses
+  it. The app never clears the mark. The person can:
+  `xattr -dr com.apple.quarantine <the folder>`.
+- **Removing a tool** deletes the app's copy. What the tool saved is deleted
+  too when the person picks that.
+
+For the two Swift samples, build their folders first:
+
+```sh
+bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders
+```
+
+They are then in `bazel-bin/packages/vitruvian-sdk/built/`.
+
+## Finding out why it does not work
+
+Start with the command line. Neither command needs the app.
+
+```sh
+vitruvian-tool validate ~/my-tool
+vitruvian-tool run ~/my-tool --command hello
+vitruvian-tool run ~/my-tool --command hello --refuse
+vitruvian-tool run ~/my-tool --command hello --app-path
+```
+
+- `validate` says what the app would refuse the folder for, every problem at
+  once, the app's own reason first. It exits with 0 for a folder the app
+  would take, 1 for one it would refuse, and 2 when it could not read what
+  you typed. A pass ends by saying what it cannot promise:
+
+  ```text said=Sources/VitruvianToolCLI/Words.swift
+  This is what the app checks before it asks the person. It cannot promise the rest: an older app may not know a service or a surface this one does; the app refuses an id another tool already has, and a folder inside its own support folder; and nothing here started the program.
+  ```
+
+- `run` starts the tool and prints everything it asks for. It answers each
+  request as done and **does nothing on your Mac**: no message is shown, no
+  link opened, nothing pasted or pressed, no process ended, and the clipboard
+  it reads and writes is its own, not yours. It gives the tool a folder of its
+  own and deletes it afterwards. Control-C ends the tool.
+- `run` is one run, not the app. It grants every service the manifest lists,
+  where the app may refuse one at any time. It does not stop an idle tool,
+  does not start a crashed one again, and does not count lines a second. A
+  tool that passes here can still be stopped by the app for those.
+- `--refuse` refuses every request, to see that your commands still answer.
+- `--app-path` starts the tool with the short `PATH` the app has. Use it when
+  the tool works in a terminal and not in the app.
+- `python3 conformance/conformance.py <folder>`, in `packages/vitruvian-sdk`,
+  runs five scripted checks and exits with 0 when they pass. It needs Python
+  and nothing else.
+
+In the app, open the tool's row in Settings. The detail view shows the tool's
+log: what it wrote to standard error, what it sent as `log`, and what the app
+noted about it. It shows the newest 200 lines as they were when the view was
+opened; close it and open it again to see more.
+
+## What a tool must not assume
+
+- **Not the `PATH` of a terminal.** The app starts a tool with the
+  environment the app has. Opened from the Finder, that is the short `PATH`
+  macOS gives an app: `/usr/bin:/bin:/usr/sbin:/sbin`. A first line of
+  `#!/usr/bin/env node` finds nothing there. `#!/usr/bin/env python3` finds
+  `/usr/bin/python3`, which is Apple's and is there only once the Command
+  Line Tools are installed; it does not find a Python from Homebrew, or the
+  packages installed for one. Name the interpreter by its full path, or ship
+  it. `vitruvian-tool run --app-path` shows what the app will find.
+- **Not that a request succeeds.** Any one can be refused.
+- **Not that standard output is yours.** One stray `print` is a line that is
+  not a message.
+- **Not where it runs.** It is started in its data folder, not its own. Find
+  your own files from the program's path, not from the current folder.
+- **Not that it is alone.** After an update, the new program may start while
+  the old one is still leaving.
+- **Not that it keeps running.** An `onCommand` tool is stopped after two
+  minutes with nothing asked of it. Keep what matters in a preference or in
+  the data folder.
+- **Not that the data folder outlives it.** Removing the tool may delete it.
+- **Not a permission.** A tool has what Vitruvian has, and nothing more. A
+  prompt your tool causes says Vitruvian is asking. Vitruvian's permissions
+  reset when the app is updated, and the tool's with them.
+- **Not a shortcut of its own.** Give a command the `shortcut` surface and
+  let the person record one, so the app can check it against every other.
+- **Not a screen for its preferences.** There is none yet. A preference is a
+  value your tool keeps with `storage/set`; the person cannot see or change
+  it in the app.
+- **Not to be told what changed.** Today's app never sends
+  `preferences/changed` or `language/changed`.
+- **Not that its last words arrive.** A final line with no line break at its
+  end is dropped.
+- **Not an argument.** A command is run by its id, with nothing else.
