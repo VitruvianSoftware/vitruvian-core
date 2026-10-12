@@ -500,7 +500,14 @@ of it but the protocol.
   that the tool can do anything the app can. It lists what the tool says it
   uses as the tool's statement, under a note that it is no limit. Its
   default button is Cancel (`ToolAgreementContent.defaultChoice`): Return
-  must never add a tool. The same holds for removing one.
+  must never add a tool. The same holds for removing one. The keyboard
+  starts on Cancel too (`ToolAgreementContent.initialFocus`): with
+  "Keyboard navigation" on, macOS puts focus on the first button of a
+  custom sheet as it becomes the key window, whatever `onAppear`,
+  `defaultFocus` or `prefersDefaultFocus` say, and Space presses it. The
+  sheet moves that first focus once (`the_agreement_sheet_places_its_focus`);
+  the agreeing button stays reachable with Tab. Only pressing Space in the
+  app proves it.
 - The app's words about these tools are `ExternalToolStrings`
   (`Core/ExternalToolStrings.swift`), in all fifteen languages. A tool's
   name, publisher, description and command titles are shown as the tool

@@ -64,6 +64,8 @@ enum ExternalToolScreensTests {
         suite.expect(ToolAgreementContent.defaultChoice == .cancel && sheet.agree == "Add Tool" && sheet.cancel == "Cancel"
                          && sheet.versions == nil && sheet.changed == nil && sheet.keepsData == nil,
                      "Return presses Cancel, never the button that adds the tool")
+        suite.expect(sheet.initialFocus == .cancel,
+                     "the sheet opens with Cancel focused, so Space cannot add the tool")
 
         let french = content(offer, .fr, home: "/nowhere")
         suite.expect(french.title == "Ajouter «\u{00A0}Déploiements\u{00A0}» à Vitruvian\u{00A0}?"
@@ -132,6 +134,8 @@ enum ExternalToolScreensTests {
                          && unchanged.changed == nil && unchanged.keepsData == "What the tool saved is kept."
                          && unchanged.headline == english.agreeHeadline && unchanged.detail == english.agreeDetail,
                      "choosing an added tool's folder again asks again, with both versions and the same statement")
+        suite.expect(unchanged.initialFocus == .cancel,
+                     "the sheet for an update opens with Cancel focused too, so Space cannot update the tool")
 
         try? ExternalToolManifestTests.file(#"{"version": "1.3.0", "uses": ["notify", "keystrokes"]}"#)
             .write(to: picked.appendingPathComponent("vitruvian-tool.json"))

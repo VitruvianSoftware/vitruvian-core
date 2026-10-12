@@ -2578,6 +2578,63 @@ def only_the_agreement_sheet_consents(repo):
     return problems
 
 
+_FOCUS_PLACED = re.compile(r"\bfocus\s*=\s*content\.initialFocus\b")
+_FOCUS_BOUND = re.compile(r"\.focused\(\$focus,\s*equals:\s*choice\)")
+
+
+def agreement_focus_problems(text):
+    """What a sheet's source lacks of the two things that put the keyboard
+    where its content says: its buttons bound to its focus, and that focus
+    set from `initialFocus`. Prose and strings do not count."""
+    code = "\n".join(code_and_blanked(line)[1] for line in text.split("\n"))
+    problems = []
+    if not _FOCUS_BOUND.search(code):
+        problems.append(
+            "its buttons are not bound to its focus (`.focused($focus, equals: choice)`)"
+        )
+    if not _FOCUS_PLACED.search(code):
+        problems.append(
+            "its focus is not set from what its content says "
+            "(`focus = content.initialFocus`)"
+        )
+    return problems
+
+
+def the_agreement_sheet_places_its_focus(repo):
+    """With "Keyboard navigation" on, macOS puts the keyboard on the first
+    button of the agreement sheet, the one that agrees, and Space presses
+    it. `ToolAgreementContent.initialFocus` says where the keyboard starts
+    instead, and a test holds it to Cancel. That is worth nothing unless the
+    view uses it, which no test can see: so the sheet's file must bind its
+    buttons to its focus and set that focus from `initialFocus`."""
+    problems = []
+    whole = "\n".join(
+        [
+            ".onChange(of: focus) { _, placed in",
+            "    if placed != content.initialFocus { focus = content.initialFocus }",
+            "}",
+            "Button(title) {}.focused($focus, equals: choice)",
+        ]
+    )
+    prose = "\n".join(
+        [
+            "// focus = content.initialFocus",
+            'let text = ".focused($focus, equals: choice)"',
+            "if placed != content.initialFocus { return }",
+        ]
+    )
+    if agreement_focus_problems(whole) or len(agreement_focus_problems(prose)) != 2:
+        problems.append(
+            "the scan finds a focus bound and set in code, and not one in "
+            "prose, in a string, or only compared"
+        )
+    problems.extend(
+        f"{AGREEMENT_SHEET}: {problem}"
+        for problem in agreement_focus_problems(repo.source(AGREEMENT_SHEET))
+    )
+    return problems
+
+
 # UPSTREAM.md's sections, in order. "Modifications" is the dated notice
 # GPL-3.0 section 5(a) asks for.
 UPSTREAM_SECTIONS = [
@@ -2699,6 +2756,7 @@ RULES = [
     migrated_tools_reach_services_through_the_broker,
     the_broker_names_no_tool,
     only_the_agreement_sheet_consents,
+    the_agreement_sheet_places_its_focus,
     modification_log_is_whole,
 ]
 
