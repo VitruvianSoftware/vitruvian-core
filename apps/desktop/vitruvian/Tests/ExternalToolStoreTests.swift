@@ -24,6 +24,7 @@ enum ExternalToolStoreTests {
         deletingMore(suite)
         removing(suite)
         goneBeforeDeleted(suite)
+        saysWhatWasKept(suite)
         installedOrNot(suite)
         remembering(suite)
         switching(suite)
@@ -506,7 +507,7 @@ enum ExternalToolStoreTests {
         try? bytes.write(to: bench.data.appendingPathComponent("saved"))
         bench.box.values["com.acme.deploys/project"] = "api"
         let keys = bench.box.values.keys.sorted()
-        suite.expect(bench.store.remove(id, deletingData: false)
+        suite.expect(bench.store.remove(id, deletingData: false).removed
                          && (try? Data(contentsOf: bench.data.appendingPathComponent("saved"))) == bytes
                          && (try? FileManager.default.contentsOfDirectory(atPath: bench.data.path)) == ["saved"]
                          && bench.box.values.keys.sorted() == keys
@@ -530,7 +531,7 @@ enum ExternalToolStoreTests {
         half.add(half.folder())
         let tools = half.support.appendingPathComponent("Tools")
         try? FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: tools.path)
-        let removed = half.store.remove(id, deletingData: true)
+        let removed = half.store.remove(id, deletingData: true).removed
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: tools.path)
         let next = half.relaunched()
         next.store.restore()
@@ -551,7 +552,7 @@ enum ExternalToolStoreTests {
         bench.box.values["project"] = "the app's"
         bench.registry.run(copy)
         bench.current.greets()
-        suite.expect(bench.store.remove(id, deletingData: false)
+        suite.expect(bench.store.remove(id, deletingData: false).removed
                          && bench.current.sent.last == .notice(method: "shutdown", params: nil) && bench.current.inputClosed
                          && !bench.store.isInstalled(id) && bench.registry.tool(id) == nil
                          && bench.host.manifest(for: id) == nil && bench.store.tool(id) == nil,
@@ -563,7 +564,8 @@ enum ExternalToolStoreTests {
                          && bench.box.values["com.acme.deploys/project"] as? String == "api"
                          && bench.exists(picked.appendingPathComponent("bin/deploys")),
                      "what it saved is kept when the person says so, and the folder it came from is not touched")
-        suite.expect(!bench.store.remove(id, deletingData: true) && bench.exists(bench.data.appendingPathComponent("saved")),
+        suite.expect(!bench.store.remove(id, deletingData: true).removed
+                         && bench.exists(bench.data.appendingPathComponent("saved")),
                      "removing a tool nobody added does nothing, and deletes nothing")
         bench.current.ends(0)
 
@@ -573,7 +575,8 @@ enum ExternalToolStoreTests {
         } else {
             suite.expect(false, "it can be added again, and finds what it saved")
         }
-        suite.expect(bench.store.remove(id, deletingData: true) && !bench.exists(bench.files) && !bench.exists(bench.data)
+        suite.expect(bench.store.remove(id, deletingData: true).removed && !bench.exists(bench.files)
+                         && !bench.exists(bench.data)
                          && bench.box.values["com.acme.deploys/project"] == nil
                          && bench.box.values["com.acme.deploys2/project"] as? String == "theirs"
                          && bench.box.values["project"] as? String == "the app's"
@@ -592,7 +595,7 @@ enum ExternalToolStoreTests {
         try? Data("{}".utf8).write(to: held.files.appendingPathComponent("vitruvian-tool.json"))
         let after = held.relaunched()
         after.store.restore()
-        suite.expect(after.store.listed.map(\.isHeld) == [true] && after.store.remove(id, deletingData: true)
+        suite.expect(after.store.listed.map(\.isHeld) == [true] && after.store.remove(id, deletingData: true).removed
                          && after.store.listed.isEmpty && !after.exists(after.files) && !after.exists(after.data),
                      "a tool that is held back is removed like any other")
 
@@ -638,25 +641,25 @@ enum ExternalToolStoreTests {
 
         let polite = running { $0.exitsOnClose = 0 }
         defer { polite.close() }
-        suite.expect(polite.store.remove(id, deletingData: true) && polite.waits.isEmpty
+        suite.expect(polite.store.remove(id, deletingData: true).removed && polite.waits.isEmpty
                          && polite.current.signals.isEmpty && isGone(polite),
                      "a tool that leaves when it is told goodbye is removed with no wait")
 
         let slow = running { $0.exitsOnTerminate = 15 }
         defer { slow.close() }
-        suite.expect(slow.store.remove(id, deletingData: true) && slow.waits == [0.5]
+        suite.expect(slow.store.remove(id, deletingData: true).removed && slow.waits == [0.5]
                          && slow.current.signals == ["terminate"] && isGone(slow),
                      "one that does not leave is waited for half a second, then asked to end")
 
         let deaf = running { $0.exitsOnKill = 9 }
         defer { deaf.close() }
-        suite.expect(deaf.store.remove(id, deletingData: true) && deaf.waits == [0.5, 0.25]
+        suite.expect(deaf.store.remove(id, deletingData: true).removed && deaf.waits == [0.5, 0.25]
                          && deaf.current.signals == ["terminate", "kill"] && isGone(deaf),
                      "one that ignores that is killed a quarter of a second later, and deleted once it is dead")
 
         let undead = running { _ in }
         defer { undead.close() }
-        suite.expect(undead.store.remove(id, deletingData: true) && undead.waits == [0.5, 0.25, 0.25]
+        suite.expect(undead.store.remove(id, deletingData: true).removed && undead.waits == [0.5, 0.25, 0.25]
                          && undead.current.signals == ["terminate", "kill"]
                          && undead.store.listed.isEmpty && undead.records.isEmpty && !undead.exists(undead.files)
                          && (try? Data(contentsOf: undead.data.appendingPathComponent("saved"))) == Data("kept".utf8)
@@ -667,9 +670,46 @@ enum ExternalToolStoreTests {
         let idle = Bench()
         defer { idle.close() }
         idle.add(idle.folder())
-        suite.expect(idle.store.remove(id, deletingData: true) && idle.waits.isEmpty && idle.runs.isEmpty
+        suite.expect(idle.store.remove(id, deletingData: true).removed && idle.waits.isEmpty && idle.runs.isEmpty
                          && !idle.exists(idle.data),
                      "a tool whose program is not running is removed with no wait")
+    }
+
+    /// What removing a tool says it did, so that the person can be told
+    /// when what a tool saved was kept against what they asked.
+    static func saysWhatWasKept(_ suite: TestSuite) {
+        func outcome(deletingData: Bool, _ prepare: (FakeTool) -> Void)
+            -> (said: ExternalToolStore.Removal, saved: Bool, preference: Bool, kept: String) {
+            let bench = Bench()
+            defer { bench.close() }
+            bench.add(bench.folder())
+            try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+            bench.box.values["com.acme.deploys/project"] = "api"
+            bench.registry.run(copy)
+            bench.current.greets()
+            prepare(bench.current)
+            let said = bench.store.remove(id, deletingData: deletingData)
+            return (said, bench.exists(bench.data.appendingPathComponent("saved")),
+                    bench.box.values["com.acme.deploys/project"] != nil, bench.data.standardizedFileURL.path)
+        }
+        let leaves = outcome(deletingData: true) { $0.exitsOnClose = 0 }
+        suite.expect(leaves.said == .deleted && leaves.said.removed && !leaves.saved && !leaves.preference,
+                     "a tool whose program leaves has what it saved deleted when that was asked, and removing it says so")
+        let stays = outcome(deletingData: true) { _ in }
+        var folder: String?
+        if case .keptStillRunning(let data) = stays.said { folder = data?.standardizedFileURL.path }
+        suite.expect(stays.said != .deleted && stays.said.removed && stays.saved && stays.preference
+                         && folder == stays.kept && folder?.hasSuffix("/support/ToolData/com.acme.deploys") == true,
+                     "a tool whose program never leaves keeps its data folder and its settings, and removing it says so: "
+                         + "kept, though deleting was asked, and in which folder")
+        let asked = outcome(deletingData: false) { _ in }
+        suite.expect(asked.said == .keptAsAsked && asked.said.removed && asked.saved && asked.preference,
+                     "what a tool saved is kept as asked whether or not its program leaves, and that is no news")
+        let nobody = Bench()
+        defer { nobody.close() }
+        suite.expect(nobody.store.remove(id, deletingData: true) == .notAdded
+                         && !nobody.store.remove(id, deletingData: true).removed,
+                     "removing a tool nobody added says nothing was removed")
     }
 
     static func installedOrNot(_ suite: TestSuite) {
@@ -1157,7 +1197,9 @@ enum ExternalToolStoreTests {
 
         guard let polite = running("quick") else { return }
         var began = ProcessInfo.processInfo.systemUptime
-        var removed = polite.store.remove(tool, deletingData: true)
+        var outcome = polite.store.remove(tool, deletingData: true)
+        var removed = outcome.removed
+        let politely = outcome
         var took = ProcessInfo.processInfo.systemUptime - began
         suite.expect(removed && took < 0.5 && processes.count == 1 && !processes[0].isRunning
                          && processes[0].exitStatus == 0 && polite.waits.count <= 1
@@ -1173,13 +1215,16 @@ enum ExternalToolStoreTests {
             return
         }
         began = ProcessInfo.processInfo.systemUptime
-        removed = stubborn.store.remove(tool, deletingData: true)
+        outcome = stubborn.store.remove(tool, deletingData: true)
+        removed = outcome.removed
         took = ProcessInfo.processInfo.systemUptime - began
         suite.expect(removed && processes.count == 2 && !processes[1].isRunning
                          && processes[1].exitStatus == 128 + SIGKILL && stubborn.waits == [0.5, 0.25, 0.25]
                          && took < 2,
                      "a real tool that ignores the goodbye and being asked to end is dead, killed, "
                          + "when removing it returns, within the three short waits")
+        suite.expect(politely == .deleted && outcome == .deleted,
+                     "removing a real tool says what it saved was deleted: when it left by itself, and when it was killed")
         // Alive, it makes the folder again every half a millisecond. So a
         // folder that is gone and stays gone was deleted after it died.
         suite.expect(!stubborn.exists(saved(stubborn)) && !stubborn.exists(files(stubborn))

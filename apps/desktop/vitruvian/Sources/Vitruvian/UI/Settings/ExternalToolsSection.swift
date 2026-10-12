@@ -178,6 +178,42 @@ package struct ToolRemovalContent: Equatable {
     }
 }
 
+/// What the person is told after a tool is removed, when there is something
+/// to tell: they asked for what the tool saved to be deleted, and it was
+/// kept, because the tool's program would not stop. Nil when removing did
+/// what was asked.
+package struct ToolRemovalNotice: Equatable {
+    package let title: String
+    package let message: String
+    /// The folder that holds what the tool saved, with a tilde for the home
+    /// folder; nil when the store could not name it.
+    package let folder: String?
+    /// The same folder, for the button that shows it in the Finder.
+    package let reveal: URL?
+
+    /// What the alert says under its title: the sentence, and the folder
+    /// on a line of its own.
+    package var text: String { folder.map { message + "\n\n" + $0 } ?? message }
+
+    package init?(_ removal: ExternalToolStore.Removal, name: String, strings: ExternalToolStrings,
+                  home: String = NSHomeDirectory()) {
+        guard case .keptStillRunning(let data) = removal else { return nil }
+        // An alert's title has no line limit of its own.
+        title = strings.removeKeptTitle(ToolOwnWords.oneLine(name))
+        message = strings.removeKeptMessage
+        folder = data.map { ToolAgreementContent.abbreviated($0.path, home: home) }
+        reveal = data
+    }
+
+    /// Removes a tool, and gives back what the person must be told about
+    /// it, if anything. `name` is the tool's own name for itself.
+    @MainActor package static func removing(_ id: ToolID, deletingData: Bool, name: String, store: ExternalToolStore,
+                                            strings: ExternalToolStrings,
+                                            home: String = NSHomeDirectory()) -> ToolRemovalNotice? {
+        ToolRemovalNotice(store.remove(id, deletingData: deletingData), name: name, strings: strings, home: home)
+    }
+}
+
 /// What follows the folder picker: nothing when the person chose no folder,
 /// the agreement sheet for a tool the store offers, or one sentence that
 /// says why the folder cannot be added. Whichever it is, nothing has been
@@ -218,6 +254,11 @@ package struct ExternalToolsSection: View {
     @State private var asked: Asked?
     @State private var refusal: ToolRefusalMessage?
     @State private var shown: Shown?
+    /// What to tell the person about the tool they just removed. It waits
+    /// in `removed` until the tool's detail has closed, and is then shown
+    /// as `kept`: one thing is presented at a time.
+    @State private var removed: ToolRemovalNotice?
+    @State private var kept: ToolRemovalNotice?
 
     package init() {}
 
@@ -274,7 +315,10 @@ package struct ExternalToolsSection: View {
             // A second sheet and the alert hang on a view of their own, so
             // neither competes with the agreement sheet for the card.
             Color.clear
-                .sheet(item: $shown) { shown in detail(of: shown.tool) }
+                .sheet(item: $shown, onDismiss: {
+                    kept = removed
+                    removed = nil
+                }) { shown in detail(of: shown.tool) }
                 .alert(refusal?.title ?? "", isPresented: Binding(get: { refusal != nil },
                                                                  set: { if !$0 { refusal = nil } }),
                        presenting: refusal) { refusal in
@@ -289,16 +333,32 @@ package struct ExternalToolsSection: View {
                     Text(refusal.command.map { refusal.message + "\n\n" + $0 } ?? refusal.message)
                 }
         }
+        .background {
+            // Said once, after the row has gone: what the tool saved was to
+            // be deleted and was kept, because its program would not stop.
+            Color.clear
+                .alert(kept?.title ?? "", isPresented: Binding(get: { kept != nil }, set: { if !$0 { kept = nil } }),
+                       presenting: kept) { kept in
+                    if let folder = kept.reveal {
+                        Button(l10n.s.cleanerRevealInFinder) {
+                            NSWorkspace.shared.activateFileViewerSelecting([folder])
+                        }
+                    }
+                    Button(l10n.s.menuClose, role: .cancel) {}
+                } message: { kept in
+                    Text(kept.text)
+                }
+        }
     }
 
     @ViewBuilder
     private func detail(of id: ToolID) -> some View {
         if let listed = store.listed.first(where: { $0.id == id }) {
+            let name = ExternalToolRow(listed, language: l10n.language, strings: text).name
             ExternalToolDetailView(
                 detail: ExternalToolDetail(listed, files: store.folder(of: id), language: l10n.language, strings: text),
                 log: ExternalToolDetail.shownLog(store.tool(id)?.log.text ?? ""),
-                removal: ToolRemovalContent(name: ExternalToolRow(listed, language: l10n.language, strings: text).name,
-                                            strings: text, cancel: l10n.s.uninstallerCancel),
+                removal: ToolRemovalContent(name: name, strings: text, cancel: l10n.s.uninstallerCancel),
                 text: text,
                 startAgain: { store.startAgain(id) },
                 reveal: { if let folder = store.folder(of: id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) } },
@@ -314,7 +374,8 @@ package struct ExternalToolsSection: View {
                 },
                 remove: { deletingData in
                     shown = nil
-                    store.remove(id, deletingData: deletingData)
+                    removed = ToolRemovalNotice.removing(id, deletingData: deletingData, name: name, store: store,
+                                                         strings: text)
                 },
                 close: { shown = nil })
         }

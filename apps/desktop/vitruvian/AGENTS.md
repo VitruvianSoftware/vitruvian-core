@@ -436,8 +436,17 @@ of it but the protocol.
   wait is on the main thread, so removing a tool that ignores everything
   holds the app for up to one second. A program still there after the kill
   keeps what it saved, whatever was asked: its copy and its record go, and
-  `remove` logs it. `remove` returns true either way, so the screen cannot
-  say the data was kept. No text exists for that yet.
+  `remove` logs it.
+- `remove` says what happened (`ExternalToolStore.Removal`): nobody added
+  it, kept as asked, deleted, or kept although deleting was asked, with
+  the folder. For that last one the person is told once, in an alert,
+  after the tool's detail has closed and its row has gone
+  (`ToolRemovalNotice`), with a button that shows the folder in the Finder.
+  The preferences under `<tool id>/` are kept with the folder then, and
+  nothing deletes either later: the person deletes the folder, and adding
+  the tool again finds both. `.deleted` means deleting was asked and the
+  program was gone; a file that then could not be deleted is still only a
+  line in the system log.
 - Which button of the question before removal deletes what a tool saved is
   `ToolRemovalContent.Choice.deletesData`, and the view passes it on
   unchanged. What follows the folder picker is `ToolPicked.after`: nothing,

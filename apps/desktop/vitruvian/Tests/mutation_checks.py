@@ -709,6 +709,17 @@ MUTATIONS = [
      "        for scalar in text.unicodeScalars {\n",
      "the characters that turn a line of text round are taken out, so a tool's name cannot reorder "
      "the sentence it is put in; letters of any script, and an emoji made of several, stay"),
+    ("the person is told a tool's data was deleted when it was kept", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        guard gone else {\n            return .keptStillRunning(data: parts.folders?.place(for: id)?.data)\n        }\n",
+     "",
+     "a tool whose program never leaves keeps its data folder and its settings, and removing it says so: "
+     "kept, though deleting was asked, and in which folder"),
+    ("nobody is told that what a tool saved was kept", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+     "        guard case .keptStillRunning(let data) = removal else { return nil }\n",
+     "        guard case .keptStillRunning(let data) = removal, data == nil else { return nil }\n",
+     "when a tool's program would not stop, the person is told that what it saved was kept, and where it is"),
 ]
 
 

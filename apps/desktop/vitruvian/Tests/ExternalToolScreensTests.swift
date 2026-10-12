@@ -22,6 +22,7 @@ enum ExternalToolScreensTests {
         removalChoices(suite)
         switchAndOwnWords(suite)
         ownWordsInAlerts(suite)
+        keptAfterRemoval(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -562,5 +563,61 @@ enum ExternalToolScreensTests {
         } else {
             suite.expect(false, "the sheet's own sentence that names the tool is held to the same bound")
         }
+    }
+
+    /// What the person is told after a tool is removed: nothing when what
+    /// they asked for was done, and one alert when what the tool saved was
+    /// kept because its program would not stop.
+    static func keptAfterRemoval(_ suite: TestSuite) {
+        let data = URL(fileURLWithPath: "/Users/me/support/ToolData/com.acme.deploys", isDirectory: true)
+        func notice(_ removal: ExternalToolStore.Removal, name: String = "Deploys",
+                    _ language: AppLanguage = .enUS) -> ToolRemovalNotice? {
+            ToolRemovalNotice(removal, name: name, strings: FeatureStrings.externalTools(language), home: "/Users/me")
+        }
+        suite.expect(notice(.deleted) == nil && notice(.keptAsAsked) == nil && notice(.notAdded) == nil,
+                     "after a tool is removed nothing more is said when what was asked was done")
+        let kept = notice(.keptStillRunning(data: data))
+        let sentence = "Its program would not stop, so Vitruvian did not delete what the tool saved. It is in this folder:"
+        suite.expect(kept?.title == "What “Deploys” saved was kept" && kept?.message == sentence
+                         && kept?.folder == "~/support/ToolData/com.acme.deploys" && kept?.reveal == data
+                         && kept?.text == sentence + "\n\n~/support/ToolData/com.acme.deploys",
+                     "when a tool's program would not stop, the person is told that what it saved was kept, and where it is")
+        let german = notice(.keptStillRunning(data: data), .de)
+        suite.expect(german?.title == "Was „Deploys“ gespeichert hat, wurde behalten"
+                         && german?.message == FeatureStrings.externalTools(.de).removeKeptMessage
+                         && german?.folder == kept?.folder,
+                     "in the person's language, with the folder as it is")
+        let nowhere = notice(.keptStillRunning(data: nil))
+        suite.expect(nowhere?.folder == nil && nowhere?.reveal == nil && nowhere?.text == sentence,
+                     "with no folder to name the alert still says what was kept, and offers nothing to reveal")
+        let hostile = notice(.keptStillRunning(data: data),
+                             name: "De\nploys\u{202E}" + String(repeating: "x", count: 50_000))
+        suite.expect(hostile?.title.hasPrefix("What “De ploysxxx") == true && hostile?.title.hasSuffix("…” saved was kept") == true
+                         && hostile?.title.count == english.removeKeptTitle("").count + ToolOwnWords.limit
+                         && hostile?.title.contains("\n") == false,
+                     "that alert names the tool in one short line, whatever the tool calls itself")
+
+        func removing(deletingData: Bool, _ prepare: (FakeTool) -> Void) -> (notice: ToolRemovalNotice?, rows: Int, root: String) {
+            let bench = ExternalToolStoreTests.Bench()
+            defer { bench.close() }
+            bench.add(bench.folder())
+            bench.registry.run(ExternalToolTests.copy)
+            bench.current.greets()
+            prepare(bench.current)
+            let home = bench.root.resolvingSymlinksInPath().path
+            let said = ToolRemovalNotice.removing(id, deletingData: deletingData, name: "Deploys", store: bench.store,
+                                                  strings: english, home: home)
+            return (said, bench.store.listed.count, home)
+        }
+        let stays = removing(deletingData: true) { _ in }
+        let leaves = removing(deletingData: true) { $0.exitsOnClose = 0 }
+        let asked = removing(deletingData: false) { _ in }
+        suite.expect(stays.rows == 0 && stays.notice?.title == "What “Deploys” saved was kept"
+                         && stays.notice?.folder == "~/support/ToolData/com.acme.deploys"
+                         && stays.notice?.reveal?.path.hasPrefix(stays.root) == true
+                         && leaves.rows == 0 && leaves.notice == nil && asked.rows == 0 && asked.notice == nil,
+                     "removing a tool that will not stop, with its data to be deleted, takes its row away and tells "
+                         + "the person once where what it saved is; a tool that leaves, or whose data was to be kept, "
+                         + "is removed and nothing is said")
     }
 }

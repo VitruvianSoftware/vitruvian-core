@@ -39,6 +39,25 @@ package final class ExternalToolStore {
         case notRemembered
     }
 
+    /// What removing a tool did, so that whoever asked can say so.
+    package enum Removal: Equatable, Sendable {
+        /// Nobody added a tool with this id. Nothing changed.
+        case notAdded
+        /// The tool is removed, and what it saved is kept, as was asked.
+        case keptAsAsked
+        /// The tool is removed, and what it saved was to be deleted too, and
+        /// its program was gone, so that was done.
+        case deleted
+        /// The tool is removed. What it saved was to be deleted too, and is
+        /// kept all the same, its preferences with it, because the tool's
+        /// program was still there after the kill. `data` is the folder
+        /// that holds what it saved.
+        case keptStillRunning(data: URL?)
+
+        /// True when the tool was removed.
+        package var removed: Bool { self != .notAdded }
+    }
+
     package struct Installed: Equatable, Sendable {
         package let tool: ExternalToolManifest
         /// The app's copy of the tool's folder. The program runs from here.
@@ -371,14 +390,15 @@ package final class ExternalToolStore {
     /// there after the kill, what it saved is kept whatever was asked, so
     /// that a program is never left writing into a folder that is gone.
     ///
-    /// The folder the tool was added from is never touched. False, with
-    /// nothing changed, for a tool nobody added.
+    /// The folder the tool was added from is never touched. What it gives
+    /// back says which of these happened, so that the person can be told
+    /// when what a tool saved was kept against what they asked.
     @discardableResult
-    package func remove(_ id: ToolID, deletingData: Bool) -> Bool {
-        guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return false }
+    package func remove(_ id: ToolID, deletingData: Bool) -> Removal {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return .notAdded }
         var next = records
         next.remove(at: known)
-        guard save(next) else { return false }
+        guard save(next) else { return .notAdded }
         records = next
         let gone = deactivate(id, seeingItOut: true)
         held.remove(id)
@@ -394,7 +414,11 @@ package final class ExternalToolStore {
         }
         if data { parts.forgetPreferences(id) }
         parts.registry().noteAvailabilityChanged()
-        return true
+        guard deletingData else { return .keptAsAsked }
+        guard gone else {
+            return .keptStillRunning(data: parts.folders?.place(for: id)?.data)
+        }
+        return .deleted
     }
 
     // MARK: - A tool that stopped working

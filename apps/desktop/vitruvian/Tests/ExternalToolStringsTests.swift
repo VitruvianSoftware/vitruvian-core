@@ -11,7 +11,7 @@ import VitruvianCore
 enum ExternalToolStringsTests {
     /// How many texts the screens for tools from outside add. A text added
     /// or taken away changes this number on purpose, with the plan's table.
-    static let count = 42
+    static let count = 44
 
     static func run(_ suite: TestSuite) {
         let english = FeatureStrings.externalTools(.enUS).all
@@ -55,7 +55,8 @@ enum ExternalToolStringsTests {
                          == "You have version 1.2.0. This folder has version 1.3.0."
                          && strings.refusalTooBig(size: "256 MB", items: "10,000")
                          == "The folder is too large. A tool can hold up to 256 MB and 10,000 files."
-                         && strings.stopped("Deploys") == "“Deploys” stopped working",
+                         && strings.stopped("Deploys") == "“Deploys” stopped working"
+                         && strings.removeKeptTitle("Deploys") == "What “Deploys” saved was kept",
                      "a format is filled with what it is handed, in the order the sentence names it")
         let listable: [Capability] = [.notify, .open, .clipboardRead, .clipboardWrite, .keystrokes, .processes, .storage]
         suite.expect(Capability.allCases.filter { strings.use($0) != nil } == Capability.allCases.filter(listable.contains)
