@@ -143,12 +143,22 @@ swift_test(
     deps = [":VitruvianToolKit"],
 )
 
-# The command against folders it makes in the temporary folder.
+# The command against folders it makes in the temporary folder, and against
+# real processes: shell scripts it writes there, and the built Swift sample.
+# The built command is there to be started and interrupted.
 swift_test(
     name = "VitruvianToolCLITests",
     size = "small",
     srcs = glob(["Tests/VitruvianToolCLITests/**/*.swift"]),
-    data = PROTOCOL_FILES,
+    data = PROTOCOL_FILES + glob(["Sources/VitruvianToolCLI/**/*.swift"]) + [
+        "built/hello-swift/vitruvian-tool.json",
+        ":hello-swift-folder",
+        ":vitruvian-tool",
+    ],
+    env = {
+        "VITRUVIAN_HELLO_SWIFT": "$(rootpath built/hello-swift/vitruvian-tool.json)",
+        "VITRUVIAN_TOOL_BINARY": "$(rootpath :vitruvian-tool)",
+    },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [

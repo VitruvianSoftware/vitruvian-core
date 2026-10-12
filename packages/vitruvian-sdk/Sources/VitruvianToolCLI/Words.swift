@@ -111,6 +111,17 @@ enum Words {
               add it, and says what the app would refuse it for. It starts
               nothing.
 
+          vitruvian-tool run <folder> [--command ID]... [--refuse] [--app-path] [--wait SECONDS]
+              Starts the tool's program and plays the app's side to it, in a
+              folder made for the run. With no --command, type a command's
+              id to run it, and `quit` to end.
+                --command ID   run this command, then the next, then stop
+                --refuse       refuse every request the tool makes
+                --app-path     start the tool with the short PATH the app has
+                --wait SECONDS how long a command may take. The app allows 2
+              What the tool asks for is printed and answered as done. Nothing
+              is shown, opened, copied, pasted, pressed or ended on this Mac.
+
         A tool's folder holds a vitruvian-tool.json and the program it names.
         """
 

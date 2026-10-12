@@ -29,12 +29,17 @@ public enum VitruvianToolCommand {
     /// `say` takes each line it prints. Returns the status to exit with.
     public static func main(_ arguments: [String],
                             environment: [String: String] = ProcessInfo.processInfo.environment,
-                            say: (String) -> Void = { print($0) }) -> Int32 {
+                            typing: Int32 = STDIN_FILENO,
+                            say: @escaping (String) -> Void = { print($0) }) -> Int32 {
         var rest = arguments[...]
         switch rest.popFirst() {
         case "validate"?:
             guard rest.count == 1, let folder = rest.first, !folder.hasPrefix("-") else { return usage(say) }
             return validate(url(folder, environment), say: say)
+        case "run"?:
+            guard let (folder, options) = runArguments(rest) else { return usage(say) }
+            return run(folder: url(folder, environment), options: options, environment: environment,
+                       typing: typing, say: say)
         case "help"?, "--help"?, "-h"?:
             say(Words.usage)
             return 0
@@ -55,6 +60,52 @@ public enum VitruvianToolCommand {
         if expanded.hasPrefix("/") { return URL(fileURLWithPath: expanded) }
         let base = environment["BUILD_WORKING_DIRECTORY"] ?? FileManager.default.currentDirectoryPath
         return URL(fileURLWithPath: base, isDirectory: true).appendingPathComponent(expanded).standardizedFileURL
+    }
+
+    /// What follows `run`: the folder, and how to play the app. Nil when
+    /// it cannot be read. There is no flag that makes `run` touch the
+    /// clipboard, open a link or end a process, and there is not meant to
+    /// be one.
+    public static func runArguments(_ arguments: ArraySlice<String>) -> (folder: String, options: RunOptions)? {
+        var options = RunOptions()
+        var folder: String?
+        var rest = arguments
+        while let argument = rest.popFirst() {
+            switch argument {
+            case "--command":
+                guard let command = rest.popFirst() else { return nil }
+                options.commands.append(command)
+            case "--refuse":
+                options.refuse = true
+            case "--app-path":
+                options.appPath = true
+            case "--wait":
+                guard let seconds = rest.popFirst().flatMap(TimeInterval.init), seconds > 0 else { return nil }
+                options.answerSeconds = seconds
+            default:
+                guard folder == nil, !argument.hasPrefix("-") else { return nil }
+                folder = argument
+            }
+        }
+        return folder.map { ($0, options) }
+    }
+
+    /// Starts the tool in `folder` and plays the app's side to it. What the
+    /// person types is read from `typing` when `options` names no command.
+    public static func run(folder: URL, options: RunOptions, environment: [String: String], typing: Int32,
+                           say: @escaping (String) -> Void) -> Int32 {
+        let report = FolderCheck.check(folder)
+        guard report.problems.isEmpty, let manifest = report.manifest else {
+            for problem in report.problems { say("NOT OK   " + Words.problem(problem)) }
+            say("")
+            say("Nothing was started: the app would refuse this folder.")
+            return 1
+        }
+        let session = Session(manifest: manifest, options: options, typing: typing, say: say)
+        let status = session.run(folder: report.folder, environment: environment)
+        say("")
+        say(status == 0 ? "run: OK" : "run: FAILED")
+        return status
     }
 
     static func validate(_ folder: URL, say: (String) -> Void) -> Int32 {
