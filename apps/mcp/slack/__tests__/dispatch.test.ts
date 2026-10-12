@@ -109,6 +109,18 @@ describe("handlers pass arguments through in the client's shape", () => {
   });
   afterEach(() => capture.restore());
 
+  it("routes slack_mark_read to conversations.mark with Slack's ts name", async () => {
+    await dispatch(clientFor(STDIO_ENV), "slack_mark_read", {
+      channel_id: "C1",
+      timestamp: "1712345678.123456",
+    });
+    expect(capture.calls[0]!.url).toContain("conversations.mark");
+    expect(JSON.parse(capture.calls[0]!.body!)).toEqual({
+      channel: "C1",
+      ts: "1712345678.123456",
+    });
+  });
+
   it("routes slack_get_channel_history to conversations.history", async () => {
     await dispatch(clientFor(STDIO_ENV), "slack_get_channel_history", {
       channel_id: "C1",

@@ -48,6 +48,21 @@ import type { SlackCredentials, WriteTokenPreference } from "./config.js";
  * discriminating on whether the library reached a verdict instead of assuming
  * a cause.
  */
+/** Conversations inspected at once by listUnread; Slack allows ~50 calls/min. */
+const UNREAD_CONCURRENCY = 4;
+/** Times listUnread re-asks after a rate limit, and the longest single wait. */
+const UNREAD_MAX_RETRIES = 3;
+const UNREAD_MAX_WAIT_SECONDS = 30;
+/** Message subtypes that do not light Slack's unread badge. */
+const UNREAD_IGNORED_SUBTYPES = new Set([
+  "channel_join",
+  "channel_leave",
+  "group_join",
+  "group_leave",
+]);
+/** Pages of 200 conversations listUnread will enumerate per type group. */
+const UNREAD_MAX_PAGES = 5;
+
 export class UserTokenUnavailableError extends Error {
   constructor(method: string) {
     super(
@@ -192,7 +207,17 @@ export class SlackClient {
       });
     }
 
-    const data = (await res.json()) as { ok?: boolean; error?: string };
+    const data = (await res.json()) as {
+      ok?: boolean;
+      error?: string;
+      retry_after?: number;
+    };
+    // Slack says how long to back off only in a header; carried into the body
+    // so a caller that can afford to wait knows for how long.
+    if (res.status === 429) {
+      const header = Number(res.headers.get("Retry-After") ?? "1");
+      data.retry_after = Number.isFinite(header) ? header : 1;
+    }
 
     // Fallback: if a bot token read fails with not_in_channel or
     // channel_not_found, retry with user token when available (e.g. for DMs,
@@ -421,6 +446,192 @@ export class SlackClient {
 
   async leaveChannel(channelId: string, as: "bot" | "user" = "bot") {
     return this.api("conversations.leave", { channel: channelId }, as, "POST");
+  }
+
+  /**
+   * Moves the authenticated human's read cursor in a conversation, which is
+   * what clears its unread badge. Always the user token: with the bot token
+   * Slack accepts the call and moves the *bot's* cursor, so the badge the
+   * human sees would stay exactly where it was while the call reported ok.
+   */
+  async markRead(channelId: string, timestamp: string) {
+    return this.api(
+      "conversations.mark",
+      { channel: channelId, ts: timestamp },
+      "user",
+      "POST",
+    );
+  }
+
+  /**
+   * Lists the conversations the authenticated human has unread messages in.
+   *
+   * Slack has no official "what is unread" call for an app token — the one the
+   * desktop client uses is private to session credentials. So this asks, per
+   * conversation, where the human's read cursor is (`conversations.info`) and
+   * what was posted after it (`conversations.history`): two calls each, run a
+   * few at a time. It is a slow tool by construction and says so.
+   *
+   * Nothing here fails the whole listing. A conversation type the token has no
+   * scope to enumerate is reported under `skipped`, and a conversation whose
+   * calls fail (a rate limit, most likely) under `errors`, because a partial
+   * answer that names its gaps is more use than none.
+   */
+  async listUnread(maxPerConversation = 100) {
+    const perConversation = Math.min(Math.max(1, maxPerConversation), 200);
+    const skipped: { types: string; error: string }[] = [];
+    let truncated = false;
+    let candidates: string[] = [...this.channelGuard.allowed];
+
+    if (candidates.length === 0) {
+      // One listing per type group, so a token without im:read still gets its
+      // channels rather than a single missing_scope for everything.
+      for (const types of ["public_channel,private_channel", "im", "mpim"]) {
+        let cursor: string | undefined;
+        for (let page = 0; ; page++) {
+          const params: Record<string, unknown> = {
+            types,
+            exclude_archived: "true",
+            limit: 200,
+            team_id: this.teamId,
+          };
+          if (cursor) params.cursor = cursor;
+          const data = (await this.api(
+            "users.conversations",
+            params,
+            "user",
+          )) as {
+            ok?: boolean;
+            error?: string;
+            channels?: { id: string }[];
+            response_metadata?: { next_cursor?: string };
+          };
+          if (!data.ok) {
+            skipped.push({ types, error: data.error ?? "unknown_error" });
+            break;
+          }
+          for (const c of data.channels ?? []) candidates.push(c.id);
+          cursor = data.response_metadata?.next_cursor || undefined;
+          if (!cursor) break;
+          if (page >= UNREAD_MAX_PAGES - 1) {
+            truncated = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const conversations: Record<string, unknown>[] = [];
+    const errors: { id: string; error: string }[] = [];
+
+    // A workspace of any size crosses Slack's per-minute limit here, and a
+    // listing that drops the rate-limited conversations reads as "nothing
+    // unread" when it means "did not look". So wait as told and ask again.
+    const patient = async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      for (let attempt = 0; ; attempt++) {
+        const data = (await this.api(method, params, "user")) as {
+          error?: string;
+          retry_after?: number;
+        };
+        if (data.error !== "ratelimited" || attempt >= UNREAD_MAX_RETRIES) {
+          return data;
+        }
+        const seconds = Math.min(
+          data.retry_after ?? 1,
+          UNREAD_MAX_WAIT_SECONDS,
+        );
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+      }
+    };
+
+    const inspect = async (id: string) => {
+      const info = (await patient("conversations.info", { channel: id })) as {
+        ok?: boolean;
+        error?: string;
+        channel?: {
+          name?: string;
+          user?: string;
+          is_im?: boolean;
+          is_mpim?: boolean;
+          is_private?: boolean;
+          is_archived?: boolean;
+          last_read?: string;
+        };
+      };
+      if (!info.ok || !info.channel) {
+        errors.push({ id, error: info.error ?? "unknown_error" });
+        return;
+      }
+      const channel = info.channel;
+      this.channelGuard.assertVisibilityMatches(id, channel.is_private);
+      // No cursor means Slack does not track this conversation for the caller
+      // (not a member), so "unread" has no meaning for it.
+      if (channel.is_archived || channel.last_read === undefined) return;
+
+      const history = (await patient("conversations.history", {
+        channel: id,
+        // A conversation never opened reports a cursor of all zeros, which
+        // history rejects as invalid_ts_oldest; "0" asks the same question.
+        oldest: Number(channel.last_read) === 0 ? "0" : channel.last_read,
+        limit: perConversation,
+      })) as {
+        ok?: boolean;
+        error?: string;
+        has_more?: boolean;
+        messages?: { ts: string; subtype?: string }[];
+      };
+      if (!history.ok) {
+        errors.push({ id, error: history.error ?? "unknown_error" });
+        return;
+      }
+      // Slack's own badge ignores membership notices, so a channel whose only
+      // news is that someone joined is not unread to the person looking at it.
+      const messages = (history.messages ?? []).filter(
+        (m) => !UNREAD_IGNORED_SUBTYPES.has(m.subtype ?? ""),
+      );
+      if (messages.length === 0) return;
+      conversations.push({
+        id,
+        ...(channel.name ? { name: channel.name } : {}),
+        ...(channel.user ? { user: channel.user } : {}),
+        type: channel.is_im
+          ? "im"
+          : channel.is_mpim
+            ? "mpim"
+            : channel.is_private
+              ? "private_channel"
+              : "public_channel",
+        unread_count: messages.length,
+        // True when there are more unread than were counted.
+        unread_count_is_minimum: Boolean(history.has_more),
+        last_read: channel.last_read,
+        // Newest first: this is the timestamp slack_mark_read wants.
+        latest_ts: messages[0]!.ts,
+      });
+    };
+
+    candidates = [...new Set(candidates)];
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: UNREAD_CONCURRENCY }, async () => {
+        while (next < candidates.length) await inspect(candidates[next++]!);
+      }),
+    );
+
+    conversations.sort((a, b) =>
+      String(b.latest_ts).localeCompare(String(a.latest_ts)),
+    );
+    return {
+      ok: true,
+      conversations,
+      checked: candidates.length,
+      truncated,
+      skipped,
+      errors,
+    };
   }
 
   async listChannelMembers(channelId: string, limit = 100, cursor?: string) {
