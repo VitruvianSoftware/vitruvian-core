@@ -81,7 +81,9 @@ export function celestrakProxy() {
       try {
         return await fetchTle(`${mirror}/${encodeURIComponent(group)}.txt`);
       } catch {
-        console.warn('[celestrak-proxy] mirror fetch failed — trying CelesTrak');
+        console.warn(
+          '[celestrak-proxy] mirror fetch failed — trying CelesTrak',
+        );
       }
     }
     return fetchTle(celestrakTleUrl(group).toString());
