@@ -282,8 +282,14 @@ package enum NotchAgentSupport {
     // MARK: Layout
 
     package static let spacing: CGFloat = 10
-    package static let cardHeight: CGFloat = 96
+    /// A card of a few short lines: models, projects, what is running, resets.
+    package static let cardHeight: CGFloat = 102
     package static let chartHeight: CGFloat = 118
+    /// The spending card: its total, the four figures under it, the split and the footer.
+    package static let spendHeight: CGFloat = 142
+    /// What sits above the cards: the Chat and Telemetry switch, the provider
+    /// switch, and the gaps under each.
+    package static let telemetryChromeHeight: CGFloat = 84
     /// Below this width every card takes a row of its own.
     package static let pairWidth: CGFloat = 390
 
@@ -302,6 +308,24 @@ package enum NotchAgentSupport {
     /// Mac get cards. The island's size and the page both ask here.
     package static func pageProviders(seen: Set<AgentProvider>, in defaults: UserDefaults = .standard) -> [AgentProvider] {
         providers(in: defaults).filter(seen.contains)
+    }
+
+    package static func telemetryFilter(in defaults: UserDefaults = .standard) -> NotchTelemetryFilter {
+        NotchTelemetryFilter(rawValue: defaults[Preferences.notchAgentsTelemetryFilter]) ?? .antigravity
+    }
+
+    /// The agents the telemetry cards cover under `filter`. A provider's own
+    /// tab keeps its cards while that agent is switched on, even before it
+    /// leaves anything on this Mac. The island's size and the page both ask here.
+    package static func pageProviders(seen: Set<AgentProvider>, filter: NotchTelemetryFilter,
+                                      in defaults: UserDefaults = .standard) -> [AgentProvider] {
+        let only: AgentProvider
+        switch filter {
+        case .all: return pageProviders(seen: seen, in: defaults)
+        case .antigravity: only = .antigravity
+        case .claude: only = .claude
+        }
+        return providers(in: defaults).contains(only) ? [only] : []
     }
 
     /// The AI page's rows for `providers` across `width`.
@@ -332,13 +356,54 @@ package enum NotchAgentSupport {
         return rows
     }
 
-    package static func height(of row: [NotchAgentTile]) -> CGFloat {
-        row.contains { $0.card.fullWidth } ? chartHeight : cardHeight
+    /// How many allowance rows each agent's limits card draws: every window
+    /// Antigravity and Claude report, and for the others the session and
+    /// the most used longer window.
+    package static func limitRows(_ limits: [AgentProvider: AgentLimits]) -> [AgentProvider: Int] {
+        limits.mapValues { limits in
+            if limits.provider == .antigravity || limits.provider == .claude { return limits.windows.count }
+            let session = limits.windows.contains { $0.kind == .session }
+            let longer = limits.windows.contains { $0.kind != .session }
+            return (session ? 1 : 0) + (longer ? 1 : 0)
+        }
     }
 
-    package static func contentHeight(_ rows: [[NotchAgentTile]]) -> CGFloat {
+    /// A limits card's height for the rows it draws. Each row is a line, a
+    /// meter and its forecast, 42 pt with the gap above it; a single row
+    /// leaves room for the caption or the hint shown in place of a reading.
+    package static func limitsHeight(rows: Int) -> CGFloat {
+        rows <= 1 ? 104 : 38 + 42 * CGFloat(rows)
+    }
+
+    /// A card's height. `limitRows` holds the rows each limits card draws,
+    /// an agent missing from it having no reading yet; without it every
+    /// limits card gets room for the most it can show.
+    package static func height(of tile: NotchAgentTile, limitRows: [AgentProvider: Int]? = nil) -> CGFloat {
+        switch tile.card {
+        case .trend, .activity: return chartHeight
+        case .spend: return spendHeight
+        case .models, .projects, .live, .resets: return cardHeight
+        case .limits:
+            guard let provider = tile.provider else { return limitsHeight(rows: 1) }
+            let most = provider == .antigravity ? 4 : provider == .claude ? 3 : 2
+            return limitsHeight(rows: limitRows.map { $0[provider] ?? 0 } ?? most)
+        }
+    }
+
+    /// A row is as tall as its tallest card.
+    package static func height(of row: [NotchAgentTile], limitRows: [AgentProvider: Int]? = nil) -> CGFloat {
+        row.map { height(of: $0, limitRows: limitRows) }.max() ?? 0
+    }
+
+    package static func contentHeight(_ rows: [[NotchAgentTile]], limitRows: [AgentProvider: Int]? = nil) -> CGFloat {
         guard !rows.isEmpty else { return 0 }
-        return rows.map(height).reduce(0, +) + spacing * CGFloat(rows.count - 1)
+        return rows.map { height(of: $0, limitRows: limitRows) }.reduce(0, +) + spacing * CGFloat(rows.count - 1)
+    }
+
+    /// The telemetry page's height: the switches above the cards, then the
+    /// cards, or the empty message's room while there are none.
+    package static func telemetryHeight(_ rows: [[NotchAgentTile]], limitRows: [AgentProvider: Int]? = nil) -> CGFloat {
+        telemetryChromeHeight + (rows.isEmpty ? NotchLayout.emptyHeight : contentHeight(rows, limitRows: limitRows))
     }
 }
 

@@ -33,17 +33,7 @@ package struct NotchAgentsView: View {
     private var providers: [AgentProvider] {
         // The switches are read here so a change in Settings redraws the page.
         _ = (claude, codex, opencode, copilot, antigravity)
-        let all = NotchAgentSupport.pageProviders(seen: usage.snapshot.seen)
-        switch telemetryFilter {
-        case .antigravity:
-            let matches = all.filter { $0 == .antigravity }
-            return matches.isEmpty && antigravity ? [.antigravity] : matches
-        case .claude:
-            let matches = all.filter { $0 == .claude }
-            return matches.isEmpty && claude ? [.claude] : matches
-        case .all:
-            return all
-        }
+        return NotchAgentSupport.pageProviders(seen: usage.snapshot.seen, filter: telemetryFilter)
     }
 
     private var rows: [[NotchAgentTile]] {
@@ -61,6 +51,7 @@ package struct NotchAgentsView: View {
                     Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .frame(maxWidth: 220)
 
                 if notchService.agentTab == .chat {
@@ -99,12 +90,15 @@ package struct NotchAgentsView: View {
     private var telemetryFilterBar: some View {
         HStack {
             Spacer()
+            // A segmented picker draws its title beside it, where a narrow
+            // island wraps it into the control; the title stays for VoiceOver.
             Picker("Provider", selection: $telemetryFilterRaw) {
                 ForEach(NotchTelemetryFilter.allCases) { filter in
                     Text(filter.displayName).tag(filter.rawValue)
                 }
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .frame(maxWidth: 240)
             Spacer()
         }
@@ -125,27 +119,33 @@ package struct NotchAgentsView: View {
             NotchEmptyView(symbol: "square.grid.2x2", message: text.noCards)
         } else {
             let rows = rows
+            // Always in a scroll view: squeezed into the island's height, the
+            // rows were drawn over one another. It scrolls only when the
+            // cards are taller than the room under the switches.
             TimelineView(.periodic(from: .now, by: 15)) { context in
-                if NotchAgentSupport.contentHeight(rows) > size.height + 0.5 {
-                    ScrollView { grid(rows, now: context.date) }
-                        .scrollIndicators(.automatic)
-                } else {
-                    grid(rows, now: context.date)
-                }
+                ScrollView { grid(rows, now: context.date) }
+                    .scrollIndicators(.automatic)
+                    .scrollBounceBehavior(.basedOnSize)
             }
         }
     }
 
     private func grid(_ rows: [[NotchAgentTile]], now: Date) -> some View {
-        VStack(spacing: NotchAgentSupport.spacing) {
+        let limitRows = NotchAgentSupport.limitRows(usage.snapshot.limits)
+        return VStack(spacing: NotchAgentSupport.spacing) {
             ForEach(rows, id: \.first?.id) { row in
-                HStack(spacing: NotchAgentSupport.spacing) {
+                HStack(alignment: .top, spacing: NotchAgentSupport.spacing) {
                     ForEach(row) { tile in card(tile, now: now) }
                 }
-                .frame(minHeight: NotchAgentSupport.height(of: row))
+                // A row is as tall as its tallest card, never shorter than
+                // the island allowed for, and both cards fill it.
+                .frame(minHeight: NotchAgentSupport.height(of: row, limitRows: limitRows))
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
+        .padding(.top, 2)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder private func card(_ tile: NotchAgentTile, now: Date) -> some View {
@@ -180,12 +180,14 @@ package struct NotchAgentsView: View {
 private struct NotchAgentChip: View {
     let text: String
     var tint: Color = .white
+    var truncation: Text.TruncationMode = .tail
 
     var body: some View {
         Text(text)
             .font(.system(size: 9, weight: .semibold))
             .foregroundStyle(tint.opacity(0.9))
             .lineLimit(1)
+            .truncationMode(truncation)
             .padding(.horizontal, 5)
             .padding(.vertical, 1.5)
             .background(tint.opacity(0.14), in: Capsule(style: .continuous))
@@ -250,8 +252,13 @@ private struct NotchAgentLimitsCard: View {
                                      provider: provider) {
                     HStack(spacing: 4) {
                         if let identity = snapshot.identities[provider] {
-                            if let planTier = identity.planTier { NotchAgentChip(text: planTier, tint: provider.tint) }
-                            if let email = identity.email { NotchAgentChip(text: email, tint: .secondary) }
+                            // A paired card has no room for the address beside
+                            // the plan; it drops out whole and stays in the tooltip.
+                            ViewThatFits(in: .horizontal) {
+                                identityChips(identity, email: true)
+                                identityChips(identity, email: false)
+                            }
+                            .help([identity.planTier, identity.email].compactMap { $0 }.joined(separator: " · "))
                         } else if let plan = snapshot.plans[provider] {
                             NotchAgentChip(text: plan.name, tint: provider.tint)
                         }
@@ -261,7 +268,7 @@ private struct NotchAgentLimitsCard: View {
                 if windows.isEmpty {
                     estimate
                 } else {
-                    VStack(spacing: 5) {
+                    VStack(alignment: .leading, spacing: 6) {
                         ForEach(windows) { row($0) }
                     }
                     .opacity(stale ? 0.6 : 1)
@@ -270,6 +277,16 @@ private struct NotchAgentLimitsCard: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func identityChips(_ identity: AgentIdentity, email: Bool) -> some View {
+        HStack(spacing: 4) {
+            if let planTier = identity.planTier { NotchAgentChip(text: planTier, tint: provider.tint) }
+            // Without a plan the address is all there is, so it stays and is cut in the middle.
+            if let address = identity.email, email || identity.planTier == nil {
+                NotchAgentChip(text: address, tint: .secondary, truncation: .middle)
+            }
+        }
     }
 
     /// How old a reading is, once it is old enough to have missed use elsewhere.
@@ -319,11 +336,15 @@ private struct NotchAgentLimitsCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 Spacer(minLength: 2)
+                // The figure keeps its width, so every row's ends at the same edge.
                 Text(AgentFormat.percent(fraction))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(tint == provider.tint ? Color.white : tint)
                     .contentTransition(.numericText())
+                    .lineLimit(1)
+                    .fixedSize()
+                    .layoutPriority(2)
             }
             NotchAgentMeter(value: fraction, pace: pace.map { remaining ? 1 - $0.elapsed : $0.elapsed },
                             tint: tint, height: 4)
@@ -333,9 +354,10 @@ private struct NotchAgentLimitsCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .help(help(window))
+        .help(help(window, forecast: pace?.summary))
     }
 
     /// What the window covers: its length, or the model it is kept for.
@@ -357,9 +379,11 @@ private struct NotchAgentLimitsCard: View {
         return AgentFormat.duration(max(60, seconds), locale: locale, units: seconds >= 3600 ? 2 : 1)
     }
 
-    private func help(_ window: AgentLimitWindow) -> String {
+    /// The forecast is here whole, for a card too narrow to show all of it.
+    private func help(_ window: AgentLimitWindow, forecast: String?) -> String {
         var parts = [label(window), text.usedShare(AgentFormat.percent(window.usedFraction)),
                      text.left(AgentFormat.percent(window.remainingFraction))]
+        if let forecast, !forecast.isEmpty { parts.append(forecast) }
         if let resets = window.resetsAt {
             parts.append(resets.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
         }
@@ -497,9 +521,14 @@ private struct NotchAgentSpendCard: View {
                 NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) {
                     HStack(spacing: 5) {
                         if let credits = (providers.count == 1 ? snapshot.credits[providers[0]] : nil) ?? snapshot.credits[.claude], credits > 0 {
-                            NotchAgentChip(text: "Credits: " + AgentFormat.cost(credits), tint: .green)
+                            // A paired card shows the amount alone; the menu beside it keeps its width.
+                            ViewThatFits(in: .horizontal) {
+                                NotchAgentChip(text: "Credits: " + AgentFormat.cost(credits), tint: .green)
+                                NotchAgentChip(text: AgentFormat.cost(credits), tint: .green)
+                            }
+                            .help("Credits: " + AgentFormat.cost(credits))
                         }
-                        periodMenu
+                        periodMenu.layoutPriority(1)
                     }
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -518,35 +547,11 @@ private struct NotchAgentSpendCard: View {
                 }
                 .help(usage.fullyPriced ? text.valueNote : text.unpriced)
                 if let metrics = (providers.count == 1 ? snapshot.costMetrics[providers[0]] : nil) ?? snapshot.costMetrics[.claude] {
-                    HStack(spacing: 8) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Today").font(.system(size: 8.5)).foregroundStyle(.secondary)
-                            Text(AgentFormat.cost(metrics.todayCost))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("30d cost").font(.system(size: 8.5)).foregroundStyle(.secondary)
-                            Text(AgentFormat.cost(metrics.thirtyDayCost))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Latest tokens").font(.system(size: 8.5)).foregroundStyle(.secondary)
-                            Text(AgentFormat.tokens(metrics.latestTokens))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("30d tokens").font(.system(size: 8.5)).foregroundStyle(.secondary)
-                            Text(AgentFormat.tokens(metrics.thirtyDayTokens))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 6) {
+                        figure("Today", AgentFormat.cost(metrics.todayCost))
+                        figure("30d cost", AgentFormat.cost(metrics.thirtyDayCost))
+                        figure("Latest tokens", short: "Latest", AgentFormat.tokens(metrics.latestTokens))
+                        figure("30d tokens", short: "30d tok.", AgentFormat.tokens(metrics.thirtyDayTokens))
                     }
                     .padding(.vertical, 3)
                     .padding(.horizontal, 6)
@@ -563,6 +568,27 @@ private struct NotchAgentSpendCard: View {
         }
     }
 
+    /// One of the four figures under the total. A paired card takes the
+    /// short label, so all four read at one size; the tooltip has it whole.
+    private func figure(_ label: String, short: String? = nil, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ViewThatFits(in: .horizontal) {
+                Text(label)
+                Text(short ?? label).minimumScaleFactor(0.85)
+            }
+            .font(.system(size: 8.5))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(label + " · " + value)
+    }
+
     private var periodMenu: some View {
         NotchMenuButton(title: text.period(chosen), items: AgentPeriod.allCases.map { option in
             NotchMenuItem(title: text.period(option), checked: option == chosen) { period = option.rawValue }
@@ -570,6 +596,8 @@ private struct NotchAgentSpendCard: View {
             Text("\(text.period(chosen)) \(Image(systemName: "chevron.down"))")
                 .font(.system(size: 9.5, weight: .medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 4)
                 .contentShape(Rectangle())
         }

@@ -1229,9 +1229,11 @@ package final class NotchService: ObservableObject {
     private func agentsContentHeight(width: CGFloat) -> CGFloat? {
         let usage = services.agentUsage
         guard usage.loaded else { return nil }
-        let providers = NotchAgentSupport.pageProviders(seen: usage.seen, in: defaults)
-        guard !providers.isEmpty else { return 0 }
-        return NotchAgentSupport.contentHeight(NotchAgentSupport.pageRows(providers: providers, width: width, in: defaults))
+        // The same agents the page draws, so the island is sized for the tab shown.
+        let providers = NotchAgentSupport.pageProviders(seen: usage.seen, filter: NotchAgentSupport.telemetryFilter(in: defaults),
+                                                        in: defaults)
+        let rows = providers.isEmpty ? [] : NotchAgentSupport.pageRows(providers: providers, width: width, in: defaults)
+        return NotchAgentSupport.telemetryHeight(rows, limitRows: NotchAgentSupport.limitRows(usage.limits))
     }
     package var expandedGeometry: NotchGeometry {
         var result = geometry

@@ -61,10 +61,12 @@ package struct NotchAgentCardHeader<Accessory: View>: View {
                     .foregroundStyle(tint)
                     .frame(width: 13)
             }
+            // The title is read whole; what sits beside it gives way first.
             Text(title)
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(1)
+                .layoutPriority(1)
             Spacer(minLength: 4)
             accessory
         }
