@@ -569,6 +569,61 @@ enum ExternalToolScreensTests {
         }
     }
 
+    /// The same alert, for a folder that could not be deleted with the
+    /// tool's program gone: its own title and sentence, the folder or the
+    /// two folders, and the button that shows them in the Finder.
+    static func undeletedAfterRemoval(_ suite: TestSuite) {
+        let files = URL(fileURLWithPath: "/Users/me/support/Tools/com.acme.deploys", isDirectory: true)
+        let data = URL(fileURLWithPath: "/Users/me/support/ToolData/com.acme.deploys", isDirectory: true)
+        func notice(_ removal: ExternalToolStore.Removal, name: String = "Deploys",
+                    _ language: AppLanguage = .enUS) -> ToolRemovalNotice? {
+            ToolRemovalNotice(removal, name: name, strings: FeatureStrings.externalTools(language), home: "/Users/me")
+        }
+        let sentence = "The tool is removed, but Vitruvian could not delete all of its files. What is left is here:"
+        let one = notice(.notDeleted(folders: [data]))
+        suite.expect(one?.title == "Some files of “Deploys” could not be deleted" && one?.message == sentence
+                         && one?.folder == "~/support/ToolData/com.acme.deploys" && one?.reveals == [data]
+                         && one?.text == sentence + "\n\n~/support/ToolData/com.acme.deploys",
+                     "when a removed tool's folder could not be deleted, the person is told so, and where what is left is")
+        let two = notice(.notDeleted(folders: [files, data]))
+        suite.expect(two?.folder == "~/support/Tools/com.acme.deploys\n~/support/ToolData/com.acme.deploys"
+                         && two?.reveals == [files, data] && two?.title == one?.title,
+                     "with two folders left, each is on a line of its own and both are shown in the Finder")
+        let german = notice(.notDeleted(folders: [data]), .de)
+        suite.expect(german?.title == "Einige Dateien von „Deploys“ konnten nicht gelöscht werden"
+                         && german?.message == FeatureStrings.externalTools(.de).removeUndeletedMessage
+                         && german?.message != sentence && german?.folder == one?.folder,
+                     "in the person's language, with the folder as it is")
+        suite.expect(notice(.notDeleted(folders: [])) == nil,
+                     "with nothing left there is nothing to say")
+        let hostile = notice(.notDeleted(folders: [data]), name: "De\nploys\u{202E}" + String(repeating: "x", count: 50_000))
+        suite.expect(hostile?.title.hasPrefix("Some files of “De ploysxxx") == true
+                         && hostile?.title.count == english.removeUndeletedTitle("").count + ToolOwnWords.limit
+                         && hostile?.title.contains("\n") == false,
+                     "that alert too names the tool in one short line, whatever the tool calls itself")
+        let kept = notice(.keptStillRunning(data: data))
+        suite.expect(kept?.reveals == [data] && notice(.keptStillRunning(data: nil))?.reveals == [],
+                     "the alert about kept data shows its one folder through the same button")
+
+        // Through the store, over a folder that is read-only.
+        let bench = ExternalToolStoreTests.Bench()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bench.data.path)
+            bench.close()
+        }
+        bench.add(bench.folder())
+        try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+        try? FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: bench.data.path)
+        let home = bench.root.resolvingSymlinksInPath().path
+        let said = ToolRemovalNotice.removing(id, deletingData: true, name: "Deploys", store: bench.store,
+                                              strings: english, home: home)
+        suite.expect(bench.store.listed.isEmpty && said?.title == "Some files of “Deploys” could not be deleted"
+                         && said?.folder == "~/support/ToolData/com.acme.deploys"
+                         && said?.reveals.first?.path.hasPrefix(home) == true,
+                     "removing a tool whose data folder cannot be deleted takes its row away and tells the person once "
+                         + "which folder is left")
+    }
+
     /// What the person is told after a tool is removed: nothing when what
     /// they asked for was done, and one alert when what the tool saved was
     /// kept because its program would not stop.
@@ -580,6 +635,7 @@ enum ExternalToolScreensTests {
         }
         suite.expect(notice(.deleted) == nil && notice(.keptAsAsked) == nil && notice(.notAdded) == nil,
                      "after a tool is removed nothing more is said when what was asked was done")
+        undeletedAfterRemoval(suite)
         let kept = notice(.keptStillRunning(data: data))
         let sentence = "Its program would not stop, so Vitruvian did not delete what the tool saved. It is in this folder:"
         suite.expect(kept?.title == "What “Deploys” saved was kept" && kept?.message == sentence

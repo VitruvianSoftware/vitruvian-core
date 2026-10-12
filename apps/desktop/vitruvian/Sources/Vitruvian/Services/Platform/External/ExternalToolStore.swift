@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import Combine
 import Foundation
 import os
 import VitruvianCore
@@ -46,13 +47,19 @@ package final class ExternalToolStore {
         /// The tool is removed, and what it saved is kept, as was asked.
         case keptAsAsked
         /// The tool is removed, and what it saved was to be deleted too, and
-        /// its program was gone, so that was done.
+        /// its program was gone, so that was done: nothing of it is left.
         case deleted
         /// The tool is removed. What it saved was to be deleted too, and is
         /// kept all the same, its preferences with it, because the tool's
         /// program was still there after the kill. `data` is the folder
         /// that holds what it saved.
         case keptStillRunning(data: URL?)
+        /// The tool is removed and its program is gone, but something that
+        /// was to be deleted is still there: a folder that is read-only, or
+        /// a file in use. `folders` is what is left, the app's copy of the
+        /// tool first: one folder, or both. The tool's preferences stay
+        /// while the folder of what it saved does.
+        case notDeleted(folders: [URL])
 
         /// True when the tool was removed.
         package var removed: Bool { self != .notAdded }
@@ -120,6 +127,13 @@ package final class ExternalToolStore {
         package var stoppedWorking: @MainActor (ToolID) -> Void
         /// Deletes every preference a tool saved.
         package var forgetPreferences: @MainActor (ToolID) -> Void
+        /// Clears the shortcuts the person gave a tool's commands.
+        package var forgetShortcuts: @MainActor (ToolID) -> Void
+        /// Has the store told each time the person changes the app's
+        /// language, with the new language's tag. What it gives back is
+        /// kept for as long as the store is: letting go of it ends the
+        /// watching.
+        package var watchLanguage: @MainActor (@escaping @MainActor (String) -> Void) -> Any?
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -128,7 +142,9 @@ package final class ExternalToolStore {
                      makeTransport: @escaping @MainActor (URL, URL) -> any ToolTransport,
                      language: @escaping @MainActor () -> String,
                      stoppedWorking: @escaping @MainActor (ToolID) -> Void,
-                     forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in }) {
+                     forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     forgetShortcuts: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     watchLanguage: @escaping @MainActor (@escaping @MainActor (String) -> Void) -> Any? = { _ in nil }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -139,6 +155,8 @@ package final class ExternalToolStore {
             self.language = language
             self.stoppedWorking = stoppedWorking
             self.forgetPreferences = forgetPreferences
+            self.forgetShortcuts = forgetShortcuts
+            self.watchLanguage = watchLanguage
         }
 
         /// The app as it is. That a tool stopped working is also a line
@@ -156,7 +174,19 @@ package final class ExternalToolStore {
                 Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
                     .error("the tool \(id.rawValue, privacy: .public) stopped working")
             },
-            forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) })
+            forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) },
+            forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
+            watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) })
+    }
+
+    /// Hears each language the app changes to, as its tag, on the main
+    /// thread. The language it starts with is not a change, and neither is
+    /// the same language set again. The watching ends when what this gives
+    /// back is let go.
+    package static func watch(_ languages: Published<AppLanguage>.Publisher,
+                              then changed: @escaping @MainActor (String) -> Void) -> AnyCancellable {
+        languages.removeDuplicates().dropFirst().receive(on: DispatchQueue.main)
+            .sink { language in MainActor.assumeIsolated { changed(language.rawValue) } }
     }
 
     /// Deletes every preference saved under a tool's id: the keys that
@@ -190,9 +220,12 @@ package final class ExternalToolStore {
     /// The tools the person has been told stopped working, in this run of
     /// the app.
     private var told: Set<ToolID> = []
+    /// Keeps the store told of a change of the app's language.
+    private var watchingLanguage: Any?
 
     package init(parts: Parts) {
         self.parts = parts
+        watchingLanguage = parts.watchLanguage { [weak self] in self?.languageChanged($0) }
     }
 
     /// True for a tool that is added, switched on, and what the person
@@ -408,9 +441,21 @@ package final class ExternalToolStore {
     /// there after the kill, what it saved is kept whatever was asked, so
     /// that a program is never left writing into a folder that is gone.
     ///
+    /// The shortcuts the person gave the tool's commands are cleared either
+    /// way: a tool that is removed has no row to show or clear them on.
+    /// Switching a tool off, or updating it, clears none.
+    ///
     /// The folder the tool was added from is never touched. What it gives
     /// back says which of these happened, so that the person can be told
-    /// when what a tool saved was kept against what they asked.
+    /// when what a tool saved was kept against what they asked, or when a
+    /// folder that was to go could not be deleted.
+    ///
+    /// The record goes first, before anything is deleted, so a tool that
+    /// is only half deleted has no record at the next launch: it is never
+    /// listed and never started. The preferences under the tool's id are
+    /// deleted only together with the folder of what it saved. When that
+    /// folder stays, for any reason, they stay with it, and adding the
+    /// tool again finds both. Nothing deletes either later.
     @discardableResult
     package func remove(_ id: ToolID, deletingData: Bool) -> Removal {
         guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return .notAdded }
@@ -421,22 +466,32 @@ package final class ExternalToolStore {
         let gone = deactivate(id, seeingItOut: true)
         held.remove(id)
         resting[id] = nil
+        // Its commands have no row on the Shortcuts page any more, so the
+        // keys the person gave them are given back, whatever else is kept.
+        parts.forgetShortcuts(id)
         let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
         // What it saved goes only once its program is gone.
         let data = deletingData && gone
         if deletingData, !gone {
             logger.error("the removed tool \(id.rawValue, privacy: .public) is still running: what it saved is kept")
         }
+        // What is still there although it was to go: the copy, and with
+        // `data` the folder of what the tool saved.
+        var left: [URL] = []
         if parts.folders?.delete(id, data: data) != true {
             logger.error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
+            left = parts.folders?.undeleted(id, data: data) ?? []
         }
-        if data { parts.forgetPreferences(id) }
+        // A tool's preferences stay exactly as long as the folder of what
+        // it saved does, whatever kept the folder.
+        let dataFolder = parts.folders?.place(for: id)?.data
+        if data, !left.contains(where: { $0 == dataFolder }) { parts.forgetPreferences(id) }
         parts.registry().noteAvailabilityChanged()
-        guard deletingData else { return .keptAsAsked }
-        guard gone else {
-            return .keptStillRunning(data: parts.folders?.place(for: id)?.data)
-        }
-        return .deleted
+        // A program that would not stop comes first: it is the one case
+        // where something of the tool may still be running.
+        if deletingData, !gone { return .keptStillRunning(data: dataFolder) }
+        guard left.isEmpty else { return .notDeleted(folders: left) }
+        return deletingData ? .deleted : .keptAsAsked
     }
 
     // MARK: - A tool's own settings
@@ -491,6 +546,18 @@ package final class ExternalToolStore {
     /// person who acts.
     private func storage(of tool: ExternalToolManifest) -> StorageAccess {
         StorageAccess(gate: { nil }, manifest: tool.manifest, backing: parts.broker().backings.storage)
+    }
+
+    // MARK: - The app's language
+
+    /// The person changed the app's language. Each tool whose program is
+    /// running is sent the protocol's `language/changed`, a notice the app
+    /// does not wait on, once for each change; one that has not answered
+    /// `initialize` yet hears it when it has. Any other tool, one that is
+    /// resting, stopped, switched off or held back, is sent nothing and is
+    /// not started: `initialize` carries the language when it next starts.
+    package func languageChanged(_ language: String) {
+        for id in tools.keys.sorted(by: { $0.rawValue < $1.rawValue }) { tools[id]?.languageChanged(language) }
     }
 
     // MARK: - A tool that stopped working

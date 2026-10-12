@@ -26,8 +26,10 @@ extension QuickToolHotkey: ToolHotkey {}
 /// `revision`), and when a shortcut recording ends (`ShortcutCapture.end`),
 /// because recording releases every key the app holds.
 ///
-/// Only `assign` writes what is saved. `sync` reads it and never changes it,
-/// so a shortcut outlives a tool that is switched off or not registered.
+/// Only `assign` and `forget` write what is saved. `sync` reads it and never
+/// changes it, so a shortcut outlives a tool that is switched off or not
+/// registered. Such a shortcut holds no key and no combination meanwhile
+/// (`heldShortcuts`). `forget` is for a tool the person removed.
 @MainActor
 package final class ToolShortcutRegistrar: ObservableObject {
     /// First made by `AppDelegate`, after the app's tools are registered, so
@@ -101,6 +103,31 @@ package final class ToolShortcutRegistrar: ObservableObject {
     /// Every saved shortcut, whether or not its command is here to use it.
     package var shortcuts: [String: GlobalShortcut] { environment.shortcuts() }
 
+    /// The saved shortcuts that hold their combination now: those of the
+    /// commands that are here and ask for one. Whoever asks whether a
+    /// combination is taken asks this, not `shortcuts`.
+    package var heldShortcuts: [String: GlobalShortcut] {
+        ToolCommandShortcuts.held(environment.shortcuts(), by: Set(environment.registry.commands(on: .shortcut).map(\.id)))
+    }
+
+    /// Clears the shortcut, and the take-over of a macOS shortcut, of every
+    /// command of a tool the person removed, and re-syncs. For a tool that
+    /// is gone for good: one that is switched off or updated keeps what it
+    /// has saved. Nothing is written when the tool has nothing saved.
+    package func forget(_ tool: ToolID) {
+        let (kept, dropped) = ToolCommandShortcuts.forgetting(tool, in: environment.shortcuts())
+        guard !dropped.isEmpty else { return }
+        objectWillChange.send()
+        for text in dropped { environment.setTakeOver(Self.takeOverKey(forSaved: text), false) }
+        environment.save(kept)
+        sync()
+    }
+
+    /// The take-over key of a saved entry, from its id text.
+    private static func takeOverKey(forSaved text: String) -> String {
+        "\(DefaultsKey.toolCommandShortcuts).\(text)"
+    }
+
     /// One key per shortcut whose command asks for one and is switched on,
     /// and not one more. Nothing saved is changed.
     ///
@@ -133,20 +160,29 @@ package final class ToolShortcutRegistrar: ObservableObject {
 
     /// Gives `id` a shortcut, or clears it with nil, and re-syncs. It refuses,
     /// and changes nothing, when the combination cannot be used, when another
-    /// command has it saved (even one that is switched off or not registered
-    /// here), or when the list is full: it never moves a combination away from
-    /// another command. The reason comes back; nil means it was done.
+    /// command that is here holds it, or when the list is full: it never
+    /// moves a combination away from a command that has a row to show it.
+    /// The reason comes back; nil means it was done.
+    ///
+    /// A command that is not here (its tool is switched off, or not
+    /// registered this launch) holds nothing. Its saved combination can be
+    /// given away, and its entry and its take-over go then, so one
+    /// combination still has one owner.
     @discardableResult
     package func assign(_ shortcut: GlobalShortcut?, to id: CommandID) -> ShortcutMap.AssignmentIssue? {
+        let saved = environment.shortcuts()
         if let shortcut,
-           let issue = ShortcutMap.assignmentIssue(shortcut, for: id.rawValue, in: environment.shortcuts(),
-                                                   limit: ToolCommandShortcuts.limit) {
+           let issue = ToolCommandShortcuts.assignmentIssue(shortcut, for: id, in: saved, held: heldShortcuts) {
             return issue
         }
         objectWillChange.send()
         if shortcut == nil { environment.setTakeOver(ToolCommandShortcuts.takeOverKey(for: id), false) }
-        environment.save(ShortcutMap.setting(shortcut, for: id.rawValue, in: environment.shortcuts(),
-                                             limit: ToolCommandShortcuts.limit))
+        let next = ShortcutMap.setting(shortcut, for: id.rawValue, in: saved, limit: ToolCommandShortcuts.limit)
+        // Whoever gave way: a command that is not here.
+        for text in saved.keys.sorted() where next[text] == nil && text != id.rawValue {
+            environment.setTakeOver(Self.takeOverKey(forSaved: text), false)
+        }
+        environment.save(next)
         sync()
         return nil
     }

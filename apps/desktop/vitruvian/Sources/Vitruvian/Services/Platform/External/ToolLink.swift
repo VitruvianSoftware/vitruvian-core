@@ -116,6 +116,9 @@ package final class ToolLink {
     /// The tool's requests the app has not answered yet.
     private var serving: Set<RPCID> = []
     private var unansweredInARow = 0
+    /// The language the tool was last told the app is in: by `initialize`,
+    /// then by each `language/changed`.
+    private var language: String
     /// What the tool did that made the app stop it, once it has.
     package private(set) var fault: Fault?
     private var askedToStop = false
@@ -138,6 +141,7 @@ package final class ToolLink {
         self.clock = clock
         self.limits = limits
         self.hello = hello
+        language = hello.language
         self.serve = serve
         self.events = events
     }
@@ -175,6 +179,9 @@ package final class ToolLink {
             }
             toolVersion = result.toolVersion
             state = .ready
+            // The app's language changed after `initialize` was written:
+            // the tool was greeted in one the app no longer has.
+            if language != hello.language { tell(.languageChanged, LanguageChangedParams(language: language)) }
             events.onChange()
         case .failure(.refused):
             fail(.badHandshake)
@@ -202,8 +209,14 @@ package final class ToolLink {
         tell(.preferencesChanged, PreferencesChangedParams(values: values))
     }
 
-    /// Tells the tool the person changed the app's language.
+    /// Tells the tool the person changed the app's language: once for each
+    /// change, never the language it already has. A tool that has not
+    /// answered `initialize` yet is told when it has, if the language is
+    /// then another than the one it was greeted in. A tool that is being
+    /// stopped is told nothing.
     package func languageChanged(_ language: String) {
+        guard language != self.language else { return }
+        self.language = language
         tell(.languageChanged, LanguageChangedParams(language: language))
     }
 

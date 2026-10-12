@@ -25,6 +25,8 @@ enum ExternalToolStoreTests {
         removing(suite)
         goneBeforeDeleted(suite)
         saysWhatWasKept(suite)
+        saysWhatCouldNotBeDeleted(suite)
+        shortcutsOfARemovedTool(suite)
         installedOrNot(suite)
         remembering(suite)
         switching(suite)
@@ -33,8 +35,10 @@ enum ExternalToolStoreTests {
         unreadableRecords(suite)
         toldOnce(suite)
         saysNothing(suite)
+        languageChanges(suite)
         aRealTool(suite)
         aRealToolRemoved(suite)
+        aRealToolWithAHelper(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -59,6 +63,13 @@ enum ExternalToolStoreTests {
         /// only really waits for a real program: a tool that is no program
         /// changes when the test says so, never while the host looks.
         var waits: [TimeInterval] = []
+        /// The language the app is in, as the store reads it.
+        var language = "fr"
+        /// What the store asked to be told of a change of language with.
+        var languageWatcher: (@MainActor (String) -> Void)?
+        /// The shortcuts people gave to tool commands, over this bench's
+        /// registry: what is saved, and hotkeys that register nothing.
+        private(set) lazy var keys = ToolPlatformTests.RegistrarBench(registry: registry)
         private(set) var host: ToolHost!
         private(set) var store: ExternalToolStore!
 
@@ -96,10 +107,15 @@ enum ExternalToolStoreTests {
                     runs.append(run)
                     return run
                 },
-                language: { "fr" },
+                language: { [unowned self] in language },
                 stoppedWorking: { [unowned self] in stoppedWorking.append($0) },
                 forgetPreferences: { id in
                     box.values = box.values.filter { !$0.key.hasPrefix(id.rawValue + "/") }
+                },
+                forgetShortcuts: { [unowned self] in keys.registrar.forget($0) },
+                watchLanguage: { [unowned self] in
+                    languageWatcher = $0
+                    return nil
                 }))
         }
 
@@ -712,6 +728,279 @@ enum ExternalToolStoreTests {
                      "removing a tool nobody added says nothing was removed")
     }
 
+    /// A folder that could not be deleted, with the tool's program gone: a
+    /// read-only folder under the temporary folder stands in for it. The
+    /// outcome says which folder is left, and the next launch starts
+    /// nothing of a tool that is half deleted.
+    static func saysWhatCouldNotBeDeleted(_ suite: TestSuite) {
+        let manager = FileManager.default
+        func lock(_ folder: URL) { try? manager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path) }
+        func unlock(_ folder: URL) { try? manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        func added() -> Bench {
+            let bench = Bench()
+            bench.add(bench.folder())
+            try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+            bench.box.values["com.acme.deploys/project"] = "api"
+            return bench
+        }
+        func paths(_ removal: ExternalToolStore.Removal) -> [String]? {
+            guard case .notDeleted(let folders) = removal else { return nil }
+            return folders.map(\.standardizedFileURL.path)
+        }
+
+        // What the tool saved cannot be deleted; its copy can.
+        let data = added()
+        defer {
+            unlock(data.data)
+            data.close()
+        }
+        lock(data.data)
+        let said = data.store.remove(id, deletingData: true)
+        suite.expect(said != .deleted && said.removed && paths(said) == [data.data.standardizedFileURL.path]
+                         && paths(said)?.first?.hasSuffix("/support/ToolData/com.acme.deploys") == true,
+                     "a tool whose data folder could not be deleted is removed, and removing it says so, and which folder is left")
+        suite.expect(data.store.listed.isEmpty && data.records.isEmpty && !data.exists(data.files)
+                         && data.registry.tool(id) == nil && data.host.manifest(for: id) == nil
+                         && (try? Data(contentsOf: data.data.appendingPathComponent("saved"))) == Data("kept".utf8)
+                         && data.box.values["com.acme.deploys/project"] as? String == "api",
+                     "its record and its copy are gone; the tool's settings stay as long as the folder of what it saved does")
+        let after = data.relaunched()
+        after.store.restore()
+        suite.expect(after.store.listed.isEmpty && after.registry.tool(id) == nil && after.host.manifest(for: id) == nil
+                         && after.started.isEmpty && !after.store.isInstalled(id),
+                     "the next launch has no record of a tool that is half deleted, and starts nothing of it")
+        unlock(data.data)
+        if case .success = data.add(data.folder("again")) {
+            suite.expect(data.exists(data.data.appendingPathComponent("saved"))
+                             && data.box.values["com.acme.deploys/project"] as? String == "api"
+                             && data.store.remove(id, deletingData: true) == .deleted && !data.exists(data.data)
+                             && data.box.values["com.acme.deploys/project"] == nil,
+                         "added again it finds both, and removed again with the folder writable, both go")
+        } else {
+            suite.expect(false, "added again it finds both, and removed again with the folder writable, both go")
+        }
+
+        // The app's copy cannot be deleted: its folder may not be changed.
+        let copyStuck = added()
+        let tools = copyStuck.support.appendingPathComponent("Tools", isDirectory: true)
+        defer {
+            unlock(tools)
+            copyStuck.close()
+        }
+        lock(tools)
+        let kept = copyStuck.store.remove(id, deletingData: false)
+        suite.expect(kept != .keptAsAsked && kept.removed && paths(kept) == [copyStuck.files.standardizedFileURL.path]
+                         && copyStuck.records.isEmpty && copyStuck.exists(copyStuck.data.appendingPathComponent("saved"))
+                         && copyStuck.box.values["com.acme.deploys/project"] as? String == "api",
+                     "a copy that could not be deleted is said too, also when what the tool saved was to be kept")
+        let relaunched = copyStuck.relaunched()
+        relaunched.store.restore()
+        suite.expect(copyStuck.exists(copyStuck.files) && relaunched.store.listed.isEmpty
+                         && relaunched.registry.tool(id) == nil && relaunched.started.isEmpty,
+                     "a copy left on disk with no record is not a tool at the next launch: it is never listed or started")
+
+        // Neither can be deleted.
+        let both = added()
+        let bothTools = both.support.appendingPathComponent("Tools", isDirectory: true)
+        defer {
+            unlock(bothTools)
+            unlock(both.data)
+            both.close()
+        }
+        lock(bothTools)
+        lock(both.data)
+        suite.expect(paths(both.store.remove(id, deletingData: true))
+                         == [both.files.standardizedFileURL.path, both.data.standardizedFileURL.path],
+                     "when neither folder could be deleted both are named, the app's copy first")
+
+        // The program would not stop: that is what is said, as before.
+        let running = added()
+        defer { running.close() }
+        running.registry.run(copy)
+        running.current.greets()
+        var folder: String?
+        if case .keptStillRunning(let left) = running.store.remove(id, deletingData: true) {
+            folder = left?.standardizedFileURL.path
+        }
+        suite.expect(folder == running.data.standardizedFileURL.path
+                         && running.box.values["com.acme.deploys/project"] as? String == "api",
+                     "a tool whose program would not stop is still said to have kept what it saved, with its settings")
+    }
+
+    /// Every `language/changed` the app has sent a run of a tool, as the
+    /// tag each carried.
+    static func languages(_ tool: FakeTool) -> [String] {
+        tool.sent.compactMap { message in
+            guard case .notice(let method, let params) = message, method == "language/changed" else { return nil }
+            return params?["language"]?.stringValue ?? "?"
+        }
+    }
+
+    /// The person changes the app's language: each tool that is running
+    /// is told once, with the protocol's own params, and no other tool is
+    /// told or started.
+    static func languageChanges(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder())
+        let other = ToolID("com.acme.other")!
+        bench.add(bench.folder("other", manifest: ExternalToolManifestTests.file(#"{"id": "com.acme.other"}"#)))
+        suite.expect(bench.languageWatcher != nil, "the store asks to be told when the app's language changes")
+
+        // Nothing runs yet.
+        bench.language = "de"
+        bench.languageWatcher?("de")
+        suite.expect(bench.runs.isEmpty && bench.started.isEmpty
+                         && bench.store.listed.allSatisfy { $0.standing == .resting },
+                     "a change of language starts no tool: one that is not running is told nothing")
+
+        // Started after the change: it is greeted in the new language.
+        bench.registry.run(copy)
+        let run = bench.current
+        var greeted: String?
+        if case .request(_, "initialize", let params)? = run.sent.first { greeted = params?["language"]?.stringValue }
+        suite.expect(greeted == "de" && run.sent.count == 1,
+                     "a tool started after the language changed is greeted in the new language")
+
+        // Changed while it has not answered initialize yet.
+        bench.language = "it"
+        bench.languageWatcher?("it")
+        suite.expect(run.sent.count == 1 && languages(run).isEmpty,
+                     "a tool that has not answered initialize yet is told nothing of the language: "
+                         + "until then neither side says anything else")
+        run.greets()
+        suite.expect(languages(run) == ["it"],
+                     "once it has answered, a tool greeted in a language that changed meanwhile is told the new one, once")
+
+        // Running: once for each change.
+        bench.language = "de"
+        bench.languageWatcher?("de")
+        bench.language = "fr"
+        bench.languageWatcher?("fr")
+        let whole = run.sent.last.flatMap { try? JSONValue(encoding: $0) }
+        let example = ExternalToolSettingsTests.example(of: "language/changed")
+        suite.expect(languages(run) == ["it", "de", "fr"] && example != nil && whole == example
+                         && whole == .object(["jsonrpc": .string("2.0"), "method": .string("language/changed"),
+                                              "params": .object(["language": .string("fr")])]),
+                     "a running tool is sent language/changed once for each change, and what it is sent is the "
+                         + "protocol's own example of the message: a notice with no id, whose params hold the tag")
+        bench.languageWatcher?("fr")
+        bench.store.languageChanged("fr")
+        suite.expect(languages(run) == ["it", "de", "fr"] && !run.inputClosed
+                         && bench.store.listed.first?.standing == .running && bench.runs.count == 1,
+                     "the language it already has is not sent again, and the tool runs on: it is not restarted to hear it")
+
+        // Two tools running: each is told, once.
+        bench.registry.run(CommandID(tool: other, name: "copyLatest")!)
+        let second = bench.current
+        second.greets()
+        bench.language = "ja"
+        bench.languageWatcher?("ja")
+        suite.expect(bench.runs.count == 2 && languages(second) == ["ja"] && languages(run) == ["it", "de", "fr", "ja"],
+                     "every tool that is running is told, each once")
+
+        // Crashed and waiting, switched off, and being stopped: nobody to tell.
+        run.ends(1)
+        let sent = run.sent.count
+        bench.store.setOn(other, false)
+        let goodbye = second.sent.count
+        bench.language = "ko"
+        bench.languageWatcher?("ko")
+        suite.expect(run.sent.count == sent && second.sent.count == goodbye && bench.runs.count == 2
+                         && bench.store.listed.first?.standing == .waiting
+                         && second.sent.last == .notice(method: "shutdown", params: nil),
+                     "a tool that stopped, and one that is switched off and being told goodbye, are told nothing "
+                         + "and are not started")
+
+        // What the app hands the store: each change, and only a change.
+        final class Setting: ObservableObject {
+            @Published var language: AppLanguage = .enUS
+        }
+        let setting = Setting()
+        var heard: [String] = []
+        let watching = ExternalToolStore.watch(setting.$language) { heard.append($0) }
+        setting.language = .enUS
+        setting.language = .de
+        setting.language = .de
+        setting.language = .ptBR
+        ToolRuntimeSupport.wait { heard.count >= 2 }
+        suite.expect(heard == ["de", "pt-BR"],
+                     "the store hears each language the app changes to, as its tag: not the one it starts with, "
+                         + "and not the same one set again")
+        watching.cancel()
+
+        // Held back: never started, never told.
+        let held = Bench()
+        defer { held.close() }
+        held.add(held.folder())
+        try? Data("{}".utf8).write(to: held.files.appendingPathComponent("vitruvian-tool.json"))
+        let after = held.relaunched()
+        after.store.restore()
+        after.languageWatcher?("de")
+        suite.expect(after.store.listed.map(\.isHeld) == [true] && after.runs.isEmpty && after.started.isEmpty,
+                     "a tool that is held back is told nothing and is not started")
+    }
+
+    /// The shortcut the person gave a tool's command: gone with a tool
+    /// they remove, kept for one they switch off or update.
+    static func shortcutsOfARemovedTool(_ suite: TestSuite) {
+        let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option])
+        let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option])
+        let other = CommandID("com.acme.other/open")!
+        func bench() -> (Bench, URL) {
+            let bench = Bench()
+            let picked = bench.folder()
+            bench.add(picked)
+            try? bench.registry.register(ToolDescriptor(id: other.tool, name: "Other", symbol: "star", commands: [
+                CommandDescriptor(id: other, title: "Open", symbol: "star", surfaces: [.shortcut])!,
+            ])!)
+            try? bench.registry.setHandler(.init(title: { _ in "Open" }, run: {}), for: other)
+            bench.keys.registrar.assign(optionB, to: copy)
+            bench.keys.registrar.assign(optionN, to: other)
+            return (bench, picked)
+        }
+        func key(_ bench: Bench, _ shortcut: GlobalShortcut) -> Bool {
+            bench.keys.live.contains { $0.registered?.shortcut == shortcut }
+        }
+
+        for deletingData in [false, true] {
+            let (removed, _) = bench()
+            defer { removed.close() }
+            suite.expect(key(removed, optionB) && removed.keys.registrar.assign(optionB, to: other) == .occupied(copy.rawValue),
+                         "the command of a tool that is added holds the keys the person gave it")
+            removed.keys.takeOvers = []
+            removed.store.remove(id, deletingData: deletingData)
+            suite.expect(removed.keys.saved == [other.rawValue: optionN] && !key(removed, optionB) && key(removed, optionN)
+                             && removed.keys.takeOvers == ["\(ToolCommandShortcuts.takeOverKey(for: copy))=false"],
+                         "removing a tool clears the shortcut of each of its commands, whether or not what it saved "
+                             + "is kept, and no other command's")
+            suite.expect(removed.keys.registrar.assign(optionB, to: other) == nil && key(removed, optionB),
+                         "and the keys can be given to another command")
+        }
+
+        let (switched, _) = bench()
+        defer { switched.close() }
+        switched.store.setOn(id, false)
+        suite.expect(switched.keys.saved[copy.rawValue] == optionB && !key(switched, optionB)
+                         && switched.keys.registrar.heldShortcuts == [other.rawValue: optionN],
+                     "a tool that is switched off keeps its shortcut saved; meanwhile it is no key and holds no combination")
+        switched.store.setOn(id, true)
+        suite.expect(switched.keys.saved[copy.rawValue] == optionB && key(switched, optionB)
+                         && switched.keys.registrar.assign(optionB, to: other) == .occupied(copy.rawValue),
+                     "and switched on again it has its key back")
+
+        let (updated, picked) = bench()
+        defer { updated.close() }
+        try? ExternalToolManifestTests.file(#"{"version": "1.3.0"}"#).write(to: picked.appendingPathComponent("vitruvian-tool.json"))
+        updated.add(picked)
+        suite.expect(updated.store.installed[id]?.tool.version == "1.3.0" && updated.keys.saved[copy.rawValue] == optionB
+                         && key(updated, optionB),
+                     "a tool that is updated keeps its shortcut, and its key")
+        suite.expect(updated.store.remove(ToolID("com.acme.nobody")!, deletingData: true) == .notAdded
+                         && updated.keys.saved[copy.rawValue] == optionB,
+                     "removing a tool nobody added clears nothing")
+    }
+
     static func installedOrNot(_ suite: TestSuite) {
         var asked: [ToolID] = []
         let live = CapabilityBroker.Environment.reading(accessibility: { true }, screenRecording: { true },
@@ -1230,5 +1519,86 @@ enum ExternalToolStoreTests {
         suite.expect(!stubborn.exists(saved(stubborn)) && !stubborn.exists(files(stubborn))
                          && !ToolRuntimeSupport.wait(upTo: 0.2, until: { stubborn.exists(saved(stubborn)) }),
                      "and what it saved was deleted after that: the folder it kept writing into is gone, and stays gone")
+    }
+
+    /// A real tool that started a program of its own, which writes into the
+    /// tool's data folder for as long as it lives: removed, switched off,
+    /// and at quit, the helper ends with its tool.
+    static func aRealToolWithAHelper(_ suite: TestSuite) {
+        guard let fixture = ToolProcessTests.fixture else {
+            suite.expect(false, "the fixture tool is built and handed to the tests in VITRUVIAN_TOOL_FIXTURE")
+            return
+        }
+        let manifest = ExternalToolManifestTests.file(#"""
+            {"id": "dev.vitruvian.fixture", "uses": [],
+             "runtime": {"kind": "external", "exec": "bin/fixture"},
+             "contributes": {"commands": [
+               {"id": "helper", "title": {"en": "Helper"}, "surfaces": ["commandBar"]},
+               {"id": "helper-deaf", "title": {"en": "Deaf helper"}, "surfaces": ["commandBar"]}]}}
+            """#)
+        let tool = ToolID("dev.vitruvian.fixture")!
+        var processes: [ProcessTransport] = []
+        var benches: [Bench] = []
+        var helpers: [ToolProcessTests.Helper] = []
+        defer {
+            for process in processes { process.kill() }
+            _ = ToolRuntimeSupport.wait { processes.allSatisfy { !$0.isRunning } }
+            for helper in helpers { helper.end() }
+            for bench in benches { bench.close() }
+        }
+        /// A bench with the fixture added and running, and the helper it
+        /// started with `command`, once the helper has written its file.
+        func running(_ command: String) -> (Bench, ToolProcessTests.Helper)? {
+            let bench = Bench()
+            benches.append(bench)
+            bench.transport = { program, data in
+                let process = ProcessTransport(program: program, directory: data)
+                processes.append(process)
+                return process
+            }
+            let program = bench.support.appendingPathComponent("Tools/dev.vitruvian.fixture/bin/fixture")
+            var helper: ToolProcessTests.Helper?
+            guard case .success = bench.add(bench.folder(manifest: manifest, exec: "bin/fixture", program: fixture)),
+                  let run = CommandID(tool: tool, name: command), bench.registry.run(run),
+                  ToolRuntimeSupport.wait(until: {
+                      helper = ToolProcessTests.Helper(logged: bench.store.tool(tool)?.log.entries.map(\.text) ?? [],
+                                                       program: program)
+                      return (helper?.count ?? 0) > 0
+                  }), let helper else {
+                // A helper that was started is ended, whatever went wrong after.
+                if let helper { helpers.append(helper) }
+                suite.expect(false, "the fixture tool is added and starts a helper (\(command)): it stands "
+                    + "\(String(describing: bench.store.tool(tool)?.standing)) and logged "
+                    + "\(bench.store.tool(tool)?.log.entries.map(\.text) ?? [])")
+                return nil
+            }
+            helpers.append(helper)
+            return (bench, helper)
+        }
+        func saved(_ bench: Bench) -> URL { bench.support.appendingPathComponent("ToolData/dev.vitruvian.fixture") }
+
+        // Removed, with what it saved.
+        guard let (removed, writer) = running("helper") else { return }
+        suite.expect(writer.file.deletingLastPathComponent().standardizedFileURL.path == saved(removed).standardizedFileURL.path
+                         && writer.stillWrites(),
+                     "a real tool's helper writes into the tool's data folder while the tool runs")
+        let outcome = removed.store.remove(tool, deletingData: true)
+        suite.expect(outcome == .deleted && writer.isGone && !removed.exists(saved(removed))
+                         && !ToolRuntimeSupport.wait(upTo: 0.2, until: { removed.exists(saved(removed)) }),
+                     "removing a real tool with what it saved ends the helper it started: the helper is gone, and "
+                         + "the folder it wrote into is deleted and stays gone")
+
+        // Switched off.
+        guard let (switched, idle) = running("helper") else { return }
+        switched.store.setOn(tool, false)
+        suite.expect(ToolRuntimeSupport.wait { processes.allSatisfy { !$0.isRunning } } && idle.isGone
+                         && !idle.stillWrites(upTo: 0.2),
+                     "switching a real tool off ends its helper with it: its file stops changing")
+
+        // At quit, with a helper that ignores being asked to end.
+        guard let (quitting, deaf) = running("helper-deaf") else { return }
+        quitting.host.stopAll()
+        suite.expect(processes.allSatisfy { !$0.isRunning } && deaf.isGone,
+                     "at quit the host stops a real tool and waits for it, and no helper of it is left")
     }
 }

@@ -59,7 +59,7 @@ A message is JSON-RPC 2.0. There are four kinds.
 | `initialize` | request | The first message. It carries the protocol versions the app speaks, the language in use and the tool's data folder. The tool answers with the version it picked and its own version. Until it has, neither side sends anything else. |
 | `command/run` | request | Run this command. `command` is the id the manifest gives it. Answer `{}` when it ran, or failure -32010 when you will not run it. |
 | `preferences/changed` | notice | The person changed these preferences, in the tool's detail in Settings: each one's id and its new value. Sent only to a tool that is running and has answered `initialize`. |
-| `language/changed` | notice | The person changed the app's language. Today's app does not send it. |
+| `language/changed` | notice | The person changed the app's language: the new one, as a tag. Sent only to a tool that is running and has answered `initialize`, once for each change. A tool that starts later learns the language from `initialize`. |
 | `shutdown` | notice | Stop. The app then closes the tool's input. The tool exits with 0 within two seconds. |
 
 ## What a tool sends

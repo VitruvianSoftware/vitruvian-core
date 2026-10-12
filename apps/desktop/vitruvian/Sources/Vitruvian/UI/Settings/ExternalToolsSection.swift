@@ -240,16 +240,20 @@ package struct ToolRemovalContent: Equatable {
 
 /// What the person is told after a tool is removed, when there is something
 /// to tell: they asked for what the tool saved to be deleted, and it was
-/// kept, because the tool's program would not stop. Nil when removing did
+/// kept, because the tool's program would not stop; or the program was gone
+/// and a folder that was to go could not be deleted. Nil when removing did
 /// what was asked.
 package struct ToolRemovalNotice: Equatable {
     package let title: String
     package let message: String
-    /// The folder that holds what the tool saved, with a tilde for the home
+    /// The folder that holds what the tool saved, or each folder that could
+    /// not be deleted on a line of its own, with a tilde for the home
     /// folder; nil when the store could not name it.
     package let folder: String?
-    /// The same folder, for the button that shows it in the Finder.
-    package let reveal: URL?
+    /// The same folders, for the button that shows them in the Finder.
+    package let reveals: [URL]
+    /// The first of them, or nil when there is none.
+    package var reveal: URL? { reveals.first }
 
     /// What the alert says under its title: the sentence, and the folder
     /// on a line of its own.
@@ -257,12 +261,22 @@ package struct ToolRemovalNotice: Equatable {
 
     package init?(_ removal: ExternalToolStore.Removal, name: String, strings: ExternalToolStrings,
                   home: String = NSHomeDirectory()) {
-        guard case .keptStillRunning(let data) = removal else { return nil }
         // An alert's title has no line limit of its own.
-        title = strings.removeKeptTitle(ToolOwnWords.oneLine(name))
-        message = strings.removeKeptMessage
-        folder = data.map { ToolAgreementContent.abbreviated($0.path, home: home) }
-        reveal = data
+        switch removal {
+        case .keptStillRunning(let data):
+            title = strings.removeKeptTitle(ToolOwnWords.oneLine(name))
+            message = strings.removeKeptMessage
+            reveals = data.map { [$0] } ?? []
+        case .notDeleted(let folders) where !folders.isEmpty:
+            title = strings.removeUndeletedTitle(ToolOwnWords.oneLine(name))
+            message = strings.removeUndeletedMessage
+            reveals = folders
+        default:
+            // What was asked was done, or there is no folder to name.
+            return nil
+        }
+        folder = reveals.isEmpty ? nil
+            : reveals.map { ToolAgreementContent.abbreviated($0.path, home: home) }.joined(separator: "\n")
     }
 
     /// Removes a tool, and gives back what the person must be told about
@@ -395,13 +409,14 @@ package struct ExternalToolsSection: View {
         }
         .background {
             // Said once, after the row has gone: what the tool saved was to
-            // be deleted and was kept, because its program would not stop.
+            // be deleted and was kept, because its program would not stop,
+            // or a folder that was to go could not be deleted.
             Color.clear
                 .alert(kept?.title ?? "", isPresented: Binding(get: { kept != nil }, set: { if !$0 { kept = nil } }),
                        presenting: kept) { kept in
-                    if let folder = kept.reveal {
+                    if !kept.reveals.isEmpty {
                         Button(l10n.s.cleanerRevealInFinder) {
-                            NSWorkspace.shared.activateFileViewerSelecting([folder])
+                            NSWorkspace.shared.activateFileViewerSelecting(kept.reveals)
                         }
                     }
                     Button(l10n.s.menuClose, role: .cancel) {}
