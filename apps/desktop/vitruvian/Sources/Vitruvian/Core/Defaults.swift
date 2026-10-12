@@ -949,6 +949,7 @@ package enum Defaults {
         DefaultsKey.pointerDisplayShortcut: Preferences.pointerDisplayShortcut.defaultValue,
         DefaultsKey.windowEdgeSnapEnabled: Preferences.windowEdgeSnapEnabled.defaultValue,
         DefaultsKey.windowEdgeSnapDisabledZones: Preferences.windowEdgeSnapDisabledZones.defaultValue,
+        DefaultsKey.windowEdgeSnapZoneActions: Preferences.windowEdgeSnapZoneActions.defaultValue,
         DefaultsKey.windowGestureEnabled: Preferences.windowGestureEnabled.defaultValue,
         DefaultsKey.windowGestureModifiers: Preferences.windowGestureModifiers.defaultValue,
         DefaultsKey.windowGestureRaiseWindow: Preferences.windowGestureRaiseWindow.defaultValue,

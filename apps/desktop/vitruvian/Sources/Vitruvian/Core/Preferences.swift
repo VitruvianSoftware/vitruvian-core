@@ -583,6 +583,7 @@ package enum Preferences {
     package static let keyboardDebounceKeyWindows = Preference(DefaultsKey.keyboardDebounceKeyWindows, default: "")
     package static let commandBarDisabledSources = Preference(DefaultsKey.commandBarDisabledSources, default: "")
     package static let windowEdgeSnapDisabledZones = Preference(DefaultsKey.windowEdgeSnapDisabledZones, default: "")
+    package static let windowEdgeSnapZoneActions = Preference(DefaultsKey.windowEdgeSnapZoneActions, default: "")
 
     // MARK: Lists and tables
 

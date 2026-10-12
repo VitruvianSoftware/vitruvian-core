@@ -13,6 +13,7 @@ package struct PanelWindowLayoutView: View {
     @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled: Bool
     @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled: Bool
     @AppStorage(Preferences.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones: String
+    @AppStorage(Preferences.windowEdgeSnapZoneActions) private var edgeSnapZoneActions: String
     @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled: Bool
     @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers: String
     @AppStorage(Preferences.windowLayoutHiddenActions) private var hiddenActionsRaw: String
@@ -127,6 +128,7 @@ package struct PanelWindowLayoutView: View {
                 .fixedSize(horizontal: false, vertical: true)
             if edgeSnapEnabled {
                 WindowEdgeSnapZonePicker(disabledZonesStorage: $edgeSnapDisabledZones,
+                                         zoneActionsStorage: $edgeSnapZoneActions,
                                          text: text,
                                          resetTitle: l10n.s.shortcutReset,
                                          compact: true)

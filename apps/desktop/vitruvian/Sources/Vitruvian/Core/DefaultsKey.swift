@@ -747,6 +747,7 @@ package enum DefaultsKey {
     package static let pointerDisplayShortcut = "pointerDisplayShortcut"
     package static let windowEdgeSnapEnabled = "windowEdgeSnapEnabled"
     package static let windowEdgeSnapDisabledZones = "windowEdgeSnapDisabledZones" // comma-separated visual zone ids
+    package static let windowEdgeSnapZoneActions = "windowEdgeSnapZoneActions" // zone=action entries, + between split areas
     package static let windowGestureEnabled = "windowGestureEnabled"
     package static let windowGestureModifiers = "windowGestureModifiers"
     package static let windowGestureRaiseWindow = "windowGestureRaiseWindow"
