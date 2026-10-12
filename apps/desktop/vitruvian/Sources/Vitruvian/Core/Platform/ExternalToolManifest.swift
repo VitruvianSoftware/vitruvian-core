@@ -26,8 +26,6 @@ package enum ManifestRefusal: Error, Equatable, Sendable {
 /// the manifest the platform already has for a built-in tool, and what only
 /// an outside tool carries.
 ///
-/// Nothing in the app reads one yet. The runtime that starts such a tool,
-/// and the sheet that asks before adding it, come later.
 package struct ExternalToolManifest: Equatable, Sendable {
     /// The tool as the rest of the platform knows a tool. Its name and its
     /// commands' titles are the English ones.
@@ -38,6 +36,11 @@ package struct ExternalToolManifest: Equatable, Sendable {
     package let summary: LocalizedText?
     /// Each command's title in every language its author wrote it in.
     package let commandTitles: [CommandID: LocalizedText]
+    /// The title of each preference its author gave one, in every language
+    /// they wrote it in, by the key the preference is saved under. A
+    /// preference with no title is not here: it is the tool's alone, and
+    /// the person is never shown it.
+    package let preferenceTitles: [String: LocalizedText]
     package let version: String
     package let publisher: String
     package let license: String?
@@ -120,12 +123,14 @@ package struct ExternalToolManifest: Equatable, Sendable {
         }
 
         var preferences: [PreferenceDeclaration] = []
+        var preferenceTitles: [String: LocalizedText] = [:]
         for preference in file.preferences ?? [] {
             guard let value = value(preference.default, ofKind: preference.type) else {
                 return .failure(.notOfferedHere(preference.type))
             }
-            preferences.append(PreferenceDeclaration(key: storageKey(tool: id, preference: preference.id),
-                                                     default: value))
+            let key = storageKey(tool: id, preference: preference.id)
+            preferences.append(PreferenceDeclaration(key: key, default: value))
+            preferenceTitles[key] = preference.title
         }
 
         var activation: [Activation] = []
@@ -144,7 +149,8 @@ package struct ExternalToolManifest: Equatable, Sendable {
         else { return .failure(.invalid(.malformed(field: "id"))) }
 
         return .success(ExternalToolManifest(manifest: manifest, name: file.name, summary: file.description,
-                                             commandTitles: titles, version: file.version,
+                                             commandTitles: titles, preferenceTitles: preferenceTitles,
+                                             version: file.version,
                                              publisher: file.publisher, license: file.license,
                                              protocolVersion: file.`protocol`, program: file.runtime.exec))
     }

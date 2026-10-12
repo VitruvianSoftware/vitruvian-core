@@ -619,17 +619,20 @@ sh_test(
         ":tool_fixture",
         ":unit_tests_bin",
         "//packages/vitruvian-sdk:folder_examples",
+        "//packages/vitruvian-sdk:message_examples",
     ] + glob([
         "Resources/**",
         "Sources/**",
         "Tests/**",
         "Tools/**",
     ]),
-    # Where ToolProcessTests finds the tool it starts, and where
+    # Where ToolProcessTests finds the tool it starts, where
     # ToolFolderExamplesTests finds the folders the SDK's command-line tool is
-    # held to as well, below the runfiles.
+    # held to as well, and where ExternalToolSettingsTests finds the protocol's
+    # example messages, below the runfiles.
     env = {
         "VITRUVIAN_FOLDER_EXAMPLES": "$(rootpath //packages/vitruvian-sdk:folder_examples)",
+        "VITRUVIAN_MESSAGE_EXAMPLES": "$(rootpath //packages/vitruvian-sdk:message_examples)",
         "VITRUVIAN_TOOL_FIXTURE": "$(rootpath :tool_fixture)",
     },
     # The tests' UserDefaults suites land in the real ~/Library/Preferences;

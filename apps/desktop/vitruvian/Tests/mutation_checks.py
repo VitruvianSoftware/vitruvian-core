@@ -720,6 +720,38 @@ MUTATIONS = [
      "        guard case .keptStillRunning(let data) = removal else { return nil }\n",
      "        guard case .keptStillRunning(let data) = removal, data == nil else { return nil }\n",
      "when a tool's program would not stop, the person is told that what it saved was kept, and where it is"),
+    ("a setting the person changes is saved under a bare key", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        let key = ExternalToolManifest.storageKey(tool: id, preference: preference)\n",
+     "        let key = preference\n",
+     "a changed setting is saved under the tool's id, a slash and the preference's own, "
+     "the key the tool reads it by, and under no other"),
+    ("a running tool is not told that its setting changed", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        tools[id]?.preferencesChanged([preference: ExternalToolCalls.json(value)])\n",
+     "",
+     "a running tool is sent preferences/changed once for each change, with the preference's own id "
+     "and its new value"),
+    ("a preference with no title is shown by its id", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "            guard let title = tool.preferenceTitles[declared.key] else { return nil }\n",
+     "            let title = tool.preferenceTitles[declared.key] ?? LocalizedText([\"en\": name])\n",
+     "a tool's settings are the preferences its author gave a title, in the manifest's order, each "
+     "with its default while nothing is saved; the one with no title is not among them"),
+    ("a tool is told of a change before it has answered initialize", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+     "    private func tell<Params: Encodable>(_ method: ToolMethod, _ params: Params) {\n"
+     "        guard state == .ready else { return }\n",
+     "    private func tell<Params: Encodable>(_ method: ToolMethod, _ params: Params) {\n",
+     "a tool that has not answered initialize yet is told nothing: until then neither side says "
+     "anything else"),
+    ("text of any length is saved as a preference", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/Broker/StorageAccess.swift",
+     "        case (.string, .string(let text)) where text.unicodeScalars.count > StorageLimits.maxTextLength:\n"
+     "            return .tooLong(key)\n",
+     "",
+     "storage/set saves text of 4,096 characters, and answers one character more as invalid params "
+     "with nothing saved"),
 ]
 
 

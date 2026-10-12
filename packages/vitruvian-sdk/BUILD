@@ -96,6 +96,14 @@ filegroup(
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
+# The protocol's example messages. The app's tests hold what the app sends a
+# tool to the example of it here.
+filegroup(
+    name = "message_examples",
+    srcs = ["protocol/examples/messages.json"],
+    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+)
+
 # Everything the `vitruvian-tool` command does, as a library so the tests can
 # link it without the executable's top-level code, which would collide with
 # XCTest's `main`.

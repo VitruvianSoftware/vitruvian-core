@@ -240,7 +240,12 @@ Rules:
   `keystrokes`, `processes` and `storage`. `hotkey` and `clipboard.rewrite`
   are built-in tools' and are refused as unknown.
 - **A preference is `{ id, type, default }`.** `type` is `string`,
-  `boolean`, `integer` or `number`, and the default is of that type.
+  `boolean`, `integer` or `number`, and the default is of that type. Since
+  2026-10-12 it may also carry a `title`, text in several languages of at
+  most 60 characters each with no control character. A preference with a
+  title is one the person sees and can change in the tool's detail; one
+  without is the tool's alone. Text saved to a preference is at most 4,096
+  characters.
 - **Text in several languages is a map from a language tag to text.** A
   language is its own entry, else its language without the region, else
   English.
@@ -321,7 +326,8 @@ never clears it for the person.
 
 **The words.** The app's own sentences here are new and are written in all
 15 languages: about 15 of them, counted at the planning step. Counted: 42;
-the stage C plan's table lists them. The tool's
+the stage C plan's table lists them. Two more came on 2026-10-12, for the
+alert after a removal that kept what a tool saved: 44. The tool's
 words are shown as given (decision 10).
 
 **With no outside tool installed** the hub shows one quiet line and the
@@ -634,14 +640,15 @@ Where stage C differs from the sections above it:
 - The records and a tool's own preferences are in no settings backup.
 - A folder may hold 256 MB and 10,000 things.
 - A tool's preferences have no screen. `preferences/changed` and
-  `language/changed` are still never sent.
+  `language/changed` are still never sent. *Closed on 2026-10-12, but for
+  `language/changed`: see "Three known gaps, as closed".*
 - The app's new texts number 42, not about 15.
 - Remove waits for the tool's program to be gone before it deletes
   anything: told goodbye, asked to end after half a second, killed a
   quarter of a second later. The wait is on the main thread, up to one
   second. A program still there after the kill keeps what it saved,
   whatever the person picked, and the app does not say so on screen: it
-  has no text for it.
+  has no text for it. *Closed on 2026-10-12: it says so, in one alert.*
 - On the sheet and in a tool's detail the two lists scroll in a region 200
   points high when they hold seven rows or more. A tool's own words have
   line limits. The detail shows the newest 200 lines of a tool's log.
@@ -653,7 +660,7 @@ Limits of stage C that are known and accepted:
 - The translations in fourteen languages were not reviewed by a reader of
   them.
 - The sheet's height bound of 800 points is arithmetic, not seen.
-- A tool's preferences have no screen.
+- A tool's preferences have no screen. *Closed on 2026-10-12.*
 - A records file that cannot be read is kept until the next tool is added.
   Then it is moved aside, replacing an earlier moved-aside file.
 
@@ -690,7 +697,7 @@ Where stage D differs from the sections above it, and from its own plan:
 - The conformance script reads what a tool writes on its way out, and that
   last read has a time limit. The limit and its two tests are not in the
   plan; `conformance_test` takes about nine seconds.
-- A preference still has no label and no screen.
+- A preference still has no label and no screen. *Closed on 2026-10-12.*
 - The app refuses a program that is not a regular file once links are
   followed: a named pipe or a device with the execute permission is no
   program. `validate` already said so and the app did not. This is the one
@@ -712,6 +719,36 @@ Where stage D differs from the sections above it, and from its own plan:
   error there.
 - The package's tests number 30, 13 and 38 for the protocol, the kit and the
   command. The plan says 30, 12 and 31.
+
+**Three known gaps, as closed (2026-10-12).** There was no plan for this
+change: each gap was closed with the smallest change that holds, test
+first. Each line is marked met only where a command that was run shows it.
+Run on one Mac (Mac16,5, Apple M4 Max) with macOS 27.0, Xcode 27.0 and Swift
+6.4. Nothing here was run on a CI runner. Nobody opened the app: all three
+are built, and none has been seen in the app.
+
+| The gap | Met? | What shows it |
+|---|---|---|
+| The alert that refuses a folder had no limit on what it shows of the manifest | Met in tests, not by hand | `ToolOwnWords.oneLine`: one line, at most 120 characters, control characters as spaces, the characters that set the direction of text taken out. It is used by the refusal sentences that carry the manifest's words, the question before removal, the short message that a tool stopped working, and the agreement sheet's title and line of versions. `ExternalToolScreensTests.ownWordsInAlerts`, 8 checks; two planted regressions. By-hand check 33. |
+| Removing a tool kept what it saved when its program would not stop, and nobody was told | Met in tests, not by hand | `ExternalToolStore.remove` gives back `Removal`: not added, kept as asked, deleted, or kept although deleting was asked. The last is shown once, in an alert, after the row has gone, with the folder and a button that shows it in the Finder (`ToolRemovalNotice`). Two new texts in fifteen languages; `docs/PRIVACY.md` names the exception. `ExternalToolStoreTests.saysWhatWasKept` over a tool that is no program, and one check over the real fixture, which dies when killed. No test has a real program that outlives a kill: a program the person owns cannot. Two planted regressions. By-hand check 32. |
+| A tool's preferences had no screen | Met in tests, not by hand | The protocol: a preference may carry a `title` (schema, Swift reader, a named problem, nine examples, the guide; the version is still 1, and an older app ignores the field). The app: `ExternalToolStore.settings(of:)` and `setSetting(_:for:of:)`, the detail's section under the app's existing word "Settings", and `preferences/changed` sent to a running tool. `ExternalToolSettingsTests`, 36 checks, one of them against the protocol's own example of the message. Text saved to a preference is at most 4,096 characters, for the tool and the person alike. Five planted regressions. By-hand checks 30 and 31. |
+
+What is still left of these three, and known:
+
+- `language/changed` is still never sent.
+- The fourteen languages of the two new texts were written with the English
+  and checked by rule. No reader of them has reviewed them.
+- When what a tool saved is kept because its program would not stop, its
+  preferences are kept with the folder, and nothing deletes either later.
+  The person can delete the folder; the preferences stay until the tool is
+  added again and removed.
+- A file of a tool's data that could not be deleted, with the program gone,
+  is still only a line in the system log.
+- The detail reads a tool's settings when it opens. A tool that changes its
+  own preference while the detail is open is not followed.
+- A preference's title is bounded and drawn as plain text. The agreement
+  sheet does not list preferences, so a title is not part of what the
+  person agrees to, beyond the manifest's bytes being the ones agreed to.
 
 **The five "done when" items of section 1, as they stand.** None is marked
 met here by a person, because none of the checks by hand has been done.
@@ -738,7 +775,8 @@ met here by a person, because none of the checks by hand has been done.
 is a menu-bar app the automation cannot see, and granting or taking away
 Accessibility is a security setting only a person changes. This is stage B's
 three checks, stage C's fourteen and stage D's own in one list, with the
-ones that say the same thing joined. Each is one action and what to expect,
+ones that say the same thing joined, and four more for the three gaps
+closed on 2026-10-12, at the end. Each is one action and what to expect,
 in an order that can be done top to bottom in one sitting. Record each in
 the pull request with the Mac and the macOS version, or say it was not done.
 
@@ -871,6 +909,123 @@ section "By hand" gives the commands that make them in `$TMPDIR`.
     its shortcut.** The title shows again, with nothing extra to do for the
     tool. This cannot be done in the sitting; say so until it has been.
 
+*The three gaps closed on 2026-10-12. Do these before check 28.*
+
+Checks 30 and 31 need a tool no sample is, `prefs`: four preferences with
+titles, one of each kind, and one with none. It starts with the app, and
+shows the app's short message each time it is told a preference changed.
+Make it with:
+
+```sh
+mkdir -p "$TMPDIR/prefs/bin"
+cat > "$TMPDIR/prefs/vitruvian-tool.json" <<'JSON'
+{
+  "id": "com.example.prefs",
+  "name": { "en": "Settings, by hand" },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "Example",
+  "uses": ["notify", "storage"],
+  "contributes": {
+    "commands": [{ "id": "show", "title": { "en": "Show my settings" }, "surfaces": ["commandBar"] }]
+  },
+  "preferences": [
+    { "id": "project", "title": { "en": "Project" }, "type": "string", "default": "web" },
+    { "id": "loud", "title": { "en": "Loud" }, "type": "boolean", "default": false },
+    { "id": "count", "title": { "en": "Count" }, "type": "integer", "default": 3 },
+    { "id": "ratio", "title": { "en": "Ratio" }, "type": "number", "default": 0.5 },
+    { "id": "hidden", "type": "string", "default": "never shown" }
+  ],
+  "activation": ["onLaunch"],
+  "runtime": { "kind": "external", "exec": "bin/tool.py" }
+}
+JSON
+cat > "$TMPDIR/prefs/bin/tool.py" <<'PY'
+#!/usr/bin/python3
+import json
+import sys
+
+asked = 0
+
+
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\n")
+    sys.stdout.flush()
+
+
+def ask(method, params):
+    global asked
+    asked += 1
+    send({"jsonrpc": "2.0", "id": "t%d" % asked, "method": method, "params": params})
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            sys.exit(0)
+        message = json.loads(line)
+        if message.get("method") == "shutdown":
+            sys.exit(0)
+        if "method" not in message and message.get("id") == "t%d" % asked:
+            return message.get("result", {})
+
+
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "1", "toolVersion": "0.1.0"}})
+    elif method == "preferences/changed":
+        for key, value in message["params"]["values"].items():
+            ask("notify/hud", {"icon": "slider.horizontal.3", "message": "%s is now %s" % (key, json.dumps(value))})
+    elif method == "command/run" and message["params"]["command"] == "show":
+        values = [json.dumps(ask("storage/get", {"key": key}).get("value")) for key in ("project", "loud", "count", "ratio")]
+        ask("notify/hud", {"icon": "list.bullet", "message": " ".join(values)})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "command/run":
+        send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
+    elif method == "shutdown":
+        sys.exit(0)
+PY
+chmod +x "$TMPDIR/prefs/bin/tool.py"
+```
+
+`vitruvian-tool validate "$TMPDIR/prefs"` prints three lines that start with
+`ok`, and `vitruvian-tool run "$TMPDIR/prefs" --command show` ends with
+`run: OK`: both were run when this was written. Its first line names
+`/usr/bin/python3`, which is there once the Command Line Tools are.
+
+30. **Add `$TMPDIR/prefs`, open its detail, and change each of the four
+    settings: type in "Project" and press Return, turn "Loud" on, change
+    "Count" and "Ratio" and press Return in each.** The detail lists the four
+    under "Settings", above the command: a text field showing `web`, a switch
+    that is off, and two number fields showing 3 and 0.5. After each change
+    the app's short message names it, for example `project is now "api"`,
+    and the row still says "Running": the tool was told, and was not started
+    again. Then run "Show my settings" from the command bar: the message
+    holds the four new values. Type letters into "Count" and press Return:
+    the number that was there comes back, and no message is shown.
+31. **Look for the fifth preference, `hidden`.** The detail shows no row for
+    it: not its id, and not its value, "never shown". Close the detail, quit
+    the app, open it, and open the detail again: the four values are the
+    ones you set.
+32. **Remove a tool whose program the app cannot end, with "Remove and Delete
+    What It Saved".** The row goes, and then one alert says that what the
+    tool saved was kept because its program would not stop, names the folder
+    under `ToolData`, and offers "Reveal in Finder", which shows that folder.
+    This cannot be done with an ordinary tool: a program you own always dies
+    when it is killed, and check 27 is that case, with no alert. It takes a
+    program the app may not signal, such as one that runs as another user.
+    Nobody has made one for this check. If you do not, say so: the alert is
+    then shown by tests of its words only.
+33. **Run
+    `cp -R packages/vitruvian-sdk/samples/hello-python "$TMPDIR/longname"`,
+    then
+    `python3 -c 'import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["uses"]=["camera"*8500]; json.dump(m,open(p,"w"))' "$TMPDIR/longname/vitruvian-tool.json"`,
+    and add `$TMPDIR/longname`.** The alert says the folder cannot be added,
+    in one short line that ends `unknownService("cameracamera` and so on,
+    cut with an ellipsis after about 120 characters. The alert is no taller
+    than for any other refusal. Delete `$TMPDIR/prefs` and
+    `$TMPDIR/longname` with the others in check 28.
+
 ## 16. Open questions
 
 Each had a default. James accepted every one on 2026-10-10. They are
@@ -890,6 +1045,8 @@ plan is
 `docs/superpowers/plans/2026-10-12-vitruvian-external-tools-stage-d.md`. Its
 table of decisions lists what it adds and where it differs; section 15 says
 what was built, and what was built that the plan's text does not have.
+Three gaps the stages left were closed on 2026-10-12 with no plan of their
+own; section 15, "Three known gaps, as closed", says what was built.
 
 1. **Nothing on the island and no feature moved out in this sub-project**
    (decision 2). *Default: yes. It is about size, not trust.*

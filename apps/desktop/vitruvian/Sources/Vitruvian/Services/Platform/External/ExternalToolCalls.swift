@@ -180,6 +180,8 @@ package struct ExternalToolCalls {
             return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "not a preference the manifest declares")
         case .wrongKind:
             return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "not the kind of value this preference holds")
+        case .tooLong:
+            return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "longer than a preference may be")
         }
     }
 

@@ -58,8 +58,8 @@ A message is JSON-RPC 2.0. There are four kinds.
 |---|---|---|
 | `initialize` | request | The first message. It carries the protocol versions the app speaks, the language in use and the tool's data folder. The tool answers with the version it picked and its own version. Until it has, neither side sends anything else. |
 | `command/run` | request | Run this command. `command` is the id the manifest gives it. Answer `{}` when it ran, or failure -32010 when you will not run it. |
-| `preferences/changed` | notice | These preferences have new values. |
-| `language/changed` | notice | The person changed the app's language. |
+| `preferences/changed` | notice | The person changed these preferences, in the tool's detail in Settings: each one's id and its new value. Sent only to a tool that is running and has answered `initialize`. |
+| `language/changed` | notice | The person changed the app's language. Today's app does not send it. |
 | `shutdown` | notice | Stop. The app then closes the tool's input. The tool exits with 0 within two seconds. |
 
 ## What a tool sends
@@ -114,7 +114,9 @@ the person as it is.
 - **`runtime.exec` stays inside the folder.**
 - **A preference may carry a `title`**, text in several languages like any
   other. It is what the setting is called to the person. One with no title
-  is the tool's alone, and the app never shows it. The field was added
+  is the tool's alone, and the app never shows it. One with a title is
+  listed in the tool's detail in Settings, where the person can change it.
+  The field was added
   after the first version 1, with no new version: an app from before it
   ignores it, and shows no setting.
 - **Limits**: the file 65,536 bytes, 32 commands, 16 preferences, a

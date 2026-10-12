@@ -75,6 +75,53 @@ package struct ExternalToolRow: Identifiable, Equatable {
     }
 }
 
+/// One of a tool's own settings, as its detail shows it: what its author
+/// called it, and the control that fits its kind of value.
+package struct ExternalToolSetting: Identifiable, Equatable {
+    /// The control a setting is drawn with, holding its value.
+    package enum Control: Equatable, Sendable {
+        /// A switch, for yes or no.
+        case toggle(Bool)
+        /// A text field.
+        case text(String)
+        /// A number field that takes whole numbers.
+        case whole(Int)
+        /// A number field.
+        case number(Double)
+
+        /// The value the control holds, as the store saves it.
+        package var value: PreferenceDeclaration.Value {
+            switch self {
+            case .toggle(let isOn): return .bool(isOn)
+            case .text(let text): return .string(text)
+            case .whole(let number): return .int(number)
+            case .number(let number): return .double(number)
+            }
+        }
+    }
+
+    /// The preference's id within the tool. It is never drawn.
+    package let id: String
+    /// The title its author gave it, in the person's language, as one
+    /// short line of plain text.
+    package let title: String
+    package let control: Control
+
+    package init(_ setting: ExternalToolStore.Setting, language: AppLanguage) {
+        id = setting.id
+        // The manifest's rules hold a title to this length already. It is
+        // bounded again here, where it is drawn.
+        title = ToolOwnWords.oneLine(setting.title.text(for: language.rawValue) ?? "",
+                                     limit: ManifestLimits.maxPreferenceTitleLength)
+        switch setting.value {
+        case .bool(let isOn): control = .toggle(isOn)
+        case .string(let text): control = .text(text)
+        case .int(let number): control = .whole(number)
+        case .double(let number): control = .number(number)
+        }
+    }
+}
+
 /// What a tool's detail view says, beyond its row.
 package struct ExternalToolDetail: Equatable {
     package let row: ExternalToolRow
@@ -92,8 +139,15 @@ package struct ExternalToolDetail: Equatable {
     /// records on the Shortcuts page.
     package let offersShortcuts: Bool
 
-    /// How many rows the two lists hold together.
-    package var listRows: Int { commands.count + uses.count }
+    /// The app's word above the tool's own settings.
+    package let settingsTitle: String
+    /// The tool's settings the person may change: the preferences its
+    /// author gave a title. One with no title is not here, so it is never
+    /// drawn by its id.
+    package let settings: [ExternalToolSetting]
+
+    /// How many rows the lists hold together.
+    package var listRows: Int { settings.count + commands.count + uses.count }
     /// True when the lists are too long to draw whole, and scroll in a
     /// region of a fixed height, as on the agreement sheet.
     package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole }
@@ -113,10 +167,16 @@ package struct ExternalToolDetail: Equatable {
         return newest.split(separator: "\n", omittingEmptySubsequences: false).suffix(logLines).joined(separator: "\n")
     }
 
+    /// `settings` is what the store says the tool's settings are, and
+    /// `settingsTitle` the app's existing word for Settings.
     package init(_ listed: ExternalToolStore.Listed, files: URL?, language: AppLanguage,
-                 strings: ExternalToolStrings, home: String = NSHomeDirectory(),
+                 strings: ExternalToolStrings, settings: [ExternalToolStore.Setting] = [], settingsTitle: String = "",
+                 home: String = NSHomeDirectory(),
                  hasSymbol: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
         let tag = language.rawValue
+        self.settingsTitle = settingsTitle
+        self.settings = settings.map { ExternalToolSetting($0, language: language) }
+            .filter { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty }
         row = ExternalToolRow(listed, language: language, strings: strings, hasSymbol: hasSymbol)
         summary = listed.tool?.summary?.text(for: tag)
         commandsTitle = strings.commandsTitle
@@ -356,11 +416,13 @@ package struct ExternalToolsSection: View {
         if let listed = store.listed.first(where: { $0.id == id }) {
             let name = ExternalToolRow(listed, language: l10n.language, strings: text).name
             ExternalToolDetailView(
-                detail: ExternalToolDetail(listed, files: store.folder(of: id), language: l10n.language, strings: text),
+                detail: ExternalToolDetail(listed, files: store.folder(of: id), language: l10n.language, strings: text,
+                                           settings: store.settings(of: id), settingsTitle: l10n.s.panelSettings),
                 log: ExternalToolDetail.shownLog(store.tool(id)?.log.text ?? ""),
                 removal: ToolRemovalContent(name: name, strings: text, cancel: l10n.s.uninstallerCancel),
                 text: text,
                 startAgain: { store.startAgain(id) },
+                saveSetting: { name, value in store.setSetting(value, for: name, of: id) == nil },
                 reveal: { if let folder = store.folder(of: id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) } },
                 openShortcuts: {
                     shown = nil
@@ -491,8 +553,85 @@ private struct ExternalToolStatusLabel: View {
     }
 }
 
-/// One tool's detail: what it adds, what it says it uses, where its files
-/// are, what it logged, and the buttons that update or remove it.
+/// One of a tool's own settings in its detail: its title, and a switch, a
+/// text field or a number field. A switch saves as it is turned. A field
+/// saves when Return is pressed, when the person moves on from it, and when
+/// the detail closes. A value the store will not take is put back as it was.
+private struct ExternalToolSettingRow: View {
+    let setting: ExternalToolSetting
+    /// Saves a value. False when it was refused, and nothing was saved.
+    let save: (PreferenceDeclaration.Value) -> Bool
+    /// What the control holds now, and the last value that was saved.
+    @State private var draft: ExternalToolSetting.Control
+    @State private var saved: ExternalToolSetting.Control
+    @FocusState private var editing: Bool
+
+    init(setting: ExternalToolSetting, save: @escaping (PreferenceDeclaration.Value) -> Bool) {
+        self.setting = setting
+        self.save = save
+        _draft = State(initialValue: setting.control)
+        _saved = State(initialValue: setting.control)
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            // The tool's own words: plain text, on two lines at most.
+            Text(setting.title).font(.callout).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            control
+        }
+        .onChange(of: editing) { _, isEditing in
+            if !isEditing { commit(draft) }
+        }
+        .onDisappear { commit(draft) }
+    }
+
+    @ViewBuilder
+    private var control: some View {
+        switch draft {
+        case .toggle(let isOn):
+            Toggle(setting.title, isOn: Binding(get: { isOn }, set: { commit(.toggle($0)) }))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        case .text(let text):
+            field(TextField(setting.title, text: Binding(get: { text }, set: { draft = .text($0) }), prompt: Text(verbatim: "")),
+                  width: 200)
+        case .whole(let number):
+            field(TextField(setting.title, value: Binding(get: { number }, set: { draft = .whole($0) }), format: .number,
+                            prompt: Text(verbatim: "")),
+                  width: 100)
+        case .number(let number):
+            field(TextField(setting.title, value: Binding(get: { number }, set: { draft = .number($0) }), format: .number,
+                            prompt: Text(verbatim: "")),
+                  width: 100)
+        }
+    }
+
+    private func field(_ field: some View, width: CGFloat) -> some View {
+        field
+            .labelsHidden()
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .frame(width: width)
+            .focused($editing)
+            .onSubmit { commit(draft) }
+    }
+
+    private func commit(_ wanted: ExternalToolSetting.Control) {
+        guard wanted != saved else { return }
+        if save(wanted.value) {
+            saved = wanted
+            draft = wanted
+        } else {
+            draft = saved
+        }
+    }
+}
+
+/// One tool's detail: its own settings, what it adds, what it says it uses,
+/// where its files are, what it logged, and the buttons that update or
+/// remove it.
 private struct ExternalToolDetailView: View {
     @ObservedObject private var l10n = L10n.shared
     let detail: ExternalToolDetail
@@ -500,6 +639,9 @@ private struct ExternalToolDetailView: View {
     let removal: ToolRemovalContent
     let text: ExternalToolStrings
     let startAgain: () -> Void
+    /// Saves one of the tool's settings, by the preference's id. False when
+    /// the value was refused.
+    let saveSetting: (String, PreferenceDeclaration.Value) -> Bool
     let reveal: () -> Void
     let openShortcuts: () -> Void
     let update: () -> Void
@@ -536,7 +678,7 @@ private struct ExternalToolDetailView: View {
                     }
                 }
             }
-            // Only the two lists scroll, and only when they are long: the
+            // Only the lists scroll, and only when they are long: the
             // buttons below are always in view.
             if detail.listsScroll {
                 ScrollView(.vertical) {
@@ -588,10 +730,17 @@ private struct ExternalToolDetailView: View {
         }
     }
 
-    /// What the tool adds and what it says it uses.
+    /// The tool's own settings, what it adds, and what it says it uses.
     @ViewBuilder
     private var lists: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if !detail.settings.isEmpty {
+                section(detail.settingsTitle) {
+                    ForEach(detail.settings) { setting in
+                        ExternalToolSettingRow(setting: setting, save: { saveSetting(setting.id, $0) })
+                    }
+                }
+            }
             if !detail.commands.isEmpty {
                 section(detail.commandsTitle) {
                     ForEach(Array(detail.commands.enumerated()), id: \.offset) {
