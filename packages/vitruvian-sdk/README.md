@@ -184,8 +184,9 @@ That test needs a Mac with Xcode and no network. It gives `swift build` a
 home and a temporary folder of its own and deletes them. One thing it
 cannot hold back: on Swift 6.4 a clean `swift build` leaves one empty
 folder, `TemporaryDirectory.XXXXXX`, in the Mac's real temporary folder,
-whatever the environment says. The test leaves it there, because it cannot
-tell its own from another build's.
+whatever the environment says. The test takes away the ones its own build
+made: new since the test began, the test's user's, still for two seconds,
+and holding nothing but an empty `.keep-directory`.
 
 After changing a file under `Sources/VitruvianToolProtocol`, the Vitruvian app
 must take the change too:

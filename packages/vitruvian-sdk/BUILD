@@ -370,11 +370,10 @@ py_test(
 #   TMPDIR                   SwiftPM's own temporary folders and lock files.
 #   CLANG_MODULE_CACHE_PATH  the compiler's module cache.
 # PATH, and DEVELOPER_DIR when set, are passed on. Nothing else is.
-# Known, and not this test's to mend: on Swift 6.4 a clean `swift build`
-# leaves one empty folder, `TemporaryDirectory.XXXXXX` holding an empty
-# `.keep-directory`, in the Mac's real per-user temporary folder, whatever
-# the environment says. The test does not delete it: it cannot tell its own
-# from another build's.
+# On Swift 6.4 a clean `swift build` leaves one empty folder,
+# `TemporaryDirectory.XXXXXX` holding an empty `.keep-directory`, in the
+# Mac's real per-user temporary folder, whatever the environment says. The
+# test takes away the ones its own build made, and no others: see `sweep`.
 py_test(
     name = "swift_template_test",
     size = "large",

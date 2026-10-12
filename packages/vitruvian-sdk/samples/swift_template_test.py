@@ -29,6 +29,9 @@ pass `validate` and run under `run`.
 Everything is inside one temporary folder, which is deleted at the end: the
 copy of the package, the new tool, and a home and a temporary folder of their
 own for `swift build`, so that it reads and writes nothing of the person's.
+One thing escapes that: the Swift compiler makes an empty folder in the Mac's
+own temporary folder whatever it is told. `sweep` takes away the ones this
+build made.
 The package has no dependency but itself, so nothing is fetched. Every program
 started here has a time limit, and is killed with whatever it started when
 the limit passes.
@@ -171,9 +174,61 @@ def check(root, command, problems):
         problems.append(f"the built Swift tool does not run:\n{printed}")
 
 
+def system_temp():
+    """The Mac's own per-user temporary folder, whatever TMPDIR says."""
+    # _CS_DARWIN_USER_TEMP_DIR, which Python has no name for.
+    try:
+        return os.path.realpath(os.confstr(65537))
+    except (ValueError, OSError):
+        return None
+
+
+def swift_leftovers(folder):
+    """The empty folders the Swift compiler leaves in the system temp folder.
+
+    Each `swiftc` makes one, `TemporaryDirectory.XXXXXX` holding an empty
+    `.keep-directory`, in the Mac's own temporary folder and not in TMPDIR,
+    and does not always take it away again.
+    """
+    if not folder or not os.path.isdir(folder):
+        return set()
+    return {
+        name for name in os.listdir(folder) if name.startswith("TemporaryDirectory.")
+    }
+
+
+def sweep(folder, before, began):
+    """Deletes the leftovers this test's build made, and only those.
+
+    A folder is taken for ours when it was not there before the build, was
+    made after the test began, is ours, has been still for two seconds, and
+    holds nothing but one empty `.keep-directory`. A compiler another build
+    is running right now makes its own a moment before it uses it, so one
+    that young is left alone.
+    """
+    for name in swift_leftovers(folder) - before:
+        path = os.path.join(folder, name)
+        try:
+            about = os.lstat(path)
+            marker = os.path.join(path, ".keep-directory")
+            mine = about.st_uid == os.getuid() and not os.path.islink(path)
+            young = time.time() - about.st_mtime < 2
+            if not mine or young or about.st_birthtime < began:
+                continue
+            if os.listdir(path) != [".keep-directory"] or os.lstat(marker).st_size != 0:
+                continue
+            os.remove(marker)
+            os.rmdir(path)
+        except OSError:
+            continue
+
+
 def main(arguments):
     command = os.path.abspath(arguments[0])
     problems = []
+    began = time.time() - 1
+    system = system_temp()
+    before = swift_leftovers(system)
     # Under Bazel this is the test's own temporary folder.
     root = tempfile.mkdtemp(
         prefix="vitruvian-swift-template-", dir=os.environ.get("TEST_TMPDIR")
@@ -184,6 +239,8 @@ def main(arguments):
         shutil.rmtree(root, ignore_errors=True)
         if os.path.exists(root):
             problems.append(f"the test's folder was not deleted: {root}")
+        time.sleep(2.1)
+        sweep(system, before, began)
 
     for problem in problems:
         print(problem, file=sys.stderr)
