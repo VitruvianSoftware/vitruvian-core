@@ -823,6 +823,12 @@ section "By hand" gives the commands that make them in `$TMPDIR`.
    commands and that folder. Cancel is the highlighted button.
 8. **Press Return on that sheet; then open it again and press Escape.** Each
    time it closes, no row appears, and `Tools` holds no folder for the tool.
+   Then open it again and press Space, with "Keyboard navigation" on in
+   System Settings › Keyboard: the sheet stays open or closes with nothing
+   added; no row appears. The focus ring is on Cancel, not on "Add Tool".
+   Press Tab until the ring is on "Add Tool": it can be reached. Do the
+   same once on the sheet that updates a tool. No test presses a key: this
+   check is the only proof of where the keyboard starts.
 9. **Open the sheet again and click "Add Tool".** A row appears, as mock-up
    (b).
 10. **Open the command bar and run "Say hello from Python".** The app's short
@@ -891,11 +897,12 @@ section "By hand" gives the commands that make them in `$TMPDIR`.
 25. **Add `$TMPDIR/many` on the smallest display you have.** The statement
     and both buttons of the sheet are visible without scrolling; the list of
     32 commands scrolls.
-26. **Add `$TMPDIR/long`.** On the sheet, in its row and in its detail, the
-    name and the publisher stay on one line each, cut short, and plain: no
-    bold, no heading, no link.
+26. **Add `$TMPDIR/long`.** The name and the publisher are cut short, and
+    plain: no bold, no heading, no link. On the sheet and in the detail the
+    title and the line with the publisher take two lines each at most; in
+    the row they take one line each.
 27. **Add `$TMPDIR/stays`, run "Say hello and stay" once, then Remove it
-    with "Remove and Delete What It Saved".** The app pauses for less than a
+    with "Remove and Delete What It Saved".** The app pauses for about a
     second and the row goes. Say in the pull request whether
     `pgrep -fl 'com.example.stays/bin/tool.py'` still showed the program.
 

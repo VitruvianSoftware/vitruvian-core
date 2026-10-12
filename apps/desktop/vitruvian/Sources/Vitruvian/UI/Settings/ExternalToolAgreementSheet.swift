@@ -17,7 +17,7 @@ import VitruvianToolProtocol
 /// came from, says that one thing in the app's words, and lists what the
 /// tool says it uses as what the tool says, never as a limit.
 package struct ToolAgreementContent: Equatable {
-    package enum Choice: Equatable, Sendable {
+    package enum Choice: Hashable, Sendable {
         case agree
         case cancel
     }
@@ -70,6 +70,13 @@ package struct ToolAgreementContent: Equatable {
     package let usesNote: String
     package let agree: String
     package let cancel: String
+
+    /// The button the keyboard is on when the sheet opens, for an offer to
+    /// add and for one to update alike. It is never the one that agrees:
+    /// with "Keyboard navigation" on in System Settings, Space presses the
+    /// focused button, and macOS puts focus on the first button of the row,
+    /// which is the one that agrees.
+    package var initialFocus: Choice { .cancel }
 
     /// How many rows the two lists hold together.
     package var listRows: Int { commands.count + uses.count }
@@ -174,6 +181,12 @@ package struct ToolAgreementSheet: View {
     private let content: ToolAgreementContent
     private let onAgree: (ToolConsent) -> Void
     private let onCancel: () -> Void
+    /// The button the keyboard is on. Nil while it is on neither, which is
+    /// always the case with "Keyboard navigation" off: macOS then gives no
+    /// button the keyboard, and Space presses nothing.
+    @FocusState private var focus: ToolAgreementContent.Choice?
+    /// True once the focus macOS gave the sheet as it opened has been seen.
+    @State private var focusPlaced = false
 
     package init(offer: ToolOffer, content: ToolAgreementContent, onAgree: @escaping (ToolConsent) -> Void,
                  onCancel: @escaping () -> Void) {
@@ -203,6 +216,16 @@ package struct ToolAgreementSheet: View {
         .padding(22)
         .frame(width: 480)
         .onExitCommand(perform: onCancel)
+        // As the sheet becomes the key window, macOS puts the keyboard on
+        // the first button of the row, after `onAppear` and whatever
+        // `defaultFocus` or `prefersDefaultFocus` say. So the sheet answers
+        // that first placing, once, and moves it. A person who then presses
+        // Tab to reach the other button is left alone.
+        .onChange(of: focus) { _, placed in
+            guard !focusPlaced, let placed else { return }
+            focusPlaced = true
+            if placed != content.initialFocus { focus = content.initialFocus }
+        }
     }
 
     /// What the tool adds and what it says it uses.
@@ -307,7 +330,10 @@ package struct ToolAgreementSheet: View {
     }
 
     /// Cancel is the default button, so Return and Escape both leave with
-    /// nothing added. The button that agrees has no key at all.
+    /// nothing added. The button that agrees has no key at all: with
+    /// "Keyboard navigation" on, a person reaches it with Tab and presses
+    /// it with Space, and it is not where the keyboard starts
+    /// (`ToolAgreementContent.initialFocus`).
     private var buttons: some View {
         HStack(spacing: 10) {
             Spacer()
@@ -324,6 +350,7 @@ package struct ToolAgreementSheet: View {
             case .cancel: onCancel()
             }
         }
+        .focused($focus, equals: choice)
         if choice == ToolAgreementContent.defaultChoice {
             plain.keyboardShortcut(.defaultAction)
         } else {
