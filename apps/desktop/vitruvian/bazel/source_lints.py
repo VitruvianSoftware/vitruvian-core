@@ -1108,6 +1108,10 @@ def dmg_detach_accepts_a_mount_that_is_gone(repo):
     convert = [x for x in text.split("\n") if "hdiutil convert" in x]
     if not convert or any("-quiet" in x for x in convert):
         problems.append("make-dmg.sh converts without -quiet so a failure says why")
+    if 'hdiutil detach "$DEVICE" -force' not in text:
+        problems.append(
+            "make-dmg.sh releases a still-attached image by its device node"
+        )
     if "convert failed (attempt" not in text:
         problems.append("make-dmg.sh retries a failed convert")
     return problems
