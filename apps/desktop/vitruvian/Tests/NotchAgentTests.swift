@@ -2607,10 +2607,95 @@ enum NotchAgentTests {
                      "cards pair in reading order, and charts and lone cards take the row")
         suite.expect(NotchAgentSupport.rows([limits, codex], width: 330) == [[limits], [codex]],
                      "a narrow island stacks every card")
+        let antigravityLimits = NotchAgentTile(card: .limits, provider: .antigravity)
+        let live = NotchAgentTile(card: .live, provider: nil)
+        let models = NotchAgentTile(card: .models, provider: nil)
+        suite.expect(NotchAgentSupport.limitsHeight(rows: 0) == 104 && NotchAgentSupport.limitsHeight(rows: 1) == 104
+                        && NotchAgentSupport.limitsHeight(rows: 2) == 122 && NotchAgentSupport.limitsHeight(rows: 3) == 164
+                        && NotchAgentSupport.limitsHeight(rows: 4) == 206,
+                     "a limits card grows with the allowances it lists")
+        suite.expect(NotchAgentSupport.height(of: antigravityLimits) == 206 && NotchAgentSupport.height(of: limits) == 164
+                        && NotchAgentSupport.height(of: codex) == 122
+                        && NotchAgentSupport.height(of: spend) == NotchAgentSupport.spendHeight
+                        && NotchAgentSupport.height(of: live) == NotchAgentSupport.cardHeight
+                        && NotchAgentSupport.height(of: models) == NotchAgentSupport.cardHeight
+                        && NotchAgentSupport.height(of: resets) == NotchAgentSupport.cardHeight
+                        && NotchAgentSupport.height(of: trend) == NotchAgentSupport.chartHeight
+                        && NotchAgentSupport.spendHeight > NotchAgentSupport.cardHeight,
+                     "before a reading, a limits card gets room for every allowance its agent can report, and the spending card for its four figures")
+        suite.expect(NotchAgentSupport.height(of: [antigravityLimits, spend]) == 206
+                        && NotchAgentSupport.height(of: [limits, antigravityLimits]) == 206
+                        && NotchAgentSupport.height(of: [spend, live]) == NotchAgentSupport.spendHeight
+                        && NotchAgentSupport.height(of: [live, models]) == NotchAgentSupport.cardHeight
+                        && NotchAgentSupport.height(of: [trend]) == NotchAgentSupport.chartHeight
+                        && NotchAgentSupport.height(of: [] as [NotchAgentTile]) == 0,
+                     "a row is as tall as its tallest card")
+        func reading(_ provider: AgentProvider, _ kinds: [AgentLimitWindow.Kind]) -> AgentLimits {
+            AgentLimits(provider: provider, windows: kinds.enumerated().map { index, kind in
+                AgentLimitWindow(id: "w\(index)", kind: kind, minutes: 300, scope: nil, usedPercent: 10,
+                                 resetsAt: nil)
+            }, observedAt: Date(timeIntervalSince1970: 1_780_000_000), source: .sessionLog)
+        }
+        let limitRows = NotchAgentSupport.limitRows([.antigravity: reading(.antigravity, [.session, .weekly, .session, .weekly]),
+                                                     .claude: reading(.claude, [.session, .weekly]),
+                                                     .codex: reading(.codex, [.session, .weekly, .weekly]),
+                                                     .opencode: reading(.opencode, [.weekly, .other])])
+        suite.expect(limitRows == [.antigravity: 4, .claude: 2, .codex: 2, .opencode: 1],
+                     "Antigravity and Claude list every window; the others their session and one longer window")
+        suite.expect(NotchAgentSupport.height(of: antigravityLimits, limitRows: limitRows) == 206
+                        && NotchAgentSupport.height(of: limits, limitRows: limitRows) == 122
+                        && NotchAgentSupport.height(of: limits, limitRows: [:]) == 104
+                        && NotchAgentSupport.height(of: [limits, spend], limitRows: limitRows) == NotchAgentSupport.spendHeight
+                        && NotchAgentSupport.height(of: [limits, spend]) == 164,
+                     "a reading sizes the card for the windows it holds, and an agent without one for the hint alone")
         suite.expect(NotchAgentSupport.contentHeight([[limits, codex], [trend]])
-                        == NotchAgentSupport.cardHeight + NotchAgentSupport.spacing + NotchAgentSupport.chartHeight
+                        == 164 + NotchAgentSupport.spacing + NotchAgentSupport.chartHeight
+                        && NotchAgentSupport.contentHeight([[antigravityLimits, spend], [live]], limitRows: limitRows)
+                        == 206 + NotchAgentSupport.spacing + NotchAgentSupport.cardHeight
                         && NotchAgentSupport.contentHeight([]) == 0,
                      "the page is as tall as its rows")
+        suite.expect(NotchAgentSupport.telemetryHeight([[antigravityLimits, spend], [live]], limitRows: limitRows)
+                        == NotchAgentSupport.telemetryChromeHeight + 206 + NotchAgentSupport.spacing + NotchAgentSupport.cardHeight
+                        && NotchAgentSupport.telemetryHeight([])
+                        == NotchAgentSupport.telemetryChromeHeight + NotchLayout.emptyHeight,
+                     "the island allows for the switches above the cards, and for the empty message under them")
+
+        // The provider tabs: the island is sized for the same agents the page draws.
+        let seenAll: Set<AgentProvider> = [.claude, .codex, .antigravity]
+        defaults.removeObject(forKey: DefaultsKey.notchAgentsTelemetryFilter)
+        suite.expect(NotchAgentSupport.telemetryFilter(in: defaults) == .antigravity,
+                     "the telemetry page opens on Antigravity")
+        defaults.set("claude", forKey: DefaultsKey.notchAgentsTelemetryFilter)
+        suite.expect(NotchAgentSupport.telemetryFilter(in: defaults) == .claude, "the chosen provider tab is kept")
+        defaults.set("nonsense", forKey: DefaultsKey.notchAgentsTelemetryFilter)
+        suite.expect(NotchAgentSupport.telemetryFilter(in: defaults) == .antigravity, "an unknown tab falls back to Antigravity")
+        defaults.removeObject(forKey: DefaultsKey.notchAgentsTelemetryFilter)
+        for provider in AgentProvider.allCases { defaults.set(true, forKey: NotchAgentSupport.key(for: provider)) }
+        suite.expect(NotchAgentSupport.pageProviders(seen: seenAll, filter: .antigravity, in: defaults) == [.antigravity]
+                        && NotchAgentSupport.pageProviders(seen: seenAll, filter: .claude, in: defaults) == [.claude]
+                        && NotchAgentSupport.pageProviders(seen: seenAll, filter: .all, in: defaults)
+                        == NotchAgentSupport.pageProviders(seen: seenAll, in: defaults)
+                        && NotchAgentSupport.pageProviders(seen: [], filter: .claude, in: defaults) == [.claude]
+                        && NotchAgentSupport.pageProviders(seen: [], filter: .all, in: defaults).isEmpty,
+                     "a provider's tab shows that agent alone, even before it leaves anything on this Mac")
+        defaults.set(false, forKey: DefaultsKey.notchAgentsAntigravity)
+        suite.expect(NotchAgentSupport.pageProviders(seen: seenAll, filter: .antigravity, in: defaults).isEmpty,
+                     "a switched-off agent's tab has no cards")
+        defaults.set(true, forKey: DefaultsKey.notchAgentsAntigravity)
+        defaults.removeObject(forKey: DefaultsKey.notchAgentsCardOrder)
+        defaults.removeObject(forKey: DefaultsKey.notchAgentsHiddenCards)
+        let antigravityPage = NotchAgentSupport.pageRows(
+            providers: NotchAgentSupport.pageProviders(seen: seenAll, filter: .antigravity, in: defaults), width: 424, in: defaults)
+        let everyPage = NotchAgentSupport.pageRows(
+            providers: NotchAgentSupport.pageProviders(seen: seenAll, filter: .all, in: defaults), width: 424, in: defaults)
+        suite.expect(antigravityPage.first == [antigravityLimits, spend]
+                        && everyPage.count > antigravityPage.count
+                        && NotchAgentSupport.telemetryHeight(everyPage) > NotchAgentSupport.telemetryHeight(antigravityPage)
+                        && NotchAgentSupport.telemetryHeight(antigravityPage, limitRows: limitRows)
+                        == NotchAgentSupport.telemetryChromeHeight
+                        + antigravityPage.map { NotchAgentSupport.height(of: $0, limitRows: limitRows) }.reduce(0, +)
+                        + NotchAgentSupport.spacing * CGFloat(antigravityPage.count - 1),
+                     "one provider's tab is a shorter page than every agent's, and each row counts at its own height")
         let geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1512, height: 982), safeAreaTop: 32,
                                      cameraWidth: 185, layout: .spacious, compactSideRoom: 200)
         suite.expect(geometry.expandedSize(module: .agents, agentsHeight: 96).height
