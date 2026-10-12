@@ -73,6 +73,18 @@ swift_library(
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
+# What a tool is written with, in Swift: declare commands, handle them, call
+# the app. It works on one thread and starts none. Foundation and the
+# protocol only, and nothing of the app.
+swift_library(
+    name = "VitruvianToolKit",
+    srcs = glob(["Sources/VitruvianToolKit/**/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "VitruvianToolKit",
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":VitruvianToolProtocol"],
+)
+
 # macOS-only and `manual`, like every swift_test in the repository, so the
 # Linux lane never names it; the `vitruvian-sdk` pipeline unit below runs it by
 # explicit label on xcode-27.
@@ -84,6 +96,16 @@ swift_test(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":VitruvianToolProtocol"],
+)
+
+# The kit against a link made of two files. It starts no process.
+swift_test(
+    name = "VitruvianToolKitTests",
+    size = "small",
+    srcs = glob(["Tests/VitruvianToolKitTests/**/*.swift"]),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":VitruvianToolKit"],
 )
 
 # The examples, judged by the schemas. Not `manual` and not tied to macOS: it
@@ -136,6 +158,7 @@ pipeline_unit(
     persona = "platform",
     runner = "xcode-27",
     test_targets = [
+        ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
         ":conformance_test",
         ":protocol_examples_test",

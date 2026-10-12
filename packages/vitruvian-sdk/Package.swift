@@ -26,6 +26,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "VitruvianToolProtocol", targets: ["VitruvianToolProtocol"]),
+        .library(name: "VitruvianToolKit", targets: ["VitruvianToolKit"]),
     ],
     targets: [
         // MUST MIRROR packages/vitruvian-sdk/BUILD, target for target. These
@@ -39,10 +40,22 @@ let package = Package(
             name: "VitruvianToolProtocol",
             path: "Sources/VitruvianToolProtocol"
         ),
+        // What a Swift tool is written with. One thread, Swift 6 mode.
+        .target(
+            name: "VitruvianToolKit",
+            dependencies: ["VitruvianToolProtocol"],
+            path: "Sources/VitruvianToolKit"
+        ),
         .testTarget(
             name: "VitruvianToolProtocolTests",
             dependencies: ["VitruvianToolProtocol"],
             path: "Tests/VitruvianToolProtocolTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "VitruvianToolKitTests",
+            dependencies: ["VitruvianToolKit"],
+            path: "Tests/VitruvianToolKitTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
