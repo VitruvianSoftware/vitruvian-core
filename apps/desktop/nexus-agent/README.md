@@ -245,10 +245,10 @@ A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI t
 #### Option D: Antigravity plugin
 
 ```bash
-agy plugin install /path/to/nexus-agent
+agy plugin install https://github.com/VitruvianSoftware/nexus-agent
 ```
 
-Installs the bot as an Antigravity CLI plugin (`plugin.json` + `rules/AGENTS.md`). Ask agy *"help me set up the Telegram bot"* and it will walk you through configuration using the bundled playbook.
+Clones this repository into Antigravity's plugin folder (`~/.gemini/config/plugins/nexus-agent`) and loads its setup guide (`rules/AGENTS.md`) into every session. Ask agy *"help me set up the Telegram bot"* and it will walk you through configuration, then start the bot from that folder. To install from a local clone instead, pass its path in place of the URL.
 
 ---
 

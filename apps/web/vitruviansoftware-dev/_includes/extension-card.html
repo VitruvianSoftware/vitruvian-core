@@ -28,6 +28,7 @@
     </div>
     {%- endfor -%}
     {%- if x.needs -%}<p class="muted extension-needs">Needs {{ x.needs }}.</p>{%- endif -%}
+    {%- if x.note -%}<p class="muted extension-needs">{{ x.note }}</p>{%- endif -%}
     <div class="card-links">
       {%- if p.repo -%}<a class="text-link" href="{{ p.repo }}">Repository</a>{%- endif -%}
       {%- if p.source -%}<a class="text-link" href="{{ site.monorepo }}/tree/main/{{ p.source }}">Source in monorepo</a>{%- endif -%}
