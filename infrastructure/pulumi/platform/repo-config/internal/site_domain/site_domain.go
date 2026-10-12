@@ -47,6 +47,7 @@
 package site_domain
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
@@ -128,6 +129,17 @@ func Enabled() bool { return os.Getenv(Switch) == "true" }
 func Manage(ctx *pulumi.Context) error {
 	if !Enabled() {
 		return nil
+	}
+	// Name the missing input. Left to the Cloudflare provider this surfaces as
+	// "must provide exactly one of apiKey, apiToken...", on a run that has
+	// nothing to do with DNS to a reader of the log. A preview that does not
+	// hold the real token is given a non-empty placeholder by its workflow, so
+	// it does not reach this.
+	if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
+		return fmt.Errorf("%s is true but CLOUDFLARE_API_TOKEN is empty: the "+
+			"DNS_CLOUDFLARE_API_TOKEN repo secret has not been set. Store it "+
+			"first (docs/operations/key-rotation.md); refusing to run, because "+
+			"not declaring the site's records would plan to delete them", Switch)
 	}
 
 	for _, r := range Records() {
