@@ -138,12 +138,33 @@ package struct AgentUsageSnapshot: Equatable {
     package var lastActivity: [AgentProvider: Date] = [:]
     /// Providers with anything on disk: usage, limits or a turn.
     package var seen: Set<AgentProvider> = []
+    package var identities: [AgentProvider: AgentIdentity] = [:]
+    package var credits: [AgentProvider: Double] = [:]
+    package var costMetrics: [AgentProvider: AgentCostMetrics] = [:]
+    package var dailySpend: [AgentProvider: [AgentDailyCost]] = [:]
 
     package func usage(_ period: AgentPeriod) -> AgentPeriodUsage { periods[period] ?? AgentPeriodUsage() }
     package func working(_ provider: AgentProvider) -> [AgentLiveSession] { live.filter { $0.provider == provider } }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(loaded: Bool = false, now: Date = Date.distantPast, periods: [AgentPeriod: AgentPeriodUsage] = [:], days: [AgentBucket] = [], hours: [AgentBucket] = [], limits: [AgentProvider: AgentLimits] = [:], plans: [AgentProvider: AgentPlan] = [:], live: [AgentLiveSession] = [], claudeBlock: AgentBlock? = nil, burnRate: [AgentProvider: AgentTotals] = [:], lastActivity: [AgentProvider: Date] = [:], seen: Set<AgentProvider> = []) {
+    package init(
+        loaded: Bool = false,
+        now: Date = Date.distantPast,
+        periods: [AgentPeriod: AgentPeriodUsage] = [:],
+        days: [AgentBucket] = [],
+        hours: [AgentBucket] = [],
+        limits: [AgentProvider: AgentLimits] = [:],
+        plans: [AgentProvider: AgentPlan] = [:],
+        live: [AgentLiveSession] = [],
+        claudeBlock: AgentBlock? = nil,
+        burnRate: [AgentProvider: AgentTotals] = [:],
+        lastActivity: [AgentProvider: Date] = [:],
+        seen: Set<AgentProvider> = [],
+        identities: [AgentProvider: AgentIdentity] = [:],
+        credits: [AgentProvider: Double] = [:],
+        costMetrics: [AgentProvider: AgentCostMetrics] = [:],
+        dailySpend: [AgentProvider: [AgentDailyCost]] = [:]
+    ) {
         self.loaded = loaded
         self.now = now
         self.periods = periods
@@ -156,6 +177,10 @@ package struct AgentUsageSnapshot: Equatable {
         self.burnRate = burnRate
         self.lastActivity = lastActivity
         self.seen = seen
+        self.identities = identities
+        self.credits = credits
+        self.costMetrics = costMetrics
+        self.dailySpend = dailySpend
     }
 }
 
@@ -458,10 +483,36 @@ package final class AgentUsageSummaryCache {
 package struct AgentPace: Equatable {
     /// How much of the window's time has passed, from 0 to 1.
     package let elapsed: Double
+    package let expectedUsedPercent: Double
+    package let deltaPercent: Double
+    package let reservePercent: Double
+    package let willLastToReset: Bool
+    package let reserveText: String
+    package let sessionQuotasLeft: Double?
+    package let windowsUntilReset: Int?
+    package let summary: String
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(elapsed: Double) {
+    package init(
+        elapsed: Double,
+        expectedUsedPercent: Double = 0,
+        deltaPercent: Double = 0,
+        reservePercent: Double = 0,
+        willLastToReset: Bool = true,
+        reserveText: String = "On pace",
+        sessionQuotasLeft: Double? = nil,
+        windowsUntilReset: Int? = nil,
+        summary: String = ""
+    ) {
         self.elapsed = elapsed
+        self.expectedUsedPercent = expectedUsedPercent
+        self.deltaPercent = deltaPercent
+        self.reservePercent = reservePercent
+        self.willLastToReset = willLastToReset
+        self.reserveText = reserveText
+        self.sessionQuotasLeft = sessionQuotasLeft
+        self.windowsUntilReset = windowsUntilReset
+        self.summary = summary
     }
 }
 
@@ -473,12 +524,68 @@ package enum AgentLimitSupport {
                                 scope: window.scope, usedPercent: 0, resetsAt: nil)
     }
 
-    package static func pace(for window: AgentLimitWindow, now: Date) -> AgentPace? {
+    package static func pace(
+        for window: AgentLimitWindow,
+        now: Date,
+        weeklyWindow: AgentLimitWindow? = nil,
+        sessionWindow: AgentLimitWindow? = nil
+    ) -> AgentPace? {
         guard let minutes = window.minutes, minutes > 0, let resets = window.resetsAt, resets > now else { return nil }
         let length = TimeInterval(minutes) * 60
         let elapsed = now.timeIntervalSince(resets.addingTimeInterval(-length))
         guard elapsed > 0 else { return nil }
-        return AgentPace(elapsed: min(1, elapsed / length))
+        let fraction = min(1.0, max(0.0, elapsed / length))
+        let expectedUsed = fraction * 100.0
+        let delta = window.usedPercent - expectedUsed
+        let reserve = expectedUsed - window.usedPercent
+        let willLast = window.usedPercent <= expectedUsed || window.usedPercent <= 0
+
+        let reserveText: String
+        if abs(delta) <= 2.0 {
+            reserveText = "On pace"
+        } else if reserve > 0 {
+            reserveText = "\(Int(round(reserve)))% in reserve"
+        } else {
+            reserveText = "\(Int(round(-reserve)))% in deficit"
+        }
+
+        var sessionQuotas: Double? = nil
+        var windowsCount: Int? = nil
+
+        let targetWeekly = (window.kind == .weekly) ? window : weeklyWindow
+        if let weekly = targetWeekly, let weeklyResets = weekly.resetsAt, weeklyResets > now {
+            let secondsUntilWeeklyReset = weeklyResets.timeIntervalSince(now)
+            windowsCount = max(0, Int(floor(secondsUntilWeeklyReset / (5 * 3600))))
+            let remainingWeeklyPercent = max(0.0, 100.0 - weekly.usedPercent)
+            let sessionBurn = sessionWindow?.usedPercent ?? 0
+            if sessionBurn > 0 {
+                sessionQuotas = remainingWeeklyPercent / max(1.0, sessionBurn)
+            } else {
+                sessionQuotas = remainingWeeklyPercent / 8.0
+            }
+        }
+
+        var summaryParts: [String] = [reserveText]
+        summaryParts.append(willLast ? "Lasts until reset" : "Will exhaust early")
+        if let sessionQuotas {
+            summaryParts.append("Est. \(String(format: "%.1f", locale: Locale.current, sessionQuotas)) session quotas left")
+        }
+        if let windowsCount {
+            summaryParts.append("\(windowsCount) windows until reset")
+        }
+        let summary = summaryParts.joined(separator: " · ")
+
+        return AgentPace(
+            elapsed: fraction,
+            expectedUsedPercent: expectedUsed,
+            deltaPercent: delta,
+            reservePercent: reserve,
+            willLastToReset: willLast,
+            reserveText: reserveText,
+            sessionQuotasLeft: sessionQuotas,
+            windowsUntilReset: windowsCount,
+            summary: summary
+        )
     }
 
     /// The window that will stop work first: the most spent, and on a tie the
