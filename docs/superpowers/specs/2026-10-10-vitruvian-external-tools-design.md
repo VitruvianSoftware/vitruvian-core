@@ -327,7 +327,8 @@ never clears it for the person.
 **The words.** The app's own sentences here are new and are written in all
 15 languages: about 15 of them, counted at the planning step. Counted: 42;
 the stage C plan's table lists them. Two more came on 2026-10-12, for the
-alert after a removal that kept what a tool saved: 44. The tool's
+alert after a removal that kept what a tool saved: 44. Two more the same
+day, for the same alert when a folder could not be deleted: 46. The tool's
 words are shown as given (decision 10).
 
 **With no outside tool installed** the hub shows one quiet line and the
@@ -743,7 +744,8 @@ What is still left of these three, and known:
   The person can delete the folder; the preferences stay until the tool is
   added again and removed.
 - A file of a tool's data that could not be deleted, with the program gone,
-  is still only a line in the system log.
+  is still only a line in the system log. *Closed on 2026-10-12: see "Five
+  loose ends of the tool platform, as closed".*
 - The detail reads a tool's settings when it opens. A tool that changes its
   own preference while the detail is open is not followed.
 - A preference's title is bounded and drawn as plain text. The agreement
@@ -761,6 +763,7 @@ opened the app.
 |---|---|---|
 | A command that is listed and cannot run looked clickable | Met in tests, not by hand. True of the Quick panel only | The command bar and the wheel already leave such a command out, each for a reason its code states (`CommandBarCatalog.toolEntries`: the bar records a use before it runs a row; `RadialMenuService.availableItems`: no dead slice), and tests held that before. The Quick panel kept the tile, drew it like any other, and did nothing when it was picked. It now keeps the tile in its place and draws it as a disabled button (`QuickLauncherService.isUnavailable`), which SwiftUI dims as it dims every disabled button; no click, Return or digit runs it and the panel stays open. Seven checks in the `launcher` suite and two planted regressions. How the dimmed tile looks is by-hand check 34. |
 | A removed tool kept its shortcut, and nothing could clear it | Met in tests, not by hand | The premise held: the saved combination registered no key (`ToolShortcutRegistrar.wantedShortcuts`) and still refused the same keys to every other command (`ShortcutConflicts.holder`, `ToolShortcutRegistrar.assign`), with no row to clear it on. Now Remove clears the shortcuts of the tool's commands (`ExternalToolStore.remove`, `ToolShortcutRegistrar.forget`), whether or not what the tool saved is kept. A tool that is switched off, updated, or not registered this launch keeps its shortcut saved; it holds no key and refuses nobody meanwhile (`heldShortcuts`), and is a key again when the tool returns. Keys given to another tool command meanwhile stay with that command. `platform` 766 to 781 checks, `tool-runtime` 581 to 591, two planted regressions. By-hand check 35. |
+| At Remove, a file that could not be deleted was only a log line | Met in tests, not by hand | The premise held: `ExternalToolStore.remove` answered `deleted` whatever `ToolFolders.delete` gave back, and it deleted the tool's preferences while the folder of what it saved stayed. It now answers `notDeleted` with each folder that is left, and the alert added for kept data says so, with its own title and sentence and the same Reveal in Finder button (`ToolRemovalNotice`). Two new texts in fifteen languages, 46 in all. A tool's preferences now go only together with the folder of what it saved; when the folder stays, for any reason, they stay, and nothing deletes either later. The record is written away before anything is deleted, so the next launch has no record of a half-deleted tool and starts nothing of it: a test relaunches over a read-only folder and sees that. `tool-runtime` 591 to 606 checks, three planted regressions. Still only a log line: a program that would not stop and a copy that could not be deleted, both at once. By-hand check 36. |
 
 **The five "done when" items of section 1, as they stand.** None is marked
 met here by a person, because none of the checks by hand has been done.
@@ -1106,6 +1109,16 @@ chmod +x "$TMPDIR/never/bin/tool.py"
     works. After Remove the row is gone, and the other command takes
     Option-Shift-9 with no "already used" line. Add the sample again: its
     row shows no shortcut.
+36. **Add the Python sample, and in a terminal run
+    `touch "$D/x" && chmod 555 "$D"`, where `D` is
+    `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.samples.hello-python`.
+    Then Remove the tool with "Remove and Delete What It Saved".** The row
+    goes, and then one alert is titled "Some files of “Hello, in Python”
+    could not be deleted", says the tool is removed and what is left is
+    here, names that folder under `ToolData`, and offers "Reveal in
+    Finder", which shows it. Quit the app and open it: the tool is not
+    listed and nothing of it runs. Afterwards run `chmod 755 "$D"` and
+    delete the folder by hand.
 
 ## 16. Open questions
 

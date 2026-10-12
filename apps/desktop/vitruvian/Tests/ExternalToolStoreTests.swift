@@ -25,6 +25,7 @@ enum ExternalToolStoreTests {
         removing(suite)
         goneBeforeDeleted(suite)
         saysWhatWasKept(suite)
+        saysWhatCouldNotBeDeleted(suite)
         shortcutsOfARemovedTool(suite)
         installedOrNot(suite)
         remembering(suite)
@@ -715,6 +716,105 @@ enum ExternalToolStoreTests {
         suite.expect(nobody.store.remove(id, deletingData: true) == .notAdded
                          && !nobody.store.remove(id, deletingData: true).removed,
                      "removing a tool nobody added says nothing was removed")
+    }
+
+    /// A folder that could not be deleted, with the tool's program gone: a
+    /// read-only folder under the temporary folder stands in for it. The
+    /// outcome says which folder is left, and the next launch starts
+    /// nothing of a tool that is half deleted.
+    static func saysWhatCouldNotBeDeleted(_ suite: TestSuite) {
+        let manager = FileManager.default
+        func lock(_ folder: URL) { try? manager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path) }
+        func unlock(_ folder: URL) { try? manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        func added() -> Bench {
+            let bench = Bench()
+            bench.add(bench.folder())
+            try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
+            bench.box.values["com.acme.deploys/project"] = "api"
+            return bench
+        }
+        func paths(_ removal: ExternalToolStore.Removal) -> [String]? {
+            guard case .notDeleted(let folders) = removal else { return nil }
+            return folders.map(\.standardizedFileURL.path)
+        }
+
+        // What the tool saved cannot be deleted; its copy can.
+        let data = added()
+        defer {
+            unlock(data.data)
+            data.close()
+        }
+        lock(data.data)
+        let said = data.store.remove(id, deletingData: true)
+        suite.expect(said != .deleted && said.removed && paths(said) == [data.data.standardizedFileURL.path]
+                         && paths(said)?.first?.hasSuffix("/support/ToolData/com.acme.deploys") == true,
+                     "a tool whose data folder could not be deleted is removed, and removing it says so, and which folder is left")
+        suite.expect(data.store.listed.isEmpty && data.records.isEmpty && !data.exists(data.files)
+                         && data.registry.tool(id) == nil && data.host.manifest(for: id) == nil
+                         && (try? Data(contentsOf: data.data.appendingPathComponent("saved"))) == Data("kept".utf8)
+                         && data.box.values["com.acme.deploys/project"] as? String == "api",
+                     "its record and its copy are gone; the tool's settings stay as long as the folder of what it saved does")
+        let after = data.relaunched()
+        after.store.restore()
+        suite.expect(after.store.listed.isEmpty && after.registry.tool(id) == nil && after.host.manifest(for: id) == nil
+                         && after.started.isEmpty && !after.store.isInstalled(id),
+                     "the next launch has no record of a tool that is half deleted, and starts nothing of it")
+        unlock(data.data)
+        if case .success = data.add(data.folder("again")) {
+            suite.expect(data.exists(data.data.appendingPathComponent("saved"))
+                             && data.box.values["com.acme.deploys/project"] as? String == "api"
+                             && data.store.remove(id, deletingData: true) == .deleted && !data.exists(data.data)
+                             && data.box.values["com.acme.deploys/project"] == nil,
+                         "added again it finds both, and removed again with the folder writable, both go")
+        } else {
+            suite.expect(false, "added again it finds both, and removed again with the folder writable, both go")
+        }
+
+        // The app's copy cannot be deleted: its folder may not be changed.
+        let copyStuck = added()
+        let tools = copyStuck.support.appendingPathComponent("Tools", isDirectory: true)
+        defer {
+            unlock(tools)
+            copyStuck.close()
+        }
+        lock(tools)
+        let kept = copyStuck.store.remove(id, deletingData: false)
+        suite.expect(kept != .keptAsAsked && kept.removed && paths(kept) == [copyStuck.files.standardizedFileURL.path]
+                         && copyStuck.records.isEmpty && copyStuck.exists(copyStuck.data.appendingPathComponent("saved"))
+                         && copyStuck.box.values["com.acme.deploys/project"] as? String == "api",
+                     "a copy that could not be deleted is said too, also when what the tool saved was to be kept")
+        let relaunched = copyStuck.relaunched()
+        relaunched.store.restore()
+        suite.expect(copyStuck.exists(copyStuck.files) && relaunched.store.listed.isEmpty
+                         && relaunched.registry.tool(id) == nil && relaunched.started.isEmpty,
+                     "a copy left on disk with no record is not a tool at the next launch: it is never listed or started")
+
+        // Neither can be deleted.
+        let both = added()
+        let bothTools = both.support.appendingPathComponent("Tools", isDirectory: true)
+        defer {
+            unlock(bothTools)
+            unlock(both.data)
+            both.close()
+        }
+        lock(bothTools)
+        lock(both.data)
+        suite.expect(paths(both.store.remove(id, deletingData: true))
+                         == [both.files.standardizedFileURL.path, both.data.standardizedFileURL.path],
+                     "when neither folder could be deleted both are named, the app's copy first")
+
+        // The program would not stop: that is what is said, as before.
+        let running = added()
+        defer { running.close() }
+        running.registry.run(copy)
+        running.current.greets()
+        var folder: String?
+        if case .keptStillRunning(let left) = running.store.remove(id, deletingData: true) {
+            folder = left?.standardizedFileURL.path
+        }
+        suite.expect(folder == running.data.standardizedFileURL.path
+                         && running.box.values["com.acme.deploys/project"] as? String == "api",
+                     "a tool whose program would not stop is still said to have kept what it saved, with its settings")
     }
 
     /// The shortcut the person gave a tool's command: gone with a tool

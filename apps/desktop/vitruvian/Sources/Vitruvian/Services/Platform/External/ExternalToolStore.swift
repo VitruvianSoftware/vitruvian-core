@@ -46,13 +46,19 @@ package final class ExternalToolStore {
         /// The tool is removed, and what it saved is kept, as was asked.
         case keptAsAsked
         /// The tool is removed, and what it saved was to be deleted too, and
-        /// its program was gone, so that was done.
+        /// its program was gone, so that was done: nothing of it is left.
         case deleted
         /// The tool is removed. What it saved was to be deleted too, and is
         /// kept all the same, its preferences with it, because the tool's
         /// program was still there after the kill. `data` is the folder
         /// that holds what it saved.
         case keptStillRunning(data: URL?)
+        /// The tool is removed and its program is gone, but something that
+        /// was to be deleted is still there: a folder that is read-only, or
+        /// a file in use. `folders` is what is left, the app's copy of the
+        /// tool first: one folder, or both. The tool's preferences stay
+        /// while the folder of what it saved does.
+        case notDeleted(folders: [URL])
 
         /// True when the tool was removed.
         package var removed: Bool { self != .notAdded }
@@ -419,7 +425,15 @@ package final class ExternalToolStore {
     ///
     /// The folder the tool was added from is never touched. What it gives
     /// back says which of these happened, so that the person can be told
-    /// when what a tool saved was kept against what they asked.
+    /// when what a tool saved was kept against what they asked, or when a
+    /// folder that was to go could not be deleted.
+    ///
+    /// The record goes first, before anything is deleted, so a tool that
+    /// is only half deleted has no record at the next launch: it is never
+    /// listed and never started. The preferences under the tool's id are
+    /// deleted only together with the folder of what it saved. When that
+    /// folder stays, for any reason, they stay with it, and adding the
+    /// tool again finds both. Nothing deletes either later.
     @discardableResult
     package func remove(_ id: ToolID, deletingData: Bool) -> Removal {
         guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return .notAdded }
@@ -439,16 +453,23 @@ package final class ExternalToolStore {
         if deletingData, !gone {
             logger.error("the removed tool \(id.rawValue, privacy: .public) is still running: what it saved is kept")
         }
+        // What is still there although it was to go: the copy, and with
+        // `data` the folder of what the tool saved.
+        var left: [URL] = []
         if parts.folders?.delete(id, data: data) != true {
             logger.error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
+            left = parts.folders?.undeleted(id, data: data) ?? []
         }
-        if data { parts.forgetPreferences(id) }
+        // A tool's preferences stay exactly as long as the folder of what
+        // it saved does, whatever kept the folder.
+        let dataFolder = parts.folders?.place(for: id)?.data
+        if data, !left.contains(where: { $0 == dataFolder }) { parts.forgetPreferences(id) }
         parts.registry().noteAvailabilityChanged()
-        guard deletingData else { return .keptAsAsked }
-        guard gone else {
-            return .keptStillRunning(data: parts.folders?.place(for: id)?.data)
-        }
-        return .deleted
+        // A program that would not stop comes first: it is the one case
+        // where something of the tool may still be running.
+        if deletingData, !gone { return .keptStillRunning(data: dataFolder) }
+        guard left.isEmpty else { return .notDeleted(folders: left) }
+        return deletingData ? .deleted : .keptAsAsked
     }
 
     // MARK: - A tool's own settings

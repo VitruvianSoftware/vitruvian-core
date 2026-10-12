@@ -480,15 +480,27 @@ of it but the protocol.
   keeps what it saved, whatever was asked: its copy and its record go, and
   `remove` logs it.
 - `remove` says what happened (`ExternalToolStore.Removal`): nobody added
-  it, kept as asked, deleted, or kept although deleting was asked, with
-  the folder. For that last one the person is told once, in an alert,
-  after the tool's detail has closed and its row has gone
-  (`ToolRemovalNotice`), with a button that shows the folder in the Finder.
-  The preferences under `<tool id>/` are kept with the folder then, and
-  nothing deletes either later: the person deletes the folder, and adding
-  the tool again finds both. `.deleted` means deleting was asked and the
-  program was gone; a file that then could not be deleted is still only a
-  line in the system log.
+  it, kept as asked, deleted, kept although deleting was asked because the
+  program would not stop, with the folder, or not deleted: the program was
+  gone and a folder that was to go is still there, with each such folder
+  (`notDeleted`, from `ToolFolders.undeleted`). For those last two the
+  person is told once, in one alert, after the tool's detail has closed
+  and its row has gone (`ToolRemovalNotice`), with a button that shows the
+  folder or folders in the Finder. `.deleted` now means nothing is left.
+- A tool's preferences under `<tool id>/` are deleted only together with
+  the folder of what it saved. When that folder stays, for any of three
+  reasons (the person kept it, the program would not stop, it could not be
+  deleted), they stay with it, and adding the tool again finds both.
+  Nothing deletes either later, and there is no cleaner: a person who
+  deletes the folder by hand leaves the preferences in the app's own
+  until the tool is added again and removed with what it saved.
+- The record of a removed tool is written away before anything is
+  deleted, so a tool that is half deleted has no record at the next
+  launch and is never listed or started. Its leftover folder is replaced
+  when the tool is added again.
+- One corner is still only a line in the system log: the program would
+  not stop and the app's copy could not be deleted either. The alert is
+  then the one about what was kept.
 - Which button of the question before removal deletes what a tool saved is
   `ToolRemovalContent.Choice.deletesData`, and the view passes it on
   unchanged. What follows the folder picker is `ToolPicked.after`: nothing,

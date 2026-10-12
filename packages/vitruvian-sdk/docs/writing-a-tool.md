@@ -447,7 +447,10 @@ folder the program is started in.
   once and sent to the tool if it is running.
 - **Removing a tool** deletes the app's copy. What the tool saved is deleted
   too when the person picks that, unless the tool's program will not stop:
-  then it is kept, and the person is told so and where it is.
+  then it is kept, and the person is told so and where it is. A folder that
+  cannot be deleted, such as one the tool made read-only, is left, and the
+  person is told that too. The tool's preferences go only together with
+  the folder of what it saved: while that folder is kept, so are they.
 
 For the two Swift samples, build their folders first:
 
