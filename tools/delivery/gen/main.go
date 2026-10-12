@@ -93,6 +93,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/VitruvianSoftware/vitruvian-core/tools/ci/actionpins"
 )
 
 // schemaVersion is the delivery() metadata contract this generator understands
@@ -170,15 +173,20 @@ func concurrencyGroupExpr(phase int) string {
 	return concurrencyGroupExprBase
 }
 
-// checkoutPin / setupBazel / uploadArtifactPin mirror the pins the rest of
-// .github/workflows already uses, so Dependabot's github-actions ecosystem
-// bumps this file's output the same day it bumps every hand-written lane. A
-// divergent pin here would be invisible: nobody reviews a generated file's
-// action versions by eye.
+// Action pins are resolved from .github/actions/pins/action.yml via
+// tools/ci/actionpins so Dependabot's github-actions ecosystem bumps the
+// manifest natively and both delivery and presubmit generators inherit the
+// bump without code changes.
+var actionPins = sync.OnceValue(func() *actionpins.Pins {
+	return actionpins.MustLoadDefault()
+})
+
+func pin(action string) string {
+	return actionPins().Resolve(action)
+}
+
 const (
-	checkoutPin       = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
-	setupBazelAction  = "./.github/actions/setup-bazel"
-	uploadArtifactPin = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
+	setupBazelAction = "./.github/actions/setup-bazel"
 	// selectXcodeAction pins the Xcode the macOS pipeline unit builds with.
 	selectXcodeAction = "./.github/actions/select-xcode"
 )
@@ -276,28 +284,7 @@ const buildRung = "build"
 // `default-region` in workflow_inputs wins over this (same fact, one source).
 const defaultRegion = "us-central1"
 
-// setupGcloudPin is the SHA-pinned Cloud SDK action, byte-identical to the
-// hand-written build job's. Kept as a constant beside the other pins so
-// Dependabot's bump lands in one place (see the DEPENDABOT note rendered into
-// the generated file).
-const setupGcloudPin = "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
-
-// setupBuildxPin is the buildx setup action tabula's build job uses before its
-// (non-Bazel) web image build. Same Dependabot reasoning as the pins above.
-const setupBuildxPin = "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1"
-
-// setupHelmPin / pulumiActionsPin / pulumiRunCapturedAction /
-// pulumiSummaryAction are the remaining pins the transcribed B2 jobs use.
-// Same Dependabot reasoning as the pins above: a bump has to land on the
-// constant, not on the generated file.
 const (
-	setupHelmPin = "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1"
-	// setupUvPin installs uv for the esp32-s3 publish (PlatformIO is a uv
-	// tool). Same SHA as .github/workflows/iot-esp32-s3.yaml's pr-check.
-	setupUvPin = "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0"
-	// cachePin is actions/cache, as pinned by the existing workflows.
-	cachePin                = "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6"
-	pulumiActionsPin        = "pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0"
 	pulumiRunCapturedAction = "./.github/actions/pulumi-run-captured"
 	pulumiSummaryAction     = "./.github/actions/pulumi-summary"
 )
@@ -391,7 +378,7 @@ type sharedBuildSpec struct {
 	timeoutMinutes int
 	env            []string
 	// renderSteps writes the `steps:` block at job-body indentation.
-	renderSteps func(b *strings.Builder)
+	renderSteps func(b *strings.Builder, opts renderOpts)
 }
 
 // sharedBuilds is the registry. One entry today: tabula's.
@@ -413,9 +400,9 @@ var sharedBuilds = map[string]sharedBuildSpec{
 // choice comes with it, because those comments are the record of two live
 // incidents (the NEXT_PUBLIC_ bake-in that broke prod login, and the mutable
 // `:latest` read that could hand one run another run's digest).
-func renderTabulaBuildSteps(b *strings.Builder) {
+func renderTabulaBuildSteps(b *strings.Builder, opts renderOpts) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -428,7 +415,7 @@ func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("          service-account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Set up Cloud SDK\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupGcloudPin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("google-github-actions/setup-gcloud"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Configure docker for Artifact Registry\n")
 	b.WriteString("        run: gcloud auth configure-docker \"${GCP_REGION}-docker.pkg.dev\" --quiet\n")
@@ -453,7 +440,7 @@ func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("\n")
 	b.WriteString("      # ---- tabula/web (Docker, not Bazel) ----\n")
 	b.WriteString("      - name: Set up Docker Buildx\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupBuildxPin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("docker/setup-buildx-action"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Build and push tabula-web image\n")
 	b.WriteString("        id: web-image\n")
@@ -560,7 +547,7 @@ type transcribedSpec struct {
 	// that needs a toolchain only one runner has (the macOS app needs Xcode)
 	// names that runner here, as its pipeline_unit does for presubmit.
 	runsOn      string
-	renderSteps func(b *strings.Builder, u unit, env string)
+	renderSteps func(b *strings.Builder, u unit, env string, opts renderOpts)
 }
 
 // defaultRunsOn is the runner every generated job uses unless its
@@ -630,9 +617,9 @@ var transcribedJobs = map[string]transcribedSpec{
 // true of every unit but this one. Now it is true of all of them, and the
 // script is the single copy: a change to the publish cannot drift between a
 // workflow and a runbook.
-func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string) {
+func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string, opts renderOpts) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -660,9 +647,9 @@ func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string) {
 // none). One script, one sh_binary, one break-glass path: the spec's "CI and
 // break-glass execute the same target" (§4.1), which an inline `run:` block
 // can never satisfy.
-func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
+func renderChartsPublishSteps(b *strings.Builder, u unit, env string, opts renderOpts) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("          # The per-chart scoping inside publish.sh diffs against the\n")
@@ -670,7 +657,7 @@ func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          # the script would fail open to republishing every chart.\n")
 	b.WriteString("          fetch-depth: 0\n")
 	b.WriteString("      - name: Install Helm\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupHelmPin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("azure/setup-helm"))
 	b.WriteString("      - name: Log in to GHCR\n")
 	b.WriteString("        run: echo \"${{ secrets.GITHUB_TOKEN }}\" | helm registry login ghcr.io -u \"${{ github.actor }}\" --password-stdin\n")
 	b.WriteString("      - name: Package and push charts\n")
@@ -699,19 +686,19 @@ func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 // on the release rung. The script refuses a production publish without the
 // release tag, so a dispatch of the production rung cannot re-stamp assets
 // from a different commit onto a release.
-func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
+func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string, opts renderOpts) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Install uv\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupUvPin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("astral-sh/setup-uv"))
 	b.WriteString("      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into\n")
 	b.WriteString("      # ~/.platformio on first use; cache it on the project file so a\n")
 	b.WriteString("      # firmware-only change does not re-fetch it.\n")
 	b.WriteString("      - name: Cache the PlatformIO toolchain\n")
-	fmt.Fprintf(b, "        uses: %s\n", cachePin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("actions/cache"))
 	b.WriteString("        with:\n")
 	b.WriteString("          path: ~/.platformio\n")
 	b.WriteString("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}\n")
@@ -748,9 +735,9 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 // refuses a production publish whose tag does not match the version it
 // builds. Signing and notarization use the VITRUVIAN_* secrets when they are
 // set; without them the app is signed ad-hoc and the DMG is not notarized.
-func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string) {
+func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string, opts renderOpts) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -802,9 +789,9 @@ func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string) {
 // token narrowed to homebrew-tap, which this repo's GITHUB_TOKEN cannot push
 // to. The mint fails the job if the App is not installed on that repo, so a
 // release never ships without its formula unnoticed.
-func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
+func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string, opts renderOpts) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -839,9 +826,9 @@ func renderGravastarMousePublishSteps(b *strings.Builder, u unit, env string) {
 
 // renderTabulaBuildStackSteps is tabula-build-stack.yaml's `deploy` job,
 // transcribed verbatim (its lines 82-112).
-func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
+func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string, opts renderOpts) {
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -852,7 +839,7 @@ func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          service-account: ${{ vars.GCP_SERVICE_ACCOUNT }}\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Install Pulumi\n")
-	fmt.Fprintf(b, "        uses: %s\n", pulumiActionsPin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("pulumi/actions"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Pulumi up (tabula-build / production)\n")
 	b.WriteString("        id: pulumi\n")
@@ -1178,8 +1165,14 @@ func renderInventory(b *strings.Builder, units []unit) {
 // that renders such a file "successfully" moves the failure from a regenerate
 // (cheap, local, attributable) to a push to main (expensive, remote, and
 // discovered by the deploy not happening).
-func render(units []unit, phase int, workflowFile string) (string, error) {
+func render(units []unit, phase int, workflowFile string, optPins ...*actionpins.Pins) (string, error) {
 	var b strings.Builder
+	var p *actionpins.Pins
+	if len(optPins) > 0 && optPins[0] != nil {
+		p = optPins[0]
+	} else {
+		p = actionPins()
+	}
 	opts := renderOpts{
 		phase:        phase,
 		workflowFile: workflowFile,
@@ -1193,6 +1186,7 @@ func render(units []unit, phase int, workflowFile string) (string, error) {
 		// it. A `release:` trigger with no release-gated job instantiates this
 		// whole workflow on EVERY published release in the repo for nothing.
 		release: phase >= 2 && len(promotionUnits(units)) > 0,
+		pins:    p,
 	}
 
 	b.WriteString(mitHeader)
@@ -1204,12 +1198,10 @@ func render(units []unit, phase int, workflowFile string) (string, error) {
 	b.WriteString("# //tools/ci:gen. Editing this file by hand is a no-op that CI reverts:\n")
 	b.WriteString("# tidy-check regenerates and fails on any diff.\n")
 	b.WriteString("#\n")
-	b.WriteString("# DEPENDABOT: the action pins below are rendered from constants in\n")
-	b.WriteString("# tools/delivery/gen/main.go. Dependabot's github-actions ecosystem scans\n")
-	b.WriteString("# every file under .github/workflows/, so it will offer to bump them HERE —\n")
-	b.WriteString("# and that PR fails tidy-check, because the next regeneration puts the old\n")
-	b.WriteString("# pin back. Apply the bump to the constant in main.go and run\n")
-	b.WriteString("# `bazel run //tools/ci:gen`; the diff in this file then matches.\n")
+	b.WriteString("# DEPENDABOT: third-party action pins are declared centrally in\n")
+	b.WriteString("# .github/actions/pins/action.yml (scanned natively by Dependabot) and rendered\n")
+	b.WriteString("# here via tools/ci/actionpins. If an action pin needs updating, update\n")
+	b.WriteString("# .github/actions/pins/action.yml and run `bazel run //tools/ci:gen`.\n")
 	b.WriteString("#\n")
 	renderPhaseNote(&b, phase)
 	b.WriteString("#\n")
@@ -1298,7 +1290,7 @@ func render(units []unit, phase int, workflowFile string) (string, error) {
 	b.WriteString("  cancel-in-progress: false\n")
 	b.WriteString("\n")
 	b.WriteString("jobs:\n")
-	renderOrchestrateJob(&b, units, workflowFile)
+	renderOrchestrateJob(&b, units, opts)
 
 	// ---- Phase 1+ boundary -------------------------------------------------
 	if phase >= 1 {
@@ -1320,6 +1312,14 @@ type renderOpts struct {
 	workflowFile string
 	dispatch     bool
 	release      bool
+	pins         *actionpins.Pins
+}
+
+func (o renderOpts) pin(action string) string {
+	if o.pins != nil {
+		return o.pins.Resolve(action)
+	}
+	return actionPins().Resolve(action)
 }
 
 // promotionUnits are the units with a release-gated ladder, sorted (units
@@ -1509,7 +1509,7 @@ func renderPhaseNote(b *strings.Builder, phase int) {
 }
 
 // renderOrchestrateJob emits the DECIDE job every other job hangs off.
-func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string) {
+func renderOrchestrateJob(b *strings.Builder, units []unit, opts renderOpts) {
 	b.WriteString("  orchestrate:\n")
 	b.WriteString("    # Kill switch (spec §6.1, rollback level 1): flip the\n")
 	b.WriteString("    # DELIVERY_ORCHESTRATOR_ENABLED repo variable to disable the whole\n")
@@ -1543,7 +1543,7 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	fmt.Fprintf(b, "    timeout-minutes: %d\n", timeout)
 	renderOrchestrateOutputs(b, units)
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("          # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs\n")
@@ -1558,8 +1558,8 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	b.WriteString("        id: durable-base\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
-	fmt.Fprintf(b, "          WORKFLOW_FILE: %s\n", workflowFile)
-	renderLegacyWorkflowEnv(b, workflowFile)
+	fmt.Fprintf(b, "          WORKFLOW_FILE: %s\n", opts.workflowFile)
+	renderLegacyWorkflowEnv(b, opts.workflowFile)
 	b.WriteString("        # Reads THIS workflow's last successful push run and uses its head\n")
 	b.WriteString("        # sha as the diff base, so a run evicted by this app's\n")
 	b.WriteString("        # concurrency group above does not take its commit range to the\n")
@@ -1572,8 +1572,8 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	b.WriteString("        id: unit-bases\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
-	fmt.Fprintf(b, "          WORKFLOW_FILE: %s\n", workflowFile)
-	renderLegacyWorkflowEnv(b, workflowFile)
+	fmt.Fprintf(b, "          WORKFLOW_FILE: %s\n", opts.workflowFile)
+	renderLegacyWorkflowEnv(b, opts.workflowFile)
 	b.WriteString("        # Refines the single base above, which is a RUN-level verdict: a run\n")
 	b.WriteString("        # whose delivery jobs were all skipped still concludes success and\n")
 	b.WriteString("        # still becomes the base, so a wrongly-skipped unit's commits fall\n")
@@ -1604,7 +1604,7 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	fmt.Fprintf(b, "          ORCHESTRATE_UNITS: %s\n", strings.Join(unitNames(units), " "))
 	b.WriteString("        run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json\n")
 	b.WriteString("      - name: Upload the delivery manifest\n")
-	fmt.Fprintf(b, "        uses: %s\n", uploadArtifactPin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("actions/upload-artifact"))
 	b.WriteString("        with:\n")
 	b.WriteString("          name: delivery-manifest\n")
 	b.WriteString("          path: delivery-manifest.json\n")
@@ -1862,7 +1862,7 @@ func renderSharedBuildJob(b *strings.Builder, job, name string, spec sharedBuild
 	for _, out := range spec.outputs {
 		fmt.Fprintf(b, "      %s: ${{ steps.%s.outputs.%s }}\n", out, sharedBuildStepID(out), sharedBuildStepOutput(out))
 	}
-	spec.renderSteps(b)
+	spec.renderSteps(b, opts)
 }
 
 // sharedBuildStepID / sharedBuildStepOutput map a job output to the step that
@@ -1949,7 +1949,7 @@ func renderSoakJob(b *strings.Builder, job string, u unit, opts renderOpts) erro
 	b.WriteString("      # history; it is safe on an ordinary job (see the header note).\n")
 	b.WriteString("      actions: read\n")
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("      - env:\n")
@@ -2060,7 +2060,7 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	b.WriteString("    outputs:\n")
 	b.WriteString("      image-digest: ${{ steps.push.outputs.image-digest }}\n")
 	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
 	b.WriteString("        with:\n")
 	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
@@ -2071,7 +2071,7 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	b.WriteString("          service-account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Set up Cloud SDK\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupGcloudPin)
+	fmt.Fprintf(b, "        uses: %s\n", opts.pin("google-github-actions/setup-gcloud"))
 	b.WriteString("\n")
 	b.WriteString("      - name: Configure docker for Artifact Registry\n")
 	b.WriteString("        run: gcloud auth configure-docker \"${GCP_REGION}-docker.pkg.dev\" --quiet\n")
@@ -2339,7 +2339,7 @@ func renderTranscribedRung(b *strings.Builder, u unit, rung int, env string, opt
 			fmt.Fprintf(b, "      %s\n", e)
 		}
 	}
-	spec.renderSteps(b, u, env)
+	spec.renderSteps(b, u, env, opts)
 	return nil
 }
 

@@ -28,7 +28,10 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/VitruvianSoftware/vitruvian-core/tools/ci/actionpins"
 )
 
 // fixtureUnits are copies of EVERY real declaration's metadata JSON — the
@@ -73,13 +76,26 @@ const (
 	testWorkflowFile = "delivery-fixture.yaml"
 )
 
+var fixturePins = sync.OnceValues(func() (*actionpins.Pins, error) {
+	return actionpins.Load("testdata/action-pins.yml")
+})
+
+func testFixturePins(t *testing.T) *actionpins.Pins {
+	t.Helper()
+	pins, err := fixturePins()
+	if err != nil {
+		t.Fatalf("failed to load test fixture action pins: %v", err)
+	}
+	return pins
+}
+
 // mustRender renders or fails the test. render() returns an error for every
 // declaration that would produce a workflow GitHub rejects at startup (or
 // accepts and then fails mid-delivery), so a test that ignored it could assert
 // happily against the empty string.
 func mustRender(t *testing.T, units []unit, phase int) string {
 	t.Helper()
-	got, err := render(units, phase, testWorkflowFile)
+	got, err := render(units, phase, testWorkflowFile, testFixturePins(t))
 	if err != nil {
 		t.Fatalf("render(phase %d): %v", phase, err)
 	}
@@ -980,7 +996,7 @@ func TestPhase1RejectsDeclarationsThatWouldRenderABrokenWorkflow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sorted := append([]unit(nil), tc.units...)
 			sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
-			_, err := render(sorted, 1, testWorkflowFile)
+			_, err := render(sorted, 1, testWorkflowFile, testFixturePins(t))
 			if err == nil {
 				t.Fatalf("render succeeded; want an error containing %q", tc.want)
 			}
@@ -1363,7 +1379,7 @@ func TestPhase2RejectsDeclarationsThatWouldRenderABrokenLadder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u := base()
 			tc.mut(&u)
-			_, err := render([]unit{u}, 2, testWorkflowFile)
+			_, err := render([]unit{u}, 2, testWorkflowFile, testFixturePins(t))
 			if err == nil {
 				t.Fatalf("render succeeded; want an error containing %q", tc.want)
 			}
@@ -1605,7 +1621,7 @@ func TestEachAppWorkflowIsSelfContained(t *testing.T) {
 	needsRe := regexp.MustCompile(`needs\.([a-z0-9-]+)\.`)
 	for _, g := range groups {
 		t.Run(g.app, func(t *testing.T) {
-			body, err := render(g.units, 2, g.file)
+			body, err := render(g.units, 2, g.file, testFixturePins(t))
 			if err != nil {
 				t.Fatalf("render: %v", err)
 			}
@@ -1635,7 +1651,7 @@ func TestEachAppWorkflowIsSelfContained(t *testing.T) {
 
 // The shared workflow itself never falls back to its own history.
 func TestLegacyWorkflowDoesNotReadItself(t *testing.T) {
-	body, err := render(loadFixtures(t), 2, legacyWorkflowFile)
+	body, err := render(loadFixtures(t), 2, legacyWorkflowFile, testFixturePins(t))
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

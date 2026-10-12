@@ -25,12 +25,10 @@
 # //tools/ci:gen. Editing this file by hand is a no-op that CI reverts:
 # tidy-check regenerates and fails on any diff.
 #
-# DEPENDABOT: the action pins below are rendered from constants in
-# tools/delivery/gen/main.go. Dependabot's github-actions ecosystem scans
-# every file under .github/workflows/, so it will offer to bump them HERE —
-# and that PR fails tidy-check, because the next regeneration puts the old
-# pin back. Apply the bump to the constant in main.go and run
-# `bazel run //tools/ci:gen`; the diff in this file then matches.
+# DEPENDABOT: third-party action pins are declared centrally in
+# .github/actions/pins/action.yml (scanned natively by Dependabot) and rendered
+# here via tools/ci/actionpins. If an action pin needs updating, update
+# .github/actions/pins/action.yml and run `bazel run //tools/ci:gen`.
 #
 # PHASE 2 — THE WHOLE LADDER ACTS (spec §6). This workflow is now the
 # delivery path for every unit below, on all three of its triggers:
