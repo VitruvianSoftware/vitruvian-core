@@ -103,25 +103,12 @@ package final class AgentUsageService: ObservableObject {
     /// always replaces what is on disk, which may hold agents now off.
     nonisolated(unsafe) private var savedMark: Int?
     nonisolated(unsafe) private var lastSave = Date.distantPast
-    nonisolated(unsafe) private var identities: [AgentProvider: AgentIdentity] = [
-        .antigravity: AgentIdentity(email: "james.nguyen@gmail.com", planTier: "Google AI Ultra"),
-        .claude: AgentIdentity(email: "james.nguyen@gmail.com", planTier: "Max 20x")
-    ]
-    nonisolated(unsafe) private var cachedCredits: [AgentProvider: Double] = [
-        .claude: 93.05
-    ]
-    nonisolated(unsafe) private var cachedCostMetrics: [AgentProvider: AgentCostMetrics] = [
-        .claude: AgentCostMetrics(
-            todayCost: 114.65,
-            thirtyDayCost: 2907.11,
-            latestTokens: 269_000_000,
-            thirtyDayTokens: 6_000_000_000,
-            topModel: "claude-opus-5-5",
-            peakDayCost: 527.0
-        )
-    ]
+    nonisolated(unsafe) private var identities: [AgentProvider: AgentIdentity] = [:]
+    nonisolated(unsafe) private var cachedCredits: [AgentProvider: Double] = [:]
+    nonisolated(unsafe) private var cachedCostMetrics: [AgentProvider: AgentCostMetrics] = [:]
     nonisolated(unsafe) private var cachedDailySpend: [AgentProvider: [AgentDailyCost]] = [:]
     nonisolated(unsafe) private var lastCodexBarProbe = Date.distantPast
+    nonisolated(unsafe) private var isProbingCodexBar = false
 
     private init() {}
 
@@ -611,13 +598,16 @@ package final class AgentUsageService: ObservableObject {
         let claudeApp: [AgentClaudeAppUsage.Sample]
         let identities: [AgentProvider: AgentIdentity]
         let costMetrics: [AgentProvider: AgentCostMetrics]
+        let credits: [AgentProvider: Double]
+        let dailySpend: [AgentProvider: [AgentDailyCost]]
     }
 
     /// Runs on `queue`.
     nonisolated private var inputs: Inputs {
         Inputs(records: store.records.count, turns: store.turns, limits: store.limits, codexPlan: store.codexPlan,
                claudePlan: claudePlan, claudeOrganization: claudeOrganization, claudeApp: claudeAppSamples,
-               identities: identities, costMetrics: cachedCostMetrics)
+               identities: identities, costMetrics: cachedCostMetrics,
+               credits: cachedCredits, dailySpend: cachedDailySpend)
     }
 
     /// Runs on `queue` and hands the finished snapshot to the main thread.
@@ -765,16 +755,15 @@ package final class AgentUsageService: ObservableObject {
         identities[.claude] = AgentClaudeAppUsage.readIdentity(home: home)
         if var limits = AgentClaudeAppUsage.limits(from: claudeAppSamples, now: now, sessionStart: start,
                                                    organization: claudeOrganization) {
-            if !limits.windows.contains(where: { $0.id.contains("fable") }), let weekly = limits.windows.first(where: { $0.kind == .weekly }) {
+            if let existing = store.limits[.claude] {
                 var windows = limits.windows
-                windows.append(AgentLimitWindow(
-                    id: "claude-weekly-scoped-fable",
-                    kind: .weekly,
-                    minutes: 10_080,
-                    scope: "Fable",
-                    usedPercent: 5.0,
-                    resetsAt: weekly.resetsAt
-                ))
+                for w in existing.windows {
+                    if !windows.contains(where: { $0.id == w.id }) {
+                        if let resets = w.resetsAt, resets > now {
+                            windows.append(w)
+                        }
+                    }
+                }
                 limits = AgentLimits(provider: limits.provider, windows: windows, observedAt: limits.observedAt, source: limits.source)
             }
             store.setLimits(limits)
@@ -787,7 +776,10 @@ package final class AgentUsageService: ObservableObject {
     /// Runs on `queue`.
     nonisolated private func readAntigravityQuota(now: Date, force: Bool = false) {
         guard enabled.contains(.antigravity) else { return }
-        identities[.antigravity] = AgentAntigravityReader.probeIdentity()
+        identities[.antigravity] = AgentAntigravityReader.probeIdentity(
+            email: identities[.antigravity]?.email,
+            planTier: identities[.antigravity]?.planTier ?? "Google AI Ultra"
+        )
         if let limits = AgentAntigravityReader.probeQuota(force: force) {
             if store.limits[.antigravity] != limits {
                 store.updateLimits(limits)
@@ -797,77 +789,110 @@ package final class AgentUsageService: ObservableObject {
         }
     }
 
+    nonisolated private static func findCodexBarPath() -> String? {
+        let candidates = ["/opt/homebrew/bin/codexbar", "/usr/local/bin/codexbar"]
+        for p in candidates {
+            if FileManager.default.isExecutableFile(atPath: p) { return p }
+        }
+        return nil
+    }
+
     /// Reads Claude and Antigravity cost metrics, credits, and live limits via CodexBar when present.
-    /// Runs on `queue`.
+    /// Runs asynchronously on a background utility queue with single-flight guard to avoid stalling `queue`.
     nonisolated private func readCodexBarMetrics(now: Date) {
-        guard now.timeIntervalSince(lastCodexBarProbe) >= 30 else { return }
+        guard enabled.contains(.claude) || enabled.contains(.antigravity) else { return }
+        guard now.timeIntervalSince(lastCodexBarProbe) >= 300 || lastCodexBarProbe == .distantPast else { return }
+        guard !isProbingCodexBar else { return }
+        guard let codexbarPath = Self.findCodexBarPath() else { return }
+
+        isProbingCodexBar = true
         lastCodexBarProbe = now
+        let currentSession = readerSession
+        let wantsClaude = enabled.contains(.claude)
+        let wantsAntigravity = enabled.contains(.antigravity)
 
-        let codexbarPath = "/opt/homebrew/bin/codexbar"
-        guard FileManager.default.isExecutableFile(atPath: codexbarPath) else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            var newCostMetrics: [AgentProvider: AgentCostMetrics] = [:]
+            var newDailySpend: [AgentProvider: [AgentDailyCost]] = [:]
+            var newIdentities: [AgentProvider: AgentIdentity] = [:]
+            var newClaudeLimits: AgentLimits? = nil
+            var newAntigravityLimits: AgentLimits? = nil
 
-        // 1. Claude cost and 30-day spend
-        let costProc = Process()
-        costProc.executableURL = URL(fileURLWithPath: codexbarPath)
-        costProc.arguments = ["cost", "--provider", "claude", "--format", "json"]
-        let costPipe = Pipe()
-        costProc.standardOutput = costPipe
-        costProc.standardError = FileHandle.nullDevice
+            func runProcess(args: [String]) -> Data? {
+                let proc = Process()
+                proc.executableURL = URL(fileURLWithPath: codexbarPath)
+                proc.arguments = args
+                let pipe = Pipe()
+                proc.standardOutput = pipe
+                proc.standardError = FileHandle.nullDevice
+                do {
+                    try proc.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    proc.waitUntilExit()
+                    return proc.terminationStatus == 0 ? data : nil
+                } catch {
+                    return nil
+                }
+            }
 
-        do {
-            try costProc.run()
-            let data = costPipe.fileHandleForReading.readDataToEndOfFile()
-            costProc.waitUntilExit()
-            if costProc.terminationStatus == 0,
+            // 1. Claude cost and 30-day spend
+            if wantsClaude, let data = runProcess(args: ["cost", "--provider", "claude", "--format", "json"]),
                let json = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
                let first = json.first {
-                let costUSD = (first["last30DaysCostUSD"] as? NSNumber)?.doubleValue ?? 2907.11
-                let tokens = (first["last30DaysTokens"] as? NSNumber)?.intValue ?? 6_000_000_000
-                let sessionTokens = (first["sessionTokens"] as? NSNumber)?.intValue ?? 269_000_000
+                let costUSD = (first["last30DaysCostUSD"] as? NSNumber)?.doubleValue ?? 0.0
+                let tokens = (first["last30DaysTokens"] as? NSNumber)?.intValue ?? 0
+                let sessionTokens = (first["sessionTokens"] as? NSNumber)?.intValue ?? 0
+                let sessionCost = (first["sessionCostUSD"] as? NSNumber)?.doubleValue ?? 0.0
                 var dailyCosts: [AgentDailyCost] = []
-                var peakCost = 527.0
-                let topModelName = "claude-opus-5-5"
-                var todayCost = 114.65
+                var peakCost = 0.0
+                var modelTokenTotals: [String: Int] = [:]
 
                 if let daily = first["daily"] as? [[String: Any]] {
                     for day in daily {
                         guard let date = day["date"] as? String else { continue }
-                        let dayCost = (day["totalCost"] as? NSNumber)?.doubleValue ?? 0
+                        let dayCost = (day["totalCost"] as? NSNumber)?.doubleValue ?? 0.0
                         let dayTokens = (day["totalTokens"] as? NSNumber)?.intValue ?? 0
                         if dayCost > peakCost { peakCost = dayCost }
-                        dailyCosts.append(AgentDailyCost(date: date, cost: dayCost, tokens: dayTokens, topModel: topModelName))
-                    }
-                    if let lastDay = daily.last, let lastCost = (lastDay["totalCost"] as? NSNumber)?.doubleValue, lastCost > 0 {
-                        todayCost = lastCost
+
+                        var dayTopModel: String? = nil
+                        var dayTopCost = 0.0
+                        if let breakdowns = day["modelBreakdowns"] as? [[String: Any]] {
+                            for b in breakdowns {
+                                let mName = (b["modelName"] as? String) ?? ""
+                                let mTokens = (b["totalTokens"] as? NSNumber)?.intValue ?? 0
+                                let mCost = (b["cost"] as? NSNumber)?.doubleValue ?? 0.0
+                                if !mName.isEmpty {
+                                    modelTokenTotals[mName, default: 0] += mTokens
+                                    if mCost > dayTopCost {
+                                        dayTopCost = mCost
+                                        dayTopModel = mName
+                                    }
+                                }
+                            }
+                        }
+                        dailyCosts.append(AgentDailyCost(date: date, cost: dayCost, tokens: dayTokens, topModel: dayTopModel))
                     }
                 }
-                cachedCostMetrics[.claude] = AgentCostMetrics(
+
+                let topModelName = modelTokenTotals.max { $0.value < $1.value }?.key
+                let todayCost = sessionCost > 0 ? sessionCost : (dailyCosts.last?.cost ?? 0.0)
+
+                newCostMetrics[.claude] = AgentCostMetrics(
                     todayCost: todayCost,
                     thirtyDayCost: costUSD,
                     latestTokens: sessionTokens,
                     thirtyDayTokens: tokens,
                     topModel: topModelName,
-                    peakDayCost: peakCost
+                    peakDayCost: peakCost > 0 ? peakCost : nil
                 )
                 if !dailyCosts.isEmpty {
-                    cachedDailySpend[.claude] = dailyCosts
+                    newDailySpend[.claude] = dailyCosts
                 }
             }
-        } catch {}
 
-        // 2. Claude usage (for Fable weekly & live rate limits)
-        let usageProc = Process()
-        usageProc.executableURL = URL(fileURLWithPath: codexbarPath)
-        usageProc.arguments = ["usage", "--provider", "claude", "--format", "json"]
-        let usagePipe = Pipe()
-        usageProc.standardOutput = usagePipe
-        usageProc.standardError = FileHandle.nullDevice
-
-        do {
-            try usageProc.run()
-            let uData = usagePipe.fileHandleForReading.readDataToEndOfFile()
-            usageProc.waitUntilExit()
-            if usageProc.terminationStatus == 0,
+            // 2. Claude usage (for Fable & rate limits)
+            if wantsClaude, let uData = runProcess(args: ["usage", "--provider", "claude", "--format", "json"]),
                let uJson = (try? JSONSerialization.jsonObject(with: uData)) as? [[String: Any]],
                let uFirst = uJson.first,
                let usageObj = uFirst["usage"] as? [String: Any] {
@@ -887,19 +912,111 @@ package final class AgentUsageService: ObservableObject {
                 if let extras = usageObj["extraRateWindows"] as? [[String: Any]] {
                     for extra in extras {
                         let eId = (extra["id"] as? String) ?? ""
+                        let title = (extra["title"] as? String) ?? ""
                         if let wObj = extra["window"] as? [String: Any] {
                             let used = (wObj["usedPercent"] as? NSNumber)?.doubleValue ?? 0
                             let minutes = (wObj["windowMinutes"] as? NSNumber)?.intValue ?? 10080
                             let resetStr = (wObj["resetsAt"] as? String) ?? ""
-                            windows.append(AgentLimitWindow(id: eId, kind: .weekly, minutes: minutes, scope: "Fable", usedPercent: used, resetsAt: AgentTimestamp.parse(resetStr)))
+                            let kind: AgentLimitWindow.Kind = minutes <= 300 ? .session : .weekly
+                            let scope = title.contains("Fable") ? "Fable" : (title.isEmpty ? nil : title)
+                            windows.append(AgentLimitWindow(id: eId, kind: kind, minutes: minutes, scope: scope, usedPercent: used, resetsAt: AgentTimestamp.parse(resetStr)))
                         }
                     }
                 }
                 if !windows.isEmpty {
-                    store.setLimits(AgentLimits(provider: .claude, windows: windows, observedAt: now, source: .account))
+                    newClaudeLimits = AgentLimits(provider: .claude, windows: windows, observedAt: now, source: .account)
+                }
+
+                if let ident = (usageObj["identity"] as? [String: Any]) ?? (uFirst["identity"] as? [String: Any]) {
+                    let email = (ident["accountEmail"] as? String) ?? (usageObj["accountEmail"] as? String)
+                    let method = (ident["loginMethod"] as? String) ?? (usageObj["loginMethod"] as? String)
+                    if email != nil || method != nil {
+                        newIdentities[.claude] = AgentIdentity(email: email, planTier: method)
+                    }
                 }
             }
-        } catch {}
+
+            // 3. Antigravity usage (for all 4 rate windows and identity)
+            if wantsAntigravity, let agData = runProcess(args: ["usage", "--provider", "antigravity", "--format", "json"]),
+               let agJson = (try? JSONSerialization.jsonObject(with: agData)) as? [[String: Any]],
+               let agFirst = agJson.first,
+               let agUsageObj = agFirst["usage"] as? [String: Any] {
+                let email = (agUsageObj["accountEmail"] as? String)
+                    ?? ((agUsageObj["identity"] as? [String: Any])?["accountEmail"] as? String)
+                let loginMethod = (agUsageObj["loginMethod"] as? String)
+                    ?? ((agUsageObj["identity"] as? [String: Any])?["loginMethod"] as? String)
+                if email != nil || loginMethod != nil {
+                    newIdentities[.antigravity] = AgentIdentity(email: email, planTier: loginMethod)
+                }
+
+                if let extras = agUsageObj["extraRateWindows"] as? [[String: Any]], !extras.isEmpty {
+                    var windows: [AgentLimitWindow] = []
+                    for extra in extras {
+                        let eId = (extra["id"] as? String) ?? ""
+                        let title = (extra["title"] as? String) ?? ""
+                        if let wObj = extra["window"] as? [String: Any] {
+                            let used = (wObj["usedPercent"] as? NSNumber)?.doubleValue ?? 0
+                            let minutes = (wObj["windowMinutes"] as? NSNumber)?.intValue ?? 300
+                            let resetStr = (wObj["resetsAt"] as? String) ?? ""
+                            let kind: AgentLimitWindow.Kind = minutes <= 300 ? .session : .weekly
+                            let scope: String? = (eId.contains("3p") || title.contains("Claude/GPT")) ? "Claude/GPT" : nil
+                            windows.append(AgentLimitWindow(id: eId, kind: kind, minutes: minutes, scope: scope, usedPercent: used, resetsAt: AgentTimestamp.parse(resetStr)))
+                        }
+                    }
+                    if !windows.isEmpty {
+                        windows.sort { a, b in
+                            func rank(_ id: String) -> Int {
+                                if id.contains("gemini-5h") { return 0 }
+                                if id.contains("gemini-weekly") { return 1 }
+                                if id.contains("3p-5h") { return 2 }
+                                if id.contains("3p-weekly") { return 3 }
+                                return 4
+                            }
+                            let ra = rank(a.id), rb = rank(b.id)
+                            return ra != rb ? ra < rb : a.id < b.id
+                        }
+                        newAntigravityLimits = AgentLimits(provider: .antigravity, windows: windows, observedAt: now, source: .account)
+                    }
+                }
+            }
+
+            let costMetrics = newCostMetrics
+            let dailySpend = newDailySpend
+            let identities = newIdentities
+            let claudeLimits = newClaudeLimits
+            let antigravityLimits = newAntigravityLimits
+
+            self.queue.async {
+                defer { self.isProbingCodexBar = false }
+                guard self.readerSession == currentSession, currentSession >= 0 else { return }
+
+                for (p, m) in costMetrics { self.cachedCostMetrics[p] = m }
+                for (p, s) in dailySpend { self.cachedDailySpend[p] = s }
+                for (p, id) in identities { self.identities[p] = id }
+
+                if let cl = claudeLimits {
+                    var merged = cl.windows
+                    if let existing = self.store.limits[.claude] {
+                        for w in existing.windows {
+                            if !merged.contains(where: { $0.id == w.id }) {
+                                if let resets = w.resetsAt, resets > now {
+                                    merged.append(w)
+                                }
+                            }
+                        }
+                    }
+                    self.store.setLimits(AgentLimits(provider: .claude, windows: merged, observedAt: cl.observedAt, source: cl.source))
+                }
+
+                if let ag = antigravityLimits {
+                    if (self.store.limits[.antigravity]?.windows ?? []).isEmpty {
+                        self.store.setLimits(ag)
+                    }
+                }
+
+                self.schedulePublish()
+            }
+        }
     }
 
     // MARK: Prices

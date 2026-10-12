@@ -109,8 +109,8 @@ package struct AgentUsageRecord: Equatable {
 }
 
 /// A usage allowance and how much of it is spent, as the provider reports it.
-package struct AgentLimitWindow: Equatable, Identifiable {
-    package enum Kind: String {
+package struct AgentLimitWindow: Equatable, Identifiable, Sendable {
+    package enum Kind: String, Sendable {
         case session, weekly, other
     }
 
@@ -155,8 +155,8 @@ package struct AgentLimitWindow: Equatable, Identifiable {
     }
 }
 
-package struct AgentLimits: Equatable {
-    package enum Source: Equatable {
+package struct AgentLimits: Equatable, Sendable {
+    package enum Source: Equatable, Sendable {
         /// Saved on this Mac by the Claude app, which checks them itself.
         case claudeApp
         /// Copied by the agent into its session log with each response.
@@ -225,7 +225,7 @@ package enum AgentUsageEvent: Equatable {
 }
 
 /// An account's identity and subscription tier badge.
-package struct AgentIdentity: Equatable {
+package struct AgentIdentity: Equatable, Sendable {
     package let email: String?
     package let planTier: String?
 
@@ -236,7 +236,7 @@ package struct AgentIdentity: Equatable {
 }
 
 /// Detailed token and cost metrics grid matching CodexBar.
-package struct AgentCostMetrics: Equatable {
+package struct AgentCostMetrics: Equatable, Sendable {
     package let todayCost: Double
     package let thirtyDayCost: Double
     package let latestTokens: Int
@@ -262,7 +262,7 @@ package struct AgentCostMetrics: Equatable {
 }
 
 /// A single day's cost and token usage for the 30-day spend bar chart.
-package struct AgentDailyCost: Equatable, Identifiable {
+package struct AgentDailyCost: Equatable, Identifiable, Sendable {
     package var id: String { date }
     package let date: String
     package let cost: Double

@@ -225,18 +225,7 @@ private struct NotchAgentLimitsCard: View {
                 return ra != rb ? ra < rb : a.id < b.id
             }
         } else if provider == .claude {
-            var result = all
-            if !result.contains(where: { $0.id.contains("fable") }), let weekly = result.first(where: { $0.kind == .weekly }) {
-                result.append(AgentLimitWindow(
-                    id: "claude-weekly-scoped-fable",
-                    kind: .weekly,
-                    minutes: 10_080,
-                    scope: "Fable",
-                    usedPercent: 5.0,
-                    resetsAt: weekly.resetsAt
-                ))
-            }
-            return result.sorted { a, b in
+            return all.sorted { a, b in
                 func rank(_ w: AgentLimitWindow) -> Int {
                     if w.kind == .session || w.id.contains("fh") { return 0 }
                     if w.id.contains("fable") { return 2 }
@@ -297,8 +286,17 @@ private struct NotchAgentLimitsCard: View {
     /// A row says what is spent, when the window renews, and under-bar runway forecasting.
     private func row(_ window: AgentLimitWindow) -> some View {
         let all = (snapshot.limits[provider]?.windows ?? []).map { AgentLimitSupport.current($0, at: now) }
-        let weekly = all.first { $0.kind == .weekly && !$0.id.contains("fable") }
-        let session = all.first { $0.kind == .session }
+        let is3p = window.id.contains("3p") || window.scope == "Claude/GPT"
+        let weekly = all.first { w in
+            guard w.kind == .weekly && !w.id.contains("fable") else { return false }
+            let wIs3p = w.id.contains("3p") || w.scope == "Claude/GPT"
+            return wIs3p == is3p
+        }
+        let session = all.first { w in
+            guard w.kind == .session else { return false }
+            let sIs3p = w.id.contains("3p") || w.scope == "Claude/GPT"
+            return sIs3p == is3p
+        }
         let pace = AgentLimitSupport.pace(for: window, now: now, weeklyWindow: weekly, sessionWindow: session)
         let tint = agentLimitTint(provider, usedFraction: window.usedFraction)
         let remaining = display == .remaining
@@ -498,7 +496,7 @@ private struct NotchAgentSpendCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) {
                     HStack(spacing: 5) {
-                        if let credits = (providers.count == 1 ? snapshot.credits[providers[0]] : nil) ?? snapshot.credits[.claude] {
+                        if let credits = (providers.count == 1 ? snapshot.credits[providers[0]] : nil) ?? snapshot.credits[.claude], credits > 0 {
                             NotchAgentChip(text: "Credits: " + AgentFormat.cost(credits), tint: .green)
                         }
                         periodMenu
@@ -738,7 +736,7 @@ private struct NotchAgentTrendCard: View {
                 NotchAgentCardHeader(title: text.trendCard, symbol: NotchAgentCard.trend.symbol) {
                     HStack(spacing: 4) {
                         if let metrics = (providers.count == 1 ? snapshot.costMetrics[providers[0]] : nil) ?? snapshot.costMetrics[.claude] {
-                            if let peak = metrics.peakDayCost {
+                            if let peak = metrics.peakDayCost, peak > 0 {
                                 Text("Peak: " + AgentFormat.cost(peak))
                                     .font(.system(size: 8.5, weight: .medium))
                                     .foregroundStyle(.secondary)
