@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.41.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.40.0...vitruvian-v3.41.0) (2026-10-12)
+
+
+### Features
+
+* **desktop:** a tool's own settings in its detail, and two smaller gaps closed ([#3116](https://github.com/VitruvianSoftware/vitruvian-core/issues/3116)) ([c19a4d0](https://github.com/VitruvianSoftware/vitruvian-core/commit/c19a4d03d9b72d828084ada601c819d28e686c3e))
+
+
+### Bug Fixes
+
+* **ci:** the presubmit planner reads a whole pipeline_unit call, brackets and all ([#3115](https://github.com/VitruvianSoftware/vitruvian-core/issues/3115)) ([43b2a0f](https://github.com/VitruvianSoftware/vitruvian-core/commit/43b2a0fad2ab19da99d1f3f169092b8687d215ce))
+
 ## [3.40.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.39.0...vitruvian-v3.40.0) (2026-10-12)
 
 
