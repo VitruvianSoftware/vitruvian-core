@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.41.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.41.0...vitruvian-v3.41.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **desktop:** five loose ends in the tool platform ([#3129](https://github.com/VitruvianSoftware/vitruvian-core/issues/3129)) ([d76b6d4](https://github.com/VitruvianSoftware/vitruvian-core/commit/d76b6d4b985bf494fb50782ee85e72a5a565fde3))
+
 ## [3.41.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.40.0...vitruvian-v3.41.0) (2026-10-12)
 
 
