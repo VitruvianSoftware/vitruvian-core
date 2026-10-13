@@ -871,7 +871,7 @@ history. Nothing was added to the app that was not removed again.
 | 34 | 3.41.2, then 3.42.0 | Pass in the island's Tools tab: the tile is dimmed, a click and its digit do nothing, and the command bar has no row. On 3.42.0, in edit mode ("Customize tools") the tile is not dimmed and has its hide button like the others, and it is dimmed again on leaving. Dragging it, the arrows with Return, and light appearance were not done. |
 | 35, 36, 37, 38, 39 | 3.41.2 | Pass. Check 38 was run again on 3.42.0 as check 20. |
 | 40 | 3.42.2 | Pass. The detail of a tool whose first setting is a switch opened with the keyboard on Close; Space closed it and the switch did not change. Tab went to the switch and Space then turned it on; a text setting still saved on Return. |
-| A stale pick | 3.42.2 | Pass, heard by the person: with the command bar open on a tool's command, the tool was switched off and Return pressed. The bar closed, nothing ran, and the alert sound played. The first try was not heard and the second was. The wheel was not tried. |
+| A stale pick | 3.42.2 | Pass, heard by the person: with the command bar open on a tool's command, the tool was switched off and Return pressed. The bar closed, nothing ran, and the alert sound played. The first try was not heard and the second was. The wheel too, heard by the person: with the wheel open, the tool of one slice was switched off and that slice clicked; the wheel closed, nothing ran, and the alert sound played. |
 | Light appearance | 3.42.0 | The card, the agreement sheet, a tool's detail and the removal question were looked at once in light appearance. Nothing was wrong. |
 
 Three older lists of checks by hand, from the plans of the tool registry and
