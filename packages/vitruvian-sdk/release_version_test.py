@@ -61,6 +61,7 @@ KIT_PLACES = [
     ("generic", "go/toolkit/version.go", None),
     ("toml", "kits/rust/Cargo.toml", "$.package.version"),
     ("generic", "samples/hello-go/go.mod", None),
+    ("generic", "samples/hello-panel-go/go.mod", None),
     (
         "toml",
         "samples/hello-rust/Cargo.toml",

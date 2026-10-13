@@ -212,18 +212,6 @@ EXAMPLES = [
         "one. The folder runs as it is: add it to Vitruvian.",
     ),
     (
-        "go",
-        "An example in Go",
-        "samples/hello-go",
-        [("vitruvian-tool.json", "json"), ("main.go", "go")],
-        "A tool written with the Go kit: it says hello, and counts with a "
-        "preference the person can change in Settings.",
-        "`vitruvian-tool init <folder> --template go` starts a new tool from "
-        "a copy of this one, as a Go module that requires the published kit. "
-        "Its `build.sh` builds the program into `tool/bin/tool`, and "
-        "`tool/` is the folder you add to Vitruvian.",
-    ),
-    (
         "rust",
         "An example in Rust",
         "samples/hello-rust",
@@ -255,6 +243,12 @@ KIT_EXAMPLES = [
         "samples/hello-python-kit",
         "A tool written with the Python kit, installed into the tool's own "
         "folder, which says hello and counts with a preference.",
+    ),
+    (
+        "go",
+        "samples/hello-go",
+        "A tool written with the Go kit: it says hello, and counts with a "
+        "preference the person can change in Settings.",
     ),
 ]
 

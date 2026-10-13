@@ -63,6 +63,7 @@ EXAMPLES = [
     "samples/hello-python-kit/README.md",
     "samples/hello-panel-typescript/README.md",
     "samples/hello-panel-python/README.md",
+    "samples/hello-go/README.md",
 ]
 
 # What `vitruvian-tool` takes. Words.swift holds the same list as its usage.
@@ -346,6 +347,8 @@ def main():
                 "sh",
                 "javascript",
                 "python",
+                "go",
+                "rust",
             ):
                 problems += excerpt_problems(lines, where, info.split(" file=")[1])
             else:

@@ -417,6 +417,7 @@ The calls are the Swift kit's, grouped by the service they need:
 | `app.Storage.Get`, `app.Storage.Set` | `app.storage().get`, `app.storage().set` | `storage/get`, `storage/set` | `storage` |
 | `app.SetRunnable` | `app.set_runnable` | `commands/state` | |
 | `app.Log` | `app.log` | `log` | |
+| `app.UI.Badge` | `app.ui().badge` | `ui/badge` | `notify` |
 
 The three rules of the Swift kit hold for both. **A call can be refused**:
 it returns the app's failure, a `*toolkit.Error` in Go and
@@ -926,6 +927,74 @@ island = tool.panel(
 
 A web panel's `on_call` is `panel.on_call = lambda app, method, params: ...`;
 raise a `Refusal` to refuse a call.
+
+### In Go, with the kit
+
+[`samples/hello-panel-go`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-go) is the same
+counter, with package `ui` of the kit. A page is `ui.Tree` of its blocks,
+one function for each kind; what a block may carry beyond its words is an
+options struct, left out when there is none, and `ui.If` leaves a block
+out:
+
+```go
+// page is the island page: what it says now.
+func (c *counter) page() toolkit.UITree {
+	return ui.Tree(
+		ui.Heading("Counter"),
+		ui.Text(fmt.Sprintf("Pressed %d times", c.count)),
+		ui.Button("add", fmt.Sprintf("Add %d", c.step()), ui.ButtonOptions{Style: ui.Prominent}),
+		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
+		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
+	)
+}
+```
+
+`tool.Panel` takes the two handlers: the first gives a `*toolkit.UITree`,
+nil for a web panel; the second answers what the person did with
+`toolkit.Page`, `toolkit.Keep`, `toolkit.OpenWindow` with one of your window
+panels, or `toolkit.Reply` for a web page's call. `event.Text()` and
+`event.IsOn()` are what a field and a switch carry, and `event.Row()` the
+row of a list that was tapped. The handle it returns sends a page
+unprompted, with `Render`, and sets the tool's badge in the island, with
+`Badge`:
+
+```go
+	island := tool.Panel("counter",
+		func(app *toolkit.App, panel *toolkit.PanelHandle) (*toolkit.UITree, error) {
+			page := state.page()
+			return &page, nil
+		},
+		func(app *toolkit.App, panel *toolkit.PanelHandle, event toolkit.PanelEvent) (toolkit.PanelAnswer, error) {
+			switch event.Block {
+			case "add":
+				state.count += state.step()
+				if err := panel.Badge(state.count, false); err != nil {
+					return toolkit.Keep(), err
+				}
+			case "name":
+				if text, ok := event.Text(); ok {
+					state.name = text
+				}
+			default:
+				return toolkit.Keep(), nil
+			}
+			return toolkit.Page(state.page()), nil
+		})
+```
+
+```go
+	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {
+		state.count += state.step()
+		island.Render(state.page())
+		return nil
+	})
+```
+
+A web panel's `OnCall` is `panel.OnCall = func(app *toolkit.App, method
+string, params any) (any, error) { ... }`; return a `*toolkit.Error` to
+refuse a call. A handler's error refuses what the app asked: a
+`*toolkit.Error` as it is, anything else as an internal error with its
+words.
 
 ### A web page
 

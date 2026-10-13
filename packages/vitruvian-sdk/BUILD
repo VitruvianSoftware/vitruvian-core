@@ -138,8 +138,7 @@ filegroup(
         "docs/writing-a-tool.md",
         "protocol/README.md",
         "protocol/methods.json",
-        "samples/hello-go/main.go",
-        "samples/hello-go/vitruvian-tool.json",
+        "samples/hello-go/README.md",
         "samples/hello-python-kit/README.md",
         "samples/hello-python/bin/tool.py",
         "samples/hello-python/vitruvian-tool.json",
@@ -348,6 +347,15 @@ go_binary(
     deps = ["//packages/vitruvian-sdk/go/toolkit"],
 )
 
+go_binary(
+    name = "hello-panel-go",
+    srcs = ["samples/hello-panel-go/main.go"],
+    deps = [
+        "//packages/vitruvian-sdk/go/toolkit",
+        "//packages/vitruvian-sdk/go/toolkit/ui",
+    ],
+)
+
 rust_binary(
     name = "hello-rust",
     srcs = ["samples/hello-rust/src/main.rs"],
@@ -355,10 +363,17 @@ rust_binary(
     deps = ["//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit"],
 )
 
-NATIVE_SAMPLES = [
-    "hello-go",
-    "hello-rust",
-]
+# By language: the samples the language's own `<language>_sample_test`
+# puts through the conformance script, one after the other.
+NATIVE_SAMPLES = {
+    "go": [
+        "hello-go",
+        "hello-panel-go",
+    ],
+    "rust": ["hello-rust"],
+}
+
+NATIVE_SAMPLE_FOLDERS = [sample for samples in NATIVE_SAMPLES.values() for sample in samples]
 
 [
     genrule(
@@ -373,7 +388,7 @@ NATIVE_SAMPLES = [
         ],
         cmd = "cp $(location samples/%s/vitruvian-tool.json) $(RULEDIR)/built/%s/vitruvian-tool.json && cp $(location :%s) $(RULEDIR)/built/%s/bin/tool" % (sample, sample, sample, sample),
     )
-    for sample in NATIVE_SAMPLES
+    for sample in NATIVE_SAMPLE_FOLDERS
 ]
 
 #   bazel build //packages/vitruvian-sdk:native-sample-folders
@@ -382,7 +397,7 @@ NATIVE_SAMPLES = [
 # with its manifest and bin/tool, on any Mac or Linux machine.
 filegroup(
     name = "native-sample-folders",
-    srcs = [":%s-folder" % sample for sample in NATIVE_SAMPLES],
+    srcs = [":%s-folder" % sample for sample in NATIVE_SAMPLE_FOLDERS],
 )
 
 # Each built sample against the conformance script. They start real
@@ -391,21 +406,18 @@ filegroup(
 # folder is its data, so nothing outside Bazel is needed.
 [
     py_test(
-        name = sample.replace("hello-", "") + "_sample_test",
+        name = language + "_sample_test",
         size = "small",
         srcs = [
             "conformance/conformance.py",
             "samples/samples_test.py",
         ],
-        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample],
-        data = [
-            ":%s-folder" % sample,
-            "built/%s/vitruvian-tool.json" % sample,
-        ],
+        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in samples],
+        data = [":%s-folder" % sample for sample in samples] + ["built/%s/vitruvian-tool.json" % sample for sample in samples],
         main = "samples/samples_test.py",
         deps = ["@pip//jsonschema"],
     )
-    for sample in NATIVE_SAMPLES
+    for language, samples in NATIVE_SAMPLES.items()
 ]
 
 # What needs no build: every sample's manifest against the schema, one SDK
@@ -678,6 +690,7 @@ py_test(
 GO_KIT = [
     "//packages/vitruvian-sdk/go:go.mod",
     "//packages/vitruvian-sdk/go/toolkit:sources",
+    "//packages/vitruvian-sdk/go/toolkit/ui:sources",
 ]
 
 py_test(
@@ -691,6 +704,7 @@ py_test(
         "$(rootpath //tools/go-sdk:go)",
         "$(rootpaths %s)" % GO_KIT[0],
         "$(rootpaths %s)" % GO_KIT[1],
+        "$(rootpaths %s)" % GO_KIT[2],
     ],
     data = GO_KIT + ["//tools/go-sdk:go"],
     main = "samples/go_template_test.py",
@@ -711,6 +725,7 @@ py_test(
         "$(rootpath //tools/go-sdk:go)",
         "$(rootpaths %s)" % GO_KIT[0],
         "$(rootpaths %s)" % GO_KIT[1],
+        "$(rootpaths %s)" % GO_KIT[2],
         "--tool",
         "$(rootpath :vitruvian-tool)",
     ],
@@ -755,6 +770,7 @@ py_test(
         "kits/python/pyproject.toml",
         "release-please-config.json",
         "samples/hello-go/go.mod",
+        "samples/hello-panel-go/go.mod",
         "samples/hello-panel-python/requirements.txt",
         "samples/hello-panel-typescript/package.json",
         "samples/hello-python-kit/requirements.txt",

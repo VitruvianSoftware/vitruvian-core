@@ -147,7 +147,8 @@ def comment(text, indent=""):
 
 
 def go_type(kind, required, maps):
-    """The Go type of a KIND; `maps` names the TYPEs that are maps."""
+    """The Go type of a KIND; `maps` names the TYPEs that are maps or text,
+    which are nil when left out and so never a pointer."""
     plain = {
         "string": "string",
         "boolean": "bool",
@@ -348,7 +349,7 @@ def emit(model, licence=None):
     if not isinstance(model, dict):
         model = adapt(model)
     types = model["messageTypes"] + model["manifestTypes"]
-    maps = {entry["name"] for entry in types if entry["shape"] == "map"}
+    maps = {entry["name"] for entry in types if entry["shape"] in ("map", "text")}
 
     def named(definition):
         return '""' if definition is None else f'"{exported(definition)}"'

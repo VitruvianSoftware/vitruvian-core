@@ -466,7 +466,7 @@ type UIBlock struct {
 
 	// What an app that does not know this kind draws instead, as plain
 	// text.
-	Fallback *UIText `json:"fallback,omitempty"`
+	Fallback UIText `json:"fallback,omitempty"`
 
 	// The kind's own fields: the one of these that Type names,
 	// or Other for a kind these types do not have, as it came.
@@ -529,7 +529,7 @@ func (v UIBlock) MarshalJSON() ([]byte, error) {
 		fields["id"] = *v.ID
 	}
 	if v.Fallback != nil {
-		fields["fallback"] = *v.Fallback
+		fields["fallback"] = v.Fallback
 	}
 	return json.Marshal(fields)
 }
@@ -542,7 +542,7 @@ func (v *UIBlock) UnmarshalJSON(data []byte) error {
 
 		ID *string `json:"id,omitempty"`
 
-		Fallback *UIText `json:"fallback,omitempty"`
+		Fallback UIText `json:"fallback,omitempty"`
 	}
 	if err := json.Unmarshal(data, &head); err != nil {
 		return err
@@ -630,13 +630,13 @@ type RowBlock struct {
 	Title UIText `json:"title"`
 
 	// A quieter line under it.
-	Subtitle *UIText `json:"subtitle,omitempty"`
+	Subtitle UIText `json:"subtitle,omitempty"`
 
 	// An SF Symbol name.
 	Icon *string `json:"icon,omitempty"`
 
 	// A few words at the row's end, such as a time.
-	Trailing *UIText `json:"trailing,omitempty"`
+	Trailing UIText `json:"trailing,omitempty"`
 }
 
 // ButtonBlock: A button. Pressing it is the event tap.
@@ -669,13 +669,13 @@ type ToggleBlock struct {
 // other text is the event change.
 type FieldBlock struct {
 	// What it is for, above it.
-	Title *UIText `json:"title,omitempty"`
+	Title UIText `json:"title,omitempty"`
 
 	// The text in it.
 	Value *string `json:"value,omitempty"`
 
 	// What it shows while it is empty.
-	Placeholder *UIText `json:"placeholder,omitempty"`
+	Placeholder UIText `json:"placeholder,omitempty"`
 
 	// text when left out. number takes digits; secret hides what is
 	// typed. One of: text, number, secret.
@@ -691,13 +691,13 @@ type UIListRow struct {
 	Title UIText `json:"title"`
 
 	// A quieter line under it.
-	Subtitle *UIText `json:"subtitle,omitempty"`
+	Subtitle UIText `json:"subtitle,omitempty"`
 
 	// An SF Symbol name.
 	Icon *string `json:"icon,omitempty"`
 
 	// A few words at the row's end.
-	Trailing *UIText `json:"trailing,omitempty"`
+	Trailing UIText `json:"trailing,omitempty"`
 }
 
 // ListBlock: Rows, drawn together. Tapping one is the event tap; its value is
@@ -723,7 +723,7 @@ type ProgressBlock struct {
 	Value *float64 `json:"value,omitempty"`
 
 	// What is under way.
-	Label *UIText `json:"label,omitempty"`
+	Label UIText `json:"label,omitempty"`
 }
 
 // ImageBlock: A picture.
@@ -734,7 +734,7 @@ type ImageBlock struct {
 	Source string `json:"source"`
 
 	// What it shows, for VoiceOver.
-	Alt *UIText `json:"alt,omitempty"`
+	Alt UIText `json:"alt,omitempty"`
 
 	// Its height in points, up to 300. The app's own when left out.
 	Height *float64 `json:"height,omitempty"`

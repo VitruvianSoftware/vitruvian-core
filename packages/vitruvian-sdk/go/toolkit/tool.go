@@ -42,8 +42,8 @@ import (
 // works for long without calling the app should watch it.
 type Handler func(ctx context.Context, app *App) error
 
-// Tool is a tool that runs as its own program: its commands, and the loop
-// that reads what the app sends and answers it. Make one with New, add its
+// Tool is a tool that runs as its own program: its commands, its panels,
+// and the loop that reads what the app sends and answers it. Make one with New, add its
 // commands, then call Run. Use a Tool and its App from one goroutine only.
 type Tool struct {
 	// AnswerTimeout is how long a call to the app waits for its answer.
@@ -63,6 +63,7 @@ type Tool struct {
 	link       link
 	app        *App
 	handlers   map[string]Handler
+	panels     map[string]*PanelHandle
 	kept       []message
 	lastID     int64
 	greeted    bool
@@ -88,6 +89,7 @@ func NewLink(version string, in io.Reader, out io.Writer) *Tool {
 		in:            in,
 		link:          link{out: out},
 		handlers:      map[string]Handler{},
+		panels:        map[string]*PanelHandle{},
 		language:      "en",
 		dataFolder:    folder,
 		ctx:           context.Background(),
@@ -147,6 +149,10 @@ func (t *Tool) handle(m message) {
 			t.greet(m)
 		case MethodCommandRun:
 			t.runCommand(m)
+		case MethodUIOpen:
+			t.openPanel(m)
+		case MethodUIEvent:
+			t.panelEvent(m)
 		default:
 			t.refuse(m.id, CodeMethodNotFound, "method not found", nil)
 		}
@@ -165,6 +171,13 @@ func (t *Tool) handle(m message) {
 				t.language = changed.Language
 				if t.OnLanguageChanged != nil {
 					t.OnLanguageChanged(t.app)
+				}
+			}
+		case MethodUIClose:
+			var closed UICloseParams
+			if decode(m.params, &closed) {
+				if panel, ok := t.panels[closed.Panel]; ok {
+					panel.open = false
 				}
 			}
 		}
@@ -290,11 +303,11 @@ func (t *Tool) call(method string, params, result any) error {
 	}
 }
 
-// note sends a notice. Nothing is sent before the greeting or after
-// goodbye.
-func (t *Tool) note(method string, params any) {
+// note sends a notice, and says whether it went. Nothing is sent before
+// the greeting or after goodbye.
+func (t *Tool) note(method string, params any) bool {
 	if !t.greeted || t.stopping {
-		return
+		return false
 	}
-	t.link.send(outgoing{Method: method, Params: params})
+	return t.link.send(outgoing{Method: method, Params: params})
 }

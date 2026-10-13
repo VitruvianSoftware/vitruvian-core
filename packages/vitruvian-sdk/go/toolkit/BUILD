@@ -24,6 +24,7 @@ go_library(
         "doc.go",
         "errors.go",
         "link.go",
+        "panels.go",
         "protocol_gen.go",
         "tool.go",
         "version.go",
@@ -35,9 +36,11 @@ go_library(
 go_test(
     name = "toolkit_test",
     srcs = [
+        "panels_test.go",
         "protocol_test.go",
         "tool_test.go",
     ],
     data = ["//packages/vitruvian-sdk:protocol_files"],
     embed = [":toolkit"],
+    deps = ["//packages/vitruvian-sdk/go/toolkit/ui"],
 )

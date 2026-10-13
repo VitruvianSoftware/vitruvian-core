@@ -75,6 +75,10 @@ WANTED = {
         ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
     ],
     "hello-go": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-panel-go": [
+        ["a command: addOne: ran"],
+        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+    ],
     "hello-rust": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "front-window": [
         [
@@ -158,6 +162,13 @@ def versions():
             handle.read(),
         ).group(1)
     with open(
+        os.path.join(HERE, "hello-panel-go", "go.mod"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-panel-go/go.mod"] = re.search(
+            r"(?m)^require github\.com/VitruvianSoftware/vitruvian-sdk/go v(\S+)",
+            handle.read(),
+        ).group(1)
+    with open(
         os.path.join(HERE, "hello-rust", "Cargo.toml"), encoding="utf-8"
     ) as handle:
         found["samples/hello-rust/Cargo.toml"] = re.search(
@@ -205,13 +216,13 @@ def versions():
                 r'"(\d+\.\d+\.\d+)" // x-release-please-version', handle.read()
             ):
                 found[os.path.relpath(path, PACKAGE)] = version
-    if len(set(found.values())) == 1 and len(found) == 11:
+    if len(set(found.values())) == 1 and len(found) == 12:
         print(
             f"versions: {found['kits/typescript/package.json']}, in {len(found)} places"
         )
         return []
     return [
-        f"one version of the SDK in eleven places, and these differ or are missing: {found}"
+        f"one version of the SDK in twelve places, and these differ or are missing: {found}"
     ]
 
 
