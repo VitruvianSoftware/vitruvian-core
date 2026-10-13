@@ -2,15 +2,35 @@
 
 |              |                                                                              |
 | ------------ | ---------------------------------------------------------------------------- |
-| **Status**   | ✅ Service restored (manually); ✅ **self-heal P0s (placement + storage) shipped + applied 2026-06-21** (#194/#196/#197); ✅ **BIOS upgraded to 0067 2026-10-06**; ✅ **C-state polling reverted, kernel lockup panics & ACPI WDAT watchdog deconfliction 2026-10-11** |
+| **Status**   | ✅ Service restored via automated WoL; ✅ **self-heal P0s shipped**; ✅ **BIOS 0067**; ✅ **C8/C10 disabled with C6 active, hardware WDAT watchdog enforced, subnet WoL hardened 2026-10-12** |
 | **Severity** | SEV-1 — main `cnpg-cluster` Postgres DB fully down ~43 min + broad platform disruption (homelab, no external users) |
 | **Detected** | 2026-06-21 ~04:01 UTC (during the [Prometheus WAL incident](2026-06-13-prometheus-wal-corruption.md) work) |
 | **Restored** | 2026-06-21 ~05:00 UTC (manual force-deletes + physical power-cycle + iSCSI re-layer) |
 | **Components** | node `fedora`; `cnpg-cluster` (main DB), prometheus, alertmanager, longhorn-manager, argocd application-controller, tempo; Longhorn |
-| **Recurrence** | fedora freezes **every few days** (boots ended Jun 13 / 15 / 20 / Oct 06 / Oct 09 / Oct 10) — remediated Oct 11 with C-state reversion, lockup panics, and watchdog deconfliction |
+| **Recurrence** | fedora freezes **every few days** (boots ended Jun 13 / 15 / 20 / Oct 06 / Oct 09 / Oct 10 / Oct 12) — root caused Oct 12 to C8/C10 package sleep hang; remediated with C8/C10 disablement, WDAT hardware watchdog, and subnet WoL |
 | **Related**  | [2026-06-13-prometheus-wal-corruption.md](2026-06-13-prometheus-wal-corruption.md) |
 
 > Living document. This incident is about **resilience**: fedora goes offline repeatedly, so the goal is making the platform **self-heal onto working nodes** instead of requiring manual surgery + a physical power-cycle.
+
+## Resolution / update — 2026-10-12 (C8/C10 Deep Sleep Root Cause, Hardware WDAT Watchdog Enforcement & Directed WoL Recovery)
+
+At ~17:16 PDT on 2026-10-12, `fedora` locked up silently again ~29 hours after the Oct 11 reboot. Full investigation revealed two interlocking root causes:
+
+1. **Why It Froze (C8/C10 Deep Package Sleep)**:
+   - When `intel_idle.max_cstate=1` was removed on Oct 11 (to stop 65–78°C `POLL` spinning at idle), `max_cstate` reverted to default `9`.
+   - On the 12th-Gen Intel Core i9-12900 (Alder Lake), cpuidle defines: `state0` (`POLL`), `state1` (`C1E`), `state2` (`C6`), `state3` (`C8`), and `state4` (`C10`).
+   - Diagnostic analysis of `/sys/devices/system/cpu/cpu*/cpuidle/` showed `state4` (`C10`) residency accounted for the vast majority of idle time (>216 seconds). During idle wake transitions from deep package C8/C10 states, the Alder Lake ring bus, uncore, and APIC interrupt controller stall without emitting an MCE, NMI, or kernel panic.
+   - **Fix Applied**: Retained `state2` (`C6`) so CPU cores power down cleanly and maintain cool temperatures (27–59°C), but explicitly disabled deep package sleep states `state3` (`C8`) and `state4` (`C10`) across all 24 CPU threads. Deployed and enabled persistent early-boot service `/etc/systemd/system/disable-deep-cstates.service` and queued `intel_idle.max_cstate=2` in `rpm-ostree kargs`.
+
+2. **Why It Didn't Auto-Reset (Watchdog Driver Misconfiguration)**:
+   - Even though `/etc/modprobe.d/blacklist-intel_oc_wdt.conf` was present, `intel_oc_wdt` was loaded during early initramfs and grabbed `/dev/watchdog0`.
+   - Systemd was binding to `/dev/watchdog0` (`intel_oc_wdt` software watchdog), leaving `/dev/watchdog1` (the true motherboard ACPI `wdat_wdt` hardware watchdog) dormant.
+   - When the CPU ring bus stalled in C10, `intel_oc_wdt` was unable to service or trip the reset because CPU interrupts were dead.
+   - **Fix Applied**: Hardened modprobe with `install intel_oc_wdt /bin/true`, queued `module_blacklist=intel_oc_wdt` in `rpm-ostree kargs`, and updated `/etc/systemd/system.conf.d/10-watchdog.conf` with `WatchdogDevice=/dev/watchdog1` and `RuntimeWatchdogSec=30s`. Verified live via `systemctl daemon-reexec`: systemd is now actively driving `wdat_wdt` with a 30-second hardware timeout.
+
+3. **Hands-Free Recovery Hardening (`power-cycle-fedora`)**:
+   - Diagnosed that `wakeonlan` packets sent to `255.255.255.255` were being dropped or routed to virtual interfaces (Tailscale).
+   - Patched `/Users/james/bin/power-cycle-fedora` to explicitly broadcast to the local LAN subnet (`192.168.86.255`), which immediately powered on the NUC 12 Extreme from standby (1.7W -> 143W boot).
 
 ## Resolution / update — 2026-10-11 (Post-0067 Freeze Remediation, Watchdog Deconfliction & C-State Reversion)
 
