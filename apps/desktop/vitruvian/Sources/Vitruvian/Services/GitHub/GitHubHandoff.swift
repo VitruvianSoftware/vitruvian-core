@@ -49,14 +49,19 @@ package enum GitHubHandoff {
         package var backing: StorageAccess.Backing
         /// Stops the feature's sign-in and its polling, now.
         package var featureOff: () -> Void
+        /// Tells the feature runtime that the feature was hidden, so
+        /// Settings stops listing it now and not at the next launch.
+        package var availabilityChanged: () -> Void
         package var log: (String) -> Void
 
         package init(defaults: UserDefaults, token: @escaping () -> String?, backing: StorageAccess.Backing,
-                     featureOff: @escaping () -> Void, log: @escaping (String) -> Void) {
+                     featureOff: @escaping () -> Void, availabilityChanged: @escaping () -> Void,
+                     log: @escaping (String) -> Void) {
             self.defaults = defaults
             self.token = token
             self.backing = backing
             self.featureOff = featureOff
+            self.availabilityChanged = availabilityChanged
             self.log = log
         }
 
@@ -65,6 +70,7 @@ package enum GitHubHandoff {
             token: { GitHubAuthService.shared.currentToken() },
             backing: CapabilityBroker.shared.backings.storage,
             featureOff: { GitHubAuthService.shared.cancel() },
+            availabilityChanged: { FeatureRuntime.shared.availabilityChangedElsewhere() },
             log: { Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "github-handoff").notice("\($0, privacy: .public)") })
     }
 
@@ -103,16 +109,20 @@ package enum GitHubHandoff {
         parts.defaults[Preferences.githubReplacedByTool] = true
         parts.defaults[Preferences.notchGitHubEnabled] = false
         parts.featureOff()
+        parts.availabilityChanged()
         parts.log("handed the GitHub feature's settings to the GitHub tool"
             + (origin.map { ", version \($0.version) from the catalog" } ?? ", added from a folder"))
         return .handed(written.sorted())
     }
 
     /// The tool was removed: the feature comes back, switched off, with
-    /// its token still in the Keychain.
-    package static func toolRemoved(_ id: ToolID, defaults: UserDefaults) {
+    /// its token still in the Keychain. `availabilityChanged` tells the
+    /// feature runtime, so Settings lists the feature again at once; the
+    /// app passes the runtime's own (`ExternalToolStore.Parts.live`).
+    package static func toolRemoved(_ id: ToolID, defaults: UserDefaults, availabilityChanged: () -> Void = {}) {
         guard id == toolID, defaults[Preferences.githubReplacedByTool] else { return }
         defaults[Preferences.githubReplacedByTool] = false
+        availabilityChanged()
     }
 
     /// What is handed over, by the tool's preference ids, from the

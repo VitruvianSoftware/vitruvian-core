@@ -84,8 +84,10 @@ enum GitHubHandoffTests {
     }
 
     static func parts(_ defaults: UserDefaults, token: String?, box: Box, off: @escaping () -> Void = {},
+                      changed: @escaping () -> Void = {},
                       log: @escaping (String) -> Void = { _ in }) -> GitHubHandoff.Parts {
-        GitHubHandoff.Parts(defaults: defaults, token: { token }, backing: backing(box), featureOff: off, log: log)
+        GitHubHandoff.Parts(defaults: defaults, token: { token }, backing: backing(box), featureOff: off,
+                            availabilityChanged: changed, log: log)
     }
 
     static func scratch() -> URL {
@@ -101,13 +103,21 @@ enum GitHubHandoffTests {
         let defaults = defaults("hands")
         let box = Box()
         var turnedOff = 0
+        var told = 0
+        /// Whether the feature was hidden already each time the runtime was told.
+        var hiddenWhenTold: [Bool] = []
         var logged: [String] = []
         guard let tool = installedTool(in: root) else { return suite.expect(false, "the GitHub tool's manifest reads") }
         suite.expect(AppFeature.notchGitHub.isAvailable(in: defaults) && NotchModule.github.isAvailable(in: defaults),
                      "before: the feature is installed and its island page is there")
         let origin = CatalogueOrigin(id: "dev.vitruvian.github", version: "1.0.0", source: "https://x", download: "https://x/z.zip")
-        let outcome = GitHubHandoff.perform(tool, from: origin, parts: parts(defaults, token: "gho_feature", box: box,
-                                                                              off: { turnedOff += 1 }, log: { logged.append($0) }))
+        let outcome = GitHubHandoff.perform(tool, from: origin, parts: parts(
+            defaults, token: "gho_feature", box: box, off: { turnedOff += 1 },
+            changed: {
+                told += 1
+                hiddenWhenTold.append(!AppFeature.notchGitHub.isAvailable(in: defaults))
+            },
+            log: { logged.append($0) }))
         suite.expect(outcome == .handed(["clientID", "migratedToken", "mouseApproval", "mouseCommand", "mouseFailure",
                                          "mouseIdle", "mouseIndicator", "mouseRunning", "mouseSuccess", "pollActiveInterval",
                                          "pollInterval", "watchlist"]),
@@ -127,6 +137,9 @@ enum GitHubHandoffTests {
                          && AppFeature.notchGitHub.isReplaced(in: defaults) && defaults.bool(forKey: AppFeature.notchGitHub.availabilityKey)
                          && AppFeature.notch.isAvailable(in: defaults) && !AppFeature.notch.isReplaced(in: defaults),
                      "after: the feature and its island page are hidden, though still installed; nothing else is")
+        suite.expect(told == 1 && hiddenWhenTold == [true],
+                     "a hand-off that hides the feature tells the feature runtime once, after it is hidden, "
+                         + "so Settings stops listing it without a restart: told \(told), hidden then \(hiddenWhenTold)")
         suite.expect(logged.contains { $0.contains("version 1.0.0 from the catalog") },
                      "the log says what was handed over, and from where: \(logged)")
     }
@@ -151,18 +164,23 @@ enum GitHubHandoffTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let defaults = defaults("others")
         let box = Box()
+        var told = 0
         let other = Data(String(decoding: manifest, as: UTF8.self)
             .replacingOccurrences(of: "dev.vitruvian.github", with: "com.acme.deploys").utf8)
         guard let deploys = installedTool(manifest: other, in: root) else { return suite.expect(false, "the other manifest reads") }
-        suite.expect(GitHubHandoff.perform(deploys, from: nil, parts: parts(defaults, token: "gho_x", box: box)) == .notTheTool
+        suite.expect(GitHubHandoff.perform(deploys, from: nil, parts: parts(defaults, token: "gho_x", box: box,
+                                                                            changed: { told += 1 })) == .notTheTool
                          && box.values.isEmpty && !defaults[Preferences.githubReplacedByTool],
                      "another tool gets nothing, and the feature stays")
+        suite.expect(told == 0, "another tool hides nothing, so the feature runtime is told nothing: told \(told)")
         guard let github = installedTool(in: root) else { return suite.expect(false, "the GitHub tool's manifest reads") }
         _ = GitHubHandoff.perform(github, from: nil, parts: parts(defaults, token: "gho_x", box: box))
         box.values = [:]
-        suite.expect(GitHubHandoff.perform(github, from: nil, parts: parts(defaults, token: "gho_y", box: box)) == .alreadyReplaced
+        suite.expect(GitHubHandoff.perform(github, from: nil, parts: parts(defaults, token: "gho_y", box: box,
+                                                                           changed: { told += 1 })) == .alreadyReplaced
                          && box.values.isEmpty,
                      "the tool updated, or added again: nothing is handed a second time")
+        suite.expect(told == 0, "a feature hidden already is hidden still, so the feature runtime is told nothing: told \(told)")
         // The manifest without its last preference, as an older tool's.
         let older = Data(String(decoding: manifest, as: UTF8.self)
             .replacingOccurrences(of: ",\n   {\"id\": \"migratedToken\", \"type\": \"string\", \"default\": \"\"}", with: "").utf8)
@@ -180,12 +198,25 @@ enum GitHubHandoffTests {
         let defaults = defaults("removal")
         defaults[Preferences.githubReplacedByTool] = true
         defaults[Preferences.notchGitHubEnabled] = false
-        GitHubHandoff.toolRemoved(ToolID("com.acme.deploys")!, defaults: defaults)
+        var told = 0
+        /// Whether the feature was back already each time the runtime was told.
+        var backWhenTold: [Bool] = []
+        let changed = {
+            told += 1
+            backWhenTold.append(AppFeature.notchGitHub.isAvailable(in: defaults))
+        }
+        GitHubHandoff.toolRemoved(ToolID("com.acme.deploys")!, defaults: defaults, availabilityChanged: changed)
         suite.expect(defaults[Preferences.githubReplacedByTool], "another tool's removal changes nothing")
-        GitHubHandoff.toolRemoved(GitHubHandoff.toolID, defaults: defaults)
+        suite.expect(told == 0, "another tool's removal brings nothing back, so the feature runtime is told nothing: told \(told)")
+        GitHubHandoff.toolRemoved(GitHubHandoff.toolID, defaults: defaults, availabilityChanged: changed)
         suite.expect(!defaults[Preferences.githubReplacedByTool] && AppFeature.notchGitHub.isAvailable(in: defaults)
                          && !defaults[Preferences.notchGitHubEnabled],
                      "the GitHub tool's removal brings the feature back, switched off")
+        suite.expect(told == 1 && backWhenTold == [true],
+                     "a removal that brings the feature back tells the feature runtime once, after it is back, "
+                         + "so Settings lists it again without a restart: told \(told), back then \(backWhenTold)")
+        GitHubHandoff.toolRemoved(GitHubHandoff.toolID, defaults: defaults, availabilityChanged: changed)
+        suite.expect(told == 1, "a removal with the feature there already tells the feature runtime nothing more: told \(told)")
     }
 
     static func theStoreTellsBeforeTheProgramStarts(_ suite: TestSuite) {
