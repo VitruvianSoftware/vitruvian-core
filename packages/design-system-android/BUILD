@@ -32,6 +32,7 @@
 
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:core.bzl", "kt_compiler_plugin")
+load("@rules_python//python:defs.bzl", "py_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -106,6 +107,17 @@ sh_test(
     deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
+py_test(
+    name = "parity_test",
+    size = "small",
+    srcs = ["//packages/design-system-android/tools:parity_test.py"],
+    data = glob(["src/main/kotlin/**/*.kt"]) + [
+        "//packages/design-system:src/Icons.tsx",
+        "//packages/design-system:src/Illustrations.tsx",
+    ],
+    main = "//packages/design-system-android/tools:parity_test.py",
+)
+
 # Developer-environment check: `bazel run //packages/design-system-android:doctor`.
 doctor(
     name = "doctor",
@@ -123,6 +135,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":lib",
+        ":parity_test",
         ":tokens_are_current",
     ],
     tier = "L1",

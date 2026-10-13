@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -35,9 +36,11 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
@@ -47,6 +50,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** One navigation destination, as both the tab bar and the rail render it. */
@@ -168,7 +172,7 @@ public fun TabBar(
 /** Where a nav cell draws its active rule. */
 private enum class NavRule {
   Top,
-  Left
+  Left,
 }
 
 @Composable
@@ -323,4 +327,199 @@ public fun SectionHeader(
       horizontalArrangement = Arrangement.spacedBy(Space.s4),
       content = content,
   )
+}
+
+/** One item in a [Crumbs] trail. */
+public data class CrumbItem(val label: String, val onClick: (() -> Unit)? = null)
+
+/** `.crumbs` - a mono slash-separated breadcrumb trail. */
+@Composable
+public fun Crumbs(
+    items: List<CrumbItem>,
+    modifier: Modifier = Modifier,
+) {
+  val colors = Vitruvian
+  Row(
+      modifier = modifier,
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(Space.s2),
+  ) {
+    items.forEachIndexed { index, item ->
+      if (index > 0) {
+        VText(text = "/", style = VitruvianType.listSub, color = colors.textMuted)
+      }
+      val isLast = index == items.lastIndex
+      VText(
+          text = item.label.uppercase(),
+          modifier =
+              if (item.onClick != null && !isLast) {
+                Modifier.clickable(onClick = item.onClick)
+              } else {
+                Modifier
+              },
+          style = VitruvianType.status,
+          color = if (isLast) colors.text else colors.textDim,
+          maxLines = 1,
+      )
+    }
+  }
+}
+
+/** One horizontal tab in [Tabs]. */
+public data class TabOption(
+    val id: String,
+    val label: String,
+    val count: Int? = null,
+)
+
+/** `.tabs` - horizontal section tabs underlined by a 2 dp accent rule when active. */
+@Composable
+public fun Tabs(
+    tabs: List<TabOption>,
+    activeId: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val colors = Vitruvian
+  Row(
+      modifier = modifier.fillMaxWidth().bottomHairline(colors.divider),
+      horizontalArrangement = Arrangement.spacedBy(Space.s4),
+  ) {
+    tabs.forEach { tab ->
+      val active = tab.id == activeId
+      Row(
+          modifier =
+              Modifier.defaultMinSize(minHeight = Hit.h1)
+                  .clickable { onSelect(tab.id) }
+                  .drawBehind {
+                    if (active) {
+                      drawRect(
+                          color = colors.accent,
+                          topLeft = Offset(0f, size.height - ACTIVE_RULE.toPx()),
+                          size = Size(size.width, ACTIVE_RULE.toPx()),
+                      )
+                    }
+                  }
+                  .padding(horizontal = Space.s2, vertical = Space.s3),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        VText(
+            text = tab.label.uppercase(),
+            style = VitruvianType.status,
+            color = if (active) colors.text else colors.textDim,
+            maxLines = 1,
+            softWrap = false,
+        )
+        if (tab.count != null) {
+          VText(
+              text = tab.count.toString(),
+              style = VitruvianType.listSub,
+              color = if (active) colors.accentText else colors.textMuted,
+              maxLines = 1,
+              softWrap = false,
+          )
+        }
+      }
+    }
+  }
+}
+
+/** `.pagination` - page index readout with Prev/Next controls. */
+@Composable
+public fun Pagination(
+    page: Int,
+    totalPages: Int,
+    onPageChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    totalItems: Int? = null,
+) {
+  val colors = Vitruvian
+  Row(
+      modifier = modifier.fillMaxWidth().padding(vertical = Space.s2),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+  ) {
+    VText(
+        text =
+            buildString {
+              append("PAGE ")
+              append(page.toString().padStart(2, '0'))
+              append(" / ")
+              append(totalPages.coerceAtLeast(1).toString().padStart(2, '0'))
+              if (totalItems != null) {
+                append(" · ")
+                append(totalItems)
+                append(" ITEMS")
+              }
+            },
+        style = VitruvianType.listSub,
+        color = colors.textDim,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.s2)) {
+      VButton(
+          label = "← Prev",
+          onClick = { onPageChange((page - 1).coerceAtLeast(1)) },
+          enabled = page > 1,
+          contentPadding = PaddingValues(horizontal = Space.s3),
+      )
+      VButton(
+          label = "Next →",
+          onClick = { onPageChange((page + 1).coerceAtMost(totalPages)) },
+          enabled = page < totalPages,
+          contentPadding = PaddingValues(horizontal = Space.s3),
+      )
+    }
+  }
+}
+
+/**
+ * `.avatar` - a square monogram plate for users, agents, or nodes, with an optional corner [Status]
+ * indicator.
+ */
+@Composable
+public fun Avatar(
+    name: String,
+    modifier: Modifier = Modifier,
+    initials: String? = null,
+    status: StatusTone? = null,
+    avatarSize: Dp = 32.dp,
+) {
+  val colors = Vitruvian
+  val letters =
+      initials
+          ?: name
+              .trim()
+              .split(Regex("[\\s-_]+"))
+              .filter { it.isNotEmpty() }
+              .take(2)
+              .joinToString("") { it.take(1).uppercase() }
+              .ifEmpty { "?" }
+
+  Box(modifier = modifier.size(avatarSize), contentAlignment = Alignment.Center) {
+    Box(
+        modifier =
+            Modifier.size(avatarSize).background(colors.surface2).border(1.dp, colors.divider),
+        contentAlignment = Alignment.Center,
+    ) {
+      VText(
+          text = letters,
+          style = VitruvianType.status,
+          color = colors.accentText,
+          maxLines = 1,
+          softWrap = false,
+      )
+    }
+    if (status != null) {
+      Box(
+          modifier =
+              Modifier.align(Alignment.BottomEnd)
+                  .offset(x = 2.dp, y = 2.dp)
+                  .background(colors.bg)
+                  .padding(1.dp),
+      ) {
+        Status(tone = status)
+      }
+    }
+  }
 }

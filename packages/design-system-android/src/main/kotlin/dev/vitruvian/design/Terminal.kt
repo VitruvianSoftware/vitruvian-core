@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -53,7 +54,7 @@ public enum class TerminalTone {
   Dim,
   Ok,
   Warn,
-  Err
+  Err,
 }
 
 @Composable
@@ -108,6 +109,42 @@ public fun Terminal(
     if (cursor) {
       BlinkingCursor()
     }
+  }
+}
+
+/** `.code` - a framed monospace snippet block with optional title header and [CopyButton]. */
+@Composable
+public fun Code(
+    code: String,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    copyable: Boolean = false,
+) {
+  val colors = Vitruvian
+  Column(
+      modifier = modifier.fillMaxWidth().background(colors.neutral900).border(1.dp, colors.divider),
+  ) {
+    if (title != null || copyable) {
+      Row(
+          modifier =
+              Modifier.fillMaxWidth()
+                  .bottomHairline(colors.divider)
+                  .padding(horizontal = Space.s4, vertical = Space.s2),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+      ) {
+        Label(text = title ?: "SNIPPET")
+        if (copyable) {
+          CopyButton(value = code)
+        }
+      }
+    }
+    VText(
+        text = code,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s4, vertical = Space.s3),
+        style = VitruvianType.terminal,
+        color = colors.text,
+    )
   }
 }
 

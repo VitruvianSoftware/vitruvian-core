@@ -8,11 +8,13 @@
   "titleMap": {
     "Overview": "Plate",
     "Motion": null,
+    "Technicalplates&imagery": "PlateFigure",
     "Status&metrics": "Status",
     "Form": "Field",
     "Navigation": "Nav",
     "Overlay": "Dialog",
     "Empty,loading,error": "EmptyState",
+    "Lists,ledger&icons": "ListItem",
     "PageLayouts": "Shell"
   },
   "extraEntries": ["../../.design-sync/preview-ground.mjs"],

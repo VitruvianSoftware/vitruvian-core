@@ -37,7 +37,15 @@ import {
 } from "./DataDisplay.js";
 import type { LogLevel } from "./DataDisplay.js";
 import { Terminal, Code } from "./Terminal.js";
-import { Field, Input, Textarea, Segmented, Select, Switch } from "./Form.js";
+import {
+  Field,
+  Input,
+  Textarea,
+  Segmented,
+  Select,
+  Switch,
+  Slider,
+} from "./Form.js";
 import { Banner } from "./Overlay.js";
 
 const patternsMeta: Meta = {
@@ -1007,24 +1015,23 @@ export const CastController: StoryObj = {
               />
 
               <div>
-                <div className="flex items-baseline justify-between">
+                <div className="flex items-baseline justify-between mb-2">
                   <Label>Volume</Label>
-                  <span className="num text-sm">{volume}%</span>
                 </div>
-                <input
-                  type="range"
+                <Slider
                   min={0}
                   max={100}
                   value={volume}
                   onChange={(e) => setVolume(Number(e.target.value))}
                   aria-label="Broadcast volume"
-                  className="w-full mt-2"
-                  style={{ accentColor: "var(--color-accent)" }}
+                  valueLabel={`${volume}%`}
                 />
-                <Meter
-                  value={volume / 100}
-                  tone={volume > 80 ? "warn" : undefined}
-                />
+                <div className="mt-2">
+                  <Meter
+                    value={volume / 100}
+                    tone={volume > 80 ? "warn" : undefined}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2">

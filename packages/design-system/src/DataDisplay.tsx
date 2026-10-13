@@ -23,6 +23,7 @@ import * as React from "react";
 import { cn } from "./cn.js";
 
 export type Signal = "ok" | "warn" | "crit" | "run" | "idle";
+export type StatusKind = Signal;
 
 /** State is never carried by colour alone — the word is required. */
 export function Status({
@@ -111,6 +112,63 @@ export function Spark({ points }: { points: number[] }) {
       {points.map((p, i) => (
         <i key={i} style={{ height: `${(p / max) * 100}%` }} />
       ))}
+    </div>
+  );
+}
+
+export interface BarChartSeriesItem {
+  value: number;
+  /** Render the bar in sanguine (`alt`) instead of brand steel. */
+  alt?: boolean;
+  label?: string;
+}
+
+export interface BarChartProps extends React.HTMLAttributes<HTMLDivElement> {
+  bars: readonly (number | BarChartSeriesItem)[];
+  /** Optional x-axis tick labels rendered below the plot rule. */
+  axisLabels?: readonly React.ReactNode[];
+  /** Plot height in px (default 144). */
+  height?: number;
+}
+
+/**
+ * Framed bar plot with left/bottom axis rules (`.chart-plot` + `.bars` +
+ * `.chart-axis`). Supports primary steel bars and sanguine `.alt` bars.
+ */
+export function BarChart({
+  bars,
+  axisLabels,
+  height = 144,
+  className,
+  style,
+  ...rest
+}: BarChartProps) {
+  const normalized = bars.map((b) =>
+    typeof b === "number" ? { value: b, alt: false } : b,
+  );
+  const max = Math.max(...normalized.map((b) => b.value), 1);
+
+  return (
+    <div className={className} style={style} {...rest}>
+      <div className="chart-plot grid-field" style={{ height }}>
+        <div className="bars">
+          {normalized.map((b, i) => (
+            <i
+              key={i}
+              className={cn(b.alt && "alt")}
+              style={{ height: `${Math.max(2, (b.value / max) * 100)}%` }}
+              title={b.label ? `${b.label}: ${b.value}` : String(b.value)}
+            />
+          ))}
+        </div>
+      </div>
+      {axisLabels && axisLabels.length > 0 ? (
+        <div className="chart-axis">
+          {axisLabels.map((lbl, i) => (
+            <span key={i}>{lbl}</span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
