@@ -57,7 +57,6 @@ enum NexusAgentHandoffTests {
         let domain = "com.vitruviansoftware.vitruvian.tests.nexus-agent.handoff.\(name)"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
-        defaults.register(defaults: Defaults.registeredDefaults)
         defaults.set(true, forKey: AppFeature.nexusAgent.availabilityKey)
         defaults[Preferences.nexusAgentBotDirectory] = "~/bots/nexus"
         defaults[Preferences.nexusAgentAutoStart] = true
