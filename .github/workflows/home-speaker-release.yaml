@@ -112,3 +112,20 @@ jobs:
           HOMESPEAKER_GOOGLE_CLIENT_ID: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_ID }}
           HOMESPEAKER_GOOGLE_CLIENT_SECRET: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_SECRET }}
         run: bash apps/desktop/home-speaker/scripts/publish.sh
+
+      # The job's last word, and not the publishing script's: ask GitHub what
+      # the release holds. 1.12.0 and 1.13.0 were published with no files while
+      # the step above printed success and this job was green. Every app
+      # artifact, each checksum, and the tool zip the Vitruvian catalog
+      # installs from must be on the release, or the job fails naming them.
+      - name: Check the release has every file
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${TAG#home-speaker-v}"
+          bash tools/desktop-package/package-desktop.sh --verify-only \
+            --app-name HomeSpeaker --version "${version}" --tag "${TAG}" \
+            --require-asset "HomeSpeaker-${version}-tool.zip"
+          gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size)"'
