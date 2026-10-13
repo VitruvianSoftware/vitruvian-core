@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage E mock-ups</title>
+<style>
+:root{
+  --s:1;
+  /* page */
+  --page:#f4f4f6; --ink:#1c1c1e; --ink2:#55555a; --ink3:#6c6c72; --rule:#d9d9de; --panel:#ffffff;
+  /* the app, light: macOS window, SettingsCard, controls */
+  --win:#ececec; --win-edge:#c9c9cc; --title:#e3e3e5;
+  --label:#1d1d1f; --label2:#5c5c61; --label3:#77777c;
+  --card:rgba(0,0,0,.045); --hover:rgba(0,0,0,.04); --divider:rgba(0,0,0,.11);
+  --accent:#0064d2; --accent-tile:rgba(0,122,255,.12); --on-accent:#ffffff;
+  --btn:#ffffff; --btn-edge:rgba(0,0,0,.18); --btn-ink:#1d1d1f;
+  --switch-off:#c4c4c8; --knob:#ffffff; --field:#ffffff; --field-edge:rgba(0,0,0,.16);
+  --track:rgba(0,0,0,.10);
+  --orange:#a85400; --green:#1a7f37; --red:#c4001a;
+  --doc:#ffffff; --shadow:0 .75rem 2.25rem rgba(0,0,0,.20);
+  --desk:#c9d3df; --menubar:rgba(255,255,255,.72); --menubar-ink:#1d1d1f;
+  --ok-fill:#e3f3e6; --ok-ink:#12602a; --stop-fill:#fbe4e6; --stop-ink:#9a0014; --wait-fill:#fff1d6; --wait-ink:#7a4a00; --go-fill:#e1eefc; --go-ink:#0b4a9c;
+  /* the island: black in both appearances, as the hardware is */
+  --isl:#000000; --isl-ink:#ffffff; --isl-ink2:rgba(255,255,255,.62); --isl-ink3:rgba(255,255,255,.42);
+  --isl-fill:rgba(255,255,255,.08); --isl-fill2:rgba(255,255,255,.14); --isl-rule:rgba(255,255,255,.12);
+  --isl-accent:#4da3ff; --isl-badge:#ff453a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+    --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+    --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+    --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+    --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+    --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+    --switch-off:#5c5c62; --knob:#e9e9ec; --field:#1f1f22; --field-edge:rgba(255,255,255,.16);
+    --track:rgba(255,255,255,.14);
+    --orange:#ffb04a; --green:#4cd964; --red:#ff6961;
+    --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+    --desk:#1d2430; --menubar:rgba(30,30,34,.72); --menubar-ink:#f2f2f4;
+    --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+  --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+  --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+  --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+  --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+  --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+  --switch-off:#5c5c62; --knob:#e9e9ec; --field:#1f1f22; --field-edge:rgba(255,255,255,.16);
+  --track:rgba(255,255,255,.14);
+  --orange:#ffb04a; --green:#4cd964; --red:#ff6961;
+  --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+  --desk:#1d2430; --menubar:rgba(30,30,34,.72); --menubar-ink:#f2f2f4;
+  --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+}
+html{font-size:calc(16px * var(--s))}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;font-size:1rem;line-height:1.5;-webkit-text-size-adjust:100%}
+.wrap{max-width:60rem;margin:0 auto;padding:0 16px 4rem}
+header.bar{position:sticky;top:0;z-index:5;background:var(--page);border-bottom:1px solid var(--rule)}
+header.bar .wrap{display:flex;flex-wrap:wrap;gap:.75rem 1rem;align-items:center;justify-content:space-between;padding-top:.75rem;padding-bottom:.75rem}
+header.bar h1{font-size:1.0625rem;margin:0;font-weight:650}
+header.bar p{margin:0;font-size:.8125rem;color:var(--ink2)}
+.tools{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:.5rem;overflow:hidden;background:var(--panel)}
+.seg button,.size button{font:inherit;font-size:.8125rem;color:var(--ink);background:transparent;border:0;padding:.3125rem .625rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.size{display:inline-flex;align-items:center;border:1px solid var(--rule);border-radius:.5rem;background:var(--panel)}
+.size output{font-size:.8125rem;min-width:3.25rem;text-align:center;color:var(--ink2);font-variant-numeric:tabular-nums}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main h2{font-size:1.25rem;margin:2.75rem 0 .25rem;font-weight:650}
+main h2 small{font-weight:500;color:var(--ink3);font-size:.8125rem;margin-left:.375rem}
+.lead{color:var(--ink2);max-width:46rem;margin:.25rem 0 1rem}
+.note{font-size:.9375rem;color:var(--ink);max-width:46rem;margin:.875rem 0 0}
+.note p{margin:.25rem 0}
+.note .alt{color:var(--ink2)}
+.stage{background:var(--panel);border:1px solid var(--rule);border-radius:.875rem;padding:1.25rem;display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;overflow:hidden}
+.flow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:stretch;margin:1rem 0 0}
+.flow .box{border-radius:.625rem;padding:.5rem .75rem;font-size:.8125rem;line-height:1.35;flex:1 1 9rem;min-width:0}
+.flow .box b{display:block;font-size:.875rem}
+.flow .arrow{align-self:center;color:var(--ink3);font-size:.875rem}
+.go{background:var(--go-fill);color:var(--go-ink)} .ok{background:var(--ok-fill);color:var(--ok-ink)}
+.stop{background:var(--stop-fill);color:var(--stop-ink)} .wait{background:var(--wait-fill);color:var(--wait-ink)}
+.key{font-size:.8125rem;color:var(--ink2);margin:.5rem 0 0}
+table{border-collapse:collapse;width:100%;font-size:.875rem}
+th,td{text-align:left;padding:.375rem .5rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{color:var(--ink2);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.875em;overflow-wrap:anywhere}
+.scroll{overflow-x:auto}
+.caption{font-size:.75rem;color:var(--ink3);text-align:center;margin:.375rem 0 0}
+.fig{display:flex;flex-direction:column;align-items:center;min-width:0;max-width:100%}
+
+/* ---- a desktop, for the island ---- */
+.desk{background:var(--desk);border-radius:.75rem;width:100%;max-width:38rem;overflow:hidden;padding-bottom:1.25rem}
+.desk.lightdesk{--desk:#c9d3df;--menubar:rgba(255,255,255,.72);--menubar-ink:#1d1d1f}
+.desk.darkdesk{--desk:#1d2430;--menubar:rgba(30,30,34,.72);--menubar-ink:#f2f2f4}
+.menubar{height:1.5rem;background:var(--menubar);color:var(--menubar-ink);font-size:.6875rem;display:flex;align-items:center;gap:.875rem;padding:0 .75rem;font-weight:500}
+.menubar .grow{flex:1}
+
+/* ---- the island ---- */
+.island{background:var(--isl);color:var(--isl-ink);border-radius:0 0 1.75rem 1.75rem;width:calc(100% - 2rem);max-width:33.75rem;margin:-1.5rem auto 0;padding:2.125rem .875rem .875rem;font-size:.75rem;line-height:1.3;position:relative}
+.island .hdr{display:flex;align-items:center;gap:.5rem;height:1.75rem;margin-bottom:.5rem}
+.island .hdr .t{font-size:.9375rem;font-weight:650;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.island .ib{width:1.75rem;height:1.75rem;border-radius:.5rem;display:grid;place-items:center;color:var(--isl-ink2)}
+.island .ib svg{width:.875rem;height:.875rem}
+.island .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:.375rem}
+.island .qt{height:3.5rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3125rem;font-size:.625rem;color:var(--isl-ink2);min-width:0;position:relative}
+.island .qt i{width:2rem;height:2rem;border-radius:50%;background:var(--isl-fill2);display:grid;place-items:center;font-style:normal}
+.island .qt svg{width:1rem;height:1rem;color:var(--isl-ink)}
+.island .qt span{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 .25rem}
+.island .sect{font-size:.6875rem;font-weight:600;color:var(--isl-ink3);margin:.75rem .25rem .3125rem}
+.island .prow{display:flex;align-items:center;gap:.625rem;padding:.4375rem .5rem;border-radius:.625rem;background:var(--isl-fill)}
+.island .prow + .prow{margin-top:.25rem}
+.island .prow .ico{width:1.5rem;height:1.5rem;border-radius:.4375rem;background:var(--isl-fill2);display:grid;place-items:center;flex:none}
+.island .prow .ico svg{width:.8125rem;height:.8125rem}
+.island .prow .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.island .prow .by{color:var(--isl-ink3);font-weight:400;margin-left:.375rem}
+.island .badge{background:var(--isl-badge);color:#fff;border-radius:.5rem;min-width:1rem;height:1rem;padding:0 .3125rem;font-size:.625rem;font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.island .bdot{width:.5rem;height:.5rem;border-radius:50%;background:var(--isl-badge)}
+.island .chev{width:.5625rem;height:.5625rem;color:var(--isl-ink3);flex:none}
+.island .pagehdr{display:flex;align-items:center;gap:.375rem;margin:0 0 .5rem}
+.island .pagehdr b{font-size:.8125rem;font-weight:650}
+.island .backc{width:1.125rem;height:1.125rem;border-radius:50%;background:var(--isl-fill2);display:grid;place-items:center;color:var(--isl-ink2)}
+.island .backc svg{width:.5rem;height:.5rem}
+.island .qt .badge{position:absolute;top:.0625rem;right:calc(50% - 1.5rem)}
+.island .qt .bdot{position:absolute;top:.25rem;right:calc(50% - 1.125rem)}
+
+/* blocks, island size */
+.ib-blocks{display:flex;flex-direction:column;gap:.5rem}
+.ib-h{font-size:.8125rem;font-weight:650}
+.ib-t{color:var(--isl-ink2);font-size:.6875rem}
+.ib-list{background:var(--isl-fill);border-radius:.625rem;overflow:hidden}
+.ib-row{display:flex;align-items:center;gap:.5rem;padding:.375rem .5rem}
+.ib-row + .ib-row{border-top:1px solid var(--isl-rule)}
+.ib-row .ico{width:1rem;height:1rem;flex:none;color:var(--isl-ink2)}
+.ib-row .tx{flex:1;min-width:0}
+.ib-row .tx b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib-row .tx i{display:block;font-style:normal;color:var(--isl-ink3);font-size:.625rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib-row .tr{color:var(--isl-ink3);font-size:.625rem;flex:none;font-variant-numeric:tabular-nums}
+.ib-prog{display:flex;align-items:center;gap:.5rem;font-size:.625rem;color:var(--isl-ink2)}
+.ib-prog .track{flex:1;height:.25rem;border-radius:.125rem;background:var(--isl-fill2);overflow:hidden}
+.ib-prog .fill{height:100%;background:var(--isl-accent);border-radius:.125rem}
+.ib-btns{display:flex;gap:.375rem;flex-wrap:wrap}
+.ib-btn{background:var(--isl-fill2);color:var(--isl-ink);border-radius:.4375rem;padding:.25rem .625rem;font-size:.6875rem;font-weight:600}
+.ib-btn.pro{background:var(--isl-accent);color:#06121f}
+
+/* ---- the app's windows ---- */
+.app{font-size:.8125rem;line-height:1.35;color:var(--label);width:100%}
+.window{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);width:100%;overflow:hidden;margin:0 auto}
+.titlebar{background:var(--title);border-bottom:1px solid var(--divider);padding:.4375rem .75rem;display:flex;align-items:center;gap:.375rem;min-height:2.125rem}
+.titlebar i{width:.6875rem;height:.6875rem;border-radius:50%;background:var(--switch-off);display:block;flex:none}
+.titlebar .ttl{flex:1;text-align:center;min-width:0;margin-right:2.5rem}
+.titlebar .ttl b{display:block;font-weight:600;color:var(--label);font-size:.8125rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlebar .ttl span{display:block;color:var(--label2);font-size:.6875rem}
+.sheet{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);padding:1.375rem;width:100%;max-width:30rem;display:flex;flex-direction:column;gap:1rem;margin:0 auto}
+.sheet .top{display:flex;gap:.875rem;align-items:flex-start}
+.sheet h3{font-size:.9375rem;margin:0;font-weight:700;line-height:1.25}
+.sheet .by{color:var(--label2);font-size:.75rem;margin:.125rem 0 0}
+.sheet .sum{font-size:.75rem;margin:.125rem 0 0}
+.tile{width:1.625rem;height:1.625rem;border-radius:.4375rem;background:var(--accent-tile);color:var(--accent);display:grid;place-items:center;flex:none}
+.tile svg{width:.875rem;height:.875rem}
+.tile.big{width:2.5rem;height:2.5rem;border-radius:.625rem}
+.tile.big svg{width:1.25rem;height:1.25rem}
+.status{display:flex;align-items:baseline;gap:.3125rem;font-size:.6875rem;color:var(--label2);margin:.25rem 0 0}
+.dot{width:.375rem;height:.375rem;border-radius:50%;display:inline-block;flex:none;transform:translateY(-.0625rem)}
+.dot.green{background:var(--green)}
+.group b.gt{display:block;font-size:.75rem;margin-bottom:.3125rem}
+.group ul{list-style:none;margin:0;padding:0;font-size:.75rem}
+.group li{display:flex;gap:.5rem;align-items:baseline;margin:.1875rem 0}
+.group li::before{content:"";width:.25rem;height:.25rem;border-radius:50%;background:var(--label3);flex:none;transform:translateY(-.125rem)}
+.group .small{font-size:.6875rem;color:var(--label2);margin:.375rem 0 0}
+.btn{display:inline-block;font:inherit;font-size:.75rem;background:var(--btn);color:var(--btn-ink);border:1px solid var(--btn-edge);border-radius:.375rem;padding:.1875rem .625rem;white-space:nowrap;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.btn.small{font-size:.6875rem;padding:.125rem .5rem}
+.btn.default{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.btn.danger{color:var(--red)}
+.actions{display:flex;gap:.625rem;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.actions .push{flex:1 1 auto}
+.quiet{color:var(--label2);font-size:.75rem}
+.switch{width:1.625rem;height:.9375rem;border-radius:.5rem;background:var(--accent);position:relative;flex:none;display:inline-block}
+.switch::after{content:"";position:absolute;top:.0625rem;right:.0625rem;width:.8125rem;height:.8125rem;border-radius:50%;background:var(--knob);box-shadow:0 1px 1px rgba(0,0,0,.25)}
+.switch.off{background:var(--switch-off)} .switch.off::after{right:auto;left:.0625rem}
+.setrow{display:flex;align-items:center;gap:.75rem;font-size:.75rem;margin:.25rem 0}
+.setrow span.l{flex:1;min-width:0}
+.panelbox{border-top:1px solid var(--divider);padding-top:.75rem}
+.winrow{display:flex;align-items:center;gap:.5rem;font-size:.75rem;margin:.25rem 0}
+.winrow svg{width:.875rem;height:.875rem;color:var(--accent);flex:none}
+.winrow span{flex:1;min-width:0}
+
+/* blocks, standard size: Settings and windows */
+.b-blocks{display:flex;flex-direction:column;gap:.625rem;font-size:.8125rem}
+.b-h{font-size:.9375rem;font-weight:650;line-height:1.25}
+.b-t{font-size:.8125rem}
+.b-t.sec{color:var(--label2)} .b-t.cap{color:var(--label2);font-size:.6875rem} .b-t.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.6875rem;background:var(--card);border-radius:.375rem;padding:.375rem .5rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.b-row{display:flex;align-items:center;gap:.625rem;padding:.4375rem .5rem;border-radius:.625rem}
+.b-row.tap{background:var(--hover)}
+.b-row .ico{width:1.125rem;height:1.125rem;color:var(--accent);flex:none}
+.b-row .tx{flex:1;min-width:0}
+.b-row .tx b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b-row .tx i{display:block;font-style:normal;color:var(--label2);font-size:.6875rem}
+.b-row .tr{color:var(--label2);font-size:.6875rem;flex:none}
+.b-row .chev{width:.5625rem;height:.5625rem;color:var(--label3);flex:none}
+.b-list{background:var(--card);border-radius:.75rem;padding:.25rem}
+.b-list .b-row + .b-row{border-top:1px solid var(--divider);border-radius:0}
+.b-toggle{display:flex;align-items:center;gap:.75rem}
+.b-toggle > span:first-child{flex:1;min-width:0}
+.b-field{display:flex;flex-direction:column;gap:.25rem}
+.b-field label{font-size:.75rem;color:var(--label2)}
+.b-field .in{background:var(--field);border:1px solid var(--field-edge);border-radius:.3125rem;padding:.25rem .5rem;font-size:.75rem;color:var(--label);min-height:1.5rem}
+.b-field .in.ph{color:var(--label3)}
+.b-prog{display:flex;flex-direction:column;gap:.25rem;font-size:.6875rem;color:var(--label2)}
+.b-prog .track{height:.375rem;border-radius:.1875rem;background:var(--track);overflow:hidden}
+.b-prog .fill{height:100%;background:var(--accent);border-radius:.1875rem}
+.b-prog .track.ind .fill{width:30%;margin-left:20%}
+.b-img{border-radius:.5rem;background:linear-gradient(135deg,var(--accent-tile),var(--card));height:4.5rem;display:grid;place-items:center;color:var(--label2);font-size:.6875rem}
+.b-div{height:1px;background:var(--divider)}
+.b-link{color:var(--accent);font-size:.8125rem}
+.b-spacer{height:.5rem;background:repeating-linear-gradient(90deg,transparent 0 .25rem,var(--divider) .25rem .5rem);opacity:.6}
+.b-fallback{font-size:.75rem;color:var(--label2);font-style:italic}
+
+/* the style sheet table of blocks */
+.sheetgrid{display:grid;grid-template-columns:minmax(0,7.5rem) minmax(0,1fr);gap:.75rem 1rem;align-items:start;width:100%;max-width:40rem}
+.sheetgrid .nm{font-size:.8125rem;font-weight:600;color:var(--ink)}
+.sheetgrid .nm code{display:block;font-weight:400;color:var(--ink2);font-size:.6875rem}
+
+/* web panel */
+.web{background:#ffffff;color:#1d1d1f;min-height:12rem;padding:1rem;font-family:Georgia,serif;font-size:.8125rem}
+.web h4{margin:0 0 .5rem;font-size:1rem}
+.web .bars{display:flex;align-items:flex-end;gap:.375rem;height:5rem;margin-top:.75rem}
+.web .bars i{flex:1;background:#7a5af8;border-radius:.1875rem .1875rem 0 0;display:block}
+.notshown{min-height:12rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.625rem;padding:1.5rem;text-align:center;color:var(--label2);font-size:.8125rem;background:var(--win)}
+.notshown svg{width:1.75rem;height:1.75rem;color:var(--label3)}
+@media (max-width:30rem){.stage{padding:.75rem}.sheet{padding:1rem}.island{padding-left:.5rem;padding-right:.5rem;width:calc(100% - 1rem)}.island .grid{grid-template-columns:repeat(3,1fr)}.sheetgrid{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-box" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 6.5 10 3l7 3.5v7L10 17l-7-3.5v-7Zm0 0L10 10l7-3.5M10 10v7"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3.5 1.5 7 5 3.5 8.5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6.5 1.5 3 5l3.5 3.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 20 20"><circle cx="5" cy="10" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/><circle cx="15" cy="10" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m5 10.5 3.2 3L15 6.5"/></symbol>
+  <symbol id="i-cross" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="m6 6 8 8m0-8-8 8"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M10 6.5V10l2.5 1.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3Zm8 0h6v6h-6V3ZM3 11h6v6H3v-6Zm8 0h6v6h-6v-6Z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 20 20"><path fill="currentColor" d="M11 2 4 11h5l-1 7 7-9h-5l1-7Z"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 20 20"><rect x="5" y="4" width="10" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="7.5" y="2.5" width="5" height="3" rx="1" fill="currentColor"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.5" fill="currentColor"/><path stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M10 2v2m0 12v2M2 10h2m12 0h2M4.3 4.3l1.4 1.4m8.6 8.6 1.4 1.4m0-11.4-1.4 1.4m-8.6 8.6-1.4 1.4"/></symbol>
+  <symbol id="i-cup" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 7h10v5a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V7Zm10 1.5h1.5a2 2 0 0 1 0 4H14"/></symbol>
+  <symbol id="i-window" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path stroke="currentColor" stroke-width="1.6" d="M2.5 7.5h15"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 16.5h14M5.5 13V9m4.5 4V5.5m4.5 7.5V8"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2.2c.5 0 1 .27 1.25.72l6.9 12.2c.52.93-.14 2.08-1.25 2.08H3.1c-1.1 0-1.77-1.15-1.25-2.08l6.9-12.2c.25-.45.74-.72 1.25-.72Zm0 4.3c-.5 0-.9.4-.87.9l.27 4.5a.6.6 0 0 0 1.2 0l.27-4.5c.03-.5-.37-.9-.87-.9Zm0 7.3a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="wrap">
+    <div>
+      <h1>Tools for everyone, stage E: mock-ups</h1>
+      <p>Vitruvian for macOS. The GitHub feature becomes the GitHub tool from the catalog: pictures of what changes, before any code.</p>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+      <div class="size" role="group" aria-label="Text size">
+        <button type="button" id="smaller" aria-label="Smaller text">A−</button>
+        <output id="scale" aria-live="polite">100%</output>
+        <button type="button" id="larger" aria-label="Larger text">A+</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="lead" style="margin-top:1.5rem">The app's GitHub feature, fifteen files and an island page of its own, is rewritten as a tool of protocol 2 in <code>apps/desktop/vitruvian-tool-github</code>, listed in the catalog as "GitHub" by VitruvianSoftware. The app draws its pages: a page in the island's Tools area and an account panel in the tool's detail. In the release that offers it (3.46) the feature says so at the top of its page and hands the tool its sign-in and settings when the tool is installed; the release after (3.47) removes the feature. Every word inside a panel is the tool's own; the app's one new text is in the table at the end, word for word.</p>
+
+  <div class="flow" aria-label="The hand-off">
+    <div class="box go"><b>3.46: the feature says it is moving</b>Its page starts with the notice and Browse Tools…</div><span class="arrow">→</span>
+    <div class="box go"><b>The person installs the GitHub tool</b>From the catalog, or Add a Tool… with a folder.</div><span class="arrow">→</span>
+    <div class="box ok"><b>Handed over, once</b>Token, watchlist, intervals, mouse, client ID, through the tool's storage. The feature's switch goes off; its page, row and island page hide.</div><span class="arrow">→</span>
+    <div class="box wait"><b>The tool's first run</b>Moves the token into its own file and clears the handed copy.</div>
+  </div>
+  <div class="flow">
+    <div class="box ok"><b>3.47: the feature is gone</b>4,300 lines out. The hand-off stays one release more for anyone who skipped 3.46.</div>
+    <div class="box stop"><b>What does not move</b>Signing in through the browser (the app's URL scheme); the feature's own island page and its h key: the tool's page is a tile on the Tools page.</div>
+    <div class="box wait"><b>Removing the tool</b>In 3.46 the feature comes back, switched off; in 3.47 there is nothing to come back to.</div>
+  </div>
+  <p class="key">Colour is status: blue in progress, amber waiting for the person, green done, red what cannot happen.</p>
+
+  <h2>a. The island's Tools page, with the tool's tile <small>the island is black in both appearances</small></h2>
+  <div class="stage"><div class="desk darkdesk" style="max-width:38rem">
+    <div class="menubar"><b>Finder</b><span>File</span><span>Edit</span><span class="grow"></span><span>Mon 9:41</span></div>
+    <div class="island">
+      <div class="hdr"><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="t">Tools</span><span class="ib"><svg><use href="#i-more"/></svg></span></div>
+      <div class="grid">
+        <div class="qt"><i><svg><use href="#i-cup"/></svg></i><span>Keep Awake</span></div>
+        <div class="qt"><i><svg><use href="#i-clip"/></svg></i><span>Clipboard</span></div>
+        <div class="qt"><i><svg><use href="#i-sun"/></svg></i><span>Brightness</span></div>
+        <div class="qt"><i><svg><use href="#i-bolt"/></svg></i><span>GitHub</span><b class="badge">2</b></div>
+      </div>
+    </div>
+  </div></div>
+  <div class="note">
+    <p>The tool's island panel, <code>status</code>, titled "GitHub" with the icon <code>arrow.triangle.branch</code>, is a tile after the quick tools, as stage D placed every tool's page. The badge counts what is red: pull requests whose checks failed and watched repositories whose default branch is red, set with <code>ui/badge</code> after each poll. Where the feature had a page of its own in the island's list, with the key <code>h</code>, the tool has this tile; the page's place in a saved layout is read and dropped.</p>
+  </div>
+
+  <h2>b. The island page: the watched repositories and the person's pull requests</h2>
+  <p class="lead">A row per watched repository with the colour of its default branch and what passed, failed and runs; then the pull requests the person wrote or was asked to review, newest first, each with its checks' colour and its review standing; then Refresh, and Re-run failed checks when a workflow run failed.</p>
+  <div class="stage">
+    <div class="fig" style="flex:1 1 18rem">
+      <div class="desk lightdesk">
+        <div class="menubar"><b>Finder</b><span>File</span><span>Edit</span><span class="grow"></span><span>Mon 9:41</span></div>
+        <div class="island">
+          <div class="hdr"><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="t">Tools</span><span class="ib"><svg><use href="#i-more"/></svg></span></div>
+          <div class="pagehdr"><span class="backc"><svg><use href="#i-back"/></svg></span><b>GitHub</b></div>
+          <div class="ib-blocks">
+            <div class="ib-list">
+              <div class="ib-row"><svg class="ico" style="color:#30d158"><use href="#i-check"/></svg><span class="tx"><b>VitruvianSoftware/vitruvian-core</b><i>14 passed, 0 failed, 0 running</i></span><svg class="chev"><use href="#i-chev"/></svg></div>
+              <div class="ib-row"><svg class="ico" style="color:#ff6961"><use href="#i-cross"/></svg><span class="tx"><b>acme/web</b><i>3 passed, 1 failed, 2 running</i></span><svg class="chev"><use href="#i-chev"/></svg></div>
+            </div>
+            <div class="ib-h">Pull requests</div>
+            <div class="ib-list">
+              <div class="ib-row"><svg class="ico" style="color:#ff6961"><use href="#i-cross"/></svg><span class="tx"><b>#3181 feat(catalog): the GitHub tool</b><i>VitruvianSoftware/vitruvian-core · @james</i></span><span class="tr">Review pending</span></div>
+              <div class="ib-row"><svg class="ico"><use href="#i-clock"/></svg><span class="tx"><b>#412 Fix the deploy gate</b><i>acme/web · @ana</i></span><span class="tr">Approved</span></div>
+              <div class="ib-row"><svg class="ico" style="color:#30d158"><use href="#i-check"/></svg><span class="tx"><b>#409 Docs</b><i>acme/web · @ana</i></span><span class="tr">Draft</span></div>
+            </div>
+            <div class="ib-btns"><span class="ib-btn">Refresh</span><span class="ib-btn" style="color:#ff6961">Re-run failed checks</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">Light desktop</p>
+    </div>
+    <div class="fig" style="flex:1 1 18rem">
+      <div class="desk darkdesk">
+        <div class="menubar"><b>Finder</b><span>File</span><span>Edit</span><span class="grow"></span><span>Mon 9:41</span></div>
+        <div class="island">
+          <div class="hdr"><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="t">Tools</span><span class="ib"><svg><use href="#i-more"/></svg></span></div>
+          <div class="pagehdr"><span class="backc"><svg><use href="#i-back"/></svg></span><b>GitHub</b></div>
+          <div class="ib-blocks">
+            <div class="ib-t">Not signed in. Sign in under Settings, Features, Tools from outside, GitHub.</div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">Dark desktop, signed out</p>
+    </div>
+  </div>
+  <div class="note">
+    <p>Five kinds of block: <code>row</code> (one per repository, tappable: it opens the repository's Actions page), <code>heading</code>, <code>list</code> (the pull requests, at most 100, a tap opens the pull request), <code>button</code> twice, and <code>text</code> when signed out. The icons are the colour's: a check, a clock, a cross, a dashed circle. The review standing on the right is the tool's word in fifteen languages; the title and the subtitle are GitHub's own words and the repository's name, plain.</p>
+    <p>Choice: Re-run failed checks re-runs the failed jobs of the default branch's workflow runs only, what the feature's Rerun did; a pull request's checks are re-run from GitHub. A failed check run that is no workflow run cannot be re-run, so the button is not drawn for it.</p>
+    <p class="alt">Alternative: a page per repository behind each row, as the feature had. One page keeps the island short and the person's pull requests on it; the repository's row opens GitHub for the rest.</p>
+  </div>
+
+  <h2>c. The tool's detail in Settings: the settings the app draws, then the account panel</h2>
+  <div class="stage"><div class="app"><div class="sheet">
+    <div class="top">
+      <span class="tile big"><svg><use href="#i-bolt"/></svg></span>
+      <div>
+        <h3>GitHub</h3>
+        <p class="by">VitruvianSoftware · 1.0.0</p>
+        <p class="sum">Shows whether main is green on the repositories you watch and where your pull requests stand.</p>
+        <p class="status"><span class="dot green"></span>Running</p>
+      </div>
+    </div>
+    <div class="group">
+      <b class="gt">Settings</b>
+      <div class="setrow"><span class="l">Show in the Dynamic Island</span><span class="switch" role="img" aria-label="On"></span></div>
+      <div class="b-blocks" style="margin-top:.5rem">
+        <div class="b-field"><label>Watched repositories</label><div class="in">VitruvianSoftware/vitruvian-core, acme/web</div></div>
+        <div class="b-field"><label>Poll every (seconds)</label><div class="in">30</div></div>
+        <div class="b-field"><label>Poll every while checks run (seconds)</label><div class="in">10</div></div>
+        <div class="b-toggle"><span>Show status on the GravaStar mouse</span><span class="switch" role="img" aria-label="On"></span></div>
+        <div class="b-field"><label>Mouse command</label><div class="in ph">Leave empty to use the copy inside Vitruvian…</div></div>
+        <div class="b-field"><label>Mouse when green</label><div class="in">green</div></div>
+        <div class="b-field"><label>Mouse when amber</label><div class="in">breathe orange</div></div>
+        <div class="b-field"><label>Mouse when red</label><div class="in">breathe red</div></div>
+        <div class="b-field"><label>Mouse while waiting for approval</label><div class="in">breathe blue 9</div></div>
+        <div class="b-field"><label>Mouse when nothing is watched (restore or off)</label><div class="in">restore</div></div>
+        <div class="b-field"><label>Client ID</label><div class="in ph"></div></div>
+      </div>
+      <div class="panelbox b-blocks">
+        <div class="b-h">Account</div>
+        <div class="b-t sec">Not connected</div>
+        <span class="btn default" style="align-self:flex-start">Use the GitHub CLI login (@james)</span>
+        <div class="b-field"><label>Token</label><div class="in ph">ghp_… or gho_…, then Return</div></div>
+        <span class="btn" style="align-self:flex-start">Use a code instead</span>
+        <div class="b-t cap">Signing in through the browser does not move here: use the GitHub CLI, a token or a code.</div>
+        <div class="b-div"></div>
+        <div class="b-t cap">Mouse command: /Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse</div>
+      </div>
+    </div>
+    <div class="group">
+      <b class="gt">Commands</b>
+      <ul><li>Refresh GitHub</li><li>Open my pull requests</li></ul>
+    </div>
+    <div class="group"><b class="gt">What it says it uses</b><ul><li>Show messages and play the alert sound</li><li>Open links</li><li>Keep its own settings</li></ul><p class="small">This list comes from the tool. It is not a limit on what the tool can do.</p></div>
+    <div class="actions"><span class="btn danger">Remove</span><span class="btn">Update from Folder…</span><span class="push"></span><span class="btn default">Close</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>Eleven of the tool's twelve preferences have a title, so the app draws them as it draws any tool's settings: a text field for a string, a switch for a boolean, a number field for an integer, in the manifest's order, each in the person's language. The twelfth, the token the app hands over, has no title and is never shown. Under them the tool's <code>settings</code> panel is the account alone: the GitHub CLI's login when it has one, a secret field for a token, a code. The caption says what does not move.</p>
+    <p>Choice: each mouse light is one line, <code>green</code>, <code>breathe orange</code> or <code>breathe blue 9</code>, the words the mouse command itself takes, instead of the feature's ten pickers. The app's hand-off writes them in that shape.</p>
+    <p class="alt">Alternative: the mouse settings inside the tool's own panel. Fields the app draws are the same controls, and they need no page from the tool; a panel block has no picker, so the feature's pickers could not have been kept either way.</p>
+  </div>
+
+  <h2>d. The account panel, signed in and with a code</h2>
+  <div class="stage">
+    <div class="fig app" style="flex:1 1 18rem;max-width:24rem"><div class="sheet"><div class="panelbox b-blocks" style="border-top:0;padding-top:0">
+      <div class="b-h">Account</div>
+      <div class="b-t">Connected as @james</div>
+      <span class="btn danger" style="align-self:flex-start">Disconnect</span>
+      <div class="b-t cap">Signing in through the browser does not move here: use the GitHub CLI, a token or a code.</div>
+      <div class="b-div"></div>
+      <div class="b-t cap">gravastar-mouse isn’t installed, so the mouse is left as it is. Install it with brew install vitruviansoftware/tap/gravastar-mouse, or set its path.</div>
+    </div></div><p class="caption">Signed in; no mouse command on this Mac</p></div>
+    <div class="fig app" style="flex:1 1 18rem;max-width:24rem"><div class="sheet"><div class="panelbox b-blocks" style="border-top:0;padding-top:0">
+      <div class="b-h">Account</div>
+      <div class="b-t">Enter this code on GitHub to finish connecting.</div>
+      <div class="b-t mono">ABCD-1234</div>
+      <div class="b-link">Open github.com/login/device</div>
+      <span class="btn" style="align-self:flex-start">Cancel</span>
+      <div class="b-t cap">Signing in through the browser does not move here: use the GitHub CLI, a token or a code.</div>
+    </div></div><p class="caption">A code: the tool polls GitHub every five seconds until the person has entered it</p></div>
+  </div>
+  <div class="note">
+    <p>The panel is drawn again by the tool (<code>ui/render</code>) when the sign-in lands or fails, so the code gives way to "Connected as" without the person doing anything. A code needs the GitHub App's client ID in the setting above; without one the panel says so with the feature's own sentence.</p>
+  </div>
+
+  <h2>e. The feature's page in 3.46, before the tool is installed</h2>
+  <div class="stage"><div class="app" style="max-width:34rem"><div class="sheet">
+    <div class="group" style="border:1px solid var(--divider);border-radius:.75rem;padding:.75rem">
+      <p style="margin:0 0 .625rem;font-size:.8125rem">GitHub is becoming a tool from the catalog. Install it under Features, Tools from outside: your sign-in, watched repositories and mouse settings move with it, this page goes, and its island page becomes a tile on the island’s Tools page. Signing in through the browser does not move: the tool signs in with the GitHub CLI, a token or a code.</p>
+      <span class="btn">Browse Tools…</span>
+    </div>
+    <div class="group" style="border:1px solid var(--divider);border-radius:.75rem;padding:.75rem;margin-top:.75rem">
+      <div class="setrow"><span class="l"><b>GitHub Status &amp; Actions</b></span><span class="switch" role="img" aria-label="On"></span></div>
+      <p class="small" style="margin:.25rem 0 0">Monitor CI workflows, check runs, and pull requests directly in the Dynamic Island and on your GravaStar mouse.</p>
+    </div>
+  </div></div></div>
+  <div class="note">
+    <p>The one new text of the app, at the top of the feature's page, with the catalog's existing button. Browse Tools… takes the person to the Features page, where Tools from outside is. Once the tool is installed this page, the feature's row in the hub and its island page are hidden, and the switch is off: removing the tool brings them back, switched off.</p>
+    <p class="alt">Alternative: a banner in the island page too. The island is the one place a tool could nag, and the feature's page is where a person goes on purpose.</p>
+  </div>
+
+  <h2>f. The catalog's sheet, with the tool listed</h2>
+  <div class="stage"><div class="app" style="max-width:34rem"><div class="sheet">
+    <h3 style="margin-bottom:.5rem">Browse Tools</h3>
+    <div class="b-list">
+      <div class="b-row"><svg class="ico"><use href="#i-box"/></svg><span class="tx"><b>Reference tool</b><i>VitruvianSoftware · 0.1.0 · Says hello. The smallest tool that speaks protocol 1.</i></span><span class="btn small">Install</span></div>
+      <div class="b-row"><svg class="ico"><use href="#i-bolt"/></svg><span class="tx"><b>GitHub</b><i>VitruvianSoftware · 1.0.0 · Shows whether main is green on the repositories you watch and where your pull requests stand.</i></span><span class="btn small default">Install</span></div>
+    </div>
+    <div class="actions"><span class="push"></span><span class="btn default">Close</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>Stage C's sheet, unchanged: the entry's name, publisher, version and summary come from the signed list, which now says <code>"protocol": "2"</code> for this tool. An app before 3.46 does not show the entry (its <code>minimumAppVersion</code>), and an app that speaks protocol 1 only would not either. Install fetches the zip the entry pins, checks its size and SHA-256, and shows the agreement sheet with its line about the catalog; then the hand-off runs, before the tool's program starts.</p>
+  </div>
+
+  <h2>The strings</h2>
+  <div class="scroll"><table>
+    <tr><th>Whose</th><th>Where</th><th>English</th></tr>
+    <tr><td>The app's, new (`movesToTool`, fifteen languages)</td><td>The top of the feature's page, 3.46 only</td><td>GitHub is becoming a tool from the catalog. Install it under Features, Tools from outside: your sign-in, watched repositories and mouse settings move with it, this page goes, and its island page becomes a tile on the island’s Tools page. Signing in through the browser does not move: the tool signs in with the GitHub CLI, a token or a code.</td></tr>
+    <tr><td>The app's, as it is</td><td>The button under it</td><td>Browse Tools…</td></tr>
+    <tr><td>The tool's (`Words.swift`), carried from the feature with their fourteen translations</td><td>The account panel</td><td>Not connected · Connecting… · Connected as @%@ · Use a code instead · Enter this code on GitHub to finish connecting. · Open github.com/login/device · Disconnect · Cancel · Add the GitHub App’s client ID under Advanced to connect. · GitHub access wasn’t allowed. · The code expired. Ask for a new one. · Couldn’t reach GitHub. Check your connection and try again. · GitHub refused the request (HTTP %@).</td></tr>
+    <tr><td>The tool's, new, written with the English</td><td>The island page and the account panel</td><td>Pull requests · No pull requests need you. · Not signed in. Sign in under Settings, Features, Tools from outside, GitHub. · Refresh · Re-run failed checks · %@ passed, %@ failed, %@ running · No checks yet · Draft · Approved · Changes requested · Review pending · Waiting for approval · Account · Use the GitHub CLI login (@%@) · Token · ghp_… or gho_…, then Return · GitHub no longer accepts the saved token. Sign in again. · Signing in through the browser does not move here: use the GitHub CLI, a token or a code. · Mouse command: %@ · gravastar-mouse isn’t installed… · GitHub refreshed · Re-running %@ failed runs</td></tr>
+    <tr><td>The tool's manifest, fifteen languages</td><td>The detail: the preference titles and the command titles</td><td>Watched repositories · Poll every (seconds) · Poll every while checks run (seconds) · Show status on the GravaStar mouse · Mouse command · Mouse when green · Mouse when amber · Mouse when red · Mouse while waiting for approval · Mouse when nothing is watched (restore or off) · Client ID · Refresh GitHub · Open my pull requests</td></tr>
+  </table></div>
+
+  <h2>Where the look comes from <small>the app's own tokens and components</small></h2>
+  <div class="scroll"><table>
+    <tr><th>In the mock-ups</th><th>In the app</th></tr>
+    <tr><td>The island page and the tile</td><td>Stage D's renderer at the island's sizes and the Tools page's tile; the badge in <code>Color.red</code> where a quick tool's dot sits</td></tr>
+    <tr><td>The detail's settings the app draws</td><td>Stage C's <code>ExternalToolDetailView</code>: a tool's titled preferences as <code>TextField</code>, <code>Toggle(.switch)</code> and a number field, unchanged</td></tr>
+    <tr><td>The account panel</td><td>Stage D's renderer at the standard size: <code>.headline</code>, <code>.callout</code>, <code>SecureField</code>, the system button, <code>.buttonStyle(.link)</code>, <code>Divider</code></td></tr>
+    <tr><td>The notice on the feature's page</td><td>A <code>SettingsCard</code> with <code>.callout</code> text and the system button, as the page's other cards</td></tr>
+    <tr><td>The catalog sheet</td><td>Stage C's <code>ExternalToolCatalogueSheet</code>, unchanged</td></tr>
+    <tr><td>Status colours in the flow above</td><td>The page's own legend, as stage C's and D's</td></tr>
+  </table></div>
+  <p class="key">The mock-ups use slightly darker secondary text than macOS draws, so this page meets WCAG AA at every size. The app itself uses the system's own label colours.</p>
+</main>
+
+<script>
+(function(){
+  var root=document.documentElement, KEY_T="cowork-artifact-theme", KEY_S="cowork-artifact-fontscale";
+  function read(key){try{return window.localStorage.getItem(key);}catch(e){return null;}}
+  function write(key,value){try{window.localStorage.setItem(key,value);}catch(e){}}
+  function setTheme(choice,save){
+    if(choice==="light"||choice==="dark"){root.setAttribute("data-theme",choice);}else{choice="system";root.removeAttribute("data-theme");}
+    var buttons=document.querySelectorAll("[data-theme-choice]");
+    for(var i=0;i<buttons.length;i++){buttons[i].setAttribute("aria-pressed",String(buttons[i].getAttribute("data-theme-choice")===choice));}
+    if(save){write(KEY_T,choice);}
+  }
+  var scale=1;
+  function setScale(value,save){
+    scale=Math.min(1.4,Math.max(0.8,Math.round(value*10)/10));
+    root.style.setProperty("--s",String(scale));
+    document.getElementById("scale").textContent=Math.round(scale*100)+"%";
+    if(save){write(KEY_S,String(scale));}
+  }
+  setTheme(read(KEY_T)||"system",false);
+  var saved=parseFloat(read(KEY_S));
+  setScale(isNaN(saved)?1:saved,false);
+  var choices=document.querySelectorAll("[data-theme-choice]");
+  for(var i=0;i<choices.length;i++){choices[i].addEventListener("click",function(){setTheme(this.getAttribute("data-theme-choice"),true);});}
+  document.getElementById("smaller").addEventListener("click",function(){setScale(scale-0.1,true);});
+  document.getElementById("larger").addEventListener("click",function(){setScale(scale+0.1,true);});
+})();
+</script>
+</body>
+</html>
