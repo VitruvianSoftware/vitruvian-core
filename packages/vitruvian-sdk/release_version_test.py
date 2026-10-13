@@ -57,6 +57,7 @@ KIT_PLACES = [
         "samples/hello-panel-typescript/package.json",
         "$.dependencies['@vitruviansoftware/tool-kit']",
     ),
+    ("generic", "samples/hello-panel-python/requirements.txt", None),
     ("generic", "go/toolkit/version.go", None),
     ("toml", "kits/rust/Cargo.toml", "$.package.version"),
     ("generic", "samples/hello-go/go.mod", None),

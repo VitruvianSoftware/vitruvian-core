@@ -41,6 +41,10 @@
         },
         {
           "type": "generic",
+          "path": "samples/hello-panel-python/requirements.txt"
+        },
+        {
+          "type": "generic",
           "path": "go/toolkit/version.go"
         },
         {

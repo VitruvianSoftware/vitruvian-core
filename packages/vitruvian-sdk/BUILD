@@ -532,6 +532,16 @@ copy_to_directory(
 )
 
 copy_to_directory(
+    name = "hello-panel-python-folder",
+    srcs = glob(["samples/hello-panel-python/**"]) + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
+    out = "built/hello-panel-python",
+    replace_prefixes = {
+        "samples/hello-panel-python/": "",
+        "kits/python/vitruvian_tool_kit/": "lib/vitruvian_tool_kit/",
+    },
+)
+
+copy_to_directory(
     name = "hello-python-kit-folder",
     srcs = glob(["samples/hello-python-kit/**"]) + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
     out = "built/hello-python-kit",
@@ -556,8 +566,10 @@ py_test(
         "$(rootpath :hello-typescript-folder)/vitruvian-tool.json",
         "$(rootpath :hello-python-kit-folder)/vitruvian-tool.json",
         "$(rootpath :hello-panel-typescript-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-panel-python-folder)/vitruvian-tool.json",
     ],
     data = [
+        ":hello-panel-python-folder",
         ":hello-panel-typescript-folder",
         ":hello-python-kit-folder",
         ":hello-typescript-folder",
@@ -743,6 +755,7 @@ py_test(
         "kits/python/pyproject.toml",
         "release-please-config.json",
         "samples/hello-go/go.mod",
+        "samples/hello-panel-python/requirements.txt",
         "samples/hello-panel-typescript/package.json",
         "samples/hello-python-kit/requirements.txt",
         "samples/hello-rust/Cargo.toml",

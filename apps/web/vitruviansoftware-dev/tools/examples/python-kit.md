@@ -50,4 +50,27 @@ tool.run()
 
 Add the folder in Vitruvian, `lib/` and all: Settings, Features, Tools from
 outside, Add a Tool.
+
+## Drawing
+
+[`samples/hello-panel-python`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-python) is a tool of protocol 2,
+written with the same kit: a counter the app draws in the island from blocks
+the tool sends. The guide's "Drawing" says how. Its page:
+
+```python
+    def page(self):
+        """The island page: what it says now."""
+        return tree(
+            heading("Counter"),
+            text(f"Pressed {self.count} times"),
+            button("add", f"Add {self.step}", style="prominent"),
+            field(
+                "name",
+                title="Your name",
+                value=self.name,
+                placeholder="Type it and press Return",
+            ),
+            text(f"Hello, {self.name}", style="secondary") if self.name else None,
+        )
+```
 {% endraw %}

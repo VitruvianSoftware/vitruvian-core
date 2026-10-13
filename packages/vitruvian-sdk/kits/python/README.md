@@ -26,6 +26,12 @@ tool.run()
   `Refusal`. Raise `CommandRefused("why")` to refuse a command yourself.
 - **Synchronous, on one thread.** A call to the app waits for its answer, ten
   seconds at most. A handler must not be `async`.
+- **A tool can draw.** With `"protocol": "2"` and `panels` in its manifest,
+  `tool.panel("counter", on_open=..., on_event=...)` says what a panel shows
+  and what each thing the person does gives; a page is
+  `tree(heading("Counter"), button("add", "Add one"))`, one function a kind
+  of block. The handle sends a page unprompted with `render` and sets the
+  tool's badge with `badge`.
 - **Never `print`.** Standard output is the link to the app. Write to
   standard error, or call `app.log(message=...)`.
 

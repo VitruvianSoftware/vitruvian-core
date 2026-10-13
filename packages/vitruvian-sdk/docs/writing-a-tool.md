@@ -866,6 +866,56 @@ const island = tool.panel("counter", {
 A web panel's `onCall` is `panel.onCall = (app, method, params) => ...`; throw
 a `Refusal` to refuse a call.
 
+### In Python, with the kit
+
+[`../samples/hello-panel-python`](../samples/hello-panel-python) is the same
+counter again. A page is `tree` of its blocks, one function for each kind,
+and a block that is `None` is left out; `list` is `list_`, as Python has the
+word:
+
+```python file=samples/hello-panel-python/bin/tool.py
+    def page(self):
+        """The island page: what it says now."""
+        return tree(
+            heading("Counter"),
+            text(f"Pressed {self.count} times"),
+            button("add", f"Add {self.step}", style="prominent"),
+            field(
+                "name",
+                title="Your name",
+                value=self.name,
+                placeholder="Type it and press Return",
+            ),
+            text(f"Hello, {self.name}", style="secondary") if self.name else None,
+        )
+```
+
+`tool.panel` takes the two handlers by name. An answer is one of
+`PanelAnswer`'s four: `page(tree)`, `keep()`, `open(panel)` with one of your
+window panels, or `reply(value)` for a web page's call; `event.text` and
+`event.is_on` are what a field and a switch carry, and `event.row` the row
+of a list that was tapped:
+
+```python file=samples/hello-panel-python/bin/tool.py
+def island_event(app, panel, event):
+    if event.block == "add":
+        counter.count += counter.step
+        panel.badge(count=counter.count)
+    elif event.block == "name":
+        counter.name = event.text if event.text is not None else counter.name
+    else:
+        return PanelAnswer.keep()
+    return PanelAnswer.page(counter.page())
+
+
+island = tool.panel(
+    "counter", on_open=lambda app, panel: counter.page(), on_event=island_event
+)
+```
+
+A web panel's `on_call` is `panel.on_call = lambda app, method, params: ...`;
+raise a `Refusal` to refuse a call.
+
 ### A web page
 
 A `web` panel shows `entry`, a page in your folder. It may load what else is
