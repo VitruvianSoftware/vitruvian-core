@@ -36,7 +36,10 @@ package struct ToolPanelView: View {
                 act: { block, event, value in host.act(key, block: block, event: event, value: value) },
                 follow: { host.follow(key, $0) },
                 focus: focus)
-        case .web?, .notShown?:
+        case .web(let page, let folder)?:
+            ToolWebPanelView(key: key, page: page, folder: folder)
+                .frame(minHeight: size == .island ? 160 : 240)
+        case .notShown?:
             ToolPanelNotShown(size: size)
         case nil:
             EmptyView()

@@ -380,6 +380,15 @@ package final class ToolPanelHost: ObservableObject {
         parts.log(key.tool, "the page of the panel \(key.panel) could not be shown: \(why)")
     }
 
+    /// A web panel's page tried to go where it may not: outside its tool's
+    /// folder, to the network, or to a new window. It was not let; the page
+    /// stays, and the tool's log says where it tried to go.
+    package func refused(_ key: Key, _ url: URL?) {
+        guard shown[key] != nil else { return }
+        parts.log(key.tool, "the page of the panel \(key.panel) tried to go to \(url?.absoluteString ?? "a new window"), "
+            + "outside the tool's folder, and was not let")
+    }
+
     /// A call a web panel's page made with `window.vitruvian.call`. A
     /// request a tool may make of the app is passed to the tool's program
     /// only when its manifest lists what it needs in `uses`; a method of
