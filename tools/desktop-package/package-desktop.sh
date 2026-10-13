@@ -91,6 +91,56 @@ expected_artifact_names() {
   printf '%s-%s.dmg\n' "$app_name" "$version"
 }
 
+# What a release must hold once packaging is done: each artifact and its
+# checksum sidecar, one name per line. The flags are the driver's own
+# (true|false); every further argument is an extra artifact the caller
+# promises (--require-asset), such as HomeSpeaker's tool zip.
+required_release_assets() {
+  local app_name="${1:?app name required}"
+  local version="${2:?version required}"
+  local skip_dmg="${3:-false}"
+  local skip_thinning="${4:-false}"
+  shift 2
+  if [[ $# -gt 0 ]]; then shift; fi
+  if [[ $# -gt 0 ]]; then shift; fi
+
+  local base="${app_name}-${version}"
+  local name
+  for name in "${base}-universal.zip" "${base}-macOS.zip"; do
+    printf '%s\n%s.sha256\n' "$name" "$name"
+  done
+  if [[ "$skip_dmg" != "true" ]]; then
+    for name in "${base}-universal.dmg" "${base}.dmg"; do
+      printf '%s\n%s.sha256\n' "$name" "$name"
+    done
+    if [[ "$skip_thinning" != "true" ]]; then
+      for name in "${base}-arm64.dmg" "${base}-x86_64.dmg"; do
+        printf '%s\n%s.sha256\n' "$name" "$name"
+      done
+    fi
+  fi
+  # "$@" with no arguments is safe under `set -u` on every bash; an empty
+  # array is not (see the note at sign_bundle).
+  for name in "$@"; do
+    printf '%s\n%s.sha256\n' "$name" "$name"
+  done
+}
+
+# Prints each name of the first list (one per line) that the second lacks.
+missing_assets() {
+  local required="${1:-}"
+  local present="${2:-}"
+  local name
+  while IFS= read -r name; do
+    if [[ -z "$name" ]]; then
+      continue
+    fi
+    if ! grep -Fx -- "$name" <<<"$present" >/dev/null; then
+      printf '%s\n' "$name"
+    fi
+  done <<<"$required"
+}
+
 # If sourced by unit tests, stop here and expose pure functions
 if [[ "${PACKAGE_DESKTOP_LIB_ONLY:-}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
@@ -176,6 +226,10 @@ sign_bundle() {
     fi
   done < <(find_macho_binaries "$bundle_path")
 
+  # macOS ships bash 3.2, where expanding an EMPTY array under `set -u` is an
+  # "unbound variable" error that ends the script. Every array here that can be
+  # empty is expanded as ${a[@]+"${a[@]}"}: nothing when empty, each element
+  # quoted otherwise. package-desktop_test.sh fails on a bare "${a[@]}".
   local ent_arg=()
   if [[ -n "$entitlements" && -f "$entitlements" ]]; then
     ent_arg=(--entitlements "$entitlements")
@@ -183,10 +237,10 @@ sign_bundle() {
 
   if [[ -n "$identity" ]]; then
     echo "==> Signing ${bundle_path} with Developer ID: ${identity}"
-    codesign --force --options runtime --timestamp "${ent_arg[@]}" --sign "$identity" "$bundle_path"
+    codesign --force --options runtime --timestamp ${ent_arg[@]+"${ent_arg[@]}"} --sign "$identity" "$bundle_path"
   else
     echo "==> No Developer ID found; signing ad-hoc: ${bundle_path}"
-    codesign --force "${ent_arg[@]}" --sign - "$bundle_path"
+    codesign --force ${ent_arg[@]+"${ent_arg[@]}"} --sign - "$bundle_path"
   fi
 
   codesign --verify --deep --strict "$bundle_path"
@@ -299,6 +353,51 @@ create_universal_zip() {
   fi
 }
 
+# The last word on a packaging run: are the files really there? In a dry run,
+# or with no tag, "there" is the dist directory; otherwise it is the GitHub
+# Release, read back from GitHub after the upload. An empty file counts as
+# missing. A run that made or uploaded nothing fails here by name, instead of
+# looking the same as a healthy one.
+verify_release_assets() {
+  local where="${1:?local|release required}"
+  local required="${2:-}"
+  local present="" missing="" name
+
+  if [[ "$where" == "release" ]]; then
+    echo "==> Checking GitHub Release ${TAG} (${REPO}) holds every expected asset..."
+    # Read back up to three times: an asset can take a moment to be listed.
+    local attempt
+    for attempt in 1 2 3; do
+      present="$(gh release view "$TAG" --repo "$REPO" --json assets \
+        --jq '.assets[] | select(.size > 0) | .name')"
+      if [[ -z "$(missing_assets "$required" "$present")" || "$attempt" -eq 3 ]]; then
+        break
+      fi
+      sleep "${VERIFY_RETRY_SECONDS:-5}"
+    done
+  else
+    echo "==> Checking ${DIST_DIR} holds every expected artifact..."
+    while IFS= read -r name; do
+      if [[ -n "$name" && -s "${DIST_DIR}/${name}" ]]; then
+        present="${present}${name}"$'\n'
+      fi
+    done <<<"$required"
+  fi
+
+  missing="$(missing_assets "$required" "$present")"
+  if [[ -n "$missing" ]]; then
+    echo "✗ ${APP_NAME} ${VERSION}: expected artifacts are missing or empty (${where}):" >&2
+    while IFS= read -r name; do
+      echo "    - ${name}" >&2
+    done <<<"$missing"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "::error title=${APP_NAME} ${VERSION} release is incomplete::missing (${where}): $(tr '\n' ' ' <<<"$missing")"
+    fi
+    return 1
+  fi
+  echo "    ✓ all $(grep -c . <<<"$required") expected artifacts present (${where})"
+}
+
 # ------------------------------------------------------------------------------
 # CLI Driver
 # ------------------------------------------------------------------------------
@@ -334,6 +433,11 @@ Options:
   --skip-thinning         Skip lipo thinning (arm64/x86_64 DMGs)
   --sync-downloads        Run tools/sync-downloads/sync_downloads.py after packaging
   --dry-run               Package artifacts locally and verify; do not upload to GitHub or push to tap
+  --require-asset <name>  Also require <name> (and <name>.sha256) among the artifacts; repeatable.
+                          For a file the caller put in --dist-dir itself, named <App>-<version>*.zip|dmg
+  --verify-only           Package nothing: only check that every expected artifact exists, on the
+                          GitHub Release when --tag is given without --dry-run, else in --dist-dir.
+                          Needs --app-name and --version (or --tag). Exits non-zero naming what is missing.
   --help                  Show this help message
 EOF
   exit "${1:-0}"
@@ -355,6 +459,8 @@ SKIP_DMG=false
 SKIP_THINNING=false
 SYNC_DOWNLOADS=false
 DRY_RUN=false
+VERIFY_ONLY=false
+REQUIRE_ASSETS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -422,6 +528,14 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true
       shift
       ;;
+    --require-asset)
+      REQUIRE_ASSETS+=("$2")
+      shift 2
+      ;;
+    --verify-only)
+      VERIFY_ONLY=true
+      shift
+      ;;
     -h|--help)
       usage 0
       ;;
@@ -432,9 +546,43 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# The one place that decides where "there" is; see verify_release_assets.
+verify_expected_assets() {
+  local where="local"
+  if [[ "$DRY_RUN" != "true" && -n "$TAG" ]]; then
+    where="release"
+  fi
+  verify_release_assets "$where" "$(required_release_assets "$APP_NAME" "$VERSION" \
+    "$SKIP_DMG" "$SKIP_THINNING" ${REQUIRE_ASSETS[@]+"${REQUIRE_ASSETS[@]}"})"
+}
+
+if [[ "$VERIFY_ONLY" == "true" ]]; then
+  if [[ -z "$VERSION" && -n "$TAG" ]]; then
+    VERSION="$(clean_version "$TAG")"
+  fi
+  if [[ -z "$APP_NAME" || -z "$VERSION" ]]; then
+    echo "✗ --verify-only needs --app-name and --version (or --tag)." >&2
+    exit 1
+  fi
+  verify_expected_assets
+  exit 0
+fi
+
 STAGE_ROOT="$(mktemp -d)"
+# Set only by the last line of this script. On bash 3.2 a `set -u` abort runs
+# the EXIT trap with $? = 0 and then exits with the trap's own status, so a
+# trap that only cleans up turns a script that died half way into exit 0: the
+# caller, and CI, see success. HomeSpeaker 1.12.0 and 1.13.0 shipped with no
+# files that way. Anything short of the last line is therefore a failure.
+PACKAGING_COMPLETE=false
 cleanup() {
+  local status=$?
   rm -rf "$STAGE_ROOT"
+  if [[ "$PACKAGING_COMPLETE" != "true" && "$status" -eq 0 ]]; then
+    echo "✗ package-desktop.sh stopped before it finished; failing." >&2
+    status=1
+  fi
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -591,7 +739,23 @@ CASK_FILE="${DIST_DIR}/${CASK_NAME}.rb"
 printf '%s\n' "$CASK_CONTENT" > "$CASK_FILE"
 echo "==> Generated Homebrew Cask formula: ${CASK_FILE}"
 
-# 8. Homebrew Tap update
+# 8. GitHub Release Upload
+if [[ "$DRY_RUN" != "true" && -n "$TAG" && -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]]; then
+  echo "==> Uploading artifacts to GitHub Release: ${TAG} (${REPO})..."
+  for f in "$DIST_DIR/${APP_NAME}-${VERSION}"*.dmg "$DIST_DIR/${APP_NAME}-${VERSION}"*.zip "$DIST_DIR/${APP_NAME}-${VERSION}"*.sha256; do
+    if [[ -f "$f" ]]; then
+      echo "    Uploading $(basename "$f")..."
+      gh release upload "$TAG" "$f" --repo "$REPO" --clobber
+    fi
+  done
+fi
+
+# 9. Proof, before anything points at these files: every expected artifact is
+# in dist (dry run / no tag) or on the release as GitHub reports it.
+verify_expected_assets
+
+# 10. Homebrew Tap update (after the proof: a cask must never point at a
+# download that is not there)
 if [[ "$DRY_RUN" != "true" && -n "${HOMEBREW_TAP_TOKEN:-}" ]]; then
   TAP="VitruvianSoftware/homebrew-tap"
   TAP_DIR="${STAGE_ROOT}/homebrew-tap"
@@ -611,18 +775,7 @@ if [[ "$DRY_RUN" != "true" && -n "${HOMEBREW_TAP_TOKEN:-}" ]]; then
   fi
 fi
 
-# 9. GitHub Release Upload
-if [[ "$DRY_RUN" != "true" && -n "$TAG" && -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]]; then
-  echo "==> Uploading artifacts to GitHub Release: ${TAG} (${REPO})..."
-  for f in "$DIST_DIR/${APP_NAME}-${VERSION}"*.dmg "$DIST_DIR/${APP_NAME}-${VERSION}"*.zip "$DIST_DIR/${APP_NAME}-${VERSION}"*.sha256; do
-    if [[ -f "$f" ]]; then
-      echo "    Uploading $(basename "$f")..."
-      gh release upload "$TAG" "$f" --repo "$REPO" --clobber
-    fi
-  done
-fi
-
-# 10. Downloads Catalog Sync
+# 11. Downloads Catalog Sync
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${BUILD_WORKSPACE_DIRECTORY:-}"
 if [[ -z "$REPO_ROOT" ]]; then
@@ -637,7 +790,7 @@ if [[ "$SYNC_DOWNLOADS" == "true" || (-n "$TAG" && "$DRY_RUN" != "true") ]]; the
     if [[ "$DRY_RUN" == "true" ]]; then
       sync_args+=(--dry-run)
     fi
-    python3 "$SYNC_SCRIPT" "${sync_args[@]}"
+    python3 "$SYNC_SCRIPT" ${sync_args[@]+"${sync_args[@]}"}
   else
     echo "Warning: downloads catalog sync script not found at ${SYNC_SCRIPT}" >&2
   fi
@@ -645,3 +798,4 @@ fi
 
 echo "==> Desktop release packaging complete for ${APP_NAME} v${VERSION}."
 ls -lh "$DIST_DIR/${APP_NAME}-${VERSION}"* 2>/dev/null || true
+PACKAGING_COMPLETE=true

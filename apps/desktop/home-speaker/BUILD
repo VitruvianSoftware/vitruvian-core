@@ -176,6 +176,20 @@ sh_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# publish.sh must fail when the packaging helper fails, or exits 0 having made
+# nothing (HomeSpeaker 1.12.0 and 1.13.0 shipped with no files that way). The
+# real publish.sh, with stand-ins for swift, lipo, ditto and the helper, so
+# unlike its neighbours it needs no Mac and is NOT `manual`: the Linux lane
+# runs it on every change. The macOS lane in ci.yaml also names it, with
+# REQUIRE_BASH32=1, because only there is /bin/bash the 3.2 the release
+# runner uses.
+sh_test(
+    name = "publish_test",
+    size = "small",
+    srcs = ["scripts/publish_test.sh"],
+    data = ["scripts/publish.sh"],
+)
+
 # `bazel run //apps/desktop/home-speaker:sync-secrets` -- put HomeSpeaker's
 # Slack user token on this Mac from Bitwarden, so the vault is the only place
 # it lives. Uses the session //tools/sync-env-secrets:unlock caches.

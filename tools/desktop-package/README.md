@@ -65,6 +65,29 @@ bazel run //tools/desktop-package:package-desktop -- \
 | `--skip-thinning` | Skip lipo thinning to arm64/x86_64 | `false` |
 | `--sync-downloads` | Run `sync_downloads.py` after packaging | `false` |
 | `--dry-run` | Package and verify; do not upload/push | `false` |
+| `--require-asset <name>` | Also require `<name>` and `<name>.sha256` among the artifacts (repeatable). For a file the caller puts in `--dist-dir` itself, named `<App>-<version>*.zip` or `*.dmg` so it is checksummed and uploaded | None |
+| `--verify-only` | Package nothing; only check the expected artifacts exist (see below). Needs `--app-name` and `--version` or `--tag` | `false` |
+
+### A run proves its own result
+
+Before it finishes, and before the Homebrew cask is pushed, the tool checks that every expected artifact exists and is not empty: the app artifacts the skip flags leave, each with its `.sha256`, plus every `--require-asset`. In a dry run, or with no tag, it looks in `--dist-dir`. On a real release it reads the list back from the GitHub Release. Anything missing is named and the run exits non-zero. A run that stops before its last line also exits non-zero, whatever stopped it.
+
+A release workflow should end with the same check as its own step, so the job's result does not rest on the publishing script alone:
+
+```bash
+bash tools/desktop-package/package-desktop.sh --verify-only \
+  --app-name HomeSpeaker --version 1.13.1 --tag home-speaker-v1.13.1 \
+  --require-asset HomeSpeaker-1.13.1-tool.zip
+```
+
+### Writing a script that calls this tool
+
+Release runners are Macs, and a Mac's `/bin/bash` is 3.2. Two things differ from the bash on Linux and on most laptops, and together they shipped HomeSpeaker 1.12.0 and 1.13.0 with no files and a green run:
+
+- Expanding an **empty** array under `set -u` ends the script (`unbound variable`). Write `${args[@]+"${args[@]}"}`, never a bare `"${args[@]}"`, for any array that can be empty.
+- After that kind of abort an `EXIT` trap runs with `$?` equal to 0, and the script exits with the trap's status. A trap that only cleans up turns the abort into exit 0. Set a flag on the script's last line and have the trap exit non-zero without it.
+
+`package-desktop_test.sh` and `apps/desktop/home-speaker/scripts/publish_test.sh` check both; copy the shape for a new app.
 
 ---
 
@@ -86,3 +109,5 @@ Hermetic unit tests for pure library helpers and dry-run flows are executed via 
 ```bash
 bazel test //tools/desktop-package/...
 ```
+
+The test also runs the real driver with stand-ins for `codesign`, `gh` and `python3`, under every bash on the machine. On Linux that is a recent bash, which cannot reproduce the bash 3.2 failures; there a static check (no bare `"${array[@]}"`) and planted failures stand in. The run that proves the bash 3.2 case is the macOS lane in `ci.yaml`, which names the test with `REQUIRE_BASH32=1` so it fails if no bash 3 is found.
