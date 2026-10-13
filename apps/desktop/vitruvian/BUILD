@@ -583,6 +583,27 @@ py_binary(
     main = "Tests/mutation_checks.py",
 )
 
+# The same file, reading only: every mutation still quotes its source exactly.
+# A change that moves or rewords a quoted line fails here, in its own pull
+# request, instead of stopping the weekly run. Not `manual` and not macOS-only,
+# so it also runs wherever `bazel test //...` does. A few mutations are planted
+# in the tool protocol's sources, hence that package's files in `data`.
+py_test(
+    name = "mutation_fixtures_test",
+    size = "small",
+    srcs = ["Tests/mutation_checks.py"],
+    args = [
+        "--check",
+        "--app-dir",
+        package_name(),
+    ],
+    data = ["//packages/vitruvian-sdk:protocol_sources"] + glob([
+        "Sources/**/*.swift",
+        "Tests/**/*.swift",
+    ]),
+    main = "Tests/mutation_checks.py",
+)
+
 # Runs the unmodified upstream Tests/generate_sources.py (see sync_sources.py).
 genrule(
     name = "generated_test_sources",
@@ -886,6 +907,7 @@ pipeline_unit(
         ":app_holds_mermaid_test",
         ":by-hand",
         ":fan_helper_selftest",
+        ":mutation_fixtures_test",
         ":selftest",
         ":source_lints_test",
         ":sources_in_sync_test",

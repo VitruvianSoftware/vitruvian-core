@@ -50,6 +50,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - `Tests/mutation_checks.py` plants real regressions and requires each to fail
   its test. It runs weekly in CI. Moving or rewording code that a mutation
   quotes breaks that run, so update the mutation in the same change.
+  `:mutation_fixtures_test` holds you to it: it runs with the pull-request
+  tests and fails when a mutation's quoted text is not in its file exactly
+  once (`bazel test //apps/desktop/vitruvian:mutation_fixtures_test`).
 - After changing the test, fan-helper or Now Playing source lists in `build.sh`,
   or the extractions in `Tests/generate_sources.py`, run
   `bazel run //apps/desktop/vitruvian:sync_sources`.
