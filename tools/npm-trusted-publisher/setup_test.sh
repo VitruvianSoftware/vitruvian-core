@@ -433,6 +433,45 @@ else
     fail "unpublished not counted separately"
 fi
 
+echo "--- NPM_TP_PACKAGES: the caller names the packages, their mirror and workflow ---"
+# //tools/registry-trust:setup derives the packages from release-please and
+# hands them over, so a package in a folder this script has never heard of is
+# still configured, against the mirror and workflow file the code names.
+mkdir -p "$work/repo/somewhere/new"
+printf '{"name":"@v/new","version":"1.0.0","private":false}\n' >"$work/repo/somewhere/new/package.json"
+printf 'somewhere/new/package.json\tExample/new-mirror\tpublish.yml\n' >"$work/list"
+r="$(run STUB_LOGGED_IN=1 NPM_TP_PACKAGES="$work/list")"
+if [ "${r%%|*}" = "0" ] && grep -q 'trust github @v/new --repo Example/new-mirror --file publish.yml' "$work/calls"; then
+    pass "a listed package is configured with the listed mirror and workflow"
+else
+    fail "listed package not configured: rc=${r%%|*} calls=$(tr '\n' ';' <"$work/calls") err=$(tr '\n' ';' <"$work/err")"
+fi
+if [ "$(grep -c 'trust github' "$work/calls")" = "1" ]; then
+    pass "...and only the listed packages are touched"
+else
+    fail "packages off the list were touched: $(tr '\n' ';' <"$work/calls")"
+fi
+printf 'somewhere/gone/package.json\tExample/new-mirror\tpublish.yml\n' >"$work/list"
+r="$(run STUB_LOGGED_IN=1 NPM_TP_PACKAGES="$work/list")"
+if [ "${r%%|*}" = "2" ] && grep -q 'somewhere/gone/package.json' "$work/err"; then
+    pass "a list naming a file that is not there is a setup error, exit 2"
+else
+    fail "expected rc=2 naming the file, got ${r%%|*}: $(tr '\n' ';' <"$work/err")"
+fi
+printf 'somewhere/new/package.json\tExample/new-mirror\n' >"$work/list"
+r="$(run STUB_LOGGED_IN=1 NPM_TP_PACKAGES="$work/list")"
+if [ "${r%%|*}" = "2" ] && [ ! -s "$work/calls" ]; then
+    pass "a list row with no workflow is a setup error, and nothing is configured"
+else
+    fail "expected rc=2 and no calls, got ${r%%|*}: $(tr '\n' ';' <"$work/calls")"
+fi
+r="$(run STUB_LOGGED_IN=1)"
+if [ "${r%%|*}" = "0" ] && [ "$(grep -c 'trust github' "$work/calls")" = "3" ] && ! grep -q '@v/new' "$work/calls"; then
+    pass "with no list, the built-in discovery is unchanged"
+else
+    fail "built-in discovery changed: rc=${r%%|*} $(tr '\n' ';' <"$work/calls")"
+fi
+
 echo
 if [ "$fail_n" -gt 0 ]; then echo "FAILED: $fail_n"; exit 1; fi
 echo "ALL PASS ($pass_n)"

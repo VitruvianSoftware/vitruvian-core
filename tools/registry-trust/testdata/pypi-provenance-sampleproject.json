@@ -1,0 +1,16 @@
+{
+  "_recorded": "pypi.org/integrity/sampleproject/4.0.0/sampleproject-4.0.0.tar.gz/provenance, 2026-10-13, the signed attestations left out",
+  "version": 1,
+  "attestation_bundles": [
+    {
+      "publisher": {
+        "claims": null,
+        "environment": "",
+        "kind": "GitHub",
+        "repository": "pypa/sampleproject",
+        "workflow": "release.yml"
+      },
+      "attestations": []
+    }
+  ]
+}

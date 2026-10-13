@@ -71,6 +71,9 @@ mindmap
 | `//tools/owners` | Validates and compiles per-subtree `OWNERS` files into `.github/CODEOWNERS` (`--check`, `--validate-only`, `--coverage-check`) |
 | `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
 | `//tools/npm-publish-audit:check` | Verifies against the npm registry that packages claimed published by CI actually exist |
+| `//tools/registry-trust:inventory` | Lists every package we publish, its registry, mirror, workflow and environment, read from release-please |
+| `//tools/registry-trust:setup` | Sets up trusted publishing on crates.io and npm from that list; prints what PyPI needs entered by hand (`-- --dry-run` first) |
+| `//tools/registry-trust:check` | Asks npm, crates.io and PyPI, with no token, whether every released version came from the workflow ([runbook](../engineering/registry-trust.md)) |
 | `//tools/gomod:check` | The `replace`-coupled Go modules (`packages/pulumi/library/go` ↔ `packages/pulumi/examples/go-foundation`) are in sync. Read-only. Gate: a step in `example-build`. Fix with `//tools/gomod:tidy` |
 | `aspect lint //...` | rules_lint linters (eslint, golangci via nogo, ruff, …) |
 

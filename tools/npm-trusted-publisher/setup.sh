@@ -45,6 +45,11 @@
 # browser for you to authenticate in. No credential is ever prompted for,
 # handled, or stored by this script.
 # Env: NPM (default npm), DELAY_SECONDS (default 2), WORKFLOW_FILE (release.yml)
+#      NPM_TP_PACKAGES: a file of `manifest<TAB>owner/repo<TAB>workflow file`
+#      rows. When set, those are the packages, with that mirror and workflow,
+#      and the built-in folders below are not searched. It is how
+#      //tools/registry-trust:setup hands over what it derives from
+#      release-please, so a package in a new folder needs no edit here.
 # Exit: 0 all configured · 1 one or more failed · 2 setup/precondition error
 set -euo pipefail
 
@@ -247,8 +252,8 @@ npm_write_with_otp() {   # <npm args...>
 }
 
 # Thin wrappers so the caller reads as intent, not as npm argv.
-trust_github() {   # <package> <repo>
-    npm_write_with_otp trust github "$1" --repo "$2" --file "$WORKFLOW_FILE" \
+trust_github() {   # <package> <repo> <workflow file>
+    npm_write_with_otp trust github "$1" --repo "$2" --file "$3" \
         --allow-publish --yes
 }
 
@@ -281,6 +286,38 @@ mirror_for() {
     esac
 }
 
+# The caller's list, when there is one: each row is checked before anything is
+# configured, so half a list is never applied.
+listed=""
+if [ -n "${NPM_TP_PACKAGES:-}" ]; then
+    [ -r "$NPM_TP_PACKAGES" ] || {
+        echo "npm-trusted-publisher: NPM_TP_PACKAGES=$NPM_TP_PACKAGES cannot be read" >&2
+        exit 2
+    }
+    _list="$NPM_TP_PACKAGES"   # named apart, for the messages inside the loop
+    while IFS=$'\t' read -r _mf _repo _wf _rest; do
+        [ -n "$_mf" ] || continue
+        if [ -z "$_repo" ] || [ -z "$_wf" ] || [ -n "$_rest" ]; then
+            echo "npm-trusted-publisher: $_list: the row for $_mf is not" >&2
+            echo "  manifest<TAB>owner/repo<TAB>workflow file" >&2
+            exit 2
+        fi
+        [ -f "$_mf" ] || {
+            echo "npm-trusted-publisher: $_list names $_mf, which is not there" >&2
+            exit 2
+        }
+        listed="${listed}${_mf}"$'\n'
+    done <"$NPM_TP_PACKAGES"
+    [ -n "$listed" ] || {
+        echo "npm-trusted-publisher: $NPM_TP_PACKAGES names no packages" >&2
+        exit 2
+    }
+fi
+# <manifest> <2 for the repo, 3 for the workflow file>, from the caller's list.
+listed_field() {
+    awk -F '\t' -v mf="$1" -v n="$2" '$1 == mf { print $n; exit }' "$NPM_TP_PACKAGES"
+}
+
 search_dirs=()
 [ -d packages/pulumi/library/ts/packages ] && search_dirs+=(packages/pulumi/library/ts/packages)
 [ -d pulumi/library/ts/packages ] && search_dirs+=(pulumi/library/ts/packages)
@@ -289,7 +326,9 @@ search_dirs=()
 [ -d packages/vitruvian-sdk/kits/typescript ] && search_dirs+=(packages/vitruvian-sdk/kits/typescript)
 [ -d vitruvian-sdk/kits/typescript ] && search_dirs+=(vitruvian-sdk/kits/typescript)
 manifests=""
-if [ ${#search_dirs[@]} -gt 0 ]; then
+if [ -n "$listed" ]; then
+    manifests="$listed"
+elif [ ${#search_dirs[@]} -gt 0 ]; then
     manifests="$(find "${search_dirs[@]}" -maxdepth 2 -name package.json \
         -not -path '*/node_modules/*' 2>/dev/null | sort)"
 fi
@@ -344,7 +383,13 @@ EOF2
         continue
     fi
 
-    repo="$(mirror_for "$mf")"
+    workflow="$WORKFLOW_FILE"
+    if [ -n "$listed" ]; then
+        repo="$(listed_field "$mf" 2)"
+        workflow="$(listed_field "$mf" 3)"
+    else
+        repo="$(mirror_for "$mf")"
+    fi
     if [ -z "$repo" ]; then
         echo "  ?? $name -- no mirror mapping for $mf; skipping" >&2
         failed=$((failed + 1))
@@ -353,14 +398,14 @@ EOF2
 
     # Already configured? The registry allows only ONE configuration per
     # package and errors on a duplicate, so re-running must be safe.
-    if "$NPM" trust list "$name" 2>/dev/null | grep -q "$WORKFLOW_FILE"; then
+    if "$NPM" trust list "$name" 2>/dev/null | grep -q "$workflow"; then
         echo "  ok $name (already configured)"
         skipped=$((skipped + 1))
         continue
     fi
 
     if [ -n "$DRY_RUN" ]; then
-        echo "  DRY_RUN $name -> $repo $WORKFLOW_FILE"
+        echo "  DRY_RUN $name -> $repo $workflow"
         configured=$((configured + 1))
         continue
     fi
@@ -368,9 +413,9 @@ EOF2
     # Capture rather than discard: a swallowed error here is unactionable, and
     # the two failures that actually occur -- an existing configuration, and an
     # expired 2FA window -- need to be told apart from each other.
-    if trust_github "$name" "$repo"; then _rc=0; else _rc=$?; fi
+    if trust_github "$name" "$repo" "$workflow"; then _rc=0; else _rc=$?; fi
     if [ "${_rc:-0}" -eq 0 ]; then
-        echo "  + $name -> $repo $WORKFLOW_FILE"
+        echo "  + $name -> $repo $workflow"
         configured=$((configured + 1))
     elif printf '%s' "$_out" | grep -qiE 'already (exists|configured)|duplicate'; then
         echo "  ok $name (already configured)"
