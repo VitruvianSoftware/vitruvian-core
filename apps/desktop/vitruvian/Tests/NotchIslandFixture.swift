@@ -490,6 +490,7 @@ final class RecordingIslandServices: NotchIslandServices {
     var keepsCalendarPrompt = false
     var keepsCameraPrompt = false
     var activeUtility: QuickLauncherItem?
+    var showsToolPanel = false
     var editingTools = false
     var visibleToolCount = 0
     var mediaPresented = false
@@ -541,6 +542,7 @@ final class RecordingIslandServices: NotchIslandServices {
 
     func rememberPasteTarget() { log("rememberPasteTarget") }
     func prepareTools() { log("prepareTools"); prepareToolsAction() }
+    func closeToolPanel() {}
     func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool { toolsKey(event, flow) }
     func createPad(defaultName: String) { log("createPad") }
     func showNormalMenuPanel() { log("showNormalMenuPanel") }

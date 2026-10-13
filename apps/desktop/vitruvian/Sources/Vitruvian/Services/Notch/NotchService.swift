@@ -485,7 +485,8 @@ package final class NotchService: ObservableObject {
             || (expanded && !showingSections && selected == .files && fileInteractionActive)
             || services.keepsCameraPrompt
             || (expanded && !showingSections && selected == .captures && captureContent != nil)
-            || (expanded && !showingSections && selected == .tools && (services.activeUtility != nil || services.editingTools))
+            || (expanded && !showingSections && selected == .tools
+                && (services.activeUtility != nil || services.showsToolPanel || services.editingTools))
     }
     /// Up and measuring its display. Settings previews read the island's
     /// size only then.
@@ -1166,7 +1167,8 @@ package final class NotchService: ObservableObject {
                         musicExtraHeight: musicExtras && musicDetailVisible ? geometry.musicExtrasHeight : 0,
                         fileMediaHeight: !choosingFileDropDestination && AppFeature.mediaTools.isAvailable(in: defaults)
                             && services.mediaPresented ? services.mediaContentHeight : nil,
-                        toolCount: services.editingTools || services.activeUtility != nil ? nil : services.visibleToolCount,
+                        toolCount: services.editingTools || services.activeUtility != nil || services.showsToolPanel
+                            ? nil : services.visibleToolCount,
                         capturePreviewHeight: captureContent == nil ? nil : captureContentHeight)
     }
 
@@ -1794,6 +1796,7 @@ package final class NotchService: ObservableObject {
         removeEventMonitors()
         syncVisibleConsumers()
         closeCapture?()
+        services.closeToolPanel()
     }
 
     package func toggle() { expanded ? collapse() : open() }

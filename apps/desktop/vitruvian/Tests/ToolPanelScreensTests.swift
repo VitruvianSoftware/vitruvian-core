@@ -19,6 +19,7 @@ enum ToolPanelScreensTests {
         laterKinds(suite)
         detail(suite)
         islandSwitch(suite)
+        islandTiles(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -208,5 +209,28 @@ enum ToolPanelScreensTests {
         bench.store.setShowsInIsland(id, true)
         suite.expect(bench.store.showsInIsland(id) && bench.records.first?.showsInIsland == nil,
                      "turned on again, the record is as it was before")
+    }
+
+    static func islandTiles(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: drawing))
+        bench.add(bench.folder("other", manifest: ExternalToolManifestTests.file(#"{"id": "com.acme.other"}"#)))
+        func tiles() -> [ToolIslandEntry] { ToolIslandEntry.all(store: bench.store, host: bench.panels, language: .fr) }
+        let island = ToolPanelHost.Key(tool: id, panel: "deploys")
+        suite.expect(tiles() == [ToolIslandEntry(key: island, title: "Deploys", symbol: "shippingbox", badge: nil)]
+                         && bench.store.islandPanels() == [island],
+                     "the Tools area has a tile for each tool's island page, and none for a tool without one")
+        bench.panels.badge(id, UIBadgeParams(count: 3))
+        suite.expect(tiles().first?.count == "3" && tiles().first?.dot == false, "the tile carries the tool's count")
+        bench.panels.badge(id, UIBadgeParams(count: 120))
+        suite.expect(tiles().first?.count == "99+", "a count over 99 is drawn as 99+")
+        bench.panels.badge(id, UIBadgeParams(dot: true))
+        suite.expect(tiles().first?.count == nil && tiles().first?.dot == true, "or a dot")
+        bench.store.setShowsInIsland(id, false)
+        suite.expect(tiles().isEmpty, "a page the person turned off has no tile")
+        bench.store.setShowsInIsland(id, true)
+        bench.store.setOn(id, false)
+        suite.expect(tiles().isEmpty, "a tool that is switched off has no tile")
     }
 }

@@ -516,6 +516,17 @@ package final class ExternalToolStore {
         records.first { $0.id == id.rawValue }?.showsInIsland ?? true
     }
 
+    /// The island pages the Tools area lists: of each tool that is switched
+    /// on and is what the person agreed to, the one island page it has,
+    /// unless the person turned it off, in the order the tools were added.
+    package func islandPanels() -> [ToolPanelHost.Key] {
+        records.compactMap { record in
+            guard let id = ToolID(record.id), record.showsInIsland ?? true,
+                  let panel = installed[id]?.tool.panel(in: .island) else { return nil }
+            return ToolPanelHost.Key(tool: id, panel: panel.id)
+        }
+    }
+
     /// The switch in the tool's detail. Off closes the tool's island page
     /// when it is open, and the Tools area lists it no more.
     package func setShowsInIsland(_ id: ToolID, _ shows: Bool) {

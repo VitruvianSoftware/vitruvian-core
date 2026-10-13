@@ -328,7 +328,7 @@ package final class QuickLauncherService: ObservableObject {
         // Edit mode counts as a working window too: the clamshell toggle in
         // the Keep awake options card can raise an admin password prompt,
         // and that prompt's activation must not tear the launcher down.
-        activeUtility == nil && !isEditing
+        activeUtility == nil && !isEditing && ToolPanelHost.shared.island == nil
     }
 
     /// Re-fits the panel to its content when the grid gives way to a hosted
@@ -513,6 +513,9 @@ package final class QuickLauncherService: ObservableObject {
             if key.inputIsComposing { return false }
             if activeUtility != nil {
                 activeUtility = nil
+            } else if let island = ToolPanelHost.shared.island {
+                // A tool's page in the island goes back to the tiles.
+                ToolPanelHost.shared.close(island)
             } else if editingOptionsItem != nil {
                 // An open options card closes first; a second Esc then
                 // leaves edit mode, and a third hides the panel.
@@ -524,7 +527,7 @@ package final class QuickLauncherService: ObservableObject {
             }
             return true
         }
-        guard !isEditing, activeUtility == nil,
+        guard !isEditing, activeUtility == nil, ToolPanelHost.shared.island == nil,
               key.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
         switch Int(key.keyCode) {
         case kVK_Return, kVK_ANSI_KeypadEnter:
