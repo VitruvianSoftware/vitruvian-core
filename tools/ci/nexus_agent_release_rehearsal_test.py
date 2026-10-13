@@ -57,11 +57,16 @@ SHARED = {
         "Install create-dmg",
         "Create DMGs",
         "Create ZIP for auto-updater",
+        "Zip the tool's folder",
     ],
 }
 
 # Steps only the release has: they publish, with the mirror's token.
-RELEASE_ONLY = {"Upload release assets", "Update Homebrew Cask"}
+RELEASE_ONLY = {
+    "Upload release assets",
+    "Say what the catalog entry pins",
+    "Update Homebrew Cask",
+}
 
 # Steps only the rehearsal has: what it prints and what it checks.
 REHEARSAL_ONLY = {
@@ -72,6 +77,9 @@ REHEARSAL_ONLY = {
     # The rehearsal starts the app it packaged; a release starts nothing.
     "Start the packaged app",
     "Check the app inside the ZIP",
+    # The rehearsal judges the tool's folder as the Vitruvian app would; a
+    # release attaches its zip and judges nothing.
+    "Check the tool's folder",
 }
 
 # Where the package is in this repository. The mirror has it at its root.
@@ -255,7 +263,8 @@ def looked_at_what_matters(release_text):
                 break
             paths.append(line)
     expect(
-        "two uploaded paths, the executable and the resource folder", len(paths) == 2
+        "three uploaded paths: the executable, the resource folder and the tool",
+        len(paths) == 3,
     )
     expect(
         "`if-no-files-found: error` on the upload",
@@ -278,6 +287,47 @@ def looked_at_what_matters(release_text):
         if line.startswith("macos/scripts/bundle.sh ")
     ]
     expect("three bundle.sh calls", len(calls) == 3)
+    expect(
+        "the tool's zip, with the manifest at its top",
+        any(
+            line.startswith('(cd "$folder" && zip -r -X')
+            for line in body("Zip the tool's folder")
+        ),
+    )
+    return problems
+
+
+# Commands after which SwiftPM's checkouts of the package's dependencies
+# exist in a job's own copy of the repository.
+FETCHES = ("swift build", "swift test", "swift package resolve")
+CHECKOUTS = ".build/checkouts"
+
+
+def reads_only_what_it_fetched(text, name, jobs):
+    """Problems where a job reads SwiftPM's checkouts and never fetched them.
+
+    Each job starts from a fresh checkout of the repository. An artifact
+    carries what the build job built, not the dependencies SwiftPM fetched
+    to build it, so a job that looks under .build/checkouts must first run
+    a SwiftPM command itself.
+    """
+    problems = []
+    for job in jobs:
+        lines = job_lines(text, job)
+        if lines is None:
+            continue
+        fetched = False
+        for title, body in split_job(lines)[1]:
+            for line in body:
+                if line.startswith(FETCHES):
+                    fetched = True
+                elif CHECKOUTS in line and not fetched:
+                    problems.append(
+                        "%s, job `%s`, step `%s` reads %s, which nothing in "
+                        "that job has fetched: run `swift package resolve` "
+                        "first" % (name, job, title, CHECKOUTS)
+                    )
+                    break
     return problems
 
 
@@ -290,8 +340,11 @@ def main(argv):
     with open(argv[2], encoding="utf-8") as handle:
         rehearsal_text = handle.read()
 
-    problems = looked_at_what_matters(release_text) + compare(
-        release_text, rehearsal_text
+    problems = (
+        looked_at_what_matters(release_text)
+        + compare(release_text, rehearsal_text)
+        + reads_only_what_it_fetched(release_text, "release.yml", JOBS)
+        + reads_only_what_it_fetched(rehearsal_text, "the rehearsal", JOBS.values())
     )
     if problems:
         print(

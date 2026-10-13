@@ -185,14 +185,14 @@ swift_binary(
     module_name = "VitruvianToolCommandLine",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
-    # The GitHub and HomeSpeaker tools' folder tests run `validate` on what
+    # The GitHub, Nexus Agent and HomeSpeaker tools' folder tests run `validate` on what
     # they built.
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
     deps = [":VitruvianToolCLI"],
 )
 
-# The GitHub and HomeSpeaker tools' folder tests run the conformance script
-# on what they built, as the samples tests here do.
+# The GitHub, Nexus Agent and HomeSpeaker tools' folder tests run the
+# conformance script on what they built, as the samples tests here do.
 exports_files(
     ["conformance/conformance.py"],
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],

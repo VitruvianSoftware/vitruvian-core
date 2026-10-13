@@ -1,0 +1,45 @@
+{
+  "_recorded": "pypi.org/pypi/<project>/json, 2026-10-13, trimmed to the fields the check reads",
+  "info": {
+    "name": "vitruvian-tool-kit",
+    "version": "1.1.0"
+  },
+  "releases": {
+    "0.10.0": [
+      {
+        "filename": "vitruvian_tool_kit-0.10.0-py3-none-any.whl",
+        "upload_time_iso_8601": "2026-10-13T07:06:05.072465Z",
+        "yanked": false
+      },
+      {
+        "filename": "vitruvian_tool_kit-0.10.0.tar.gz",
+        "upload_time_iso_8601": "2026-10-13T07:06:05.962874Z",
+        "yanked": false
+      }
+    ],
+    "1.0.0": [
+      {
+        "filename": "vitruvian_tool_kit-1.0.0-py3-none-any.whl",
+        "upload_time_iso_8601": "2026-10-13T14:17:04.346597Z",
+        "yanked": false
+      },
+      {
+        "filename": "vitruvian_tool_kit-1.0.0.tar.gz",
+        "upload_time_iso_8601": "2026-10-13T14:17:05.296382Z",
+        "yanked": false
+      }
+    ],
+    "1.1.0": [
+      {
+        "filename": "vitruvian_tool_kit-1.1.0-py3-none-any.whl",
+        "upload_time_iso_8601": "2026-10-13T17:00:02.164809Z",
+        "yanked": false
+      },
+      {
+        "filename": "vitruvian_tool_kit-1.1.0.tar.gz",
+        "upload_time_iso_8601": "2026-10-13T17:00:03.383851Z",
+        "yanked": false
+      }
+    ]
+  }
+}

@@ -54,6 +54,7 @@ package_group(
     name = "tools",
     packages = [
         "//apps/desktop/home-speaker",
+        "//apps/desktop/nexus-agent/macos",
         "//apps/desktop/vitruvian-tool-github",
     ],
 )
