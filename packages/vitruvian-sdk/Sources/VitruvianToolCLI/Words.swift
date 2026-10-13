@@ -63,8 +63,8 @@ enum Words {
         case .manifest(let broken):
             return "that would not make a manifest the app takes: " + manifest(broken)
         case .noSDK:
-            return "the Swift template needs --sdk, the path of packages/vitruvian-sdk, which holds the kit. "
-                + "It is published nowhere yet, so a tool's package names it by where it is"
+            return "\(tool.sdk?.path ?? "the path given in --sdk") holds no Package.swift. --sdk names a checkout "
+                + "of the SDK to build against; leave it out to use the published SDK, version \(version)"
         case .notWritten(let why):
             return "the files could not be written: \(why)"
         }
@@ -82,7 +82,8 @@ enum Words {
                 Then add the folder in Vitruvian: Settings, Features, Tools from outside.
                 """
         case .swift:
-            return """
+            let fetch = tool.sdk == nil ? "The first build fetches the SDK, version \(version), from GitHub.\n" : ""
+            return fetch + """
                 Next:
                   \(folder)/build.sh
                   vitruvian-tool validate \(folder)/tool
@@ -171,7 +172,8 @@ enum Words {
                 --id ID         the tool's id, with a dot: com.you.tool
                 --template      python, the default: one file, runs as it is.
                                 swift: a package that uses the kit, to build
-                --sdk PATH      for swift: where packages/vitruvian-sdk is
+                --sdk PATH      for swift: build against a checkout of the SDK at
+                                PATH, not the published one
 
           vitruvian-tool validate <folder>
               Reads a tool's folder the way the app does before it offers to

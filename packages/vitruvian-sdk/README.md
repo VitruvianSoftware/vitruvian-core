@@ -43,8 +43,10 @@ bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool -- run ~/my
 
 - **`init`** writes a new tool into a folder that is not there yet, or is
   empty, and nowhere else. It refuses a path that is a symbolic link, writes
-  over nothing, and writes nothing when the app would refuse the id. `--template swift --sdk packages/vitruvian-sdk`
-  writes a Swift package that uses the kit.
+  over nothing, and writes nothing when the app would refuse the id. `--template swift` writes
+  a Swift package that uses the kit, from the published SDK at the version
+  the command was built from; `--sdk packages/vitruvian-sdk` builds it
+  against a checkout instead.
 - **`validate`** reads a folder the way the app does before it offers to add
   a tool, and says what the app would refuse it for. It starts nothing. The
   manifest's rules are the code the app itself links. The folder's rules (the program is

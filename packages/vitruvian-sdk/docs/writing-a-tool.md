@@ -98,7 +98,7 @@ add the service to `uses`.
 ### In Swift, with the kit
 
 ```sh
-vitruvian-tool init ~/my-swift-tool --id com.you.my-swift-tool --name "My Swift tool" --publisher "You" --template swift --sdk packages/vitruvian-sdk
+vitruvian-tool init ~/my-swift-tool --id com.you.my-swift-tool --name "My Swift tool" --publisher "You" --template swift
 ~/my-swift-tool/build.sh
 vitruvian-tool validate ~/my-swift-tool/tool
 vitruvian-tool run ~/my-swift-tool/tool
@@ -106,8 +106,10 @@ vitruvian-tool run ~/my-swift-tool/tool
 
 This writes a Swift package and, beside it, `tool/`: the folder you add to the
 app. `build.sh` builds the package and copies the program into `tool/bin/`.
-The package names the kit by the path you gave in `--sdk`, because the kit is
-published nowhere yet.
+The package depends on the published SDK,
+`https://github.com/VitruvianSoftware/vitruvian-sdk`, from the version that
+`vitruvian-tool --version` prints, and its first build fetches it. To build
+against a checkout of the SDK instead, add `--sdk` and the checkout's folder.
 
 The whole tool is one file:
 
