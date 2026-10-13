@@ -24,6 +24,17 @@ import PackageDescription
 let package = Package(
     name: "HomeSpeaker",
     platforms: [.macOS(.v14)],
+    products: [
+        // The tool for the Vitruvian app; the app itself is the executable
+        // target below, built by `swift build` as before.
+        .executable(name: "homespeaker-tool", targets: ["HomeSpeakerTool"]),
+    ],
+    dependencies: [
+        // The Vitruvian tool kit, for the tool targets below. The kit's
+        // `ToolWaker` came with 1.1.0 (`tool/version_test.py` holds this
+        // line to it).
+        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.1.0"),
+    ],
     targets: [
         .target(
             name: "HomeSpeakerCore",
@@ -33,6 +44,27 @@ let package = Package(
             name: "HomeSpeaker",
             dependencies: ["HomeSpeakerCore"],
             path: "Sources/HomeSpeaker"
+        ),
+        // The HomeSpeaker tool for the Vitruvian app: its core, its
+        // program and its tests. MUST MIRROR BUILD, target for target.
+        .target(
+            name: "HomeSpeakerToolCore",
+            dependencies: [
+                "HomeSpeakerCore",
+                .product(name: "VitruvianToolKit", package: "vitruvian-sdk"),
+                .product(name: "VitruvianToolProtocol", package: "vitruvian-sdk"),
+            ],
+            path: "Sources/HomeSpeakerToolCore"
+        ),
+        .executableTarget(
+            name: "HomeSpeakerTool",
+            dependencies: ["HomeSpeakerToolCore"],
+            path: "Sources/HomeSpeakerTool"
+        ),
+        .testTarget(
+            name: "HomeSpeakerToolTests",
+            dependencies: ["HomeSpeakerCore", "HomeSpeakerToolCore"],
+            path: "Tests/HomeSpeakerToolTests"
         ),
         .testTarget(
             name: "HomeSpeakerTests",

@@ -35,20 +35,82 @@ public enum Pages {
         }
     }
 
+    // A row's id is a name the protocol will read: letters, digits, hyphen
+    // and underscore in parts joined by dots, at most
+    // `ManifestLimits.maxNameLength` long. The app draws none of a page with
+    // one id that is not (1.0.0 sent `repo:acme/web` and `pr:acme/web#2`,
+    // and the island page was a spinner for ever). So an owner and a name
+    // are each written with `_` as `__` and `.` as `_d`, which leaves no dot
+    // in a part and reads back exactly.
+
     /// A repository row's id, and the repository it names.
-    public static func repoRow(_ repo: RepoKey) -> String { "repo:\(repo.fullName)" }
+    public static func repoRow(_ repo: RepoKey) -> String {
+        named("repo.\(part(repo.owner)).\(part(repo.name))", else: "repo.x\(mark(repo.fullName))")
+    }
+
     public static func repo(ofRow id: String) -> RepoKey? {
-        guard id.hasPrefix("repo:") else { return nil }
-        return RepoKey(fullName: String(id.dropFirst("repo:".count)))
+        let parts = id.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3, parts[0] == "repo", let owner = written(parts[1]), let name = written(parts[2])
+        else { return nil }
+        return RepoKey(fullName: "\(owner)/\(name)")
     }
 
     /// A pull request row's id, and what it names.
-    public static func pullRow(_ repo: RepoKey, _ number: Int) -> String { "pr:\(repo.fullName)#\(number)" }
+    public static func pullRow(_ repo: RepoKey, _ number: Int) -> String {
+        named("pr.\(part(repo.owner)).\(part(repo.name)).\(number)", else: "pr.x\(mark(repo.fullName)).\(number)")
+    }
+
     public static func pull(ofRow id: String) -> (repo: RepoKey, number: Int)? {
-        guard id.hasPrefix("pr:"), let hash = id.lastIndex(of: "#"),
-              let repo = RepoKey(fullName: String(id[id.index(id.startIndex, offsetBy: 3)..<hash])),
-              let number = Int(id[id.index(after: hash)...]) else { return nil }
+        let parts = id.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4, parts[0] == "pr", let owner = written(parts[1]), let name = written(parts[2]),
+              let repo = RepoKey(fullName: "\(owner)/\(name)"), let number = Int(parts[3]) else { return nil }
         return (repo, number)
+    }
+
+    /// `id` when the protocol will read it, or `short`: a repository whose
+    /// name is too long for an id still has a row, and a tap on it does
+    /// nothing, where an id that is not well formed would cost the page.
+    private static func named(_ id: String, else short: String) -> String {
+        ManifestRules.isWellFormedName(id) ? id : short
+    }
+
+    /// One part of an id, from an owner or a name.
+    private static func part(_ name: String) -> String {
+        name.replacingOccurrences(of: "_", with: "__").replacingOccurrences(of: ".", with: "_d")
+    }
+
+    /// The owner or name a part was written from, or nil when it is none.
+    private static func written(_ part: Substring) -> String? {
+        var name = ""
+        var escaped = false
+        for character in part {
+            if escaped {
+                switch character {
+                case "_": name.append("_")
+                case "d": name.append(".")
+                default: return nil
+                }
+                escaped = false
+            } else if character == "_" {
+                escaped = true
+            } else {
+                name.append(character)
+            }
+        }
+        return escaped || name.isEmpty ? nil : name
+    }
+
+    /// Sixteen hex digits that stand for a name too long to write out: the
+    /// same for the same name every time, so a row keeps its id from page to
+    /// page (FNV-1a, 64 bits).
+    private static func mark(_ name: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in name.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        let digits = String(hash, radix: 16)
+        return String(repeating: "0", count: 16 - digits.count) + digits
     }
 
     // MARK: The island

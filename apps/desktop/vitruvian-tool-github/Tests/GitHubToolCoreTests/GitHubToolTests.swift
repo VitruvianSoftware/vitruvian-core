@@ -114,7 +114,7 @@ final class GitHubToolTests: XCTestCase {
         XCTAssertEqual(mouse, [["/usr/bin/gravastar-mouse", "breathe", "red"]], "the first snapshot writes the mouse")
         XCTAssertEqual(host.rendered.map(\.panel), ["settings", "status", "settings"],
                        "the Settings panel while checking, the island after the poll, then Settings signed in")
-        XCTAssertEqual(tool.islandPage().ids, ["repo:VitruvianSoftware/vitruvian-core", "pulls", "refresh", "rerun"])
+        XCTAssertEqual(tool.islandPage().ids, ["repo.VitruvianSoftware.vitruvian-core", "pulls", "refresh", "rerun"])
     }
 
     func testTheCLIsLoginSignsInWhenNothingIsSaved() throws {
@@ -229,17 +229,17 @@ final class GitHubToolTests: XCTestCase {
         answerGitHub(conclusion: "failure")
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/actions/runs/9/rerun-failed-jobs"] = (201, "")
         tool.start()
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "pulls", kind: .tap, value: .string("pr:VitruvianSoftware/vitruvian-core#3"))),
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "pulls", kind: .tap, value: .string("pr.VitruvianSoftware.vitruvian-core.3"))),
                        .keep)
         XCTAssertEqual(host.opened, ["https://github.com/VitruvianSoftware/vitruvian-core/pull/3"])
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repo:VitruvianSoftware/vitruvian-core", kind: .tap)), .keep)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repo.VitruvianSoftware.vitruvian-core", kind: .tap)), .keep)
         XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/actions")
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: "rerun", kind: .tap)), .keep)
         XCTAssertEqual(host.messages.last, "Re-running 1 failed runs")
         XCTAssertEqual(tool.nextPollAt, now, "a poll is due after a re-run")
         guard case .page(let page) = tool.islandEvent(PanelEvent(block: "refresh", kind: .tap)) else { return XCTFail() }
-        XCTAssertEqual(page.ids.first, "repo:VitruvianSoftware/vitruvian-core")
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "pulls", kind: .tap, value: .string("pr:nobody/x#1"))), .keep)
+        XCTAssertEqual(page.ids.first, "repo.VitruvianSoftware.vitruvian-core")
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "pulls", kind: .tap, value: .string("pr.nobody.x.1"))), .keep)
         XCTAssertEqual(host.opened.count, 2, "a row the tool does not know opens nothing")
         tool.openPulls()
         XCTAssertEqual(host.opened.last, "https://github.com/pulls")

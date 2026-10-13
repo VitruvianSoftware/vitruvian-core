@@ -108,6 +108,7 @@ swift_library(
     module_name = "VitruvianToolProtocol",
     target_compatible_with = ["@platforms//os:macos"],
     visibility = [
+        "//apps/desktop/home-speaker:__pkg__",
         "//apps/desktop/nexus-agent/macos:__pkg__",
         "//apps/desktop/vitruvian:__pkg__",
         "//apps/desktop/vitruvian-tool-github:__pkg__",
@@ -124,6 +125,7 @@ swift_library(
     module_name = "VitruvianToolKit",
     target_compatible_with = ["@platforms//os:macos"],
     visibility = [
+        "//apps/desktop/home-speaker:__pkg__",
         "//apps/desktop/nexus-agent/macos:__pkg__",
         "//apps/desktop/vitruvian-tool-github:__pkg__",
     ],
@@ -188,20 +190,22 @@ swift_binary(
     module_name = "VitruvianToolCommandLine",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
-    # The GitHub and Nexus Agent tools' folder tests run `validate` on what
+    # The GitHub, Nexus Agent and HomeSpeaker tools' folder tests run `validate` on what
     # they built.
     visibility = [
+        "//apps/desktop/home-speaker:__pkg__",
         "//apps/desktop/nexus-agent/macos:__pkg__",
         "//apps/desktop/vitruvian-tool-github:__pkg__",
     ],
     deps = [":VitruvianToolCLI"],
 )
 
-# The GitHub and Nexus Agent tools' folder tests run the conformance script
-# on what they built, as the samples tests here do.
+# The GitHub, Nexus Agent and HomeSpeaker tools' folder tests run the
+# conformance script on what they built, as the samples tests here do.
 exports_files(
     ["conformance/conformance.py"],
     visibility = [
+        "//apps/desktop/home-speaker:__pkg__",
         "//apps/desktop/nexus-agent/macos:__pkg__",
         "//apps/desktop/vitruvian-tool-github:__pkg__",
     ],

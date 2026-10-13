@@ -417,6 +417,10 @@ jobs:
           # The Bitwarden -> HomeSpeaker secrets sync, against a fake `bw`.
           # `bazel build .../...` above compiles it but never RUNS it.
           bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:sync_secrets_test
+          # The HomeSpeaker tool for the Vitruvian app: its tests, the built
+          # folder through the conformance script, and the release's zip of
+          # it. All `manual`, so named here.
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:HomeSpeakerToolTests //apps/desktop/home-speaker:tool_conformance_test //apps/desktop/home-speaker:tool_version_test //apps/desktop/home-speaker:zip_tool_test
           (cd apps/desktop/home-speaker && ./scripts/publish.sh --dry-run)
 
           # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build

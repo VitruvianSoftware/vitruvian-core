@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.0.0...vitruvian-tool-github-v1.0.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **vitruvian-tool-github:** a row's id is a name the app will read ([#3209](https://github.com/VitruvianSoftware/vitruvian-core/issues/3209)) ([ce8bcb0](https://github.com/VitruvianSoftware/vitruvian-core/commit/ce8bcb0e087cad094696c44c991319378423e215))
+
 ## 1.0.0 (2026-10-13)
 
 

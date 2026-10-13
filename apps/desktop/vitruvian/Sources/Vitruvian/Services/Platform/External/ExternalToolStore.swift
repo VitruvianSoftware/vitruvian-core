@@ -199,7 +199,10 @@ package final class ExternalToolStore {
             watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
             panels: { .shared },
             added: { installed, origin in GitHubHandoff.perform(installed, from: origin, parts: .live) },
-            removed: { GitHubHandoff.toolRemoved($0, defaults: .standard) })
+            removed: {
+                GitHubHandoff.toolRemoved($0, defaults: .standard,
+                                          availabilityChanged: { FeatureRuntime.shared.availabilityChangedElsewhere() })
+            })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
