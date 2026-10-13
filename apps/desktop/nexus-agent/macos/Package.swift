@@ -24,6 +24,11 @@ import PackageDescription
 let package = Package(
     name: "NexusAgent",
     platforms: [.macOS(.v14)],
+    products: [
+        // The tool for the Vitruvian app; the app is built by `swift build`
+        // as the executable target below, as before.
+        .executable(name: "nexus-agent-tool", targets: ["NexusAgentTool"]),
+    ],
     dependencies: [
         // The Vitruvian tool kit, for the tool target below. The kit's
         // `ToolWaker` came with 1.1.0 (`tool/version_test.py` holds this
@@ -68,6 +73,18 @@ let package = Package(
                 .product(name: "VitruvianToolProtocol", package: "vitruvian-sdk"),
             ],
             path: "Sources/NexusAgentToolCore"
+        ),
+        // The tool's program. Swift 6 mode, as the core.
+        .executableTarget(
+            name: "NexusAgentTool",
+            dependencies: [
+                "NexusAgentCore",
+                "NexusAgentToolCore",
+                "NexusAgentUI",
+                .product(name: "VitruvianToolKit", package: "vitruvian-sdk"),
+                .product(name: "VitruvianToolProtocol", package: "vitruvian-sdk"),
+            ],
+            path: "Sources/NexusAgentTool"
         ),
         .executableTarget(
             name: "NexusAgent",

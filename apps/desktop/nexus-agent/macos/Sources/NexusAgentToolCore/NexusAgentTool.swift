@@ -59,8 +59,8 @@ public final class ToolEngine: NexusAgentEngine {
 /// through the link. `main.swift` wires it and decides nothing.
 @MainActor
 public final class NexusAgentTool {
-    public static let islandPanel = "agent"
-    public static let settingsPanel = "settings"
+    public nonisolated static let islandPanel = "agent"
+    public nonisolated static let settingsPanel = "settings"
 
     public enum Command {
         public static let quickPrompt = "quickPrompt"

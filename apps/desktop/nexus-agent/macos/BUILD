@@ -1,4 +1,6 @@
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
+load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
@@ -111,6 +113,93 @@ swift_test(
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
+)
+
+# The tool's program: AppKit on the main thread for the Quick Prompt's
+# window, the kit's loop on a thread of its own, and NexusAgentToolCore
+# between them; nothing else.
+swift_binary(
+    name = "nexus-agent-tool",
+    srcs = glob(["Sources/NexusAgentTool/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "NexusAgentToolProgram",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":NexusAgentCore",
+        ":NexusAgentToolCore",
+        ":NexusAgentUI",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+# The tool as a folder the app can add: the manifest, bin/tool, and the
+# copy of Mermaid the chat's diagram cards draw with beside the program,
+# where NexusAgentMermaidPage looks for an executable that is no bundle.
+# The mirror's release zips the same three.
+#
+#   bazel build --config=macos-app //apps/desktop/nexus-agent/macos:tool-folder
+#
+# leaves bazel-bin/apps/desktop/nexus-agent/macos/built/nexus-agent/.
+genrule(
+    name = "tool-folder",
+    srcs = [
+        "tool/vitruvian-tool.json",
+        "Sources/NexusAgentUI/Resources/mermaid.min.js",
+        ":nexus-agent-tool",
+    ],
+    outs = [
+        "built/nexus-agent/vitruvian-tool.json",
+        "built/nexus-agent/bin/tool",
+        "built/nexus-agent/bin/mermaid.min.js",
+    ],
+    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/nexus-agent/vitruvian-tool.json && cp $(location :nexus-agent-tool) $(RULEDIR)/built/nexus-agent/bin/tool && cp $(location Sources/NexusAgentUI/Resources/mermaid.min.js) $(RULEDIR)/built/nexus-agent/bin/mermaid.min.js",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The built folder through `vitruvian-tool validate` and the conformance
+# script, under a home of its own: the handshake, a command, an unknown
+# command, the island panel opened and tapped, refusals, and a clean exit.
+# It starts the real program.
+py_test(
+    name = "tool_conformance_test",
+    size = "medium",
+    srcs = ["tool/conformance_test.py"],
+    args = [
+        "$(rootpath built/nexus-agent/vitruvian-tool.json)",
+        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
+        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    ],
+    data = [
+        "built/nexus-agent/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance/conformance.py",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    main = "tool/conformance_test.py",
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The tool's version is the app's, in the manifest, the tool's Version.swift
+# and the app's; and release-please writes all three. Not tied to macOS.
+py_test(
+    name = "tool_version_test",
+    size = "small",
+    srcs = ["tool/version_test.py"],
+    data = [
+        "Package.swift",
+        "Sources/NexusAgent/Version.swift",
+        "Sources/NexusAgentToolCore/Version.swift",
+        "tool/vitruvian-tool.json",
+        "//apps/desktop/nexus-agent:release_please_config",
+    ],
+    main = "tool/version_test.py",
 )
 
 # NexusAgent is a dependency-free SwiftUI/AppKit menu-bar agent (LSUIElement).
@@ -261,7 +350,11 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         ":NexusAgentTests",
+        ":NexusAgentToolTests",
         ":mirror_build_test",
+        ":nexus-agent-tool",
+        ":tool_conformance_test",
+        ":tool_version_test",
     ],
     tier = "L1",
     timeout_minutes = 30,
