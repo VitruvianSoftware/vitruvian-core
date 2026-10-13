@@ -34,7 +34,9 @@ script refuses to write a page where it is not. A test runs it with --check,
 the way templates_in_sync_test holds `vitruvian-tool init`'s copies.
 
 No version number is copied: a release changes none of these files, so a
-release never makes the site stale.
+release never makes the site stale. sync_test.py holds it: no file a copy is
+made from is one release-please bumps. The Go and Rust examples show no
+go.mod or Cargo.toml for that reason: each names the kit's version.
 """
 
 import json
@@ -227,11 +229,7 @@ EXAMPLES = [
         "rust",
         "An example in Rust",
         "samples/hello-rust",
-        [
-            ("vitruvian-tool.json", "json"),
-            ("Cargo.toml", "toml"),
-            ("src/main.rs", "rust"),
-        ],
+        [("vitruvian-tool.json", "json"), ("src/main.rs", "rust")],
         "A tool written with the Rust kit: it says hello, and counts with a "
         "preference the person can change in Settings.",
         "`vitruvian-tool init <folder> --template rust` starts a new tool from "
@@ -316,6 +314,16 @@ def pages(base):
         found[f"tools/examples/{language}.md"], _ = from_markdown(
             base, f"{folder}/README.md", f"/tools/examples/{language}/", description
         )
+    return found
+
+
+def sources():
+    """Every file of the SDK a copy is made from, by its path in the SDK."""
+    found = ["docs/writing-a-tool.md", "protocol/README.md", "protocol/methods.json"]
+    for _language, _title, folder, files, *_ in EXAMPLES:
+        found += [f"{folder}/{name}" for name, _fence in files]
+    for _language, folder, _description in KIT_EXAMPLES:
+        found.append(f"{folder}/README.md")
     return found
 
 

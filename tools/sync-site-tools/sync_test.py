@@ -55,6 +55,26 @@ class InSyncTest(unittest.TestCase):
             sync.stale(ROOT), [], "run: bazel run //tools/sync-site-tools:sync"
         )
 
+    def test_no_copied_file_is_bumped_by_a_release(self):
+        """A release bumps the version in each of release-please's
+        extra-files. A copy of one of them is stale the moment the release's
+        pull request opens, and that pull request is red until someone runs
+        sync on a branch release-please rewrites: vitruvian-sdk 0.11.0."""
+        config = json.loads(
+            (ROOT / "packages/vitruvian-sdk/release-please-config.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        bumped = {
+            entry if isinstance(entry, str) else entry["path"]
+            for entry in config["packages"]["packages/vitruvian-sdk"]["extra-files"]
+        }
+        self.assertEqual(
+            sorted(bumped & set(sync.sources())),
+            [],
+            "a release bumps a file the site copies: the release's PR fails in_sync_test",
+        )
+
     def test_an_entry_as_the_page_reads_it(self):
         text = catalogue.render(
             {"generated": "2026-11-02T10:00:00Z", "tools": [ENTRY]}, "KEY="

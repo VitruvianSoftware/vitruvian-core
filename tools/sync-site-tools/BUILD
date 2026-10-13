@@ -55,6 +55,7 @@ py_test(
     srcs = ["sync_test.py"],
     data = SITE_FILES + [
         "//apps/web/vitruviansoftware-dev:tools_pages",
+        "//packages/vitruvian-sdk:release-please-config.json",
         "//packages/vitruvian-sdk:site_sources",
     ],
     main = "sync_test.py",
