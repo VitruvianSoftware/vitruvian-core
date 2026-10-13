@@ -17,6 +17,15 @@
           "path": "Sources/HomeSpeakerCore/Version.swift"
         },
         {
+          "type": "generic",
+          "path": "Sources/HomeSpeakerToolCore/Version.swift"
+        },
+        {
+          "type": "json",
+          "path": "tool/vitruvian-tool.json",
+          "jsonpath": "$.version"
+        },
+        {
           "type": "xml",
           "path": "Resources/Info.plist",
           "xpath": "//key[.='CFBundleShortVersionString']/following-sibling::string[1]"
