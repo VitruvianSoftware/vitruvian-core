@@ -28,10 +28,30 @@ not work.
 | `Sources/vitruvian-tool` | A command: `init` starts a new tool from a sample, `validate` reads a folder the way the app will, `run` plays the app's side in a terminal. `Sources/VitruvianToolCLI` is what it is made of. |
 | `Sources/VitruvianToolProtocol` | The protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
 | `conformance/` | A script that plays the app's side to your tool in five scripted checks, and the smallest tool that passes it. |
+| `.github/workflows/` | The CI and the release of [VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk). They run only there. |
 
-Not here: publishing. The package is used from this repository and nowhere
-else. It is in no registry, and it has no release, no mirror and no Homebrew
-formula.
+## Getting it
+
+This folder is published, on every change, to
+[VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk),
+with a tagged release for each version.
+
+- **The command, with Homebrew**, which builds it from source on your Mac:
+  `brew install VitruvianSoftware/tap/vitruvian-tool`.
+- **The command, downloaded**: `vitruvian-tool-X.Y.Z-macos.tar.gz` from a
+  [release](https://github.com/VitruvianSoftware/vitruvian-sdk/releases), one
+  program for Apple silicon and Intel, with its `.sha256`. It is signed ad
+  hoc, not with an Apple Developer ID, so macOS will not open a copy a
+  browser downloaded until you clear the mark once:
+  `xattr -d com.apple.quarantine vitruvian-tool`. The guide says how, and why.
+- **The Swift package**: `https://github.com/VitruvianSoftware/vitruvian-sdk`,
+  by its version tags, with the products `VitruvianToolKit` and
+  `VitruvianToolProtocol`. `vitruvian-tool init --template swift` writes a
+  package that depends on it.
+- **To read**: [vitruviansoftware.dev/tools](https://vitruviansoftware.dev/tools/),
+  a copy of the guide, the protocol and the examples.
+
+To change the SDK, or to see how a release is made: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## The command
 
@@ -43,8 +63,10 @@ bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool -- run ~/my
 
 - **`init`** writes a new tool into a folder that is not there yet, or is
   empty, and nowhere else. It refuses a path that is a symbolic link, writes
-  over nothing, and writes nothing when the app would refuse the id. `--template swift --sdk packages/vitruvian-sdk`
-  writes a Swift package that uses the kit.
+  over nothing, and writes nothing when the app would refuse the id. `--template swift` writes
+  a Swift package that uses the kit, from the published SDK at the version
+  the command was built from; `--sdk packages/vitruvian-sdk` builds it
+  against a checkout instead.
 - **`validate`** reads a folder the way the app does before it offers to add
   a tool, and says what the app would refuse it for. It starts nothing. The
   manifest's rules are the code the app itself links. The folder's rules (the program is
@@ -146,7 +168,7 @@ Passing is not proof that the app will accept everything your tool does.
 
 ```sh
 bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:init_test //packages/vitruvian-sdk:swift_template_test
-bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test
+bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test //packages/vitruvian-sdk:release_version_test //packages/vitruvian-sdk:mirror_workflows_test //tools/sync-site-tools:in_sync_test
 ```
 
 The first line needs a Mac: the Swift types against the example files, the
@@ -154,8 +176,10 @@ kit against a link made of two files, the command against folders and real
 processes, the two Swift samples against the conformance script, what
 `init` writes, and the Swift tool `init` writes, built. The second runs anywhere: the example files against the
 schemas, the conformance script against the reference tool, the Python sample,
-the templates `init` holds against the samples they are copies of, and every
-example in the guide. Together the first two tests keep the schemas and the
+the templates `init` holds against the samples they are copies of, every
+example in the guide, the version in its three files, the mirror's workflows
+(with bash, git and jq), and the website's copies of the guide, the protocol
+and the samples. Together the first two tests keep the schemas and the
 Swift types from drifting apart: see "Changing the protocol" in
 [`protocol/README.md`](protocol/README.md).
 
@@ -176,9 +200,10 @@ starts a tool with `init --template swift`, runs the `build.sh` that wrote,
 and holds `validate` and `run` to pass on the result. That is `swift build`
 with the Mac's own Swift, against a copy of this package, so it builds the
 kit and the protocol from `Package.swift` too. It builds no other target of
-`Package.swift`, and the package's tests have not been run with
-`swift test`. Put through the conformance script, such a tool passed once,
-by hand (Swift 6.4, 2026-10-12).
+`Package.swift`. The mirror's own CI (`.github/workflows/ci.yml`) is what
+runs `swift build` and `swift test` on every target, with the runner's
+Xcode. Put through the conformance script, such a tool passed once, by hand
+(Swift 6.4, 2026-10-12).
 
 That test needs a Mac with Xcode and no network. It gives `swift build` a
 home and a temporary folder of its own and deletes them. One thing it

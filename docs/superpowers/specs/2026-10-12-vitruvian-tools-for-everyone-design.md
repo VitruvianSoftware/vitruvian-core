@@ -557,12 +557,32 @@ the dependency order; James approves each plan before it is built.
 
 | Stage | Builds | Visible to | Cuts |
 |---|---|---|---|
-| **A. Publish** | The mirror and its CI; release-please for `vitruvian-sdk`; the mirror's `release.yml` with the universal binary, the formula and the Swift tag; `--version`; `init --template swift` against the published package; `CONTRIBUTING.md`; the `/tools/` section with the guide, the protocol reference and the Swift and Python examples; the first release, `0.9.0`. | A tool's author | SDK 0.9.0; no app release |
+| **A. Publish** | **Built.** The mirror and its CI; release-please for `vitruvian-sdk`; the mirror's `release.yml` with the universal binary, the formula and the Swift tag; `--version`; `init --template swift` against the published package; `CONTRIBUTING.md`; the `/tools/` section with the guide, the protocol reference and the Swift and Python examples; the first release, `0.9.0`. | A tool's author | SDK 0.9.0; no app release |
 | **B. Kits** | `tools/sdk-codegen`; the TypeScript, Python, Go and Rust kits, samples, conformance in CI, registry publishing; `init` templates for each; the examples pages. Two plans if it reads better: B1 TypeScript and Python (registries exist), B2 Go and Rust. | A tool's author | SDK 0.10.0 |
 | **C. Catalogue** | `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
 | **D. Protocol 2** | Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
 | **E. The GitHub tool** | The tool in its own repository, its catalogue entry, the migration, then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
 | **F. Nexus Agent and HomeSpeaker** | As E, one at a time. | Their users | Minor app releases |
+
+**Stage A, as built.** The plan is
+`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-a.md`;
+its table of decisions lists each choice. Where it differs from the sections
+above, in one line each:
+
+- The mirror's release writes the Homebrew formula with a deploy key that
+  writes the tap and nothing else, made by `repo-config`, not with the App
+  token `publish.sh` uses (section 5.4): that token's key would have had to
+  sit in the public mirror.
+- The formula builds from the source tarball the release attaches, not from
+  GitHub's own archive of the tag.
+- The first release is cut from a manifest of `0.0.0` with `initial-version`
+  `0.9.0`: a manifest of `0.9.0` would have made the first release `0.9.1`.
+- The mirror has no `cla.yml` (section 5.1): it takes no pull requests, and
+  the export-only mirrors before it have none.
+- The site's pages are at `/tools/guide/`, `/tools/protocol/` and
+  `/tools/examples/<language>/`, as the site's other pages are, and the
+  copies are Markdown with front matter, which Jekyll renders. There is no
+  catalogue page yet.
 
 What can start before a stage is approved: nothing is built, but the
 mock-ups for C and D can be drawn while A and B are being built, as Stage

@@ -160,10 +160,31 @@ final class NewToolTests: XCTestCase {
             || FileManager.default.fileExists(atPath: blank.folder.path), "not even the folder is made")
     }
 
+    func testTheSwiftTemplateUsesThePublishedSDKByDefault() throws {
+        var new = tool("published")
+        new.template = .swift
+        XCTAssertEqual(try NewToolWriter.write(new).get(),
+                       ["Package.swift", "Sources/Tool/main.swift", "tool/vitruvian-tool.json", "build.sh", ".gitignore"])
+        let package = try String(contentsOf: new.folder.appendingPathComponent("Package.swift"), encoding: .utf8)
+        let version = VitruvianToolCommand.version
+        XCTAssertTrue(package.contains(#".package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "\#(version)")"#),
+                      package)
+        XCTAssertTrue(package.contains(#".product(name: "VitruvianToolKit", package: "vitruvian-sdk")"#), package)
+        XCTAssertFalse(package.contains(".package(path:"), package)
+        XCTAssertEqual(NewToolWriter.publishedSDK, "https://github.com/VitruvianSoftware/vitruvian-sdk")
+
+        var said: [String] = []
+        let folder = scratch.url.appendingPathComponent("said-swift").path
+        XCTAssertEqual(VitruvianToolCommand.main(["init", folder, "--id", "com.example.said", "--name", "Said",
+                                                  "--publisher", "Example", "--template", "swift"],
+                                                 say: { said.append($0) }), 0)
+        XCTAssertTrue(said.last?.hasPrefix("The first build fetches the SDK, version \(version), from GitHub.\nNext:\n")
+                      == true, "\(said)")
+    }
+
     func testTheSwiftTemplateIsAPackageBesideTheToolsFolder() throws {
         var new = tool("swift")
         new.template = .swift
-        XCTAssertEqual(NewToolWriter.write(new), .failure(.noSDK))
         new.sdk = scratch.url.appendingPathComponent("no-such-sdk")
         XCTAssertEqual(NewToolWriter.write(new), .failure(.noSDK))
         XCTAssertFalse(FileManager.default.fileExists(atPath: new.folder.path))

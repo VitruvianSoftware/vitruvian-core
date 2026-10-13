@@ -1,0 +1,168 @@
+---
+layout: tools
+title: "The Vitruvian tool protocol, version 1"
+description: "How Vitruvian and a tool talk: one JSON message per line over the tool's standard input and output."
+permalink: /tools/protocol/
+source: packages/vitruvian-sdk/protocol/README.md
+---
+{%- comment -%}
+  Written by tools/sync-site-tools/sync.py from packages/vitruvian-sdk.
+  Do not edit it: change the source, then run
+    bazel run //tools/sync-site-tools:sync
+{%- endcomment -%}
+{% raw %}
+A tool is a program the Vitruvian app starts and talks to. This folder says
+how they talk. It is the source of truth: the Swift types in
+`../Sources/VitruvianToolProtocol` and the script in `../conformance` are
+written to match it, and tests fail when they stop matching.
+
+| File | What it is |
+|---|---|
+| `manifest.schema.json` | `vitruvian-tool.json`, the file at the top of a tool's folder |
+| `messages.schema.json` | one message, and what each message carries |
+| `methods.json` | every message: who sends it, whether it is answered, what it needs |
+| `examples/` | manifests and messages, valid and not, that both sides are tested against; and `folders.json`, folders the app and `vitruvian-tool validate` must judge alike |
+
+Every field has a description in its schema. This page is the overview.
+
+## The link
+
+The app starts the tool's program in a folder the tool may keep files in. The
+program's standard input and standard output are the link. Its standard error
+is its log.
+
+- One message per line, in UTF-8. A line ends with a line break (`\n`) and
+  has none inside it. JSON never needs one: inside a string it is written `\n`.
+- A line is at most 1,048,576 bytes, not counting its line break.
+- An empty line is ignored. Anything else that is not a message is an error.
+- A last line with no line break is never delivered: the reader holds it until
+  its line break comes, so end every message with one.
+- Lines end with `\n` alone. With `\r\n` the `\r` stays in the line and counts
+  toward the 1,048,576 bytes.
+- The tool's standard output carries nothing but messages. Print to standard
+  error instead.
+
+## A message
+
+A message is JSON-RPC 2.0. There are four kinds.
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"command/run","params":{"command":"copyLatest"}}
+{"jsonrpc":"2.0","method":"commands/state","params":{"runnable":["copyLatest"]}}
+{"jsonrpc":"2.0","id":2,"result":{}}
+{"jsonrpc":"2.0","id":2,"error":{"code":-32010,"message":"command refused"}}
+```
+
+- A **request** has an `id` and is answered, with a **result** or a
+  **failure** that carries the same `id`.
+- A **notice** has no `id` and is not answered.
+- An `id` is a whole number or a string. Whoever sends the request picks it.
+- `params` is always an object. A message that carries nothing leaves it out.
+- A request that was simply done is answered with `{}`.
+- A field you do not know is ignored. That is how a later version adds one.
+  A request you do not know is answered with failure -32601. A notice you do
+  not know is ignored.
+
+## What the app sends
+
+| Message | Kind | Meaning |
+|---|---|---|
+| `initialize` | request | The first message. It carries the protocol versions the app speaks, the language in use and the tool's data folder. The tool answers with the version it picked and its own version. Until it has, neither side sends anything else. |
+| `command/run` | request | Run this command. `command` is the id the manifest gives it. Answer `{}` when it ran, or failure -32010 when you will not run it. |
+| `preferences/changed` | notice | The person changed these preferences, in the tool's detail in Settings: each one's id and its new value. Sent only to a tool that is running and has answered `initialize`. |
+| `language/changed` | notice | The person changed the app's language: the new one, as a tag. Sent only to a tool that is running and has answered `initialize`, once for each change. A tool that starts later learns the language from `initialize`. |
+| `shutdown` | notice | Stop. The app then closes the tool's input. The tool exits with 0 within two seconds. |
+
+## What a tool sends
+
+A tool may do any of this itself. It is a separate program with everything the
+app has. These messages are for what is better done through the app.
+
+| Message | Kind | In `uses` | Meaning |
+|---|---|---|---|
+| `commands/state` | notice | | Which commands can run now. Send it whenever that changes. Until the first one, all of them can. |
+| `notify/hud` | request | `notify` | Show the app's short on-screen message, with a symbol. |
+| `notify/beep` | request | `notify` | The alert sound. |
+| `open/url` | request | `open` | Open a link. |
+| `clipboard/readText` | request | `clipboard.read` | The clipboard's text. |
+| `clipboard/writeText` | request | `clipboard.write` | Replace the clipboard with this text, marked as Vitruvian's so clipboard history files it correctly. |
+| `keystrokes/paste` | request | `keystrokes` | Paste this text into the app in front. |
+| `keystrokes/pressMenuItem` | request | `keystrokes` | Press the menu item with one of these key equivalents in the app in front. |
+| `processes/terminate` | request | `processes` | End this process, with the app's checks and its administrator prompt. |
+| `storage/get`, `storage/set` | request | `storage` | Read or write one of the preferences the manifest declares. Text is at most 4,096 characters; a longer one is refused with -32602. |
+| `log` | notice | | A line for the tool's log in Settings. |
+
+## Being refused
+
+Any request can be refused. A refusal is a failure with one of these codes.
+
+| Code | Who | Meaning |
+|---|---|---|
+| -32001 | app | The service is not listed in the tool's `uses`. `data.service` names it. |
+| -32002 | app | The tool is not installed. |
+| -32003 | app | Vitruvian lacks a macOS permission the service needs. `data.permission` names it. |
+| -32004 | app | Not available right now. |
+| -32010 | tool | The tool will not run the command. |
+
+The other codes are JSON-RPC's own: -32700 not JSON, -32600 not a message,
+-32601 unknown method, -32602 wrong params, -32603 something broke inside.
+
+A failure's `message` is a few English words for a log. It is never shown to
+the person as it is.
+
+## The manifest
+
+`vitruvian-tool.json` says what the tool is. `id`, `name`, `version`,
+`protocol`, `publisher` and `runtime` are required.
+
+- **The id has a dot** (`com.acme.deploys`) and is at most 128 characters.
+- **Text is a map of languages**, `{ "en": "Deploys", "fr": "Déploiements" }`.
+  English is required. It is shown as written.
+- **`uses` lists the app services the tool calls.** It is not a list of what
+  the tool is allowed to do.
+- **A name the app does not know refuses the tool**: a service, a surface, a
+  kind of preference, a way of starting. The reason names it.
+- **`runtime.exec` stays inside the folder.**
+- **A preference may carry a `title`**, text in several languages like any
+  other. It is what the setting is called to the person. One with no title
+  is the tool's alone, and the app never shows it. One with a title is
+  listed in the tool's detail in Settings, where the person can change it.
+  The field was added
+  after the first version 1, with no new version: an app from before it
+  ignores it, and shows no setting.
+- **Limits**: the file 65,536 bytes, 32 commands, 16 preferences, a
+  preference's title 60 characters in each language with no control
+  character, and text saved with `storage/set` 4,096 characters. A
+  character here is a Unicode code point, as JSON Schema counts.
+
+## Changing the protocol
+
+A new message or field needs no new version when an old tool or an old app can
+ignore it. Anything an old one would misread needs version 2.
+
+A change is three things in one commit: the schema, the Swift type, and an
+example in `examples/`. The tests hold the three together, and they can only
+see a difference an example crosses.
+
+## Every message, from `methods.json`
+
+| Message | Sent by | Kind | In `uses` |
+|---|---|---|---|
+| `initialize` | app | request |  |
+| `command/run` | app | request |  |
+| `preferences/changed` | app | notice |  |
+| `language/changed` | app | notice |  |
+| `shutdown` | app | notice |  |
+| `commands/state` | tool | notice |  |
+| `notify/hud` | tool | request | `notify` |
+| `notify/beep` | tool | request | `notify` |
+| `open/url` | tool | request | `open` |
+| `clipboard/readText` | tool | request | `clipboard.read` |
+| `clipboard/writeText` | tool | request | `clipboard.write` |
+| `keystrokes/paste` | tool | request | `keystrokes` |
+| `keystrokes/pressMenuItem` | tool | request | `keystrokes` |
+| `processes/terminate` | tool | request | `processes` |
+| `storage/get` | tool | request | `storage` |
+| `storage/set` | tool | request | `storage` |
+| `log` | tool | notice |  |
+{% endraw %}

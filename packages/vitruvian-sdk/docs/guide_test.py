@@ -51,6 +51,8 @@ GUIDE = os.path.join(HERE, "writing-a-tool.md")
 
 # What `vitruvian-tool` takes. Words.swift holds the same list as its usage.
 VERBS = {"init", "validate", "run"}
+# What is typed after `vitruvian-tool` alone, in place of a verb.
+ALONE = {"--version"}
 FLAGS = {
     "--id",
     "--name",
@@ -208,6 +210,12 @@ def shell_problems(lines, where, build):
     for line in lines:
         words = line.split()
         if words[:1] == ["vitruvian-tool"]:
+            if words[1] in ALONE:
+                if len(words) > 2:
+                    problems.append(
+                        f"{where}: vitruvian-tool {words[1]} takes nothing after it"
+                    )
+                continue
             if words[1] not in VERBS:
                 problems.append(f"{where}: vitruvian-tool has no `{words[1]}`")
             for word in words:
@@ -262,7 +270,7 @@ def main():
                 f"the guide's table of the manifest has no row for `{field}`"
             )
     problems += kit_problems(guide, table, read("Sources/VitruvianToolKit/Tool.swift"))
-    for flag in FLAGS | VERBS:
+    for flag in FLAGS | VERBS | ALONE:
         if flag not in read("Sources/VitruvianToolCLI/Words.swift"):
             problems.append(f"the command's usage does not name {flag}")
 

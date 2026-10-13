@@ -24,8 +24,11 @@
 The command is run as a person would run it. The tool it writes from the
 Python template must pass `validate`, pass the conformance script, and run
 under `run`. The Swift template is written and looked at here, not built:
-`swift_template_test.py` builds it. Every program started here has thirty
-seconds at most.
+`swift_template_test.py` builds it, against a checkout given with `--sdk`.
+Without `--sdk` it must depend on the published SDK at the version the
+command reports; that it resolves is checked after each release, in the
+mirror's release.yml, because it needs the network. Every program started
+here has thirty seconds at most.
 """
 
 import contextlib
@@ -124,6 +127,26 @@ def main(arguments):
         ):
             problems.append(
                 f"an unbuilt Swift tool is not told its program is missing:\n{printed}"
+            )
+
+        status, version = tool("--version")
+        version = version.strip()
+        if status != 0 or version.count(".") != 2:
+            problems.append(f"--version did not print a version:\n{version}")
+        published = os.path.join(root, "published")
+        status, printed = tool("init", published, *named, "--template", "swift")
+        wanted = (
+            '.package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", '
+            f'from: "{version}")'
+        )
+        package = os.path.join(published, "Package.swift")
+        text = ""
+        if os.path.isfile(package):
+            with open(package, encoding="utf-8") as handle:
+                text = handle.read()
+        if status != 0 or wanted not in text:
+            problems.append(
+                f"init without --sdk does not depend on the published SDK {version}:\n{printed}\n{text}"
             )
 
     for problem in problems:

@@ -43,6 +43,7 @@ Then open <http://localhost:4000>.
 | `_data/projects.yml` | Every project card on the site; edit a project here, once. A project with an `extension` block is also listed on `/ai/` |
 | `_data/team.yml` | The leadership and team section of the About page: the founder, and the AI agents with their portraits |
 | `_posts/` | Blog posts, named `YYYY-MM-DD-title.md`; set `description` for the listing |
+| `tools/` | The Tools section. `index.html` is written by hand. `guide.md`, `protocol.md` and `examples/*.md` are copies of `packages/vitruvian-sdk`'s docs and samples, written by `bazel run //tools/sync-site-tools:sync`: do not edit them, and `//tools/sync-site-tools:in_sync_test` fails until they match their sources |
 | `_layouts/`, `_includes/` | Page, post and card templates, header, footer, brand mark |
 | `assets/css/main.css` | The stylesheet, built on the Vitruvian design tokens |
 | `assets/js/main.js` | Theme toggle and mobile menu |
