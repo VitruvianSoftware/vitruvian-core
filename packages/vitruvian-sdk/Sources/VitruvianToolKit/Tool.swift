@@ -78,6 +78,9 @@ public final class Tool {
     private var handlers: [String: Handler] = [:]
     /// The tool's panels, by id, as `panel(_:onOpen:onEvent:)` made them.
     var panels: [String: Panel] = [:]
+    /// What `every(seconds:_:)` set up: each with when it next runs, by the
+    /// clock `Wire.now` reads. Nil until the app has said hello.
+    private var timers: [(seconds: TimeInterval, handler: Handler, nextAt: TimeInterval?)] = []
     /// Held so that the two ends stay open for as long as the tool lives:
     /// a file handle closes its descriptor when it is let go.
     private let ends: [FileHandle]
@@ -100,6 +103,18 @@ public final class Tool {
         handlers[id] = handler
     }
 
+    /// Runs `handler` every `seconds`, on the thread that runs the tool,
+    /// between messages: never while a command or a panel's handler is
+    /// running or waiting for the app's answer, and not before the app has
+    /// said hello. A handler that runs late is not run twice to catch up.
+    /// An error it throws is written to the tool's log and the timer goes
+    /// on. For a tool that polls, as one that watches a service does; ask
+    /// for a few seconds at least, so the tool is not the app's busiest
+    /// part.
+    public func every(seconds: TimeInterval, _ handler: @escaping Handler) {
+        timers.append((max(0, seconds), handler, nil))
+    }
+
     /// Reads and answers until the app says goodbye, then exits with 0.
     public func run() -> Never {
         exit(serve())
@@ -115,12 +130,33 @@ public final class Tool {
                 handle(kept.removeFirst())
                 continue
             }
-            switch wire.next(before: nil) {
+            switch wire.next(before: nextTimer) {
             case .message(let message): handle(message)
-            case .ended, .late: stopping = true
+            case .late: runTimers()
+            case .ended: stopping = true
             }
         }
         return 0
+    }
+
+    /// When the first timer is due, or nil with none set up or none started.
+    private var nextTimer: TimeInterval? {
+        timers.compactMap(\.nextAt).min()
+    }
+
+    /// Runs each timer that is due, once, and sets its next time from now,
+    /// not from when it was due.
+    private func runTimers() {
+        for index in timers.indices {
+            guard let due = timers[index].nextAt, due <= Wire.now else { continue }
+            timers[index].nextAt = Wire.now + timers[index].seconds
+            do {
+                try timers[index].handler(App(tool: self))
+            } catch {
+                App(tool: self).log("a timer's handler failed: \(error)")
+            }
+            if stopping { return }
+        }
     }
 
     private func handle(_ message: RPCMessage) {
@@ -171,6 +207,8 @@ public final class Tool {
         dataFolder = URL(fileURLWithPath: hello.dataFolder, isDirectory: true)
         greeted = true
         answer(id, InitializeResult(protocolVersion: picked, toolVersion: version))
+        // The timers count from the hello, so a handler may call the app.
+        for index in timers.indices { timers[index].nextAt = Wire.now + timers[index].seconds }
         onStart?(App(tool: self))
     }
 

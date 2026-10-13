@@ -563,6 +563,22 @@ COMPONENTS = [
         "standalone_only": [],
         "export_only": True,
     },
+    # vitruvian-tool-github: EXPORT-ONLY mirror of apps/desktop/vitruvian-tool-github,
+    # the GitHub tool for the Vitruvian app. The folder becomes the mirror's
+    # root, which is the shape `swift build` needs: Package.swift at the top.
+    # The mirror's own release.yml (exported from the subtree) tags vX.Y.Z
+    # from the exported .release-please-manifest.json and attaches the tool's
+    # zip, which catalog/tools.json pins. Contributions are pull requests to
+    # this repository (the tool's AGENTS.md), so there is no import path.
+    {
+        "name": "vitruvian-tool-github",
+        "repo": "vitruvian-tool-github",
+        "subtree": "apps/desktop/vitruvian-tool-github",
+        "standalone_rev_id": "VITRUVIAN_TOOL_GITHUB_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        "export_only": True,
+    },
 ]
 
 def _make_skip_guard(workflow_name, peer_label, origin_desc):

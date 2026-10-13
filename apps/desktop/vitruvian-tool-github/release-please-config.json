@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "bump-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "bootstrap-sha": "b4c829496c0d6b6f5f5bfb1b9cf9e90e5ac1b78a",
+  "packages": {
+    "apps/desktop/vitruvian-tool-github": {
+      "package-name": "vitruvian-tool-github",
+      "component": "vitruvian-tool-github",
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "1.0.0",
+      "exclude-paths": ["apps/desktop/vitruvian-tool-github/.github"],
+      "extra-files": [
+        "Sources/GitHubToolCore/Version.swift",
+        {
+          "type": "json",
+          "path": "vitruvian-tool.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}

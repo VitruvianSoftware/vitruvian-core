@@ -79,6 +79,7 @@ updates:
       - "/packages/pulumi/examples/go-foundation/build"
       - "/packages/pulumi/examples/ts-foundation/.github/workflows"
       - "/packages/pulumi/examples/ts-foundation/build"
+      - "/apps/desktop/vitruvian-tool-github/.github/workflows"
       - "/packages/vitruvian-sdk/.github/workflows"
     schedule:
       interval: "weekly"

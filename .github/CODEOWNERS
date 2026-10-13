@@ -31,6 +31,7 @@
 /apps/cli/homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
 /apps/desktop/antigravity/ @VitruvianSoftware/platform-team
 /apps/desktop/nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
+/apps/desktop/vitruvian-tool-github/ @VitruvianSoftware/platform-team
 /apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
 /apps/mcp/roborock/ @VitruvianSoftware/platform-team
 /apps/mcp/slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
