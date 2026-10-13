@@ -27,7 +27,9 @@ nowhere they need not.
 vitruvian-sdk, so nothing in this repository runs them. This test reads them
 as YAML and runs the `detect` step of release.yml, the shell exactly as
 written, with bash and git, in a repository it makes in a temporary folder,
-once for each kind of manifest. It also holds what limits the damage of a
+once for each kind of manifest. It runs the release notes step the same way,
+with and without a CHANGELOG.md, since a first release can come before the
+file does. It also holds what limits the damage of a
 mistake: the workflow may only read; only the release job may write, and
 only contents; no checkout keeps its credentials; every action is pinned to
 a commit.
@@ -120,6 +122,119 @@ def detect_problems(release):
     return problems
 
 
+NOTES_STEP = "Write the release notes"
+NO_CHANGES = "has no section for 0.9.0"
+
+
+def notes_step(release):
+    for step in release["jobs"]["release"]["steps"]:
+        if step.get("name") == NOTES_STEP:
+            return step["run"]
+    raise SystemExit(f"release.yml's release job has no step named {NOTES_STEP!r}")
+
+
+def notes(script, changelog):
+    """Runs the step for version 0.9.0 in a folder whose CHANGELOG.md says
+    `changelog` (None: no CHANGELOG.md). Gives its exit status, the notes it
+    wrote, and what it printed."""
+    with tempfile.TemporaryDirectory(dir=os.environ.get("TEST_TMPDIR")) as root:
+        if changelog is not None:
+            with open(os.path.join(root, "CHANGELOG.md"), "w") as f:
+                f.write(changelog)
+        done = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+            cwd=root,
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "RUNNER_TEMP": root,
+                "V": "0.9.0",
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        written = os.path.join(root, "notes.md")
+        text = ""
+        if os.path.exists(written):
+            with open(written) as f:
+                text = f.read()
+        return done.returncode, text, done.stdout + done.stderr
+
+
+# What release-please writes: a first release has no compare link, so no
+# brackets; a later one has both.
+FIRST = """# Changelog
+
+## 0.9.0 (2026-10-13)
+
+
+### Features
+
+* **vitruvian-sdk:** publish the SDK, version 0.9.0 ([#1](https://x/1)) ([abc1234](https://x/c))
+"""
+LATER = """# Changelog
+
+## [0.10.0](https://x/compare/v0.9.0...v0.10.0) (2026-11-01)
+
+
+### Features
+
+* the kits
+
+## [0.9.0](https://x/compare/v0.8.0...v0.9.0) (2026-10-13)
+
+
+### Bug Fixes
+
+* a fix in 0.9.0
+
+## 0.8.0 (2026-10-01)
+
+
+### Features
+
+* older work
+"""
+OTHER = """# Changelog
+
+## 0.8.0 (2026-10-01)
+
+
+### Features
+
+* older work
+"""
+
+
+def notes_problems(release):
+    script = notes_step(release)
+    problems = []
+    for name, changelog, wanted, unwanted in [
+        ("no CHANGELOG.md", None, [NO_CHANGES], []),
+        ("a first release", FIRST, ["## Features", "publish the SDK"], [NO_CHANGES]),
+        (
+            "a later release",
+            LATER,
+            ["## Bug Fixes", "a fix in 0.9.0"],
+            [NO_CHANGES, "the kits", "older work"],
+        ),
+        ("no section for 0.9.0", OTHER, [NO_CHANGES], ["older work"]),
+    ]:
+        status, text, printed = notes(script, changelog)
+        if status != 0:
+            problems.append(f"notes with {name}: exit {status}\n{printed}")
+            continue
+        wanted = ["brew install VitruvianSoftware/tap/vitruvian-tool", *wanted]
+        for line in wanted:
+            if line not in text:
+                problems.append(f"notes with {name}: no {line!r}\n{text}")
+        for line in unwanted:
+            if line in text:
+                problems.append(f"notes with {name}: has {line!r}\n{text}")
+    return problems
+
+
 def limit_problems(name, workflow):
     problems = []
     if workflow.get("permissions") != {"contents": "read"}:
@@ -150,6 +265,7 @@ def limit_problems(name, workflow):
 def main():
     release = load("release.yml")
     problems = detect_problems(release)
+    problems += notes_problems(release)
     for name in ("ci.yml", "release.yml"):
         problems += limit_problems(name, load(name))
     for problem in problems:
