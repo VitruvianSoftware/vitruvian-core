@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.32...tabula-api-v0.1.33) (2026-10-13)
+
+
+### Bug Fixes
+
+* **tabula:** the test Redis listens on loopback only, so it cannot lose its port to a stranger ([#3184](https://github.com/VitruvianSoftware/vitruvian-core/issues/3184)) ([69e555e](https://github.com/VitruvianSoftware/vitruvian-core/commit/69e555e8468744efdfb24265ee88fde8d1773da6))
+
 ## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.31...tabula-api-v0.1.32) (2026-09-20)
 
 
