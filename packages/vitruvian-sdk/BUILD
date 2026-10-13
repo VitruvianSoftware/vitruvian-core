@@ -505,10 +505,17 @@ py_test(
     data = [
         "Package.swift",
         ":vitruvian-tool",
-    ],
+        "//packages/vitruvian-sdk/kits/typescript:tool-kit-typescript",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ] + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
+    env = {
+        "VITRUVIAN_NODE": "$(NODE_PATH)",
+        "VITRUVIAN_TOOL_KIT_TYPESCRIPT": "$(rootpath //packages/vitruvian-sdk/kits/typescript:tool-kit-typescript)",
+    },
     main = "samples/init_test.py",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
 )
 
 # The Swift tool `init --template swift` writes, built the way its author

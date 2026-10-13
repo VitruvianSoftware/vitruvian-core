@@ -63,8 +63,14 @@ enum Words {
         case .manifest(let broken):
             return "that would not make a manifest the app takes: " + manifest(broken)
         case .noSDK:
-            return "\(tool.sdk?.path ?? "the path given in --sdk") holds no Package.swift. --sdk names a checkout "
-                + "of the SDK to build against; leave it out to use the published SDK, version \(version)"
+            switch tool.template {
+            case .swift:
+                return "\(tool.sdk?.path ?? "the path given in --sdk") holds no Package.swift. --sdk names a checkout "
+                    + "of the SDK to build against; leave it out to use the published SDK, version \(version)"
+            case .typescript, .pythonKit, .python:
+                return "--sdk is the path of packages/vitruvian-sdk, or of a copy of the vitruvian-sdk repository, "
+                    + "and \(tool.sdk.map { shell($0.path) } ?? "that path") holds no kit for this template"
+            }
         case .notWritten(let why):
             return "the files could not be written: \(why)"
         }
@@ -80,6 +86,36 @@ enum Words {
                   vitruvian-tool validate \(folder)
                   vitruvian-tool run \(folder)
                 Then add the folder in Vitruvian: Settings, Features, Tools from outside.
+                """
+        case .pythonKit where tool.sdk != nil:
+            return """
+                The kit from \(tool.sdk.map { shell($0.standardizedFileURL.path) } ?? "") is in lib/. Next:
+                  vitruvian-tool validate \(folder)
+                  vitruvian-tool run \(folder)
+                Then add the folder in Vitruvian: Settings, Features, Tools from outside.
+                To take the published kit instead: rm -r \(folder)/lib, then the pip line below.
+                  /usr/bin/python3 -m pip install --target \(folder)/lib -r \(folder)/requirements.txt
+                """
+        case .pythonKit:
+            return """
+                Next, put the kit in the tool's folder, with the python3 the app will use:
+                  /usr/bin/python3 -m pip install --target \(folder)/lib -r \(folder)/requirements.txt
+                  vitruvian-tool validate \(folder)
+                  vitruvian-tool run \(folder)
+                Then add the folder in Vitruvian: Settings, Features, Tools from outside. lib/ goes with it.
+                """
+        case .typescript:
+            let install = tool.sdk == nil
+                ? "  cd \(folder) && npm install"
+                : "  (cd \(shell(tool.sdk?.standardizedFileURL.appendingPathComponent("kits/typescript").path ?? "")) && npm run build)\n"
+                    + "  cd \(folder) && npm install --install-links"
+            return """
+                Next, put the kit in the tool's folder:
+                \(install)
+                  vitruvian-tool validate \(folder)
+                  vitruvian-tool run \(folder)
+                Then add the folder in Vitruvian: Settings, Features, Tools from outside. node_modules/ goes with it.
+                bin/tool starts Node: if yours is not in /opt/homebrew/bin or /usr/local/bin, say where in it.
                 """
         case .swift:
             let fetch = tool.sdk == nil ? "The first build fetches the SDK, version \(version), from GitHub.\n" : ""
@@ -166,14 +202,16 @@ enum Words {
     static let usage = """
         vitruvian-tool: check and try a Vitruvian tool without the app.
 
-          vitruvian-tool init <folder> --id ID --name NAME --publisher WHO [--template python|swift] [--sdk PATH]
+          vitruvian-tool init <folder> --id ID --name NAME --publisher WHO [--template T] [--sdk PATH]
               Starts a new tool in a folder that is not there yet, or is
               empty. It writes in that folder and nowhere else.
                 --id ID         the tool's id, with a dot: com.you.tool
                 --template      python, the default: one file, runs as it is.
+                                python-kit: Python with the kit, from PyPI.
+                                typescript: JavaScript with the kit, from npm.
                                 swift: a package that uses the kit, to build
-                --sdk PATH      for swift: build against a checkout of the SDK at
-                                PATH, not the published one
+                --sdk PATH      a checkout of the SDK, not the published one:
+                                swift builds against it; the kits are taken from it
 
           vitruvian-tool validate <folder>
               Reads a tool's folder the way the app does before it offers to
