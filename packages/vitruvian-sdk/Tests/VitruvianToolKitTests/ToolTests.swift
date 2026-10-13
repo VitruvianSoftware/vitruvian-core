@@ -640,3 +640,80 @@ extension ToolTests {
         XCTAssertTrue(ticks >= 2 && lines.allSatisfy { $0.contains("not now") }, "\(lines)")
     }
 }
+
+// MARK: - Work handed from another thread
+
+extension ToolTests {
+    func testWorkHandedFromAnotherThreadRunsOnTheToolsThreadAfterTheHello() throws {
+        // Written on the tool's one thread; read after serve() has returned.
+        nonisolated(unsafe) var commandThread: Thread?
+        nonisolated(unsafe) var handedThread: Thread?
+        nonisolated(unsafe) var waker: ToolWaker?
+        let bench = LiveBench { tool in
+            waker = tool.waker
+            tool.command("mark") { app in
+                commandThread = Thread.current
+                app.log("mark")
+            }
+        }
+        bench.serve()
+        // Handed before the hello: held until the app has said it.
+        waker?.later { app in
+            handedThread = Thread.current
+            app.log("handed")
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(logs(try bench.written()).count, 0, "nothing handed over runs before the hello")
+        bench.hello()
+        bench.app(#"{"jsonrpc":"2.0","id":2,"method":"command/run","params":{"command":"mark"}}"#)
+        Thread.sleep(forTimeInterval: 0.2)
+        waker?.later { app in app.log("handed again") }
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(bench.goodbye(), 0)
+        XCTAssertEqual(logs(try bench.written()), ["handed", "mark", "handed again"])
+        XCTAssertNotNil(handedThread)
+        XCTAssertTrue(handedThread === commandThread, "handed work runs on the thread the handlers run on")
+        XCTAssertFalse(handedThread === Thread.current, "and not on the thread that handed it")
+    }
+
+    func testWorkHandedWhileAHandlerWaitsRunsAfterTheHandler() throws {
+        nonisolated(unsafe) var waker: ToolWaker?
+        let bench = LiveBench { tool in
+            waker = tool.waker
+            tool.command("copy") { app in
+                _ = try app.clipboardText()
+                app.log("command done")
+            }
+        }
+        bench.serve()
+        bench.hello()
+        bench.app(#"{"jsonrpc":"2.0","id":2,"method":"command/run","params":{"command":"copy"}}"#)
+        Thread.sleep(forTimeInterval: 0.1)
+        // The handler is waiting for the clipboard: this must not cut in.
+        waker?.later { app in app.log("handed") }
+        Thread.sleep(forTimeInterval: 0.2)
+        bench.app(#"{"jsonrpc":"2.0","id":1,"result":{"text":"x"}}"#)
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(bench.goodbye(), 0)
+        let written = try bench.written()
+        XCTAssertEqual(logs(written), ["command done", "handed"], "the handler finishes first")
+        let answered = written.firstIndex { if case .result(id: .number(2), _) = $0 { return true } else { return false } }
+        let handed = written.firstIndex { if case .notice("log", let params) = $0 { return params?["message"]?.stringValue == "handed" } else { return false } }
+        XCTAssertTrue((answered ?? .max) < (handed ?? .min), "the command's answer goes out before the handed work runs")
+    }
+
+    func testAnErrorInHandedWorkIsLoggedAndTheRestStillRuns() throws {
+        nonisolated(unsafe) var waker: ToolWaker?
+        let bench = LiveBench { tool in waker = tool.waker }
+        bench.serve()
+        bench.hello()
+        Thread.sleep(forTimeInterval: 0.1)
+        waker?.later { _ in throw CommandRefused("not now") }
+        waker?.later { app in app.log("after") }
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(bench.goodbye(), 0)
+        let lines = logs(try bench.written())
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertTrue(lines.first?.contains("not now") == true && lines.last == "after", "\(lines)")
+    }
+}

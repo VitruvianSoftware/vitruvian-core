@@ -25,8 +25,9 @@ import VitruvianToolProtocol
 /// descriptor and written to another, a line each.
 ///
 /// It is used from one thread. Reading waits, with `poll`, until a message
-/// has come, the link has ended, or the time given has passed. It never
-/// waits longer than it is told to.
+/// has come, the link has ended, the time given has passed, or another
+/// thread has written to the wake pipe. It never waits longer than it is
+/// told to.
 struct Wire {
     enum Next: Equatable {
         case message(RPCMessage)
@@ -34,17 +35,22 @@ struct Wire {
         case ended
         /// The time given passed first.
         case late
+        /// Another thread asked for the wait to end (`ToolWaker`).
+        case woken
     }
 
     private let input: Int32
     private let output: Int32
+    /// The reading end of the wake pipe, non-blocking; -1 with none.
+    private let wake: Int32
     private var splitter = LineSplitter()
     private var lines: [Data] = []
     private(set) var ended = false
 
-    init(input: Int32, output: Int32) {
+    init(input: Int32, output: Int32, wake: Int32 = -1) {
         self.input = input
         self.output = output
+        self.wake = wake
     }
 
     /// Seconds since the Mac started: a clock nobody can set.
@@ -65,12 +71,21 @@ struct Wire {
                 if left <= 0 { return .late }
                 wait = Int32(min((left * 1000).rounded(.up), 3_600_000))
             }
-            var waiting = pollfd(fd: input, events: Int16(POLLIN), revents: 0)
-            let ready = poll(&waiting, 1, wait)
+            var waiting = [pollfd(fd: input, events: Int16(POLLIN), revents: 0)]
+            if wake >= 0 { waiting.append(pollfd(fd: wake, events: Int16(POLLIN), revents: 0)) }
+            let ready = poll(&waiting, nfds_t(waiting.count), wait)
             if ready == 0 { continue }
             if ready < 0 {
                 if errno != EINTR { ended = true }
                 continue
+            }
+            // A message first: the wake only asks that the wait end, and the
+            // caller sees what was handed over whichever comes back.
+            if waiting[0].revents == 0, waiting.count == 2, waiting[1].revents != 0 {
+                // Every byte written since the last wake is one wake.
+                var bytes = [UInt8](repeating: 0, count: 64)
+                while read(wake, &bytes, bytes.count) > 0 {}
+                return .woken
             }
             var buffer = [UInt8](repeating: 0, count: 65_536)
             let count = read(input, &buffer, buffer.count)
