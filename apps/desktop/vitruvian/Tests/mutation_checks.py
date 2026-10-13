@@ -16,6 +16,13 @@ Run it on macOS (CI runs it weekly):
 Arguments after `--` are passed on to each `bazel test`, such as cache flags.
 The mutated files must have no uncommitted changes, so that whatever stops a
 run, `git checkout` puts them back.
+
+Each mutation quotes its source exactly, so an edit to a quoted line leaves
+the mutation with nothing to replace. `--check --app-dir <folder>` only reads:
+it lists every mutation whose quoted text is not in its file exactly once, in
+a second, on any platform. The pull-request tests run it
+(`//apps/desktop/vitruvian:mutation_fixtures_test`), so the change that moves
+a quoted line is the one that fails, not the weekly run days later.
 """
 from pathlib import Path
 import os
@@ -140,8 +147,8 @@ MUTATIONS = [
      " || NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))",
      "disabled automatic music stops the reader even when resting content is Music"),
     ("closing music retains its on-demand reader", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
-     "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n    }\n\n    package func toggle()",
-     "        removeEventMonitors()\n        closeCapture?()\n    }\n\n    package func toggle()",
+     "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n        services.closeToolPanel()\n",
+     "        removeEventMonitors()\n        closeCapture?()\n        services.closeToolPanel()\n",
      "closing manually opened controls stops the reader and never leaves a music strip behind"),
     ("the display is probed before its picture is restored when software dimming is turned off", "software-dimming",
      "Sources/Vitruvian/Services/Display/BrightnessService.swift",
@@ -582,8 +589,8 @@ MUTATIONS = [
      "a command the tool leaves out cannot run"),
     ("a tool that starts with the app is stopped for being idle", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalTool.swift",
-     "        guard !startsAtLaunch else { return }\n",
-     "",
+     "        guard !startsAtLaunch, openPanels.isEmpty else { return }\n",
+     "        guard openPanels.isEmpty else { return }\n",
      "and is kept running however long nothing is asked of it"),
     ("a tool that was removed is left running", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
@@ -773,8 +780,8 @@ MUTATIONS = [
      "the log a detail shows is the newest of what the tool wrote, at most so many lines and bytes, as plain text"),
     ("a tool's detail grows with every command the tool adds", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
-     "    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole }\n",
-     "    package var listsScroll: Bool { false }\n",
+     "    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole || settingsPanel != nil }\n",
+     "    package var listsScroll: Bool { settingsPanel != nil }\n",
      "a tool with the most a tool may have scrolls its two lists in the detail, as on the sheet"),
     ("a manifest's long words fill the alert that refuses it", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
@@ -869,7 +876,7 @@ MUTATIONS = [
      "its record and its copy are gone; the tool's settings stay as long as the folder of what it saved does"),
     ("a running tool is not told that the language changed", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
-     "        for id in tools.keys.sorted(by: { $0.rawValue < $1.rawValue }) { tools[id]?.languageChanged(language) }\n",
+     "            tools[id]?.languageChanged(language)\n",
      "",
      "a running tool is sent language/changed once for each change, and what it is sent is the "
      "protocol's own example of the message: a notice with no id, whose params hold the tag"),
@@ -1122,6 +1129,35 @@ MUTATIONS = [
 ]
 
 
+def stale_fixtures(root):
+    """One line for each mutation that can no longer be planted: its file is
+    gone, or the text it quotes is not there exactly once, or it replaces the
+    text with itself. Reads only."""
+    problems = []
+    for name, _, relative, before, after, _ in MUTATIONS:
+        path = root / relative
+        if not path.is_file():
+            problems.append(f"{name}: {relative} is not there (a new file must also be in the test's data)")
+            continue
+        found = path.read_text().count(before)
+        if found != 1:
+            problems.append(f"{name}: {relative} holds the quoted text {found} times, not once")
+        elif before == after:
+            problems.append(f"{name}: the mutation changes nothing")
+    return problems
+
+
+def check(root):
+    problems = stale_fixtures(root)
+    if problems:
+        print("These mutations in Tests/mutation_checks.py no longer match the source they quote.\n"
+              "Update each to plant the same regression in the code as it is now:\n  " + "\n  ".join(problems),
+              file=sys.stderr)
+        return 1
+    print(f"MUTATION FIXTURES OK ({len(MUTATIONS)} mutations match their source)")
+    return 0
+
+
 def run(bazel_flags, test_arguments, timeout):
     """Runs the unit tests once, never from the cache. Returns Bazel's exit
     status (3 when the build passed and a test failed) and its output, which
@@ -1151,6 +1187,10 @@ def main(bazel_flags):
     dirty = subprocess.check_output(["git", "status", "--porcelain", "--", *paths], cwd=ROOT, text=True)
     if dirty:
         raise RuntimeError("Commit or stash these first; the checks edit them in place:\n" + dirty)
+    # All of them at once, before an hour of building finds the first.
+    stale = stale_fixtures(ROOT)
+    if stale:
+        raise RuntimeError("Mutation fixtures need updating:\n  " + "\n  ".join(stale))
 
     print("Checking the unmodified baseline…", flush=True)
     status, output = run(bazel_flags, [], timeout=3600)
@@ -1174,4 +1214,8 @@ def main(bazel_flags):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--check"]:
+        if len(sys.argv) != 4 or sys.argv[2] != "--app-dir":
+            sys.exit("usage: mutation_checks.py --check --app-dir <folder>")
+        sys.exit(check(Path(sys.argv[3])))
     main(sys.argv[1:])
