@@ -73,6 +73,8 @@ js_library(
 filegroup(
     name = "generated_kit_files",
     srcs = glob(["kits/python/vitruvian_tool_kit/generated/**"]) + [
+        "//packages/vitruvian-sdk/go/toolkit:protocol_gen.go",
+        "//packages/vitruvian-sdk/kits/rust:src/generated/mod.rs",
         "//packages/vitruvian-sdk/kits/typescript:generated",
     ],
     visibility = ["//tools/sdk-codegen:__pkg__"],

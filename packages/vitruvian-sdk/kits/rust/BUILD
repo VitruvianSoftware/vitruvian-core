@@ -29,6 +29,8 @@ load("@rules_rust//rust:defs.bzl", "rust_library")
 
 package(default_visibility = ["//packages/vitruvian-sdk:__subpackages__"])
 
+exports_files(["src/generated/mod.rs"])
+
 rust_library(
     name = "vitruvian_tool_kit",
     srcs = glob(["src/**/*.rs"]),

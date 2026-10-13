@@ -20,3 +20,6 @@
 
 //! Write a Vitruvian tool in Rust: declare commands, handle them, call the
 //! app.
+
+pub mod generated;
+pub use generated::*;
