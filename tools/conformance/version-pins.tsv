@@ -31,3 +31,4 @@
 # file                    tool  pinned_value  review_by   owner   reason
 packages/vitruvian-sdk/go/go.mod                 go  1.22  2027-01-12  @james  the Vitruvian SDK's published Go kit: the oldest Go an author may use, held by //packages/vitruvian-sdk:go_kit_vet_test. Re-justify while the kit supports Go 1.22.
 packages/vitruvian-sdk/samples/hello-go/go.mod   go  1.22  2027-01-12  @james  the Go kit's sample builds with the kit's own floor, Go 1.22, so it shows authors what the kit needs.
+packages/vitruvian-sdk/samples/hello-panel-go/go.mod   go  1.22  2027-01-12  @james  the Go kit's drawing sample builds with the kit's own floor, Go 1.22, as hello-go does.

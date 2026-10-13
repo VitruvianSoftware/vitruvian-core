@@ -206,8 +206,10 @@ func TestAPageIsWrittenAsTheBlocksItHolds(t *testing.T) {
 			ids = append(ids, *block.ID)
 		}
 	}
-	wantedTypes := []string{"heading", "text", "button", "text", "spacer", "row", "row", "list", "toggle", "field",
-		"progress", "image", "link"}
+	wantedTypes := []string{
+		"heading", "text", "button", "text", "spacer", "row", "row", "list", "toggle", "field",
+		"progress", "image", "link",
+	}
 	if !reflect.DeepEqual(types, wantedTypes) {
 		t.Errorf("types %v", types)
 	}
