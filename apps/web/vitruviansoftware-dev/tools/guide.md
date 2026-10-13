@@ -217,6 +217,13 @@ handler that runs late runs once, not again to catch up; an error it
 throws goes to the tool's log and the timer goes on. Ask for a few seconds
 at least.
 
+A tool with a thread of its own, one that shows a window or waits on a
+child process, hands work to the kit's thread with
+`tool.waker.later { app in … }`, from any thread. The work runs on the
+kit's thread as soon as it is between messages, after the hello, and may
+call the app like any handler; an error it throws goes to the tool's log.
+Nothing else of a `Tool` may be used from another thread.
+
 ### In TypeScript, with the kit
 
 ```sh

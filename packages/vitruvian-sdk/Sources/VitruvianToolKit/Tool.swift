@@ -53,7 +53,8 @@ public enum AppUnreachable: Error, Equatable, Sendable {
 /// until the answer has come. Nothing here starts a thread or a task, so
 /// there is nothing for a handler to wait on that could be waiting on it.
 /// What the app sends while a handler waits is kept and handled after the
-/// handler returns. Do not use a `Tool` or an `App` from another thread.
+/// handler returns. Do not use a `Tool` or an `App` from another thread:
+/// another thread hands work to the tool's through `waker`.
 public final class Tool {
     public typealias Handler = (App) throws -> Void
 
@@ -84,6 +85,10 @@ public final class Tool {
     /// Held so that the two ends stay open for as long as the tool lives:
     /// a file handle closes its descriptor when it is let go.
     private let ends: [FileHandle]
+    /// Written to by `waker` to end a wait; read by the wire.
+    private let wakePipe = Pipe()
+    /// Takes work from any thread and runs it on this one (`ToolWaker`).
+    public let waker: ToolWaker
     private var wire: Wire
     private var lastID = 0
     /// What came while a handler waited for an answer, in the order it came.
@@ -95,7 +100,11 @@ public final class Tool {
     public init(version: String, input: FileHandle = .standardInput, output: FileHandle = .standardOutput) {
         self.version = version
         ends = [input, output]
-        wire = Wire(input: input.fileDescriptor, output: output.fileDescriptor)
+        let wake = wakePipe.fileHandleForReading.fileDescriptor
+        // Emptied without blocking after each wake, however many were asked.
+        _ = fcntl(wake, F_SETFL, fcntl(wake, F_GETFL) | O_NONBLOCK)
+        waker = ToolWaker(pipe: wakePipe.fileHandleForWriting.fileDescriptor)
+        wire = Wire(input: input.fileDescriptor, output: output.fileDescriptor, wake: wake)
     }
 
     /// Says what a command does. `id` is the one the manifest gives it.
@@ -130,13 +139,32 @@ public final class Tool {
                 handle(kept.removeFirst())
                 continue
             }
+            runHanded()
+            if stopping { break }
             switch wire.next(before: nextTimer) {
             case .message(let message): handle(message)
             case .late: runTimers()
+            // What was handed over is run at the top of the loop.
+            case .woken: break
             case .ended: stopping = true
             }
         }
         return 0
+    }
+
+    /// Runs what other threads handed over, in order, once the app has
+    /// said hello: before it there is no app to call. An error is logged
+    /// and the rest still runs.
+    private func runHanded() {
+        guard greeted else { return }
+        for work in waker.take() {
+            do {
+                try work(App(tool: self))
+            } catch {
+                App(tool: self).log("work handed to the tool failed: \(error)")
+            }
+            if stopping { return }
+        }
     }
 
     /// When the first timer is due, or nil with none set up or none started.
@@ -265,6 +293,9 @@ public final class Tool {
                 throw AppUnreachable.linkClosed
             case .late:
                 throw AppUnreachable.noAnswer(seconds: answerSeconds)
+            // Handed work waits for the handler, as a timer does.
+            case .woken:
+                continue
             case .message(.result(let answered, let value)) where answered == id:
                 return value
             case .message(.failure(let answered, let error)) where answered == id:
@@ -284,6 +315,39 @@ public final class Tool {
     func note(_ method: ToolMethod, _ params: JSONValue) -> Bool {
         guard greeted, !stopping else { return false }
         return wire.send(.notice(method: method.rawValue, params: params))
+    }
+}
+
+/// The one part of a `Tool` another thread may use. `later` takes work from
+/// any thread, a window's or a child process's, and the tool runs it on its
+/// own thread as soon as it is between messages: never while a handler is
+/// running or waiting for the app, and not before the app has said hello.
+/// The work is handed an `App` and may call it like any handler; an error
+/// it throws goes to the tool's log. What it captures must be `Sendable`,
+/// as it crosses threads.
+public final class ToolWaker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var queue: [@Sendable (App) throws -> Void] = []
+    private let pipe: Int32
+
+    init(pipe: Int32) {
+        self.pipe = pipe
+    }
+
+    /// Runs `work` on the tool's thread, after whatever it is doing.
+    public func later(_ work: @escaping @Sendable (App) throws -> Void) {
+        lock.withLock { queue.append(work) }
+        var byte: UInt8 = 1
+        _ = write(pipe, &byte, 1)
+    }
+
+    /// Everything handed over so far, in order, and the queue emptied.
+    func take() -> [@Sendable (App) throws -> Void] {
+        lock.withLock {
+            let taken = queue
+            queue.removeAll()
+            return taken
+        }
     }
 }
 
