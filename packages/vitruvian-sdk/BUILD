@@ -63,7 +63,7 @@ js_library(
     name = "protocol_files",
     srcs = PROTOCOL_FILES,
     visibility = [
-        "//packages/vitruvian-sdk/kits/typescript:__pkg__",
+        "//packages/vitruvian-sdk:__subpackages__",
         "//tools/sdk-codegen:__pkg__",
     ],
 )
@@ -568,6 +568,30 @@ py_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# The Go kit as its own module, outside the workspace, through `go vet` with
+# Bazel's Go: vet holds it to the Go its go.mod names, 1.22, which the
+# build above does not. No network. Not `manual` and not tied to macOS.
+GO_KIT = [
+    "//packages/vitruvian-sdk/go:go.mod",
+    "//packages/vitruvian-sdk/go/toolkit:sources",
+]
+
+py_test(
+    name = "go_kit_vet_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/go_template_test.py",
+    ],
+    args = [
+        "$(rootpath //tools/go-sdk:go)",
+        "$(rootpaths %s)" % GO_KIT[0],
+        "$(rootpaths %s)" % GO_KIT[1],
+    ],
+    data = GO_KIT + ["//tools/go-sdk:go"],
+    main = "samples/go_template_test.py",
+)
+
 # The guide's examples: every message and manifest in it against the schemas,
 # every piece of code in it against the sample it is taken from, every
 # command in it against what exists, and what it quotes the command as saying
@@ -610,6 +634,7 @@ pipeline_unit(
     persona = "platform",
     runner = "xcode-27",
     test_targets = [
+        "//packages/vitruvian-sdk/go/toolkit:toolkit_test",
         "//packages/vitruvian-sdk/kits/typescript:kit_test",
         "//tools/sdk-codegen:in_sync_test",
         "//tools/sdk-codegen:sdk_codegen_test",
@@ -617,6 +642,7 @@ pipeline_unit(
         ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
         ":conformance_test",
+        ":go_kit_vet_test",
         ":guide_test",
         ":init_test",
         ":kit_samples_test",

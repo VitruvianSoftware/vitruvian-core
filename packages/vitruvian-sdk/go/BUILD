@@ -22,3 +22,5 @@
 # which is this folder in the public mirror. Gazelle writes the BUILD files
 # below it; this one only names the module's import path.
 # gazelle:prefix github.com/VitruvianSoftware/vitruvian-sdk/go
+
+exports_files(["go.mod"])
