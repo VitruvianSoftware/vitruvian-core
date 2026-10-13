@@ -62,6 +62,20 @@ test "$("$work/unpacked/bin/tool")" = "tool" || {
 	exit 1
 }
 
+# publish.sh gives the dist folder as `./dist`, a path relative to where it
+# runs. The zip is made from inside a staging folder, so a relative path that
+# was not made whole first named a file there: "Could not create output
+# file", and the release's macOS build failed (PR #3211's first run).
+mkdir -p "$work/elsewhere"
+(cd "$work/elsewhere" && bash "$here/scripts/zip-tool.sh" "$work/tool-binary" "$version" ./dist >/dev/null) || {
+	echo "a dist folder given as ./dist is refused"
+	exit 1
+}
+test -f "$work/elsewhere/dist/HomeSpeaker-$version-tool.zip" || {
+	echo "a dist folder given as ./dist: no zip in it"
+	exit 1
+}
+
 if bash "$here/scripts/zip-tool.sh" "$work/tool-binary" "0.0.1" "$work/dist2" >/dev/null 2>&1; then
 	echo "a version the manifest does not say was accepted"
 	exit 1

@@ -60,7 +60,10 @@ cp "${MANIFEST}" "${STAGE}/homespeaker/vitruvian-tool.json"
 cp "${BINARY}" "${STAGE}/homespeaker/bin/tool"
 chmod 755 "${STAGE}/homespeaker/bin/tool"
 
+# The zip is made from inside the staging folder, so the dist folder is made
+# whole first: `./dist` would otherwise name a folder in the staging one.
 mkdir -p "${DIST}"
+DIST="$(cd "${DIST}" && pwd)"
 ASSET="${DIST}/HomeSpeaker-${VERSION}-tool.zip"
 rm -f "${ASSET}"
 (cd "${STAGE}/homespeaker" && zip -q -r -X "${ASSET}" .)
