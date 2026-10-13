@@ -158,7 +158,7 @@ LATEST_READ=""
 # search <workflow>: steps 1 and 2 below against that workflow's push runs.
 # Sets RUN_ID/CONCLUSION when a run decided, WAITING_ON when one is running.
 search() {
-  local wf="$1" runs id sha at own seen_own=""
+  local wf="$1" runs id sha at own seen_own="" own_listed=""
   # 1. The newest push runs, newest first, back to the code commit's own run.
   #    Coalescing only ever hands a change to the next run or two, so 20 is
   #    plenty; an older code commit is found by sha below.
@@ -168,25 +168,34 @@ search() {
   # Read after the first runs listing, so no listed run is newer than this
   # answer. When main has no CODE_PATH change after CODE_SHA, every run newer
   # than the code commit's own built the same code, and no run needs its own
-  # lookup.
+  # lookup. That holds only for runs listed AHEAD of the code commit's own
+  # run. Without it in the listing a run may be older than the code, so each
+  # is looked up (2026-10-13: release 3.47.0's beta had not started, and the
+  # newest delivery.yaml run, a week old, was credited as its build).
   if [ -z "$LATEST_READ" ]; then
     LATEST_CODE="$(gh api "repos/${REPO}/commits?sha=main&path=${CODE_PATH}&per_page=1" \
       --jq '.[0].sha // empty' 2>&1)" ||
       indeterminate "could not find the last ${CODE_PATH} commit on main: ${LATEST_CODE}"
     LATEST_READ=1
   fi
+  own_listed="$(printf '%s\n' "$runs" | awk -F'\t' -v want="$CODE_SHA" '$2 == want { print 1; exit }')"
   while IFS=$'\t' read -r id sha; do
     [ -n "$id" ] || continue
     if [ "$sha" = "$CODE_SHA" ]; then
       seen_own=1
-    elif [ "$LATEST_CODE" != "$CODE_SHA" ]; then
-      # main has moved past this release PR's code: only runs whose commit
-      # still has it count (a newer change's run is not the code this release
-      # ships).
+    elif [ "$LATEST_CODE" != "$CODE_SHA" ] || [ -z "$own_listed" ]; then
+      # main has moved past this release PR's code, or the code commit's own
+      # run is not listed: only runs whose commit has the code count (a newer
+      # change's run, or an older build, is not the code this release ships).
       at="$(gh api "repos/${REPO}/commits?sha=${sha}&path=${CODE_PATH}&per_page=1" \
         --jq '.[0].sha // empty' 2>&1)" ||
         indeterminate "could not find the last ${CODE_PATH} commit at ${sha}: ${at}"
-      [ "$at" = "$CODE_SHA" ] || continue
+      if [ "$at" != "$CODE_SHA" ]; then
+        # With main still on this code, a run without it is older than the
+        # code, and so is every run listed after it.
+        [ "$LATEST_CODE" != "$CODE_SHA" ] || break
+        continue
+      fi
     fi
     decide "$id" && break
     # Nothing older than the code commit's own run built this code.
