@@ -18,7 +18,7 @@ categories:
     items:
       - id: nexus-agent
         name: NexusAgent
-        version: "1.20.2"
+        version: "1.21.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -27,19 +27,19 @@ categories:
         brew_cask: VitruvianSoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-universal.dmg
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.21.0/NexusAgent-1.21.0-universal.dmg
             size: 5.1 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-arm64.dmg
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.21.0/NexusAgent-1.21.0-arm64.dmg
             size: 4.0 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.21.0/NexusAgent-1.21.0-x86_64.dmg
             size: 4.0 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.20.2/NexusAgent-1.20.2-universal.zip
+            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.21.0/NexusAgent-1.21.0-universal.zip
             size: 5.1 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
@@ -47,7 +47,7 @@ categories:
 
       - id: vitruvian-desktop
         name: Vitruvian Desktop
-        version: "3.39.0"
+        version: "3.45.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.

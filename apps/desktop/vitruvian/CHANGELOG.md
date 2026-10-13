@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.46.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.45.0...vitruvian-v3.46.0) (2026-10-13)
+
+
+### Features
+
+* **desktop:** the GitHub feature hands its sign-in and settings to the GitHub tool ([#3202](https://github.com/VitruvianSoftware/vitruvian-core/issues/3202)) ([c5424f5](https://github.com/VitruvianSoftware/vitruvian-core/commit/c5424f592de01fa2f82a66a98004431b751efc6f))
+
 ## [3.45.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.44.0...vitruvian-v3.45.0) (2026-10-13)
 
 

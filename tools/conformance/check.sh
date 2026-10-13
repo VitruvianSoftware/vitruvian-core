@@ -3965,8 +3965,9 @@ check_project_kind_allowlist
 # 2026-10-09 that stopped Tabula's delivery for over half an hour.
 #
 # The images are pinned by digest, so the same bytes can come from any registry
-# that carries them. Docker's official images are also published on
-# public.ecr.aws/docker/library/, which has no such per-address limit.
+# that carries them. AWS's public copy (public.ecr.aws/docker/library/) turned
+# out to apply the same per-address limit (five 429s in 2026-10-11..13, issue
+# #3173); Google's pull-through mirror, mirror.gcr.io/library/, has not.
 #
 # So: no oci.pull in MODULE.bazel may name Docker Hub, either spelled out
 # (docker.io, index.docker.io) or implied by a name with no registry host
@@ -4007,7 +4008,7 @@ PY
       TOTAL) total_seen="$name" ;;
       FAIL)
         emit "ocibase" "$GLYPH_FAIL" "$C_RED" "MODULE.bazel" "$found" "not Docker Hub" \
-          "oci.pull $name is pulled from Docker Hub" "pull the same digest from public.ecr.aws/docker/library/<image> or another registry that carries it"
+          "oci.pull $name is pulled from Docker Hub" "pull the same digest from mirror.gcr.io/library/<image> or another registry that carries it"
         has_failures=1
         OVERALL_FAIL=1
         FAIL_COUNT=$((FAIL_COUNT + 1))
