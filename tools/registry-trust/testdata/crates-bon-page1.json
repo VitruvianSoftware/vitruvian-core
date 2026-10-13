@@ -1,0 +1,33 @@
+{
+  "_recorded": "crates.io/api/v1/crates/<crate>/versions, 2026-10-13, trimmed to the fields the check reads",
+  "versions": [
+    {
+      "num": "3.10.2",
+      "created_at": "2026-10-02T21:52:43.924937Z",
+      "yanked": false,
+      "trustpub_data": {
+        "provider": "github",
+        "repository": "elastio/bon",
+        "run_id": "37069322951",
+        "sha": "19844caf6ea8a2ccdabc35ab251e02a3b54403dd"
+      },
+      "published_by": null
+    },
+    {
+      "num": "3.10.1",
+      "created_at": "2026-09-07T21:19:59.961533Z",
+      "yanked": false,
+      "trustpub_data": {
+        "provider": "github",
+        "repository": "elastio/bon",
+        "run_id": "34162707199",
+        "sha": "fdefce26d3233dedce83e1eff6daa659687e96a3"
+      },
+      "published_by": null
+    }
+  ],
+  "meta": {
+    "total": 51,
+    "next_page": "?per_page=2&seek=WyIzLjEwLjEiLDMxODI3NjFd"
+  }
+}

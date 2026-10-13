@@ -27,3 +27,10 @@ sh_test(
     args = ["$(location check-version-maps.sh)"],
     data = ["check-version-maps.sh"],
 )
+
+# //tools/registry-trust reads COMPONENTS to learn which mirror publishes a
+# package; its test reads the real file so a layout change cannot hide one.
+exports_files(
+    ["copy.bara.sky"],
+    visibility = ["//tools/registry-trust:__pkg__"],
+)
