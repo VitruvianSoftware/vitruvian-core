@@ -1,5 +1,16 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-10-12T00:00:00Z"
+generated: "2026-10-13T07:47:51Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
-tools: []
+tools:
+  - id: "dev.vitruvian.reference"
+    name: "Reference tool"
+    publisher: "VitruvianSoftware"
+    summary: "Says hello. The smallest tool that speaks protocol 1."
+    version: "0.1.0"
+    source: "https://github.com/VitruvianSoftware/vitruvian-sdk"
+    download: "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.10.0/reference-tool-0.1.0.zip"
+    size: "2 KB"
+    sha256: "5e067d38391a5d87dc17bf507844322b43c5a4e9fc8e47cd6b76196e12283c95"
+    uses:
+      - "Show messages and play the alert sound"
