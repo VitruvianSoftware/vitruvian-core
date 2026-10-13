@@ -118,7 +118,19 @@ jobs:
           # when auto-merge is unset, so a `!= "null"` test misfires and skips
           # enabling on EVERY PR. Compare the boolean `!= null` expression instead,
           # which prints a clean "true"/"false".
-          enabled="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          # The job's `if:` read the labels as they were when the event fired.
+          # Minutes can pass before this step runs, and a person may have held
+          # the PR in between (2026-10-13: the SDK 0.10.0 release PR was held
+          # 44 s after release-please's push fired this, and this step then
+          # re-armed auto-merge). So read the labels and the draft state again
+          # now, and stop if the PR is held.
+          state="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest,isDraft,labels \
+            --jq '[(.autoMergeRequest != null), .isDraft, ([.labels[].name] | index("do-not-automerge") != null)] | map(tostring) | join(" ")')"
+          read -r enabled draft held <<<"$state"
+          if [ "$held" = "true" ] || [ "$draft" = "true" ]; then
+            echo "Release PR #$PR is held (do-not-automerge: $held, draft: $draft); leaving auto-merge alone."
+            exit 0
+          fi
           if [ "$enabled" = "true" ]; then
             echo "Auto-merge already enabled on release PR #$PR."
             exit 0
