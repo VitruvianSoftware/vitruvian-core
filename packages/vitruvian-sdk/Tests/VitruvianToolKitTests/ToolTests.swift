@@ -702,6 +702,29 @@ extension ToolTests {
         XCTAssertTrue((answered ?? .max) < (handed ?? .min), "the command's answer goes out before the handed work runs")
     }
 
+    func testWhatComesWhileHandedWorkWaitsIsAnsweredWhenItIsDone() throws {
+        nonisolated(unsafe) var waker: ToolWaker?
+        let bench = LiveBench { tool in
+            waker = tool.waker
+            tool.command("mark") { app in app.log("mark") }
+        }
+        bench.serve()
+        bench.hello()
+        Thread.sleep(forTimeInterval: 0.1)
+        waker?.later { app in _ = try app.clipboardText() }
+        Thread.sleep(forTimeInterval: 0.1)
+        // The handed work is waiting for the clipboard. A command comes
+        // first, then the clipboard's answer, and then nothing more: the
+        // command must be answered without another message to wake the tool.
+        bench.app(#"{"jsonrpc":"2.0","id":2,"method":"command/run","params":{"command":"mark"}}"#)
+        bench.app(#"{"jsonrpc":"2.0","id":1,"result":{"text":"x"}}"#)
+        Thread.sleep(forTimeInterval: 0.3)
+        let written = try bench.written()
+        XCTAssertEqual(logs(written), ["mark"], "the command ran once the handed work was done")
+        XCTAssertTrue(written.contains(.result(id: .number(2), value: .object([:]))), "and was answered: \(written)")
+        XCTAssertEqual(bench.goodbye(), 0)
+    }
+
     func testAnErrorInHandedWorkIsLoggedAndTheRestStillRuns() throws {
         nonisolated(unsafe) var waker: ToolWaker?
         let bench = LiveBench { tool in waker = tool.waker }

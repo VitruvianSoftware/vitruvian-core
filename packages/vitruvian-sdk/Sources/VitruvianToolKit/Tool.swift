@@ -141,6 +141,9 @@ public final class Tool {
             }
             runHanded()
             if stopping { break }
+            // Handed work that called the app may have kept what came while
+            // it waited: that is answered now, not at the next message.
+            if !kept.isEmpty { continue }
             switch wire.next(before: nextTimer) {
             case .message(let message): handle(message)
             case .late: runTimers()
