@@ -87,3 +87,44 @@ py_test(
     ],
     deps = [":signing"],
 )
+
+# Run by .github/workflows/catalog-check.yaml, with the network, on a pull
+# request that changes this folder.
+py_binary(
+    name = "check-downloads",
+    srcs = ["check_downloads.py"],
+    main = "check_downloads.py",
+    deps = [":rules"],
+)
+
+py_test(
+    name = "check_downloads_test",
+    size = "small",
+    srcs = ["check_downloads_test.py"],
+    deps = [
+        ":check-downloads",
+        ":rules",
+    ],
+)
+
+# bazel run //catalog:rehearse
+#
+# Serves a rehearsal catalog on 127.0.0.1, signed with a key made for the
+# run, for the checks by hand in a --define=vitruvian_sample_tool=true build.
+py_binary(
+    name = "rehearse",
+    srcs = ["rehearse.py"],
+    main = "rehearse.py",
+    deps = [":signing"],
+)
+
+py_test(
+    name = "rehearse_test",
+    size = "small",
+    srcs = ["rehearse_test.py"],
+    deps = [
+        ":rehearse",
+        ":rules",
+        ":signing",
+    ],
+)
