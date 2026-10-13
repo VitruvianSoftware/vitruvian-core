@@ -94,13 +94,14 @@ REFERENCE_MANIFEST = "conformance/reference-tool/vitruvian-tool.json"
 filegroup(
     name = "protocol_sources",
     srcs = glob(["Sources/VitruvianToolProtocol/**/*.swift"]),
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = ["//packages/vitruvian-sdk/consumers:app"],
 )
 
 # The protocol as Swift types. Foundation only. Swift 6 mode because the app's
 # Core module, which links it, is. Nothing here may import a Vitruvian module:
-# the dependency runs one way, MIT into GPL. Visible to the app and to this
-# package, and to nothing else until the package is published.
+# the dependency runs one way, MIT into GPL. Visible to the app, to the tools
+# built here and to this package. Who that is, is listed in consumers/BUILD:
+# add a new tool there, not here, or its pull request cuts an SDK release.
 swift_library(
     name = "VitruvianToolProtocol",
     srcs = [":protocol_sources"],
@@ -108,10 +109,8 @@ swift_library(
     module_name = "VitruvianToolProtocol",
     target_compatible_with = ["@platforms//os:macos"],
     visibility = [
-        "//apps/desktop/home-speaker:__pkg__",
-        "//apps/desktop/nexus-agent/macos:__pkg__",
-        "//apps/desktop/vitruvian:__pkg__",
-        "//apps/desktop/vitruvian-tool-github:__pkg__",
+        "//packages/vitruvian-sdk/consumers:app",
+        "//packages/vitruvian-sdk/consumers:tools",
     ],
 )
 
@@ -124,11 +123,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolKit",
     target_compatible_with = ["@platforms//os:macos"],
-    visibility = [
-        "//apps/desktop/home-speaker:__pkg__",
-        "//apps/desktop/nexus-agent/macos:__pkg__",
-        "//apps/desktop/vitruvian-tool-github:__pkg__",
-    ],
+    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
     deps = [":VitruvianToolProtocol"],
 )
 
@@ -137,7 +132,7 @@ swift_library(
 filegroup(
     name = "folder_examples",
     srcs = ["protocol/examples/folders.json"],
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = ["//packages/vitruvian-sdk/consumers:app"],
 )
 
 # What the Tools section of vitruviansoftware.dev is copied from
@@ -165,7 +160,7 @@ filegroup(
 filegroup(
     name = "message_examples",
     srcs = ["protocol/examples/messages.json"],
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = ["//packages/vitruvian-sdk/consumers:app"],
 )
 
 # Everything the `vitruvian-tool` command does, as a library so the tests can
@@ -192,11 +187,7 @@ swift_binary(
     target_compatible_with = ["@platforms//os:macos"],
     # The GitHub, Nexus Agent and HomeSpeaker tools' folder tests run `validate` on what
     # they built.
-    visibility = [
-        "//apps/desktop/home-speaker:__pkg__",
-        "//apps/desktop/nexus-agent/macos:__pkg__",
-        "//apps/desktop/vitruvian-tool-github:__pkg__",
-    ],
+    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
     deps = [":VitruvianToolCLI"],
 )
 
@@ -204,11 +195,7 @@ swift_binary(
 # conformance script on what they built, as the samples tests here do.
 exports_files(
     ["conformance/conformance.py"],
-    visibility = [
-        "//apps/desktop/home-speaker:__pkg__",
-        "//apps/desktop/nexus-agent/macos:__pkg__",
-        "//apps/desktop/vitruvian-tool-github:__pkg__",
-    ],
+    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
 )
 
 # macOS-only and `manual`, like every swift_test in the repository, so the
@@ -802,6 +789,7 @@ py_test(
     srcs = ["release_version_test.py"],
     data = [
         ".release-please-manifest.json",
+        "BUILD",
         "Sources/VitruvianToolCLI/Words.swift",
         "kits/python/pyproject.toml",
         "release-please-config.json",
@@ -856,7 +844,13 @@ pipeline_unit(
     timeout_minutes = 30,
 )  # What a release bumps. The site's sync test holds that it copies none of it.
 
+# //tools/release-scope's test reads it too: it replays the pull requests that
+# let a tool in against this config as it is, to show that doing so releases
+# nothing now.
 exports_files(
     ["release-please-config.json"],
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//tools/release-scope:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )

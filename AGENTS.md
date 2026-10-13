@@ -224,5 +224,9 @@ See `docs/admin/copybara-sync.md`.
   template updates** — platform changes are *manually ported* here (this repo doubles as the test
   bed that proves starter-template changes actually build).
 - **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:` …).
+  A `feat`/`fix` releases every product whose folder the pull request changes.
+  The `release-scope` check fails one that would release a product its scope
+  does not name: split it, use a type that does not release, or add a
+  `Releases: a, b` line to the description (`.github/workflows/README.md`).
 - Planning docs live in `docs/archive/planning/` and `docs/superpowers/`. Ones marked `status: completed` are done —
   don't treat them as open TODOs.

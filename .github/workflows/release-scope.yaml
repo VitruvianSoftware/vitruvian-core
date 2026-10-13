@@ -1,0 +1,138 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# A pull request says which products it releases.
+#
+# release-please proposes a release of a product whenever a `feat` or `fix`
+# commit on main changes a file in that product's folder, and main is
+# squash-merged, so one pull request is one commit. A pull request for one
+# product that also changes a file in another's folder therefore releases both,
+# and the second release has nothing in it: the same code published again to
+# npm, PyPI, crates.io, Go and Homebrew, or an update offered to every user of a
+# tool that changes nothing. On 13 October 2026 that happened three times
+# (#3193, #3211, #3217), each caught only because someone was watching.
+#
+# This fails a pull request that would release a product it does not name, and
+# says what to do: split it, use a type that does not release, or put a
+# `Releases: a, b` line in the description. The rules are release-please's own
+# and the products come from the release-please-config.json files; the logic and
+# its tests are tools/release-scope/release_scope.py.
+#
+# `edited` is in the trigger on purpose: retitling, or adding the Releases line,
+# is how a failure is fixed, and neither pushes a commit.
+#
+# REQUIRED merge-queue check (context `release-scope`, in the ruleset in
+# infrastructure/pulumi/platform/repo-config/main.go, guarded by
+# //tools/conformance:check). So, like the other required checks:
+#   - NO `paths:` and NO `branches:` filter on pull_request: a required check
+#     that does not run never reports, and the pull request can never merge.
+#   - it runs on `merge_group` and reports there. A queue entry has no title or
+#     description of its own to edit; the pull request was judged before it
+#     could be queued. The job runs the check's own tests there and says so.
+name: Release Scope
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+  merge_group:
+
+permissions:
+  contents: read
+
+# One verdict per pull request: a newer push or edit supersedes the run before
+# it. A queue entry keys on its own commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  release-scope:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reads the pull request's title, description and commit messages.
+      pull-requests: read
+    steps:
+      # The pull request's merge commit: its first parent is main, so the diff
+      # against it is what the squash will change. Depth 2 brings that parent.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      # Plain Python, no network, well under a second. On every event, so the
+      # script that judges is tested where it runs, and so the job always has
+      # something true to report on merge_group.
+      - name: The check's own tests
+        run: python3 tools/release-scope/release_scope_test.py
+
+      - name: Which products would this pull request release?
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e -u -o pipefail
+          work="$RUNNER_TEMP/release-scope"
+          mkdir -p "$work"
+          # Asked for now, not read from the event: a re-run of an old run
+          # carries the title it was started with. The title and description
+          # are other people's text, so they go to files and never into a
+          # command line.
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$work/pr.json" || {
+            echo "::error title=release-scope could not tell::Could not read pull request #$PR_NUMBER."
+            exit 2
+          }
+          # At most 250 come back. More than one is all the check needs to
+          # know the title is what lands; the messages past 250 would only be
+          # bullets in the body, which release-please does not read as commits.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+            --jq '.[].commit.message | @json' | jq -s . > "$work/commits.json" || {
+            echo "::error title=release-scope could not tell::Could not read the commits of pull request #$PR_NUMBER."
+            exit 2
+          }
+          git diff --name-only HEAD^1 HEAD > "$work/files.txt" || {
+            echo "::error title=release-scope could not tell::Could not list the files this pull request changes."
+            exit 2
+          }
+          python3 tools/release-scope/release_scope.py \
+            --pr-json "$work/pr.json" \
+            --commits-json "$work/commits.json" \
+            --files "$work/files.txt" > "$work/report.txt" 2>&1
+          rc=$?
+          cat "$work/report.txt"
+          {
+            echo '### Which products this pull request releases'
+            echo ''
+            echo '```text'
+            cat "$work/report.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -eq 1 ]; then
+            echo "::error title=This pull request would release a product it does not name::Read this step's log: it lists the product, the files, and three ways out (split it, use a type that does not release, or add a Releases: line to the description)."
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error title=release-scope could not tell::The check could not decide, which is not a pass. Read this step's log."
+          fi
+          exit "$rc"
+
+      - name: Nothing to judge on a queue entry
+        if: github.event_name == 'merge_group'
+        run: echo "A queue entry has no title or description to edit. The pull request was judged before it could be queued."

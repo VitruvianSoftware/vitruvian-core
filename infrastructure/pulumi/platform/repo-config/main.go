@@ -332,6 +332,17 @@ func main() {
 					"go-race",
 					"osv-scan",
 					"secret-scan",
+					// release-scope (release-scope.yaml) fails a pull request that
+					// would make release-please release a product its title does
+					// not name: a `feat`/`fix` for one product that also changes a
+					// file in another's folder cuts a release of the second with
+					// nothing in it (#3193, #3211 and #3217, all on 2026-10-13).
+					// Its workflow carries no pull_request paths or branches
+					// filter and its job is unconditional on merge_group (where it
+					// runs the check's own tests; the pull request itself was
+					// judged before it could be queued), so it always reports --
+					// safe to require.
+					"release-scope",
 				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
