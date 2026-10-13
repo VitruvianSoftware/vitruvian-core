@@ -58,6 +58,52 @@ person had just placed on the 3.43.0 release.) A hold must also turn auto-merge
 off: `gh pr merge <n> --disable-auto`; the label alone does not stop a merge
 that was already armed.
 
+### `release-scope.yaml` — a pull request says which products it releases
+
+**What it does:** fails a pull request that would make release-please release a
+product the pull request does not name. Required in the merge queue (context
+`release-scope`).
+
+**Why it exists:** release-please proposes a release of a product whenever a
+`feat` or `fix` commit on `main` changes a file in that product's folder, and
+`main` is squash-merged, so one pull request is one commit. A pull request for
+one product that also changes a file in another's folder releases both, and the
+second release has nothing in it: the same code published again under a new
+version, or an update offered to every user that changes nothing. It happened
+three times on 13 October 2026 (#3193, #3211, #3217).
+
+**How it decides:** by release-please's own rules, with the products read from
+the `release-please-config.json` files (`tools/release-scope/release_scope.py`
+says which rule comes from which file of release-please's source). A pull
+request releases a product when what it lands as has a releasing type (`feat`,
+`fix`, `perf`, `revert`, a `!`, a `BREAKING CHANGE` footer) and it changes a
+file in the product's folder that is not under one of its `exclude-paths`. It
+names a product when the scope is the product's `component` or `package-name`,
+or an alias in `tools/release-scope/aliases.json` (`desktop` means `vitruvian`).
+
+**What a pull request lands as:** with more than one commit, its title. With
+**one commit, that commit's message**, not the title: that is how GitHub
+squashes here. So a one-commit pull request is fixed by changing the commit
+(or pushing a second one), not by retitling.
+
+**When it fails**, the log names the product, the files, and three ways out:
+
+1. Split it: the other product's files go in a pull request of their own.
+2. If nothing a user gets changes, use a type that does not release: `chore`,
+   `ci`, `test`, `docs`, `refactor`, `build`, `style`.
+3. If it truly changes each product, say so on a line of its own in the pull
+   request's description:
+
+   ```text
+   Releases: vitruvian-sdk, vitruvian-tool-github
+   ```
+
+   The names are components, as in each `release-please-config.json`.
+
+It runs again when the title or description is edited and when commits are
+pushed. release-please's own pull requests and the dependency bots' are left
+alone.
+
 ### `dependabot-auto-merge.yaml` — auto-merge Dependabot minor/patch PRs
 
 The same idea for Dependabot's grouped `*-minor-patch` PRs, but triggered on

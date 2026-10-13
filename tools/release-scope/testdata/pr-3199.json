@@ -1,0 +1,32 @@
+{
+  "pull_request": {
+    "number": 3199,
+    "title": "chore(main): release vitruvian-sdk 1.1.0",
+    "body": ":robot: I have created a release *beep* *boop*\n---\n\n\n## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.0.0...vitruvian-sdk-v1.1.0) (2026-10-13)\n\n\n### Features\n\n* **vitruvian-sdk:** a tool can hand work to its thread from another ([#3203](https://github.com/VitruvianSoftware/vitruvian-core/issues/3203)) ([5e3178c](https://github.com/VitruvianSoftware/vitruvian-core/commit/5e3178ce0f119857a7da3edeb76351091961b78d))\n* **vitruvian-tool-github:** the GitHub tool, released from its mirror ([#3193](https://github.com/VitruvianSoftware/vitruvian-core/issues/3193)) ([fb589e5](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb589e5ac633b85edb75234fdeb21f1a74b90cd6))\n\n---\nThis PR was generated with [Release Please](https://github.com/googleapis/release-please). See [documentation](https://github.com/googleapis/release-please#release-please).",
+    "user": {
+      "login": "vitruvian-copybara-sync[bot]",
+      "type": "Bot"
+    },
+    "head": {
+      "ref": "release-please--branches--main--components--vitruvian-sdk"
+    }
+  },
+  "commits": ["chore(main): release vitruvian-sdk 1.1.0"],
+  "files": [
+    "packages/vitruvian-sdk/.release-please-manifest.json",
+    "packages/vitruvian-sdk/CHANGELOG.md",
+    "packages/vitruvian-sdk/Sources/VitruvianToolCLI/Words.swift",
+    "packages/vitruvian-sdk/go/toolkit/version.go",
+    "packages/vitruvian-sdk/kits/python/pyproject.toml",
+    "packages/vitruvian-sdk/kits/rust/Cargo.toml",
+    "packages/vitruvian-sdk/kits/typescript/package.json",
+    "packages/vitruvian-sdk/samples/hello-go/go.mod",
+    "packages/vitruvian-sdk/samples/hello-panel-go/go.mod",
+    "packages/vitruvian-sdk/samples/hello-panel-python/requirements.txt",
+    "packages/vitruvian-sdk/samples/hello-panel-rust/Cargo.toml",
+    "packages/vitruvian-sdk/samples/hello-panel-typescript/package.json",
+    "packages/vitruvian-sdk/samples/hello-python-kit/requirements.txt",
+    "packages/vitruvian-sdk/samples/hello-rust/Cargo.toml",
+    "packages/vitruvian-sdk/samples/hello-typescript/package.json"
+  ]
+}

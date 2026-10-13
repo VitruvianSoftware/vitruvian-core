@@ -1,0 +1,22 @@
+{
+  "pull_request": {
+    "number": 3209,
+    "title": "fix(vitruvian-tool-github): a row's id is a name the app will read",
+    "body": "**Found on screen.** Installing the GitHub tool 1.0.0 from the catalogue into the released app (3.46.0): the hand-off worked and the tool's Settings panel said \"Connected as @ipv1337\", but its island page was a spinner for ever. The tool's log: `a page for the panel status was not drawn: blocks[0].id is not well formed`.\n\n**Cause.** The rows were named `repo:owner/name` and `pr:owner/name#12`. The protocol reads an id only as letters, digits, hyphen and underscore in parts joined by dots, and the app, correctly, draws none of a page with one id that is not.\n\n**Fix.** An owner and a name are written with `_` as `__` and `.` as `_d`, in parts joined by dots: `repo.acme.web`, `pr.acme.web.12`. That reads back exactly whatever the repository is called (`.github`, `a.b`, `a__d`); a name too long for an id gets a short stand-in, so it keeps its row and never costs the page.\n\n**Why no test caught it, and what does now.** The page tests held the ids as text, and the conformance run is signed out, so no test read a signed-in page the way the app does. `testEveryPageIsOneTheAppWillRead` sends every page through the protocol's own reader; `testARowsIdIsAWellFormedNameWhateverTheRepositoryIsCalled` holds ten awkward names to the protocol's rule and to reading back. Both failed before the fix.\n\n**Proven live.** With the fixed program in the installed tool, the island page draws the watched repository's checks and the open pull requests.\n\nCuts tool 1.0.1; the catalogue entry follows with its size and checksum.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "user": {
+      "login": "vitruvian-wren-agent[bot]",
+      "type": "Bot"
+    },
+    "head": {
+      "ref": "fix/github-tool-row-ids"
+    }
+  },
+  "commits": [
+    "fix(vitruvian-tool-github): a row's id is a name the app will read\n\nSigned in, the tool's island page was a spinner for ever. Its rows were\nnamed `repo:owner/name` and `pr:owner/name#12`; the protocol reads an id\nonly as letters, digits, hyphen and underscore in parts joined by dots,\nand the app draws none of a page with one id that is not. The tool's log\nsaid so: \"blocks[0].id is not well formed\".\n\nAn owner and a name are now written with `_` as `__` and `.` as `_d`, in\nparts joined by dots (`repo.acme.web`, `pr.acme.web.12`), which reads\nback exactly whatever the repository is called; a name too long for an\nid gets a short stand-in, so it still has a row and never costs the page.\n\nNo test had read a page back the way the app does: the page tests held\nthe ids as text, and the conformance run is signed out. One now sends\nevery page through the protocol's own reader, and one holds the ids to\nthe protocol's rule for ten awkward names.\n\nFound by installing 1.0.0 from the catalog into the released app.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  ],
+  "files": [
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Pages.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/GitHubToolTests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/PagesTests.swift"
+  ]
+}

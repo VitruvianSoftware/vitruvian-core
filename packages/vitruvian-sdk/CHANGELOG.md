@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.1.0...vitruvian-sdk-v1.2.0) (2026-10-13)
+
+
+### Features
+
+* **home-speaker:** a tool for the Vitruvian app, beside the app ([#3211](https://github.com/VitruvianSoftware/vitruvian-core/issues/3211)) ([efc5d5d](https://github.com/VitruvianSoftware/vitruvian-core/commit/efc5d5dd02621dbff99236911aa1c294b648ce6f))
+* **nexus-agent:** the Nexus Agent tool, released beside the app from its mirror ([#3210](https://github.com/VitruvianSoftware/vitruvian-core/issues/3210)) ([34c499f](https://github.com/VitruvianSoftware/vitruvian-core/commit/34c499fd5901b55b95a829822a98d893d442681d))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.0.0...vitruvian-sdk-v1.1.0) (2026-10-13)
 
 
