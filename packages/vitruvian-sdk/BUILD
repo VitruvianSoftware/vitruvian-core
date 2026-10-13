@@ -107,7 +107,10 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolProtocol",
     target_compatible_with = ["@platforms//os:macos"],
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = [
+        "//apps/desktop/vitruvian:__pkg__",
+        "//apps/desktop/vitruvian-tool-github:__pkg__",
+    ],
 )
 
 # What a tool is written with, in Swift: declare commands, handle them, call
@@ -119,6 +122,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolKit",
     target_compatible_with = ["@platforms//os:macos"],
+    visibility = ["//apps/desktop/vitruvian-tool-github:__pkg__"],
     deps = [":VitruvianToolProtocol"],
 )
 
