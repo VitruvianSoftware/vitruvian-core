@@ -80,3 +80,78 @@ enum CatalogueFixtures {
                                      options: [.sortedKeys])) ?? Data()
     }
 }
+
+/// Zips made byte by byte, so a test can make one no tool would: an entry
+/// that leaves its folder, a link, an encrypted entry. Entries are stored,
+/// not compressed.
+enum TestZip {
+    struct Item {
+        let name: String
+        let data: Data
+        /// The Unix mode, file type included.
+        let mode: UInt32
+
+        init(_ name: String, _ data: Data, mode: UInt32 = 0o100644) {
+            self.name = name
+            self.data = data
+            self.mode = mode
+        }
+    }
+
+    static func make(_ items: [Item], encrypted: Bool = false) -> Data {
+        var local = Data()
+        var central = Data()
+        let flags: UInt16 = encrypted ? 1 : 0
+        for item in items {
+            let crc = crc32(item.data)
+            let name = Data(item.name.utf8)
+            let size = UInt32(item.data.count)
+            let offset = UInt32(local.count)
+            // The local header: signature, version, flags, stored, time, date.
+            local += le32(0x0403_4B50) + le16(20) + le16(flags)
+            local += le16(0) + le16(0) + le16(0)
+            local += le32(crc) + le32(size) + le32(size)
+            local += le16(UInt16(name.count)) + le16(0)
+            local += name + item.data
+            // The directory: made on Unix (3), then the same, then the mode.
+            central += le32(0x0201_4B50) + Data([20, 3]) + le16(20) + le16(flags)
+            central += le16(0) + le16(0) + le16(0)
+            central += le32(crc) + le32(size) + le32(size)
+            central += le16(UInt16(name.count)) + le16(0) + le16(0) + le16(0) + le16(0)
+            central += le32(item.mode << 16) + le32(offset) + name
+        }
+        var end = le32(0x0605_4B50) + le16(0) + le16(0)
+        end += le16(UInt16(items.count)) + le16(UInt16(items.count))
+        end += le32(UInt32(central.count)) + le32(UInt32(local.count)) + le16(0)
+        return local + central + end
+    }
+
+    /// A tool's folder, zipped: the manifest test's example at `version`,
+    /// with its program, and `extra` items after.
+    static func tool(version: String = "1.2.0", id: String = "com.acme.deploys", extra: [Item] = []) -> Data {
+        let manifest = ExternalToolManifestTests.file(#"{"version": "\#(version)", "id": "\#(id)"}"#)
+        return make([Item("vitruvian-tool.json", manifest), Item("bin/", Data(), mode: 0o040755),
+                     Item("bin/deploys", Data("#!/bin/sh\n".utf8), mode: 0o100755)] + extra)
+    }
+
+    static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func le16(_ value: UInt16) -> Data {
+        Data([UInt8(value & 0xFF), UInt8(value >> 8)])
+    }
+
+    private static func le32(_ value: UInt32) -> Data {
+        le16(UInt16(value & 0xFFFF)) + le16(UInt16(value >> 16))
+    }
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        var crc: UInt32 = 0xFFFF_FFFF
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 { crc = crc & 1 == 1 ? (crc >> 1) ^ 0xEDB8_8320 : crc >> 1 }
+        }
+        return ~crc
+    }
+}

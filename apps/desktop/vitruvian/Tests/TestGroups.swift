@@ -185,6 +185,7 @@ enum TestGroups {
                 ExternalToolScreensTests.run(suite)
                 ExternalToolSettingsTests.run(suite)
                 CatalogueListTests.run(suite)
+                CatalogueInstallerTests.run(suite)
                 ByHandRulesTests.run(suite)
             }),
             ("utilities", {

@@ -22,6 +22,9 @@ package struct ToolOffer: Equatable, Sendable {
     /// What the person agreed to before, when they have added a tool with
     /// this id already. Adding the offer then replaces that tool.
     package let replaces: ToolAgreement?
+    /// For a tool from the catalog, the entry it was fetched for. The folder
+    /// is then the installer's own, not one the person picked.
+    package let catalogue: CatalogueOrigin?
 
     /// True when this would replace a tool whose manifest was not these
     /// bytes when the person agreed to it. That is all "changed" means: one

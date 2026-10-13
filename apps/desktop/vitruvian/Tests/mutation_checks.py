@@ -876,6 +876,22 @@ MUTATIONS = [
      "        if url.scheme == \"https\", url.host?.isEmpty == false { return true }\n",
      "        if url.host?.isEmpty == false { return true }\n",
      "the app reads the website's signed list, and fetches over https only"),
+    ("a download with a bad checksum is accepted", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueInstaller.swift",
+     "        case .complete where got.size == entry.download.size && got.digest == entry.download.sha256:\n",
+     "        case .complete where got.size == entry.download.size:\n",
+     "each check refuses with its own reason, in its order: the size and the checksum before "
+     "the zip, the zip before the manifest (a download whose checksum is not its pin)"),
+    ("a zip entry that leaves its folder is unpacked", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueArchive.swift",
+     "            guard isInside(name) else { return .failure(.leavesTheFolder(name)) }\n",
+     "",
+     "a zip is refused before anything is unpacked when it would leave its folder"),
+    ("a tool from the catalog is installed before the person agrees", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueInstaller.swift",
+     "                then(.success(offer))\n",
+     "                _ = store().add(ToolConsent(to: offer))\n                then(.success(offer))\n",
+     "until the person agrees nothing is installed, started or remembered"),
 ]
 
 
