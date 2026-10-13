@@ -41,6 +41,7 @@
 
 load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
+load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
@@ -323,7 +324,8 @@ filegroup(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
-# What needs no build: every sample's manifest against the schema, and the
+# What needs no build: every sample's manifest against the schema, one SDK
+# version across the kits, the kit samples and the command, and the plain
 # Python sample against the conformance script. Not `manual` and not tied to
 # macOS, so the Linux lane runs it too.
 py_test(
@@ -333,7 +335,14 @@ py_test(
         "conformance/conformance.py",
         "samples/samples_test.py",
     ],
-    data = glob(["samples/**"]) + ["protocol/manifest.schema.json"],
+    data = glob([
+        "samples/**",
+        "Sources/VitruvianToolCLI/*.swift",
+    ]) + [
+        "kits/python/pyproject.toml",
+        "protocol/manifest.schema.json",
+        "//packages/vitruvian-sdk/kits/typescript:package.json",
+    ],
     main = "samples/samples_test.py",
     deps = ["@pip//jsonschema"],
 )
@@ -410,6 +419,55 @@ py_test(
     main = "kits/apple_python_test.py",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The kit samples' folders as an author ships them: the TypeScript one with
+# the built kit in node_modules/, as `npm install` leaves it; the Python one
+# with the kit in lib/, as `pip install --target lib` leaves it.
+copy_to_directory(
+    name = "hello-typescript-folder",
+    srcs = glob(["samples/hello-typescript/**"]) + ["//packages/vitruvian-sdk/kits/typescript:tool-kit-typescript"],
+    out = "built/hello-typescript",
+    replace_prefixes = {
+        "samples/hello-typescript/": "",
+        "kits/typescript/tool-kit-typescript": "node_modules/@vitruviansoftware/tool-kit",
+    },
+)
+
+copy_to_directory(
+    name = "hello-python-kit-folder",
+    srcs = glob(["samples/hello-python-kit/**"]) + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
+    out = "built/hello-python-kit",
+    replace_prefixes = {
+        "samples/hello-python-kit/": "",
+        "kits/python/vitruvian_tool_kit/": "lib/vitruvian_tool_kit/",
+    },
+)
+
+# The two kit samples, as shipped, against the conformance script. It starts
+# real processes: Node through the sample's own bin/tool, which finds `node`
+# on the PATH the test gives it, and the Python sample through this test's
+# own Python. Not `manual` and not tied to macOS, so the Linux lane runs it.
+py_test(
+    name = "kit_samples_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/samples_test.py",
+    ],
+    args = [
+        "$(rootpath :hello-typescript-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-python-kit-folder)/vitruvian-tool.json",
+    ],
+    data = [
+        ":hello-python-kit-folder",
+        ":hello-typescript-folder",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    main = "samples/samples_test.py",
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    deps = ["@pip//jsonschema"],
 )
 
 # `vitruvian-tool init` starts a new tool from a copy of a hello sample, and
