@@ -111,7 +111,13 @@ TODAY="$(date +%Y-%m-%d)"
 # and is likewise absent here. It declares no cataloged dep TODAY, so nothing is
 # broken — but the classification gap is the same and the first cataloged dep
 # added there reproduces this bug exactly.
-CATALOG_EXEMPT="apps/mcp/slack apps/web/oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
+#
+# packages/vitruvian-sdk added 2026-10-13: a one-way Copybara mirror
+# (VitruvianSoftware/vitruvian-sdk) whose TypeScript kit, kits/typescript, is
+# built and published with npm by the mirror's release.yml, with no
+# pnpm-workspace.yaml there. The first cataloged dep it declared (jest) was
+# flagged as a literal range by this check on PR #3166; the literal is right.
+CATALOG_EXEMPT="apps/mcp/slack apps/web/oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation packages/vitruvian-sdk"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
