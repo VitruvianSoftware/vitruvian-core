@@ -57,11 +57,16 @@ SHARED = {
         "Install create-dmg",
         "Create DMGs",
         "Create ZIP for auto-updater",
+        "Zip the tool's folder",
     ],
 }
 
 # Steps only the release has: they publish, with the mirror's token.
-RELEASE_ONLY = {"Upload release assets", "Update Homebrew Cask"}
+RELEASE_ONLY = {
+    "Upload release assets",
+    "Say what the catalog entry pins",
+    "Update Homebrew Cask",
+}
 
 # Steps only the rehearsal has: what it prints and what it checks.
 REHEARSAL_ONLY = {
@@ -72,6 +77,9 @@ REHEARSAL_ONLY = {
     # The rehearsal starts the app it packaged; a release starts nothing.
     "Start the packaged app",
     "Check the app inside the ZIP",
+    # The rehearsal judges the tool's folder as the Vitruvian app would; a
+    # release attaches its zip and judges nothing.
+    "Check the tool's folder",
 }
 
 # Where the package is in this repository. The mirror has it at its root.
@@ -255,7 +263,8 @@ def looked_at_what_matters(release_text):
                 break
             paths.append(line)
     expect(
-        "two uploaded paths, the executable and the resource folder", len(paths) == 2
+        "three uploaded paths: the executable, the resource folder and the tool",
+        len(paths) == 3,
     )
     expect(
         "`if-no-files-found: error` on the upload",
@@ -278,6 +287,13 @@ def looked_at_what_matters(release_text):
         if line.startswith("macos/scripts/bundle.sh ")
     ]
     expect("three bundle.sh calls", len(calls) == 3)
+    expect(
+        "the tool's zip, with the manifest at its top",
+        any(
+            line.startswith('(cd "$folder" && zip -r -X')
+            for line in body("Zip the tool's folder")
+        ),
+    )
     return problems
 
 
