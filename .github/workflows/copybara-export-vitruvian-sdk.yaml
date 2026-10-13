@@ -1,0 +1,58 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara Export (vitruvian-sdk)
+
+# EXPORT-ONLY mirror: monorepo packages/vitruvian-sdk/ -> VitruvianSoftware/
+# vitruvian-sdk (repo root) on every push under that subtree. Thin caller --
+# logic lives in _copybara-export.yaml; the export_vitruvian_sdk workflow is
+# defined in tools/copybara/copy.bara.sky.
+#
+# The mirror is how people outside this repository get the SDK: SwiftPM
+# resolves https://github.com/VitruvianSoftware/vitruvian-sdk by its tags, and
+# the mirror's own release.yml (exported with everything else) tags, builds
+# and writes the Homebrew formula when the exported manifest has a new
+# version. A green run here means "pushed to the mirror", not "released".
+on:
+    push:
+        branches: [main]
+        paths: ["packages/vitruvian-sdk/**", "tools/copybara/copy.bara.sky"]
+    workflow_dispatch:
+        inputs:
+            copybara-options:
+                description: "Copybara CLI options. Re-seed a lost MONOREPO_REV_ID baseline with '--init-history --force --ignore-noop' (SQUASH mode lands it as one commit)."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: read
+
+concurrency:
+    group: copybara-export-vitruvian-sdk
+    cancel-in-progress: false
+
+jobs:
+    export:
+        uses: ./.github/workflows/_copybara-export.yaml
+        with:
+            component: vitruvian-sdk
+            copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.VITRUVIAN_SDK_SYNC_SSH_KEY }}

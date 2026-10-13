@@ -1,0 +1,82 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please for the Vitruvian SDK (packages/vitruvian-sdk): authors the
+# release PR from conventional commits under packages/vitruvian-sdk/ and, when
+# that PR merges, cuts the GitHub Release tagged vitruvian-sdk-vX.Y.Z here.
+#
+# This is RELEASE MACHINERY, not delivery: it builds and publishes nothing. The
+# release PR writes the version into .release-please-manifest.json,
+# CHANGELOG.md and Words.swift; Copybara exports them to
+# VitruvianSoftware/vitruvian-sdk, whose own release.yml (exported from
+# packages/vitruvian-sdk/.github/workflows/) tags vX.Y.Z and go/vX.Y.Z there,
+# builds vitruvian-tool and writes the Homebrew formula.
+#
+# The first release is 0.9.0: the manifest starts at 0.0.0, which release-please
+# reads as "never released", and the config's initial-version names 0.9.0.
+# bootstrap-sha stops its first look back at the commit the publishing work
+# started from, so the first changelog holds that work and not the app commits
+# that touched the package before. Release PRs merge themselves
+# (release-pr-automerge.yaml); label one do-not-automerge to hold it.
+name: vitruvian-sdk-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/vitruvian-sdk/**"
+      - ".github/workflows/vitruvian-sdk-release.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # Never cancel a release run; serialize them on the branch so rapid merges
+    # to main cannot race the release PR / tag creation (issue #461).
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
+      # `uses: ./...` without the repo already checked out onto the runner.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
+      # PR triggers the merge queue's required checks. No fallback: a
+      # GITHUB_TOKEN-authored release PR can never enter the merge queue.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: packages/vitruvian-sdk/release-please-config.json
+          manifest-file: packages/vitruvian-sdk/.release-please-manifest.json
+          target-branch: main

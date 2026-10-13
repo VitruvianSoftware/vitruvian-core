@@ -96,6 +96,22 @@ filegroup(
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
+# What the Tools section of vitruviansoftware.dev is copied from
+# (//tools/sync-site-tools), so its test sees the same files.
+filegroup(
+    name = "site_sources",
+    srcs = [
+        "docs/writing-a-tool.md",
+        "protocol/README.md",
+        "protocol/methods.json",
+        "samples/hello-python/bin/tool.py",
+        "samples/hello-python/vitruvian-tool.json",
+        "samples/hello-swift/main.swift",
+        "samples/hello-swift/vitruvian-tool.json",
+    ],
+    visibility = ["//tools/sync-site-tools:__pkg__"],
+)
+
 # The protocol's example messages. The app's tests hold what the app sends a
 # tool to the example of it here.
 filegroup(
@@ -313,6 +329,24 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+# The mirror's own workflows (.github/workflows/, which run only in
+# VitruvianSoftware/vitruvian-sdk): release.yml's `detect` step, run as written
+# with bash, git and jq, releases a version once and never 0.0.0; and no job
+# may write more than it must. `no-remote-exec`: the step needs jq and git on
+# the machine, and the remote execution image has no jq.
+py_test(
+    name = "mirror_workflows_test",
+    size = "small",
+    srcs = ["mirror_workflows_test.py"],
+    data = [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+    ],
+    main = "mirror_workflows_test.py",
+    tags = ["no-remote-exec"],
+    deps = ["@pip//pyyaml"],
+)
+
 # `vitruvian-tool init` starts a new tool from a copy of a hello sample, and
 # the copies are compiled into the command as text. This writes that text:
 #
@@ -415,6 +449,20 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+# The version in release-please's two files and the one `--version` prints
+# agree. Plain Python, so the Linux lane runs it too.
+py_test(
+    name = "release_version_test",
+    size = "small",
+    srcs = ["release_version_test.py"],
+    data = [
+        ".release-please-manifest.json",
+        "Sources/VitruvianToolCLI/Words.swift",
+        "release-please-config.json",
+    ],
+    main = "release_version_test.py",
+)
+
 pipeline_unit(
     name = "vitruvian-sdk",
     persona = "platform",
@@ -426,7 +474,9 @@ pipeline_unit(
         ":conformance_test",
         ":guide_test",
         ":init_test",
+        ":mirror_workflows_test",
         ":protocol_examples_test",
+        ":release_version_test",
         ":samples_test",
         ":swift_samples_test",
         ":swift_template_test",

@@ -36,8 +36,9 @@ public struct NewTool: Equatable, Sendable {
     public var name: String
     public var publisher: String
     public var template = ToolTemplate.python
-    /// Where `packages/vitruvian-sdk` is, for the Swift template: the kit
-    /// is published nowhere, so a tool's package names it by its path.
+    /// For the Swift template: a checkout of the SDK to build against, named
+    /// by its path. Nil, the tool's package depends on the published SDK, at
+    /// the version this command was built from.
     public var sdk: URL?
 
     public init(folder: URL, id: String, name: String, publisher: String) {
@@ -59,13 +60,15 @@ public enum NewToolProblem: Error, Equatable, Sendable {
     /// The id, the name or the publisher would not make a manifest the app
     /// takes.
     case manifest(ManifestProblem)
-    /// The Swift template was asked for with no `--sdk`, or the path given
-    /// holds no `Package.swift`.
+    /// The path given in `--sdk` holds no `Package.swift`.
     case noSDK
     case notWritten(String)
 }
 
 public enum NewToolWriter {
+    /// Where the SDK is published: the repository a Swift package depends on.
+    public static let publishedSDK = "https://github.com/VitruvianSoftware/vitruvian-sdk"
+
     /// One file to write: its path in the folder, its text, and whether it
     /// is a program.
     public struct File: Equatable, Sendable {
@@ -100,12 +103,26 @@ public enum NewToolWriter {
             return .success([File(path: ToolManifestFile.fileName, text: manifest, runs: false),
                              File(path: "bin/tool.py", text: Templates.pythonProgram, runs: true)])
         case .swift:
-            guard let sdk = tool.sdk?.standardizedFileURL,
-                  FileManager.default.fileExists(atPath: sdk.appendingPathComponent("Package.swift").path)
-            else { return .failure(.noSDK) }
+            // SwiftPM names a package it depends on by the last part of its
+            // path or its address, and a product is asked for by that name.
+            let dependency: [String]
+            let name: String
+            if let given = tool.sdk {
+                let sdk = given.standardizedFileURL
+                guard FileManager.default.fileExists(atPath: sdk.appendingPathComponent("Package.swift").path)
+                else { return .failure(.noSDK) }
+                dependency = ["// The Vitruvian SDK, from a checkout of it on this Mac.",
+                              ".package(path: \"\(swiftText(sdk.path))\"),"]
+                name = sdk.lastPathComponent
+            } else {
+                dependency = ["// The Vitruvian SDK, from the version of vitruvian-tool that wrote this",
+                              "// file up to the next major version.",
+                              ".package(url: \"\(publishedSDK)\", from: \"\(Words.version)\"),"]
+                name = "vitruvian-sdk"
+            }
             let package = swiftPackage
-                .replacingOccurrences(of: "{{sdk}}", with: swiftText(sdk.path))
-                .replacingOccurrences(of: "{{package}}", with: swiftText(sdk.lastPathComponent))
+                .replacingOccurrences(of: "{{dependency}}", with: dependency.joined(separator: "\n        "))
+                .replacingOccurrences(of: "{{package}}", with: swiftText(name))
             return .success([File(path: "Package.swift", text: package, runs: false),
                              File(path: "Sources/Tool/main.swift", text: Templates.swiftProgram, runs: false),
                              File(path: "tool/" + ToolManifestFile.fileName, text: manifest, runs: false),
@@ -175,9 +192,7 @@ public enum NewToolWriter {
             name: "Tool",
             platforms: [.macOS(.v14)],
             dependencies: [
-                // The Vitruvian SDK is published nowhere yet. This is where it
-                // was on the Mac this tool was started on.
-                .package(path: "{{sdk}}"),
+                {{dependency}}
             ],
             targets: [
                 .executableTarget(
