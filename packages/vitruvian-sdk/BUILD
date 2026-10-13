@@ -844,7 +844,13 @@ pipeline_unit(
     timeout_minutes = 30,
 )  # What a release bumps. The site's sync test holds that it copies none of it.
 
+# //tools/release-scope's test reads it too: it replays the pull requests that
+# let a tool in against this config as it is, to show that doing so releases
+# nothing now.
 exports_files(
     ["release-please-config.json"],
-    visibility = ["//tools/sync-site-tools:__pkg__"],
+    visibility = [
+        "//tools/release-scope:__pkg__",
+        "//tools/sync-site-tools:__pkg__",
+    ],
 )

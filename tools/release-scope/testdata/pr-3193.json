@@ -1,0 +1,73 @@
+{
+  "pull_request": {
+    "number": 3193,
+    "title": "feat(vitruvian-tool-github): the GitHub tool, released from its mirror",
+    "body": "Stage E of issue #3130, Tasks 2, 3 and 4b (plan: PR #3183), pull request C: the GitHub feature rewritten as a protocol 2 tool, and the machinery that releases it. Nothing of the app changes here (that is PR D), and the SDK's 1.0.0 release (PR #3179, held) carries the kit timer it uses.\n\n## What this does\n\n- **`apps/desktop/vitruvian-tool-github`**, GPL like the app, a Swift tool on the Swift kit: the feature's core ported line for line (verdicts over pull requests and checks, the watchlist, a 0600 `secrets.json` for the token, the GravaStar mouse as five one-line lights, sign-in by CLI, token or device code, the API); the tool draws an island page and a Settings panel, polls on the kit's timer, and signs in. 59 core tests; the conformance script opens its panel; a scratch HOME and `block-network` keep every test off this Mac's real `gh` login.\n- **A mirror**, `VitruvianSoftware/vitruvian-tool-github` (made by PR #3192): export-only, squash, the thirteenth component. Its `release.yml` builds the tool, zips its folder the catalogue's way, tags `vX.Y.Z` and attaches the zip with its size and checksum in the notes; no tap key, no `id-token`, held by `mirror_workflows_test`. release-please here opens the tool's release PR, first version 1.0.0.\n\n## Checked on the final tree, after merging main\n\n`//apps/desktop/vitruvian-tool-github/...` (core tests, conformance, version and mirror-workflow tests), the kit's tests, the pin test; actionlint on seven workflows; the Copybara config parsed in the real image (`export_vitruvian_tool_github` valid); conformance check 430 ok, 0 fail (13 components, all smoke-tested and watched); presubmit generator `--check`; licence check and verify (the tool's folder is exempt from the MIT header rule, as GPL); `//:tidy`. Eight planted regressions each failed their test and were reversed (a handed token not cleared, a page over the protocol's limit, `HOME` ignored, a size line unescaped, an identity token on the release job, release-please's version drifting from the manifest, and more).\n\n## After this merges\n\nThe first export reaches the mirror; its `ci.yml` and `release.yml` run for real for the first time (only their `detect` and notes steps have run, in the test). release-please opens the tool's 1.0.0 PR, which merges itself; the mirror then tags `v1.0.0` and attaches `github-tool-1.0.0.zip`. The catalogue entry (Task 6) takes its size and checksum from that asset. The tool's `Package.swift` pins the kit `from: 1.0.0`, so a SwiftPM build from the mirror needs the SDK's 1.0.0 tag, which the held release PR cuts.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "user": {
+      "login": "vitruvian-wren-agent[bot]",
+      "type": "Bot"
+    },
+    "head": {
+      "ref": "feat/vitruvian-tool-github"
+    }
+  },
+  "commits": [
+    "feat(vitruvian-sdk): a tool can act on a timer\n\nThe Swift kit gains Tool.every(seconds:_:): a handler the kit's one\nthread runs between messages, on Wire.next's deadline. It never runs\nwhile a command's or a panel's handler runs or waits for the app, and\nnot before the app has said hello; a handler that runs late runs once;\nan error it throws goes to the tool's log and the timer goes on. The\nguide says so, and the site's copy of the guide is synced.\n\nStage E of tools for everyone, Task 1 (#3130). The protocol does not\nchange, so the app's pin does not move.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>\n\nRelease-As: 1.0.0",
+    "feat(vitruvian-tool-github): the GitHub tool's core, from the app's feature\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "Merge remote-tracking branch 'origin/feat/vitruvian-sdk-timer' into feat/vitruvian-tool-github",
+    "feat(vitruvian-tool-github): the tool draws, polls and signs in\n\nThe GitHub tool's state machine (GitHubTool), its two pages (Pages), its\nversion, and the program that wires the kit's handlers, panels, commands\nand timer to it. The manifest declares protocol 2, two commands, two\npanels and twelve preferences. conformance_test runs the built folder\nthrough validate and the SDK's conformance script under a scratch HOME on\na block-network target; version_test holds the version to one number and\nthe kit pin to 1.0.0. One pipeline unit, vitruvian-tool-github, and the\nregenerated presubmit.yaml.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "feat(ci): export apps/desktop/vitruvian-tool-github to VitruvianSoftware/vitruvian-tool-github, and release it\n\nThe tool's folder becomes the root of an export-only SQUASH mirror,\nVitruvianSoftware/vitruvian-tool-github, whose own ci.yml builds against\nthe published kit and whose release.yml tags vX.Y.Z from the exported\nrelease-please manifest, builds the universal binary, zips the folder\nwith vitruvian-tool.json at its top and attaches it with its checksum.\nrelease-please here starts the tool at 1.0.0 from a 0.0.0 manifest.\nmirror_workflows_test runs the detect and notes steps as written and\nholds every job to contents-only writes, no identity token and pinned\nactions. The component is smoke-tested and watched.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "Merge remote-tracking branch 'refs/remotes/origin/main' into feat/vitruvian-tool-github"
+  ],
+  "files": [
+    ".github/CODEOWNERS",
+    ".github/dependabot.yml",
+    ".github/workflows/copybara-config-smoketest.yaml",
+    ".github/workflows/copybara-export-vitruvian-tool-github.yaml",
+    ".github/workflows/notify-ci-issues.yaml",
+    ".github/workflows/presubmit.yaml",
+    ".github/workflows/vitruvian-tool-github-release.yaml",
+    "apps/desktop/vitruvian-tool-github/.github/workflows/ci.yml",
+    "apps/desktop/vitruvian-tool-github/.github/workflows/release.yml",
+    "apps/desktop/vitruvian-tool-github/.gitignore",
+    "apps/desktop/vitruvian-tool-github/.release-please-manifest.json",
+    "apps/desktop/vitruvian-tool-github/AGENTS.md",
+    "apps/desktop/vitruvian-tool-github/BUILD",
+    "apps/desktop/vitruvian-tool-github/LICENSE",
+    "apps/desktop/vitruvian-tool-github/OWNERS",
+    "apps/desktop/vitruvian-tool-github/Package.swift",
+    "apps/desktop/vitruvian-tool-github/README.md",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/API.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Auth.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/GitHubTool.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Models.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Mouse.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Pages.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Secrets.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Version.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Watchlist.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/GitHubToolCore/Words.swift",
+    "apps/desktop/vitruvian-tool-github/Sources/github-tool/main.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/APITests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/AuthTests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/GitHubToolTests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/MouseTests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/PagesTests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/VerdictTests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/WatchlistAndSecretsTests.swift",
+    "apps/desktop/vitruvian-tool-github/Tests/GitHubToolCoreTests/WordsTests.swift",
+    "apps/desktop/vitruvian-tool-github/catalog-info.yaml",
+    "apps/desktop/vitruvian-tool-github/conformance_test.py",
+    "apps/desktop/vitruvian-tool-github/docs/index.md",
+    "apps/desktop/vitruvian-tool-github/mirror_workflows_test.py",
+    "apps/desktop/vitruvian-tool-github/mkdocs.yml",
+    "apps/desktop/vitruvian-tool-github/release-please-config.json",
+    "apps/desktop/vitruvian-tool-github/version_test.py",
+    "apps/desktop/vitruvian-tool-github/vitruvian-tool.json",
+    "catalog-info.yaml",
+    "docs/admin/copybara-sync.md",
+    "packages/vitruvian-sdk/BUILD",
+    "tools/copybara/copy.bara.sky",
+    "tools/license/verify.sh"
+  ]
+}

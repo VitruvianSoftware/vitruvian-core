@@ -1,0 +1,23 @@
+{
+  "pull_request": {
+    "number": 3191,
+    "title": "feat(vitruvian-sdk): a tool can act on a timer",
+    "body": "Stage E of issue #3130, Task 1 (plan: PR #3183), alone in its PR because it cuts an SDK release: the Swift kit gains `Tool.every(seconds:_:)`, a handler the kit's one thread runs between messages, never while a handler runs or waits for the app, not before the hello; a handler that runs late runs once; an error it throws goes to the tool's log. The GitHub tool polls with it. The guide says how.\n\nThis release is the SDK's **1.0.0**: the commit carries `Release-As: 1.0.0` (release-please keeps the minor below 1.0 otherwise; the design's row D names 1.0.0 for protocol 2, which is on main).\n\n**Checked:** kit tests 20 → 23; `guide_test`, the site sync's `in_sync_test` (the guide's copy is in this PR); the protocol pin did not move (kit only); licence check and verify; `//:tidy`. The planted regression (the timer's first deadline not set at the hello) failed four checks and was reversed. The three new tests are timing-based (50 ms ticks, a 3 to 8 window over 300 ms); they passed four runs here, and the plan accepted the window.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "user": {
+      "login": "vitruvian-wren-agent[bot]",
+      "type": "Bot"
+    },
+    "head": {
+      "ref": "feat/vitruvian-sdk-timer"
+    }
+  },
+  "commits": [
+    "feat(vitruvian-sdk): a tool can act on a timer\n\nThe Swift kit gains Tool.every(seconds:_:): a handler the kit's one\nthread runs between messages, on Wire.next's deadline. It never runs\nwhile a command's or a panel's handler runs or waits for the app, and\nnot before the app has said hello; a handler that runs late runs once;\nan error it throws goes to the tool's log and the timer goes on. The\nguide says so, and the site's copy of the guide is synced.\n\nStage E of tools for everyone, Task 1 (#3130). The protocol does not\nchange, so the app's pin does not move.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>\n\nRelease-As: 1.0.0"
+  ],
+  "files": [
+    "apps/web/vitruviansoftware-dev/tools/guide.md",
+    "packages/vitruvian-sdk/Sources/VitruvianToolKit/Tool.swift",
+    "packages/vitruvian-sdk/Tests/VitruvianToolKitTests/ToolTests.swift",
+    "packages/vitruvian-sdk/docs/writing-a-tool.md"
+  ]
+}

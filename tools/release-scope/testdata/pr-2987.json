@@ -1,0 +1,22 @@
+{
+  "pull_request": {
+    "number": 2987,
+    "title": "chore(deps): bump moment to 2.31.0 in the asset-monitoring Cloud Function source",
+    "body": "## In plain terms\n\nThe source for the Cloud Function that watches for risky IAM changes pins the `moment` date library at 2.30.1, which has an open advisory. This moves it to 2.31.0. Three alerts close.\n\n## What changes\n\nOne line in each of three identical `package.json` files: the `gcp-org` stack, and the Go and TypeScript foundation examples. They move together so the copies stay the same.\n\nUpstream `terraform-example-foundation` still pins 2.30.1, so this is a deliberate step ahead of upstream.\n\n## What merging this does\n\n**Nothing is deployed, now or later.** The function is not switched on here: `enable_scc_resources_in_pulumi` is not set in the `gcp-org` production config, so the stack does not create it. The `gcp-org` preview on this PR confirms it: 0 changes, 230 unchanged.\n\nThat is why this is `chore(deps)` and not `fix`: a release would deploy nothing. If the function is switched on later, it will be built from the patched source.\n\nThe two example copies are exported to their mirror repos.\n\n## How it was checked\n\nThe function makes one `moment` call: `moment.utc(str).valueOf()`. I ran it on both versions with seven inputs (plain UTC, fractional seconds, nanosecond precision, an offset, a space-separated form, garbage, empty). Results were identical.\n\n## Correction\n\nAn earlier version of this description said a later `gcp-org` release would replace the Cloud Function. That was wrong; I had not checked whether the function was enabled.\n\nPart of issue #2622.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "user": {
+      "login": "ipv1337",
+      "type": "User"
+    },
+    "head": {
+      "ref": "fix/cai-monitoring-moment"
+    }
+  },
+  "commits": [
+    "fix(gcp-org): bump moment to 2.31.0 in the asset-monitoring Cloud Function\n\nmoment 2.30.1 has an open advisory. The function uses it for one call,\nmoment.utc(str).valueOf(), which returns the same result on both\nversions for every input tried.\n\nThe same package.json exists three times: the live gcp-org stack and\nthe Go and TypeScript foundation examples. All three move together so\nthey stay identical. Upstream terraform-example-foundation still pins\n2.30.1; this is a deliberate step ahead of it.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  ],
+  "files": [
+    "infrastructure/pulumi/foundation/gcp-org/modules/cai_monitoring/function-source/package.json",
+    "packages/pulumi/examples/go-foundation/1-org/modules/cai_monitoring/function-source/package.json",
+    "packages/pulumi/examples/ts-foundation/1-org/cai-monitoring-function/package.json"
+  ]
+}

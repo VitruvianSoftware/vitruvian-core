@@ -119,6 +119,14 @@ exports_files(
     visibility = ["//tools/ci:__pkg__"],
 )
 
+# The check that a pull request names the products it releases. Its test holds
+# the workflow to what the check is no use without: it runs again when the
+# title is edited, and it reports on every pull request and queue entry.
+exports_files(
+    [".github/workflows/release-scope.yaml"],
+    visibility = ["//tools/release-scope:__pkg__"],
+)
+
 # gazelle:prefix github.com/VitruvianSoftware/vitruvian-core
 
 # It's faster to avoid type-checking in a devserver when using monorepo packages.

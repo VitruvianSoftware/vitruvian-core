@@ -1,0 +1,53 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# //tools/release-scope: does a pull request release a product its title does
+# not name? release_scope.py says how it decides; the release-scope workflow
+# runs it on every pull request.
+#
+# Hand-written: the test reads fixtures and one config from another package.
+# gazelle:ignore
+
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+
+py_binary(
+    name = "release-scope",
+    srcs = ["release_scope.py"],
+    data = ["aliases.json"],
+    main = "release_scope.py",
+)
+
+# Fixtures only, no network. The replay tests hold it to 13 October 2026; one
+# of them reads the SDK's config as it is now, to show that letting a tool in
+# through packages/vitruvian-sdk/consumers releases nothing.
+py_test(
+    name = "release_scope_test",
+    size = "small",
+    srcs = [
+        "release_scope.py",
+        "release_scope_test.py",
+    ],
+    data = [
+        "aliases.json",
+        "//:.github/workflows/release-scope.yaml",
+        "//packages/vitruvian-sdk:release-please-config.json",
+    ] + glob(["testdata/*.json"]),
+    main = "release_scope_test.py",
+)
