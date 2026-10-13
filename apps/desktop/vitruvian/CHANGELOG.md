@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.45.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.44.0...vitruvian-v3.45.0) (2026-10-13)
+
+
+### Features
+
+* **desktop:** protocol 2, a tool that can draw ([#3182](https://github.com/VitruvianSoftware/vitruvian-core/issues/3182)) ([f2e91f8](https://github.com/VitruvianSoftware/vitruvian-core/commit/f2e91f878d8ccb31bcf05b8d2af1034b8b4668cb))
+
 ## [3.44.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.43.0...vitruvian-v3.44.0) (2026-10-13)
 
 
