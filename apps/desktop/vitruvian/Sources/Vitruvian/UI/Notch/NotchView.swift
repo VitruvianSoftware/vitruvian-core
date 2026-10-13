@@ -11,6 +11,9 @@ package struct NotchView: View {
     @ObservedObject package var service: NotchService
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var music = NotchMusicService.shared
+    /// A tool's own page on the Tools page hides the tiles' header actions,
+    /// as a hosted utility does.
+    @ObservedObject private var panels = ToolPanelHost.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
     @ObservedObject private var updates = UpdateService.shared
     @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass: Bool
@@ -345,7 +348,7 @@ package struct NotchView: View {
         guard !service.showingAppPanel else { return false }
         return contentOverflows || service.selectedMetric != nil
             || (service.selected == .captures && service.captureContent != nil)
-            || (service.selected == .tools && launcher.isEditing && launcher.activeUtility == nil)
+            || (service.selected == .tools && launcher.isEditing && launcher.activeUtility == nil && panels.island == nil)
     }
 
     private var headerFeedback: NotchNotice? {
@@ -459,7 +462,8 @@ package struct NotchView: View {
         HStack(spacing: 6) {
             NotchUpdateControl(action: service.showUpdate, compact: compactUpdate)
             overflowMenu(items: overflowItems(
-                tools: service.selected == .tools && !showsDetail && !service.showingSections && launcher.activeUtility == nil,
+                tools: service.selected == .tools && !showsDetail && !service.showingSections && launcher.activeUtility == nil
+                    && panels.island == nil,
                 clear: showsCapturesClear, clearNotifications: showsNotificationsClear))
         }
     }
@@ -523,7 +527,7 @@ package struct NotchView: View {
         return HStack(spacing: 6) {
             NotchUpdateControl(action: service.showUpdate)
             if service.selected == .tools, !service.showingAppPanel, !service.showingSections, service.selectedMetric == nil,
-               !service.modules.isEmpty, launcher.activeUtility == nil {
+               !service.modules.isEmpty, launcher.activeUtility == nil, panels.island == nil {
                 NotchIconButton(symbol: launcher.isEditing ? "checkmark" : "slider.horizontal.3",
                                 title: text.customizeTools, selected: launcher.isEditing) {
                     withAnimation(.easeOut(duration: 0.15)) { launcher.isEditing.toggle() }

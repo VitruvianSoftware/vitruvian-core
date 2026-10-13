@@ -102,17 +102,48 @@ def _one_of(value: Any, where: str, names: Tuple[str, ...]) -> Any:
     return value
 
 
+def _text(value: Any, where: str) -> Union[str, Dict[str, str]]:
+    if isinstance(value, str):
+        return value
+    return {key: _string(item, where + "." + key) for key, item in _object(value, where).items()}
+
+
 Activation = Literal["onCommand", "onLaunch"]
 ACTIVATIONS: Tuple[str, ...] = ("onCommand", "onLaunch",)
+
+
+ButtonStyle = Literal["plain", "prominent", "destructive"]
+"""plain when left out. prominent is the page's main action; destructive one that deletes."""
+BUTTON_STYLES: Tuple[str, ...] = ("plain", "prominent", "destructive",)
+
+
+FieldKind = Literal["text", "number", "secret"]
+"""text when left out. number takes digits; secret hides what is typed."""
+FIELD_KINDS: Tuple[str, ...] = ("text", "number", "secret",)
 
 
 Modifier = Literal["shift", "option", "control"]
 MODIFIERS: Tuple[str, ...] = ("shift", "option", "control",)
 
 
+PanelKind = Literal["blocks", "web"]
+"""What draws it. blocks: the app, from blocks the tool sends. web: a web page from the tool's folder. Left out, it is blocks."""
+PANEL_KINDS: Tuple[str, ...] = ("blocks", "web",)
+
+
+PanelPlacement = Literal["island", "settings", "window"]
+"""Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks."""
+PANEL_PLACEMENTS: Tuple[str, ...] = ("island", "settings", "window",)
+
+
 PreferenceType = Literal["string", "boolean", "integer", "number"]
 """What kind of value it holds."""
 PREFERENCE_TYPES: Tuple[str, ...] = ("string", "boolean", "integer", "number",)
+
+
+ProtocolVersion = Literal["1", "2"]
+"""The protocol version the tool speaks. Version 2 adds panels, what a tool draws, and changes nothing of version 1. An app that speaks only version 1 refuses a manifest that says 2."""
+PROTOCOL_VERSIONS: Tuple[str, ...] = ("1", "2",)
 
 
 Service = Literal["notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage"]
@@ -121,6 +152,16 @@ SERVICES: Tuple[str, ...] = ("notify", "open", "clipboard.read", "clipboard.writ
 
 Surface = Literal["commandBar", "radial", "quickPanel", "shortcut"]
 SURFACES: Tuple[str, ...] = ("commandBar", "radial", "quickPanel", "shortcut",)
+
+
+TextStyle = Literal["body", "secondary", "caption", "monospaced"]
+"""body when left out. secondary and caption are quieter; monospaced is for code and logs."""
+TEXT_STYLES: Tuple[str, ...] = ("body", "secondary", "caption", "monospaced",)
+
+
+UIEventKind = Literal["tap", "toggle", "submit", "change", "bridge"]
+"""What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call."""
+UI_EVENT_KINDS: Tuple[str, ...] = ("tap", "toggle", "submit", "change", "bridge",)
 
 
 @dataclass(frozen=True)
@@ -642,4 +683,628 @@ class LogParams:
     def to_json(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         out["message"] = self.message
+        return out
+
+
+@dataclass(frozen=True)
+class UIOpenParams:
+    """The person opened one of the tool's panels. A blocks panel is answered with its first page; a web panel with {}."""
+
+    panel: str
+    """The panel's id, as the manifest gives it."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiOpenParams") -> "UIOpenParams":
+        found = _object(value, where)
+        return cls(
+            panel=_string(_required(found, "panel", where), where + ".panel"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["panel"] = self.panel
+        return out
+
+
+@dataclass(frozen=True)
+class UIOpenResult:
+    """The answer to ui/open."""
+
+    tree: Optional[UITree] = None
+    """The first page. Left out for a web panel, and for a page the tool will send later with ui/render."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiOpenResult") -> "UIOpenResult":
+        found = _object(value, where)
+        return cls(
+            tree=None if found.get("tree") is None else UITree.from_json(found["tree"], where + ".tree"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.tree is not None:
+            out["tree"] = self.tree.to_json()
+        return out
+
+
+@dataclass(frozen=True)
+class UIEventParams:
+    """The person acted in an open panel. Answered with the next page, or with keep."""
+
+    panel: str
+    """The panel's id."""
+    event: UIEventKind
+    """What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call."""
+    block: Optional[str] = None
+    """The id of the block the person acted on. Left out for bridge."""
+    value: Optional[Any] = None
+    """For toggle, the switch's new state. For submit and change, the field's text. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiEventParams") -> "UIEventParams":
+        found = _object(value, where)
+        return cls(
+            panel=_string(_required(found, "panel", where), where + ".panel"),
+            event=_one_of(_required(found, "event", where), where + ".event", UI_EVENT_KINDS),
+            block=None if found.get("block") is None else _string(found["block"], where + ".block"),
+            value=None if found.get("value") is None else _any(found["value"], where + ".value"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["panel"] = self.panel
+        if self.block is not None:
+            out["block"] = self.block
+        out["event"] = self.event
+        if self.value is not None:
+            out["value"] = self.value
+        return out
+
+
+@dataclass(frozen=True)
+class UIEventResult:
+    """The answer to ui/event. With no tree, or with keep, the page stays as it is."""
+
+    tree: Optional[UITree] = None
+    """The next page."""
+    keep: Optional[bool] = None
+    """True: the page stays as it is."""
+    reply: Optional[Any] = None
+    """For bridge: what the page's call gets back."""
+    open: Optional[str] = None
+    """A window panel of the same tool to open, in answer to what the person did. A tool cannot open a window at any other time."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiEventResult") -> "UIEventResult":
+        found = _object(value, where)
+        return cls(
+            tree=None if found.get("tree") is None else UITree.from_json(found["tree"], where + ".tree"),
+            keep=None if found.get("keep") is None else _boolean(found["keep"], where + ".keep"),
+            reply=None if found.get("reply") is None else _any(found["reply"], where + ".reply"),
+            open=None if found.get("open") is None else _string(found["open"], where + ".open"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.tree is not None:
+            out["tree"] = self.tree.to_json()
+        if self.keep is not None:
+            out["keep"] = self.keep
+        if self.reply is not None:
+            out["reply"] = self.reply
+        if self.open is not None:
+            out["open"] = self.open
+        return out
+
+
+@dataclass(frozen=True)
+class UICloseParams:
+    """The panel went away: the person closed it, or the app did."""
+
+    panel: str
+    """The panel's id."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiCloseParams") -> "UICloseParams":
+        found = _object(value, where)
+        return cls(
+            panel=_string(_required(found, "panel", where), where + ".panel"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["panel"] = self.panel
+        return out
+
+
+@dataclass(frozen=True)
+class UIRenderParams:
+    """A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped."""
+
+    panel: str
+    """The panel's id."""
+    tree: UITree
+    """The page."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiRenderParams") -> "UIRenderParams":
+        found = _object(value, where)
+        return cls(
+            panel=_string(_required(found, "panel", where), where + ".panel"),
+            tree=UITree.from_json(_required(found, "tree", where), where + ".tree"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["panel"] = self.panel
+        out["tree"] = self.tree.to_json()
+        return out
+
+
+@dataclass(frozen=True)
+class UIBadgeParams:
+    """A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses."""
+
+    count: Optional[int] = None
+    """A whole number from 0. 0 is no count."""
+    dot: Optional[bool] = None
+    """True for a dot, when there is no count."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiBadgeParams") -> "UIBadgeParams":
+        found = _object(value, where)
+        return cls(
+            count=None if found.get("count") is None else _integer(found["count"], where + ".count"),
+            dot=None if found.get("dot") is None else _boolean(found["dot"], where + ".dot"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.count is not None:
+            out["count"] = self.count
+        if self.dot is not None:
+            out["dot"] = self.dot
+        return out
+
+
+@dataclass(frozen=True)
+class UITree:
+    """A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an image written into it included: the app does not draw a larger one, and the tool's log says so."""
+
+    blocks: List[UIBlock]
+    """The blocks, at most 200."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiTree") -> "UITree":
+        found = _object(value, where)
+        return cls(
+            blocks=[UIBlock.from_json(item, where + ".blocks" + f"[{index}]") for index, item in enumerate(_array(_required(found, "blocks", where), where + ".blocks"))],
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["blocks"] = [item.to_json() for item in self.blocks]
+        return out
+
+
+@dataclass(frozen=True)
+class UIBlock:
+    """One block. type says which of the twelve kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one."""
+
+    type: str
+    """The kind: text, heading, row, button, toggle, field, list, progress, image, divider, link or spacer."""
+    content: Union[TextBlock, HeadingBlock, RowBlock, ButtonBlock, ToggleBlock, FieldBlock, ListBlock, ProgressBlock, ImageBlock, DividerBlock, LinkBlock, SpacerBlock, Dict[str, Any]]
+    """The kind's own fields: the one `type` names, or, for a kind these types do not have, its fields as they came."""
+    id: Optional[str] = None
+    """The block's name within the page, as the events it causes name it. Required for button, toggle, field and list; a row with one can be tapped. The same characters as a command id."""
+    fallback: Optional[UIText] = None
+    """What an app that does not know this kind draws instead, as plain text."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiBlock") -> "UIBlock":
+        found = _object(value, where)
+        kind = _string(_required(found, "type", where), where + ".type")
+        content: Any
+        if kind == "text":
+            content = TextBlock.from_json(value, where)
+        elif kind == "heading":
+            content = HeadingBlock.from_json(value, where)
+        elif kind == "row":
+            content = RowBlock.from_json(value, where)
+        elif kind == "button":
+            content = ButtonBlock.from_json(value, where)
+        elif kind == "toggle":
+            content = ToggleBlock.from_json(value, where)
+        elif kind == "field":
+            content = FieldBlock.from_json(value, where)
+        elif kind == "list":
+            content = ListBlock.from_json(value, where)
+        elif kind == "progress":
+            content = ProgressBlock.from_json(value, where)
+        elif kind == "image":
+            content = ImageBlock.from_json(value, where)
+        elif kind == "divider":
+            content = DividerBlock.from_json(value, where)
+        elif kind == "link":
+            content = LinkBlock.from_json(value, where)
+        elif kind == "spacer":
+            content = SpacerBlock.from_json(value, where)
+        else:
+            content = {key: item for key, item in found.items() if key not in ("type", "id", "fallback",)}
+        return cls(
+            type=kind,
+            content=content,
+            id=None if found.get("id") is None else _string(found["id"], where + ".id"),
+            fallback=None if found.get("fallback") is None else _text(found["fallback"], where + ".fallback"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {"type": self.type}
+        out.update(dict(self.content) if isinstance(self.content, dict) else self.content.to_json())
+        if self.id is not None:
+            out["id"] = self.id
+        if self.fallback is not None:
+            out["fallback"] = self.fallback
+        return out
+
+
+LocalizedText = Dict[str, str]
+"""Text in one or more languages, keyed by language tag, as a manifest's text is. English, under en, is required."""
+
+
+UIText = Union[str, LocalizedText]
+"""Text the person reads: a string, or one entry per language. Drawn as written, never as markdown."""
+
+
+@dataclass(frozen=True)
+class TextBlock:
+    """Words."""
+
+    text: UIText
+    """The words."""
+    style: Optional[TextStyle] = None
+    """body when left out. secondary and caption are quieter; monospaced is for code and logs."""
+    lines: Optional[int] = None
+    """The most lines the words take. 4 when left out."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "textBlock") -> "TextBlock":
+        found = _object(value, where)
+        return cls(
+            text=_text(_required(found, "text", where), where + ".text"),
+            style=None if found.get("style") is None else _one_of(found["style"], where + ".style", TEXT_STYLES),
+            lines=None if found.get("lines") is None else _integer(found["lines"], where + ".lines"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["text"] = self.text
+        if self.style is not None:
+            out["style"] = self.style
+        if self.lines is not None:
+            out["lines"] = self.lines
+        return out
+
+
+@dataclass(frozen=True)
+class HeadingBlock:
+    """A heading, of two lines at most."""
+
+    text: UIText
+    """The heading."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "headingBlock") -> "HeadingBlock":
+        found = _object(value, where)
+        return cls(
+            text=_text(_required(found, "text", where), where + ".text"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["text"] = self.text
+        return out
+
+
+@dataclass(frozen=True)
+class RowBlock:
+    """One line that stands alone. With an id it can be tapped."""
+
+    title: UIText
+    """The row's words."""
+    subtitle: Optional[UIText] = None
+    """A quieter line under it."""
+    icon: Optional[str] = None
+    """An SF Symbol name."""
+    trailing: Optional[UIText] = None
+    """A few words at the row's end, such as a time."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "rowBlock") -> "RowBlock":
+        found = _object(value, where)
+        return cls(
+            title=_text(_required(found, "title", where), where + ".title"),
+            subtitle=None if found.get("subtitle") is None else _text(found["subtitle"], where + ".subtitle"),
+            icon=None if found.get("icon") is None else _string(found["icon"], where + ".icon"),
+            trailing=None if found.get("trailing") is None else _text(found["trailing"], where + ".trailing"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["title"] = self.title
+        if self.subtitle is not None:
+            out["subtitle"] = self.subtitle
+        if self.icon is not None:
+            out["icon"] = self.icon
+        if self.trailing is not None:
+            out["trailing"] = self.trailing
+        return out
+
+
+@dataclass(frozen=True)
+class ButtonBlock:
+    """A button. Pressing it is the event tap."""
+
+    title: UIText
+    """What it says."""
+    style: Optional[ButtonStyle] = None
+    """plain when left out. prominent is the page's main action; destructive one that deletes."""
+    enabled: Optional[bool] = None
+    """False draws it dimmed, and it cannot be pressed."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "buttonBlock") -> "ButtonBlock":
+        found = _object(value, where)
+        return cls(
+            title=_text(_required(found, "title", where), where + ".title"),
+            style=None if found.get("style") is None else _one_of(found["style"], where + ".style", BUTTON_STYLES),
+            enabled=None if found.get("enabled") is None else _boolean(found["enabled"], where + ".enabled"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["title"] = self.title
+        if self.style is not None:
+            out["style"] = self.style
+        if self.enabled is not None:
+            out["enabled"] = self.enabled
+        return out
+
+
+@dataclass(frozen=True)
+class ToggleBlock:
+    """A switch. Turning it is the event toggle, with its new state."""
+
+    title: UIText
+    """What it switches."""
+    value: bool
+    """On or off."""
+    enabled: Optional[bool] = None
+    """False draws it dimmed, and it cannot be turned."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "toggleBlock") -> "ToggleBlock":
+        found = _object(value, where)
+        return cls(
+            title=_text(_required(found, "title", where), where + ".title"),
+            value=_boolean(_required(found, "value", where), where + ".value"),
+            enabled=None if found.get("enabled") is None else _boolean(found["enabled"], where + ".enabled"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["title"] = self.title
+        out["value"] = self.value
+        if self.enabled is not None:
+            out["enabled"] = self.enabled
+        return out
+
+
+@dataclass(frozen=True)
+class FieldBlock:
+    """A field to type in. Return is the event submit; leaving it with other text is the event change."""
+
+    title: Optional[UIText] = None
+    """What it is for, above it."""
+    value: Optional[str] = None
+    """The text in it."""
+    placeholder: Optional[UIText] = None
+    """What it shows while it is empty."""
+    kind: Optional[FieldKind] = None
+    """text when left out. number takes digits; secret hides what is typed."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "fieldBlock") -> "FieldBlock":
+        found = _object(value, where)
+        return cls(
+            title=None if found.get("title") is None else _text(found["title"], where + ".title"),
+            value=None if found.get("value") is None else _string(found["value"], where + ".value"),
+            placeholder=None if found.get("placeholder") is None else _text(found["placeholder"], where + ".placeholder"),
+            kind=None if found.get("kind") is None else _one_of(found["kind"], where + ".kind", FIELD_KINDS),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.title is not None:
+            out["title"] = self.title
+        if self.value is not None:
+            out["value"] = self.value
+        if self.placeholder is not None:
+            out["placeholder"] = self.placeholder
+        if self.kind is not None:
+            out["kind"] = self.kind
+        return out
+
+
+@dataclass(frozen=True)
+class UIListRow:
+    """One row of a list."""
+
+    id: str
+    """The row's name, as a tap on it names it."""
+    title: UIText
+    """The row's words."""
+    subtitle: Optional[UIText] = None
+    """A quieter line under it."""
+    icon: Optional[str] = None
+    """An SF Symbol name."""
+    trailing: Optional[UIText] = None
+    """A few words at the row's end."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiListRow") -> "UIListRow":
+        found = _object(value, where)
+        return cls(
+            id=_string(_required(found, "id", where), where + ".id"),
+            title=_text(_required(found, "title", where), where + ".title"),
+            subtitle=None if found.get("subtitle") is None else _text(found["subtitle"], where + ".subtitle"),
+            icon=None if found.get("icon") is None else _string(found["icon"], where + ".icon"),
+            trailing=None if found.get("trailing") is None else _text(found["trailing"], where + ".trailing"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["id"] = self.id
+        out["title"] = self.title
+        if self.subtitle is not None:
+            out["subtitle"] = self.subtitle
+        if self.icon is not None:
+            out["icon"] = self.icon
+        if self.trailing is not None:
+            out["trailing"] = self.trailing
+        return out
+
+
+@dataclass(frozen=True)
+class ListBlock:
+    """Rows, drawn together. Tapping one is the event tap; its value is the row's id."""
+
+    rows: List[UIListRow]
+    """The rows, at most 200."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "listBlock") -> "ListBlock":
+        found = _object(value, where)
+        return cls(
+            rows=[UIListRow.from_json(item, where + ".rows" + f"[{index}]") for index, item in enumerate(_array(_required(found, "rows", where), where + ".rows"))],
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["rows"] = [item.to_json() for item in self.rows]
+        return out
+
+
+@dataclass(frozen=True)
+class ProgressBlock:
+    """How far something has got."""
+
+    value: Optional[float] = None
+    """From 0 to 1. Left out, it is under way and nobody knows how far."""
+    label: Optional[UIText] = None
+    """What is under way."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "progressBlock") -> "ProgressBlock":
+        found = _object(value, where)
+        return cls(
+            value=None if found.get("value") is None else _number(found["value"], where + ".value"),
+            label=None if found.get("label") is None else _text(found["label"], where + ".label"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.value is not None:
+            out["value"] = self.value
+        if self.label is not None:
+            out["label"] = self.label
+        return out
+
+
+@dataclass(frozen=True)
+class ImageBlock:
+    """A picture."""
+
+    source: str
+    """A file in the tool's folder, as a path inside it, or the picture itself as a data: address of a PNG or JPEG. It counts toward the page's 262,144 bytes."""
+    alt: Optional[UIText] = None
+    """What it shows, for VoiceOver."""
+    height: Optional[float] = None
+    """Its height in points, up to 300. The app's own when left out."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "imageBlock") -> "ImageBlock":
+        found = _object(value, where)
+        return cls(
+            source=_string(_required(found, "source", where), where + ".source"),
+            alt=None if found.get("alt") is None else _text(found["alt"], where + ".alt"),
+            height=None if found.get("height") is None else _number(found["height"], where + ".height"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["source"] = self.source
+        if self.alt is not None:
+            out["alt"] = self.alt
+        if self.height is not None:
+            out["height"] = self.height
+        return out
+
+
+@dataclass(frozen=True)
+class DividerBlock:
+    """A line between blocks. It has no fields."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "dividerBlock") -> "DividerBlock":
+        found = _object(value, where)
+        return cls()
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        return out
+
+
+@dataclass(frozen=True)
+class LinkBlock:
+    """A link the app opens through its open service, so the manifest must list open in uses: without it, a click plays the alert sound."""
+
+    title: UIText
+    """What it says."""
+    url: str
+    """Where it goes."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "linkBlock") -> "LinkBlock":
+        found = _object(value, where)
+        return cls(
+            title=_text(_required(found, "title", where), where + ".title"),
+            url=_string(_required(found, "url", where), where + ".url"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["title"] = self.title
+        out["url"] = self.url
+        return out
+
+
+@dataclass(frozen=True)
+class SpacerBlock:
+    """Room between blocks."""
+
+    size: Optional[float] = None
+    """In points, up to 40. 8 when left out."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "spacerBlock") -> "SpacerBlock":
+        found = _object(value, where)
+        return cls(
+            size=None if found.get("size") is None else _number(found["size"], where + ".size"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.size is not None:
+            out["size"] = self.size
         return out

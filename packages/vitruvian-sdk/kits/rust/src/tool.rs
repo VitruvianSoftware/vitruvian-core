@@ -31,19 +31,22 @@ use crate::app::App;
 use crate::error::{codes, ToolError};
 use crate::generated::{
     methods, CommandRunParams, Empty, Error, InitializeParams, InitializeResult,
-    LanguageChangedParams, PreferencesChangedParams, PROTOCOL_VERSION,
+    LanguageChangedParams, PreferencesChangedParams, UiCloseParams, UiEventParams, UiOpenParams,
+    UiOpenResult, UiTree, METHODS, PROTOCOL_VERSIONS,
 };
 use crate::link::{Link, Message, Next, Outgoing};
+use crate::panels::{Panel, PanelAnswer, PanelEntry, PanelEvent, TOOLS_OWN};
 
 type Handler = Box<dyn FnMut(&mut App<'_>) -> Result<(), ToolError>>;
 type Hook = Box<dyn FnMut(&mut App<'_>)>;
 type PreferencesHook = Box<dyn FnMut(&mut App<'_>, &Map<String, Value>)>;
 
-/// A tool that runs as its own program: its commands, and the loop that
-/// reads what the app sends and answers it. Make one with [`Tool::new`],
-/// add its commands, then call [`Tool::run`].
+/// A tool that runs as its own program: its commands, its panels, and the
+/// loop that reads what the app sends and answers it. Make one with
+/// [`Tool::new`], add its commands, then call [`Tool::run`].
 pub struct Tool {
     handlers: HashMap<String, Handler>,
+    panels: HashMap<String, PanelEntry>,
     on_start: Option<Hook>,
     on_preferences_changed: Option<PreferencesHook>,
     on_language_changed: Option<Hook>,
@@ -79,6 +82,7 @@ impl Tool {
     ) -> Tool {
         Tool {
             handlers: HashMap::new(),
+            panels: HashMap::new(),
             on_start: None,
             on_preferences_changed: None,
             on_language_changed: None,
@@ -104,6 +108,29 @@ impl Tool {
         handler: impl FnMut(&mut App<'_>) -> Result<(), ToolError> + 'static,
     ) {
         self.handlers.insert(id.to_string(), Box::new(handler));
+    }
+
+    /// Says what a panel does. `id` is the one the manifest gives it.
+    /// `on_open` gives the first page when the person opens it, or `None`
+    /// for a web panel; `on_event` answers what the person did. The handle
+    /// it gives back sends pages unprompted and sets the tool's badge.
+    pub fn panel(
+        &mut self,
+        id: &str,
+        on_open: impl FnMut(&mut App<'_>, &Panel) -> Result<Option<UiTree>, ToolError> + 'static,
+        on_event: impl FnMut(&mut App<'_>, &Panel, PanelEvent) -> Result<PanelAnswer, ToolError>
+            + 'static,
+    ) -> Panel {
+        let handle = Panel::new(id);
+        self.panels.insert(
+            id.to_string(),
+            PanelEntry {
+                handle: handle.clone(),
+                on_open: Box::new(on_open),
+                on_event: Box::new(on_event),
+            },
+        );
+        handle
     }
 
     /// Called once, after the app has said hello and been answered.
@@ -162,6 +189,8 @@ impl Tool {
             Message::Request { id, method, params } => match method.as_str() {
                 methods::INITIALIZE => self.greet(id, params),
                 methods::COMMAND_RUN => self.run_command(id, params),
+                methods::UI_OPEN => self.open_panel(id, params),
+                methods::UI_EVENT => self.panel_event(id, params),
                 _ => self
                     .state
                     .refuse(&id, codes::METHOD_NOT_FOUND, "method not found", None),
@@ -183,6 +212,13 @@ impl Tool {
                         }
                     }
                 }
+                methods::UI_CLOSE => {
+                    if let Some(closed) = decode::<UiCloseParams>(params) {
+                        if let Some(entry) = self.panels.get(&closed.panel) {
+                            entry.handle.set_open(false);
+                        }
+                    }
+                }
                 _ => {}
             },
             // An answer nobody waits for: it came after its call gave up.
@@ -196,19 +232,22 @@ impl Tool {
                 .state
                 .refuse(&id, codes::INVALID_PARAMS, "invalid params", None);
         };
-        if !hello
-            .protocol_versions
+        // The newest version both speak. Version 2 only adds to version 1,
+        // so a tool of either is answered by an app of either.
+        let picked = PROTOCOL_VERSIONS
             .iter()
-            .any(|v| v == PROTOCOL_VERSION)
-        {
-            let words = format!("this tool speaks protocol {PROTOCOL_VERSION} only");
+            .rev()
+            .find(|v| hello.protocol_versions.iter().any(|h| h == *v));
+        let Some(picked) = picked else {
+            let spoken = PROTOCOL_VERSIONS.join(" and ");
+            let words = format!("this tool speaks protocols {spoken} only");
             return self.state.refuse(&id, codes::INVALID_PARAMS, &words, None);
-        }
+        };
         self.state.language = hello.language;
         self.state.data_folder = PathBuf::from(hello.data_folder);
         self.state.greeted = true;
         let answer = InitializeResult {
-            protocol_version: PROTOCOL_VERSION.to_string(),
+            protocol_version: picked.to_string(),
             tool_version: self.state.version.clone(),
         };
         self.state.answer(&id, &answer);
@@ -247,6 +286,107 @@ impl Tool {
             Err(other) => {
                 let words = other.to_string();
                 self.state.refuse(&id, codes::COMMAND_REFUSED, &words, None)
+            }
+        }
+    }
+}
+
+impl Tool {
+    fn open_panel(&mut self, id: Value, params: Option<Value>) {
+        let Some(asked) = decode::<UiOpenParams>(params) else {
+            return self
+                .state
+                .refuse(&id, codes::INVALID_PARAMS, "invalid params", None);
+        };
+        let Some(entry) = self.panels.get_mut(&asked.panel) else {
+            return self
+                .state
+                .refuse(&id, codes::INVALID_PARAMS, "no such panel", None);
+        };
+        entry.handle.set_open(true);
+        match (entry.on_open)(&mut App::new(&mut self.state), &entry.handle) {
+            Ok(tree) => self.state.answer(&id, &UiOpenResult { tree }),
+            Err(error) => self.refuse_panel(&id, error),
+        }
+    }
+
+    fn panel_event(&mut self, id: Value, params: Option<Value>) {
+        let Some(asked) = decode::<UiEventParams>(params) else {
+            return self
+                .state
+                .refuse(&id, codes::INVALID_PARAMS, "invalid params", None);
+        };
+        let Some(entry) = self.panels.get_mut(&asked.panel) else {
+            let words = "the panel is not open";
+            return self.state.refuse(&id, codes::INVALID_PARAMS, words, None);
+        };
+        if !entry.handle.is_open() {
+            let words = "the panel is not open";
+            return self.state.refuse(&id, codes::INVALID_PARAMS, words, None);
+        }
+        let answered = if asked.event == "bridge" {
+            let handle = entry.handle.clone();
+            self.bridge(asked.value, &handle).map(PanelAnswer::Reply)
+        } else {
+            let event = PanelEvent {
+                block: asked.block,
+                kind: asked.event,
+                value: asked.value,
+            };
+            (entry.on_event)(&mut App::new(&mut self.state), &entry.handle, event)
+        };
+        match answered {
+            Ok(answer) => self.state.answer(&id, &answer.result()),
+            Err(error) => self.refuse_panel(&id, error),
+        }
+    }
+
+    /// A web panel's call: a request the app does is passed to the app as
+    /// the tool's own, under the tool's `uses`; a method of the tool's own
+    /// goes to the panel's `on_call`.
+    fn bridge(&mut self, value: Option<Value>, handle: &Panel) -> Result<Value, ToolError> {
+        let invalid = || {
+            ToolError::App(Error {
+                code: codes::INVALID_PARAMS,
+                message: "invalid params".to_string(),
+                data: None,
+            })
+        };
+        let value = value.ok_or_else(invalid)?;
+        let method = value
+            .get("method")
+            .and_then(Value::as_str)
+            .ok_or_else(invalid)?
+            .to_string();
+        let params = value.get("params").cloned();
+        if method.starts_with(TOOLS_OWN) {
+            return handle.call(&mut App::new(&mut self.state), &method, params);
+        }
+        let known = METHODS
+            .iter()
+            .any(|m| m.name == method && m.sender == "tool" && m.kind == "request");
+        if !known {
+            return Err(ToolError::App(Error {
+                code: codes::METHOD_NOT_FOUND,
+                message: "method not found".to_string(),
+                data: None,
+            }));
+        }
+        let params = params.unwrap_or_else(|| Value::Object(Map::new()));
+        self.state.call::<Value>(&method, &params)
+    }
+
+    /// Answers a request of a panel with a handler's error: the app's
+    /// failure as it is, anything else as an internal error with its words.
+    fn refuse_panel(&mut self, id: &Value, error: ToolError) {
+        match error {
+            ToolError::App(refusal) => {
+                self.state
+                    .refuse(id, refusal.code, &refusal.message, refusal.data)
+            }
+            other => {
+                let words = other.to_string();
+                self.state.refuse(id, codes::INTERNAL_ERROR, &words, None)
             }
         }
     }
@@ -334,18 +474,19 @@ impl State {
         }
     }
 
-    /// Sends a notice. Nothing is sent before the greeting or after
-    /// goodbye.
-    pub fn note(&mut self, method: &str, params: &impl Serialize) {
+    /// Sends a notice, and says whether it went. Nothing is sent before
+    /// the greeting or after goodbye.
+    pub fn note(&mut self, method: &str, params: &impl Serialize) -> bool {
         if !self.greeted || self.stopping {
-            return;
+            return false;
         }
-        if let Ok(params) = serde_json::to_value(params) {
-            self.link.send(&Outgoing {
+        match serde_json::to_value(params) {
+            Ok(params) => self.link.send(&Outgoing {
                 method: Some(method),
                 params: Some(&params),
                 ..Outgoing::new()
-            });
+            }),
+            Err(_) => false,
         }
     }
 }

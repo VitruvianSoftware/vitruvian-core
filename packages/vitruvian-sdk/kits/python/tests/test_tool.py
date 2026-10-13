@@ -43,9 +43,26 @@ from vitruvian_tool_kit import (  # noqa: E402
     METHODS,
     AppUnreachable,
     CommandRefused,
+    PanelAnswer,
+    PanelEvent,
     Refusal,
     RefusalCode,
+    RPCErrorObject,
     Tool,
+    UIListRow,
+    button,
+    divider,
+    field,
+    heading,
+    image,
+    link,
+    list_,
+    progress,
+    row,
+    spacer,
+    text,
+    toggle,
+    tree,
 )
 
 
@@ -138,7 +155,7 @@ class ToolTests(unittest.TestCase):
             for method in wanted
         ]
         self.assertEqual(sorted(calls), sorted(python))
-        self.assertEqual(len(wanted), 12, "each message once")
+        self.assertEqual(len(wanted), 14, "each message once")
 
     def test_hello_a_command_and_goodbye(self):
         seen = []
@@ -387,10 +404,27 @@ class ToolTests(unittest.TestCase):
         self.assertEqual([(e.reason, e.seconds) for e in thrown], [("no_answer", 0.05)])
         self.assertLess(time.monotonic() - started, 5)
 
+    def test_the_newest_version_both_speak_is_picked(self):
+        for offered, picked in [
+            ('["1","2"]', "2"),
+            ('["1"]', "1"),
+            ('["2","1"]', "2"),
+            ('["2","3"]', "2"),
+        ]:
+            with self.subTest(offered):
+                bench = Bench()
+                tool = bench.hello(offered).goodbye().tool()
+                self.assertEqual(tool.serve(), 0)
+                self.assertEqual(
+                    bench.written()[0]["result"],
+                    {"protocolVersion": picked, "toolVersion": "9.9.9"},
+                )
+                bench.done()
+
     def test_a_version_the_tool_does_not_speak_is_refused(self):
         ran = []
         tool = (
-            self.bench.hello('["2"]')
+            self.bench.hello('["3"]')
             .run("hello", 2)
             .goodbye()
             .tool(lambda t: t.command("hello", lambda app: ran.append(True)))
@@ -400,7 +434,7 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(
             self.bench.written(),
             [
-                failure("hello", -32602, "this tool speaks protocol 1 only"),
+                failure("hello", -32602, "this tool speaks protocols 1 and 2 only"),
                 failure(2, -32600, "initialize comes first"),
             ],
         )
@@ -507,3 +541,265 @@ class ToolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def open_(panel, id):
+    return '{"jsonrpc":"2.0","id":%d,"method":"ui/open","params":{"panel":"%s"}}' % (
+        id,
+        panel,
+    )
+
+
+def tap(panel, block, id):
+    return (
+        '{"jsonrpc":"2.0","id":%d,"method":"ui/event","params":{"panel":"%s","block":"%s","event":"tap"}}'
+        % (id, panel, block)
+    )
+
+
+def close(panel):
+    return '{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"%s"}}' % panel
+
+
+def tree_of(message):
+    return message.get("result", {}).get("tree")
+
+
+def page(words):
+    return tree(text(words))
+
+
+class PanelTests(unittest.TestCase):
+    """The Swift kit's PanelTests, test for test."""
+
+    def setUp(self):
+        self.bench = Bench()
+
+    def tearDown(self):
+        self.bench.done()
+
+    def test_a_panel_is_opened_acted_in_and_closed(self):
+        count = [0]
+        seen = []
+        handle = []
+
+        def on_event(app, panel, event):
+            seen.append(event)
+            if event.block != "add":
+                return PanelAnswer.keep()
+            count[0] += 1
+            return PanelAnswer.page(page(f"Pressed {count[0]} times"))
+
+        def build(tool):
+            handle.append(
+                tool.panel(
+                    "counter",
+                    on_open=lambda app, panel: page(f"Pressed {count[0]} times"),
+                    on_event=on_event,
+                )
+            )
+
+        tool = (
+            self.bench.hello('["1","2"]')
+            .app(open_("counter", 2))
+            .app(tap("counter", "add", 3))
+            .app(tap("counter", "nothing", 4))
+            .app(close("counter"))
+            .goodbye()
+            .tool(build)
+        )
+        self.assertEqual(tool.serve(), 0)
+        written = self.bench.written()
+        self.assertEqual(
+            written[0],
+            result("hello", {"protocolVersion": "2", "toolVersion": "9.9.9"}),
+        )
+        self.assertEqual(
+            tree_of(written[1]),
+            {"blocks": [{"type": "text", "text": "Pressed 0 times"}]},
+        )
+        self.assertEqual(
+            tree_of(written[2]),
+            {"blocks": [{"type": "text", "text": "Pressed 1 times"}]},
+        )
+        self.assertEqual(written[3], result(4, {"keep": True}))
+        self.assertEqual(seen, [PanelEvent("add", "tap"), PanelEvent("nothing", "tap")])
+        self.assertFalse(handle[0].is_open, "ui/close closes it")
+
+    def test_a_page_is_sent_unprompted_only_while_the_panel_is_open(self):
+        sent = []
+
+        def build(tool):
+            panel = tool.panel(
+                "counter", on_open=lambda app, panel: tree(heading("Counter"))
+            )
+            tool.command(
+                "refresh", lambda app: sent.append(panel.render(page("Later")))
+            )
+
+        tool = (
+            self.bench.hello('["1","2"]')
+            .run("refresh", 2)
+            .app(open_("counter", 3))
+            .run("refresh", 4)
+            .app(close("counter"))
+            .run("refresh", 5)
+            .goodbye()
+            .tool(build)
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(sent, [False, True, False])
+        renders = [m for m in self.bench.written() if m.get("method") == "ui/render"]
+        self.assertEqual(
+            renders,
+            [
+                {
+                    "jsonrpc": "2.0",
+                    "method": "ui/render",
+                    "params": {
+                        "panel": "counter",
+                        "tree": {"blocks": [{"type": "text", "text": "Later"}]},
+                    },
+                }
+            ],
+        )
+
+    def test_what_is_not_a_panel_of_the_tools_is_refused(self):
+        tool = (
+            self.bench.hello('["1","2"]')
+            .app(open_("nowhere", 2))
+            .app(tap("counter", "add", 3))
+            .goodbye()
+            .tool(lambda t: t.panel("counter", on_open=lambda app, panel: None))
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(
+            self.bench.written()[1:],
+            [
+                failure(2, -32602, "no such panel"),
+                failure(3, -32602, "the panel is not open"),
+            ],
+        )
+
+    def test_an_answer_may_open_a_window_or_reply_and_the_badge_is_a_request(self):
+        def on_open(app, panel):
+            panel.badge(count=2)
+            return None
+
+        tool = (
+            self.bench.hello('["1","2"]')
+            .app(open_("deploys", 2))
+            .app(tap("deploys", "log", 3))
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .goodbye()
+            .tool(
+                lambda t: t.panel(
+                    "deploys",
+                    on_open=on_open,
+                    on_event=lambda app, panel, event: PanelAnswer.open("log"),
+                )
+            )
+        )
+        self.assertEqual(tool.serve(), 0)
+        written = self.bench.written()
+        self.assertEqual(
+            written[1],
+            {"jsonrpc": "2.0", "id": 1, "method": "ui/badge", "params": {"count": 2}},
+        )
+        self.assertEqual(written[2], result(2, {}), "a page given as none is no tree")
+        self.assertEqual(written[3], result(3, {"open": "log"}))
+
+    def test_a_web_panels_calls_are_the_tools_own_or_passed_to_the_app(self):
+        def bridge(id, call):
+            return (
+                '{"jsonrpc":"2.0","id":%d,"method":"ui/event","params":{"panel":"dashboard","event":"bridge","value":%s}}'
+                % (id, call)
+            )
+
+        def on_call(app, method, params):
+            if method != "tool/count":
+                raise Refusal(RPCErrorObject(code=-32601, message="method not found"))
+            return {"count": params["by"]}
+
+        def build(tool):
+            panel = tool.panel("dashboard", on_open=lambda app, panel: None)
+            panel.on_call = on_call
+
+        tool = (
+            self.bench.hello('["1","2"]')
+            .app(open_("dashboard", 2))
+            .app(
+                bridge(
+                    3,
+                    '{"method":"notify/hud","params":{"icon":"checkmark","message":"Saved"}}',
+                )
+            )
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .app(bridge(4, '{"method":"tool/count","params":{"by":2}}'))
+            .app(bridge(5, '{"method":"tool/other"}'))
+            .app(bridge(6, '{"method":"initialize"}'))
+            .goodbye()
+            .tool(build)
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(
+            self.bench.written()[2:],
+            [
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "notify/hud",
+                    "params": {"icon": "checkmark", "message": "Saved"},
+                },
+                result(3, {"reply": {}}),
+                result(4, {"reply": {"count": 2}}),
+                failure(5, -32601, "method not found"),
+                failure(6, -32601, "method not found"),
+            ],
+            "a request of the app's is asked of the app as the tool's own; a method of the tool's goes to on_call",
+        )
+
+    def test_a_page_is_written_as_the_blocks_it_holds(self):
+        count = 12
+        rows = ["web", "api"]
+        page = tree(
+            heading("Counter"),
+            text(f"Pressed {count} times", style="secondary"),
+            button("add", "Add one", style="prominent"),
+            text("That is a lot", style="caption") if count > 9 else None,
+            divider() if count > 99 else spacer(4),
+            *[row(name, id=name) for name in rows],
+            list_("deploys", [UIListRow(id="web", title="web 1.42.0")]),
+            toggle("notify", "Tell me", True),
+            field("name", title="Name", placeholder="Type and press Return"),
+            progress(0.5),
+            image("ui/logo.png", alt="Logo"),
+            link("Dashboard", "https://example.com"),
+        )
+        self.assertEqual(
+            [block.type for block in page.blocks],
+            [
+                "heading",
+                "text",
+                "button",
+                "text",
+                "spacer",
+                "row",
+                "row",
+                "list",
+                "toggle",
+                "field",
+                "progress",
+                "image",
+                "link",
+            ],
+        )
+        self.assertEqual(page.blocks[2].id, "add")
+        self.assertEqual(
+            [block.id for block in page.blocks if block.id is not None],
+            ["add", "web", "api", "deploys", "notify", "name"],
+        )
+        self.assertEqual(
+            page.blocks[1].to_json(),
+            {"type": "text", "text": "Pressed 12 times", "style": "secondary"},
+        )

@@ -20,10 +20,12 @@
 
 import Foundation
 
-/// The versions of the protocol this library speaks.
+/// The versions of the protocol this library speaks. Version 2 adds what a
+/// tool draws and changes nothing of version 1, so every tool written to 1
+/// is a tool of 2.
 public enum ProtocolVersion {
-    public static let current = "1"
-    public static let supported = [current]
+    public static let current = "2"
+    public static let supported = ["1", current]
 }
 
 /// An app service a tool may call. A tool's manifest lists the ones it
@@ -38,7 +40,8 @@ public enum AppService: String, CaseIterable, Sendable {
     case storage
 }
 
-/// Every message of protocol version 1, by its name on the link.
+/// Every message of the protocol, by its name on the link. The last five
+/// are version 2's.
 /// `protocol/methods.json` is the same table, and a test holds the two
 /// together.
 public enum ToolMethod: String, CaseIterable, Sendable {
@@ -59,6 +62,11 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     case storageGet = "storage/get"
     case storageSet = "storage/set"
     case log
+    case uiOpen = "ui/open"
+    case uiEvent = "ui/event"
+    case uiClose = "ui/close"
+    case uiRender = "ui/render"
+    case uiBadge = "ui/badge"
 
     public enum Sender: String, Sendable {
         case app, tool
@@ -67,10 +75,11 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     /// Who sends it.
     public var sender: Sender {
         switch self {
-        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown:
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .uiOpen, .uiEvent, .uiClose:
             return .app
         case .commandsState, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText, .clipboardWriteText,
-             .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet, .storageSet, .log:
+             .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet, .storageSet, .log,
+             .uiRender, .uiBadge:
             return .tool
         }
     }
@@ -78,11 +87,11 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     /// True for a request, which is answered; false for a notice.
     public var isAnswered: Bool {
         switch self {
-        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
+        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log, .uiClose, .uiRender:
             return false
         case .initialize, .commandRun, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText,
              .clipboardWriteText, .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet,
-             .storageSet:
+             .storageSet, .uiOpen, .uiEvent, .uiBadge:
             return true
         }
     }
@@ -91,9 +100,10 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     /// will do this; nil when it needs none.
     public var service: AppService? {
         switch self {
-        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
+             .uiOpen, .uiEvent, .uiClose, .uiRender:
             return nil
-        case .notifyHUD, .notifyBeep: return .notify
+        case .notifyHUD, .notifyBeep, .uiBadge: return .notify
         case .openURL: return .open
         case .clipboardReadText: return .clipboardRead
         case .clipboardWriteText: return .clipboardWrite

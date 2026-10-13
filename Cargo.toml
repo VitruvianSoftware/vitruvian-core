@@ -24,5 +24,6 @@ resolver = "2"
 # The crate universe in MODULE.bazel (@crates) is read from this workspace.
 members = [
     "packages/vitruvian-sdk/kits/rust",
+    "packages/vitruvian-sdk/samples/hello-panel-rust",
     "packages/vitruvian-sdk/samples/hello-rust",
 ]

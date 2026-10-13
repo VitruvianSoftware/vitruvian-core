@@ -1,6 +1,6 @@
 {
-  "about": "Every message of protocol version 1. `sender` is who sends it. A `request` is answered; a `notice` is not. `uses` is the entry the tool's manifest must list in `uses` before the app will do it. `params` and `result` name a definition in messages.schema.json; null means the message carries none.",
-  "protocol": "1",
+  "about": "Every message of protocol version 2: version 1's, and the five ui/ messages version 2 adds. `sender` is who sends it. A `request` is answered; a `notice` is not. `uses` is the entry the tool's manifest must list in `uses` before the app will do it. `params` and `result` name a definition in messages.schema.json; null means the message carries none.",
+  "protocol": "2",
   "methods": [
     {
       "method": "initialize",
@@ -137,6 +137,46 @@
       "uses": null,
       "params": "logParams",
       "result": null
+    },
+    {
+      "method": "ui/open",
+      "sender": "app",
+      "kind": "request",
+      "uses": null,
+      "params": "uiOpenParams",
+      "result": "uiOpenResult"
+    },
+    {
+      "method": "ui/event",
+      "sender": "app",
+      "kind": "request",
+      "uses": null,
+      "params": "uiEventParams",
+      "result": "uiEventResult"
+    },
+    {
+      "method": "ui/close",
+      "sender": "app",
+      "kind": "notice",
+      "uses": null,
+      "params": "uiCloseParams",
+      "result": null
+    },
+    {
+      "method": "ui/render",
+      "sender": "tool",
+      "kind": "notice",
+      "uses": null,
+      "params": "uiRenderParams",
+      "result": null
+    },
+    {
+      "method": "ui/badge",
+      "sender": "tool",
+      "kind": "request",
+      "uses": "notify",
+      "params": "uiBadgeParams",
+      "result": "empty"
     }
   ]
 }

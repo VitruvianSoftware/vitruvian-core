@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Vitruvian tool protocol, version 1: one message",
-  "description": "One line on the link between the app and a tool: a JSON-RPC 2.0 message, in UTF-8, with no line break inside it, at most 1,048,576 bytes long. methods.json lists every message; each message's params and result are a definition below. A field this schema does not name is ignored, which is how a later version adds one.",
+  "title": "Vitruvian tool protocol: one message",
+  "description": "One line on the link between the app and a tool: a JSON-RPC 2.0 message, in UTF-8, with no line break inside it, at most 1,048,576 bytes long. methods.json lists every message; each message's params and result are a definition below. A field this schema does not name is ignored, which is how a later version adds one. Version 2 adds the five ui/ messages and what they carry, and changes nothing of version 1.",
   "type": "object",
   "required": ["jsonrpc"],
   "properties": {
@@ -120,6 +120,27 @@
             "required": ["params"],
             "properties": { "params": { "$ref": "#/$defs/storageSetParams" } }
           }
+        },
+        {
+          "if": { "properties": { "method": { "const": "ui/open" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/uiOpenParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "ui/event" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/uiEventParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "ui/badge" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/uiBadgeParams" } }
+          }
         }
       ]
     },
@@ -180,6 +201,20 @@
             "required": ["params"],
             "properties": { "params": { "$ref": "#/$defs/logParams" } }
           }
+        },
+        {
+          "if": { "properties": { "method": { "const": "ui/close" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/uiCloseParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "ui/render" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/uiRenderParams" } }
+          }
         }
       ]
     },
@@ -190,7 +225,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "result": {
-          "description": "What the request's row in methods.json names. Always an object in version 1."
+          "description": "What the request's row in methods.json names. Always an object."
         }
       },
       "not": {
@@ -496,6 +531,396 @@
       "required": ["message"],
       "properties": {
         "message": { "description": "The line.", "type": "string" }
+      }
+    },
+    "uiOpenParams": {
+      "description": "The person opened one of the tool's panels. A blocks panel is answered with its first page; a web panel with {}.",
+      "type": "object",
+      "required": ["panel"],
+      "properties": {
+        "panel": {
+          "description": "The panel's id, as the manifest gives it.",
+          "type": "string"
+        }
+      }
+    },
+    "uiOpenResult": {
+      "description": "The answer to ui/open.",
+      "type": "object",
+      "properties": {
+        "tree": {
+          "description": "The first page. Left out for a web panel, and for a page the tool will send later with ui/render.",
+          "$ref": "#/$defs/uiTree"
+        }
+      }
+    },
+    "uiEventParams": {
+      "description": "The person acted in an open panel. Answered with the next page, or with keep.",
+      "type": "object",
+      "required": ["panel", "event"],
+      "properties": {
+        "panel": { "description": "The panel's id.", "type": "string" },
+        "block": {
+          "description": "The id of the block the person acted on. Left out for bridge.",
+          "type": "string"
+        },
+        "event": {
+          "description": "What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call.",
+          "enum": ["tap", "toggle", "submit", "change", "bridge"]
+        },
+        "value": {
+          "description": "For toggle, the switch's new state. For submit and change, the field's text. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own."
+        }
+      }
+    },
+    "uiEventResult": {
+      "description": "The answer to ui/event. With no tree, or with keep, the page stays as it is.",
+      "type": "object",
+      "properties": {
+        "tree": { "description": "The next page.", "$ref": "#/$defs/uiTree" },
+        "keep": {
+          "description": "True: the page stays as it is.",
+          "type": "boolean"
+        },
+        "reply": {
+          "description": "For bridge: what the page's call gets back."
+        },
+        "open": {
+          "description": "A window panel of the same tool to open, in answer to what the person did. A tool cannot open a window at any other time.",
+          "type": "string"
+        }
+      }
+    },
+    "uiCloseParams": {
+      "description": "The panel went away: the person closed it, or the app did.",
+      "type": "object",
+      "required": ["panel"],
+      "properties": {
+        "panel": { "description": "The panel's id.", "type": "string" }
+      }
+    },
+    "uiRenderParams": {
+      "description": "A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped.",
+      "type": "object",
+      "required": ["panel", "tree"],
+      "properties": {
+        "panel": { "description": "The panel's id.", "type": "string" },
+        "tree": { "description": "The page.", "$ref": "#/$defs/uiTree" }
+      }
+    },
+    "uiBadgeParams": {
+      "description": "A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses.",
+      "type": "object",
+      "properties": {
+        "count": {
+          "description": "A whole number from 0. 0 is no count.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "dot": {
+          "description": "True for a dot, when there is no count.",
+          "type": "boolean"
+        }
+      }
+    },
+    "uiTree": {
+      "description": "A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an image written into it included: the app does not draw a larger one, and the tool's log says so.",
+      "type": "object",
+      "required": ["blocks"],
+      "properties": {
+        "blocks": {
+          "description": "The blocks, at most 200.",
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/uiBlock" }
+        }
+      }
+    },
+    "uiBlock": {
+      "description": "One block. type says which of the twelve kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one.",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "description": "The kind: text, heading, row, button, toggle, field, list, progress, image, divider, link or spacer.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The block's name within the page, as the events it causes name it. Required for button, toggle, field and list; a row with one can be tapped. The same characters as a command id.",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$"
+        },
+        "fallback": {
+          "description": "What an app that does not know this kind draws instead, as plain text.",
+          "$ref": "#/$defs/uiText"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "text" } } },
+          "then": { "$ref": "#/$defs/textBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "heading" } } },
+          "then": { "$ref": "#/$defs/headingBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "row" } } },
+          "then": { "$ref": "#/$defs/rowBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "button" } } },
+          "then": { "$ref": "#/$defs/buttonBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "toggle" } } },
+          "then": { "$ref": "#/$defs/toggleBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "field" } } },
+          "then": { "$ref": "#/$defs/fieldBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "list" } } },
+          "then": { "$ref": "#/$defs/listBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "progress" } } },
+          "then": { "$ref": "#/$defs/progressBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "divider" } } },
+          "then": { "$ref": "#/$defs/dividerBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "link" } } },
+          "then": { "$ref": "#/$defs/linkBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "spacer" } } },
+          "then": { "$ref": "#/$defs/spacerBlock" }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": { "enum": ["button", "toggle", "field", "list"] }
+            }
+          },
+          "then": { "required": ["id"] }
+        }
+      ]
+    },
+    "localizedText": {
+      "description": "Text in one or more languages, keyed by language tag, as a manifest's text is. English, under en, is required.",
+      "type": "object",
+      "required": ["en"],
+      "additionalProperties": { "type": "string" }
+    },
+    "uiText": {
+      "description": "Text the person reads: a string, or one entry per language. Drawn as written, never as markdown.",
+      "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/localizedText" }]
+    },
+    "textBlock": {
+      "description": "Words.",
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "description": "The words.", "$ref": "#/$defs/uiText" },
+        "style": {
+          "description": "body when left out. secondary and caption are quieter; monospaced is for code and logs.",
+          "enum": ["body", "secondary", "caption", "monospaced"]
+        },
+        "lines": {
+          "description": "The most lines the words take. 4 when left out.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      }
+    },
+    "headingBlock": {
+      "description": "A heading, of two lines at most.",
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "description": "The heading.", "$ref": "#/$defs/uiText" }
+      }
+    },
+    "rowBlock": {
+      "description": "One line that stands alone. With an id it can be tapped.",
+      "type": "object",
+      "required": ["title"],
+      "properties": {
+        "title": {
+          "description": "The row's words.",
+          "$ref": "#/$defs/uiText"
+        },
+        "subtitle": {
+          "description": "A quieter line under it.",
+          "$ref": "#/$defs/uiText"
+        },
+        "icon": { "description": "An SF Symbol name.", "type": "string" },
+        "trailing": {
+          "description": "A few words at the row's end, such as a time.",
+          "$ref": "#/$defs/uiText"
+        }
+      }
+    },
+    "buttonBlock": {
+      "description": "A button. Pressing it is the event tap.",
+      "type": "object",
+      "required": ["title"],
+      "properties": {
+        "title": { "description": "What it says.", "$ref": "#/$defs/uiText" },
+        "style": {
+          "description": "plain when left out. prominent is the page's main action; destructive one that deletes.",
+          "enum": ["plain", "prominent", "destructive"]
+        },
+        "enabled": {
+          "description": "False draws it dimmed, and it cannot be pressed.",
+          "type": "boolean"
+        }
+      }
+    },
+    "toggleBlock": {
+      "description": "A switch. Turning it is the event toggle, with its new state.",
+      "type": "object",
+      "required": ["title", "value"],
+      "properties": {
+        "title": {
+          "description": "What it switches.",
+          "$ref": "#/$defs/uiText"
+        },
+        "value": { "description": "On or off.", "type": "boolean" },
+        "enabled": {
+          "description": "False draws it dimmed, and it cannot be turned.",
+          "type": "boolean"
+        }
+      }
+    },
+    "fieldBlock": {
+      "description": "A field to type in. Return is the event submit; leaving it with other text is the event change.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "description": "What it is for, above it.",
+          "$ref": "#/$defs/uiText"
+        },
+        "value": { "description": "The text in it.", "type": "string" },
+        "placeholder": {
+          "description": "What it shows while it is empty.",
+          "$ref": "#/$defs/uiText"
+        },
+        "kind": {
+          "description": "text when left out. number takes digits; secret hides what is typed.",
+          "enum": ["text", "number", "secret"]
+        }
+      }
+    },
+    "uiListRow": {
+      "description": "One row of a list.",
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": {
+          "description": "The row's name, as a tap on it names it.",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$"
+        },
+        "title": {
+          "description": "The row's words.",
+          "$ref": "#/$defs/uiText"
+        },
+        "subtitle": {
+          "description": "A quieter line under it.",
+          "$ref": "#/$defs/uiText"
+        },
+        "icon": { "description": "An SF Symbol name.", "type": "string" },
+        "trailing": {
+          "description": "A few words at the row's end.",
+          "$ref": "#/$defs/uiText"
+        }
+      }
+    },
+    "listBlock": {
+      "description": "Rows, drawn together. Tapping one is the event tap; its value is the row's id.",
+      "type": "object",
+      "required": ["rows"],
+      "properties": {
+        "rows": {
+          "description": "The rows, at most 200.",
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/uiListRow" }
+        }
+      }
+    },
+    "progressBlock": {
+      "description": "How far something has got.",
+      "type": "object",
+      "properties": {
+        "value": {
+          "description": "From 0 to 1. Left out, it is under way and nobody knows how far.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "label": {
+          "description": "What is under way.",
+          "$ref": "#/$defs/uiText"
+        }
+      }
+    },
+    "imageBlock": {
+      "description": "A picture.",
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "description": "A file in the tool's folder, as a path inside it, or the picture itself as a data: address of a PNG or JPEG. It counts toward the page's 262,144 bytes.",
+          "type": "string"
+        },
+        "alt": {
+          "description": "What it shows, for VoiceOver.",
+          "$ref": "#/$defs/uiText"
+        },
+        "height": {
+          "description": "Its height in points, up to 300. The app's own when left out.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 300
+        }
+      }
+    },
+    "dividerBlock": {
+      "description": "A line between blocks. It has no fields.",
+      "type": "object"
+    },
+    "linkBlock": {
+      "description": "A link the app opens through its open service, so the manifest must list open in uses: without it, a click plays the alert sound.",
+      "type": "object",
+      "required": ["title", "url"],
+      "properties": {
+        "title": { "description": "What it says.", "$ref": "#/$defs/uiText" },
+        "url": { "description": "Where it goes.", "type": "string" }
+      }
+    },
+    "spacerBlock": {
+      "description": "Room between blocks.",
+      "type": "object",
+      "properties": {
+        "size": {
+          "description": "In points, up to 40. 8 when left out.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 40
+        }
       }
     }
   }

@@ -20,6 +20,9 @@
 """The Go kit as a Go author meets it, with Bazel's own Go and no network.
 
     go_template_test.py <go> <go.mod> <the kit's .go files ...>
+
+The kit's files are named by their paths, which keep their folder under
+go/toolkit: the ui subpackage is vetted beside the kit.
                         [--tool <the vitruvian-tool program>]
 
 The kit is copied into a temporary folder as a module of its own, outside
@@ -123,7 +126,13 @@ def main(arguments):
         os.makedirs(os.path.join(kit, "toolkit"))
         shutil.copy(module, os.path.join(kit, "go.mod"))
         for source in sources:
-            shutil.copy(source, os.path.join(kit, "toolkit", os.path.basename(source)))
+            # By its path under go/, so a subpackage such as toolkit/ui keeps
+            # its folder.
+            inside = source.split("/go/toolkit/", 1)[1]
+            os.makedirs(
+                os.path.dirname(os.path.join(kit, "toolkit", inside)), exist_ok=True
+            )
+            shutil.copy(source, os.path.join(kit, "toolkit", inside))
         status, printed = run([go, "vet", "./..."], cwd=kit)
         if status != 0:
             problems.append(f"go vet fails the kit as its own module:\n{printed}")

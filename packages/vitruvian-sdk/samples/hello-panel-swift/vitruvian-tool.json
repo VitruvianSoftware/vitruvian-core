@@ -1,0 +1,38 @@
+{
+  "id": "dev.vitruvian.samples.hello-panel-swift",
+  "name": { "en": "Hello panel, in Swift" },
+  "description": {
+    "en": "A counter in the island, drawn by the app from blocks."
+  },
+  "version": "0.1.0",
+  "protocol": "2",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "number.square",
+  "uses": ["notify"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "addOne",
+        "title": { "en": "Add to the counter" },
+        "icon": "plus.circle",
+        "surfaces": ["commandBar"]
+      }
+    ],
+    "panels": [
+      {
+        "id": "counter",
+        "title": { "en": "Counter" },
+        "placement": "island",
+        "icon": "number.square"
+      },
+      {
+        "id": "settings",
+        "title": { "en": "Counter" },
+        "placement": "settings"
+      }
+    ]
+  },
+  "activation": ["onCommand"],
+  "runtime": { "kind": "external", "exec": "bin/tool" }
+}

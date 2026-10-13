@@ -111,6 +111,7 @@ func TestEveryRequestAToolMaySendHasACall(t *testing.T) {
 		toolkit.MethodProcessesTerminate:      "Processes.Terminate",
 		toolkit.MethodStorageGet:              "Storage.Get",
 		toolkit.MethodStorageSet:              "Storage.Set",
+		toolkit.MethodUIBadge:                 "UI.Badge",
 	}
 	wanted := 0
 	for _, method := range toolkit.Methods {
@@ -133,7 +134,7 @@ func TestEveryRequestAToolMaySendHasACall(t *testing.T) {
 			t.Errorf("App.%s has no %s, for %s", group, name, method.Name)
 		}
 	}
-	if wanted != len(calls) || wanted != 10 {
+	if wanted != len(calls) || wanted != 11 {
 		t.Errorf("%d requests a tool may send, %d calls; each request once", wanted, len(calls))
 	}
 }
@@ -366,8 +367,16 @@ func TestACallGivesUpWhenNoAnswerComes(t *testing.T) {
 	}
 }
 
+func TestTheNewestVersionBothSpeakIsPicked(t *testing.T) {
+	for _, pair := range [][2]string{{`["1","2"]`, "2"}, {`["1"]`, "1"}, {`["2","1"]`, "2"}, {`["2","3"]`, "2"}} {
+		b := (&bench{}).helloOffering(pair[0]).goodbye()
+		b.tool().Serve()
+		same(t, b.lines(t), `{"jsonrpc":"2.0","id":"hello","result":{"protocolVersion":"`+pair[1]+`","toolVersion":"9.9.9"}}`)
+	}
+}
+
 func TestAVersionTheToolDoesNotSpeakIsRefused(t *testing.T) {
-	b := (&bench{}).helloOffering(`["2"]`).run("hello", 2).goodbye()
+	b := (&bench{}).helloOffering(`["3"]`).run("hello", 2).goodbye()
 	tool := b.tool()
 	ran := false
 	tool.Command("hello", func(ctx context.Context, app *toolkit.App) error {
@@ -379,7 +388,7 @@ func TestAVersionTheToolDoesNotSpeakIsRefused(t *testing.T) {
 		t.Error("ran")
 	}
 	same(t, b.lines(t),
-		`{"jsonrpc":"2.0","id":"hello","error":{"code":-32602,"message":"this tool speaks protocol 1 only"}}`,
+		`{"jsonrpc":"2.0","id":"hello","error":{"code":-32602,"message":"this tool speaks protocols 1 and 2 only"}}`,
 		`{"jsonrpc":"2.0","id":2,"error":{"code":-32600,"message":"initialize comes first"}}`)
 }
 

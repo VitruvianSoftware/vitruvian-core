@@ -41,13 +41,29 @@ import { pathToFileURL } from "node:url";
 
 import {
   AppUnreachable,
+  button,
   CommandRefused,
+  divider,
+  field,
+  heading,
+  image,
+  link,
+  list,
   METHODS,
   messageOf,
+  type Panel,
+  PanelEvent,
+  progress,
   Refusal,
   RefusalCode,
   type RPCMessage,
+  row,
+  spacer,
+  text,
+  toggle,
   Tool,
+  tree,
+  type UITree,
 } from "../src/index";
 
 class Bench {
@@ -141,7 +157,7 @@ test("every request a tool may send is a call on the app", () => {
     (m) => m.method,
   );
   expect(calls.sort()).toEqual([...wanted].sort());
-  expect(wanted).toHaveLength(12);
+  expect(wanted).toHaveLength(14);
 });
 
 test("hello, a command, and goodbye", () => {
@@ -396,17 +412,36 @@ test("a call gives up when no answer comes", () => {
   closeSync(input);
 });
 
+test("the newest version both speak is picked", () => {
+  for (const [offered, picked] of [
+    ['["1","2"]', "2"],
+    ['["1"]', "1"],
+    ['["2","1"]', "2"],
+    ['["2","3"]', "2"],
+  ]) {
+    const one = new Bench();
+    const tool = one.hello(offered).goodbye().tool();
+    expect(tool.serve()).toBe(0);
+    const first = one.written()[0];
+    expect(first.kind === "result" && first.result).toEqual({
+      protocolVersion: picked,
+      toolVersion: "9.9.9",
+    });
+    one.done();
+  }
+});
+
 test("a version the tool does not speak is refused", () => {
   let ran = false;
   const tool = bench
-    .hello('["2"]')
+    .hello('["3"]')
     .run("hello", 2)
     .goodbye()
     .tool((tool) => tool.command("hello", () => void (ran = true)));
   expect(tool.serve()).toBe(0);
   expect(ran).toBe(false);
   expect(bench.written()).toEqual([
-    failure("hello", -32602, "this tool speaks protocol 1 only"),
+    failure("hello", -32602, "this tool speaks protocols 1 and 2 only"),
     failure(2, -32600, "initialize comes first"),
   ]);
 });
@@ -498,3 +533,225 @@ test("the tool's own standard input, a pipe, is read with a time limit too", asy
   );
   expect(out).toContain('{"jsonrpc":"2.0","id":2,"result":{}}');
 }, 20_000);
+
+// The Swift kit's PanelTests, test for test.
+
+const open = (panel: string, id: number) =>
+  `{"jsonrpc":"2.0","id":${id},"method":"ui/open","params":{"panel":"${panel}"}}`;
+const tap = (panel: string, block: string, id: number) =>
+  `{"jsonrpc":"2.0","id":${id},"method":"ui/event","params":{"panel":"${panel}","block":"${block}","event":"tap"}}`;
+const close = (panel: string) =>
+  `{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"${panel}"}}`;
+const treeOf = (message: RPCMessage | undefined): unknown =>
+  message?.kind === "result" && typeof message.result === "object"
+    ? (message.result as { tree?: unknown }).tree
+    : undefined;
+const page = (words: string): UITree => tree([text(words)]);
+
+test("a panel is opened, acted in and closed", () => {
+  let count = 0;
+  const seen: PanelEvent[] = [];
+  let handle: Panel | undefined;
+  const tool = bench
+    .hello('["1","2"]')
+    .app(open("counter", 2))
+    .app(tap("counter", "add", 3))
+    .app(tap("counter", "nothing", 4))
+    .app(close("counter"))
+    .goodbye()
+    .tool((tool) => {
+      handle = tool.panel("counter", {
+        onOpen: () => page(`Pressed ${count} times`),
+        onEvent: (_app, _panel, event) => {
+          seen.push(event);
+          if (event.block !== "add") return { keep: true };
+          count += 1;
+          return { page: page(`Pressed ${count} times`) };
+        },
+      });
+    });
+  expect(tool.serve()).toBe(0);
+  const written = bench.written();
+  expect(written[0]).toEqual(
+    result("hello", { protocolVersion: "2", toolVersion: "9.9.9" }),
+  );
+  expect(treeOf(written[1])).toEqual({
+    blocks: [{ type: "text", text: "Pressed 0 times" }],
+  });
+  expect(treeOf(written[2])).toEqual({
+    blocks: [{ type: "text", text: "Pressed 1 times" }],
+  });
+  expect(written[3]).toEqual(result(4, { keep: true }));
+  expect(seen).toEqual([
+    new PanelEvent("add", "tap"),
+    new PanelEvent("nothing", "tap"),
+  ]);
+  expect(handle?.isOpen).toBe(false);
+});
+
+test("a page is sent unprompted only while the panel is open", () => {
+  const sent: boolean[] = [];
+  const tool = bench
+    .hello('["1","2"]')
+    .run("refresh", 2)
+    .app(open("counter", 3))
+    .run("refresh", 4)
+    .app(close("counter"))
+    .run("refresh", 5)
+    .goodbye()
+    .tool((tool) => {
+      const panel = tool.panel("counter", {
+        onOpen: () => tree([heading("Counter")]),
+      });
+      tool.command("refresh", () => {
+        sent.push(panel.render(page("Later")));
+      });
+    });
+  expect(tool.serve()).toBe(0);
+  expect(sent).toEqual([false, true, false]);
+  const renders = bench
+    .written()
+    .filter((m) => m.kind === "notice" && m.method === "ui/render");
+  expect(renders).toEqual([
+    {
+      kind: "notice",
+      method: "ui/render",
+      params: {
+        panel: "counter",
+        tree: { blocks: [{ type: "text", text: "Later" }] },
+      },
+    },
+  ]);
+});
+
+test("what is not a panel of the tool's is refused", () => {
+  const tool = bench
+    .hello('["1","2"]')
+    .app(open("nowhere", 2))
+    .app(tap("counter", "add", 3))
+    .goodbye()
+    .tool((tool) => {
+      tool.panel("counter", { onOpen: () => undefined });
+    });
+  expect(tool.serve()).toBe(0);
+  expect(bench.written().slice(1)).toEqual([
+    failure(2, -32602, "no such panel"),
+    failure(3, -32602, "the panel is not open"),
+  ]);
+});
+
+test("an answer may open a window or reply, and the badge is a request", () => {
+  const tool = bench
+    .hello('["1","2"]')
+    .app(open("deploys", 2))
+    .app(tap("deploys", "log", 3))
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .goodbye()
+    .tool((tool) => {
+      tool.panel("deploys", {
+        onOpen: (_app, panel) => {
+          panel.badge({ count: 2 });
+          return undefined;
+        },
+        onEvent: () => ({ open: "log" }),
+      });
+    });
+  expect(tool.serve()).toBe(0);
+  const written = bench.written();
+  expect(written[1]).toEqual({
+    kind: "request",
+    id: 1,
+    method: "ui/badge",
+    params: { count: 2 },
+  });
+  expect(written[2]).toEqual(result(2, {}));
+  expect(written[3]).toEqual(result(3, { open: "log" }));
+});
+
+test("a web panel's calls are the tool's own or passed to the app", () => {
+  const bridge = (id: number, call: string) =>
+    `{"jsonrpc":"2.0","id":${id},"method":"ui/event","params":{"panel":"dashboard","event":"bridge","value":${call}}}`;
+  const tool = bench
+    .hello('["1","2"]')
+    .app(open("dashboard", 2))
+    .app(
+      bridge(
+        3,
+        '{"method":"notify/hud","params":{"icon":"checkmark","message":"Saved"}}',
+      ),
+    )
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .app(bridge(4, '{"method":"tool/count","params":{"by":2}}'))
+    .app(bridge(5, '{"method":"tool/other"}'))
+    .app(bridge(6, '{"method":"initialize"}'))
+    .goodbye()
+    .tool((tool) => {
+      const panel = tool.panel("dashboard", { onOpen: () => undefined });
+      panel.onCall = (_app, method, params) => {
+        if (method !== "tool/count")
+          throw new Refusal({ code: -32601, message: "method not found" });
+        return { count: (params as { by: number }).by };
+      };
+    });
+  expect(tool.serve()).toBe(0);
+  expect(bench.written().slice(2)).toEqual([
+    {
+      kind: "request",
+      id: 1,
+      method: "notify/hud",
+      params: { icon: "checkmark", message: "Saved" },
+    },
+    result(3, { reply: {} }),
+    result(4, { reply: { count: 2 } }),
+    failure(5, -32601, "method not found"),
+    failure(6, -32601, "method not found"),
+  ]);
+});
+
+test("a page is written as the blocks it holds", () => {
+  const count = 12;
+  const rows = ["web", "api"];
+  const page = tree([
+    heading("Counter"),
+    text(`Pressed ${count} times`, { style: "secondary" }),
+    button("add", "Add one", { style: "prominent" }),
+    count > 9 && text("That is a lot", { style: "caption" }),
+    count > 99 ? divider() : spacer(4),
+    ...rows.map((name) => row(name, { id: name })),
+    list("deploys", [{ id: "web", title: "web 1.42.0" }]),
+    toggle("notify", "Tell me", true),
+    field("name", { title: "Name", placeholder: "Type and press Return" }),
+    progress({ value: 0.5 }),
+    image("ui/logo.png", { alt: "Logo" }),
+    link("Dashboard", "https://example.com"),
+  ]);
+  expect(page.blocks.map((block) => block.type)).toEqual([
+    "heading",
+    "text",
+    "button",
+    "text",
+    "spacer",
+    "row",
+    "row",
+    "list",
+    "toggle",
+    "field",
+    "progress",
+    "image",
+    "link",
+  ]);
+  expect(page.blocks[2].id).toBe("add");
+  expect(page.blocks.flatMap((block) => (block.id ? [block.id] : []))).toEqual([
+    "add",
+    "web",
+    "api",
+    "deploys",
+    "notify",
+    "name",
+  ]);
+  expect(JSON.parse(JSON.stringify(page.blocks[1]))).toEqual({
+    type: "text",
+    text: "Pressed 12 times",
+    style: "secondary",
+  });
+});

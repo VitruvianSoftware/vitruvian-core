@@ -25,7 +25,12 @@ package toolkit
 import "encoding/json"
 
 // ProtocolVersion is the version of the protocol these types are.
-const ProtocolVersion = "1"
+const ProtocolVersion = "2"
+
+// ProtocolVersions are the versions a tool of these types speaks, oldest
+// first: a later version only adds to the one before it, so the tool
+// answers hello with the newest of them the app offers.
+var ProtocolVersions = []string{"1", "2"}
 
 // The name of each message on the link.
 const (
@@ -46,6 +51,11 @@ const (
 	MethodStorageGet              = "storage/get"
 	MethodStorageSet              = "storage/set"
 	MethodLog                     = "log"
+	MethodUIOpen                  = "ui/open"
+	MethodUIEvent                 = "ui/event"
+	MethodUIClose                 = "ui/close"
+	MethodUIRender                = "ui/render"
+	MethodUIBadge                 = "ui/badge"
 )
 
 // Services are the names a manifest's `uses` may list.
@@ -83,6 +93,11 @@ var Methods = []Method{
 	{Name: MethodStorageGet, Sender: "tool", Kind: "request", Uses: "storage", Params: "StorageGetParams", Result: "StorageGetResult"},
 	{Name: MethodStorageSet, Sender: "tool", Kind: "request", Uses: "storage", Params: "StorageSetParams", Result: "Empty"},
 	{Name: MethodLog, Sender: "tool", Kind: "notice", Uses: "", Params: "LogParams", Result: ""},
+	{Name: MethodUIOpen, Sender: "app", Kind: "request", Uses: "", Params: "UIOpenParams", Result: "UIOpenResult"},
+	{Name: MethodUIEvent, Sender: "app", Kind: "request", Uses: "", Params: "UIEventParams", Result: "UIEventResult"},
+	{Name: MethodUIClose, Sender: "app", Kind: "notice", Uses: "", Params: "UICloseParams", Result: ""},
+	{Name: MethodUIRender, Sender: "tool", Kind: "notice", Uses: "", Params: "UIRenderParams", Result: ""},
+	{Name: MethodUIBadge, Sender: "tool", Kind: "request", Uses: "notify", Params: "UIBadgeParams", Result: "Empty"},
 }
 
 // Error: Why a request was not done. Codes: -32700 the line was not JSON;
@@ -334,12 +349,422 @@ type LogParams struct {
 	Message string `json:"message"`
 }
 
+// UIOpenParams: The person opened one of the tool's panels. A blocks panel is
+// answered with its first page; a web panel with {}.
+type UIOpenParams struct {
+	// The panel's id, as the manifest gives it.
+	Panel string `json:"panel"`
+}
+
+// UIOpenResult: The answer to ui/open.
+type UIOpenResult struct {
+	// The first page. Left out for a web panel, and for a page the tool
+	// will send later with ui/render.
+	Tree *UITree `json:"tree,omitempty"`
+}
+
+// UIEventParams: The person acted in an open panel. Answered with the next
+// page, or with keep.
+type UIEventParams struct {
+	// The panel's id.
+	Panel string `json:"panel"`
+
+	// The id of the block the person acted on. Left out for bridge.
+	Block *string `json:"block,omitempty"`
+
+	// What the person did. tap: a button, a row or a list's row was
+	// pressed. toggle: a switch was turned. submit: Return was pressed in
+	// a field. change: a field was left with other text in it. bridge: a
+	// web panel's page called window.vitruvian.call. One of: tap, toggle,
+	// submit, change, bridge.
+	Event string `json:"event"`
+
+	// For toggle, the switch's new state. For submit and change, the
+	// field's text. For a tap on a list's row, the row's id. For bridge,
+	// an object: method, the request the page made, and params, what it
+	// carries. A tool sends such a request to the app as its own; a
+	// method that starts with tool/ is the tool's own.
+	Value any `json:"value,omitempty"`
+}
+
+// UIEventResult: The answer to ui/event. With no tree, or with keep, the page
+// stays as it is.
+type UIEventResult struct {
+	// The next page.
+	Tree *UITree `json:"tree,omitempty"`
+
+	// True: the page stays as it is.
+	Keep *bool `json:"keep,omitempty"`
+
+	// For bridge: what the page's call gets back.
+	Reply any `json:"reply,omitempty"`
+
+	// A window panel of the same tool to open, in answer to what the
+	// person did. A tool cannot open a window at any other time.
+	Open *string `json:"open,omitempty"`
+}
+
+// UICloseParams: The panel went away: the person closed it, or the app did.
+type UICloseParams struct {
+	// The panel's id.
+	Panel string `json:"panel"`
+}
+
+// UIRenderParams: A new page for a panel that is open, sent unprompted. The
+// app draws at most four a second for each panel, the last one of the ones
+// between; more than forty in one second is a flood, and the tool is stopped.
+// One for a panel the manifest does not declare, or that is not open, is
+// dropped.
+type UIRenderParams struct {
+	// The panel's id.
+	Panel string `json:"panel"`
+
+	// The page.
+	Tree UITree `json:"tree"`
+}
+
+// UIBadgeParams: A count or a dot beside the tool in the island's Tools area.
+// With neither, the badge goes. Needs notify in the manifest's uses.
+type UIBadgeParams struct {
+	// A whole number from 0. 0 is no count.
+	Count *int `json:"count,omitempty"`
+
+	// True for a dot, when there is no count.
+	Dot *bool `json:"dot,omitempty"`
+}
+
+// UITree: A page: blocks, drawn one under the other. At most 262,144 bytes as
+// JSON, an image written into it included: the app does not draw a larger
+// one, and the tool's log says so.
+type UITree struct {
+	// The blocks, at most 200.
+	Blocks []UIBlock `json:"blocks"`
+}
+
+// MarshalJSON writes UITree with an empty list or map, not null, for
+// one left nil.
+func (v UITree) MarshalJSON() ([]byte, error) {
+	type plain UITree
+	if v.Blocks == nil {
+		v.Blocks = []UIBlock{}
+	}
+	return json.Marshal(plain(v))
+}
+
+// UIBlock: One block. type says which of the twelve kinds it is, and the
+// kind's own fields go beside it. A kind the app does not know is drawn as
+// its fallback, or left out: that is how a later version adds one.
+type UIBlock struct {
+	// The kind: text, heading, row, button, toggle, field, list,
+	// progress, image, divider, link or spacer.
+	Type string `json:"type"`
+
+	// The block's name within the page, as the events it causes name it.
+	// Required for button, toggle, field and list; a row with one can be
+	// tapped. The same characters as a command id.
+	ID *string `json:"id,omitempty"`
+
+	// What an app that does not know this kind draws instead, as plain
+	// text.
+	Fallback UIText `json:"fallback,omitempty"`
+
+	// The kind's own fields: the one of these that Type names,
+	// or Other for a kind these types do not have, as it came.
+	Text *TextBlock `json:"-"`
+	Heading *HeadingBlock `json:"-"`
+	Row *RowBlock `json:"-"`
+	Button *ButtonBlock `json:"-"`
+	Toggle *ToggleBlock `json:"-"`
+	Field *FieldBlock `json:"-"`
+	List *ListBlock `json:"-"`
+	Progress *ProgressBlock `json:"-"`
+	Image *ImageBlock `json:"-"`
+	Divider *DividerBlock `json:"-"`
+	Link *LinkBlock `json:"-"`
+	Spacer *SpacerBlock `json:"-"`
+	Other map[string]any `json:"-"`
+}
+
+// MarshalJSON writes the fields every kind has beside the kind's own.
+func (v UIBlock) MarshalJSON() ([]byte, error) {
+	var own any = v.Other
+	switch v.Type {
+	case "text":
+		own = v.Text
+	case "heading":
+		own = v.Heading
+	case "row":
+		own = v.Row
+	case "button":
+		own = v.Button
+	case "toggle":
+		own = v.Toggle
+	case "field":
+		own = v.Field
+	case "list":
+		own = v.List
+	case "progress":
+		own = v.Progress
+	case "image":
+		own = v.Image
+	case "divider":
+		own = v.Divider
+	case "link":
+		own = v.Link
+	case "spacer":
+		own = v.Spacer
+	}
+	fields := map[string]any{}
+	if own != nil {
+		raw, err := json.Marshal(own)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, err
+		}
+	}
+	fields["type"] = v.Type
+	if v.ID != nil {
+		fields["id"] = *v.ID
+	}
+	if v.Fallback != nil {
+		fields["fallback"] = v.Fallback
+	}
+	return json.Marshal(fields)
+}
+
+// UnmarshalJSON reads the kind Type names into its field, and any
+// other kind into Other.
+func (v *UIBlock) UnmarshalJSON(data []byte) error {
+	var head struct {
+		Type string `json:"type"`
+
+		ID *string `json:"id,omitempty"`
+
+		Fallback UIText `json:"fallback,omitempty"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return err
+	}
+	*v = UIBlock{Type: head.Type, ID: head.ID, Fallback: head.Fallback}
+	switch v.Type {
+	case "text":
+		v.Text = &TextBlock{}
+		return json.Unmarshal(data, v.Text)
+	case "heading":
+		v.Heading = &HeadingBlock{}
+		return json.Unmarshal(data, v.Heading)
+	case "row":
+		v.Row = &RowBlock{}
+		return json.Unmarshal(data, v.Row)
+	case "button":
+		v.Button = &ButtonBlock{}
+		return json.Unmarshal(data, v.Button)
+	case "toggle":
+		v.Toggle = &ToggleBlock{}
+		return json.Unmarshal(data, v.Toggle)
+	case "field":
+		v.Field = &FieldBlock{}
+		return json.Unmarshal(data, v.Field)
+	case "list":
+		v.List = &ListBlock{}
+		return json.Unmarshal(data, v.List)
+	case "progress":
+		v.Progress = &ProgressBlock{}
+		return json.Unmarshal(data, v.Progress)
+	case "image":
+		v.Image = &ImageBlock{}
+		return json.Unmarshal(data, v.Image)
+	case "divider":
+		v.Divider = &DividerBlock{}
+		return json.Unmarshal(data, v.Divider)
+	case "link":
+		v.Link = &LinkBlock{}
+		return json.Unmarshal(data, v.Link)
+	case "spacer":
+		v.Spacer = &SpacerBlock{}
+		return json.Unmarshal(data, v.Spacer)
+	default:
+		if err := json.Unmarshal(data, &v.Other); err != nil {
+			return err
+		}
+		delete(v.Other, "type")
+		delete(v.Other, "id")
+		delete(v.Other, "fallback")
+		return nil
+	}
+}
+
+// LocalizedText: Text in one or more languages, keyed by language tag, as a
+// manifest's text is. English, under en, is required.
+type LocalizedText map[string]string
+
+// UIText: Text the person reads: a string, or one entry per language. Drawn
+// as written, never as markdown.
+// A string, or a map from a language tag to a string.
+type UIText = any
+
+// TextBlock: Words.
+type TextBlock struct {
+	// The words.
+	Text UIText `json:"text"`
+
+	// body when left out. secondary and caption are quieter; monospaced
+	// is for code and logs. One of: body, secondary, caption, monospaced.
+	Style *string `json:"style,omitempty"`
+
+	// The most lines the words take. 4 when left out.
+	Lines *int `json:"lines,omitempty"`
+}
+
+// HeadingBlock: A heading, of two lines at most.
+type HeadingBlock struct {
+	// The heading.
+	Text UIText `json:"text"`
+}
+
+// RowBlock: One line that stands alone. With an id it can be tapped.
+type RowBlock struct {
+	// The row's words.
+	Title UIText `json:"title"`
+
+	// A quieter line under it.
+	Subtitle UIText `json:"subtitle,omitempty"`
+
+	// An SF Symbol name.
+	Icon *string `json:"icon,omitempty"`
+
+	// A few words at the row's end, such as a time.
+	Trailing UIText `json:"trailing,omitempty"`
+}
+
+// ButtonBlock: A button. Pressing it is the event tap.
+type ButtonBlock struct {
+	// What it says.
+	Title UIText `json:"title"`
+
+	// plain when left out. prominent is the page's main action;
+	// destructive one that deletes. One of: plain, prominent,
+	// destructive.
+	Style *string `json:"style,omitempty"`
+
+	// False draws it dimmed, and it cannot be pressed.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// ToggleBlock: A switch. Turning it is the event toggle, with its new state.
+type ToggleBlock struct {
+	// What it switches.
+	Title UIText `json:"title"`
+
+	// On or off.
+	Value bool `json:"value"`
+
+	// False draws it dimmed, and it cannot be turned.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// FieldBlock: A field to type in. Return is the event submit; leaving it with
+// other text is the event change.
+type FieldBlock struct {
+	// What it is for, above it.
+	Title UIText `json:"title,omitempty"`
+
+	// The text in it.
+	Value *string `json:"value,omitempty"`
+
+	// What it shows while it is empty.
+	Placeholder UIText `json:"placeholder,omitempty"`
+
+	// text when left out. number takes digits; secret hides what is
+	// typed. One of: text, number, secret.
+	Kind *string `json:"kind,omitempty"`
+}
+
+// UIListRow: One row of a list.
+type UIListRow struct {
+	// The row's name, as a tap on it names it.
+	ID string `json:"id"`
+
+	// The row's words.
+	Title UIText `json:"title"`
+
+	// A quieter line under it.
+	Subtitle UIText `json:"subtitle,omitempty"`
+
+	// An SF Symbol name.
+	Icon *string `json:"icon,omitempty"`
+
+	// A few words at the row's end.
+	Trailing UIText `json:"trailing,omitempty"`
+}
+
+// ListBlock: Rows, drawn together. Tapping one is the event tap; its value is
+// the row's id.
+type ListBlock struct {
+	// The rows, at most 200.
+	Rows []UIListRow `json:"rows"`
+}
+
+// MarshalJSON writes ListBlock with an empty list or map, not null, for
+// one left nil.
+func (v ListBlock) MarshalJSON() ([]byte, error) {
+	type plain ListBlock
+	if v.Rows == nil {
+		v.Rows = []UIListRow{}
+	}
+	return json.Marshal(plain(v))
+}
+
+// ProgressBlock: How far something has got.
+type ProgressBlock struct {
+	// From 0 to 1. Left out, it is under way and nobody knows how far.
+	Value *float64 `json:"value,omitempty"`
+
+	// What is under way.
+	Label UIText `json:"label,omitempty"`
+}
+
+// ImageBlock: A picture.
+type ImageBlock struct {
+	// A file in the tool's folder, as a path inside it, or the picture
+	// itself as a data: address of a PNG or JPEG. It counts toward the
+	// page's 262,144 bytes.
+	Source string `json:"source"`
+
+	// What it shows, for VoiceOver.
+	Alt UIText `json:"alt,omitempty"`
+
+	// Its height in points, up to 300. The app's own when left out.
+	Height *float64 `json:"height,omitempty"`
+}
+
+// DividerBlock: A line between blocks. It has no fields.
+type DividerBlock struct{}
+
+// LinkBlock: A link the app opens through its open service, so the manifest
+// must list open in uses: without it, a click plays the alert sound.
+type LinkBlock struct {
+	// What it says.
+	Title UIText `json:"title"`
+
+	// Where it goes.
+	URL string `json:"url"`
+}
+
+// SpacerBlock: Room between blocks.
+type SpacerBlock struct {
+	// In points, up to 40. 8 when left out.
+	Size *float64 `json:"size,omitempty"`
+}
+
 // Manifest: The file vitruvian-tool.json at the top of a tool's folder. It
 // says what the tool is, which of the app's services it calls, what it adds,
 // and which program to start. A field this schema does not name is ignored,
 // which is how a later version adds one. Two rules are not written here
-// because JSON Schema cannot say them: no two commands share an id, no two
-// preferences share an id; and the whole file is at most 65,536 bytes.
+// because JSON Schema cannot say them: no two commands, no two panels and no
+// two preferences share an id; and the whole file is at most 65,536 bytes.
 type Manifest struct {
 	// The tool's identity, in reverse-DNS form, for example
 	// com.acme.deploys. Letters, digits, hyphens and underscores in parts
@@ -357,7 +782,9 @@ type Manifest struct {
 	// The tool's own version, as its author writes it.
 	Version string `json:"version"`
 
-	// The protocol version the tool speaks.
+	// The protocol version the tool speaks. Version 2 adds panels, what a
+	// tool draws, and changes nothing of version 1. An app that speaks
+	// only version 1 refuses a manifest that says 2. One of: 1, 2.
 	Protocol string `json:"protocol"`
 
 	// Who made the tool. Shown beside its name. The app does not check
@@ -394,16 +821,15 @@ type Manifest struct {
 	Runtime Runtime `json:"runtime"`
 }
 
-// LocalizedText: A piece of text in one or more languages, keyed by language
-// tag (en, fr, pt-BR). English, under en, is required. The app shows the
-// entry for the language in use, then the entry for that language without its
-// region, then English.
-type LocalizedText map[string]string
-
-// Contributes: What the tool adds to the app. Version 1 has commands only.
+// Contributes: What the tool adds to the app: commands, and in protocol 2
+// panels.
 type Contributes struct {
 	// The tool's commands. At most 32.
 	Commands []Command `json:"commands,omitempty"`
+
+	// What the tool draws, and where. At most 8; at most one in the
+	// island and one in Settings. Protocol 2 only.
+	Panels []Panel `json:"panels,omitempty"`
 }
 
 // Command: One thing the tool can be asked to do.
@@ -423,6 +849,38 @@ type Command struct {
 	// Quick panel, and as a shortcut the person records. One of:
 	// commandBar, radial, quickPanel, shortcut.
 	Surfaces []string `json:"surfaces,omitempty"`
+}
+
+// Panel: One place the tool draws in. The app opens it with ui/open and the
+// tool answers with blocks to draw; or, for a web panel, the app shows the
+// page at entry.
+type Panel struct {
+	// The panel's name within the tool. The same characters as a command
+	// id.
+	ID string `json:"id"`
+
+	// What the panel is called: the island page's title, the window's
+	// title.
+	Title LocalizedText `json:"title"`
+
+	// Where it is shown. island: a page in the island's Tools area.
+	// settings: a part of the tool's detail in Settings. window: a window
+	// the app owns, opened when the person asks. One of: island,
+	// settings, window.
+	Placement string `json:"placement"`
+
+	// An SF Symbol name. Left out, the tool's icon is used.
+	Icon *string `json:"icon,omitempty"`
+
+	// What draws it. blocks: the app, from blocks the tool sends. web: a
+	// web page from the tool's folder. Left out, it is blocks. One of:
+	// blocks, web.
+	Kind *string `json:"kind,omitempty"`
+
+	// A web panel's page, as a path inside the tool's folder, with /
+	// between its parts. No part is empty, . or .., so the path cannot
+	// leave the folder. A blocks panel ignores it.
+	Entry *string `json:"entry,omitempty"`
 }
 
 // Preference: One setting. The tool reads and writes it with storage/get and
@@ -514,14 +972,62 @@ func roundTrip(name string, raw []byte) ([]byte, bool, error) {
 		value = &StorageSetParams{}
 	case "LogParams":
 		value = &LogParams{}
-	case "Manifest":
-		value = &Manifest{}
+	case "UIOpenParams":
+		value = &UIOpenParams{}
+	case "UIOpenResult":
+		value = &UIOpenResult{}
+	case "UIEventParams":
+		value = &UIEventParams{}
+	case "UIEventResult":
+		value = &UIEventResult{}
+	case "UICloseParams":
+		value = &UICloseParams{}
+	case "UIRenderParams":
+		value = &UIRenderParams{}
+	case "UIBadgeParams":
+		value = &UIBadgeParams{}
+	case "UITree":
+		value = &UITree{}
+	case "UIBlock":
+		value = &UIBlock{}
 	case "LocalizedText":
 		value = &LocalizedText{}
+	case "UIText":
+		value = new(UIText)
+	case "TextBlock":
+		value = &TextBlock{}
+	case "HeadingBlock":
+		value = &HeadingBlock{}
+	case "RowBlock":
+		value = &RowBlock{}
+	case "ButtonBlock":
+		value = &ButtonBlock{}
+	case "ToggleBlock":
+		value = &ToggleBlock{}
+	case "FieldBlock":
+		value = &FieldBlock{}
+	case "UIListRow":
+		value = &UIListRow{}
+	case "ListBlock":
+		value = &ListBlock{}
+	case "ProgressBlock":
+		value = &ProgressBlock{}
+	case "ImageBlock":
+		value = &ImageBlock{}
+	case "DividerBlock":
+		value = &DividerBlock{}
+	case "LinkBlock":
+		value = &LinkBlock{}
+	case "SpacerBlock":
+		value = &SpacerBlock{}
+	case "Manifest":
+		value = &Manifest{}
 	case "Contributes":
 		value = &Contributes{}
 	case "Command":
 		value = &Command{}
+	case "Panel":
+		value = &Panel{}
 	case "Preference":
 		value = &Preference{}
 	case "Runtime":

@@ -87,6 +87,8 @@ def py_type(kind: Type, model: Model) -> str:
         return kind.name
     if kind.kind == "const":
         return f'Literal["{kind.values[0]}"]'
+    if kind.kind == "text":
+        return f"Union[str, {model.title(kind.ref)}]"
     raise ValueError(kind)
 
 
@@ -117,6 +119,8 @@ def reader(kind: Type, value: str, where: str, model: Model) -> str:
         return f"_one_of({value}, {where}, {constant(kind.name)})"
     if kind.kind == "const":
         return f'_one_of({value}, {where}, ("{kind.values[0]}",))'
+    if kind.kind == "text":
+        return f"_text({value}, {where})"
     raise ValueError(kind)
 
 
@@ -141,15 +145,94 @@ def writer(kind: Type, value: str, model: Model) -> str:
 
 
 def constant(enum_name: str) -> str:
-    out = ""
-    for index, char in enumerate(enum_name):
-        if char.isupper() and index:
-            out += "_"
-        out += char.upper()
-    return out + "S"
+    """Service -> SERVICES, PreferenceType -> PREFERENCE_TYPES, UIEventKind -> UI_EVENT_KINDS."""
+    return camel_to_snake(enum_name).upper() + "S"
+
+
+def variant_lines(definition: Definition, model: Model) -> list:
+    """An object that is one of several kinds by the value of `tag`: a
+    dataclass with the tag, `content` (the dataclass of the kind the tag
+    names, or a dict for a kind these types do not have, as it came), and
+    the fields every kind has."""
+    title, tag = definition.title, definition.tag
+    common = [f for f in definition.fields if f.name != tag]
+    kinds = [model.title(ref) for _, ref in definition.variants]
+    lines = ["@dataclass(frozen=True)", f"class {title}:"]
+    if definition.description:
+        lines.append(f'    """{definition.description}"""')
+    lines.append("")
+    tag_field = next(f for f in definition.fields if f.name == tag)
+    lines.append(f"    {safe(tag)}: str")
+    if tag_field.description:
+        lines.append(f'    """{tag_field.description}"""')
+    lines.append(f"    content: Union[{', '.join(kinds)}, Dict[str, Any]]")
+    lines.append(
+        f'    """The kind\'s own fields: the one `{tag}` names, or, for a kind these types do not have, its fields as they came."""'
+    )
+    ordered = [f for f in common if f.required] + [f for f in common if not f.required]
+    for field in ordered:
+        kind = py_type(field.type, model)
+        if field.required:
+            lines.append(f"    {safe(field.name)}: {kind}")
+        else:
+            lines.append(f"    {safe(field.name)}: Optional[{kind}] = None")
+        if field.description:
+            lines.append(f'    """{field.description}"""')
+    lines.append("")
+    lines.append("    @classmethod")
+    lines.append(
+        f'    def from_json(cls, value: Any, where: str = "{definition.name}") -> "{title}":'
+    )
+    lines.append("        found = _object(value, where)")
+    lines.append(
+        f'        kind = _string(_required(found, "{tag}", where), where + ".{tag}")'
+    )
+    lines.append("        content: Any")
+    for number, (value, ref) in enumerate(definition.variants):
+        lines.append(f'        {"if" if number == 0 else "elif"} kind == "{value}":')
+        lines.append(
+            f"            content = {model.title(ref)}.from_json(value, where)"
+        )
+    lines.append("        else:")
+    names = ", ".join(f'"{name}"' for name in [tag] + [f.name for f in common])
+    lines.append(
+        f"            content = {{key: item for key, item in found.items() if key not in ({names},)}}"
+    )
+    lines.append("        return cls(")
+    lines.append(f"            {safe(tag)}=kind,")
+    lines.append("            content=content,")
+    for field in ordered:
+        path = f'where + ".{field.name}"'
+        read = reader(field.type, f'found["{field.name}"]', path, model)
+        if field.required:
+            lines.append(
+                f"            {safe(field.name)}={reader(field.type, f'_required(found, "{field.name}", where)', path, model)},"
+            )
+        else:
+            lines.append(
+                f'            {safe(field.name)}=None if found.get("{field.name}") is None else {read},'
+            )
+    lines.append("        )")
+    lines.append("")
+    lines.append("    def to_json(self) -> Dict[str, Any]:")
+    lines.append(f'        out: Dict[str, Any] = {{"{tag}": self.{safe(tag)}}}')
+    lines.append(
+        "        out.update(dict(self.content) if isinstance(self.content, dict) else self.content.to_json())"
+    )
+    for field in common:
+        value = writer(field.type, f"self.{safe(field.name)}", model)
+        if field.required:
+            lines.append(f'        out["{field.name}"] = {value}')
+        else:
+            lines.append(f"        if self.{safe(field.name)} is not None:")
+            lines.append(f'            out["{field.name}"] = {value}')
+    lines.append("        return out")
+    return lines
 
 
 def definition_lines(definition: Definition, model: Model) -> list:
+    if definition.variants:
+        return variant_lines(definition, model)
     if definition.alias is not None:
         return [
             f"{definition.title} = {py_type(definition.alias, model)}",
@@ -286,6 +369,12 @@ def _one_of(value: Any, where: str, names: Tuple[str, ...]) -> Any:
     if value not in names:
         raise ShapeError(where, "one of " + ", ".join(names))
     return value
+
+
+def _text(value: Any, where: str) -> Union[str, Dict[str, str]]:
+    if isinstance(value, str):
+        return value
+    return {key: _string(item, where + "." + key) for key, item in _object(value, where).items()}
 '''
 
 
@@ -309,28 +398,42 @@ def messages_file(model: Model) -> str:
 
 def manifest_file(model: Model) -> str:
     used = set()
+    messages = {definition.name for definition in model.messages}
     for definition in model.manifest:
         for field in definition.fields:
             for kind in (field.type, field.type.item):
                 if kind is not None and kind.kind == "enum":
                     used.update([kind.name, constant(kind.name)])
+                if (
+                    kind is not None
+                    and kind.kind in ("ref", "text")
+                    and kind.ref in messages
+                ):
+                    # A definition both schemas make lives in messages.py.
+                    used.add(model.title(kind.ref))
+                if kind is not None and kind.kind == "text":
+                    used.update(["_text", "Union"])
     names = sorted(
         used
         | {"Any", "Dict", "List", "Literal", "Optional", "dataclass"}
         | {"_array", "_integer", "_any", "_object", "_one_of", "_required", "_string"}
     )
+    typing = ["Any", "Dict", "List", "Literal", "Optional"] + (
+        ["Union"] if "Union" in names else []
+    )
     imports = [
         "from __future__ import annotations",
         "",
         "from dataclasses import dataclass",
-        "from typing import Any, Dict, List, Literal, Optional",
+        f"from typing import {', '.join(typing)}",
         "",
         "from .messages import (",
     ]
     imports += [
         f"    {name},"
         for name in names
-        if name not in {"Any", "Dict", "List", "Literal", "Optional", "dataclass"}
+        if name
+        not in {"Any", "Dict", "List", "Literal", "Optional", "Union", "dataclass"}
     ]
     imports.append(")")
     parts = [header("protocol/manifest.schema.json"), "\n".join(imports)]

@@ -43,6 +43,9 @@ type App struct {
 	Processes Processes
 	// Storage needs `storage`.
 	Storage Storage
+	// UI is the tool's badge in the island, for a tool of protocol 2. Needs
+	// `notify`.
+	UI UI
 
 	tool *Tool
 }
@@ -55,6 +58,7 @@ func newApp(tool *Tool) *App {
 		Keystrokes: Keystrokes{tool},
 		Processes:  Processes{tool},
 		Storage:    Storage{tool},
+		UI:         UI{tool},
 		tool:       tool,
 	}
 }
@@ -167,4 +171,18 @@ func (s Storage) Get(key string) (any, error) {
 // Set saves one preference. value is a string, a bool or a number.
 func (s Storage) Set(key string, value any) error {
 	return s.tool.call(MethodStorageSet, StorageSetParams{Key: key, Value: value}, nil)
+}
+
+// UI is what a tool of protocol 2 puts beside itself in the island's Tools
+// area. Its panels are the tool's own; this is the one call the app answers.
+type UI struct{ tool *Tool }
+
+// Badge puts a count, or a dot, beside the tool in the island's Tools area.
+// count nil and dot false take the badge away.
+func (u UI) Badge(count *int, dot bool) error {
+	params := UIBadgeParams{Count: count}
+	if dot {
+		params.Dot = &dot
+	}
+	return u.tool.call(MethodUIBadge, params, nil)
 }

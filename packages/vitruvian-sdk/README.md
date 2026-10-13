@@ -5,7 +5,10 @@ What you build a Vitruvian tool against.
 A tool is a separate program, in any language, that the Vitruvian desktop app
 starts and talks to in JSON over the program's standard input and output. It
 adds commands to the app: to the command bar, the radial menu, the Quick
-panel, and as shortcuts.
+panel, and as shortcuts. A tool of protocol 2 can also show a page of its
+own: in the Dynamic Island, in its detail in Settings, and in a window. It
+describes the page in blocks and the app draws it, or it brings a web page
+from its own folder.
 
 **A tool is trusted like an app.** It runs as you, with every permission
 Vitruvian has. The app does not limit or check what it does.
@@ -22,15 +25,15 @@ not work.
 | Folder | What it is |
 |---|---|
 | [`docs/`](docs/writing-a-tool.md) | The guide for a tool's author. Its examples are tested. |
-| [`protocol/`](protocol/README.md) | The protocol, version 1: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
-| `samples/` | Seven tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `front-window`, which reads the title of the window in front by asking macOS itself. |
-| `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands, handle them, call the app. |
+| [`protocol/`](protocol/README.md) | The protocol, versions 1 and 2: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
+| `samples/` | Ten tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript` and `hello-panel-python`, a counter in the island drawn from blocks; `front-window`, which reads the title of the window in front by asking macOS itself. |
+| `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands and panels, handle them, call the app, write a page as its blocks. |
 | `kits/` | The same, for TypeScript (`@vitruviansoftware/tool-kit`, npm) and Python (`vitruvian-tool-kit`, PyPI). Their types are written from the schemas by `//tools/sdk-codegen`, and a test fails when they are not what it writes. |
 | `go/` | The same kit in Go, module `github.com/VitruvianSoftware/vitruvian-sdk/go`, package `toolkit`. Go 1.22 or later, standard library only. |
 | `kits/rust` | The same kit in Rust, crate `vitruvian-tool-kit`. Rust 1.75 or later; `serde` and `serde_json`. |
 | `Sources/vitruvian-tool` | A command: `init` starts a new tool from a sample, `validate` reads a folder the way the app will, `run` plays the app's side in a terminal. `Sources/VitruvianToolCLI` is what it is made of. |
 | `Sources/VitruvianToolProtocol` | The protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
-| `conformance/` | A script that plays the app's side to your tool in five scripted checks, and the smallest tool that passes it. |
+| `conformance/` | A script that plays the app's side to your tool in six scripted checks, and the smallest tool that passes it. |
 | `.github/workflows/` | The CI and the release of [VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk). They run only there. |
 
 ## Getting it
@@ -98,9 +101,15 @@ Swift sample has to be built first:
 bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders
 ```
 
-That leaves `bazel-bin/packages/vitruvian-sdk/built/hello-swift` and
-`built/front-window`, each with its manifest and `bin/tool`. Those are the
-folders to add.
+That leaves `bazel-bin/packages/vitruvian-sdk/built/hello-swift`,
+`built/hello-panel-swift` and `built/front-window`, each with its manifest
+and `bin/tool`. Those are the folders to add.
+
+`hello-panel-swift` is a tool of protocol 2. Once it is added, the island's
+Tools page has a tile "Counter" after the quick tools: it opens a page with a
+count, a button that adds to it and a field. Each press puts the count on the
+tile, as a badge. Its detail in Settings has the switch "Count by two",
+drawn by the app from the tool's own page.
 
 `hello-swift` declares one preference with a title, its count. Once the tool
 is added, its detail in Settings lists "Counted so far" with a number field;
@@ -118,23 +127,25 @@ python3 conformance/conformance.py path/to/your-tool
 ```
 
 It needs Python 3 and nothing else, and it does not need the app. It starts
-your tool's program in a folder of its own and checks five things, in order.
+your tool's program in a folder of its own and checks six things, in order.
 The first failure stops the run.
 
 | Check | What must happen |
 |---|---|
-| handshake | Your tool answers `initialize` first, with version 1 and its own version. |
+| handshake | Your tool answers `initialize` first, with a version it was offered, 1 or 2, and its own version. |
 | a command | Your first command is run and answered. |
 | unknown | A command you do not have is answered with a failure. |
+| a panel | For a tool of protocol 2: its first panel the app draws is opened and answered with a page; the page's first button is tapped and answered with another page; the panel is closed. A page sent with `ui/render` for a panel the manifest does not declare fails the run. |
 | refusals | The command is run again with every request you make refused, and is still answered. |
 | shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. What it wrote on the way out is read to the end, and each line must be a message. |
 
-It exits with 0 when all five pass. Against the reference tool it prints:
+It exits with 0 when all six pass. Against the reference tool it prints:
 
 ```
 ok       handshake: version 1, tool 0.1.0
 ok       a command: hello: ran
 ok       unknown: failure -32602
+ok       a panel: the manifest declares no panel the app draws
 ok       refusals: 1 refused
 ok       shutdown: exited with 0
 ```
@@ -143,8 +154,8 @@ While a command runs, the script answers your requests as the app would. A
 service your manifest's `uses` does not list is refused with -32001.
 
 Every line your tool writes must be one JSON-RPC 2.0 message of at most 1 MB.
-The twelve messages a tool may send must each carry their own params, of the
-right kind: a `notify/hud` with no `message` fails the run.
+The fourteen messages a tool may send must each carry their own params, of
+the right kind: a `notify/hud` with no `message` fails the run.
 
 - `--via PROGRAM` starts your program through another one, for example
   `--via python3` for a script that is not executable.
@@ -165,9 +176,11 @@ Passing is not proof that the app will accept everything your tool does.
   `protocol/manifest.schema.json` is what a manifest must satisfy.
 - **It runs your first command only**, and has no check for a tool that
   floods the app or hangs outside an answer.
-- **It has been proven against** the reference tool, the five samples, and
-  twelve broken copies of the reference tool, each caught by the check meant
-  for it.
+- **It opens one panel and taps one button.** It does not check a web
+  panel, a page's every block, or how often a tool sends pages.
+- **It has been proven against** the reference tool, the six samples,
+  twelve broken copies of the reference tool and three broken tools that
+  draw, each caught by the check meant for it.
 
 ## Working on the package
 
@@ -189,7 +202,7 @@ Go commands for the Go kit outside Bazel: run them with `GOWORK=off` from
 
 The first line needs a Mac: the Swift types against the example files, the
 kit against a link made of two files, the command against folders and real
-processes, the two Swift samples against the conformance script, what
+processes, the three Swift samples against the conformance script, what
 `init` writes, and the Swift tool `init` writes, built. The second runs anywhere: the example files against the
 schemas, the conformance script against the reference tool, the Python sample,
 the templates `init` holds against the samples they are copies of, every

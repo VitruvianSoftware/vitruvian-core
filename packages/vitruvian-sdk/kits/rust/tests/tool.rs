@@ -30,7 +30,10 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use vitruvian_tool_kit::{RefusalCode, Tool, ToolError, METHODS};
+use vitruvian_tool_kit::{
+    button, divider, field, heading, image, link, list, progress, row, spacer, text, toggle, tree,
+    Error, PanelAnswer, PanelEvent, RefusalCode, Tool, ToolError, UiListRow, METHODS,
+};
 
 /// What the tool writes, kept where the test can read it.
 #[derive(Clone, Default)]
@@ -81,6 +84,24 @@ impl Bench {
         self.app(r#"{"jsonrpc":"2.0","method":"shutdown"}"#)
     }
 
+    fn open(self, panel: &str, id: i64) -> Bench {
+        self.app(&format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"method":"ui/open","params":{{"panel":"{panel}"}}}}"#
+        ))
+    }
+
+    fn tap(self, panel: &str, block: &str, id: i64) -> Bench {
+        self.app(&format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"method":"ui/event","params":{{"panel":"{panel}","block":"{block}","event":"tap"}}}}"#
+        ))
+    }
+
+    fn close(self, panel: &str) -> Bench {
+        self.app(&format!(
+            r#"{{"jsonrpc":"2.0","method":"ui/close","params":{{"panel":"{panel}"}}}}"#
+        ))
+    }
+
     /// Makes the tool over the two buffers.
     fn tool(&self) -> Tool {
         Tool::with_link(
@@ -114,7 +135,7 @@ fn every_request_a_tool_may_send_has_a_call() {
     // tool wrote names each request a tool may send, once, in order. A
     // request added to the protocol fails this until the kit has its call.
     let mut bench = Bench::default().hello().run("all", 100);
-    for id in 1..=10 {
+    for id in 1..=11 {
         bench = bench.app(&format!(
             r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32004,"message":"not available right now"}}}}"#
         ));
@@ -132,6 +153,7 @@ fn every_request_a_tool_may_send_has_a_call() {
         let _ = app.processes().terminate(4242, "node", false);
         let _ = app.storage().get("count");
         let _ = app.storage().set("count", 1);
+        let _ = app.ui().badge(Some(2), false);
         Ok(())
     });
     assert_eq!(tool.serve(), 0);
@@ -146,7 +168,7 @@ fn every_request_a_tool_may_send_has_a_call() {
         .map(|row| row.name)
         .collect();
     assert_eq!(asked, wanted, "each request once, in the protocol's order");
-    assert_eq!(wanted.len(), 10);
+    assert_eq!(wanted.len(), 11);
 }
 
 #[test]
@@ -426,9 +448,29 @@ fn a_call_gives_up_when_no_answer_comes() {
 }
 
 #[test]
+fn the_newest_version_both_speak_is_picked() {
+    for (offered, picked) in [
+        (r#"["1","2"]"#, "2"),
+        (r#"["1"]"#, "1"),
+        (r#"["2","1"]"#, "2"),
+        (r#"["2","3"]"#, "2"),
+    ] {
+        let bench = Bench::default().hello_offering(offered).goodbye();
+        assert_eq!(bench.tool().serve(), 0);
+        assert_eq!(
+            bench.lines(),
+            messages(&[&format!(
+                r#"{{"jsonrpc":"2.0","id":"hello","result":{{"protocolVersion":"{picked}","toolVersion":"9.9.9"}}}}"#
+            )]),
+            "{offered}"
+        );
+    }
+}
+
+#[test]
 fn a_version_the_tool_does_not_speak_is_refused() {
     let bench = Bench::default()
-        .hello_offering(r#"["2"]"#)
+        .hello_offering(r#"["3"]"#)
         .run("hello", 2)
         .goodbye();
     let mut tool = bench.tool();
@@ -443,7 +485,7 @@ fn a_version_the_tool_does_not_speak_is_refused() {
     assert_eq!(
         bench.lines(),
         messages(&[
-            r#"{"jsonrpc":"2.0","id":"hello","error":{"code":-32602,"message":"this tool speaks protocol 1 only"}}"#,
+            r#"{"jsonrpc":"2.0","id":"hello","error":{"code":-32602,"message":"this tool speaks protocols 1 and 2 only"}}"#,
             r#"{"jsonrpc":"2.0","id":2,"error":{"code":-32600,"message":"initialize comes first"}}"#,
         ])
     );
@@ -510,4 +552,257 @@ fn a_closed_link_is_an_end_not_a_crash() {
     });
     assert_eq!(tool.serve(), 0);
     assert_eq!(ran.get(), 0, "nothing runs once the link has gone");
+}
+
+// A tool that draws: its panels opened, acted in, rendered to and closed,
+// and a web panel's calls, against the same link of two buffers. These are
+// the Swift kit's PanelTests, one for one.
+
+fn tapped(block: &str) -> PanelEvent {
+    PanelEvent {
+        block: Some(block.to_string()),
+        kind: "tap".to_string(),
+        value: None,
+    }
+}
+
+#[test]
+fn a_panel_is_opened_acted_in_and_closed() {
+    let bench = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .open("counter", 2)
+        .tap("counter", "add", 3)
+        .tap("counter", "nothing", 4)
+        .close("counter")
+        .goodbye();
+    let mut tool = bench.tool();
+    let count = Rc::new(Cell::new(0));
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let (opened, acted, noted) = (count.clone(), count.clone(), seen.clone());
+    let handle = tool.panel(
+        "counter",
+        move |_app, _panel| Ok(Some(tree![text(format!("Pressed {} times", opened.get()))])),
+        move |_app, _panel, event| {
+            noted.borrow_mut().push(event.clone());
+            if event.block.as_deref() != Some("add") {
+                return Ok(PanelAnswer::Keep);
+            }
+            acted.set(acted.get() + 1);
+            Ok(PanelAnswer::Page(tree![text(format!(
+                "Pressed {} times",
+                acted.get()
+            ))]))
+        },
+    );
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        bench.lines(),
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":"hello","result":{"protocolVersion":"2","toolVersion":"9.9.9"}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"result":{"tree":{"blocks":[{"type":"text","text":"Pressed 0 times"}]}}}"#,
+            r#"{"jsonrpc":"2.0","id":3,"result":{"tree":{"blocks":[{"type":"text","text":"Pressed 1 times"}]}}}"#,
+            r#"{"jsonrpc":"2.0","id":4,"result":{"keep":true}}"#,
+        ]),
+        "a tool of the kit speaks protocol 2"
+    );
+    assert_eq!(*seen.borrow(), vec![tapped("add"), tapped("nothing")]);
+    assert!(!handle.is_open(), "ui/close closes it");
+}
+
+#[test]
+fn a_page_is_sent_unprompted_only_while_the_panel_is_open() {
+    let bench = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .run("refresh", 2)
+        .open("counter", 3)
+        .run("refresh", 4)
+        .close("counter")
+        .run("refresh", 5)
+        .goodbye();
+    let mut tool = bench.tool();
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let noted = sent.clone();
+    let panel = tool.panel(
+        "counter",
+        |_app, _panel| Ok(Some(tree![heading("Counter")])),
+        |_app, _panel, _event| Ok(PanelAnswer::Keep),
+    );
+    tool.command("refresh", move |app| {
+        noted
+            .borrow_mut()
+            .push(panel.render(app, &tree![text("Later")]));
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        *sent.borrow(),
+        [false, true, false],
+        "render sends nothing for a panel that is not open"
+    );
+    let renders: Vec<Value> = bench
+        .lines()
+        .into_iter()
+        .filter(|line| line["method"] == "ui/render")
+        .collect();
+    assert_eq!(
+        renders,
+        messages(&[
+            r#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"counter","tree":{"blocks":[{"type":"text","text":"Later"}]}}}"#,
+        ])
+    );
+}
+
+#[test]
+fn what_is_not_a_panel_of_the_tools_is_refused() {
+    let bench = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .open("nowhere", 2)
+        .tap("counter", "add", 3)
+        .goodbye();
+    let mut tool = bench.tool();
+    tool.panel(
+        "counter",
+        |_app, _panel| Ok(None),
+        |_app, _panel, _event| Ok(PanelAnswer::Keep),
+    );
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        bench.lines()[1..],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":2,"error":{"code":-32602,"message":"no such panel"}}"#,
+            r#"{"jsonrpc":"2.0","id":3,"error":{"code":-32602,"message":"the panel is not open"}}"#,
+        ])
+    );
+}
+
+#[test]
+fn an_answer_may_open_a_window_or_reply_and_the_badge_is_a_request() {
+    let bench = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .open("deploys", 2)
+        .tap("deploys", "log", 3)
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .goodbye();
+    let mut tool = bench.tool();
+    tool.panel(
+        "deploys",
+        |app, panel| {
+            panel.badge(app, Some(2), false)?;
+            Ok(None)
+        },
+        |_app, _panel, _event| Ok(PanelAnswer::Open("log".to_string())),
+    );
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        bench.lines()[1..],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"ui/badge","params":{"count":2}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"result":{}}"#,
+            r#"{"jsonrpc":"2.0","id":3,"result":{"open":"log"}}"#,
+        ]),
+        "a page given as none is no tree"
+    );
+}
+
+#[test]
+fn a_web_panels_calls_are_the_tools_own_or_passed_to_the_app() {
+    fn bridge(id: i64, call: &str) -> String {
+        format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"method":"ui/event","params":{{"panel":"dashboard","event":"bridge","value":{call}}}}}"#
+        )
+    }
+    let bench = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .open("dashboard", 2)
+        .app(&bridge(
+            3,
+            r#"{"method":"notify/hud","params":{"icon":"checkmark","message":"Saved"}}"#,
+        ))
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .app(&bridge(4, r#"{"method":"tool/count","params":{"by":2}}"#))
+        .app(&bridge(5, r#"{"method":"tool/other"}"#))
+        .app(&bridge(6, r#"{"method":"initialize"}"#))
+        .goodbye();
+    let mut tool = bench.tool();
+    let panel = tool.panel(
+        "dashboard",
+        |_app, _panel| Ok(None),
+        |_app, _panel, _event| Ok(PanelAnswer::Keep),
+    );
+    panel.on_call(|_app, method, params| {
+        if method != "tool/count" {
+            return Err(ToolError::App(Error {
+                code: -32601,
+                message: "method not found".to_string(),
+                data: None,
+            }));
+        }
+        let by = params
+            .and_then(|p| p.get("by").cloned())
+            .unwrap_or(Value::Null);
+        Ok(json!({ "count": by }))
+    });
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        bench.lines()[2..],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"notify/hud","params":{"icon":"checkmark","message":"Saved"}}"#,
+            r#"{"jsonrpc":"2.0","id":3,"result":{"reply":{}}}"#,
+            r#"{"jsonrpc":"2.0","id":4,"result":{"reply":{"count":2}}}"#,
+            r#"{"jsonrpc":"2.0","id":5,"error":{"code":-32601,"message":"method not found"}}"#,
+            r#"{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"method not found"}}"#,
+        ]),
+        "a request of the app's is asked of the app as the tool's own; a method of the tool's goes to on_call"
+    );
+}
+
+#[test]
+fn a_page_is_written_as_the_blocks_it_holds() {
+    let count = 12;
+    let rows = ["web", "api"];
+    let page = tree![
+        heading("Counter"),
+        text(format!("Pressed {count} times")).style("secondary"),
+        button("add", "Add one").style("prominent"),
+        (count > 9).then(|| text("That is a lot").style("caption")),
+        (count > 99).then(divider),
+        (count <= 99).then(|| spacer(4.0)),
+        rows.iter()
+            .map(|name| row(*name).id(*name))
+            .collect::<Vec<_>>(),
+        list(
+            "deploys",
+            vec![UiListRow {
+                id: "web".to_string(),
+                title: "web 1.42.0".into(),
+                ..UiListRow::default()
+            }]
+        ),
+        toggle("notify", "Tell me", true),
+        field("name")
+            .title("Name")
+            .placeholder("Type and press Return"),
+        progress(0.5),
+        image("ui/logo.png").alt("Logo"),
+        link("Dashboard", "https://example.com"),
+    ];
+    let written = serde_json::to_value(&page).unwrap();
+    let blocks = written["blocks"].as_array().unwrap();
+    let types: Vec<&str> = blocks.iter().map(|b| b["type"].as_str().unwrap()).collect();
+    assert_eq!(
+        types,
+        [
+            "heading", "text", "button", "text", "spacer", "row", "row", "list", "toggle", "field",
+            "progress", "image", "link"
+        ]
+    );
+    let ids: Vec<&str> = blocks.iter().filter_map(|b| b["id"].as_str()).collect();
+    assert_eq!(ids, ["add", "web", "api", "deploys", "notify", "name"]);
+    assert_eq!(blocks[2]["style"], "prominent");
+    assert_eq!(blocks[4]["size"], 4.0);
+    assert_eq!(
+        serde_json::to_value(divider()).unwrap(),
+        json!({"type": "divider"}),
+        "the twelfth kind"
+    );
 }

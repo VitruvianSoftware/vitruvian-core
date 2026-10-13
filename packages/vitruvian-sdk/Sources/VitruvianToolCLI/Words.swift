@@ -164,7 +164,8 @@ enum Words {
             return "the id `\(id)` has no dot. An id with no dot is one of the app's own tools: use a name like "
                 + "com.you.\(id)"
         case .unsupportedProtocol(let version):
-            return "`protocol` is \"\(version)\", and this is protocol \"\(ProtocolVersion.current)\""
+            return "`protocol` is \"\(version)\", and this command speaks protocols "
+                + ProtocolVersion.supported.map { "\"\($0)\"" }.joined(separator: " and ")
         case .unsupportedRuntime(let kind):
             return "`runtime.kind` is \"\(kind)\", and the only kind is \"\(ToolManifestFile.externalRuntime)\""
         case .noEnglish(let field):
@@ -205,6 +206,27 @@ enum Words {
             return "the default of the preference `\(preference)` is not of its type"
         case .programLeavesFolder(let program):
             return "`runtime.exec` is \"\(program)\", which is not a path that stays inside the folder"
+        case .panelsNeedProtocol2(let version):
+            return "`contributes.panels` is there, and `protocol` is \"\(version)\": only protocol \"2\" has panels"
+        case .tooManyPanels(let count):
+            return "\(count) panels, and the most is \(ManifestLimits.maxPanels)"
+        case .panelNotWellFormed(let id):
+            return "the panel id `\(id)` is not a well-formed name"
+        case .duplicatePanel(let id):
+            return "two panels have the id `\(id)`"
+        case .unknownPlacement(let panel, let placement):
+            return "the panel `\(panel)` names the placement `\(placement)`, which is not one: "
+                + PanelPlacement.allCases.map(\.rawValue).joined(separator: ", ")
+        case .unknownPanelKind(let panel, let kind):
+            return "the panel `\(panel)` is of the kind `\(kind)`, which is not one: "
+                + PanelKind.allCases.map(\.rawValue).joined(separator: ", ")
+        case .placementTaken(let panel, let placement):
+            return "the panel `\(panel)` is a second panel in `\(placement)`, and a tool has one there at most"
+        case .webPanelWithoutEntry(let panel):
+            return "the web panel `\(panel)` names no `entry`, the page it shows"
+        case .panelEntryLeavesFolder(let panel, let entry):
+            return "the web panel `\(panel)` has the `entry` \"\(entry)\", which is not a path that stays inside "
+                + "the folder"
         }
     }
 

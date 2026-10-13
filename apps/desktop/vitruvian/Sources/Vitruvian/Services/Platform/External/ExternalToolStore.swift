@@ -134,6 +134,8 @@ package final class ExternalToolStore {
         /// kept for as long as the store is: letting go of it ends the
         /// watching.
         package var watchLanguage: @MainActor (@escaping @MainActor (String) -> Void) -> Any?
+        /// What draws the tools' panels and badges; nil where nothing does.
+        package var panels: @MainActor () -> ToolPanelHost?
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -144,7 +146,8 @@ package final class ExternalToolStore {
                      stoppedWorking: @escaping @MainActor (ToolID) -> Void,
                      forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in },
                      forgetShortcuts: @escaping @MainActor (ToolID) -> Void = { _ in },
-                     watchLanguage: @escaping @MainActor (@escaping @MainActor (String) -> Void) -> Any? = { _ in nil }) {
+                     watchLanguage: @escaping @MainActor (@escaping @MainActor (String) -> Void) -> Any? = { _ in nil },
+                     panels: @escaping @MainActor () -> ToolPanelHost? = { nil }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -157,6 +160,7 @@ package final class ExternalToolStore {
             self.forgetPreferences = forgetPreferences
             self.forgetShortcuts = forgetShortcuts
             self.watchLanguage = watchLanguage
+            self.panels = panels
         }
 
         /// The app as it is. That a tool stopped working is also a line
@@ -176,7 +180,8 @@ package final class ExternalToolStore {
             },
             forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) },
             forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
-            watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) })
+            watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
+            panels: { .shared })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
@@ -503,6 +508,39 @@ package final class ExternalToolStore {
         return deletingData ? .deleted : .keptAsAsked
     }
 
+    // MARK: - A tool's page in the island
+
+    /// Whether the island's Tools area lists the tool's page. Yes until the
+    /// person turns it off in the tool's detail.
+    package func showsInIsland(_ id: ToolID) -> Bool {
+        records.first { $0.id == id.rawValue }?.showsInIsland ?? true
+    }
+
+    /// The island pages the Tools area lists: of each tool that is switched
+    /// on and is what the person agreed to, the one island page it has,
+    /// unless the person turned it off, in the order the tools were added.
+    package func islandPanels() -> [ToolPanelHost.Key] {
+        records.compactMap { record in
+            guard let id = ToolID(record.id), record.showsInIsland ?? true,
+                  let panel = installed[id]?.tool.panel(in: .island) else { return nil }
+            return ToolPanelHost.Key(tool: id, panel: panel.id)
+        }
+    }
+
+    /// The switch in the tool's detail. Off closes the tool's island page
+    /// when it is open, and the Tools area lists it no more.
+    package func setShowsInIsland(_ id: ToolID, _ shows: Bool) {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }), showsInIsland(id) != shows else { return }
+        var next = records
+        next[known].showsInIsland = shows ? nil : false
+        guard save(next) else { return }
+        records = next
+        if !shows, let island = installed[id]?.tool.panel(in: .island) {
+            parts.panels()?.close(ToolPanelHost.Key(tool: id, panel: island.id))
+        }
+        parts.registry().noteAvailabilityChanged()
+    }
+
     // MARK: - A tool's own settings
 
     /// The settings of an added tool that the person may see and change:
@@ -545,6 +583,8 @@ package final class ExternalToolStore {
         if case .success(let saved) = storage.value(for: key), saved == value { return nil }
         if let problem = storage.set(value, for: key) { return problem }
         tools[id]?.preferencesChanged([preference: ExternalToolCalls.json(value)])
+        parts.panels()?.tellPages(of: id, .preferencesChanged,
+                                  .object(["values": .object([preference: ExternalToolCalls.json(value)])]))
         return nil
     }
 
@@ -566,7 +606,10 @@ package final class ExternalToolStore {
     /// resting, stopped, switched off or held back, is sent nothing and is
     /// not started: `initialize` carries the language when it next starts.
     package func languageChanged(_ language: String) {
-        for id in tools.keys.sorted(by: { $0.rawValue < $1.rawValue }) { tools[id]?.languageChanged(language) }
+        for id in tools.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+            tools[id]?.languageChanged(language)
+            parts.panels()?.tellPages(of: id, .languageChanged, .object(["language": .string(language)]))
+        }
     }
 
     // MARK: - A tool that stopped working
@@ -624,6 +667,7 @@ package final class ExternalToolStore {
     private func deactivate(_ id: ToolID, seeingItOut: Bool = false) -> Bool {
         guard installed.removeValue(forKey: id) != nil else { return true }
         tools[id] = nil
+        parts.panels()?.forget(id)
         parts.registry().unregister(id)
         guard seeingItOut else {
             parts.host().remove(id)
@@ -656,7 +700,8 @@ package final class ExternalToolStore {
         return ExternalTool(
             manifest: manifest, clock: parts.clock, limits: parts.limits,
             makeLink: { events in
-                let calls = ExternalToolCalls(manifest: manifest, broker: parts.broker())
+                let calls = ExternalToolCalls(manifest: manifest, broker: parts.broker(),
+                                              badge: { parts.panels()?.badge(id, $0) })
                 return ToolLink(
                     transport: parts.makeTransport(program, data), clock: parts.clock, limits: parts.limits,
                     hello: InitializeParams(protocolVersions: ProtocolVersion.supported, language: parts.language(),
@@ -669,6 +714,8 @@ package final class ExternalToolStore {
                 onChange: { parts.registry().noteAvailabilityChanged() },
                 onStoppedWorking: { told(id) },
                 // A command that did not run beeps, as a built-in one does.
-                onCommandFailed: { parts.broker().backings.notify.beep() }))
+                onCommandFailed: { parts.broker().backings.notify.beep() },
+                onRender: { panel, tree in parts.panels()?.rendered(id, panel: panel, tree: tree) },
+                onRunEnded: { parts.panels()?.toolEnded(id) }))
     }
 }

@@ -42,7 +42,10 @@ function readerFor(name: string): Reader {
       { empty: "EmptyObject", error: "RPCErrorObject" } as {
         [k: string]: string;
       }
-    )[name] ?? name[0].toUpperCase() + name.slice(1);
+    )[name] ??
+    (/^ui[A-Z]/.test(name)
+      ? "UI" + name.slice(2)
+      : name[0].toUpperCase() + name.slice(1));
   return (messages as unknown as { [k: string]: Reader })[`read${title}`];
 }
 

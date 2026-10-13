@@ -560,7 +560,7 @@ the dependency order; James approves each plan before it is built.
 | **A. Publish** | **Built.** The mirror and its CI; release-please for `vitruvian-sdk`; the mirror's `release.yml` with the universal binary, the formula and the Swift tag; `--version`; `init --template swift` against the published package; `CONTRIBUTING.md`; the `/tools/` section with the guide, the protocol reference and the Swift and Python examples; the first release, `0.9.0`. | A tool's author | SDK 0.9.0; no app release |
 | **B. Kits** | **Built.** Part one (B1, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b1.md`): the generator, the TypeScript and Python kits, their samples, `init` for both, publishing to npm and PyPI. Part two (B2, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b2.md`): the Go and Rust kits, their samples, `init` for both, publishing to crates.io; the Go kit by the `go/vX.Y.Z` tag. `tools/sdk-codegen`; the TypeScript, Python, Go and Rust kits, samples, conformance in CI, registry publishing; `init` templates for each; the examples pages. Two plans if it reads better: B1 TypeScript and Python (registries exist), B2 Go and Rust. | A tool's author | SDK 0.10.0 |
 | **C. Catalogue** | **Built.** `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
-| **D. Protocol 2** | Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
+| **D. Protocol 2** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-d.md`), but for the four kits after Swift, which wait for B1 and B2. Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
 | **E. The GitHub tool** | The tool in its own repository, its catalogue entry, the migration, then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
 | **F. Nexus Agent and HomeSpeaker** | As E, one at a time. | Their users | Minor app releases |
 
@@ -636,6 +636,27 @@ Where it differs from section 7:
   `tools/conformance/check.sh`'s list of allowed roots.
 - A by-hand build can be pointed at a rehearsal catalog on the Mac
   (`bazel run //catalog:rehearse`); a release build cannot.
+
+**Stage D, as built.** Where it differs from section 8, each a decision of
+its plan:
+
+- No `NotchModule.tool(ToolID)`. The island's pages are a closed list saved
+  by name in each person's layout; a tool's island page is a tile after the
+  quick tools on the Tools page, hosted there as a utility is.
+- The tree types are the protocol's, in `packages/vitruvian-sdk`
+  (`Panels.swift`), so the kits and the drift test share them;
+  `Core/Platform/ToolPanel.swift` holds the app's descriptor, the reading of
+  a page with its limits, and the web panel's rule.
+- A picture written into a page counts toward its 256 KB, so an inline
+  picture is at most about 190 KB of PNG, not 1 MB.
+- `ui/event`'s answer may also carry `reply`, for a web page's call, and
+  `open`, a window of the same tool, in answer to the person only.
+- A web page's call may name a method of the tool's own, `tool/…`, as well
+  as a request the app does.
+- The app's new words are two: the sentence for a panel that could not be
+  shown, and the switch "Show in the Dynamic Island".
+- The `panels` API is built in Swift; TypeScript, Python, Go and Rust follow
+  B1 and B2, with the Swift kit as the reference.
 
 What can start before a stage is approved: nothing is built, but the
 mock-ups for C and D can be drawn while A and B are being built, as Stage

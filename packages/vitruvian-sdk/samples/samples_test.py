@@ -62,8 +62,28 @@ WANTED = {
     "hello-swift": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-typescript": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-python-kit": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-panel-swift": [
+        ["a command: addOne: ran"],
+        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+    ],
+    "hello-panel-typescript": [
+        ["a command: addOne: ran"],
+        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+    ],
+    "hello-panel-python": [
+        ["a command: addOne: ran"],
+        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+    ],
     "hello-go": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-panel-go": [
+        ["a command: addOne: ran"],
+        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+    ],
     "hello-rust": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-panel-rust": [
+        ["a command: addOne: ran"],
+        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+    ],
     "front-window": [
         [
             "a command: showTitle: ran",
@@ -146,9 +166,22 @@ def versions():
             handle.read(),
         ).group(1)
     with open(
+        os.path.join(HERE, "hello-panel-go", "go.mod"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-panel-go/go.mod"] = re.search(
+            r"(?m)^require github\.com/VitruvianSoftware/vitruvian-sdk/go v(\S+)",
+            handle.read(),
+        ).group(1)
+    with open(
         os.path.join(HERE, "hello-rust", "Cargo.toml"), encoding="utf-8"
     ) as handle:
         found["samples/hello-rust/Cargo.toml"] = re.search(
+            r'(?m)^vitruvian-tool-kit = \{ version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(
+        os.path.join(HERE, "hello-panel-rust", "Cargo.toml"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-panel-rust/Cargo.toml"] = re.search(
             r'(?m)^vitruvian-tool-kit = \{ version = "([^"]+)"', handle.read()
         ).group(1)
     with open(
@@ -168,6 +201,18 @@ def versions():
             "dependencies"
         ]["@vitruviansoftware/tool-kit"]
     with open(
+        os.path.join(HERE, "hello-panel-typescript", "package.json"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-panel-typescript/package.json"] = json.load(handle)[
+            "dependencies"
+        ]["@vitruviansoftware/tool-kit"]
+    with open(
+        os.path.join(HERE, "hello-panel-python", "requirements.txt"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-panel-python/requirements.txt"] = re.search(
+            r"vitruvian-tool-kit==(\S+)", handle.read()
+        ).group(1)
+    with open(
         os.path.join(HERE, "hello-python-kit", "requirements.txt"), encoding="utf-8"
     ) as handle:
         found["samples/hello-python-kit/requirements.txt"] = re.search(
@@ -181,13 +226,13 @@ def versions():
                 r'"(\d+\.\d+\.\d+)" // x-release-please-version', handle.read()
             ):
                 found[os.path.relpath(path, PACKAGE)] = version
-    if len(set(found.values())) == 1 and len(found) == 9:
+    if len(set(found.values())) == 1 and len(found) == 13:
         print(
             f"versions: {found['kits/typescript/package.json']}, in {len(found)} places"
         )
         return []
     return [
-        f"one version of the SDK in nine places, and these differ or are missing: {found}"
+        f"one version of the SDK in thirteen places, and these differ or are missing: {found}"
     ]
 
 

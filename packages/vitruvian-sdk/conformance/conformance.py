@@ -18,7 +18,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-"""Plays the app's side of the Vitruvian tool protocol, version 1, to a tool.
+"""Plays the app's side of the Vitruvian tool protocol, versions 1 and 2, to a tool.
 
     python3 conformance.py <tool folder> [--via PROGRAM] [--expect-refusal]
 
@@ -27,18 +27,22 @@ started the way the app starts it: in a folder of its own, with this script on
 its standard input and output. `--via` starts it through another program, for
 example a Python interpreter, when the file cannot be run by itself.
 
-Five things are checked, in order, and the first failure stops the run:
+Six things are checked, in order, and the first failure stops the run:
 
-  handshake   the tool answers `initialize` first, with version 1
+  handshake   the tool answers `initialize` first, with a version offered
   a command   its first command is run and answered
   unknown     a command it does not have is answered with a failure
+  a panel     for a tool of protocol 2: its first panel the app draws is
+              opened and answered with a page; its first button is tapped and
+              answered with a new page; the panel is closed
   refusals    the command is run again with every request the tool makes
               refused, and is still answered
   shutdown    after `shutdown` and the end of its input, the tool exits with 0,
               and what it wrote on the way out is messages too
 
 Every line the tool writes must be one JSON-RPC 2.0 message, at most 1 MB,
-and a message version 1 has must carry the params version 1 gives it.
+and a message the protocol has must carry the params the protocol gives it.
+A page sent with `ui/render` must be for a panel the manifest declares.
 While a command runs, the script answers the tool's requests as the app would:
 a service the manifest's `uses` does not list is refused with -32001.
 
@@ -61,6 +65,11 @@ FIRST_ANSWER_SECONDS = 10
 ANSWER_SECONDS = 2
 EXIT_SECONDS = 2
 
+MAX_TREE_BYTES = 262_144
+MAX_BLOCKS = 200
+NEEDS_ID = ("button", "toggle", "field", "list")
+VERSIONS = ["1", "2"]
+
 INVALID_PARAMS = -32602
 METHOD_NOT_FOUND = -32601
 NOT_IN_USES = -32001
@@ -79,6 +88,7 @@ SERVICES = {
     "processes/terminate": ("processes", {}),
     "storage/get": ("storage", None),
     "storage/set": ("storage", {}),
+    "ui/badge": ("notify", {}),
 }
 
 
@@ -117,8 +127,31 @@ def list_of(check):
     return lambda value: isinstance(value, list) and all(map(check, value))
 
 
+def is_count(value):
+    return is_whole(value) and value >= 0
+
+
+def is_block(value):
+    """A block: a kind, and an id where its kind needs one. A kind this
+    script does not know is a later version's, and is fine."""
+    return (
+        isinstance(value, dict)
+        and is_text(value.get("type"))
+        and (value["type"] not in NEEDS_ID or is_text(value.get("id")))
+    )
+
+
+def is_tree(value):
+    """A page: at most 200 blocks, and at most 262,144 bytes as JSON."""
+    if not isinstance(value, dict) or not isinstance(value.get("blocks"), list):
+        return False
+    if len(value["blocks"]) > MAX_BLOCKS or not all(map(is_block, value["blocks"])):
+        return False
+    return len(json.dumps(value, separators=(",", ":")).encode()) <= MAX_TREE_BYTES
+
+
 # The params each message a tool sends must carry. Anything more is ignored,
-# and so is a message version 1 does not have.
+# and so is a message the protocol does not have.
 PARAMS = {
     "commands/state": {"runnable": list_of(is_text)},
     "log": {"message": is_text},
@@ -132,6 +165,13 @@ PARAMS = {
     "processes/terminate": {"pid": is_whole, "name": is_text, "force": is_flag},
     "storage/get": {"key": is_text},
     "storage/set": {"key": is_text, "value": is_saved},
+    "ui/render": {"panel": is_text, "tree": is_tree},
+    "ui/badge": {},
+}
+
+# The params a message may carry, and must carry rightly when it does.
+OPTIONAL_PARAMS = {
+    "ui/badge": {"count": is_count, "dot": is_flag},
 }
 
 
@@ -140,10 +180,15 @@ class Failure(Exception):
 
 
 def check_params(message):
-    """A Failure when a message version 1 has does not carry its params."""
+    """A Failure when a message the protocol has does not carry its params."""
     params = message.get("params", {})
     for name, check in PARAMS.get(message["method"], {}).items():
         if name not in params or not check(params[name]):
+            raise Failure(
+                f"{message['method']} with params that are not its own: {params!r}"
+            )
+    for name, check in OPTIONAL_PARAMS.get(message["method"], {}).items():
+        if name in params and not check(params[name]):
             raise Failure(
                 f"{message['method']} with params that are not its own: {params!r}"
             )
@@ -262,6 +307,10 @@ class Run:
         self.commands = [
             c["id"] for c in manifest.get("contributes", {}).get("commands", [])
         ]
+        self.protocol = manifest.get("protocol")
+        self.panels = manifest.get("contributes", {}).get("panels", [])
+        # The pages the tool sent unprompted, by panel.
+        self.rendered = {}
         self.values = {p["id"]: p["default"] for p in manifest.get("preferences", [])}
         self.next_id = 0
         self.refused = 0
@@ -312,6 +361,8 @@ class Run:
             kind = kind_of(message)
             if kind in ("request", "notice"):
                 check_params(message)
+            if kind == "notice" and message["method"] == "ui/render":
+                self.render(message["params"])
             if kind == "request":
                 self.serve(message, refuse_all)
             elif kind in ("result", "failure"):
@@ -321,9 +372,17 @@ class Run:
                     )
                 return kind, message
 
+    def render(self, params):
+        """A page the tool sent unprompted: for a panel its manifest declares."""
+        if params["panel"] not in {panel.get("id") for panel in self.panels}:
+            raise Failure(
+                f"ui/render for a panel the manifest does not declare: {params['panel']}"
+            )
+        self.rendered[params["panel"]] = params["tree"]
+
     def handshake(self):
         params = {
-            "protocolVersions": ["1"],
+            "protocolVersions": VERSIONS,
             "language": "en-US",
             "dataFolder": self.data_folder,
         }
@@ -336,11 +395,14 @@ class Run:
                 f"something other than the answer to initialize came first: {message!r}"
             )
         result = message["result"]
-        if not isinstance(result, dict) or result.get("protocolVersion") != "1":
-            raise Failure(f"the tool did not pick version 1: {result!r}")
+        if (
+            not isinstance(result, dict)
+            or result.get("protocolVersion") not in VERSIONS
+        ):
+            raise Failure(f"the tool picked a version that was not offered: {result!r}")
         if not isinstance(result.get("toolVersion"), str):
             raise Failure(f"the tool did not say its own version: {result!r}")
-        return f"version 1, tool {result['toolVersion']}"
+        return f"version {result['protocolVersion']}, tool {result['toolVersion']}"
 
     def a_command(self):
         if not self.commands:
@@ -362,6 +424,48 @@ class Run:
                 f"a command the tool does not have was answered as done: {message!r}"
             )
         return f"failure {message['error']['code']}"
+
+    def a_panel(self):
+        drawn = [
+            panel for panel in self.panels if panel.get("kind", "blocks") == "blocks"
+        ]
+        if self.protocol != "2" or not drawn:
+            return "the manifest declares no panel the app draws"
+        panel = drawn[0]["id"]
+        kind, message = self.answer(
+            self.request("ui/open", {"panel": panel}), ANSWER_SECONDS
+        )
+        if kind != "result" or not isinstance(message["result"], dict):
+            raise Failure(f"ui/open was not answered with a result: {message!r}")
+        first = message["result"].get("tree", self.rendered.get(panel))
+        if first is None or not is_tree(first):
+            raise Failure(f"ui/open was not answered with a page: {message!r}")
+        buttons = [
+            block["id"]
+            for block in first["blocks"]
+            if isinstance(block, dict) and block.get("type") == "button"
+        ]
+        said = f"{panel}: a page of {len(first['blocks'])} blocks"
+        if buttons:
+            sent = self.request(
+                "ui/event", {"panel": panel, "block": buttons[0], "event": "tap"}
+            )
+            kind, message = self.answer(sent, ANSWER_SECONDS)
+            if kind != "result" or not isinstance(message["result"], dict):
+                raise Failure(f"a tap was not answered with a result: {message!r}")
+            result = message["result"]
+            nxt = result.get("tree", self.rendered.get(panel))
+            if "tree" in result and not is_tree(result["tree"]):
+                raise Failure(
+                    f"a tap was answered with something that is not a page: {result!r}"
+                )
+            if result.get("keep") is not True and (nxt is None or nxt == first):
+                raise Failure(f"a tap on {buttons[0]} was answered with the same page")
+            said += f", and a new page after a tap on {buttons[0]}"
+        self.link.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": panel}}
+        )
+        return said
 
     def refusals(self):
         if not self.commands:
@@ -422,7 +526,7 @@ class Run:
 
 def main(arguments=None):
     parser = argparse.ArgumentParser(
-        description="Check a tool against the Vitruvian tool protocol, version 1."
+        description="Check a tool against the Vitruvian tool protocol, versions 1 and 2."
     )
     parser.add_argument(
         "folder", help="the tool's folder, which holds vitruvian-tool.json"
@@ -453,6 +557,7 @@ def main(arguments=None):
                 ("handshake", run.handshake),
                 ("a command", run.a_command),
                 ("unknown", run.unknown),
+                ("a panel", run.a_panel),
                 ("refusals", run.refusals),
                 ("shutdown", run.shutdown),
             ]

@@ -183,6 +183,8 @@ What the kit gives a handler:
 | `setRunnable(_:)` | `commands/state` | |
 | `log(_:)` | `log` | |
 | `language`, `dataFolder` | what `initialize` said | |
+| `render(_:)`, on a panel | `ui/render` | |
+| `badge(count:dot:)`, on a panel | `ui/badge` | `notify` |
 
 Three rules of the kit:
 
@@ -415,6 +417,7 @@ The calls are the Swift kit's, grouped by the service they need:
 | `app.Storage.Get`, `app.Storage.Set` | `app.storage().get`, `app.storage().set` | `storage/get`, `storage/set` | `storage` |
 | `app.SetRunnable` | `app.set_runnable` | `commands/state` | |
 | `app.Log` | `app.log` | `log` | |
+| `app.UI.Badge` | `app.ui().badge` | `ui/badge` | `notify` |
 
 The three rules of the Swift kit hold for both. **A call can be refused**:
 it returns the app's failure, a `*toolkit.Error` in Go and
@@ -498,12 +501,12 @@ refuses its command and says why.
 | `name` | yes | What the person sees. A map from a language tag to text. `en` is required. |
 | `description` | no | One sentence, shown on the sheet. A map of languages, like `name`. |
 | `version` | yes | Your own version, as text. Shown on the sheet, and again when the tool is updated. |
-| `protocol` | yes | `"1"`. |
+| `protocol` | yes | `"1"`, or `"2"` for a tool that draws. Version 2 adds `panels` and changes nothing else. |
 | `publisher` | yes | Who made it. Shown beside the name. |
 | `license` | no | Text. Not shown yet. |
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
-| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. |
+| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. |
 | `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. The tool reads and writes any of them with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
@@ -534,7 +537,7 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys"}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys"}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
 
@@ -655,6 +658,35 @@ is saved.
 {"jsonrpc":"2.0","id":"j","result":{}}
 ```
 
+### What version 2 adds
+
+Protocol 2 adds five messages, for a tool that draws: its manifest says
+`"protocol": "2"` and lists `panels`. Nothing of version 1 changes, and a
+tool that draws nothing never sees them. "Drawing", below, says how a tool
+uses them.
+
+`ui/open` asks for a panel's first page; `ui/event` says what the person did
+in it, and the answer is the next page, or `keep`. `ui/close` says the panel
+went away.
+
+```json
+{"jsonrpc":"2.0","id":14,"method":"ui/open","params":{"panel":"deploys"}}
+{"jsonrpc":"2.0","id":14,"result":{"tree":{"blocks":[{"type":"heading","text":"Today"},{"type":"button","id":"again","title":"Deploy again"}]}}}
+{"jsonrpc":"2.0","id":15,"method":"ui/event","params":{"panel":"deploys","block":"again","event":"tap"}}
+{"jsonrpc":"2.0","id":15,"result":{"keep":true}}
+{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"deploys"}}
+```
+
+`ui/render` sends a new page for a panel that is open, when the tool has
+news. `ui/badge` puts a count or a dot beside the tool in the island; it needs
+`notify` in `uses`.
+
+```json
+{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"text","text":"Nothing deployed today."}]}}}
+{"jsonrpc":"2.0","id":"l","method":"ui/badge","params":{"count":2}}
+{"jsonrpc":"2.0","id":"l","result":{}}
+```
+
 ### Being refused
 
 Any request can be refused, at any time. Your tool must cope.
@@ -673,6 +705,395 @@ Any request can be refused, at any time. Your tool must cope.
 | -32010 | Yours: you will not run the command. |
 | -32601 | A method the other side does not know. |
 | -32602 | Params that are not the message's own, a command you do not have, a preference the manifest does not declare, a value of the wrong kind, or text over 4,096 characters. |
+
+## Drawing
+
+A tool of protocol 2 can show the person a page of its own, in three places:
+a page in the island's Tools area, a part of the tool's detail in Settings,
+and a window. It describes the page as a list of blocks and the app draws
+them, with its own controls, in the person's light or dark appearance and at
+the island's small size. Or it brings a web page from its own folder, for
+what blocks cannot carry. A tool of protocol 1 draws nothing and changes
+nothing by staying one.
+
+Each place is a panel, in the manifest:
+
+```json
+{
+  "id": "com.acme.deploys",
+  "name": { "en": "Deploys" },
+  "version": "2.0.0",
+  "protocol": "2",
+  "publisher": "Acme",
+  "uses": ["notify", "open"],
+  "contributes": {
+    "panels": [
+      { "id": "deploys", "title": { "en": "Deploys" }, "placement": "island", "icon": "shippingbox" },
+      { "id": "settings", "title": { "en": "Deploys" }, "placement": "settings" },
+      { "id": "dashboard", "title": { "en": "Dashboard" }, "placement": "window", "kind": "web", "entry": "ui/dashboard.html" }
+    ]
+  },
+  "runtime": { "kind": "external", "exec": "bin/deploys" }
+}
+```
+
+- **At most 8 panels**, one in the island and one in Settings at most; any
+  number of the rest are windows. A window opens when the person asks: from
+  the tool's detail in Settings, or in answer to something they did in
+  another of the tool's panels.
+- **`kind`** is `blocks`, which you may leave out, or `web`, which needs an
+  `entry`: a path inside the folder, like `runtime.exec`.
+- **The person decides** whether the island lists your page, with a switch in
+  the tool's detail. It is on until they turn it off.
+
+When the person opens a panel the app asks for its first page with
+`ui/open`, starting your program first if it is not running. While a panel
+is open your program is not stopped for being idle. What the person does is
+a `ui/event`, answered with the next page; `ui/close` says the panel went
+away. To change an open page by yourself, send `ui/render`. "What version 2
+adds", above, shows each message.
+
+### The twelve kinds of block
+
+| Kind | Fields | What the person does |
+|---|---|---|
+| `text` | `text`, `style` (`body`, `secondary`, `caption`, `monospaced`), `lines` (1 to 10; 4 when left out) | |
+| `heading` | `text`; two lines at most | |
+| `row` | `title`, `subtitle`, `icon`, `trailing` | taps it, when it has an `id`: `tap` |
+| `button` | `title`, `style` (`plain`, `prominent`, `destructive`), `enabled`; needs an `id` | presses it: `tap` |
+| `toggle` | `title`, `value`, `enabled`; needs an `id` | turns it: `toggle`, with the new state |
+| `field` | `title`, `value`, `placeholder`, `kind` (`text`, `number`, `secret`); needs an `id` | presses Return: `submit`; leaves it changed: `change`; each with the text |
+| `list` | `rows`, each `{ id, title, subtitle, icon, trailing }`, at most 200; needs an `id` | taps a row: `tap`, with the row's id |
+| `progress` | `value` from 0 to 1, or none when nobody knows; `label` | |
+| `image` | `source`: a path inside your folder, or a `data:` PNG or JPEG; `alt`; `height` up to 300 | |
+| `divider` | none | |
+| `link` | `title`, `url`: a web or mail address, opened through the app, so it needs `open` in `uses` | clicks it |
+| `spacer` | `size`, up to 40 points | |
+
+Any text is a string or a map of languages, and it is drawn as you wrote it:
+never as markdown, never as a link, and cut to its lines. A block of a kind
+this app does not know, from a later protocol, is drawn as its `fallback`
+text, or left out. A page is at most 262,144 bytes and 200 blocks; one over
+either is not drawn, the panel keeps the page it had, and your log says why.
+
+### In Swift, with the kit
+
+[`samples/hello-panel-swift`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-swift) is a counter
+in the island and a switch in Settings. A page is written as the blocks it
+holds, one function for each kind:
+
+```swift
+    func page() -> UITree {
+        UITree {
+            heading("Counter")
+            text("Pressed \(count) times")
+            button("add", "Add \(step)", style: .prominent)
+            field("name", title: "Your name", value: name, placeholder: "Type it and press Return")
+            if !name.isEmpty { text("Hello, \(name)", style: .secondary) }
+        }
+    }
+```
+
+`tool.panel` says what a panel shows when it opens, and what each thing the
+person does gives. The handle it returns sends a page unprompted, with
+`render`, and sets the tool's badge in the island, with `badge`:
+
+```swift
+let island = tool.panel("counter", onOpen: { _, _ in counter.page() }, onEvent: { _, panel, event in
+    switch event.block {
+    case "add"?:
+        counter.count += counter.step
+        try panel.badge(count: counter.count)
+    case "name"?:
+        counter.name = event.text ?? counter.name
+    default:
+        return .keep
+    }
+    return .page(counter.page())
+})
+```
+
+```swift
+tool.command("addOne") { _ in
+    counter.count += counter.step
+    island.render(counter.page())
+}
+```
+
+An answer is `.page`, `.keep`, `.open` with one of your window panels, or
+`.reply` for a web page's call. `render` sends nothing while the panel is
+not open, and the app draws at most four pages a second for a panel: send
+fewer.
+
+### In TypeScript, with the kit
+
+[`samples/hello-panel-typescript`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-typescript) is
+the same counter, in plain JavaScript that Node runs. A page is `tree` of
+its blocks, one function for each kind, and a block that is `false` is left
+out:
+
+```javascript
+/** The island page: what it says now. */
+function page() {
+  return tree([
+    heading("Counter"),
+    text(`Pressed ${counter.count} times`),
+    button("add", `Add ${step()}`, { style: "prominent" }),
+    field("name", {
+      title: "Your name",
+      value: counter.name,
+      placeholder: "Type it and press Return",
+    }),
+    counter.name !== "" &&
+      text(`Hello, ${counter.name}`, { style: "secondary" }),
+  ]);
+}
+```
+
+`tool.panel` takes the two handlers by name. An answer is `{ page }`,
+`{ keep: true }`, `{ open }` with one of your window panels, or `{ reply }`
+for a web page's call; `event.text` and `event.isOn` are what a field and a
+switch carry, and `event.row` the row of a list that was tapped:
+
+```javascript
+const island = tool.panel("counter", {
+  onOpen: () => page(),
+  onEvent: (_app, panel, event) => {
+    switch (event.block) {
+      case "add":
+        counter.count += step();
+        panel.badge({ count: counter.count });
+        break;
+      case "name":
+        counter.name = event.text ?? counter.name;
+        break;
+      default:
+        return { keep: true };
+    }
+    return { page: page() };
+  },
+});
+```
+
+A web panel's `onCall` is `panel.onCall = (app, method, params) => ...`; throw
+a `Refusal` to refuse a call.
+
+### In Python, with the kit
+
+[`samples/hello-panel-python`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-python) is the same
+counter again. A page is `tree` of its blocks, one function for each kind,
+and a block that is `None` is left out; `list` is `list_`, as Python has the
+word:
+
+```python
+    def page(self):
+        """The island page: what it says now."""
+        return tree(
+            heading("Counter"),
+            text(f"Pressed {self.count} times"),
+            button("add", f"Add {self.step}", style="prominent"),
+            field(
+                "name",
+                title="Your name",
+                value=self.name,
+                placeholder="Type it and press Return",
+            ),
+            text(f"Hello, {self.name}", style="secondary") if self.name else None,
+        )
+```
+
+`tool.panel` takes the two handlers by name. An answer is one of
+`PanelAnswer`'s four: `page(tree)`, `keep()`, `open(panel)` with one of your
+window panels, or `reply(value)` for a web page's call; `event.text` and
+`event.is_on` are what a field and a switch carry, and `event.row` the row
+of a list that was tapped:
+
+```python
+def island_event(app, panel, event):
+    if event.block == "add":
+        counter.count += counter.step
+        panel.badge(count=counter.count)
+    elif event.block == "name":
+        counter.name = event.text if event.text is not None else counter.name
+    else:
+        return PanelAnswer.keep()
+    return PanelAnswer.page(counter.page())
+
+
+island = tool.panel(
+    "counter", on_open=lambda app, panel: counter.page(), on_event=island_event
+)
+```
+
+A web panel's `on_call` is `panel.on_call = lambda app, method, params: ...`;
+raise a `Refusal` to refuse a call.
+
+### In Go, with the kit
+
+[`samples/hello-panel-go`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-go) is the same
+counter, with package `ui` of the kit. A page is `ui.Tree` of its blocks,
+one function for each kind; what a block may carry beyond its words is an
+options struct, left out when there is none, and `ui.If` leaves a block
+out:
+
+```go
+// page is the island page: what it says now.
+func (c *counter) page() toolkit.UITree {
+	return ui.Tree(
+		ui.Heading("Counter"),
+		ui.Text(fmt.Sprintf("Pressed %d times", c.count)),
+		ui.Button("add", fmt.Sprintf("Add %d", c.step()), ui.ButtonOptions{Style: ui.Prominent}),
+		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
+		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
+	)
+}
+```
+
+`tool.Panel` takes the two handlers: the first gives a `*toolkit.UITree`,
+nil for a web panel; the second answers what the person did with
+`toolkit.Page`, `toolkit.Keep`, `toolkit.OpenWindow` with one of your window
+panels, or `toolkit.Reply` for a web page's call. `event.Text()` and
+`event.IsOn()` are what a field and a switch carry, and `event.Row()` the
+row of a list that was tapped. The handle it returns sends a page
+unprompted, with `Render`, and sets the tool's badge in the island, with
+`Badge`:
+
+```go
+	island := tool.Panel("counter",
+		func(app *toolkit.App, panel *toolkit.PanelHandle) (*toolkit.UITree, error) {
+			page := state.page()
+			return &page, nil
+		},
+		func(app *toolkit.App, panel *toolkit.PanelHandle, event toolkit.PanelEvent) (toolkit.PanelAnswer, error) {
+			switch event.Block {
+			case "add":
+				state.count += state.step()
+				if err := panel.Badge(state.count, false); err != nil {
+					return toolkit.Keep(), err
+				}
+			case "name":
+				if text, ok := event.Text(); ok {
+					state.name = text
+				}
+			default:
+				return toolkit.Keep(), nil
+			}
+			return toolkit.Page(state.page()), nil
+		})
+```
+
+```go
+	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {
+		state.count += state.step()
+		island.Render(state.page())
+		return nil
+	})
+```
+
+A web panel's `OnCall` is `panel.OnCall = func(app *toolkit.App, method
+string, params any) (any, error) { ... }`; return a `*toolkit.Error` to
+refuse a call. A handler's error refuses what the app asked: a
+`*toolkit.Error` as it is, anything else as an internal error with its
+words.
+
+### In Rust, with the kit
+
+[`samples/hello-panel-rust`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-rust) is the same
+counter. A page is `tree!` of its blocks, one function for each kind; what
+a block may carry beyond its words is set with a method, and an item that
+is `None` is left out:
+
+```rust
+    /// The island page: what it says now.
+    fn page(&self) -> UiTree {
+        tree![
+            heading("Counter"),
+            text(format!("Pressed {} times", self.count)),
+            button("add", format!("Add {}", self.step())).style("prominent"),
+            field("name")
+                .title("Your name")
+                .value(&self.name)
+                .placeholder("Type it and press Return"),
+            (!self.name.is_empty())
+                .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
+        ]
+    }
+```
+
+`tool.panel` takes the two handlers: the first gives `Some` page, or `None`
+for a web panel; the second answers what the person did with one of
+`PanelAnswer`'s four: `Page(tree)`, `Keep`, `Open(panel)` with one of your
+window panels, or `Reply(value)` for a web page's call. `event.text()` and
+`event.is_on()` are what a field and a switch carry, and `event.row()` the
+row of a list that was tapped. The handle it returns is cheap to clone and
+is the same panel: it sends a page unprompted, with `render`, and sets the
+tool's badge in the island, with `badge`, each given the `app` of the
+handler it is called from:
+
+```rust
+    let opened = counter.clone();
+    let acted = counter.clone();
+    let island = tool.panel(
+        "counter",
+        move |_app, _panel| Ok(Some(opened.borrow().page())),
+        move |app, panel, event| {
+            let mut counter = acted.borrow_mut();
+            match event.block.as_deref() {
+                Some("add") => {
+                    let step = counter.step();
+                    counter.count += step;
+                    panel.badge(app, Some(counter.count), false)?;
+                }
+                Some("name") => {
+                    if let Some(name) = event.text() {
+                        counter.name = name.to_string();
+                    }
+                }
+                _ => return Ok(PanelAnswer::Keep),
+            }
+            Ok(PanelAnswer::Page(counter.page()))
+        },
+    );
+```
+
+```rust
+    let counted = counter.clone();
+    tool.command("addOne", move |app| {
+        let mut counter = counted.borrow_mut();
+        let step = counter.step();
+        counter.count += step;
+        island.render(app, &counter.page());
+        Ok(())
+    });
+```
+
+A web panel's `on_call` is `panel.on_call(|app, method, params| ...)`;
+return `Err(ToolError::App(...))` to refuse a call. A handler's error
+refuses what the app asked: the app's failure as it is, anything else as an
+internal error with its words.
+
+### A web page
+
+A `web` panel shows `entry`, a page in your folder. It may load what else is
+in your folder, and use the network itself; it may not go to another page
+outside the folder, or open a window. Before its scripts run the app gives
+it `window.vitruvian`:
+
+```text
+const saved = await window.vitruvian.call("notify/hud", { icon: "checkmark", message: "Saved" });
+const count = await window.vitruvian.call("tool/count", { by: 2 });
+window.vitruvian.on("language/changed", (params) => draw(params.language));
+document.body.dataset.appearance = window.vitruvian.appearance;
+```
+
+A call goes to your program as a `ui/event` whose event is `bridge`, and
+the answer's `reply` is what the page gets back. A request the app does,
+such as `notify/hud`, is checked against your `uses` first; the kit then
+asks the app for it as your tool's own. A method that starts with `tool/` is
+yours, and the kit hands it to the panel's `onCall`. Anything else is
+refused, and a refusal rejects the page's promise with its code and words.
+`on` hears `preferences/changed` and `language/changed`, with the params
+your program is sent.
 
 ## Limits, and what happens when a tool crosses them
 
@@ -694,6 +1115,11 @@ the tool.
 | Is told `shutdown` and stays | Asked to end after 2 seconds, killed 1 second after that. |
 | Is still running when the person removes it | The same, faster: asked to end after half a second, killed a quarter of a second later. Do not count on time to tidy up. |
 | Starts a program of its own and leaves it running | The program is ended with the tool: asked to end when the tool is, killed when the tool is, and killed when the tool exits by itself, crashes or is stopped for being idle. Only a program that left the tool's process group is not. |
+| Sends more than four pages a second for one panel | The ones between are not drawn: the last one is, when the second allows. |
+| Sends more than forty pages in one second for one panel | Stopped, and treated as crashed. |
+| Sends a page over 262,144 bytes or 200 blocks, or one a block of which is not well formed | Not drawn. The panel keeps the page it had, and the log says why. |
+| Its web page makes more than 200 calls in one second, for 5 seconds | The same as the lines above: refused, then stopped. |
+| Ends while a panel is open | The panel closes: the island goes back to its tiles, a window closes. |
 
 A folder is refused, before anything is copied, when it holds more than
 256 MB or more than 10,000 files, folders and links together. Keep build

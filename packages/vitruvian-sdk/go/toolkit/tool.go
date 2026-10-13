@@ -29,6 +29,7 @@ import (
 	"os/signal"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -41,8 +42,8 @@ import (
 // works for long without calling the app should watch it.
 type Handler func(ctx context.Context, app *App) error
 
-// Tool is a tool that runs as its own program: its commands, and the loop
-// that reads what the app sends and answers it. Make one with New, add its
+// Tool is a tool that runs as its own program: its commands, its panels,
+// and the loop that reads what the app sends and answers it. Make one with New, add its
 // commands, then call Run. Use a Tool and its App from one goroutine only.
 type Tool struct {
 	// AnswerTimeout is how long a call to the app waits for its answer.
@@ -62,6 +63,7 @@ type Tool struct {
 	link       link
 	app        *App
 	handlers   map[string]Handler
+	panels     map[string]*PanelHandle
 	kept       []message
 	lastID     int64
 	greeted    bool
@@ -87,6 +89,7 @@ func NewLink(version string, in io.Reader, out io.Writer) *Tool {
 		in:            in,
 		link:          link{out: out},
 		handlers:      map[string]Handler{},
+		panels:        map[string]*PanelHandle{},
 		language:      "en",
 		dataFolder:    folder,
 		ctx:           context.Background(),
@@ -146,6 +149,10 @@ func (t *Tool) handle(m message) {
 			t.greet(m)
 		case MethodCommandRun:
 			t.runCommand(m)
+		case MethodUIOpen:
+			t.openPanel(m)
+		case MethodUIEvent:
+			t.panelEvent(m)
 		default:
 			t.refuse(m.id, CodeMethodNotFound, "method not found", nil)
 		}
@@ -166,6 +173,13 @@ func (t *Tool) handle(m message) {
 					t.OnLanguageChanged(t.app)
 				}
 			}
+		case MethodUIClose:
+			var closed UICloseParams
+			if decode(m.params, &closed) {
+				if panel, ok := t.panels[closed.Panel]; ok {
+					panel.open = false
+				}
+			}
 		}
 	}
 	// An answer here is one nobody waits for: it came after its call gave
@@ -183,14 +197,22 @@ func (t *Tool) greet(m message) {
 		t.refuse(m.id, CodeInvalidParams, "invalid params", nil)
 		return
 	}
-	if !slices.Contains(hello.ProtocolVersions, ProtocolVersion) {
-		t.refuse(m.id, CodeInvalidParams, "this tool speaks protocol "+ProtocolVersion+" only", nil)
+	// The newest version both speak. Version 2 only adds to version 1, so a
+	// tool of either is answered by an app of either.
+	picked := ""
+	for i := len(ProtocolVersions) - 1; i >= 0 && picked == ""; i-- {
+		if slices.Contains(hello.ProtocolVersions, ProtocolVersions[i]) {
+			picked = ProtocolVersions[i]
+		}
+	}
+	if picked == "" {
+		t.refuse(m.id, CodeInvalidParams, "this tool speaks protocols "+strings.Join(ProtocolVersions, " and ")+" only", nil)
 		return
 	}
 	t.language = hello.Language
 	t.dataFolder = hello.DataFolder
 	t.greeted = true
-	t.answer(m.id, InitializeResult{ProtocolVersion: ProtocolVersion, ToolVersion: t.version})
+	t.answer(m.id, InitializeResult{ProtocolVersion: picked, ToolVersion: t.version})
 	if t.OnStart != nil {
 		t.OnStart(t.app)
 	}
@@ -281,11 +303,11 @@ func (t *Tool) call(method string, params, result any) error {
 	}
 }
 
-// note sends a notice. Nothing is sent before the greeting or after
-// goodbye.
-func (t *Tool) note(method string, params any) {
+// note sends a notice, and says whether it went. Nothing is sent before
+// the greeting or after goodbye.
+func (t *Tool) note(method string, params any) bool {
 	if !t.greeted || t.stopping {
-		return
+		return false
 	}
-	t.link.send(outgoing{Method: method, Params: params})
+	return t.link.send(outgoing{Method: method, Params: params})
 }

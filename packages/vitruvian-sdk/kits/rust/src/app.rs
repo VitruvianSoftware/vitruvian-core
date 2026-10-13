@@ -30,7 +30,7 @@ use crate::generated::{
     CommandsStateParams, Empty, KeyEquivalent, KeystrokesPasteParams,
     KeystrokesPressMenuItemParams, KeystrokesPressMenuItemResult, LogParams, NotifyHudParams,
     OpenUrlParams, OpenUrlResult, ProcessesTerminateParams, StorageGetParams, StorageGetResult,
-    StorageSetParams,
+    StorageSetParams, UiBadgeParams,
 };
 use crate::tool::State;
 
@@ -51,6 +51,10 @@ pub struct App<'a> {
 impl<'a> App<'a> {
     pub(crate) fn new(state: &'a mut State) -> Self {
         App { state }
+    }
+
+    pub(crate) fn state_mut(&mut self) -> &mut State {
+        self.state
     }
 
     /// The language the app is in, as a tag such as `en-US`. It follows
@@ -99,6 +103,12 @@ impl<'a> App<'a> {
         Open { state: self.state }
     }
 
+    /// The tool's badge in the island, for a tool of protocol 2. Needs
+    /// `notify`.
+    pub fn ui(&mut self) -> Ui<'_> {
+        Ui { state: self.state }
+    }
+
     /// The clipboard's text. Needs `clipboard.read` to read and
     /// `clipboard.write` to write.
     pub fn clipboard(&mut self) -> Clipboard<'_> {
@@ -141,6 +151,24 @@ impl Notify<'_> {
     /// Plays the alert sound.
     pub fn beep(self) -> Result<(), ToolError> {
         self.state.call::<Empty>(methods::NOTIFY_BEEP, &Empty {})?;
+        Ok(())
+    }
+}
+
+/// See [`App::ui`].
+pub struct Ui<'a> {
+    state: &'a mut State,
+}
+
+impl Ui<'_> {
+    /// Puts a count, or a dot, beside the tool in the island's Tools area.
+    /// With neither, the badge goes.
+    pub fn badge(self, count: Option<i64>, dot: bool) -> Result<(), ToolError> {
+        let params = UiBadgeParams {
+            count,
+            dot: if dot { Some(true) } else { None },
+        };
+        self.state.call::<Empty>(methods::UI_BADGE, &params)?;
         Ok(())
     }
 }

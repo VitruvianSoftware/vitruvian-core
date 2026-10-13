@@ -30,14 +30,19 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from .generated.messages import (
+    PROTOCOL_VERSIONS,
     CommandRunParams,
     InitializeParams,
     LanguageChangedParams,
     PreferencesChangedParams,
     RPCErrorObject,
     ShapeError,
+    UICloseParams,
+    UIEventParams,
+    UIOpenParams,
 )
-from .generated.methods import PROTOCOL_VERSION, AppCalls
+from .generated.methods import METHODS, AppCalls
+from .panels import TOOLS_OWN, Acted, Opened, Panel, PanelAnswer, PanelEvent
 from .wire import Failure, Message, Notice, Request, Result, RPCID, Wire
 
 
@@ -162,6 +167,7 @@ class Tool:
         self.language = "en"
         self.data_folder = os.getcwd()
         self._handlers: Dict[str, Handler] = {}
+        self._panels: Dict[str, Panel] = {}
         self._wire = Wire(input, output)
         self._app = App(self)
         self._last_id = 0
@@ -184,6 +190,25 @@ class Tool:
             return decorate
         self._handlers[id] = handler
         return self
+
+    def panel(
+        self,
+        id: str,
+        on_open: Opened,
+        on_event: Optional[Acted] = None,
+    ) -> Panel:
+        """Says what a panel does. `id` is the one the manifest gives it.
+        `on_open` gives the first page when the person opens it; a web panel
+        gives none. `on_event` answers what the person did. The handle it
+        gives back sends pages unprompted and sets the tool's badge."""
+        panel = Panel(
+            id,
+            self,
+            on_open,
+            on_event or (lambda app, panel, event: PanelAnswer.keep()),
+        )
+        self._panels[id] = panel
+        return panel
 
     def run(self) -> None:
         """Reads and answers until the app says goodbye, then exits with 0."""
@@ -210,6 +235,10 @@ class Tool:
                 return self._greet(message.id, message.params)
             if message.method == "command/run":
                 return self._run_command(message.id, message.params)
+            if message.method == "ui/open":
+                return self._open_panel(message.id, message.params)
+            if message.method == "ui/event":
+                return self._panel_event(message.id, message.params)
             return self._refuse(
                 message.id, RPCErrorCode.METHOD_NOT_FOUND, "method not found"
             )
@@ -228,6 +257,10 @@ class Tool:
                     self.language = changed.language
                     if self.on_language_changed is not None:
                         self.on_language_changed(self._app)
+            elif message.method == "ui/close":
+                closed = _try(lambda: UICloseParams.from_json(message.params))
+                if closed is not None and closed.panel in self._panels:
+                    self._panels[closed.panel]._is_open = False
         # A result or a failure here is an answer nobody waits for: it came
         # after its call gave up.
 
@@ -235,19 +268,23 @@ class Tool:
         hello = _try(lambda: InitializeParams.from_json(params))
         if hello is None:
             return self._refuse(id, RPCErrorCode.INVALID_PARAMS, "invalid params")
-        if PROTOCOL_VERSION not in hello.protocol_versions:
+        # The newest version both speak. Version 2 only adds to version 1,
+        # so a tool of either is answered by an app of either.
+        picked = next(
+            (v for v in reversed(PROTOCOL_VERSIONS) if v in hello.protocol_versions),
+            None,
+        )
+        if picked is None:
             return self._refuse(
                 id,
                 RPCErrorCode.INVALID_PARAMS,
-                f"this tool speaks protocol {PROTOCOL_VERSION} only",
+                f"this tool speaks protocols {' and '.join(PROTOCOL_VERSIONS)} only",
             )
         self.language = hello.language
         self.data_folder = hello.data_folder
         self._greeted = True
         self._wire.send(
-            Result(
-                id, {"protocolVersion": PROTOCOL_VERSION, "toolVersion": self.version}
-            )
+            Result(id, {"protocolVersion": picked, "toolVersion": self.version})
         )
         if self.on_start is not None:
             self.on_start(self._app)
@@ -290,6 +327,79 @@ class Tool:
                 id, RefusalCode.COMMAND_REFUSED, str(error) or type(error).__name__
             )
 
+    def _open_panel(self, id: RPCID, params: Any) -> None:
+        asked = _try(lambda: UIOpenParams.from_json(params))
+        if asked is None:
+            return self._refuse(id, RPCErrorCode.INVALID_PARAMS, "invalid params")
+        panel = self._panels.get(asked.panel)
+        if panel is None:
+            return self._refuse(id, RPCErrorCode.INVALID_PARAMS, "no such panel")
+        panel._is_open = True
+
+        def give() -> Dict[str, Any]:
+            tree = panel._on_open(self._app, panel)
+            return {} if tree is None else {"tree": tree.to_json()}
+
+        self._answering(id, give)
+
+    def _panel_event(self, id: RPCID, params: Any) -> None:
+        asked = _try(lambda: UIEventParams.from_json(params))
+        if asked is None:
+            return self._refuse(id, RPCErrorCode.INVALID_PARAMS, "invalid params")
+        panel = self._panels.get(asked.panel)
+        if panel is None or not panel.is_open:
+            return self._refuse(
+                id, RPCErrorCode.INVALID_PARAMS, "the panel is not open"
+            )
+
+        def give() -> Dict[str, Any]:
+            if asked.event == "bridge":
+                return {"reply": self._bridge(asked.value, panel)}
+            event = PanelEvent(asked.block, asked.event, asked.value)
+            return panel._on_event(self._app, panel, event).result
+
+        self._answering(id, give)
+
+    def _bridge(self, value: Any, panel: Panel) -> Any:
+        """A web panel's call: a request the app does is passed to the app as
+        the tool's own, under the tool's uses; a method of the tool's own
+        goes to the panel's on_call."""
+        if not isinstance(value, dict) or not isinstance(value.get("method"), str):
+            raise Refusal(
+                RPCErrorObject(
+                    code=RPCErrorCode.INVALID_PARAMS, message="invalid params"
+                )
+            )
+        method, params = value["method"], value.get("params")
+        if method.startswith(TOOLS_OWN):
+            if panel.on_call is None:
+                raise Refusal(
+                    RPCErrorObject(
+                        code=RPCErrorCode.METHOD_NOT_FOUND, message="method not found"
+                    )
+                )
+            return panel.on_call(self._app, method, params)
+        row = next((m for m in METHODS if m.method == method), None)
+        if row is None or row.sender != "tool" or row.kind != "request":
+            raise Refusal(
+                RPCErrorObject(
+                    code=RPCErrorCode.METHOD_NOT_FOUND, message="method not found"
+                )
+            )
+        return self._call(method, params if isinstance(params, dict) else {})
+
+    def _answering(self, id: RPCID, give: Callable[[], Dict[str, Any]]) -> None:
+        """Answers a request with what `give` returns, or with the refusal or
+        error it raises."""
+        try:
+            self._wire.send(Result(id, give()))
+        except Refusal as refusal:
+            self._refuse(id, refusal.code, str(refusal), refusal.data)
+        except Exception as error:  # noqa: BLE001 - any failure is the answer, as in Swift
+            self._refuse(
+                id, RPCErrorCode.INTERNAL_ERROR, str(error) or type(error).__name__
+            )
+
     def _refuse(self, id: RPCID, code: int, message: str, data: Any = None) -> None:
         self._wire.send(
             Failure(id, RPCErrorObject(code=code, message=message, data=data))
@@ -321,10 +431,11 @@ class Tool:
                 raise AppUnreachable("link_closed")
             self._kept.append(next)
 
-    def _note(self, method: str, params: Dict[str, Any]) -> None:
+    def _note(self, method: str, params: Dict[str, Any]) -> bool:
+        """Sends a notice. False when the link is not open."""
         if not self._greeted or self._stopping:
-            return
-        self._wire.send(Notice(method, params))
+            return False
+        return self._wire.send(Notice(method, params))
 
 
 def _try(read: Callable[[], Any]) -> Any:

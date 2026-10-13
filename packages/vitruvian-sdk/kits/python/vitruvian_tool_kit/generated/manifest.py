@@ -31,8 +31,15 @@ from typing import Any, Dict, List, Literal, Optional
 from .messages import (
     ACTIVATIONS,
     Activation,
+    LocalizedText,
+    PANEL_KINDS,
+    PANEL_PLACEMENTS,
     PREFERENCE_TYPES,
+    PROTOCOL_VERSIONS,
+    PanelKind,
+    PanelPlacement,
     PreferenceType,
+    ProtocolVersion,
     SERVICES,
     SURFACES,
     Service,
@@ -48,7 +55,7 @@ from .messages import (
 
 @dataclass(frozen=True)
 class ToolManifest:
-    """The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands share an id, no two preferences share an id; and the whole file is at most 65,536 bytes."""
+    """The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; and the whole file is at most 65,536 bytes."""
 
     id: str
     """The tool's identity, in reverse-DNS form, for example com.acme.deploys. Letters, digits, hyphens and underscores in parts joined by single dots. It must have a dot: an id with none belongs to a feature built into the app. At most 128 characters. It never changes between versions of a tool."""
@@ -56,8 +63,8 @@ class ToolManifest:
     """What the tool is called, shown as written."""
     version: str
     """The tool's own version, as its author writes it."""
-    protocol: Literal["1"]
-    """The protocol version the tool speaks."""
+    protocol: ProtocolVersion
+    """The protocol version the tool speaks. Version 2 adds panels, what a tool draws, and changes nothing of version 1. An app that speaks only version 1 refuses a manifest that says 2."""
     publisher: str
     """Who made the tool. Shown beside its name. The app does not check it."""
     runtime: Runtime
@@ -84,7 +91,7 @@ class ToolManifest:
             id=_string(_required(found, "id", where), where + ".id"),
             name={key: _string(item, where + ".name" + "." + key) for key, item in _object(_required(found, "name", where), where + ".name").items()},
             version=_string(_required(found, "version", where), where + ".version"),
-            protocol=_one_of(_required(found, "protocol", where), where + ".protocol", ("1",)),
+            protocol=_one_of(_required(found, "protocol", where), where + ".protocol", PROTOCOL_VERSIONS),
             publisher=_string(_required(found, "publisher", where), where + ".publisher"),
             runtime=Runtime.from_json(_required(found, "runtime", where), where + ".runtime"),
             description=None if found.get("description") is None else {key: _string(item, where + ".description" + "." + key) for key, item in _object(found["description"], where + ".description").items()},
@@ -121,28 +128,29 @@ class ToolManifest:
         return out
 
 
-LocalizedText = Dict[str, str]
-"""A piece of text in one or more languages, keyed by language tag (en, fr, pt-BR). English, under en, is required. The app shows the entry for the language in use, then the entry for that language without its region, then English."""
-
-
 @dataclass(frozen=True)
 class Contributes:
-    """What the tool adds to the app. Version 1 has commands only."""
+    """What the tool adds to the app: commands, and in protocol 2 panels."""
 
     commands: Optional[List[Command]] = None
     """The tool's commands. At most 32."""
+    panels: Optional[List[Panel]] = None
+    """What the tool draws, and where. At most 8; at most one in the island and one in Settings. Protocol 2 only."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "contributes") -> "Contributes":
         found = _object(value, where)
         return cls(
             commands=None if found.get("commands") is None else [Command.from_json(item, where + ".commands" + f"[{index}]") for index, item in enumerate(_array(found["commands"], where + ".commands"))],
+            panels=None if found.get("panels") is None else [Panel.from_json(item, where + ".panels" + f"[{index}]") for index, item in enumerate(_array(found["panels"], where + ".panels"))],
         )
 
     def to_json(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         if self.commands is not None:
             out["commands"] = [item.to_json() for item in self.commands]
+        if self.panels is not None:
+            out["panels"] = [item.to_json() for item in self.panels]
         return out
 
 
@@ -177,6 +185,49 @@ class Command:
             out["icon"] = self.icon
         if self.surfaces is not None:
             out["surfaces"] = self.surfaces
+        return out
+
+
+@dataclass(frozen=True)
+class Panel:
+    """One place the tool draws in. The app opens it with ui/open and the tool answers with blocks to draw; or, for a web panel, the app shows the page at entry."""
+
+    id: str
+    """The panel's name within the tool. The same characters as a command id."""
+    title: LocalizedText
+    """What the panel is called: the island page's title, the window's title."""
+    placement: PanelPlacement
+    """Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks."""
+    icon: Optional[str] = None
+    """An SF Symbol name. Left out, the tool's icon is used."""
+    kind: Optional[PanelKind] = None
+    """What draws it. blocks: the app, from blocks the tool sends. web: a web page from the tool's folder. Left out, it is blocks."""
+    entry: Optional[str] = None
+    """A web panel's page, as a path inside the tool's folder, with / between its parts. No part is empty, . or .., so the path cannot leave the folder. A blocks panel ignores it."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "panel") -> "Panel":
+        found = _object(value, where)
+        return cls(
+            id=_string(_required(found, "id", where), where + ".id"),
+            title={key: _string(item, where + ".title" + "." + key) for key, item in _object(_required(found, "title", where), where + ".title").items()},
+            placement=_one_of(_required(found, "placement", where), where + ".placement", PANEL_PLACEMENTS),
+            icon=None if found.get("icon") is None else _string(found["icon"], where + ".icon"),
+            kind=None if found.get("kind") is None else _one_of(found["kind"], where + ".kind", PANEL_KINDS),
+            entry=None if found.get("entry") is None else _string(found["entry"], where + ".entry"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["id"] = self.id
+        out["title"] = dict(self.title)
+        out["placement"] = self.placement
+        if self.icon is not None:
+            out["icon"] = self.icon
+        if self.kind is not None:
+            out["kind"] = self.kind
+        if self.entry is not None:
+            out["entry"] = self.entry
         return out
 
 

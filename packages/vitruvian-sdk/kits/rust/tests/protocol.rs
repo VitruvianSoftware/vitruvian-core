@@ -85,6 +85,8 @@ fn contains(big: &Value, small: &Value) -> bool {
         (Value::Array(big), Value::Array(small)) => {
             big.len() == small.len() && big.iter().zip(small).all(|(b, s)| contains(b, s))
         }
+        // A whole number written back by an f64 field is the same number.
+        (Value::Number(big), Value::Number(small)) => big.as_f64() == small.as_f64(),
         (big, small) => big == small,
     }
 }
@@ -94,7 +96,7 @@ fn again(about: &str, name: &str, part: &Value, exact: bool) {
         .unwrap_or_else(|| panic!("{about}: no type {name}"))
         .unwrap_or_else(|error| panic!("{about}: {name} cannot read it: {error}"));
     assert!(
-        contains(part, &back) && (!exact || part == &back),
+        contains(part, &back) && (!exact || contains(&back, part)),
         "{about}: {name} wrote back {back} for {part}"
     );
 }

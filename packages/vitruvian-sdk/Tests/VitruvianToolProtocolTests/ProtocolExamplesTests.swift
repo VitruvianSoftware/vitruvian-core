@@ -48,6 +48,11 @@ final class ProtocolExamplesTests: XCTestCase {
         case .storageGet: return try again(value, as: StorageGetParams.self)
         case .storageSet: return try again(value, as: StorageSetParams.self)
         case .log: return try again(value, as: LogParams.self)
+        case .uiOpen: return try again(value, as: UIOpenParams.self)
+        case .uiEvent: return try again(value, as: UIEventParams.self)
+        case .uiClose: return try again(value, as: UICloseParams.self)
+        case .uiRender: return try again(value, as: UIRenderParams.self)
+        case .uiBadge: return try again(value, as: UIBadgeParams.self)
         case .shutdown, .notifyBeep, .clipboardReadText: return try again(value, as: EmptyObject.self)
         }
     }
@@ -62,9 +67,11 @@ final class ProtocolExamplesTests: XCTestCase {
         case .clipboardWriteText: return try again(value, as: ClipboardWriteTextResult.self)
         case .keystrokesPressMenuItem: return try again(value, as: KeystrokesPressMenuItemResult.self)
         case .storageGet: return try again(value, as: StorageGetResult.self)
-        case .commandRun, .notifyHUD, .notifyBeep, .keystrokesPaste, .processesTerminate, .storageSet:
+        case .uiOpen: return try again(value, as: UIOpenResult.self)
+        case .uiEvent: return try again(value, as: UIEventResult.self)
+        case .commandRun, .notifyHUD, .notifyBeep, .keystrokesPaste, .processesTerminate, .storageSet, .uiBadge:
             return try again(value, as: EmptyObject.self)
-        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
+        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log, .uiClose, .uiRender:
             return nil
         }
     }
@@ -96,10 +103,36 @@ final class ProtocolExamplesTests: XCTestCase {
         ("storageGetResult", StorageGetResult(value: .null)),
         ("storageSetParams", StorageSetParams(key: "", value: .null)),
         ("logParams", LogParams(message: "")),
+        ("uiOpenParams", UIOpenParams(panel: "")),
+        ("uiOpenResult", UIOpenResult()),
+        ("uiEventParams", UIEventParams(panel: "", event: .tap)),
+        ("uiEventResult", UIEventResult()),
+        ("uiCloseParams", UICloseParams(panel: "")),
+        ("uiRenderParams", UIRenderParams(panel: "", tree: UITree(blocks: []))),
+        ("uiBadgeParams", UIBadgeParams()),
+        ("uiTree", UITree(blocks: [])),
+        ("uiListRow", UIListRow(id: "", title: "")),
+        ("textBlock", TextBlock(text: "")),
+        ("headingBlock", HeadingBlock(text: "")),
+        ("rowBlock", RowBlock(title: "")),
+        ("buttonBlock", ButtonBlock(title: "")),
+        ("toggleBlock", ToggleBlock(title: "", value: false)),
+        ("fieldBlock", FieldBlock()),
+        ("listBlock", ListBlock(rows: [])),
+        ("progressBlock", ProgressBlock()),
+        ("imageBlock", ImageBlock(source: "")),
+        ("dividerBlock", DividerBlock()),
+        ("linkBlock", LinkBlock(title: "", url: "")),
+        ("spacerBlock", SpacerBlock()),
     ]
 
     /// The definitions that are the message itself, read by `RPCMessage`.
     private static let envelopes: Set<String> = ["id", "request", "notice", "result", "failure"]
+
+    /// The definitions that are no object with fields of its own: text, one
+    /// way or another, and a block, whose fields are its kind's and whose
+    /// own three are held by `testABlockIsItsKindAndItsThreeFields`.
+    private static let notStructs: Set<String> = ["uiText", "localizedText", "uiBlock"]
 
     func testTheMethodTableIsTheSchemasTable() {
         let rows = ProtocolFiles.json("protocol/methods.json")["methods"]?.arrayValue ?? []
@@ -119,7 +152,8 @@ final class ProtocolExamplesTests: XCTestCase {
         for (name, value) in Self.shapes {
             XCTAssertEqual(ProtocolFiles.fields(of: value), ProtocolFiles.fields(declaredBy: definitions?[name]), name)
         }
-        XCTAssertEqual(Set(Self.shapes.map(\.0)).union(Self.envelopes), Set((definitions?.objectValue ?? [:]).keys),
+        XCTAssertEqual(Set(Self.shapes.map(\.0)).union(Self.envelopes).union(Self.notStructs),
+                       Set((definitions?.objectValue ?? [:]).keys),
                        "every definition has a Swift type, and every type a definition")
         let modifiers = definitions?["keyEquivalent"]?["properties"]?["modifiers"]?["items"]?["enum"]?.arrayValue
         XCTAssertEqual(modifiers?.compactMap(\.stringValue), KeyEquivalent.Modifier.allCases.map(\.rawValue))
@@ -205,6 +239,45 @@ final class ProtocolExamplesTests: XCTestCase {
     func testEveryServiceAMessageNeedsIsOneAManifestMayList() {
         XCTAssertEqual(Set(ToolMethod.allCases.compactMap(\.service)), Set(AppService.allCases))
         XCTAssertEqual(ToolMethod.allCases.filter { $0.sender == .app }.map(\.rawValue),
-                       ["initialize", "command/run", "preferences/changed", "language/changed", "shutdown"])
+                       ["initialize", "command/run", "preferences/changed", "language/changed", "shutdown",
+                        "ui/open", "ui/event", "ui/close"])
+    }
+
+    func testABlockIsItsKindAndItsThreeFields() {
+        let definitions = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]
+        let block = definitions?["uiBlock"]
+        XCTAssertEqual(ProtocolFiles.fields(declaredBy: block), ["type", "id", "fallback"])
+        // Each kind picks the definition of its own fields, and the twelve
+        // are the kinds the Swift type reads.
+        let picked = (block?["allOf"]?.arrayValue ?? []).compactMap { branch -> (String, String)? in
+            guard let kind = branch["if"]?["properties"]?["type"]?["const"]?.stringValue,
+                  let target = branch["then"]?["$ref"]?.stringValue else { return nil }
+            return (kind, target)
+        }
+        XCTAssertEqual(picked.map(\.0), UIBlock.kinds)
+        XCTAssertEqual(picked.map(\.1), UIBlock.kinds.map { "#/$defs/\($0)Block" })
+        let needingID = (block?["allOf"]?.arrayValue ?? []).compactMap {
+            $0["if"]?["properties"]?["type"]?["enum"]?.arrayValue?.compactMap(\.stringValue)
+        }
+        XCTAssertEqual(needingID.map(Set.init), [UIBlock.kindsWithID])
+        let tree = definitions?["uiTree"]?["properties"]?["blocks"]?["maxItems"]?.numberValue
+        XCTAssertEqual(tree, Double(UILimits.maxBlocks))
+        XCTAssertEqual(definitions?["listBlock"]?["properties"]?["rows"]?["maxItems"]?.numberValue,
+                       Double(UILimits.maxListRows))
+        XCTAssertEqual(definitions?["textBlock"]?["properties"]?["lines"]?["maximum"]?.numberValue,
+                       Double(UILimits.maxTextLines))
+        XCTAssertEqual(definitions?["spacerBlock"]?["properties"]?["size"]?["maximum"]?.numberValue, UILimits.maxSpacer)
+        XCTAssertEqual(definitions?["imageBlock"]?["properties"]?["height"]?["maximum"]?.numberValue,
+                       UILimits.maxImageHeight)
+        let events = definitions?["uiEventParams"]?["properties"]?["event"]?["enum"]?.arrayValue
+        XCTAssertEqual(events?.compactMap(\.stringValue), UIEventKind.allCases.map(\.rawValue))
+        func listed(_ name: String, _ field: String) -> [String] {
+            (definitions?[name]?["properties"]?[field]?["enum"]?.arrayValue ?? []).compactMap(\.stringValue)
+        }
+        XCTAssertEqual(listed("textBlock", "style"), TextBlock.Style.allCases.map(\.rawValue))
+        XCTAssertEqual(listed("buttonBlock", "style"), ButtonBlock.Style.allCases.map(\.rawValue))
+        XCTAssertEqual(listed("fieldBlock", "kind"), FieldBlock.Kind.allCases.map(\.rawValue))
+        let said = definitions?["uiTree"]?["description"]?.stringValue ?? ""
+        XCTAssertTrue(said.contains("262,144 bytes"), "the schema says the number the code holds: \(said)")
     }
 }

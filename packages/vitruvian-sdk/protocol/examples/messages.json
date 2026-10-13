@@ -1,5 +1,5 @@
 {
-  "about": "Messages the schema and the Swift types must read alike. A result or failure names, in `answers`, the method it answers. `unknownFields: true` marks a message that carries a field version 1 does not have: both sides accept it, and the Swift types drop the field.",
+  "about": "Messages the schema and the Swift types must read alike. A result or failure names, in `answers`, the method it answers. `unknownFields: true` marks a message that carries a field the protocol does not have, or a block of a kind it does not have: both sides accept it, and the Swift types drop the field.",
   "examples": [
     {
       "about": "the app starts",
@@ -9,7 +9,7 @@
         "id": 1,
         "method": "initialize",
         "params": {
-          "protocolVersions": ["1"],
+          "protocolVersions": ["1", "2"],
           "language": "en-US",
           "dataFolder": "/Users/example/Library/Application Support/Vitruvian/ToolData/com.acme.deploys"
         }
@@ -312,7 +312,7 @@
       }
     },
     {
-      "about": "a method version 1 does not have is still a message",
+      "about": "a method the protocol does not have is still a message",
       "valid": true,
       "message": {
         "jsonrpc": "2.0",
@@ -322,7 +322,7 @@
       }
     },
     {
-      "about": "a field version 1 does not have is ignored",
+      "about": "a field the protocol does not have is ignored",
       "valid": true,
       "unknownFields": true,
       "message": {
@@ -499,6 +499,551 @@
           "message": "not listed in uses",
           "data": "clipboard.write"
         }
+      }
+    },
+    {
+      "about": "a tool of version 2 picks it",
+      "valid": true,
+      "answers": "initialize",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": { "protocolVersion": "2", "toolVersion": "2.0.0" }
+      }
+    },
+    {
+      "about": "the person opens a panel",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "method": "ui/open",
+        "params": { "panel": "deploys" }
+      }
+    },
+    {
+      "about": "the tool answers with its first page: every kind of block",
+      "valid": true,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [
+              {
+                "type": "heading",
+                "text": { "en": "Today", "fr": "Aujourd’hui" }
+              },
+              {
+                "type": "text",
+                "text": "Three deploys since nine.",
+                "style": "secondary",
+                "lines": 2
+              },
+              {
+                "type": "row",
+                "id": "latest",
+                "title": "web 1.42.0",
+                "subtitle": "main, by Ana",
+                "icon": "checkmark.circle",
+                "trailing": "9:12"
+              },
+              {
+                "type": "list",
+                "id": "deploys",
+                "rows": [
+                  {
+                    "id": "api-3-8-1",
+                    "title": "api 3.8.1",
+                    "subtitle": "a check failed",
+                    "icon": "xmark.circle",
+                    "trailing": "8:40"
+                  },
+                  { "id": "worker-0-9-4", "title": "worker 0.9.4" }
+                ]
+              },
+              { "type": "progress", "value": 0.62, "label": "worker 0.9.4" },
+              {
+                "type": "button",
+                "id": "again",
+                "title": "Deploy again",
+                "style": "prominent",
+                "enabled": true
+              },
+              {
+                "type": "toggle",
+                "id": "notify",
+                "title": "Tell me when a deploy ends",
+                "value": true,
+                "enabled": true
+              },
+              {
+                "type": "field",
+                "id": "project",
+                "title": "Project",
+                "value": "acme/web",
+                "placeholder": "owner/name",
+                "kind": "text"
+              },
+              {
+                "type": "image",
+                "source": "ui/logo.png",
+                "alt": "The Acme logo",
+                "height": 24
+              },
+              { "type": "divider" },
+              {
+                "type": "link",
+                "title": "Open the dashboard",
+                "url": "https://example.com/deploys"
+              },
+              { "type": "spacer", "size": 8 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a web panel is answered with nothing to draw",
+      "valid": true,
+      "answers": "ui/open",
+      "message": { "jsonrpc": "2.0", "id": 15, "result": {} }
+    },
+    {
+      "about": "the person presses a button",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 16,
+        "method": "ui/event",
+        "params": { "panel": "deploys", "block": "again", "event": "tap" }
+      }
+    },
+    {
+      "about": "the next page",
+      "valid": true,
+      "answers": "ui/event",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 16,
+        "result": {
+          "tree": {
+            "blocks": [{ "type": "progress", "label": "Deploying web 1.42.0" }]
+          }
+        }
+      }
+    },
+    {
+      "about": "the person turns a switch",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 17,
+        "method": "ui/event",
+        "params": {
+          "panel": "settings",
+          "block": "notify",
+          "event": "toggle",
+          "value": false
+        }
+      }
+    },
+    {
+      "about": "the page stays as it is",
+      "valid": true,
+      "answers": "ui/event",
+      "message": { "jsonrpc": "2.0", "id": 17, "result": { "keep": true } }
+    },
+    {
+      "about": "the person presses Return in a field",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 18,
+        "method": "ui/event",
+        "params": {
+          "panel": "settings",
+          "block": "project",
+          "event": "submit",
+          "value": "acme/api"
+        }
+      }
+    },
+    {
+      "about": "the person taps a row of a list",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 19,
+        "method": "ui/event",
+        "params": {
+          "panel": "deploys",
+          "block": "deploys",
+          "event": "tap",
+          "value": "api-3-8-1"
+        }
+      }
+    },
+    {
+      "about": "in answer, a window of the tool opens",
+      "valid": true,
+      "answers": "ui/event",
+      "message": { "jsonrpc": "2.0", "id": 19, "result": { "open": "log" } }
+    },
+    {
+      "about": "a web panel's page calls the app through the tool",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "ui/event",
+        "params": {
+          "panel": "dashboard",
+          "event": "bridge",
+          "value": {
+            "method": "notify/hud",
+            "params": { "icon": "checkmark.circle", "message": "Saved" }
+          }
+        }
+      }
+    },
+    {
+      "about": "what the page's call gets back",
+      "valid": true,
+      "answers": "ui/event",
+      "message": { "jsonrpc": "2.0", "id": 20, "result": { "reply": {} } }
+    },
+    {
+      "about": "the panel went away",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/close",
+        "params": { "panel": "deploys" }
+      }
+    },
+    {
+      "about": "the tool has a new page for an open panel",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "text",
+                "text": "Nothing deployed today.",
+                "style": "caption"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a block of a kind a later version adds is kept, with its fallback",
+      "valid": true,
+      "unknownFields": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chart",
+                "id": "week",
+                "fallback": "Five deploys this week",
+                "points": [1, 2, 3]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a count beside the tool in the island",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 21,
+        "method": "ui/badge",
+        "params": { "count": 2 }
+      }
+    },
+    {
+      "about": "the badge was set",
+      "valid": true,
+      "answers": "ui/badge",
+      "message": { "jsonrpc": "2.0", "id": 21, "result": {} }
+    },
+    {
+      "about": "a dot instead of a count",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 22,
+        "method": "ui/badge",
+        "params": { "dot": true }
+      }
+    },
+    {
+      "about": "no badge",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 23,
+        "method": "ui/badge",
+        "params": {}
+      }
+    },
+    {
+      "about": "open a panel without naming it",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "method": "ui/open",
+        "params": {}
+      }
+    },
+    {
+      "about": "an event the protocol does not have",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 16,
+        "method": "ui/event",
+        "params": { "panel": "deploys", "block": "again", "event": "hover" }
+      }
+    },
+    {
+      "about": "an event that does not say what happened",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 16,
+        "method": "ui/event",
+        "params": { "panel": "deploys", "block": "again" }
+      }
+    },
+    {
+      "about": "a page with no blocks",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": { "panel": "deploys", "tree": {} }
+      }
+    },
+    {
+      "about": "blocks that are not a list",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": { "blocks": { "type": "divider" } }
+        }
+      }
+    },
+    {
+      "about": "a render with no page",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": { "panel": "deploys" }
+      }
+    },
+    {
+      "about": "a block with no kind",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": { "tree": { "blocks": [{ "text": "Today" }] } }
+      }
+    },
+    {
+      "about": "text with no words",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": { "blocks": [{ "type": "text", "style": "caption" }] }
+        }
+      }
+    },
+    {
+      "about": "text in languages with no English",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [{ "type": "heading", "text": { "fr": "Aujourd’hui" } }]
+          }
+        }
+      }
+    },
+    {
+      "about": "text of eleven lines",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [{ "type": "text", "text": "Long", "lines": 11 }]
+          }
+        }
+      }
+    },
+    {
+      "about": "a button with no id",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": { "blocks": [{ "type": "button", "title": "Deploy again" }] }
+        }
+      }
+    },
+    {
+      "about": "a button of a style the protocol does not have",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [
+              {
+                "type": "button",
+                "id": "again",
+                "title": "Deploy again",
+                "style": "loud"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a block id with a space",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [{ "type": "row", "id": "the latest", "title": "web" }]
+          }
+        }
+      }
+    },
+    {
+      "about": "a row of a list with no id",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [
+              { "type": "list", "id": "deploys", "rows": [{ "title": "api" }] }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a field of a kind the protocol does not have",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [{ "type": "field", "id": "when", "kind": "date" }]
+          }
+        }
+      }
+    },
+    {
+      "about": "progress past the end",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": { "blocks": [{ "type": "progress", "value": 1.5 }] }
+        }
+      }
+    },
+    {
+      "about": "an image taller than 300 points",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [
+              { "type": "image", "source": "ui/logo.png", "height": 400 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a switch with no state",
+      "valid": false,
+      "answers": "ui/open",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 14,
+        "result": {
+          "tree": {
+            "blocks": [{ "type": "toggle", "id": "notify", "title": "Tell me" }]
+          }
+        }
+      }
+    },
+    {
+      "about": "keep that is not yes or no",
+      "valid": false,
+      "answers": "ui/event",
+      "message": { "jsonrpc": "2.0", "id": 17, "result": { "keep": "yes" } }
+    },
+    {
+      "about": "a count below nothing",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 21,
+        "method": "ui/badge",
+        "params": { "count": -1 }
       }
     }
   ]

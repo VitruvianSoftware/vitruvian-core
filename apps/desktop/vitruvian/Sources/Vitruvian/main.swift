@@ -28,6 +28,8 @@ MainActor.assumeIsolated { SampleTool.install() }
 // quit. With none added this reads one file that is not there. Top-level
 // code runs on the main thread.
 MainActor.assumeIsolated { ExternalToolStore.shared.restore() }
+// The windows those tools open, made and closed as the panel host says.
+MainActor.assumeIsolated { ToolPanelWindows.shared.start() }
 #if VITRUVIAN_SAMPLE_TOOL
 // A rehearsal of the tool catalog on this Mac, for the checks by hand: only
 // when both of its variables are set, as `bazel run //catalog:rehearse`

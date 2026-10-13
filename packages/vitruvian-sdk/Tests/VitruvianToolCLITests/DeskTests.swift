@@ -59,6 +59,7 @@ final class DeskTests: XCTestCase {
             (.storageGet, #"{"key":"project"}"#, #"{"value":"web"}"#),
             (.storageSet, #"{"key":"count","value":4}"#, "{}"),
             (.storageGet, #"{"key":"count"}"#, #"{"value":4}"#),
+            (.uiBadge, #"{"count":2}"#, "{}"),
         ]
         for (method, sent, wanted) in asked {
             let (answer, said) = desk.serve(method.rawValue, try params(sent))

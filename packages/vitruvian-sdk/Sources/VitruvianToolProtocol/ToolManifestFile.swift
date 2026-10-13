@@ -32,6 +32,9 @@ public enum ManifestLimits {
     /// The longest title of a preference, in each language, in characters
     /// as JSON Schema counts them: Unicode code points.
     public static let maxPreferenceTitleLength = 60
+    /// The most panels a tool may contribute. At most one of them may be
+    /// in the island, and one in Settings.
+    public static let maxPanels = 8
 }
 
 /// A piece of text in one or more languages, keyed by language tag (`en`,
@@ -99,6 +102,24 @@ public enum PreferenceKind: String, CaseIterable, Sendable {
 public struct ToolManifestFile: Codable, Equatable, Sendable {
     public struct Contributes: Codable, Equatable, Sendable {
         public let commands: [Command]?
+        /// What the tool draws, and where. Protocol 2 only.
+        public let panels: [Panel]?
+    }
+
+    /// One place the tool draws in. Its `placement` and `kind` are held as
+    /// the text the file has, so that a name nobody knows can be reported
+    /// by name.
+    public struct Panel: Codable, Equatable, Sendable {
+        /// The panel's name within the tool.
+        public let id: String
+        public let title: LocalizedText
+        public let placement: String
+        /// An SF Symbol name; the tool's icon when left out.
+        public let icon: String?
+        /// `blocks` when left out.
+        public let kind: String?
+        /// A web panel's page, as a path inside the tool's folder.
+        public let entry: String?
     }
 
     public struct Command: Codable, Equatable, Sendable {
@@ -182,6 +203,19 @@ public enum ManifestProblem: Error, Equatable, Sendable {
     case defaultOfWrongType(preference: String)
     /// `runtime.exec` is not a path that stays inside the tool's folder.
     case programLeavesFolder(String)
+    /// A manifest of protocol 1 contributes panels. Only protocol 2 has them.
+    case panelsNeedProtocol2(String)
+    case tooManyPanels(Int)
+    case panelNotWellFormed(String)
+    case duplicatePanel(String)
+    case unknownPlacement(panel: String, placement: String)
+    case unknownPanelKind(panel: String, kind: String)
+    /// A second panel in the island, or in Settings, where a tool has one.
+    case placementTaken(panel: String, placement: String)
+    /// A web panel with no `entry`.
+    case webPanelWithoutEntry(String)
+    /// A web panel's `entry` is not a path that stays inside the folder.
+    case panelEntryLeavesFolder(panel: String, entry: String)
 }
 
 /// The rules about names and paths, for anything that checks one alone.
@@ -277,6 +311,8 @@ extension ToolManifestFile {
             }
         }
 
+        found += panelProblems()
+
         let settings = preferences ?? []
         if settings.count > ManifestLimits.maxPreferences {
             found.append(.tooManyPreferences(settings.count))
@@ -308,6 +344,47 @@ extension ToolManifestFile {
         }
         if runtime.kind != Self.externalRuntime { found.append(.unsupportedRuntime(runtime.kind)) }
         if !ManifestRules.staysInsideFolder(runtime.exec) { found.append(.programLeavesFolder(runtime.exec)) }
+        return found
+    }
+
+    /// What is wrong with the panels, in the order they are written.
+    private func panelProblems() -> [ManifestProblem] {
+        guard let panels = contributes?.panels else { return [] }
+        // Version 1 has no panels at all: not even an empty list of them.
+        guard `protocol` != "1" else { return [.panelsNeedProtocol2(`protocol`)] }
+        var found: [ManifestProblem] = []
+        if panels.count > ManifestLimits.maxPanels { found.append(.tooManyPanels(panels.count)) }
+        var names = Set<String>()
+        var placed = Set<PanelPlacement>()
+        for panel in panels {
+            guard ManifestRules.isWellFormedName(panel.id) else {
+                found.append(.panelNotWellFormed(panel.id))
+                continue
+            }
+            if !names.insert(panel.id).inserted { found.append(.duplicatePanel(panel.id)) }
+            found += Self.textProblems(panel.title, field: "contributes.panels[\(panel.id)].title")
+            if let placement = PanelPlacement(rawValue: panel.placement) {
+                if placement != .window, !placed.insert(placement).inserted {
+                    found.append(.placementTaken(panel: panel.id, placement: panel.placement))
+                }
+            } else {
+                found.append(.unknownPlacement(panel: panel.id, placement: panel.placement))
+            }
+            switch panel.kind.map(PanelKind.init(rawValue:)) {
+            case nil, .some(.blocks?):
+                break
+            case .some(.web?):
+                if let entry = panel.entry {
+                    if !ManifestRules.staysInsideFolder(entry) {
+                        found.append(.panelEntryLeavesFolder(panel: panel.id, entry: entry))
+                    }
+                } else {
+                    found.append(.webPanelWithoutEntry(panel.id))
+                }
+            case .some(nil):
+                found.append(.unknownPanelKind(panel: panel.id, kind: panel.kind ?? ""))
+            }
+        }
         return found
     }
 

@@ -160,7 +160,7 @@ enum CatalogueWatchTests {
             ("a newer version", ["version": "1.3.0"], "1.3.0"),
             ("the same version", [:], nil),
             ("an older version", ["version": "1.1.0"], nil),
-            ("a newer version this app cannot speak", ["version": "1.3.0", "protocol": "2"], nil),
+            ("a newer version this app cannot speak", ["version": "1.3.0", "protocol": "3"], nil),
             ("a newer version for a newer app", ["version": "1.3.0", "minimumAppVersion": "9.0.0"], nil),
         ]
         var wrong: [String] = []

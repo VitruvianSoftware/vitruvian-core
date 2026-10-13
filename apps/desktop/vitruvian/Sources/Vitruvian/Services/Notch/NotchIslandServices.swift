@@ -37,8 +37,12 @@ package protocol NotchIslandServices: AnyObject {
     var keepsCalendarPrompt: Bool { get }
     var keepsCameraPrompt: Bool { get }
     var activeUtility: QuickLauncherItem? { get }
+    /// True while the Tools page shows a tool's own page, as it does a
+    /// hosted utility.
+    var showsToolPanel: Bool { get }
     var editingTools: Bool { get }
-    /// How many tiles the Tools page shows now, of either kind.
+    /// How many tiles the Tools page shows now, of any kind: the quick
+    /// tools, and a tile for each tool's island page.
     var visibleToolCount: Int { get }
     var mediaPresented: Bool { get }
     var mediaContentHeight: CGFloat? { get }
@@ -87,6 +91,9 @@ package protocol NotchIslandServices: AnyObject {
 
     func rememberPasteTarget()
     func prepareTools()
+    /// The island collapsed: a tool's page open on the Tools page closes,
+    /// and its tool is told.
+    func closeToolPanel()
     /// Whether the tools page takes a key, after acting on it.
     func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool
     func createPad(defaultName: String)
@@ -145,8 +152,11 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var keepsCalendarPrompt: Bool { Permissions.shared.keepsCalendarPrompt }
     package var keepsCameraPrompt: Bool { CameraPreviewService.shared.keepsNotchPermissionPrompt }
     package var activeUtility: QuickLauncherItem? { QuickLauncherService.shared.activeUtility }
+    package var showsToolPanel: Bool { ToolPanelHost.shared.island != nil }
     package var editingTools: Bool { QuickLauncherService.shared.isEditing }
-    package var visibleToolCount: Int { QuickLauncherService.shared.visibleTiles.count }
+    package var visibleToolCount: Int {
+        QuickLauncherService.shared.visibleTiles.count + ExternalToolStore.shared.islandPanels().count
+    }
     package var mediaPresented: Bool { NotchFileToolsService.shared.mediaPresented }
     package var mediaContentHeight: CGFloat? { NotchFileToolsService.shared.mediaContentHeight }
     package var offersMediaDrop: Bool { NotchFileToolsService.shared.offersMediaDrop }
@@ -193,6 +203,9 @@ package final class SystemNotchIslandServices: NotchIslandServices {
 
     package func rememberPasteTarget() { ClipboardHistoryService.shared.rememberPasteTarget() }
     package func prepareTools() { QuickLauncherService.shared.prepareForPresentation() }
+    package func closeToolPanel() {
+        if let island = ToolPanelHost.shared.island { ToolPanelHost.shared.close(island) }
+    }
     package func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool {
         QuickLauncherService.shared.takesPanelKey(event, flow: flow)
     }

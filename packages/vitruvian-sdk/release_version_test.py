@@ -52,12 +52,24 @@ KIT_PLACES = [
         "$.dependencies['@vitruviansoftware/tool-kit']",
     ),
     ("generic", "samples/hello-python-kit/requirements.txt", None),
+    (
+        "json",
+        "samples/hello-panel-typescript/package.json",
+        "$.dependencies['@vitruviansoftware/tool-kit']",
+    ),
+    ("generic", "samples/hello-panel-python/requirements.txt", None),
     ("generic", "go/toolkit/version.go", None),
     ("toml", "kits/rust/Cargo.toml", "$.package.version"),
     ("generic", "samples/hello-go/go.mod", None),
+    ("generic", "samples/hello-panel-go/go.mod", None),
     (
         "toml",
         "samples/hello-rust/Cargo.toml",
+        "$.dependencies['vitruvian-tool-kit'].version",
+    ),
+    (
+        "toml",
+        "samples/hello-panel-rust/Cargo.toml",
         "$.dependencies['vitruvian-tool-kit'].version",
     ),
 ]

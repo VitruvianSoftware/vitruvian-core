@@ -20,17 +20,25 @@
 
 import {
   type JSONValue,
+  PROTOCOL_VERSIONS,
   readCommandRunParams,
   readInitializeParams,
   readLanguageChangedParams,
   readPreferencesChangedParams,
+  readUICloseParams,
+  readUIEventParams,
+  readUIOpenParams,
   type RPCErrorObject,
 } from "./generated/messages.js";
+import { type AppCalls, appCalls, METHODS } from "./generated/methods.js";
 import {
-  type AppCalls,
-  appCalls,
-  PROTOCOL_VERSION,
-} from "./generated/methods.js";
+  bridgeCallOf,
+  Panel,
+  PanelEvent,
+  type PanelHandlers,
+  resultOf,
+  TOOLS_OWN,
+} from "./panels.js";
 import { now, type RPCID, type RPCMessage, Wire } from "./wire.js";
 
 /** JSON-RPC's own failure codes. */
@@ -157,6 +165,8 @@ export class Tool {
   private languageTag = "en";
   private folder = process.cwd();
   private readonly handlers = new Map<string, Handler>();
+  /** The tool's panels, by id, as `panel()` made them. */
+  private readonly panels = new Map<string, Panel>();
   private readonly wire: Wire;
   private readonly app: App;
   private lastID = 0;
@@ -199,6 +209,28 @@ export class Tool {
     return this;
   }
 
+  /**
+   * Says what a panel does. `id` is the one the manifest gives it. `onOpen`
+   * gives the first page when the person opens it; a web panel gives none.
+   * `onEvent` answers what the person did. The handle it gives back sends
+   * pages unprompted and sets the tool's badge.
+   */
+  panel(id: string, handlers: PanelHandlers): Panel {
+    const tool = this;
+    const panel = new Panel(
+      id,
+      {
+        get app() {
+          return tool.app;
+        },
+        note: (method, params) => tool.note(method, params),
+      },
+      handlers,
+    );
+    this.panels.set(id, panel);
+    return panel;
+  }
+
   /** Reads and answers until the app says goodbye, then exits with 0. */
   run(): never {
     process.exit(this.serve());
@@ -226,6 +258,10 @@ export class Tool {
           return this.greet(message.id, message.params);
         if (message.method === "command/run")
           return this.runCommand(message.id, message.params);
+        if (message.method === "ui/open")
+          return this.openPanel(message.id, message.params);
+        if (message.method === "ui/event")
+          return this.panelEvent(message.id, message.params);
         return this.refuse(
           message.id,
           RPCErrorCode.methodNotFound,
@@ -248,6 +284,10 @@ export class Tool {
             this.languageTag = changed.language;
             this.onLanguageChanged?.(this.app);
           }
+        } else if (message.method === "ui/close") {
+          const closed = tryRead(() => readUICloseParams(message.params));
+          if (closed !== undefined)
+            this.panels.get(closed.panel)?.setOpen(false);
         }
         return;
       default:
@@ -260,11 +300,16 @@ export class Tool {
     const hello = tryRead(() => readInitializeParams(params));
     if (hello === undefined)
       return this.refuse(id, RPCErrorCode.invalidParams, "invalid params");
-    if (!hello.protocolVersions.includes(PROTOCOL_VERSION)) {
+    // The newest version both speak. Version 2 only adds to version 1, so
+    // a tool of either is answered by an app of either.
+    const picked = [...PROTOCOL_VERSIONS]
+      .reverse()
+      .find((version) => hello.protocolVersions.includes(version));
+    if (picked === undefined) {
       return this.refuse(
         id,
         RPCErrorCode.invalidParams,
-        `this tool speaks protocol ${PROTOCOL_VERSION} only`,
+        `this tool speaks protocols ${PROTOCOL_VERSIONS.join(" and ")} only`,
       );
     }
     this.languageTag = hello.language;
@@ -273,7 +318,7 @@ export class Tool {
     this.wire.send({
       kind: "result",
       id,
-      result: { protocolVersion: PROTOCOL_VERSION, toolVersion: this.version },
+      result: { protocolVersion: picked, toolVersion: this.version },
     });
     this.onStart?.(this.app);
   }
@@ -322,6 +367,89 @@ export class Tool {
         this.refuse(
           id,
           RefusalCode.commandRefused,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
+
+  private openPanel(id: RPCID, params: unknown): void {
+    const asked = tryRead(() => readUIOpenParams(params));
+    if (asked === undefined)
+      return this.refuse(id, RPCErrorCode.invalidParams, "invalid params");
+    const panel = this.panels.get(asked.panel);
+    if (panel === undefined)
+      return this.refuse(id, RPCErrorCode.invalidParams, "no such panel");
+    panel.setOpen(true);
+    this.answering(id, () => {
+      const tree = panel.onOpen(this.app, panel);
+      return tree === undefined ? {} : { tree };
+    });
+  }
+
+  private panelEvent(id: RPCID, params: unknown): void {
+    const asked = tryRead(() => readUIEventParams(params));
+    if (asked === undefined)
+      return this.refuse(id, RPCErrorCode.invalidParams, "invalid params");
+    const panel = this.panels.get(asked.panel);
+    if (panel === undefined || !panel.isOpen)
+      return this.refuse(
+        id,
+        RPCErrorCode.invalidParams,
+        "the panel is not open",
+      );
+    this.answering(id, () => {
+      if (asked.event === "bridge")
+        return { reply: this.bridge(asked.value, panel) };
+      const event = new PanelEvent(asked.block, asked.event, asked.value);
+      return resultOf(panel.onEvent(this.app, panel, event));
+    });
+  }
+
+  /**
+   * A web panel's call: a request the app does is passed to the app as the
+   * tool's own, under the tool's `uses`; a method of the tool's own goes to
+   * the panel's `onCall`.
+   */
+  private bridge(value: JSONValue | undefined, panel: Panel): JSONValue {
+    const asked = bridgeCallOf(value);
+    if (asked === undefined)
+      throw new Refusal({
+        code: RPCErrorCode.invalidParams,
+        message: "invalid params",
+      });
+    if (asked.method.startsWith(TOOLS_OWN)) {
+      if (panel.onCall === undefined)
+        throw new Refusal({
+          code: RPCErrorCode.methodNotFound,
+          message: "method not found",
+        });
+      return panel.onCall(this.app, asked.method, asked.params);
+    }
+    const row = METHODS.find((m) => m.method === asked.method);
+    if (row === undefined || row.sender !== "tool" || row.kind !== "request")
+      throw new Refusal({
+        code: RPCErrorCode.methodNotFound,
+        message: "method not found",
+      });
+    const params = asked.params ?? {};
+    return this.call(
+      asked.method,
+      typeof params === "object" && params !== null ? params : {},
+    );
+  }
+
+  /** Answers a request with what `give` returns, or with the refusal or error it throws. */
+  private answering(id: RPCID, give: () => object): void {
+    try {
+      this.wire.send({ kind: "result", id, result: give() as JSONValue });
+    } catch (error) {
+      if (error instanceof Refusal) {
+        this.refuse(id, error.code, error.message, error.data);
+      } else {
+        this.refuse(
+          id,
+          RPCErrorCode.internalError,
           error instanceof Error ? error.message : String(error),
         );
       }
@@ -379,9 +507,10 @@ export class Tool {
     }
   }
 
-  private note(method: string, params: object): void {
-    if (!this.greeted || this.stopping) return;
-    this.wire.send({
+  /** Sends a notice. False when the link is not open. */
+  private note(method: string, params: object): boolean {
+    if (!this.greeted || this.stopping) return false;
+    return this.wire.send({
       kind: "notice",
       method,
       params: params as { [key: string]: JSONValue },

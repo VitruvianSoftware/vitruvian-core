@@ -412,6 +412,11 @@ final class Session {
                     return notOK("log with params that are not its own")
                 }
                 line("log", entry.message)
+            case .uiRender?:
+                guard let page = try? params?.decode(UIRenderParams.self) else {
+                    return notOK("ui/render with params that are not its own")
+                }
+                line("page", "for the panel \(page.panel), \(page.tree.blocks.count) blocks, which the app would draw")
             default:
                 line("notice", "\(method). The app ignores a notice it does not know")
             }

@@ -31,7 +31,7 @@ send a request or a notice into one call per message, grouped by the first
 part of its name: `app.notify.hud({ icon, message })`.
 """
 
-from model import Definition, Model, Type, licence
+from model import Definition, Model, Type, camel_to_snake, licence
 
 NAME = "typescript"
 FOLDER = "kits/typescript/src/generated"
@@ -81,6 +81,8 @@ def ts_type(kind: Type, model: Model) -> str:
         return kind.name
     if kind.kind == "const":
         return f'"{kind.values[0]}"'
+    if kind.kind == "text":
+        return f"string | {model.title(kind.ref)}"
     raise ValueError(kind)
 
 
@@ -111,20 +113,88 @@ def reader(kind: Type, value: str, where: str, model: Model) -> str:
         return f"expectOneOf({value}, {where}, {constant(kind.name)})"
     if kind.kind == "const":
         return f'expectOneOf({value}, {where}, ["{kind.values[0]}"] as const)'
+    if kind.kind == "text":
+        return f'(typeof {value} === "string" ? {value} : read{model.title(kind.ref)}({value}, {where}))'
     raise ValueError(kind)
 
 
 def constant(enum_name: str) -> str:
-    """Service -> SERVICES, PreferenceType -> PREFERENCE_TYPES, Activation -> ACTIVATIONS."""
-    out = ""
-    for index, char in enumerate(enum_name):
-        if char.isupper() and index:
-            out += "_"
-        out += char.upper()
-    return out + "S"
+    """Service -> SERVICES, PreferenceType -> PREFERENCE_TYPES, UIEventKind -> UI_EVENT_KINDS."""
+    return camel_to_snake(enum_name).upper() + "S"
+
+
+def variant_lines(definition: Definition, model: Model) -> list:
+    """An object that is one of several kinds by the value of `tag`: an
+    interface of the fields every kind has, a union of one member a kind,
+    each the common fields with the kind's own and its tag, and a last
+    member for a kind these types do not have, kept as it came."""
+    title, tag = definition.title, definition.tag
+    common = [field for field in definition.fields if field.name != tag]
+    lines = [f"/** The fields every kind of {title} has. */"]
+    lines.append(f"export interface {title}Fields {{")
+    for field in common:
+        lines += doc(field.description, "  ")
+        mark = "" if field.required else "?"
+        lines.append(f"  {field.name}{mark}: {ts_type(field.type, model)};")
+    lines.append("}")
+    lines.append("")
+    lines.append(
+        f"/** A {title} of a kind these types do not have, from a later protocol: kept as it came. */"
+    )
+    lines.append(f"export interface {title}Other extends {title}Fields {{")
+    lines.append(f"  {tag}: string;")
+    lines.append("  [key: string]: unknown;")
+    lines.append("}")
+    lines.append("")
+    lines += doc(definition.description)
+    lines.append(f"export type {title} =")
+    for value, ref in definition.variants:
+        lines.append(
+            f'  | ({title}Fields & {model.title(ref)} & {{ {tag}: "{value}" }})'
+        )
+    lines.append(f"  | {title}Other;")
+    lines.append("")
+    lines.append(
+        f'export function read{title}(value: unknown, where = "{definition.name}"): {title} {{'
+    )
+    lines.append("  const object = expectObject(value, where);")
+    required = [field for field in common if field.required]
+    if required:
+        lines.append(f"  const common: {title}Fields = {{")
+        for field in required:
+            path = f"`${{where}}.{field.name}`"
+            lines.append(
+                f"    {field.name}: {reader(field.type, f'object["{field.name}"]', path, model)},"
+            )
+        lines.append("  };")
+    else:
+        lines.append(f"  const common: {title}Fields = {{}};")
+    for field in common:
+        if field.required:
+            continue
+        path = f"`${{where}}.{field.name}`"
+        lines.append(f'  if (object["{field.name}"] !== undefined) {{')
+        lines.append(
+            f"    common.{field.name} = {reader(field.type, f'object["{field.name}"]', path, model)};"
+        )
+        lines.append("  }")
+    lines.append(f'  const {tag} = expectString(object["{tag}"], `${{where}}.{tag}`);')
+    lines.append(f"  switch ({tag}) {{")
+    for value, ref in definition.variants:
+        lines.append(f'    case "{value}":')
+        lines.append(
+            f"      return {{ ...common, ...read{model.title(ref)}(value, where), {tag} }};"
+        )
+    lines.append("    default:")
+    lines.append(f"      return {{ ...object, ...common, {tag} }};")
+    lines.append("  }")
+    lines.append("}")
+    return lines
 
 
 def definition_lines(definition: Definition, model: Model) -> list:
+    if definition.variants:
+        return variant_lines(definition, model)
     lines = doc(definition.description)
     if definition.alias is not None:
         lines.append(
@@ -178,6 +248,23 @@ def definition_lines(definition: Definition, model: Model) -> list:
     lines.append("  return read;")
     lines.append("}")
     return lines
+
+
+def shared_titles(model):
+    """The messages' definitions the manifest's fields name, such as
+    localized text, which manifest.ts imports from messages.ts."""
+    names = {definition.name for definition in model.messages}
+    found = []
+    for definition in model.manifest:
+        for field in definition.fields:
+            for kind in (field.type, field.type.item):
+                if (
+                    kind is not None
+                    and kind.kind in ("ref", "text")
+                    and kind.ref in names
+                ):
+                    found.append(model.title(kind.ref))
+    return sorted(set(found))
 
 
 def enums_used(definitions, model):
@@ -294,6 +381,8 @@ def manifest_file(model: Model) -> str:
     names += ["type JSONValue"]
     for enum in enums_used(model.manifest, model):
         names += [constant(enum.name), f"type {enum.name}"]
+    for title in shared_titles(model):
+        names += [f"read{title}", f"type {title}"]
     parts = [header("protocol/manifest.schema.json"), "import {"]
     parts += [f"  {name}," for name in names]
     parts += ['} from "./messages.js";', ""]

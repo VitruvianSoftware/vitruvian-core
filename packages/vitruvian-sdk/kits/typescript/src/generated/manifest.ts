@@ -33,15 +33,23 @@ import {
   type JSONValue,
   ACTIVATIONS,
   type Activation,
+  PANEL_KINDS,
+  type PanelKind,
+  PANEL_PLACEMENTS,
+  type PanelPlacement,
   PREFERENCE_TYPES,
   type PreferenceType,
+  PROTOCOL_VERSIONS,
+  type ProtocolVersion,
   SERVICES,
   type Service,
   SURFACES,
   type Surface,
+  readLocalizedText,
+  type LocalizedText,
 } from "./messages.js";
 
-/** The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands share an id, no two preferences share an id; and the whole file is at most 65,536 bytes. */
+/** The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; and the whole file is at most 65,536 bytes. */
 export interface ToolManifest {
   /** The tool's identity, in reverse-DNS form, for example com.acme.deploys. Letters, digits, hyphens and underscores in parts joined by single dots. It must have a dot: an id with none belongs to a feature built into the app. At most 128 characters. It never changes between versions of a tool. */
   id: string;
@@ -51,8 +59,8 @@ export interface ToolManifest {
   description?: LocalizedText;
   /** The tool's own version, as its author writes it. */
   version: string;
-  /** The protocol version the tool speaks. */
-  protocol: "1";
+  /** The protocol version the tool speaks. Version 2 adds panels, what a tool draws, and changes nothing of version 1. An app that speaks only version 1 refuses a manifest that says 2. */
+  protocol: ProtocolVersion;
   /** Who made the tool. Shown beside its name. The app does not check it. */
   publisher: string;
   /** The licence the tool is offered under, for example an SPDX identifier. */
@@ -77,7 +85,7 @@ export function readToolManifest(value: unknown, where = "manifest"): ToolManife
     id: expectString(object["id"], `${where}.id`),
     name: readLocalizedText(object["name"], `${where}.name`),
     version: expectString(object["version"], `${where}.version`),
-    protocol: expectOneOf(object["protocol"], `${where}.protocol`, ["1"] as const),
+    protocol: expectOneOf(object["protocol"], `${where}.protocol`, PROTOCOL_VERSIONS),
     publisher: expectString(object["publisher"], `${where}.publisher`),
     runtime: readRuntime(object["runtime"], `${where}.runtime`),
   };
@@ -105,17 +113,12 @@ export function readToolManifest(value: unknown, where = "manifest"): ToolManife
   return read;
 }
 
-/** A piece of text in one or more languages, keyed by language tag (en, fr, pt-BR). English, under en, is required. The app shows the entry for the language in use, then the entry for that language without its region, then English. */
-export type LocalizedText = { [key: string]: string };
-
-export function readLocalizedText(value: unknown, where = "localizedText"): LocalizedText {
-  return expectMap(value, where, (item, key) => expectString(item, `${where}.${key}`));
-}
-
-/** What the tool adds to the app. Version 1 has commands only. */
+/** What the tool adds to the app: commands, and in protocol 2 panels. */
 export interface Contributes {
   /** The tool's commands. At most 32. */
   commands?: Command[];
+  /** What the tool draws, and where. At most 8; at most one in the island and one in Settings. Protocol 2 only. */
+  panels?: Panel[];
 }
 
 export function readContributes(value: unknown, where = "contributes"): Contributes {
@@ -123,6 +126,9 @@ export function readContributes(value: unknown, where = "contributes"): Contribu
   const read: Contributes = {};
   if (object["commands"] !== undefined) {
     read.commands = expectArray(object["commands"], `${where}.commands`).map((item, index) => readCommand(item, `${`${where}.commands`}[${index}]`));
+  }
+  if (object["panels"] !== undefined) {
+    read.panels = expectArray(object["panels"], `${where}.panels`).map((item, index) => readPanel(item, `${`${where}.panels`}[${index}]`));
   }
   return read;
 }
@@ -150,6 +156,41 @@ export function readCommand(value: unknown, where = "command"): Command {
   }
   if (object["surfaces"] !== undefined) {
     read.surfaces = expectArray(object["surfaces"], `${where}.surfaces`).map((item, index) => expectOneOf(item, `${`${where}.surfaces`}[${index}]`, SURFACES));
+  }
+  return read;
+}
+
+/** One place the tool draws in. The app opens it with ui/open and the tool answers with blocks to draw; or, for a web panel, the app shows the page at entry. */
+export interface Panel {
+  /** The panel's name within the tool. The same characters as a command id. */
+  id: string;
+  /** What the panel is called: the island page's title, the window's title. */
+  title: LocalizedText;
+  /** Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks. */
+  placement: PanelPlacement;
+  /** An SF Symbol name. Left out, the tool's icon is used. */
+  icon?: string;
+  /** What draws it. blocks: the app, from blocks the tool sends. web: a web page from the tool's folder. Left out, it is blocks. */
+  kind?: PanelKind;
+  /** A web panel's page, as a path inside the tool's folder, with / between its parts. No part is empty, . or .., so the path cannot leave the folder. A blocks panel ignores it. */
+  entry?: string;
+}
+
+export function readPanel(value: unknown, where = "panel"): Panel {
+  const object = expectObject(value, where);
+  const read: Panel = {
+    id: expectString(object["id"], `${where}.id`),
+    title: readLocalizedText(object["title"], `${where}.title`),
+    placement: expectOneOf(object["placement"], `${where}.placement`, PANEL_PLACEMENTS),
+  };
+  if (object["icon"] !== undefined) {
+    read.icon = expectString(object["icon"], `${where}.icon`);
+  }
+  if (object["kind"] !== undefined) {
+    read.kind = expectOneOf(object["kind"], `${where}.kind`, PANEL_KINDS);
+  }
+  if (object["entry"] !== undefined) {
+    read.entry = expectString(object["entry"], `${where}.entry`);
   }
   return read;
 }

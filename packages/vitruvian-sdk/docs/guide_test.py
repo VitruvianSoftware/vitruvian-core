@@ -38,7 +38,7 @@ Every fenced block in the guide says what it is, and each kind is checked:
                   that exists.
   text said=P     each line is something the command says: it is in the file
                   P, once the line breaks Swift allows inside a text are joined.
-  text            not checked. The guide has none.
+  text            not checked: a web page's JavaScript.
 
 A block of any other kind fails. So does a message of the protocol the guide
 never shows, a field of the manifest it never names, a field in a manifest
@@ -58,7 +58,14 @@ PACKAGE = os.path.dirname(HERE)
 GUIDE = os.path.join(HERE, "writing-a-tool.md")
 
 # The worked examples the website shows beside the guide, one per kit sample.
-EXAMPLES = ["samples/hello-typescript/README.md", "samples/hello-python-kit/README.md"]
+EXAMPLES = [
+    "samples/hello-typescript/README.md",
+    "samples/hello-python-kit/README.md",
+    "samples/hello-panel-typescript/README.md",
+    "samples/hello-panel-python/README.md",
+    "samples/hello-go/README.md",
+    "samples/hello-rust/README.md",
+]
 
 # What `vitruvian-tool` takes. Words.swift holds the same list as its usage.
 VERBS = {"init", "validate", "run"}
@@ -341,6 +348,8 @@ def main():
                 "sh",
                 "javascript",
                 "python",
+                "go",
+                "rust",
             ):
                 problems += excerpt_problems(lines, where, info.split(" file=")[1])
             else:
@@ -356,7 +365,14 @@ def main():
             problems.append(
                 f"the guide's table of the manifest has no row for `{field}`"
             )
-    problems += kit_problems(guide, table, read("Sources/VitruvianToolKit/Tool.swift"))
+    kit = "\n".join(
+        read(os.path.join("Sources", "VitruvianToolKit", name))
+        for name in sorted(
+            os.listdir(os.path.join(PACKAGE, "Sources", "VitruvianToolKit"))
+        )
+        if name.endswith(".swift")
+    )
+    problems += kit_problems(guide, table, kit)
     problems += native_kit_problems(
         guide, table, read("go/toolkit/app.go"), read("kits/rust/src/app.rs")
     )

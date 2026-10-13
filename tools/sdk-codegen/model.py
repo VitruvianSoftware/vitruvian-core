@@ -52,12 +52,24 @@ TITLES = {
 # A closed list of names written inside a field. Each needs a name of its own
 # in a language; a new one stops the generator until it is named here.
 ENUMS = {
+    ("manifest", "protocol"): "ProtocolVersion",
     ("manifest", "uses"): "Service",
     ("manifest", "activation"): "Activation",
     ("command", "surfaces"): "Surface",
     ("preference", "type"): "PreferenceType",
     ("keyEquivalent", "modifiers"): "Modifier",
+    ("panel", "placement"): "PanelPlacement",
+    ("panel", "kind"): "PanelKind",
+    ("uiEventParams", "event"): "UIEventKind",
+    ("textBlock", "style"): "TextStyle",
+    ("buttonBlock", "style"): "ButtonStyle",
+    ("fieldBlock", "kind"): "FieldKind",
 }
+
+# The name of the one closed list that is the protocol's versions, in the
+# manifest's `protocol`: every kit answers hello with the newest of them the
+# app offers.
+PROTOCOL_VERSIONS = "ProtocolVersion"
 
 
 @dataclass(frozen=True)
@@ -68,7 +80,9 @@ class Type:
     no, or a number: what a preference holds); any (any JSON value); object
     (a JSON object with any fields); array (of `item`); map (text keys, each
     value an `item`); ref (the definition named `ref`); enum (one of
-    `values`, named `name`); const (exactly `values[0]`).
+    `values`, named `name`); const (exactly `values[0]`); text (a string, or
+    the map of languages that the definition named `ref` is: what a tool
+    draws).
     """
 
     kind: str
@@ -94,6 +108,13 @@ class Definition:
 
     `alias` is set for a definition that is not an object with fields of its
     own, such as localized text, which is a map from a language to text.
+
+    `tag` and `variants` are set for an object that is one of several kinds
+    by the value of one of its fields, as a block of a page is by `type`:
+    `variants` pairs each value of `tag` with the definition that holds that
+    kind's own fields, beside the fields listed here, which every kind has.
+    A value that is none of them is a kind of a later protocol, kept as it
+    came.
     """
 
     name: str
@@ -101,6 +122,8 @@ class Definition:
     description: str
     fields: Tuple[Field, ...]
     alias: Optional[Type] = None
+    tag: Optional[str] = None
+    variants: Tuple[Tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -163,7 +186,12 @@ def licence() -> List[str]:
 
 
 def title_of(name: str) -> str:
-    return TITLES.get(name, name[:1].upper() + name[1:])
+    """uiTree -> UITree, as the Swift types write the initialism; empty -> EmptyObject."""
+    if name in TITLES:
+        return TITLES[name]
+    if name.startswith("ui") and name[2:3].isupper():
+        return "UI" + name[2:]
+    return name[:1].upper() + name[1:]
 
 
 class SchemaProblem(Exception):
@@ -212,8 +240,44 @@ def type_of(node: Dict, where: str, owner: str, field: str, enums: Dict) -> Type
     raise SchemaProblem(f"{where}: the type {kind!r} is not one the generator knows")
 
 
+def variants_of(
+    node: Dict, where: str
+) -> Tuple[Optional[str], Tuple[Tuple[str, str], ...]]:
+    """The kinds an object's `allOf` names: each `if` on one field's value,
+    `then` a definition. Any other rule in `allOf` is for a validator, not
+    a type, and is left alone."""
+    tag, found = None, []
+    for rule in node.get("allOf", []):
+        condition = rule.get("if", {}).get("properties", {})
+        then = rule.get("then", {})
+        if len(condition) != 1 or "$ref" not in then:
+            continue
+        ((field, value),) = condition.items()
+        if "const" not in value:
+            continue
+        if tag not in (None, field):
+            raise SchemaProblem(f"{where}: kinds told apart by {tag} and by {field}")
+        tag = field
+        found.append((str(value["const"]), then["$ref"].rsplit("/", 1)[-1]))
+    return tag, tuple(found)
+
+
 def definition_of(name: str, node: Dict, where: str, enums: Dict) -> Definition:
     description = node.get("description", "")
+    if "oneOf" in node and "type" not in node:
+        # Text a tool draws: a string, or the map of languages a manifest's
+        # text is.
+        choices = node["oneOf"]
+        if (
+            len(choices) == 2
+            and choices[0] == {"type": "string"}
+            and "$ref" in choices[1]
+        ):
+            ref = choices[1]["$ref"].rsplit("/", 1)[-1]
+            return Definition(
+                name, title_of(name), description, (), Type("text", ref=ref)
+            )
+        raise SchemaProblem(f"{where}: a choice of types the generator does not know")
     if node.get("type") == "object" and "properties" not in node:
         extra = node.get("additionalProperties")
         if isinstance(extra, dict):
@@ -232,7 +296,42 @@ def definition_of(name: str, node: Dict, where: str, enums: Dict) -> Definition:
         )
         for key, child in node["properties"].items()
     )
-    return Definition(name, title_of(name), description, fields)
+    tag, variants = variants_of(node, where)
+    if tag is not None and tag not in {field.name for field in fields}:
+        raise SchemaProblem(
+            f"{where}: the kinds are told apart by {tag}, which is no field"
+        )
+    return Definition(name, title_of(name), description, fields, None, tag, variants)
+
+
+def check_references(messages, manifest) -> None:
+    """Every definition a field, an alias or a variant names exists."""
+    known = {definition.name for definition in messages + manifest}
+    for definition in messages + manifest:
+        parts = [definition.alias]
+        for field in definition.fields:
+            parts += [field.type, field.type.item]
+        for part in parts:
+            if (
+                part is not None
+                and part.kind in ("ref", "text")
+                and part.ref not in known
+            ):
+                raise SchemaProblem(f"{definition.name}: no definition {part.ref}")
+        for value, ref in definition.variants:
+            if ref not in known:
+                raise SchemaProblem(
+                    f"{definition.name}: no definition {ref} for {value}"
+                )
+            if (
+                messages
+                and ref in known
+                and next(d for d in messages + manifest if d.name == ref).alias
+                is not None
+            ):
+                raise SchemaProblem(
+                    f"{definition.name}: {ref}, the kind {value}, is not an object"
+                )
 
 
 def load(protocol_folder: str) -> Model:
@@ -262,6 +361,19 @@ def load(protocol_folder: str) -> Model:
         definition_of(name, node, f"manifest.schema.json#/$defs/{name}", enums)
         for name, node in manifest_schema["$defs"].items()
     )
+    # A definition both schemas make, such as localized text, is one type:
+    # the messages' copy, which the manifest's types then name.
+    by_name = {definition.name: definition for definition in messages}
+    for definition in manifest:
+        twin = by_name.get(definition.name)
+        if twin is not None and (twin.alias, twin.fields) != (
+            definition.alias,
+            definition.fields,
+        ):
+            raise SchemaProblem(
+                f"manifest.schema.json#/$defs/{definition.name}: defined by both schemas, differently"
+            )
+    manifest = tuple(d for d in manifest if d.name not in by_name)
     methods = tuple(
         Method(
             row["method"],
@@ -280,14 +392,8 @@ def load(protocol_folder: str) -> Model:
         tuple(enums[name] for name in sorted(enums)),
         methods,
     )
+    check_references(messages, manifest)
     known = {definition.name for definition in messages + manifest}
-    for definition in messages + manifest:
-        for field in definition.fields:
-            for part in (field.type, field.type.item):
-                if part is not None and part.kind == "ref" and part.ref not in known:
-                    raise SchemaProblem(
-                        f"{definition.name}.{field.name}: no definition {part.ref}"
-                    )
     for method in methods:
         for name in (method.params, method.result):
             if name is not None and name not in known:

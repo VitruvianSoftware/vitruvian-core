@@ -1,9 +1,9 @@
 ---
 layout: tools
-title: "An example in Rust"
+title: "A tool in Rust"
 description: "A tool written with the Rust kit: it says hello, and counts with a preference the person can change in Settings."
 permalink: /tools/examples/rust/
-source: packages/vitruvian-sdk/samples/hello-rust
+source: packages/vitruvian-sdk/samples/hello-rust/README.md
 ---
 {%- comment -%}
   Written by tools/sync-site-tools/sync.py from packages/vitruvian-sdk.
@@ -11,80 +11,20 @@ source: packages/vitruvian-sdk/samples/hello-rust
     bazel run //tools/sync-site-tools:sync
 {%- endcomment -%}
 {% raw %}
-`vitruvian-tool init <folder> --template rust` starts a new tool from a copy of this one, as a Cargo package that depends on the published kit. Its `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the folder you add to Vitruvian.
+A tool with two commands, written with the Rust kit: `hello` shows a short
+message, and `count` keeps a number in a preference and shows it. It is one
+file, with two crates beside the kit: `serde` and `serde_json`, as Rust has
+no JSON of its own.
 
-This is [`samples/hello-rust`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-rust) of the SDK, as it is. The conformance script runs it in the SDK's tests.
-
-`vitruvian-tool.json`:
-
-```json
-{
-  "id": "dev.vitruvian.samples.hello-rust",
-  "name": { "en": "Hello, in Rust" },
-  "description": { "en": "Says hello, and counts one more each time." },
-  "version": "0.1.0",
-  "protocol": "1",
-  "publisher": "VitruvianSoftware",
-  "license": "MIT",
-  "icon": "gearshape.2",
-  "uses": ["notify", "storage"],
-  "contributes": {
-    "commands": [
-      {
-        "id": "hello",
-        "title": { "en": "Say hello from Rust" },
-        "icon": "hand.wave",
-        "surfaces": ["commandBar", "radial", "quickPanel", "shortcut"]
-      },
-      {
-        "id": "count",
-        "title": { "en": "Count one more" },
-        "icon": "number",
-        "surfaces": ["commandBar"]
-      }
-    ]
-  },
-  "preferences": [
-    {
-      "id": "count",
-      "title": { "en": "Counted so far" },
-      "type": "integer",
-      "default": 0
-    }
-  ],
-  "activation": ["onCommand"],
-  "runtime": { "kind": "external", "exec": "bin/tool" }
-}
+```sh
+vitruvian-tool init ~/hello-rust --id com.you.hello-rust --name "Hello" --publisher "You" --template rust
+~/hello-rust/build.sh
+vitruvian-tool run ~/hello-rust/tool --command hello --command count
 ```
 
-`src/main.rs`:
+The program, `src/main.rs`:
 
 ```rust
-// Copyright (c) 2026 VitruvianSoftware
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-
-//! A tool written with the Rust kit. It has two commands: `hello` asks the
-//! app to show a short message, and `count` keeps a number in a preference
-//! its manifest declares. `vitruvian-tool init --template rust` starts a
-//! new tool from this file.
-
 use vitruvian_tool_kit::Tool;
 
 fn main() {
@@ -102,5 +42,33 @@ fn main() {
 
     tool.run();
 }
+```
+
+`build.sh` builds the program into `tool/bin/tool`, and `tool/` is the
+folder you add in Vitruvian: Settings, Features, Tools from outside, Add a
+Tool.
+
+## Drawing
+
+[`samples/hello-panel-rust`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-rust) is a tool of protocol 2,
+written with the same kit: a counter the app draws in the island from blocks
+the tool sends. The guide's "Drawing" says how. Its page is `tree!` of its
+blocks, one function for each kind, and an item that is `None` is left out:
+
+```rust
+    /// The island page: what it says now.
+    fn page(&self) -> UiTree {
+        tree![
+            heading("Counter"),
+            text(format!("Pressed {} times", self.count)),
+            button("add", format!("Add {}", self.step())).style("prominent"),
+            field("name")
+                .title("Your name")
+                .value(&self.name)
+                .placeholder("Type it and press Return"),
+            (!self.name.is_empty())
+                .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
+        ]
+    }
 ```
 {% endraw %}

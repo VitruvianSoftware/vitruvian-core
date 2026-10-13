@@ -150,6 +150,33 @@ package struct ExternalToolDetail: Equatable {
     /// The button that installs the newer version from the catalog; nil when
     /// there is none.
     package let updateNow: String?
+    /// One of the tool's windows, as the detail lists it under its commands.
+    package struct Window: Identifiable, Equatable, Sendable {
+        /// The panel's id.
+        package let id: String
+        /// Its title in the person's language, as the tool wrote it.
+        package let title: String
+        package let symbol: String
+
+        package init(id: String, title: String, symbol: String) {
+            self.id = id
+            self.title = title
+            self.symbol = symbol
+        }
+    }
+
+    /// The tool's Settings panel, by its id, drawn under its own settings;
+    /// nil for a tool with none, or one that is switched off or held back.
+    package let settingsPanel: String?
+    /// The tool's windows, each with the app's word Open. None for a tool
+    /// that is switched off or held back: it has no program to ask.
+    package let windows: [Window]
+    /// The switch that lists the tool's page in the island's Tools area,
+    /// as it stands; nil for a tool with no island page.
+    package let showsInIsland: Bool?
+    /// The words beside that switch.
+    package let showInIslandTitle: String
+
 
     /// The app's word above the tool's own settings.
     package let settingsTitle: String
@@ -170,6 +197,12 @@ package struct ExternalToolDetail: Equatable {
         /// The button that installs the newer version from the catalog.
         case updateNow
         case close
+        /// The switch that lists the tool's page in the island.
+        case showsInIsland
+        /// The Open button of one of the tool's windows, by the panel's id.
+        case window(String)
+        /// A control of the tool's Settings panel, by its block's id.
+        case panel(String)
     }
 
     /// The control the keyboard is on when the detail opens. It is never
@@ -179,10 +212,14 @@ package struct ExternalToolDetail: Equatable {
     package var initialFocus: Focus { .close }
 
     /// How many rows the lists hold together.
-    package var listRows: Int { settings.count + commands.count + uses.count }
+    package var listRows: Int {
+        settings.count + commands.count + uses.count + windows.count + (showsInIsland == nil ? 0 : 1)
+    }
     /// True when the lists are too long to draw whole, and scroll in a
-    /// region of a fixed height, as on the agreement sheet.
-    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole }
+    /// region of a fixed height, as on the agreement sheet. A tool's own
+    /// Settings panel may be of any height, so a tool with one always
+    /// scrolls there: the buttons stay in view.
+    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole || settingsPanel != nil }
 
     /// The most of a tool's log the detail shows: its newest lines, and no
     /// more bytes than this.
@@ -203,7 +240,7 @@ package struct ExternalToolDetail: Equatable {
     /// `settingsTitle` the app's existing word for Settings.
     package init(_ listed: ExternalToolStore.Listed, files: URL?, language: AppLanguage,
                  strings: ExternalToolStrings, settings: [ExternalToolStore.Setting] = [], settingsTitle: String = "",
-                 updateAvailable: Bool = false, home: String = NSHomeDirectory(),
+                 updateAvailable: Bool = false, showsInIsland: Bool = true, home: String = NSHomeDirectory(),
                  hasSymbol: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
         let tag = language.rawValue
         self.settingsTitle = settingsTitle
@@ -222,6 +259,14 @@ package struct ExternalToolDetail: Equatable {
         self.files = files.map { ToolAgreementContent.abbreviated($0.path, home: home) }
         // A tool that is switched off or held back has no command anywhere.
         offersShortcuts = listed.standing != nil && declared.contains { $0.surfaces.contains(.shortcut) }
+        // Nor a program to draw a panel.
+        let panels = listed.standing == nil ? [] : listed.tool?.panels ?? []
+        settingsPanel = panels.first { $0.placement == .settings }?.id
+        windows = panels.filter { $0.placement == .window }.map {
+            Window(id: $0.id, title: $0.title.text(for: tag) ?? $0.id, symbol: $0.symbol)
+        }
+        self.showsInIsland = listed.tool?.panel(in: .island) == nil ? nil : showsInIsland
+        showInIslandTitle = strings.showInIsland
     }
 }
 
@@ -498,12 +543,19 @@ package struct ExternalToolsSection: View {
             ExternalToolDetailView(
                 detail: ExternalToolDetail(listed, files: store.folder(of: id), language: l10n.language, strings: text,
                                            settings: store.settings(of: id), settingsTitle: l10n.s.panelSettings,
-                                           updateAvailable: newer != nil),
+                                           updateAvailable: newer != nil,
+                                           showsInIsland: store.showsInIsland(id)),
                 log: ExternalToolDetail.shownLog(store.tool(id)?.log.text ?? ""),
                 removal: ToolRemovalContent(name: name, strings: text, cancel: l10n.s.uninstallerCancel),
                 text: text,
                 startAgain: { store.startAgain(id) },
                 saveSetting: { name, value in store.setSetting(value, for: name, of: id) == nil },
+                setShowsInIsland: { store.setShowsInIsland(id, $0) },
+                panel: { panel, open in
+                    let key = ToolPanelHost.Key(tool: id, panel: panel)
+                    if open { ToolPanelHost.shared.open(key, in: .settings) } else { ToolPanelHost.shared.close(key) }
+                },
+                openWindow: { ToolPanelHost.shared.open(ToolPanelHost.Key(tool: id, panel: $0), in: .window) },
                 reveal: { if let folder = store.folder(of: id) { NSWorkspace.shared.activateFileViewerSelecting([folder]) } },
                 openShortcuts: {
                     shown = nil
@@ -781,6 +833,12 @@ private struct ExternalToolDetailView: View {
     /// Saves one of the tool's settings, by the preference's id. False when
     /// the value was refused.
     let saveSetting: (String, PreferenceDeclaration.Value) -> Bool
+    /// Turns the switch that lists the tool's page in the island.
+    let setShowsInIsland: (Bool) -> Void
+    /// Opens the tool's Settings panel, by its id, or closes it.
+    let panel: (String, _ open: Bool) -> Void
+    /// Opens one of the tool's windows, by the panel's id.
+    let openWindow: (String) -> Void
     let reveal: () -> Void
     let openShortcuts: () -> Void
     let update: () -> Void
@@ -878,6 +936,9 @@ private struct ExternalToolDetailView: View {
         .padding(22)
         .frame(width: 480)
         .onExitCommand(perform: close)
+        // The tool's Settings panel is open for as long as the detail is.
+        .onAppear { if let id = detail.settingsPanel { panel(id, true) } }
+        .onDisappear { if let id = detail.settingsPanel { panel(id, false) } }
         // As the agreement sheet does: macOS puts the keyboard on the
         // detail's first control as it becomes the key window, which is the
         // tool's first setting, and `onAppear` or `defaultFocus` do not
@@ -901,18 +962,45 @@ private struct ExternalToolDetailView: View {
     @ViewBuilder
     private var lists: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !detail.settings.isEmpty {
+            if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.settingsPanel != nil {
                 section(detail.settingsTitle) {
+                    if let shows = detail.showsInIsland {
+                        Toggle(isOn: Binding(get: { shows }, set: { setShowsInIsland($0) })) {
+                            Text(detail.showInIslandTitle).font(.callout)
+                        }
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .focused($focus, equals: .showsInIsland)
+                    }
                     ForEach(detail.settings) { setting in
                         ExternalToolSettingRow(setting: setting, focus: $focus,
                                                save: { saveSetting(setting.id, $0) })
                     }
+                    if let id = detail.settingsPanel {
+                        ToolPanelView(key: ToolPanelHost.Key(tool: detail.row.id, panel: id), size: .standard,
+                                      focus: $focus)
+                            .padding(.top, 4)
+                    }
                 }
             }
-            if !detail.commands.isEmpty {
+            if !detail.commands.isEmpty || !detail.windows.isEmpty {
                 section(detail.commandsTitle) {
                     ForEach(Array(detail.commands.enumerated()), id: \.offset) {
                         Text($0.element).font(.callout).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(detail.windows) { window in
+                        HStack(spacing: 8) {
+                            Image(systemName: window.symbol)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.accentColor)
+                                .accessibilityHidden(true)
+                            // The tool's own words: plain text, on one line.
+                            Text(verbatim: window.title).font(.callout).lineLimit(1)
+                            Spacer(minLength: 8)
+                            Button(l10n.s.shelfActionOpen) { openWindow(window.id) }
+                                .controlSize(.small)
+                                .focused($focus, equals: .window(window.id))
+                        }
                     }
                     if detail.offersShortcuts {
                         Button(l10n.s.shortcutsPageTitle, action: openShortcuts).controlSize(.small)

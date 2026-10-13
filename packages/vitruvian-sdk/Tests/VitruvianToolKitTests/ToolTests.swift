@@ -83,7 +83,7 @@ final class ToolTests: XCTestCase {
     func testEveryRequestAToolMaySendHasAType() {
         let wanted = ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }
         XCTAssertEqual(Set(AppRequests.methods), Set(wanted))
-        XCTAssertEqual(AppRequests.methods.count, 10, "each request once")
+        XCTAssertEqual(AppRequests.methods.count, 11, "each request once")
     }
 
     func testHelloACommandAndGoodbye() throws {
@@ -279,14 +279,23 @@ final class ToolTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 
+    func testTheNewestVersionBothSpeakIsPicked() throws {
+        for (offered, picked) in [(#"["1","2"]"#, "2"), (#"["1"]"#, "1"), (#"["2","1"]"#, "2"), (#"["2","3"]"#, "2")] {
+            let bench = Bench().hello(versions: offered).goodbye()
+            XCTAssertEqual(try bench.tool().serve(), 0)
+            XCTAssertEqual(try bench.written().first?.answer?["protocolVersion"], .string(picked), offered)
+        }
+    }
+
     func testAVersionTheToolDoesNotSpeakIsRefused() throws {
-        let bench = Bench().hello(versions: #"["2"]"#).run("hello", id: 2).goodbye()
+        let bench = Bench().hello(versions: #"["3"]"#).run("hello", id: 2).goodbye()
         var ran = false
         let tool = try bench.tool { $0.command("hello") { _ in ran = true } }
         XCTAssertEqual(tool.serve(), 0)
         XCTAssertFalse(ran)
         XCTAssertEqual(try bench.written(), [
-            .failure(id: .string("hello"), error: RPCErrorObject(code: -32602, message: "this tool speaks protocol 1 only")),
+            .failure(id: .string("hello"), error: RPCErrorObject(code: -32602,
+                                                                  message: "this tool speaks protocols 1 and 2 only")),
             .failure(id: .number(2), error: RPCErrorObject(code: -32600, message: "initialize comes first")),
         ])
     }
@@ -314,5 +323,175 @@ final class ToolTests: XCTestCase {
             .notice(method: "commands/state", params: .object(["runnable": .array([.string("hello")])])),
             .notice(method: "log", params: .object(["message": .string("started")])),
         ], "after the answer to initialize, never before it")
+    }
+}
+
+extension RPCMessage {
+    /// A result's value; nil for anything else.
+    var answer: JSONValue? {
+        if case .result(_, let value) = self { return value }
+        return nil
+    }
+}
+
+/// A tool that draws: its panels opened, acted in, rendered to and closed,
+/// and a web panel's calls, against the same link of two files.
+final class PanelTests: XCTestCase {
+    private let done = JSONValue.object([:])
+
+    private func open(_ panel: String, id: Int) -> String {
+        #"{"jsonrpc":"2.0","id":\#(id),"method":"ui/open","params":{"panel":"\#(panel)"}}"#
+    }
+
+    private func tap(_ panel: String, _ block: String, id: Int) -> String {
+        #"{"jsonrpc":"2.0","id":\#(id),"method":"ui/event","params":{"panel":"\#(panel)","block":"\#(block)","event":"tap"}}"#
+    }
+
+    private func tree(_ message: RPCMessage?) -> JSONValue? {
+        if case .result(_, let value)? = message { return value["tree"] }
+        return nil
+    }
+
+    func testAPanelIsOpenedActedInAndClosed() throws {
+        let bench = Bench().hello(versions: #"["1","2"]"#)
+            .app(open("counter", id: 2))
+            .app(tap("counter", "add", id: 3))
+            .app(tap("counter", "nothing", id: 4))
+            .app(#"{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"counter"}}"#)
+            .goodbye()
+        var count = 0
+        var seen: [PanelEvent] = []
+        var handle: Panel?
+        let tool = try bench.tool { tool in
+            handle = tool.panel("counter", onOpen: { _, _ in UITree { text("Pressed \(count) times") } },
+                                   onEvent: { _, _, event in
+                                       seen.append(event)
+                                       guard event.block == "add" else { return .keep }
+                                       count += 1
+                                       return .page(UITree { text("Pressed \(count) times") })
+                                   })
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        let written = try bench.written()
+        XCTAssertEqual(written.first?.answer?["protocolVersion"], .string("2"), "a tool of the kit speaks protocol 2")
+        XCTAssertEqual(tree(written[1]), .object(["blocks": .array([.object(["type": .string("text"),
+                                                                            "text": .string("Pressed 0 times")])])]))
+        XCTAssertEqual(tree(written[2]), .object(["blocks": .array([.object(["type": .string("text"),
+                                                                            "text": .string("Pressed 1 times")])])]))
+        XCTAssertEqual(written[3], .result(id: .number(4), value: .object(["keep": .bool(true)])))
+        XCTAssertEqual(seen, [PanelEvent(block: "add", kind: .tap), PanelEvent(block: "nothing", kind: .tap)])
+        XCTAssertEqual(handle?.isOpen, false, "ui/close closes it")
+    }
+
+    func testAPageIsSentUnpromptedOnlyWhileThePanelIsOpen() throws {
+        let bench = Bench().hello(versions: #"["1","2"]"#)
+            .run("refresh", id: 2)
+            .app(open("counter", id: 3))
+            .run("refresh", id: 4)
+            .app(#"{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"counter"}}"#)
+            .run("refresh", id: 5)
+            .goodbye()
+        var sent: [Bool] = []
+        let tool = try bench.tool { tool in
+            let panel = tool.panel("counter", onOpen: { _, _ in UITree { heading("Counter") } })
+            tool.command("refresh") { _ in sent.append(panel.render(UITree { text("Later") })) }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(sent, [false, true, false], "render sends nothing for a panel that is not open")
+        let renders = try bench.written().filter {
+            if case .notice("ui/render", _) = $0 { return true }
+            return false
+        }
+        XCTAssertEqual(renders, [.notice(method: "ui/render", params: .object([
+            "panel": .string("counter"),
+            "tree": .object(["blocks": .array([.object(["type": .string("text"), "text": .string("Later")])])]),
+        ]))])
+    }
+
+    func testWhatIsNotAPanelOfTheToolsIsRefused() throws {
+        let bench = Bench().hello(versions: #"["1","2"]"#)
+            .app(open("nowhere", id: 2))
+            .app(tap("counter", "add", id: 3))
+            .goodbye()
+        let tool = try bench.tool { $0.panel("counter", onOpen: { _, _ in nil }) }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(Array(try bench.written().dropFirst()), [
+            .failure(id: .number(2), error: RPCErrorObject(code: -32602, message: "no such panel")),
+            .failure(id: .number(3), error: RPCErrorObject(code: -32602, message: "the panel is not open")),
+        ])
+    }
+
+    func testAnAnswerMayOpenAWindowOrReplyAndTheBadgeIsARequest() throws {
+        let bench = Bench().hello(versions: #"["1","2"]"#)
+            .app(open("deploys", id: 2))
+            .app(tap("deploys", "log", id: 3))
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .goodbye()
+        let tool = try bench.tool { tool in
+            tool.panel("deploys", onOpen: { _, panel in
+                try panel.badge(count: 2)
+                return nil
+            }, onEvent: { _, _, _ in .open("log") })
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        let written = try bench.written()
+        XCTAssertEqual(written[1], .request(id: .number(1), method: "ui/badge", params: .object(["count": .number(2)])))
+        XCTAssertEqual(written[2], .result(id: .number(2), value: done), "a page given as none is no tree")
+        XCTAssertEqual(written[3], .result(id: .number(3), value: .object(["open": .string("log")])))
+    }
+
+    func testAWebPanelsCallsAreTheToolsOwnOrPassedToTheApp() throws {
+        func bridge(_ id: Int, _ call: String) -> String {
+            #"{"jsonrpc":"2.0","id":\#(id),"method":"ui/event","params":{"panel":"dashboard","event":"bridge","value":\#(call)}}"#
+        }
+        let bench = Bench().hello(versions: #"["1","2"]"#)
+            .app(open("dashboard", id: 2))
+            .app(bridge(3, #"{"method":"notify/hud","params":{"icon":"checkmark","message":"Saved"}}"#))
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .app(bridge(4, #"{"method":"tool/count","params":{"by":2}}"#))
+            .app(bridge(5, #"{"method":"tool/other"}"#))
+            .app(bridge(6, #"{"method":"initialize"}"#))
+            .goodbye()
+        let tool = try bench.tool { tool in
+            let panel = tool.panel("dashboard", onOpen: { _, _ in nil })
+            panel.onCall = { _, method, params in
+                guard method == "tool/count" else { throw RPCErrorObject(code: -32601, message: "method not found") }
+                return .object(["count": params?["by"] ?? .null])
+            }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        let written = Array(try bench.written().dropFirst(2))
+        XCTAssertEqual(written, [
+            .request(id: .number(1), method: "notify/hud",
+                     params: .object(["icon": .string("checkmark"), "message": .string("Saved")])),
+            .result(id: .number(3), value: .object(["reply": done])),
+            .result(id: .number(4), value: .object(["reply": .object(["count": .number(2)])])),
+            .failure(id: .number(5), error: RPCErrorObject(code: -32601, message: "method not found")),
+            .failure(id: .number(6), error: RPCErrorObject(code: -32601, message: "method not found")),
+        ], "a request of the app's is asked of the app as the tool's own; a method of the tool's goes to onCall")
+    }
+
+    func testAPageIsWrittenAsTheBlocksItHolds() {
+        let count = 12
+        let rows = ["web", "api"]
+        let page = UITree {
+            heading("Counter")
+            text("Pressed \(count) times", style: .secondary)
+            button("add", "Add one", style: .prominent)
+            if count > 9 { text("That is a lot", style: .caption) }
+            if count > 99 { divider() } else { spacer(4) }
+            for name in rows { row(name, UIText.plain(name)) }
+            list("deploys", [UIListRow(id: "web", title: "web 1.42.0")])
+            toggle("notify", "Tell me", isOn: true)
+            field("name", title: "Name", placeholder: "Type and press Return")
+            progress(0.5)
+            image("ui/logo.png", alt: "Logo")
+            link("Dashboard", url: "https://example.com")
+        }
+        XCTAssertEqual(page.blocks.map { $0.type }, ["heading", "text", "button", "text", "spacer", "row", "row", "list",
+                                                 "toggle", "field", "progress", "image", "link"])
+        XCTAssertEqual(page.blocks[2].id, "add")
+        XCTAssertEqual(page.blocks.compactMap { $0.id }, ["add", "web", "api", "deploys", "notify", "name"])
+        XCTAssertEqual(UIBlock.kinds.count, 12)
     }
 }

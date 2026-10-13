@@ -44,6 +44,11 @@
 //!
 //! Never print to standard output yourself: it is the link. Write to
 //! standard error, or call [`App::log`].
+//!
+//! A tool of protocol 2 draws: [`Tool::panel`] says what a panel shows,
+//! and a page is [`tree!`] of its blocks, one function a kind. [`Panel`]
+//! here is that handle; the manifest's own panel type is
+//! [`generated::Panel`].
 
 pub mod generated;
 pub use generated::*;
@@ -51,8 +56,13 @@ pub use generated::*;
 mod app;
 mod error;
 mod link;
+mod panels;
 mod tool;
 
-pub use app::{App, Clipboard, Keystrokes, Notify, Open, Processes, Storage};
+pub use app::{App, Clipboard, Keystrokes, Notify, Open, Processes, Storage, Ui};
 pub use error::{codes, RefusalCode, ToolError};
+pub use panels::{
+    button, divider, field, heading, image, link, list, progress, row, spacer, text, toggle,
+    Button, Field, Image, IntoBlocks, Panel, PanelAnswer, PanelEvent, Progress, Row, Text, Toggle,
+};
 pub use tool::Tool;

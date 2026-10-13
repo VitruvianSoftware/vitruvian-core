@@ -138,23 +138,15 @@ filegroup(
         "docs/writing-a-tool.md",
         "protocol/README.md",
         "protocol/methods.json",
-        "samples/hello-go/main.go",
-        "samples/hello-go/vitruvian-tool.json",
+        "samples/hello-go/README.md",
         "samples/hello-python-kit/README.md",
         "samples/hello-python/bin/tool.py",
         "samples/hello-python/vitruvian-tool.json",
-        "samples/hello-rust/src/main.rs",
-        "samples/hello-rust/vitruvian-tool.json",
+        "samples/hello-rust/README.md",
         "samples/hello-swift/main.swift",
         "samples/hello-swift/vitruvian-tool.json",
         "samples/hello-typescript/README.md",
     ],
-    visibility = ["//tools/sync-site-tools:__pkg__"],
-)
-
-# What a release bumps. The site's sync test holds that it copies none of it.
-exports_files(
-    ["release-please-config.json"],
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
 
@@ -287,7 +279,7 @@ py_test(
 )
 
 # --- The samples ---------------------------------------------------------------
-# Three tools a person can add to the app. Each is a folder with a manifest
+# Four tools a person can add to the app. Each is a folder with a manifest
 # and a program. The Python one is that folder as it stands in samples/. A
 # Swift one is put together by Bazel, because its program has to be built:
 #
@@ -300,6 +292,7 @@ py_test(
 # program is compiled as.
 SWIFT_SAMPLES = {
     "front-window": "FrontWindowSample",
+    "hello-panel-swift": "HelloPanelSwiftSample",
     "hello-swift": "HelloSwiftSample",
 }
 
@@ -352,6 +345,15 @@ go_binary(
     deps = ["//packages/vitruvian-sdk/go/toolkit"],
 )
 
+go_binary(
+    name = "hello-panel-go",
+    srcs = ["samples/hello-panel-go/main.go"],
+    deps = [
+        "//packages/vitruvian-sdk/go/toolkit",
+        "//packages/vitruvian-sdk/go/toolkit/ui",
+    ],
+)
+
 rust_binary(
     name = "hello-rust",
     srcs = ["samples/hello-rust/src/main.rs"],
@@ -359,10 +361,27 @@ rust_binary(
     deps = ["//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit"],
 )
 
-NATIVE_SAMPLES = [
-    "hello-go",
-    "hello-rust",
-]
+rust_binary(
+    name = "hello-panel-rust",
+    srcs = ["samples/hello-panel-rust/src/main.rs"],
+    edition = "2021",
+    deps = ["//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit"],
+)
+
+# By language: the samples the language's own `<language>_sample_test`
+# puts through the conformance script, one after the other.
+NATIVE_SAMPLES = {
+    "go": [
+        "hello-go",
+        "hello-panel-go",
+    ],
+    "rust": [
+        "hello-rust",
+        "hello-panel-rust",
+    ],
+}
+
+NATIVE_SAMPLE_FOLDERS = [sample for samples in NATIVE_SAMPLES.values() for sample in samples]
 
 [
     genrule(
@@ -377,7 +396,7 @@ NATIVE_SAMPLES = [
         ],
         cmd = "cp $(location samples/%s/vitruvian-tool.json) $(RULEDIR)/built/%s/vitruvian-tool.json && cp $(location :%s) $(RULEDIR)/built/%s/bin/tool" % (sample, sample, sample, sample),
     )
-    for sample in NATIVE_SAMPLES
+    for sample in NATIVE_SAMPLE_FOLDERS
 ]
 
 #   bazel build //packages/vitruvian-sdk:native-sample-folders
@@ -386,7 +405,7 @@ NATIVE_SAMPLES = [
 # with its manifest and bin/tool, on any Mac or Linux machine.
 filegroup(
     name = "native-sample-folders",
-    srcs = [":%s-folder" % sample for sample in NATIVE_SAMPLES],
+    srcs = [":%s-folder" % sample for sample in NATIVE_SAMPLE_FOLDERS],
 )
 
 # Each built sample against the conformance script. They start real
@@ -395,21 +414,18 @@ filegroup(
 # folder is its data, so nothing outside Bazel is needed.
 [
     py_test(
-        name = sample.replace("hello-", "") + "_sample_test",
+        name = language + "_sample_test",
         size = "small",
         srcs = [
             "conformance/conformance.py",
             "samples/samples_test.py",
         ],
-        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample],
-        data = [
-            ":%s-folder" % sample,
-            "built/%s/vitruvian-tool.json" % sample,
-        ],
+        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in samples],
+        data = [":%s-folder" % sample for sample in samples] + ["built/%s/vitruvian-tool.json" % sample for sample in samples],
         main = "samples/samples_test.py",
         deps = ["@pip//jsonschema"],
     )
-    for sample in NATIVE_SAMPLES
+    for language, samples in NATIVE_SAMPLES.items()
 ]
 
 # What needs no build: every sample's manifest against the schema, one SDK
@@ -437,7 +453,7 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
-# The two Swift samples, built, against the conformance script. It starts
+# The Swift samples, built, against the conformance script. It starts
 # real processes. `manual` and macOS-only: the pipeline unit names it.
 py_test(
     name = "swift_samples_test",
@@ -526,6 +542,26 @@ copy_to_directory(
 )
 
 copy_to_directory(
+    name = "hello-panel-typescript-folder",
+    srcs = glob(["samples/hello-panel-typescript/**"]) + ["//packages/vitruvian-sdk/kits/typescript:tool-kit-typescript"],
+    out = "built/hello-panel-typescript",
+    replace_prefixes = {
+        "samples/hello-panel-typescript/": "",
+        "kits/typescript/tool-kit-typescript": "node_modules/@vitruviansoftware/tool-kit",
+    },
+)
+
+copy_to_directory(
+    name = "hello-panel-python-folder",
+    srcs = glob(["samples/hello-panel-python/**"]) + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
+    out = "built/hello-panel-python",
+    replace_prefixes = {
+        "samples/hello-panel-python/": "",
+        "kits/python/vitruvian_tool_kit/": "lib/vitruvian_tool_kit/",
+    },
+)
+
+copy_to_directory(
     name = "hello-python-kit-folder",
     srcs = glob(["samples/hello-python-kit/**"]) + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
     out = "built/hello-python-kit",
@@ -535,7 +571,7 @@ copy_to_directory(
     },
 )
 
-# The two kit samples, as shipped, against the conformance script. It starts
+# The kit samples, as shipped, against the conformance script. It starts
 # real processes: Node through the sample's own bin/tool, which finds `node`
 # on the PATH the test gives it, and the Python sample through this test's
 # own Python. Not `manual` and not tied to macOS, so the Linux lane runs it.
@@ -549,8 +585,12 @@ py_test(
     args = [
         "$(rootpath :hello-typescript-folder)/vitruvian-tool.json",
         "$(rootpath :hello-python-kit-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-panel-typescript-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-panel-python-folder)/vitruvian-tool.json",
     ],
     data = [
+        ":hello-panel-python-folder",
+        ":hello-panel-typescript-folder",
         ":hello-python-kit-folder",
         ":hello-typescript-folder",
         "@nodejs_toolchains//:resolved_toolchain",
@@ -658,6 +698,7 @@ py_test(
 GO_KIT = [
     "//packages/vitruvian-sdk/go:go.mod",
     "//packages/vitruvian-sdk/go/toolkit:sources",
+    "//packages/vitruvian-sdk/go/toolkit/ui:sources",
 ]
 
 py_test(
@@ -671,6 +712,7 @@ py_test(
         "$(rootpath //tools/go-sdk:go)",
         "$(rootpaths %s)" % GO_KIT[0],
         "$(rootpaths %s)" % GO_KIT[1],
+        "$(rootpaths %s)" % GO_KIT[2],
     ],
     data = GO_KIT + ["//tools/go-sdk:go"],
     main = "samples/go_template_test.py",
@@ -691,6 +733,7 @@ py_test(
         "$(rootpath //tools/go-sdk:go)",
         "$(rootpaths %s)" % GO_KIT[0],
         "$(rootpaths %s)" % GO_KIT[1],
+        "$(rootpaths %s)" % GO_KIT[2],
         "--tool",
         "$(rootpath :vitruvian-tool)",
     ],
@@ -715,11 +758,10 @@ py_test(
         "BUILD",
         "Sources/VitruvianToolCLI/NewTool.swift",
         "Sources/VitruvianToolCLI/Words.swift",
-        "Sources/VitruvianToolKit/Tool.swift",
         "docs/writing-a-tool.md",
         "//packages/vitruvian-sdk/go/toolkit:app.go",
         "//packages/vitruvian-sdk/kits/rust:src/app.rs",
-    ],
+    ] + glob(["Sources/VitruvianToolKit/**/*.swift"]),
     main = "docs/guide_test.py",
     deps = ["@pip//jsonschema"],
 )
@@ -736,6 +778,10 @@ py_test(
         "kits/python/pyproject.toml",
         "release-please-config.json",
         "samples/hello-go/go.mod",
+        "samples/hello-panel-go/go.mod",
+        "samples/hello-panel-python/requirements.txt",
+        "samples/hello-panel-rust/Cargo.toml",
+        "samples/hello-panel-typescript/package.json",
         "samples/hello-python-kit/requirements.txt",
         "samples/hello-rust/Cargo.toml",
         "samples/hello-typescript/package.json",
@@ -780,4 +826,9 @@ pipeline_unit(
     ],
     tier = "L1",
     timeout_minutes = 30,
+)  # What a release bumps. The site's sync test holds that it copies none of it.
+
+exports_files(
+    ["release-please-config.json"],
+    visibility = ["//tools/sync-site-tools:__pkg__"],
 )

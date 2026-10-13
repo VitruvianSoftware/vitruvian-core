@@ -21,21 +21,33 @@ import VitruvianToolProtocol
 package struct ExternalToolCalls {
     private let tool: ToolID
     private let services: ToolServices
+    /// Puts the tool's badge in the island's Tools area.
+    private let badge: @MainActor (UIBadgeParams) -> Void
 
-    package init(manifest: ToolManifest, broker: CapabilityBroker) {
+    package init(manifest: ToolManifest, broker: CapabilityBroker,
+                 badge: @escaping @MainActor (UIBadgeParams) -> Void = { _ in }) {
         tool = manifest.id
         services = broker.services(for: manifest)
+        self.badge = badge
     }
 
     /// Does what one request asks and answers it, once: at once, or when
     /// the work is done.
     package func serve(_ method: ToolMethod, _ params: JSONValue?, _ reply: @escaping ToolLink.Reply) {
         switch method {
-        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
-            // The app's own messages, and the two notices: not requests a
-            // tool makes. The link answers these itself; this is for a
-            // caller that does not.
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
+             .uiOpen, .uiEvent, .uiClose, .uiRender:
+            // The app's own messages, and the notices: not requests a tool
+            // makes. The link answers these itself; this is for a caller
+            // that does not.
             reply(.failure(RPCErrorObject(code: RPCErrorCode.methodNotFound, message: "unknown method")))
+
+        case .uiBadge:
+            // Behind `notify`, as the protocol says.
+            guard let asked = Self.read(UIBadgeParams.self, params) else { return reply(Self.badParams) }
+            if let refusal = services.gate(.notify)() { return reply(.failure(Self.error(for: refusal))) }
+            badge(asked)
+            reply(.success(Self.nothing))
 
         case .notifyHUD:
             guard let asked = Self.read(NotifyHUDParams.self, params) else { return reply(Self.badParams) }

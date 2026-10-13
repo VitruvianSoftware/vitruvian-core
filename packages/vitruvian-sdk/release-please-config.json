@@ -35,6 +35,15 @@
           "path": "samples/hello-python-kit/requirements.txt"
         },
         {
+          "type": "json",
+          "path": "samples/hello-panel-typescript/package.json",
+          "jsonpath": "$.dependencies['@vitruviansoftware/tool-kit']"
+        },
+        {
+          "type": "generic",
+          "path": "samples/hello-panel-python/requirements.txt"
+        },
+        {
           "type": "generic",
           "path": "go/toolkit/version.go"
         },
@@ -48,8 +57,17 @@
           "path": "samples/hello-go/go.mod"
         },
         {
+          "type": "generic",
+          "path": "samples/hello-panel-go/go.mod"
+        },
+        {
           "type": "toml",
           "path": "samples/hello-rust/Cargo.toml",
+          "jsonpath": "$.dependencies['vitruvian-tool-kit'].version"
+        },
+        {
+          "type": "toml",
+          "path": "samples/hello-panel-rust/Cargo.toml",
           "jsonpath": "$.dependencies['vitruvian-tool-kit'].version"
         }
       ]

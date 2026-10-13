@@ -24,8 +24,33 @@ Tools put on every Mac, which is the one the app finds.
 """
 
 from .generated.manifest import ToolManifest
-from .generated.messages import RPCErrorObject, ShapeError
+from .generated.messages import (
+    RPCErrorObject,
+    ShapeError,
+    UIBlock,
+    UIListRow,
+    UIText,
+    UITree,
+)
 from .generated.methods import METHODS, PROTOCOL_VERSION, AppCalls, MethodInfo
+from .panels import (
+    Panel,
+    PanelAnswer,
+    PanelEvent,
+    button,
+    divider,
+    field,
+    heading,
+    image,
+    link,
+    list_,
+    progress,
+    row,
+    spacer,
+    text,
+    toggle,
+    tree,
+)
 from .tool import (
     App,
     AppUnreachable,
@@ -48,6 +73,9 @@ __all__ = [
     "CommandRefused",
     "Handler",
     "MethodInfo",
+    "Panel",
+    "PanelAnswer",
+    "PanelEvent",
     "RPCErrorCode",
     "RPCErrorObject",
     "Refusal",
@@ -55,6 +83,23 @@ __all__ = [
     "ShapeError",
     "Tool",
     "ToolManifest",
+    "UIBlock",
+    "UIListRow",
+    "UIText",
+    "UITree",
+    "button",
+    "divider",
+    "field",
+    "heading",
+    "image",
     "line_of",
+    "link",
+    "list_",
     "message_of",
+    "progress",
+    "row",
+    "spacer",
+    "text",
+    "toggle",
+    "tree",
 ]

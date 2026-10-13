@@ -33,7 +33,7 @@
       "verdict": "manifest",
       "rule": "unsupportedProtocol",
       "make": [
-        { "manifest": { "protocol": "2" } },
+        { "manifest": { "protocol": "3" } },
         { "file": "bin/tool", "mode": "755" }
       ]
     },
