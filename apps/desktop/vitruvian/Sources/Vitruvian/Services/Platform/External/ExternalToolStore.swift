@@ -89,6 +89,12 @@ package final class ExternalToolStore {
         package let files: URL
         /// The folder the tool keeps what it saves in, and runs in.
         package let data: URL
+
+        package init(tool: ExternalToolManifest, files: URL, data: URL) {
+            self.tool = tool
+            self.files = files
+            self.data = data
+        }
     }
 
     /// A tool the person added, as Settings lists it.
@@ -136,6 +142,12 @@ package final class ExternalToolStore {
         package var watchLanguage: @MainActor (@escaping @MainActor (String) -> Void) -> Any?
         /// What draws the tools' panels and badges; nil where nothing does.
         package var panels: @MainActor () -> ToolPanelHost?
+        /// Told of a tool just added, with the catalog entry it came from,
+        /// before its program is started: a feature of the app's that the
+        /// tool takes over hands it what it kept here (`GitHubHandoff`).
+        package var added: @MainActor (Installed, CatalogueOrigin?) -> Void
+        /// Told of a tool just removed, after its program is gone.
+        package var removed: @MainActor (ToolID) -> Void
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -147,7 +159,9 @@ package final class ExternalToolStore {
                      forgetPreferences: @escaping @MainActor (ToolID) -> Void = { _ in },
                      forgetShortcuts: @escaping @MainActor (ToolID) -> Void = { _ in },
                      watchLanguage: @escaping @MainActor (@escaping @MainActor (String) -> Void) -> Any? = { _ in nil },
-                     panels: @escaping @MainActor () -> ToolPanelHost? = { nil }) {
+                     panels: @escaping @MainActor () -> ToolPanelHost? = { nil },
+                     added: @escaping @MainActor (Installed, CatalogueOrigin?) -> Void = { _, _ in },
+                     removed: @escaping @MainActor (ToolID) -> Void = { _ in }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -161,6 +175,8 @@ package final class ExternalToolStore {
             self.forgetShortcuts = forgetShortcuts
             self.watchLanguage = watchLanguage
             self.panels = panels
+            self.added = added
+            self.removed = removed
         }
 
         /// The app as it is. That a tool stopped working is also a line
@@ -181,7 +197,9 @@ package final class ExternalToolStore {
             forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) },
             forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
             watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
-            panels: { .shared })
+            panels: { .shared },
+            added: { installed, origin in GitHubHandoff.perform(installed, from: origin, parts: .live) },
+            removed: { GitHubHandoff.toolRemoved($0, defaults: .standard) })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
@@ -412,6 +430,9 @@ package final class ExternalToolStore {
         held.remove(id)
         resting[id] = nil
         let entry = Installed(tool: tool, files: place.files, data: place.data)
+        // Before the program starts, so what is handed over is there for
+        // its first run.
+        parts.added(entry, offer.catalogue)
         let record = records.first { $0.id == id.rawValue }
         if record?.isOn == false {
             // Updated while switched off: it stays off.
@@ -500,6 +521,7 @@ package final class ExternalToolStore {
         // it saved does, whatever kept the folder.
         let dataFolder = parts.folders?.place(for: id)?.data
         if data, !left.contains(where: { $0 == dataFolder }) { parts.forgetPreferences(id) }
+        parts.removed(id)
         parts.registry().noteAvailabilityChanged()
         // A program that would not stop comes first: it is the one case
         // where something of the tool may still be running.

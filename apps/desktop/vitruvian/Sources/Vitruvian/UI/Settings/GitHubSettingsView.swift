@@ -30,6 +30,7 @@ package struct GitHubSettingsView: View {
     @AppStorage(Preferences.githubMouseApprovalMode) private var approvalMode: String
     @AppStorage(Preferences.githubMouseApprovalSpeed) private var approvalSpeed: Int
     @AppStorage(Preferences.githubMouseBinaryPath) private var mouseBinaryPath: String
+    @AppStorage(Preferences.githubReplacedByTool) private var replacedByTool: Bool
 
     private let colorOptions = ["green", "cyan", "blue", "purple", "magenta", "yellow", "orange", "red", "white", "pink"]
 
@@ -44,6 +45,20 @@ package struct GitHubSettingsView: View {
     package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // The feature is becoming the GitHub tool from the catalog:
+                // said here, with the way to it, until the tool is installed,
+                // when this page goes (`GitHubHandoff`).
+                if !replacedByTool {
+                    SettingsCard {
+                        Text(text.movesToTool)
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(FeatureStrings.externalTools(l10n.language).browseButton) {
+                            SettingsRouter.shared.page = .features
+                        }
+                    }
+                }
+
                 // Header & Feature Enablement
                 SettingsCard {
                     Toggle("GitHub Status & Actions", isOn: $enabled)

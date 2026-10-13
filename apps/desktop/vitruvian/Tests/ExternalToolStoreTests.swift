@@ -66,6 +66,10 @@ enum ExternalToolStoreTests {
         var waits: [TimeInterval] = []
         /// The language the app is in, as the store reads it.
         var language = "fr"
+        /// Each tool the store said it added, with whether a program had
+        /// been started by then, and each it said it removed.
+        var added: [(id: ToolID, programStarted: Bool)] = []
+        var removed: [ToolID] = []
         /// What the store asked to be told of a change of language with.
         var languageWatcher: (@MainActor (String) -> Void)?
         /// The shortcuts people gave to tool commands, over this bench's
@@ -121,7 +125,11 @@ enum ExternalToolStoreTests {
                     languageWatcher = $0
                     return nil
                 },
-                panels: { [unowned self] in panels }))
+                panels: { [unowned self] in panels },
+                added: { [unowned self] installed, _ in
+                    added.append((installed.tool.manifest.id, !started.isEmpty))
+                },
+                removed: { [unowned self] in removed.append($0) }))
             panels = ToolPanelHost(parts: .init(
                 clock: clock, limits: limits,
                 tool: { [unowned self] in store.tool($0) },

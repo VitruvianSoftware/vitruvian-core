@@ -970,6 +970,7 @@ package enum DefaultsKey {
     package static let githubMouseApprovalMode = "githubMouseApprovalMode"
     package static let githubMouseApprovalSpeed = "githubMouseApprovalSpeed"
     package static let githubMouseBinaryPath = "githubMouseBinaryPath"
+    package static let githubReplacedByTool = "githubReplacedByTool"
 
     /// Features hub availability layer, one key per AppFeature raw value.
     /// Registered true: unavailable features vanish from every surface and
