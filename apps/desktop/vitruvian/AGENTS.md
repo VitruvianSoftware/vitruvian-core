@@ -624,6 +624,63 @@ of it but the protocol.
   - Nobody has opened the app with this stage in it. The plan's list "By
     hand" is what is left to see.
 
+## Tools that draw: protocol 2
+
+A tool whose manifest says `"protocol": "2"` may contribute `panels`, and
+the app draws them (`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`,
+section 8; the stage D plan). A tool of protocol 1 is read and run as
+before: the app offers both versions at `initialize`, and the tool picks.
+
+- A panel is in one of three places (`ToolPanelPlacement`): a tile and a
+  page in the island's Tools area, a part of the tool's detail in Settings,
+  or a window the app owns. At most one in the island and one in Settings.
+  The island's own list of pages (`NotchModule`) is not open to tools: a
+  tool's page is hosted on the Tools page, as a utility is.
+- `ToolPanelHost` (`Services/Platform/External/ToolPanelHost.swift`) is the
+  one place that knows what a panel shows: for each open panel the last page
+  its tool sent, read away from the main thread by `ToolPanelTree.read` and
+  drawn on it. It draws at most four of the pages a tool sends unprompted in
+  a second, the last of the ones between; a tool that sends more than forty
+  in one second for a panel is stopped by its link as a flood. A page over
+  256 KB or 200 blocks, or one with a block of a known kind that is not well
+  formed, is not drawn: the panel keeps the page it had and the tool's log
+  says why. A block of a kind the app does not know is drawn as its
+  `fallback`, or left out.
+- A page is drawn by `BlockTreeView` from a plain value,
+  `BlockTreeContent`, which the tests check; no test draws a view. A tool's
+  words are drawn with `Text(verbatim:)`, never as markdown or as a link,
+  each with a line limit and cut to 2,000 characters. The look is the app's:
+  a tool picks a style from a short list, never a colour, font or size.
+- A panel ends with its tool's program: every page the tool had open closes.
+  While a panel is open the tool is not stopped for being idle. Collapsing
+  the island closes a tool's island page and tells the tool.
+- A `link` block opens through the tool's own `open` service, and only a
+  web or mail address. A refusal plays the alert sound.
+- A web panel (`UI/ToolPanels/ToolWebPanel.swift`) loads `entry` with
+  `loadFileURL(_:allowingReadAccessTo:)` scoped to the app's copy of the
+  tool's folder. Its navigation delegate refuses any address outside that
+  folder, by `ToolWebPolicy`, and every new window. The page's own network
+  use is not stopped: the tool is trusted like an app. `ToolPanelHost` holds
+  every page (`ToolWebPage`) and lets go of it when its panel closes or its
+  tool ends; nothing else keeps a `WKWebView` of a tool's.
+- The page reaches the app only through `window.vitruvian.call`, which the
+  host passes to the tool's program as `ui/event` with `event: "bridge"`,
+  after the tool's `uses` allow it, under the link's own flood rule. The
+  program acts; the page never reaches a service of the app directly.
+- A window opens only when the person asks: from the tool's detail, or in
+  answer to what they did in another panel of the tool (`ui/event`'s
+  `open`). `ToolPanelWindows` makes and closes the windows the host lists.
+- `ui/badge` is behind `notify`. The badge stays across runs of the
+  program and goes when the tool is switched off or removed.
+- Whether the island lists a tool's page is the switch "Show in the Dynamic
+  Island" in its detail, kept in `InstalledTools.json` as `showsInIsland`,
+  written only once it is off.
+- The app's words for panels are two: `panelNotShown` and `showInIsland` in
+  `ExternalToolStrings`. Everything else on a panel is the tool's.
+- Known limits: a tool's tile in the island is not reached with the arrow
+  keys or Return, only with the pointer; a picture is read on the main thread
+  each time its page is drawn; nobody has seen a panel in the app.
+
 ## Checking the app by hand, from the shell
 
 `Tools/ByHand.swift` is a command that lists and presses the controls of the

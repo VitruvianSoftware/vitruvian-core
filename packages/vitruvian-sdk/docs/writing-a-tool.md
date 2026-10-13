@@ -172,6 +172,8 @@ What the kit gives a handler:
 | `setRunnable(_:)` | `commands/state` | |
 | `log(_:)` | `log` | |
 | `language`, `dataFolder` | what `initialize` said | |
+| `render(_:)`, on a panel | `ui/render` | |
+| `badge(count:dot:)`, on a panel | `ui/badge` | `notify` |
 
 Three rules of the kit:
 
@@ -253,12 +255,12 @@ refuses its command and says why.
 | `name` | yes | What the person sees. A map from a language tag to text. `en` is required. |
 | `description` | no | One sentence, shown on the sheet. A map of languages, like `name`. |
 | `version` | yes | Your own version, as text. Shown on the sheet, and again when the tool is updated. |
-| `protocol` | yes | `"1"`. |
+| `protocol` | yes | `"1"`, or `"2"` for a tool that draws. Version 2 adds `panels` and changes nothing else. |
 | `publisher` | yes | Who made it. Shown beside the name. |
 | `license` | no | Text. Not shown yet. |
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
-| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. |
+| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. |
 | `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. The tool reads and writes any of them with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
@@ -458,6 +460,148 @@ Any request can be refused, at any time. Your tool must cope.
 | -32601 | A method the other side does not know. |
 | -32602 | Params that are not the message's own, a command you do not have, a preference the manifest does not declare, a value of the wrong kind, or text over 4,096 characters. |
 
+## Drawing
+
+A tool of protocol 2 can show the person a page of its own, in three places:
+a page in the island's Tools area, a part of the tool's detail in Settings,
+and a window. It describes the page as a list of blocks and the app draws
+them, with its own controls, in the person's light or dark appearance and at
+the island's small size. Or it brings a web page from its own folder, for
+what blocks cannot carry. A tool of protocol 1 draws nothing and changes
+nothing by staying one.
+
+Each place is a panel, in the manifest:
+
+```json manifest
+{
+  "id": "com.acme.deploys",
+  "name": { "en": "Deploys" },
+  "version": "2.0.0",
+  "protocol": "2",
+  "publisher": "Acme",
+  "uses": ["notify", "open"],
+  "contributes": {
+    "panels": [
+      { "id": "deploys", "title": { "en": "Deploys" }, "placement": "island", "icon": "shippingbox" },
+      { "id": "settings", "title": { "en": "Deploys" }, "placement": "settings" },
+      { "id": "dashboard", "title": { "en": "Dashboard" }, "placement": "window", "kind": "web", "entry": "ui/dashboard.html" }
+    ]
+  },
+  "runtime": { "kind": "external", "exec": "bin/deploys" }
+}
+```
+
+- **At most 8 panels**, one in the island and one in Settings at most; any
+  number of the rest are windows. A window opens when the person asks: from
+  the tool's detail in Settings, or in answer to something they did in
+  another of the tool's panels.
+- **`kind`** is `blocks`, which you may leave out, or `web`, which needs an
+  `entry`: a path inside the folder, like `runtime.exec`.
+- **The person decides** whether the island lists your page, with a switch in
+  the tool's detail. It is on until they turn it off.
+
+When the person opens a panel the app asks for its first page with
+`ui/open`, starting your program first if it is not running. While a panel
+is open your program is not stopped for being idle. What the person does is
+a `ui/event`, answered with the next page; `ui/close` says the panel went
+away. To change an open page by yourself, send `ui/render`. "What version 2
+adds", above, shows each message.
+
+### The twelve kinds of block
+
+| Kind | Fields | What the person does |
+|---|---|---|
+| `text` | `text`, `style` (`body`, `secondary`, `caption`, `monospaced`), `lines` (1 to 10; 4 when left out) | |
+| `heading` | `text`; two lines at most | |
+| `row` | `title`, `subtitle`, `icon`, `trailing` | taps it, when it has an `id`: `tap` |
+| `button` | `title`, `style` (`plain`, `prominent`, `destructive`), `enabled`; needs an `id` | presses it: `tap` |
+| `toggle` | `title`, `value`, `enabled`; needs an `id` | turns it: `toggle`, with the new state |
+| `field` | `title`, `value`, `placeholder`, `kind` (`text`, `number`, `secret`); needs an `id` | presses Return: `submit`; leaves it changed: `change`; each with the text |
+| `list` | `rows`, each `{ id, title, subtitle, icon, trailing }`, at most 200; needs an `id` | taps a row: `tap`, with the row's id |
+| `progress` | `value` from 0 to 1, or none when nobody knows; `label` | |
+| `image` | `source`: a path inside your folder, or a `data:` PNG or JPEG; `alt`; `height` up to 300 | |
+| `divider` | none | |
+| `link` | `title`, `url`: a web or mail address, opened through the app, so it needs `open` in `uses` | clicks it |
+| `spacer` | `size`, up to 40 points | |
+
+Any text is a string or a map of languages, and it is drawn as you wrote it:
+never as markdown, never as a link, and cut to its lines. A block of a kind
+this app does not know, from a later protocol, is drawn as its `fallback`
+text, or left out. A page is at most 262,144 bytes and 200 blocks; one over
+either is not drawn, the panel keeps the page it had, and your log says why.
+
+### In Swift, with the kit
+
+[`../samples/hello-panel-swift`](../samples/hello-panel-swift) is a counter
+in the island and a switch in Settings. A page is written as the blocks it
+holds, one function for each kind:
+
+```swift file=samples/hello-panel-swift/main.swift
+    func page() -> UITree {
+        UITree {
+            heading("Counter")
+            text("Pressed \(count) times")
+            button("add", "Add \(step)", style: .prominent)
+            field("name", title: "Your name", value: name, placeholder: "Type it and press Return")
+            if !name.isEmpty { text("Hello, \(name)", style: .secondary) }
+        }
+    }
+```
+
+`tool.panel` says what a panel shows when it opens, and what each thing the
+person does gives. The handle it returns sends a page unprompted, with
+`render`, and sets the tool's badge in the island, with `badge`:
+
+```swift file=samples/hello-panel-swift/main.swift
+let island = tool.panel("counter", onOpen: { _, _ in counter.page() }, onEvent: { _, panel, event in
+    switch event.block {
+    case "add"?:
+        counter.count += counter.step
+        try panel.badge(count: counter.count)
+    case "name"?:
+        counter.name = event.text ?? counter.name
+    default:
+        return .keep
+    }
+    return .page(counter.page())
+})
+```
+
+```swift file=samples/hello-panel-swift/main.swift
+tool.command("addOne") { _ in
+    counter.count += counter.step
+    island.render(counter.page())
+}
+```
+
+An answer is `.page`, `.keep`, `.open` with one of your window panels, or
+`.reply` for a web page's call. `render` sends nothing while the panel is
+not open, and the app draws at most four pages a second for a panel: send
+fewer.
+
+### A web page
+
+A `web` panel shows `entry`, a page in your folder. It may load what else is
+in your folder, and use the network itself; it may not go to another page
+outside the folder, or open a window. Before its scripts run the app gives
+it `window.vitruvian`:
+
+```text
+const saved = await window.vitruvian.call("notify/hud", { icon: "checkmark", message: "Saved" });
+const count = await window.vitruvian.call("tool/count", { by: 2 });
+window.vitruvian.on("language/changed", (params) => draw(params.language));
+document.body.dataset.appearance = window.vitruvian.appearance;
+```
+
+A call goes to your program as a `ui/event` whose event is `bridge`, and
+the answer's `reply` is what the page gets back. A request the app does,
+such as `notify/hud`, is checked against your `uses` first; the kit then
+asks the app for it as your tool's own. A method that starts with `tool/` is
+yours, and the kit hands it to the panel's `onCall`. Anything else is
+refused, and a refusal rejects the page's promise with its code and words.
+`on` hears `preferences/changed` and `language/changed`, with the params
+your program is sent.
+
 ## Limits, and what happens when a tool crosses them
 
 The limits keep the app responsive. They are not there to protect anyone from
@@ -478,6 +622,11 @@ the tool.
 | Is told `shutdown` and stays | Asked to end after 2 seconds, killed 1 second after that. |
 | Is still running when the person removes it | The same, faster: asked to end after half a second, killed a quarter of a second later. Do not count on time to tidy up. |
 | Starts a program of its own and leaves it running | The program is ended with the tool: asked to end when the tool is, killed when the tool is, and killed when the tool exits by itself, crashes or is stopped for being idle. Only a program that left the tool's process group is not. |
+| Sends more than four pages a second for one panel | The ones between are not drawn: the last one is, when the second allows. |
+| Sends more than forty pages in one second for one panel | Stopped, and treated as crashed. |
+| Sends a page over 262,144 bytes or 200 blocks, or one a block of which is not well formed | Not drawn. The panel keeps the page it had, and the log says why. |
+| Its web page makes more than 200 calls in one second, for 5 seconds | The same as the lines above: refused, then stopped. |
+| Ends while a panel is open | The panel closes: the island goes back to its tiles, a window closes. |
 
 A folder is refused, before anything is copied, when it holds more than
 256 MB or more than 10,000 files, folders and links together. Keep build

@@ -1,6 +1,6 @@
 ---
 layout: tools
-title: "The Vitruvian tool protocol, version 1"
+title: "The Vitruvian tool protocol, versions 1 and 2"
 description: "How Vitruvian and a tool talk: one JSON message per line over the tool's standard input and output."
 permalink: /tools/protocol/
 source: packages/vitruvian-sdk/protocol/README.md
@@ -72,6 +72,9 @@ A message is JSON-RPC 2.0. There are four kinds.
 | `preferences/changed` | notice | The person changed these preferences, in the tool's detail in Settings: each one's id and its new value. Sent only to a tool that is running and has answered `initialize`. |
 | `language/changed` | notice | The person changed the app's language: the new one, as a tag. Sent only to a tool that is running and has answered `initialize`, once for each change. A tool that starts later learns the language from `initialize`. |
 | `shutdown` | notice | Stop. The app then closes the tool's input. The tool exits with 0 within two seconds. |
+| `ui/open` | request | Version 2. The person opened one of the tool's panels. A blocks panel is answered with its first page, `{ "tree": … }`; a web panel with `{}`. |
+| `ui/event` | request | Version 2. The person acted in an open panel: `tap`, `toggle`, `submit`, `change`, or `bridge` for a web panel's page. Answered with the next page, `{ "keep": true }`, a `reply` for the page, or a window panel to `open`. |
+| `ui/close` | notice | Version 2. The panel went away. |
 
 ## What a tool sends
 
@@ -91,6 +94,8 @@ app has. These messages are for what is better done through the app.
 | `processes/terminate` | request | `processes` | End this process, with the app's checks and its administrator prompt. |
 | `storage/get`, `storage/set` | request | `storage` | Read or write one of the preferences the manifest declares. Text is at most 4,096 characters; a longer one is refused with -32602. |
 | `log` | notice | | A line for the tool's log in Settings. |
+| `ui/render` | notice | | Version 2. A new page for a panel that is open. |
+| `ui/badge` | request | `notify` | Version 2. A count or a dot beside the tool in the island's Tools area. |
 
 ## Being refused
 
@@ -135,10 +140,42 @@ the person as it is.
   character, and text saved with `storage/set` 4,096 characters. A
   character here is a Unicode code point, as JSON Schema counts.
 
+## Version 2: a tool that draws
+
+A manifest that says `"protocol": "2"` may list `contributes.panels`: each
+has an `id`, a `title`, a `placement` (`island`, `settings` or `window`), an
+optional `icon`, and a `kind`. A `blocks` panel, the default, is drawn by the
+app from a page the tool sends. A `web` panel is a page from the tool's own
+folder, named by `entry`.
+
+- **At most 8 panels**, one in the island and one in Settings at most.
+- **A page is a list of blocks**, of twelve kinds: `text`, `heading`, `row`,
+  `button`, `toggle`, `field`, `list`, `progress`, `image`, `divider`,
+  `link`, `spacer`. Each kind's fields are in `messages.schema.json`. A block
+  of a kind the app does not know is drawn as its `fallback`, or left out.
+- **Limits**: a page is at most 262,144 bytes as JSON, an image written into
+  it included, and at most 200 blocks; a list at most 200 rows. The app draws
+  at most four `ui/render` a second for each panel, the last of the ones
+  between; more than forty in one second is a flood, and the tool is
+  stopped.
+- **A web panel** loads only files from the tool's folder. Its page reaches
+  the app through `window.vitruvian.call(method, params)`, which the app
+  passes to the tool's program as `ui/event` with `event: "bridge"`; the
+  tool does the request, under its own `uses`, and its answer's `reply` is
+  what the page gets back. `window.vitruvian.on(name, handler)` hears
+  `preferences/changed` and `language/changed`, with the params the tool is
+  sent; `window.vitruvian.language` and
+  `window.vitruvian.appearance` are set before the page's scripts run.
+- **An app that speaks only version 1** refuses a manifest that says 2
+  (`unsupportedProtocol`). **An app of version 2 runs a version 1 tool as
+  it always did**: it offers both versions at `initialize`, and the tool
+  picks.
+
 ## Changing the protocol
 
 A new message or field needs no new version when an old tool or an old app can
-ignore it. Anything an old one would misread needs version 2.
+ignore it. Anything an old one would misread needs a new version, as panels
+did.
 
 A change is three things in one commit: the schema, the Swift type, and an
 example in `examples/`. The tests hold the three together, and they can only
@@ -165,4 +202,9 @@ see a difference an example crosses.
 | `storage/get` | tool | request | `storage` |
 | `storage/set` | tool | request | `storage` |
 | `log` | tool | notice |  |
+| `ui/open` | app | request |  |
+| `ui/event` | app | request |  |
+| `ui/close` | app | notice |  |
+| `ui/render` | tool | notice |  |
+| `ui/badge` | tool | request | `notify` |
 {% endraw %}

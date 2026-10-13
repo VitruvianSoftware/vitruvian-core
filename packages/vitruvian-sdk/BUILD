@@ -443,9 +443,8 @@ py_test(
     data = PROTOCOL_FILES + glob(["samples/**"]) + [
         "BUILD",
         "Sources/VitruvianToolCLI/Words.swift",
-        "Sources/VitruvianToolKit/Tool.swift",
         "docs/writing-a-tool.md",
-    ],
+    ] + glob(["Sources/VitruvianToolKit/**/*.swift"]),
     main = "docs/guide_test.py",
     deps = ["@pip//jsonschema"],
 )

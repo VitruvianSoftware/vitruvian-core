@@ -30,7 +30,7 @@ Every fenced block in the guide says what it is, and each kind is checked:
                   this package, is one that exists.
   text said=P     each line is something the command says: it is in the file
                   P, once the line breaks Swift allows inside a text are joined.
-  text            not checked. The guide has none.
+  text            not checked: a web page's JavaScript.
 
 A block of any other kind fails. So does a message of the protocol the guide
 never shows, a field of the manifest it never names, a field in a manifest
@@ -269,7 +269,14 @@ def main():
             problems.append(
                 f"the guide's table of the manifest has no row for `{field}`"
             )
-    problems += kit_problems(guide, table, read("Sources/VitruvianToolKit/Tool.swift"))
+    kit = "\n".join(
+        read(os.path.join("Sources", "VitruvianToolKit", name))
+        for name in sorted(
+            os.listdir(os.path.join(PACKAGE, "Sources", "VitruvianToolKit"))
+        )
+        if name.endswith(".swift")
+    )
+    problems += kit_problems(guide, table, kit)
     for flag in FLAGS | VERBS | ALONE:
         if flag not in read("Sources/VitruvianToolCLI/Words.swift"):
             problems.append(f"the command's usage does not name {flag}")
