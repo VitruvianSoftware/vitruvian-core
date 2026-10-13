@@ -543,7 +543,9 @@ package struct RadialToolChoice: Identifiable, Equatable {
     /// The app's tools that can run, then the registry commands the wheel
     /// may add that can run. `keeping` is the slice being edited: its own
     /// choice stays in the list even when its command cannot run or is not
-    /// registered, so the picker always has its selection to show.
+    /// registered, so the picker always has its selection to show. A choice
+    /// nothing can name is listed as the wheel draws it, "Vitruvian tool":
+    /// an id is never shown to a person.
     @MainActor package static func all(tools: [RadialMenuTool], registry: ToolRegistry = .shared,
                                        keeping item: RadialMenuItem,
                                        language: AppLanguage = L10n.shared.language) -> [RadialToolChoice] {
@@ -559,7 +561,7 @@ package struct RadialToolChoice: Identifiable, Equatable {
             // A built-in tool that is switched off still has its own name.
             let title = item.commandID.flatMap { registry.title(for: $0, language: language) }
                 ?? item.tool.map { $0.feature.hubTitle(Strings.localized(language), hub: FeatureStrings.hub(language)) }
-                ?? item.payload
+                ?? FeatureStrings.radialMenu(language).kindTool
             choices.append(RadialToolChoice(tag: own, title: title))
         }
         return choices

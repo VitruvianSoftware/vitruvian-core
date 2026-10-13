@@ -452,6 +452,35 @@ enum ToolPlatformTests {
                      "a built-in tool that is switched off is still listed under its own name")
         suite.expect(shown([gone]).isEmpty && RadialMenuSupport.isValidPayload(gone),
                      "a slice whose command is not registered stays valid and is only left off the wheel")
+
+        // What the picker shows for a slice whose tool is away: plain words, and the slice as it was saved.
+        let away = RadialMenuItem(kind: .command, payload: "dev.vitruvian.samples.hello-python/hello")
+        let kindTool = FeatureStrings.radialMenu(language).kindTool
+        let awayChoices = RadialToolChoice.all(tools: [.screenshot], registry: world.registry, keeping: away,
+                                               language: language)
+        let awayChoice = awayChoices.first { $0.tag == RadialToolChoice.tag(of: away) }
+        suite.expect(awayChoice?.title == kindTool,
+                     "a slice whose command is not registered is listed in plain words, never by its id")
+        suite.expect(awayChoices.allSatisfy { !$0.title.contains("/") && !$0.title.contains("dev.vitruvian.samples") },
+                     "no title in the Tool picker holds a command id or the id of its tool")
+        suite.expect(RadialToolChoice.all(tools: [.screenshot], registry: world.registry, keeping: open, language: language)
+                         .first { $0.tag == RadialToolChoice.tag(of: open) }?.title == "first open",
+                     "a slice whose command is registered is listed under its command's title")
+        let keepAwakeTitle = RadialToolChoice.all(tools: [.screenshot], registry: world.registry, keeping: keepAwake,
+                                                  language: language).last?.title
+        suite.expect(keepAwakeTitle != nil && keepAwakeTitle != kindTool && keepAwakeTitle != keepAwake.payload,
+                     "a built-in tool that is switched off is listed by its own name, not by the generic words or its raw value")
+        let unknownTool = RadialMenuItem(kind: .tool, payload: "noSuchTool")
+        suite.expect(RadialToolChoice.all(tools: [.screenshot], registry: world.registry, keeping: unknownTool,
+                                          language: language).last?.title == kindTool,
+                     "a tool slice no tool answers to is listed in plain words too")
+        // Opening the editor and saving without touching the picker: the picker reads the
+        // slice's own tag and nothing writes it back, so the slice still points where it did.
+        var reopened = away
+        if let tag = awayChoice?.tag { RadialToolChoice.apply(tag, to: &reopened) }
+        suite.expect(reopened == away && away.payload == "dev.vitruvian.samples.hello-python/hello"
+                         && awayChoices.first?.tag != awayChoice?.tag,
+                     "a slice whose tool is away keeps its command through the picker, and is not moved to the first choice")
     }
 
     static func quickPanel(_ suite: TestSuite) {
