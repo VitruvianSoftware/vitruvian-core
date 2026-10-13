@@ -69,6 +69,8 @@ enum GitHubCoreTests {
         named("autoConnectSkipsAfterExplicitDisconnect", suite, autoConnectSkipsAfterExplicitDisconnect)
         named("autoConnectSkipsATokenGitHubRejected", suite, autoConnectSkipsATokenGitHubRejected)
         named("keychainSaveFailureStillSignsIn", suite, keychainSaveFailureStillSignsIn)
+        named("launchNeverWaitsForTheKeychain", suite, launchNeverWaitsForTheKeychain)
+        named("aLateKeychainAnswerNeverOverridesThePerson", suite, aLateKeychainAnswerNeverOverridesThePerson)
         named("peripheralSinkForceRewritesSameVerdict", suite, peripheralSinkForceRewritesSameVerdict)
         named("peripheralSinkVerdictCommandsAreUnchanged", suite, peripheralSinkVerdictCommandsAreUnchanged)
         named("peripheralSinkApprovalOutranksRed", suite, peripheralSinkApprovalOutranksRed)
@@ -811,6 +813,89 @@ enum GitHubCoreTests {
         suite.expect(auth.currentToken() == "gho_x", "the token is kept in memory for the session")
     }
 
+    private static func launchNeverWaitsForTheKeychain(_ suite: TestSuite) {
+        let (defaults, domain) = enabledDefaults("held-keychain")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let held = HeldGitHubTokenStore(answer: .success("saved-token"))
+        let transport = StubGitHubUserTransport(logins: ["saved-token": "saveduser"])
+        let auth = GitHubAuthService(store: held, transport: transport, presenter: HeadlessWebAuthPresenter(),
+                                     defaults: defaults, cliHostsURL: missingCLIHosts)
+        let began = ProcessInfo.processInfo.systemUptime
+        auth.syncWithPreferences()
+        let waited = ProcessInfo.processInfo.systemUptime - began
+        suite.expect(waited < held.patience / 2,
+                     "switching the feature on at launch returns while the Keychain still holds the read (\(waited)s)")
+        spin { held.started == 1 }
+        suite.expect(held.started == 1 && held.readsOnMainThread == 0,
+                     "the saved token is read, and never on the main thread")
+        suite.expect(auth.state == .exchanging && transport.userRequestTokens.isEmpty,
+                     "while the Keychain is asked, the sign-in shows as being checked: \(auth.state)")
+        auth.syncWithPreferences()
+        spin(upTo: 0.2)
+        suite.expect(held.started == 1, "a second sync while the read is out asks the Keychain nothing more")
+
+        held.answerNow()
+        spin { auth.isSignedIn }
+        suite.expect(auth.state == .signedIn(login: "saveduser") && transport.userRequestTokens == ["saved-token"],
+                     "once the Keychain answers, the saved token is confirmed with GitHub, once: \(auth.state)")
+    }
+
+    private static func aLateKeychainAnswerNeverOverridesThePerson(_ suite: TestSuite) {
+        let (defaults, domain) = enabledDefaults("late-keychain")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        /// Lets a read that returned reach the main thread.
+        func settle(_ held: HeldGitHubTokenStore) {
+            held.answerNow()
+            spin { held.finished == held.started }
+            var delivered = false
+            DispatchQueue.main.async { delivered = true }
+            spin { delivered }
+        }
+
+        let idle = HeldGitHubTokenStore(answer: .success("saved-token"))
+        let quiet = GitHubAuthService(store: idle, transport: StubGitHubUserTransport(logins: [:]),
+                                      presenter: HeadlessWebAuthPresenter(), defaults: defaults,
+                                      cliHostsURL: missingCLIHosts)
+        suite.expect(quiet.currentToken() == nil && idle.started == 0,
+                     "asking for the token in use never asks the Keychain")
+
+        let denied = HeldGitHubTokenStore(answer: .failure(.init(status: errSecAuthFailed)))
+        let refused = GitHubAuthService(store: denied, transport: StubGitHubUserTransport(logins: [:]),
+                                        presenter: HeadlessWebAuthPresenter(), defaults: defaults,
+                                        cliHostsURL: cliHostsFile(user: "cliuser", token: "gho_cli"))
+        refused.syncWithPreferences()
+        spin { denied.started == 1 }
+        settle(denied)
+        suite.expect(refused.state == .failed(.keychain(status: errSecAuthFailed)) && refused.currentToken() == nil,
+                     "a refused Keychain prompt at launch says so, and signs in with nothing else: \(refused.state)")
+
+        let held = HeldGitHubTokenStore(answer: .success("saved-token"))
+        let transport = StubGitHubUserTransport(logins: ["saved-token": "saveduser", "gho_typed": "typeduser"])
+        let auth = GitHubAuthService(store: held, transport: transport, presenter: HeadlessWebAuthPresenter(),
+                                     defaults: defaults, cliHostsURL: missingCLIHosts)
+        auth.syncWithPreferences()
+        spin { held.started == 1 }
+        auth.connectWithToken("gho_typed")
+        spin { auth.isSignedIn }
+        settle(held)
+        spin(upTo: 0.2)
+        suite.expect(auth.state == .signedIn(login: "typeduser") && auth.currentToken() == "gho_typed"
+                         && transport.userRequestTokens == ["gho_typed"],
+                     "a sign-in made while the Keychain was asked stands; its late answer is dropped: \(auth.state)")
+
+        let cancelled = HeldGitHubTokenStore(answer: .success("saved-token"))
+        let stopped = StubGitHubUserTransport(logins: ["saved-token": "saveduser"])
+        let off = GitHubAuthService(store: cancelled, transport: stopped, presenter: HeadlessWebAuthPresenter(),
+                                    defaults: defaults, cliHostsURL: missingCLIHosts)
+        off.syncWithPreferences()
+        spin { cancelled.started == 1 }
+        off.cancel()
+        settle(cancelled)
+        spin(upTo: 0.2)
+        suite.expect(off.state == .signedOut && stopped.userRequestTokens.isEmpty,
+                     "a check the person cancelled does not start again when the Keychain answers: \(off.state)")
+    }
+
     private static func peripheralSinkForceRewritesSameVerdict(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.github.peripheral"
         let defaults = UserDefaults(suiteName: domain)!
@@ -1090,7 +1175,7 @@ enum GitHubCoreTests {
 
 /// Answers `GET /user` with the login each token maps to, or 401, and records
 /// the bearer token of each one. Every other request gets an empty 200.
-private nonisolated final class StubGitHubUserTransport: GitHubAuthTransport, @unchecked Sendable {
+nonisolated final class StubGitHubUserTransport: GitHubAuthTransport, @unchecked Sendable {
     private let logins: [String: String]
     // Guarded by `lock`.
     private let lock = NSLock()
@@ -1149,8 +1234,51 @@ private nonisolated final class SaveRefusingTokenStore: GitHubTokenStore, @unche
     func delete() throws {}
 }
 
+/// A Keychain that does not answer a read until the test lets it, the way
+/// the real one waits for the person to answer "Vitruvian wants to use your
+/// confidential information". It gives up after `patience`, so code that
+/// reads on the main thread fails its checks instead of hanging the run.
+nonisolated final class HeldGitHubTokenStore: GitHubTokenStore, @unchecked Sendable {
+    // Guarded by `lock`.
+    private let lock = NSLock()
+    private let gate = DispatchSemaphore(value: 0)
+    private var startedCount = 0
+    private var finishedCount = 0
+    private var mainThreadReads = 0
+    private var saved: String?
+    /// What a read answers once it is let go: the token, none, or the
+    /// Keychain's refusal when the person presses Deny.
+    private let answer: Result<String?, GitHubTokenStoreError>
+    let patience: TimeInterval
+
+    init(answer: Result<String?, GitHubTokenStoreError>, patience: TimeInterval = 3) {
+        self.answer = answer
+        self.patience = patience
+    }
+
+    var started: Int { lock.withLock { startedCount } }
+    var finished: Int { lock.withLock { finishedCount } }
+    var readsOnMainThread: Int { lock.withLock { mainThreadReads } }
+
+    func load() throws -> String? {
+        lock.withLock {
+            startedCount += 1
+            if Thread.isMainThread { mainThreadReads += 1 }
+        }
+        _ = gate.wait(timeout: .now() + patience)
+        lock.withLock { finishedCount += 1 }
+        return try answer.get()
+    }
+
+    func save(_ token: String) throws { lock.withLock { saved = token } }
+    func delete() throws { lock.withLock { saved = nil } }
+
+    /// The person answers the prompt: one waiting read returns.
+    func answerNow() { gate.signal() }
+}
+
 /// Never opens a browser; these tests do not sign in through one.
-private final class HeadlessWebAuthPresenter: GitHubWebAuthPresenting {
+final class HeadlessWebAuthPresenter: GitHubWebAuthPresenting {
     func authenticate(url: URL, callbackScheme: String) async throws -> URL { throw GitHubWebAuthCancelled() }
     func cancel() {}
 }

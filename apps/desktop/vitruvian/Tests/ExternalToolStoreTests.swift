@@ -70,6 +70,11 @@ enum ExternalToolStoreTests {
         /// been started by then, and each it said it removed.
         var added: [(id: ToolID, programStarted: Bool)] = []
         var removed: [ToolID] = []
+        /// What the store waits for before it adds a tool, when a test
+        /// stands in for it; nothing otherwise.
+        var beforeAdding: ((ToolID, @escaping @MainActor () -> Void) -> Void)?
+        /// What is handed to a tool just added, when a test hands something.
+        var handOver: ((ExternalToolStore.Installed, CatalogueOrigin?) -> Void)?
         /// What the store asked to be told of a change of language with.
         var languageWatcher: (@MainActor (String) -> Void)?
         /// The shortcuts people gave to tool commands, over this bench's
@@ -126,8 +131,12 @@ enum ExternalToolStoreTests {
                     return nil
                 },
                 panels: { [unowned self] in panels },
-                added: { [unowned self] installed, _ in
+                beforeAdding: { [unowned self] id, ready in
+                    if let beforeAdding { beforeAdding(id, ready) } else { ready() }
+                },
+                added: { [unowned self] installed, origin in
                     added.append((installed.tool.manifest.id, !started.isEmpty))
+                    handOver?(installed, origin)
                 },
                 removed: { [unowned self] in removed.append($0) }))
             panels = ToolPanelHost(parts: .init(
