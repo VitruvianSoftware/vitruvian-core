@@ -453,6 +453,19 @@ class TheThirteenthOfOctober(unittest.TestCase):
             verdict.released["vitruvian-tool-github"], [f"{TOOL}/version_test.py"]
         )
 
+    def test_3210_the_nexus_agent_tool_would_release_the_app_and_the_sdk(self):
+        # Merged the same evening, before this check was on main. The SDK's
+        # release is a real one here (the kit changed); the app's is not.
+        verdict = replay(3210, before())
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.named, ["nexus-agent"])
+        self.assertEqual(verdict.unnamed, ["vitruvian", "vitruvian-sdk"])
+        self.assertEqual(verdict.released["vitruvian"], [f"{APP}/UPSTREAM.md"])
+        self.assertIn(
+            f"{SDK}/Sources/VitruvianToolKit/Tool.swift",
+            verdict.released["vitruvian-sdk"],
+        )
+
     def test_3209_a_fix_to_the_github_tool_alone_passes(self):
         verdict = replay(3209, before())
         self.assertTrue(verdict.ok)

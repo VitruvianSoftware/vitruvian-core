@@ -1,0 +1,56 @@
+{
+  "pull_request": {
+    "number": 3210,
+    "title": "feat(nexus-agent): the Nexus Agent tool, released beside the app from its mirror",
+    "body": "Stage F of issue #3130, Tasks 2, 3 and 4 (plan: PR #3190), pull request B: the Nexus Agent feature as a protocol 2 tool. Nothing of the Vitruvian app changes here (that is PR C). Needs SDK 1.1.0 for the kit's waker, which is released.\n\n## What this does\n\n- **The tool lives in the standalone app's package**, `apps/desktop/nexus-agent/macos`, as new targets on the shared engine (`NexusAgentCore`): SwiftPM resolves only a repository root, and the shared libraries sit there. MIT, with the feature's texts carried out as the shared library was (63 keys, fifteen languages).\n- **Core:** the tool's settings as a `NexusAgentHost` (eight preferences, what is handed taken once), its pages (an island page that is the way to the window plus a glance, a Settings panel), four commands (Quick Prompt, new chat, start and stop the bot).\n- **Program:** AppKit on the main thread beside the kit's thread, joined by the kit's waker so the main thread never waits on the kit; the Quick Prompt window; the Telegram bot adopted by PID file so it keeps running across the hand-off.\n- **Release:** the mirror's `release.yml` zips the tool's folder beside the app's assets, named by the tool's version, with its size and checksum in the notes; the rehearsal workflow follows, held in step by `nexus_agent_release_rehearsal_test`.\n\n## Checked on the final tree, after merging main\n\n`NexusAgentToolTests` (20), the standalone's `NexusAgentTests` (263, unchanged), `tool_conformance_test` (the built tool validates; a panel of 5 blocks, and a new page after a tap), `tool_version_test`, the rehearsal drift test, the pin tests, `upstream_test`; conformance check 430 ok, 0 fail; presubmit generator `--check`; licence verify; `//:tidy`. SwiftPM on a scratch copy built and ran both test bundles. Planted regressions each failed their test and were reversed (settings taken twice; a panel registered under the wrong id; a rehearsal step renamed). No test reaches this Mac's Nexus Agent settings or bot.\n\n## Not proven here\n\nNothing was seen on screen. The mirror's build, zip and folder-check steps first run on the mirror at the next Nexus Agent release.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "user": {
+      "login": "vitruvian-wren-agent[bot]",
+      "type": "Bot"
+    },
+    "head": {
+      "ref": "feat/nexus-agent-tool"
+    }
+  },
+  "commits": [
+    "feat(vitruvian-sdk): a tool can hand work to its thread from another\n\nThe kit gains ToolWaker: tool.waker.later takes work from any thread,\na window's or a child process's, and runs it on the kit's thread as soon\nas it is between messages, after the hello, never while a handler runs or\nwaits for the app. The wire polls a wake pipe beside standard input; an\nerror the handed work throws goes to the tool's log. The guide says so\nand the site's copy is synced. Stage F, Task 1 of issue #3130.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "feat(nexus-agent): the Nexus Agent tool's core, on the shared engine\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "feat(nexus-agent): the Nexus Agent tool draws, runs the bot and opens its window\n\nThe tool's program: AppKit on the main thread for the Quick Prompt's\nwindow, the kit's loop on a thread of its own, each handler hopping to\nthe main thread and the engine's news going back through the waker.\nThe manifest (dev.vitruvian.nexus-agent, protocol 2), the built folder,\nthe conformance and version tests, and the pipeline unit that runs them.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "feat(ci): the Nexus Agent mirror releases the tool's zip, and the rehearsal follows\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "Merge remote-tracking branch 'refs/remotes/origin/main' into feat/nexus-agent-tool",
+    "Merge remote-tracking branch 'refs/remotes/origin/main' into feat/nexus-agent-tool",
+    "fix(nexus-agent): the tool's tests set up on the main actor, for the CI Mac's Swift\n\nThe two test classes are held to the main actor, and their plain setUp()\nand tearDown() touch the classes' own properties. Swift 6.4 lets that by;\nSwift 6.1.2, the CI Mac's (Xcode 16.4), refuses it in Swift 6 mode, which\nis how SwiftPM builds this target: 28 errors, all in those four methods,\non this pull request's first run. They are async now, so the overrides\nrun on the actor. Bazel builds the same files in Swift 5 mode and never\nsaw it.\n\nSwiftPM writes Package.resolved now that the package has a dependency; no\npackage here commits one, so it is ignored.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+    "Merge remote-tracking branch 'refs/remotes/origin/main' into feat/nexus-agent-tool\n\nMain gained the HomeSpeaker tool (#3211), which edited the same visibility lists and comments in packages/vitruvian-sdk/BUILD, and a new UPSTREAM.md log entry (#3212). Both sides are kept whole: every visibility entry from both, the comments name all three tools, and both log entries stay.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+    "fix(vitruvian-sdk): what comes while handed work waits is answered when it is done\n\nWhat failed: the Nexus Agent tool's conformance test on the CI Mac, at\n\"unknown: no answer within 2 seconds\", right after the Quick Prompt\ncommand ran. It passed on a developer's Mac.\n\nWhy: the Swift kit lost track of a message. Showing the Quick Prompt\nhands the kit a badge to set, which is a request to the app. While the\nkit waited for the badge's answer, the app's next command arrived and was\nkept for later, as it should be. But after handed work the loop went\nstraight back to waiting for a new message and did not look at what it\nhad kept. The command sat there until the next message or timer, here up\nto five seconds, and a goodbye would have dropped it unanswered. It is a\nrace: it only shows when the command arrives before the badge's answer,\nwhich the slower CI Mac does and a fast Mac does not. Putting a logging\nrelay between the conformance script and the tool reproduces it here\nevery time, and a sample of the stuck tool shows its thread in\nTool.serve, waiting in poll, with the command never handled.\n\nThe fix: after handed work, the loop handles what was kept before it\nwaits again. A kit test hands work that calls the app, sends a command\nbefore the answer, and expects the command answered with nothing more\nsent; it failed before the change. Only the Swift kit hands work across\nthreads, so the other kits have no such path.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+    "fix(nexus-agent): the tool wakes the kit after each piece of handed work\n\nWhat failed: built by SwiftPM, as the public mirror builds it, the tool\nstill left a command unanswered for up to five seconds after the Quick\nPrompt was shown. SwiftPM takes the kit from the published SDK, 1.1.0,\nwhich goes back to waiting after handed work without looking at what the\napp sent while that work waited for an answer. The kit is fixed in this\nrepository, but the mirror cannot have that fix until the SDK is\nreleased, and the rehearsal's check of the tool's folder runs against\nthe published kit.\n\nThe fix: every piece of work the tool hands to the kit's thread ends by\nwaking the kit, which makes it look at what it kept. With a kit that\nlooks by itself this does nothing more than one empty turn of its loop.\nIt can go once Package.swift asks for the fixed kit.\n\nHow it was checked: the tool built with `swift build` against SDK 1.1.0,\nwith the SDK's conformance script run through a relay that slows the\nlink a little. Before: \"unknown: no answer within 2 seconds\", every\ntime. After: all six checks pass, three runs of three.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+    "fix(ci): the rehearsal fetches the kit before it checks the tool's folder\n\nWhat failed: the rehearsal's \"Check the tool's folder\" step, in the job\nthat packages the apps, with \"find: apps/desktop/nexus-agent/macos/\n.build/checkouts: No such file or directory\".\n\nWhy: the step builds `vitruvian-tool` and takes the conformance script\nfrom SwiftPM's checkout of the SDK. That checkout exists only where\nSwiftPM has run. The package job starts from a fresh copy of the\nrepository and downloads what the build job built; the artifacts do not\ncarry what SwiftPM fetched to build it.\n\nThe fix: the step runs `swift package resolve` first, which fetches the\nkit by the same rule in Package.swift the build job followed. It is one\nline, in the one step that needs it. Passing the kit through an artifact\nwould change the upload both workflows share for a check only the\nrehearsal makes, and the Homebrew formula has no bottle, so it would\nbuild the same command from source at a version the tap chose, not the\none the package asks for.\n\nrelease.yml is unchanged: the step is the rehearsal's alone, since a\nrelease attaches the zip and judges nothing. The drift test now also\nfails when a job of either workflow reads .build/checkouts without\nhaving run a SwiftPM command first; it failed on the old step.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  ],
+  "files": [
+    ".github/workflows/nexus-agent-mirror-toolchain.yaml",
+    ".github/workflows/presubmit.yaml",
+    "apps/desktop/nexus-agent/.github/workflows/release.yml",
+    "apps/desktop/nexus-agent/.gitignore",
+    "apps/desktop/nexus-agent/BUILD",
+    "apps/desktop/nexus-agent/macos/BUILD",
+    "apps/desktop/nexus-agent/macos/Package.swift",
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentTool/ToolWindowController.swift",
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentTool/main.swift",
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentToolCore/NexusAgentTool.swift",
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentToolCore/Pages.swift",
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentToolCore/ToolSettings.swift",
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentToolCore/Version.swift",
+    "apps/desktop/nexus-agent/macos/Sources/NexusAgentToolCore/Words.swift",
+    "apps/desktop/nexus-agent/macos/Tests/NexusAgentToolTests/NexusAgentToolTests.swift",
+    "apps/desktop/nexus-agent/macos/Tests/NexusAgentToolTests/PagesTests.swift",
+    "apps/desktop/nexus-agent/macos/Tests/NexusAgentToolTests/ToolSettingsTests.swift",
+    "apps/desktop/nexus-agent/macos/Tests/NexusAgentToolTests/WordsTests.swift",
+    "apps/desktop/nexus-agent/macos/tool/conformance_test.py",
+    "apps/desktop/nexus-agent/macos/tool/version_test.py",
+    "apps/desktop/nexus-agent/macos/tool/vitruvian-tool.json",
+    "apps/desktop/nexus-agent/release-please-config.json",
+    "apps/desktop/vitruvian/UPSTREAM.md",
+    "packages/vitruvian-sdk/BUILD",
+    "packages/vitruvian-sdk/Sources/VitruvianToolKit/Tool.swift",
+    "packages/vitruvian-sdk/Tests/VitruvianToolKitTests/ToolTests.swift",
+    "tools/ci/nexus_agent_release_rehearsal_test.py"
+  ]
+}
