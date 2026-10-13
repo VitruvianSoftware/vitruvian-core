@@ -26,6 +26,7 @@ import {
   Meter,
   SegBar,
   Spark,
+  BarChart,
   LogStream,
   Table,
 } from "./DataDisplay.js";
@@ -115,6 +116,26 @@ export const Sparklines: StoryObj = {
         </Plate>
       ))}
     </div>
+  ),
+};
+
+export const BarPlot: StoryObj = {
+  render: () => (
+    <Plate className="card max-w-[540px]">
+      <Label>Build duration · p95 by day (sanguine = cache miss)</Label>
+      <BarChart
+        bars={[
+          { value: 42 },
+          { value: 38 },
+          { value: 51 },
+          { value: 89, alt: true },
+          { value: 44 },
+          { value: 36 },
+          { value: 40 },
+        ]}
+        axisLabels={["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]}
+      />
+    </Plate>
   ),
 };
 

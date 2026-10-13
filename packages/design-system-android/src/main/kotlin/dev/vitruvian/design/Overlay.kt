@@ -28,16 +28,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -182,4 +188,96 @@ public fun MenuSurface(
               .border(1.dp, colors.divider),
       content = content,
   )
+}
+
+/** `.menu-item` - a 36 dp clickable row inside a [MenuSurface] or [BottomSheet]. */
+@Composable
+public fun MenuItem(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    meta: String? = null,
+    danger: Boolean = false,
+) {
+  val colors = Vitruvian
+  Row(
+      modifier =
+          modifier
+              .fillMaxWidth()
+              .defaultMinSize(minHeight = 36.dp)
+              .clickable(onClick = onClick)
+              .padding(horizontal = Space.s3, vertical = Space.s2),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+  ) {
+    VText(
+        text = label,
+        style = VitruvianType.log,
+        color = if (danger) colors.sanguineText else colors.text,
+        maxLines = 1,
+    )
+    if (meta != null) {
+      VText(
+          text = meta,
+          style = VitruvianType.listSub,
+          color = colors.textDim,
+          maxLines = 1,
+      )
+    }
+  }
+}
+
+/** `.menu-divider` - a 1 dp hairline rule between menu groups. */
+@Composable
+public fun MenuDivider(modifier: Modifier = Modifier) {
+  Box(modifier = modifier.fillMaxWidth().height(1.dp).background(Vitruvian.divider))
+}
+
+/** `.toast` - a transient status notification plate with a 2 dp leading status rule. */
+@Composable
+public fun Toast(
+    title: String,
+    modifier: Modifier = Modifier,
+    tone: StatusTone = StatusTone.Ok,
+    detail: String? = null,
+    onDismiss: (() -> Unit)? = null,
+) {
+  val colors = Vitruvian
+  val rule =
+      when (tone) {
+        StatusTone.Ok -> colors.ok
+        StatusTone.Warn -> colors.warn
+        StatusTone.Crit -> colors.sanguine
+        StatusTone.Run -> colors.accent
+        StatusTone.Neutral -> colors.divider
+      }
+  Row(
+      modifier =
+          modifier
+              .fillMaxWidth()
+              .shadow(Shadow.md)
+              .glassGround()
+              .drawBehind {
+                drawRect(color = colors.divider, style = Stroke(width = 1.dp.toPx()))
+                drawRect(color = rule, size = Size(2.dp.toPx(), size.height))
+              }
+              .padding(horizontal = Space.s4, vertical = Space.s3),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(Space.s3),
+  ) {
+    Status(tone = tone)
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      VText(text = title, style = VitruvianType.mono, color = colors.text)
+      if (detail != null) {
+        VText(text = detail, style = VitruvianType.listSub, color = colors.textDim)
+      }
+    }
+    if (onDismiss != null) {
+      VButton(
+          label = "×",
+          onClick = onDismiss,
+          variant = ButtonVariant.Ghost,
+      )
+    }
+  }
 }

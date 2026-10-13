@@ -30,6 +30,7 @@
 # gazelle:ignore
 # gazelle:exclude src
 # gazelle:exclude .storybook
+# gazelle:exclude tools
 
 load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
@@ -37,6 +38,7 @@ load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_python//python:defs.bzl", "py_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -50,7 +52,11 @@ npm_link_all_packages(name = "node_modules")
 # and //packages/design-system-android regenerates its Kotlin token layer from
 # it. Exported so that drift check can read the file as a Bazel input rather
 # than reaching across the tree at runtime.
-exports_files(["src/tokens.json"])
+exports_files([
+    "src/Icons.tsx",
+    "src/Illustrations.tsx",
+    "src/tokens.json",
+])
 
 # Stories are dev-only: they must not land in dist/ or in the published
 # package, so they are excluded from the library. Storybook's build only
@@ -106,9 +112,9 @@ ts_project(
 # Linked into consumers' node_modules by npm_translate_lock (pnpm workspace
 # package); rules_js 3.x expects the target to be named "pkg".
 #
-# The stylesheets and tokens.json are shipped from src/ -- they are not
-# compiled, and the package's exports map points at src/*.css and
-# src/tokens.json. dist/ holds only the JS + .d.ts.
+# The stylesheets, vendored woff2 fonts, and tokens.json are shipped from
+# src/ -- they are not compiled, and the package's exports map points at
+# src/*.css and src/tokens.json. dist/ holds only the JS + .d.ts.
 npm_package(
     name = "pkg",
     srcs = [
@@ -117,8 +123,47 @@ npm_package(
         "src/tokens.json",
         "src/vitruvian.css",
         ":lib",
-    ],
+    ] + glob(["src/fonts/**"]),
     visibility = ["//visibility:public"],
+)
+
+ts_project(
+    name = "stories_typecheck",
+    testonly = True,
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        ".storybook/preview.tsx",
+    ]),
+    extends = "tsconfig.json",
+    no_emit = True,
+    resolve_json_module = True,
+    tsconfig = "tsconfig.stories.json",
+    validate = False,
+    deps = [
+        ":node_modules/@storybook/addon-a11y",
+        ":node_modules/@storybook/addon-docs",
+        ":node_modules/@storybook/react-vite",
+        ":node_modules/@tailwindcss/vite",
+        ":node_modules/@types/react",
+        ":node_modules/@types/react-dom",
+        ":node_modules/react",
+        ":node_modules/react-dom",
+        ":node_modules/storybook",
+        ":node_modules/vite",
+    ],
+)
+
+py_test(
+    name = "tokens_sync_test",
+    size = "small",
+    srcs = ["tools/tokens_sync_test.py"],
+    data = [
+        "src/index.ts",
+        "src/tokens.css",
+        "src/tokens.json",
+        "src/tokens.ts",
+    ] + glob(["src/fonts/**"]),
 )
 
 # The Storybook devserver: `bazel run //packages/design-system:storybook`.
@@ -168,7 +213,11 @@ pipeline_unit(
     name = "design-system",
     persona = "frontend",
     runner = "ubuntu-26.04",
-    test_targets = [":lib"],
+    test_targets = [
+        ":lib",
+        ":stories_typecheck",
+        ":tokens_sync_test",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

@@ -40,5 +40,6 @@ py_binary(
 exports_files([
     "gen_tokens.py",
     "kt_license_header.txt",
+    "parity_test.py",
     "tokens_are_current.sh",
 ])

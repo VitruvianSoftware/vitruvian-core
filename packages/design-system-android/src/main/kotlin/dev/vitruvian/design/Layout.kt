@@ -20,15 +20,22 @@
 
 package dev.vitruvian.design
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /** Collects the children of an [AutoGrid], each with its column span. */
 public class AutoGridScope internal constructor() {
@@ -104,4 +111,109 @@ private fun packRows(items: List<AutoGridItem>, columns: Int): List<List<AutoGri
   }
   if (current.isNotEmpty()) rows += current
   return rows
+}
+
+/** One entry in a [KeyValue] description list. */
+public data class KeyValueEntry(
+    val key: String,
+    val value: String,
+    val mono: Boolean = true,
+)
+
+/** `.kv` - a hairline-separated key-value specification table for node/pod/session metadata. */
+@Composable
+public fun KeyValue(
+    items: List<KeyValueEntry>,
+    modifier: Modifier = Modifier,
+) {
+  val colors = Vitruvian
+  Column(modifier = modifier.fillMaxWidth()) {
+    items.forEach { entry ->
+      Row(
+          modifier =
+              Modifier.fillMaxWidth().bottomHairline(colors.line).padding(vertical = Space.s2),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+      ) {
+        Label(text = entry.key)
+        VText(
+            text = entry.value,
+            style = if (entry.mono) VitruvianType.mono else VitruvianType.body,
+            color = colors.text,
+            maxLines = 1,
+        )
+      }
+    }
+  }
+}
+
+/** One collapsible section in an [Accordion]. */
+public data class AccordionSection(
+    val id: String,
+    val title: String,
+    val meta: String? = null,
+    val defaultOpen: Boolean = false,
+    val content: @Composable () -> Unit,
+)
+
+/** `.accordion` - a bordered stack of collapsible specification sections. */
+@Composable
+public fun Accordion(
+    sections: List<AccordionSection>,
+    modifier: Modifier = Modifier,
+) {
+  val colors = Vitruvian
+  val openMap = remember {
+    mutableStateMapOf<String, Boolean>().apply { sections.forEach { put(it.id, it.defaultOpen) } }
+  }
+
+  Column(modifier = modifier.fillMaxWidth().border(1.dp, colors.divider)) {
+    sections.forEachIndexed { index, section ->
+      val isOpen = openMap[section.id] ?: section.defaultOpen
+      val isLast = index == sections.lastIndex
+      Column(
+          modifier =
+              Modifier.fillMaxWidth()
+                  .then(if (!isLast) Modifier.bottomHairline(colors.divider) else Modifier),
+      ) {
+        Row(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .defaultMinSize(minHeight = Hit.h1)
+                    .clickable { openMap[section.id] = !isOpen }
+                    .padding(horizontal = Space.s4, vertical = Space.s3),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          VIcon(
+              path = if (isOpen) VitruvianIcons.CHEVRON_DOWN else VitruvianIcons.CHEVRON_RIGHT,
+              iconSize = 16.dp,
+              color = if (isOpen) colors.accentText else colors.textDim,
+          )
+          VText(
+              text = section.title,
+              modifier = Modifier.weight(1f),
+              style = VitruvianType.mono,
+              color = colors.text,
+          )
+          if (section.meta != null) {
+            VText(
+                text = section.meta,
+                style = VitruvianType.listSub,
+                color = colors.textDim,
+            )
+          }
+        }
+        if (isOpen) {
+          Column(
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .padding(start = Space.s4, end = Space.s4, bottom = Space.s4),
+          ) {
+            section.content()
+          }
+        }
+      }
+    }
+  }
 }

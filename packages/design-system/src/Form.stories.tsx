@@ -30,6 +30,8 @@ import {
   Radio,
   Switch,
   Segmented,
+  Slider,
+  CopyButton,
 } from "./Form.js";
 import { Button } from "./Button.js";
 
@@ -107,6 +109,35 @@ export const SegmentedControl: StoryObj = {
           <Button variant="ghost">Cancel</Button>
           <Button variant="primary">Apply to {env}</Button>
         </div>
+      </div>
+    );
+  },
+};
+
+export const SlidersAndCopy: StoryObj = {
+  render: function Render() {
+    const [gain, setGain] = React.useState(72);
+    return (
+      <div className="flex flex-col gap-5 max-w-[480px]">
+        <Field label="Speaker gain · master bedroom">
+          <Slider
+            min={0}
+            max={100}
+            value={gain}
+            onChange={(e) => setGain(Number(e.target.value))}
+            valueLabel={`${gain}%`}
+          />
+        </Field>
+        <Field label="Session bearer token">
+          <div className="flex items-center gap-3">
+            <Input
+              readOnly
+              value="vtr_live_98f1a0c4e2b711d3a890"
+              className="mono"
+            />
+            <CopyButton value="vtr_live_98f1a0c4e2b711d3a890" />
+          </div>
+        </Field>
       </div>
     );
   },

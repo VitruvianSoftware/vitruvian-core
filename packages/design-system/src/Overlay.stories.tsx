@@ -21,10 +21,22 @@
  */
 import * as React from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Dialog, Banner } from "./Overlay.js";
+import {
+  Dialog,
+  Banner,
+  Menu,
+  MenuItem,
+  MenuDivider,
+  Toast,
+  Tooltip,
+  Popover,
+  CommandPalette,
+  Drawer,
+} from "./Overlay.js";
 import { Button } from "./Button.js";
 import { Field, Input } from "./Form.js";
 import { Plate } from "./Plate.js";
+import { Kbd } from "./Tag.js";
 
 const overlayMeta: Meta = {
   title: "Components/Overlay",
@@ -84,4 +96,108 @@ export const Banners: StoryObj = {
       </Banner>
     </div>
   ),
+};
+
+export const MenusAndToasts: StoryObj = {
+  render: function Render() {
+    const [popOpen, setPopOpen] = React.useState(false);
+    return (
+      <div className="grid grid-cols-2 gap-6 items-start">
+        <Menu style={{ maxWidth: 260 }}>
+          <MenuItem>
+            Inspect manifest <Kbd>⌘I</Kbd>
+          </MenuItem>
+          <MenuItem>
+            Copy workload ARN <Kbd>⌘C</Kbd>
+          </MenuItem>
+          <MenuDivider />
+          <MenuItem destructive>
+            Cordon &amp; drain node <Kbd>⌫</Kbd>
+          </MenuItem>
+        </Menu>
+        <div className="flex flex-col gap-4">
+          <Toast
+            tone="ok"
+            title="Promotion complete"
+            message="tabula-web@0.14.2 is serving 100% of production traffic."
+          />
+          <Toast
+            tone="warn"
+            title="Seal key rotation due"
+            message="k3s sealed-secrets master key reaches 30d threshold tomorrow."
+          />
+          <div className="flex items-center gap-4">
+            <Tooltip content="Force immediate GitOps reconciliation">
+              <Button size="sm">Hover for tooltip</Button>
+            </Tooltip>
+            <Popover
+              open={popOpen}
+              trigger={
+                <Button size="sm" onClick={() => setPopOpen((v) => !v)}>
+                  Toggle popover
+                </Button>
+              }
+            >
+              <div className="label mb-2">ACTIVE LEASE</div>
+              <div className="mono text-xs">holder: ridge-bot · ttl: 42s</div>
+            </Popover>
+          </div>
+        </div>
+      </div>
+    );
+  },
+};
+
+export const CommandPaletteAndDrawer: StoryObj = {
+  render: function Render() {
+    const [cmdOpen, setCmdOpen] = React.useState(false);
+    const [drawerOpen, setDrawerOpen] = React.useState(false);
+    const [query, setQuery] = React.useState("");
+    return (
+      <div className="flex gap-4">
+        <Button variant="primary" onClick={() => setCmdOpen(true)}>
+          Open Command Palette
+        </Button>
+        <Button onClick={() => setDrawerOpen(true)}>
+          Open Inspection Drawer
+        </Button>
+        <CommandPalette
+          open={cmdOpen}
+          query={query}
+          onQueryChange={setQuery}
+          onDismiss={() => setCmdOpen(false)}
+          items={[
+            {
+              id: "sync",
+              group: "CLUSTER",
+              label: "Sync ArgoCD applications",
+              shortcut: "⌘S",
+            },
+            {
+              id: "logs",
+              group: "CLUSTER",
+              label: "Tail workload logs",
+              shortcut: "⌘L",
+            },
+            {
+              id: "theme",
+              group: "VIEW",
+              label: "Toggle Board / Parchment ground",
+              shortcut: "⌘T",
+            },
+          ]}
+        />
+        <Drawer
+          open={drawerOpen}
+          kicker="SPAN · 0x9F24A"
+          title="envoy.ingress.tls_handshake"
+          onDismiss={() => setDrawerOpen(false)}
+        >
+          <p className="dim">
+            Upstream TLS termination completed in 4.2ms on control-plane-01.
+          </p>
+        </Drawer>
+      </div>
+    );
+  },
 };
