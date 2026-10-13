@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.12.0...home-speaker-v1.13.0) (2026-10-13)
+
+
+### Features
+
+* **home-speaker:** a tool for the Vitruvian app, beside the app ([#3211](https://github.com/VitruvianSoftware/vitruvian-core/issues/3211)) ([efc5d5d](https://github.com/VitruvianSoftware/vitruvian-core/commit/efc5d5dd02621dbff99236911aa1c294b648ce6f))
+
+
+### Bug Fixes
+
+* **ci:** the HomeSpeaker tool's manifest keeps the layout release-please writes ([#3217](https://github.com/VitruvianSoftware/vitruvian-core/issues/3217)) ([bccd6e8](https://github.com/VitruvianSoftware/vitruvian-core/commit/bccd6e897b7ca1de1bd8d30998711201aafa6cd4))
+
 ## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.11.0...home-speaker-v1.12.0) (2026-10-11)
 
 
