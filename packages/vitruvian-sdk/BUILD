@@ -67,14 +67,9 @@ js_library(
 # in a Bazel package of its own lists its generated files there.
 filegroup(
     name = "generated_kit_files",
-    srcs = glob(
-        [
-            "kits/python/vitruvian_tool_kit/generated/**",
-            "kits/typescript/src/generated/**",
-        ],
-        # Until the generator first runs, there is nothing to match.
-        allow_empty = True,
-    ),
+    srcs = glob(["kits/python/vitruvian_tool_kit/generated/**"]) + [
+        "//packages/vitruvian-sdk/kits/typescript:generated",
+    ],
     visibility = ["//tools/sdk-codegen:__pkg__"],
 )
 
