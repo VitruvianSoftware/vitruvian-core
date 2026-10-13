@@ -107,7 +107,10 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolProtocol",
     target_compatible_with = ["@platforms//os:macos"],
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    visibility = [
+        "//apps/desktop/vitruvian:__pkg__",
+        "//apps/desktop/vitruvian-tool-github:__pkg__",
+    ],
 )
 
 # What a tool is written with, in Swift: declare commands, handle them, call
@@ -119,6 +122,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolKit",
     target_compatible_with = ["@platforms//os:macos"],
+    visibility = ["//apps/desktop/vitruvian-tool-github:__pkg__"],
     deps = [":VitruvianToolProtocol"],
 )
 
@@ -180,7 +184,16 @@ swift_binary(
     module_name = "VitruvianToolCommandLine",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
+    # The GitHub tool's folder test runs `validate` on what it built.
+    visibility = ["//apps/desktop/vitruvian-tool-github:__pkg__"],
     deps = [":VitruvianToolCLI"],
+)
+
+# The GitHub tool's folder test runs the conformance script on what it built,
+# as the samples tests here do.
+exports_files(
+    ["conformance/conformance.py"],
+    visibility = ["//apps/desktop/vitruvian-tool-github:__pkg__"],
 )
 
 # macOS-only and `manual`, like every swift_test in the repository, so the

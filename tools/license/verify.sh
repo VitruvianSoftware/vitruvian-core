@@ -91,6 +91,9 @@ done < <(git ls-files '*.go' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.swift' |
   # apps/desktop/vitruvian is an imported GPL-3.0-or-later fork: its upstream
   # headers must be kept verbatim (GPL), so it is exempt like pulumi/ above.
   grep -vE '^apps/desktop/vitruvian/' |
+  # The GitHub tool carries code from that fork, so it is GPL-3.0-or-later too
+  # (apps/desktop/vitruvian-tool-github/LICENSE); its headers say so.
+  grep -vE '^apps/desktop/vitruvian-tool-github/' |
   # Nexus Agent's vendored copy of Mermaid: another holder's MIT file, shipped
   # unmodified (apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md).
   grep -vE '^apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/')

@@ -1,0 +1,47 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Machine-readable app metadata (#500): the single per-app source for
+# ownership and release model. Backstage-compatible Component; consumed by
+# tools/conformance (owner must match .github/CODEOWNERS). This file alone is
+# MIT: it is metadata, not the tool's code, which is GPL-3.0-or-later.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vitruvian-tool-github
+  description: The GitHub tool for the Vitruvian app (Swift, protocol 2) — a zip on a GitHub release of its mirror, listed in catalog/tools.json
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
+    vitruvian.dev/release-workflow: vitruvian-tool-github-release.yaml
+    vitruvian.dev/release-model: zip-github-releases catalog
+    vitruvian.dev/mirror: VitruvianSoftware/vitruvian-tool-github
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-tool-github
+      title: GitHub Mirror
+      icon: github
+    - url: https://github.com/VitruvianSoftware/vitruvian-tool-github/releases
+      title: Releases
+      icon: card_giftcard
+spec:
+  type: application
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian
