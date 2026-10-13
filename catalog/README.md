@@ -91,6 +91,25 @@ After the merge, the workflow **catalog-publish** signs `tools.json` and opens
 a pull request that writes the signed copy into the website. The app sees
 the change once that pull request merges and the site is deployed.
 
+## The signature
+
+The app trusts a list only when it is signed with VitruvianSoftware's key.
+The key is Ed25519. Its public half is in `public-key.txt` and, the same
+line, in the app as `CatalogueSigning.publicKey`; `//catalog:catalog_test`
+fails when the two differ. Its private half is the repository secret
+`CATALOG_SIGNING_KEY`: the 32 bytes of the key, in base64. Only the workflow
+**catalog-publish** reads it.
+
+What is signed is the exact bytes of `tools.json` at the commit on `main`.
+The website serves a byte copy of it at `/tools/catalog/tools.json` and the
+signature at `/tools/catalog/tools.json.sig`: the 64 bytes of the signature in
+base64, then a newline.
+
+A new key is a new line in `public-key.txt`, a new constant in a new release
+of the app, and a new secret. A release that has the old constant refuses
+every list the new key signs, so the old key keeps signing until that release
+is out; after that it signs nothing.
+
 ## Taking a tool off
 
 Delete its entry and set `generated`. Within a day of the signed copy being

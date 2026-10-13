@@ -26,9 +26,12 @@
 # after the folder and clash with the targets below.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_library", "py_test")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 
-exports_files(["tools.json"])
+exports_files([
+    "public-key.txt",
+    "tools.json",
+])
 
 py_library(
     name = "rules",
@@ -50,4 +53,37 @@ py_test(
         ":rules",
         "@pip//jsonschema",
     ],
+)
+
+py_library(
+    name = "signing",
+    srcs = ["signing.py"],
+    imports = ["."],
+    deps = ["@pip//cryptography"],
+)
+
+# CATALOG_SIGNING_KEY=<base64> bazel run //catalog:sign -- --out <folder>
+#
+# Run by .github/workflows/catalog-publish.yaml after a change to tools.json
+# merges. It refuses a key whose public half is not public-key.txt.
+py_binary(
+    name = "sign",
+    srcs = ["sign.py"],
+    data = [
+        "public-key.txt",
+        "tools.json",
+    ],
+    main = "sign.py",
+    deps = [":signing"],
+)
+
+py_test(
+    name = "signing_test",
+    size = "small",
+    srcs = ["signing_test.py"],
+    data = [
+        "public-key.txt",
+        "sign.py",
+    ],
+    deps = [":signing"],
 )
