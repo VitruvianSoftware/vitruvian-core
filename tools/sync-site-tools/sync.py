@@ -270,6 +270,16 @@ def example(base, language, title, folder, files, description, how):
     return page(front, body)
 
 
+def sources():
+    """Every file of the SDK a copy is made from, by its path in the SDK."""
+    found = ["docs/writing-a-tool.md", "protocol/README.md", "protocol/methods.json"]
+    for _language, _title, folder, files, *_ in EXAMPLES:
+        found += [f"{folder}/{name}" for name, _fence in files]
+    for _language, folder, _description in KIT_EXAMPLES:
+        found.append(f"{folder}/README.md")
+    return found
+
+
 def pages(base):
     """Every copy: its path in the site, and its text."""
     guide, _ = from_markdown(

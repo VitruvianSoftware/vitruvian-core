@@ -826,4 +826,9 @@ pipeline_unit(
     ],
     tier = "L1",
     timeout_minutes = 30,
+)  # What a release bumps. The site's sync test holds that it copies none of it.
+
+exports_files(
+    ["release-please-config.json"],
+    visibility = ["//tools/sync-site-tools:__pkg__"],
 )
