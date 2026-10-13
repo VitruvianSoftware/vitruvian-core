@@ -866,6 +866,16 @@ MUTATIONS = [
      "        agreeCatalog: \"Aus dem Vitruvian-Katalog: VitruvianSoftware hat dieses Werkzeug aufgenommen, und der Download ist genau der aufgeführte.\",\n",
      "        agreeCatalog: \"From the Vitruvian catalog: VitruvianSoftware listed this tool, and the download is exactly the one it listed.\",\n",
      "no text about tools from outside is left in English in de (agreeCatalog)"),
+    ("a list with a bad signature is accepted", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift",
+     "        return key.isValidSignature(signature, for: list)\n",
+     "        return key.isValidSignature(signature, for: list) || !signature.isEmpty\n",
+     "a list verifies only with its own bytes and the key that signed it"),
+    ("the catalog fetches over plain http", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueClient.swift",
+     "        if url.scheme == \"https\", url.host?.isEmpty == false { return true }\n",
+     "        if url.host?.isEmpty == false { return true }\n",
+     "the app reads the website's signed list, and fetches over https only"),
 ]
 
 

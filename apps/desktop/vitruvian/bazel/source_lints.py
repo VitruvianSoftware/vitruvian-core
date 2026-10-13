@@ -2547,6 +2547,70 @@ def consents_made(path, text):
     return found
 
 
+# Where the app's catalog of tools comes from. A release build reads the
+# website's signed list and nothing else; only a by-hand build may point it at a
+# rehearsal on this Mac, from main.swift, inside #if VITRUVIAN_SAMPLE_TOOL.
+_REHEARSES = re.compile(r"\bCatalogueSource\.(inUse\s*=[^=]|rehearsal\()")
+
+
+def catalog_rehearsals(path, text):
+    """Each line of `text` that points the catalog elsewhere, in code, outside
+    an `#if VITRUVIAN_SAMPLE_TOOL` block of main.swift."""
+    found = []
+    inside = False
+    for number, line in enumerate(text.split("\n"), start=1):
+        stripped = line.strip()
+        if stripped.startswith("#if"):
+            inside = stripped == "#if VITRUVIAN_SAMPLE_TOOL"
+        elif stripped.startswith("#endif"):
+            inside = False
+        _, code = code_and_blanked(line)
+        if _REHEARSES.search(code) and not (
+            inside and path == APP_PREFIX + "main.swift"
+        ):
+            found.append(f"{path}:{number}")
+    return found
+
+
+def only_a_by_hand_build_rehearses_the_catalog(repo):
+    """The catalog's list, and the key it is checked with, are the website's
+    and the app's own. Pointing them at a rehearsal is a line of main.swift that
+    only a --define=vitruvian_sample_tool=true build compiles."""
+    problems = []
+    main = APP_PREFIX + "main.swift"
+    sample = "\n".join(
+        [
+            "#if VITRUVIAN_SAMPLE_TOOL",
+            "CatalogueSource.inUse = rehearsal",
+            "#endif",
+            "CatalogueSource.inUse = rehearsal",
+            "if CatalogueSource.inUse == .production {}",
+            "// CatalogueSource.rehearsal(environment), in prose",
+            "let x = CatalogueSource.rehearsal(environment)",
+        ]
+    )
+    if catalog_rehearsals(main, sample) != [
+        f"{main}:4",
+        f"{main}:7",
+    ] or catalog_rehearsals("Sources/Vitruvian/Other.swift", sample) != [
+        "Sources/Vitruvian/Other.swift:2",
+        "Sources/Vitruvian/Other.swift:4",
+        "Sources/Vitruvian/Other.swift:7",
+    ]:
+        problems.append(
+            "the scan finds the catalog pointed elsewhere outside a by-hand build's block of main.swift, "
+            "and not a comparison or prose"
+        )
+    found = []
+    for path in repo.app_sources():
+        found.extend(catalog_rehearsals(path, repo.source(path)))
+    if found:
+        problems.append(
+            f"only a by-hand build points the catalog at a rehearsal: {found}"
+        )
+    return problems
+
+
 def only_the_agreement_sheet_consents(repo):
     """Adding a tool from outside takes a `ToolConsent`: that the person
     agreed to one offer. Only the sheet that asks the person may make one.
@@ -2828,6 +2892,7 @@ RULES = [
     migrated_tools_reach_services_through_the_broker,
     the_broker_names_no_tool,
     only_the_agreement_sheet_consents,
+    only_a_by_hand_build_rehearses_the_catalog,
     the_agreement_sheet_places_its_focus,
     a_tools_detail_places_its_focus,
     modification_log_is_whole,
