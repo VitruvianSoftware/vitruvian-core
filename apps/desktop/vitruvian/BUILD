@@ -817,6 +817,23 @@ py_test(
     main = "bazel/pin_nexus_agent_shared.py",
 )
 
+# make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
+# Held to the output a macOS runner printed when a failed create left an image
+# attached that the script could not find.
+sh_test(
+    name = "dmg_image_devices_test",
+    size = "small",
+    srcs = ["bazel/dmg_image_devices_test.sh"],
+    args = [
+        "$(rootpath Tools/dmg-image-devices.sh)",
+        "$(rootpath bazel/testdata/hdiutil-info-stale-image.txt)",
+    ],
+    data = [
+        "Tools/dmg-image-devices.sh",
+        "bazel/testdata/hdiutil-info-stale-image.txt",
+    ],
+)
+
 # Rules over how all of the code is written, not what one piece of it does: an
 # API that never appears, every SF Symbol and system tool named, the build
 # script's temp-dir sweep, and the rest (bazel/source_lints.py). They read the
@@ -830,6 +847,7 @@ py_test(
         package_name(),
     ],
     data = [
+        "Tools/dmg-image-devices.sh",
         "Tools/make-dmg.sh",
         "Tools/notarize.sh",
         "Tools/package-release.sh",

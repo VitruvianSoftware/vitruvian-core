@@ -1035,6 +1035,7 @@ RELEASE_SCRIPTS = (
     "publish.sh",
     "Tools/package-release.sh",
     "Tools/make-dmg.sh",
+    "Tools/dmg-image-devices.sh",
     "Tools/notarize.sh",
 )
 
@@ -1092,7 +1093,12 @@ def dmg_detach_accepts_a_mount_that_is_gone(repo):
     "Resource busy" and the volume then unmounts on its own. Every later detach
     fails with "No such file or directory". make-dmg.sh must treat a mount that
     is gone as detached, and not run a forced detach on it, or a release that
-    packaged fine dies at the last step."""
+    packaged fine dies at the last step.
+
+    A `hdiutil create` that fails with "Resource busy" can also leave its
+    half-made image attached with no mount point. Retrying into the same file
+    then makes the leftover look like the image being packaged, and no detach
+    by mount path or by the new attachment's device reaches it."""
     text = repo.read_text("Tools/make-dmg.sh")
     if not text:
         return ["Tools/make-dmg.sh is readable for the detach check"]
@@ -1108,9 +1114,15 @@ def dmg_detach_accepts_a_mount_that_is_gone(repo):
     convert = [x for x in text.split("\n") if "hdiutil convert" in x]
     if not convert or any("-quiet" in x for x in convert):
         problems.append("make-dmg.sh converts without -quiet so a failure says why")
-    if 'hdiutil detach "$DEVICE" -force' not in text:
+    if text.count('release_image "$RW"') < 2:
         problems.append(
-            "make-dmg.sh releases a still-attached image by its device node"
+            "make-dmg.sh releases a still-attached image by its device nodes,"
+            " after a failed create and before converting"
+        )
+    if 'RW="$WORK/rw-$attempt.dmg"' not in text:
+        problems.append(
+            "make-dmg.sh writes each create attempt to its own file, so a"
+            " failed attempt's leftover is never taken for the image packaged"
         )
     if "convert failed (attempt" not in text:
         problems.append("make-dmg.sh retries a failed convert")

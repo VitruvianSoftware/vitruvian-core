@@ -1,0 +1,126 @@
+framework       : 704
+driver          : 704
+images          : 6
+================================================
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/6dd55b0d06633a00de6f57ccb910a66a5ba2409a.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+image-alias     : /System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/6dd55b0d06633a00de6f57ccb910a66a5ba2409a.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg
+shadow-path     : <none>
+icon-path       : <none>
+image-type      : <unknown>
+system-image    : false
+blockcount      : 8192
+blocksize       : 512
+writeable       : false
+autodiskmount   : false
+removable       : TRUE
+image-encrypted : <false>
+mounting user   : root
+mounting mode   : <unknown>
+process ID      : <in-kernel>
+framework name  : DiskImages
+/dev/disk3		
+/dev/disk4	EF57347C-0000-11AA-AA11-00306543ECAC	
+/dev/disk4s1	41504653-0000-11AA-AA11-00306543ECAC	/System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/6dd55b0d06633a00de6f57ccb910a66a5ba2409a.asset/.AssetData
+================================================
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_xrOSSimulatorRuntime/870e651c5b56773428623ecc15e770d0886a390b.asset/AssetData/Restore/043-16907-552.dmg
+image-alias     : /System/Library/AssetsV2/com_apple_MobileAsset_xrOSSimulatorRuntime/870e651c5b56773428623ecc15e770d0886a390b.asset/AssetData/Restore/043-16907-552.dmg
+shadow-path     : <none>
+icon-path       : <none>
+image-type      : <unknown>
+system-image    : false
+blockcount      : 29651011
+blocksize       : 512
+writeable       : false
+autodiskmount   : false
+removable       : TRUE
+image-encrypted : <false>
+mounting user   : root
+mounting mode   : <unknown>
+process ID      : <in-kernel>
+framework name  : DiskImages
+/dev/disk5	GUID_partition_scheme	
+/dev/disk5s1	7C3457EF-0000-11AA-AA11-00306543ECAC	
+/dev/disk6	EF57347C-0000-11AA-AA11-00306543ECAC	
+/dev/disk6s1	41504653-0000-11AA-AA11-00306543ECAC	/private/var/run/com.apple.security.cryptexd/mnt/com.apple.XROS.SimulatorRuntime-v24.13.362.0.ibWvMI
+================================================
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_watchOSSimulatorRuntime/3f39f470a745ea5cc62fc1967054b0dcf8fb0875.asset/AssetData/Restore/043-15869-561.dmg
+image-alias     : /System/Library/AssetsV2/com_apple_MobileAsset_watchOSSimulatorRuntime/3f39f470a745ea5cc62fc1967054b0dcf8fb0875.asset/AssetData/Restore/043-15869-561.dmg
+shadow-path     : <none>
+icon-path       : <none>
+image-type      : <unknown>
+system-image    : false
+blockcount      : 18227267
+blocksize       : 512
+writeable       : false
+autodiskmount   : false
+removable       : TRUE
+image-encrypted : <false>
+mounting user   : root
+mounting mode   : <unknown>
+process ID      : <in-kernel>
+framework name  : DiskImages
+/dev/disk7	GUID_partition_scheme	
+/dev/disk7s1	7C3457EF-0000-11AA-AA11-00306543ECAC	
+/dev/disk8	EF57347C-0000-11AA-AA11-00306543ECAC	
+/dev/disk8s1	41504653-0000-11AA-AA11-00306543ECAC	/private/var/run/com.apple.security.cryptexd/mnt/com.apple.WatchOS.SimulatorRuntime-v24.18.362.0.OjW7Od
+================================================
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_appleTVOSSimulatorRuntime/f6a3a9321156c52c0d245f50953d9867b2b139ab.asset/AssetData/Restore/043-16887-522.dmg
+image-alias     : /System/Library/AssetsV2/com_apple_MobileAsset_appleTVOSSimulatorRuntime/f6a3a9321156c52c0d245f50953d9867b2b139ab.asset/AssetData/Restore/043-16887-522.dmg
+shadow-path     : <none>
+icon-path       : <none>
+image-type      : <unknown>
+system-image    : false
+blockcount      : 17416259
+blocksize       : 512
+writeable       : false
+autodiskmount   : false
+removable       : TRUE
+image-encrypted : <false>
+mounting user   : root
+mounting mode   : <unknown>
+process ID      : <in-kernel>
+framework name  : DiskImages
+/dev/disk9	GUID_partition_scheme	
+/dev/disk9s1	7C3457EF-0000-11AA-AA11-00306543ECAC	
+/dev/disk10	EF57347C-0000-11AA-AA11-00306543ECAC	
+/dev/disk10s1	41504653-0000-11AA-AA11-00306543ECAC	/private/var/run/com.apple.security.cryptexd/mnt/com.apple.AppleTVOS.SimulatorRuntime-v24.10.360.0.1gERxf
+================================================
+image-path      : /System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/3e800c38767f9f2c5fc86acdad7adf44565e051a.asset/AssetData/Restore/043-70362-657.dmg
+image-alias     : /System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime/3e800c38767f9f2c5fc86acdad7adf44565e051a.asset/AssetData/Restore/043-70362-657.dmg
+shadow-path     : <none>
+icon-path       : <none>
+image-type      : <unknown>
+system-image    : false
+blockcount      : 36249667
+blocksize       : 512
+writeable       : false
+autodiskmount   : false
+removable       : TRUE
+image-encrypted : <false>
+mounting user   : root
+mounting mode   : <unknown>
+process ID      : <in-kernel>
+framework name  : DiskImages
+/dev/disk11	GUID_partition_scheme	
+/dev/disk11s1	7C3457EF-0000-11AA-AA11-00306543ECAC	
+/dev/disk12	EF57347C-0000-11AA-AA11-00306543ECAC	
+/dev/disk12s1	41504653-0000-11AA-AA11-00306543ECAC	/private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.1.434.0.Ipm1EZ
+================================================
+image-path      : /var/folders/5n/5t77mfb93jd7q8v9s6f0dn0m0000gn/T/tmp.CoP6rzGdbe/rw.dmg
+image-alias     : /private/var/folders/5n/5t77mfb93jd7q8v9s6f0dn0m0000gn/T/tmp.CoP6rzGdbe/rw.dmg
+shadow-path     : <none>
+icon-path       : /System/Library/PrivateFrameworks/DiskImages.framework/Resources/CDiskImage.icns
+image-type      : read/write
+system-image    : TRUE
+blockcount      : 728752
+blocksize       : 512
+writeable       : TRUE
+autodiskmount   : false
+removable       : TRUE
+image-encrypted : false
+mounting user   : runner
+mounting mode   : <unknown>
+process ID      : 24946
+framework name  : DiskImages
+/dev/disk13	GUID_partition_scheme	
+/dev/disk13s1	48465300-0000-11AA-AA11-00306543ECAC	
