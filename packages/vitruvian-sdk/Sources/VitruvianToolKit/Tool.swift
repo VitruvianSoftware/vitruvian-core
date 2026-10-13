@@ -76,6 +76,8 @@ public final class Tool {
                                              isDirectory: true)
 
     private var handlers: [String: Handler] = [:]
+    /// The tool's panels, by id, as `panel(_:onOpen:onEvent:)` made them.
+    var panels: [String: Panel] = [:]
     /// Held so that the two ends stay open for as long as the tool lives:
     /// a file handle closes its descriptor when it is let go.
     private let ends: [FileHandle]
@@ -127,6 +129,8 @@ public final class Tool {
             switch ToolMethod(rawValue: method) {
             case .initialize?: greet(id, params)
             case .commandRun?: runCommand(id, params)
+            case .uiOpen?: openPanel(id, params)
+            case .uiEvent?: panelEvent(id, params)
             default: refuse(id, RPCErrorCode.methodNotFound, "method not found")
             }
         case .notice(let method, let params):
@@ -142,6 +146,8 @@ public final class Tool {
                     language = changed.language
                     onLanguageChanged?(App(tool: self))
                 }
+            case .uiClose?:
+                if let closed = try? params?.decode(UICloseParams.self) { panels[closed.panel]?.isOpen = false }
             default:
                 break
             }
@@ -168,7 +174,7 @@ public final class Tool {
         onStart?(App(tool: self))
     }
 
-    private func runCommand(_ id: RPCID, _ params: JSONValue?) {
+    func runCommand(_ id: RPCID, _ params: JSONValue?) {
         guard greeted else { return refuse(id, RPCErrorCode.invalidRequest, "initialize comes first") }
         guard let asked = try? params?.decode(CommandRunParams.self) else {
             return refuse(id, RPCErrorCode.invalidParams, "invalid params")
@@ -191,21 +197,21 @@ public final class Tool {
         }
     }
 
-    private func answer<Value: Encodable>(_ id: RPCID, _ value: Value) {
+    func answer<Value: Encodable>(_ id: RPCID, _ value: Value) {
         guard let result = try? JSONValue(encoding: value) else {
             return refuse(id, RPCErrorCode.internalError, "the answer could not be written")
         }
         wire.send(.result(id: id, value: result))
     }
 
-    private func refuse(_ id: RPCID, _ code: Int, _ message: String, data: JSONValue? = nil) {
+    func refuse(_ id: RPCID, _ code: Int, _ message: String, data: JSONValue? = nil) {
         wire.send(.failure(id: id, error: RPCErrorObject(code: code, message: message, data: data)))
     }
 
     // MARK: - What `App` is made of
 
     /// Sends a request and reads the link until its answer has come.
-    fileprivate func call(_ method: ToolMethod, _ params: JSONValue) throws -> JSONValue {
+    func call(_ method: ToolMethod, _ params: JSONValue) throws -> JSONValue {
         guard greeted, !stopping else { throw AppUnreachable.linkClosed }
         lastID += 1
         let id = RPCID.number(lastID)
@@ -234,9 +240,12 @@ public final class Tool {
         }
     }
 
-    fileprivate func note(_ method: ToolMethod, _ params: JSONValue) {
-        guard greeted, !stopping else { return }
-        wire.send(.notice(method: method.rawValue, params: params))
+    /// Sends a notice. False when it could not be sent: the tool has not
+    /// been greeted, or the link has closed.
+    @discardableResult
+    func note(_ method: ToolMethod, _ params: JSONValue) -> Bool {
+        guard greeted, !stopping else { return false }
+        return wire.send(.notice(method: method.rawValue, params: params))
     }
 }
 
@@ -250,7 +259,7 @@ public final class Tool {
 /// permission the app has. These are for what is better done through the
 /// app.
 public struct App {
-    fileprivate let tool: Tool
+    let tool: Tool
 
     public var language: String { tool.language }
     public var dataFolder: URL { tool.dataFolder }

@@ -59,11 +59,17 @@ let package = Package(
             dependencies: ["VitruvianToolCLI"],
             path: "Sources/vitruvian-tool"
         ),
-        // The two samples written in Swift. Their manifests are beside them.
+        // The samples written in Swift. Their manifests are beside them.
         .executableTarget(
             name: "HelloSwiftSample",
             dependencies: ["VitruvianToolKit"],
             path: "samples/hello-swift",
+            exclude: ["vitruvian-tool.json"]
+        ),
+        .executableTarget(
+            name: "HelloPanelSwiftSample",
+            dependencies: ["VitruvianToolKit"],
+            path: "samples/hello-panel-swift",
             exclude: ["vitruvian-tool.json"]
         ),
         .executableTarget(

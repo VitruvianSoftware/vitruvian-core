@@ -241,7 +241,7 @@ py_test(
 )
 
 # --- The samples ---------------------------------------------------------------
-# Three tools a person can add to the app. Each is a folder with a manifest
+# Four tools a person can add to the app. Each is a folder with a manifest
 # and a program. The Python one is that folder as it stands in samples/. A
 # Swift one is put together by Bazel, because its program has to be built:
 #
@@ -254,6 +254,7 @@ py_test(
 # program is compiled as.
 SWIFT_SAMPLES = {
     "front-window": "FrontWindowSample",
+    "hello-panel-swift": "HelloPanelSwiftSample",
     "hello-swift": "HelloSwiftSample",
 }
 
@@ -312,7 +313,7 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
-# The two Swift samples, built, against the conformance script. It starts
+# The Swift samples, built, against the conformance script. It starts
 # real processes. `manual` and macOS-only: the pipeline unit names it.
 py_test(
     name = "swift_samples_test",

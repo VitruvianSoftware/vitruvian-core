@@ -53,7 +53,7 @@ for line in sys.stdin:
             send({"jsonrpc": "2.0", "method": "log", "params": {"message": "starting"}})
         if how == "not json":
             sys.stdout.write("starting up\\n")
-        version = "2" if how == "wrong version" else "1"
+        version = "3" if how == "wrong version" else "1"
         send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": version, "toolVersion": "0"}})
         if how == "states badly":
             send({"jsonrpc": "2.0", "method": "commands/state", "params": {"runnable": "hello"}})
@@ -95,6 +95,50 @@ if how == "will not exit":
     time.sleep(30)
 """
 
+# A tool of protocol 2 with one panel, which goes wrong in the way
+# BROKEN_HOW names, or draws well when it is "draws well".
+BROKEN_PANEL_TOOL = """
+import json, os, sys
+how = os.environ["BROKEN_HOW"]
+count = 0
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\\n")
+    sys.stdout.flush()
+def page():
+    return {"blocks": [{"type": "text", "text": "Pressed %d times" % count},
+                       {"type": "button", "id": "add", "title": "Add one"}]}
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "2", "toolVersion": "0"}})
+    elif method == "command/run":
+        if message["params"]["command"] == "hello":
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+        else:
+            send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
+    elif method == "ui/open":
+        if how == "renders an unknown panel":
+            send({"jsonrpc": "2.0", "method": "ui/render", "params": {"panel": "nowhere", "tree": page()}})
+        if how == "opens with no page":
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+        else:
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {"tree": page()}})
+    elif method == "ui/event":
+        if how != "answers a tap with the same page":
+            count += 1
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"tree": page()}})
+    elif method == "shutdown":
+        sys.exit(0)
+"""
+
+# How a tool that draws goes wrong, and the line the script must print.
+BROKEN_PANEL = {
+    "renders an unknown panel": "NOT OK   a panel: ui/render for a panel the manifest does not declare: nowhere",
+    "opens with no page": "NOT OK   a panel: ui/open was not answered with a page",
+    "answers a tap with the same page": "NOT OK   a panel: a tap on add was answered with the same page",
+}
+
 # What a tool that never stops writing leaves behind. It writes for longer
 # than the script reads a tool's last words, and no longer.
 LEFT_BEHIND = """
@@ -117,7 +161,7 @@ SLOWEST_SECONDS = 15
 BROKEN = {
     "speaks first": "NOT OK   handshake: something other than the answer to initialize came first",
     "not json": "NOT OK   handshake: a line that is not JSON",
-    "wrong version": "NOT OK   handshake: the tool did not pick version 1",
+    "wrong version": "NOT OK   handshake: the tool picked a version that was not offered",
     "never answers": "NOT OK   a command: no answer within 2 seconds",
     "answers another": "NOT OK   a command: an answer to a request that was not waiting",
     "asks badly": "NOT OK   a command: notify/hud with params that are not its own",
@@ -218,6 +262,44 @@ def never_stops_writing(folder):
     return problems
 
 
+def panels(manifest):
+    """A tool of protocol 2 that draws well passes the panel check, and one
+    that goes wrong in each way is caught by it."""
+    problems = []
+    manifest = dict(manifest)
+    manifest["protocol"] = "2"
+    manifest["runtime"] = {"kind": "external", "exec": "panel.py"}
+    manifest["contributes"] = dict(manifest["contributes"])
+    manifest["contributes"]["panels"] = [
+        {"id": "counter", "title": {"en": "Counter"}, "placement": "island"}
+    ]
+    with tempfile.TemporaryDirectory() as folder:
+        with open(
+            os.path.join(folder, "vitruvian-tool.json"), "w", encoding="utf-8"
+        ) as handle:
+            json.dump(manifest, handle)
+        with open(os.path.join(folder, "panel.py"), "w", encoding="utf-8") as handle:
+            handle.write(BROKEN_PANEL_TOOL)
+        os.environ["BROKEN_HOW"] = "draws well"
+        status, printed = check(folder)
+        wanted = "ok       a panel: counter: a page of 2 blocks, and a new page after a tap on add"
+        if (
+            status != 0
+            or wanted not in printed
+            or "ok       handshake: version 2" not in printed
+        ):
+            problems.append(f"a tool that draws well does not pass:\n{printed}")
+        for how, line in BROKEN_PANEL.items():
+            os.environ["BROKEN_HOW"] = how
+            status, printed = check(folder)
+            failed = [
+                text for text in printed.splitlines() if text.startswith("NOT OK")
+            ]
+            if status != 1 or len(failed) != 1 or not failed[0].startswith(line):
+                problems.append(f"a tool that {how} is not caught:\n{printed}")
+    return problems
+
+
 def main():
     problems = []
 
@@ -274,6 +356,7 @@ def main():
                 f"a tool that says a last good word does not pass:\n{printed}"
             )
         problems += never_stops_writing(folder)
+    problems += panels(manifest)
     problems += a_line_always_waiting()
 
     for problem in problems:

@@ -56,12 +56,12 @@ jobs:
       - name: Build everything, and the tests
         run: swift build --build-tests
 
-      # The two Swift samples as tool folders: the manifest and bin/tool.
+      # The Swift samples as tool folders: the manifest and bin/tool.
       # RunTests and the conformance run below need them built.
       - name: Make the sample folders
         run: |
           bin="$(swift build --show-bin-path)"
-          for sample in hello-swift:HelloSwiftSample front-window:FrontWindowSample; do
+          for sample in hello-swift:HelloSwiftSample hello-panel-swift:HelloPanelSwiftSample front-window:FrontWindowSample; do
             folder="$RUNNER_TEMP/built/${sample%%:*}"
             mkdir -p "$folder/bin"
             cp "samples/${sample%%:*}/vitruvian-tool.json" "$folder/"
@@ -81,6 +81,7 @@ jobs:
           "$RUNNER_TEMP/venv/bin/pip" install --quiet jsonschema==4.26.0
           "$RUNNER_TEMP/venv/bin/python" samples/samples_test.py \
             "$RUNNER_TEMP/built/hello-swift/vitruvian-tool.json" \
+            "$RUNNER_TEMP/built/hello-panel-swift/vitruvian-tool.json" \
             "$RUNNER_TEMP/built/front-window/vitruvian-tool.json"
 
   python:
