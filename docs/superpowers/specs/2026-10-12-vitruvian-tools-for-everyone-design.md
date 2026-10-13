@@ -558,7 +558,7 @@ the dependency order; James approves each plan before it is built.
 | Stage | Builds | Visible to | Cuts |
 |---|---|---|---|
 | **A. Publish** | **Built.** The mirror and its CI; release-please for `vitruvian-sdk`; the mirror's `release.yml` with the universal binary, the formula and the Swift tag; `--version`; `init --template swift` against the published package; `CONTRIBUTING.md`; the `/tools/` section with the guide, the protocol reference and the Swift and Python examples; the first release, `0.9.0`. | A tool's author | SDK 0.9.0; no app release |
-| **B. Kits** | **Built, part one** (B1, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b1.md`): the generator, the TypeScript and Python kits, their samples, `init` for both, publishing to npm and PyPI. `tools/sdk-codegen`; the TypeScript, Python, Go and Rust kits, samples, conformance in CI, registry publishing; `init` templates for each; the examples pages. Two plans if it reads better: B1 TypeScript and Python (registries exist), B2 Go and Rust. | A tool's author | SDK 0.10.0 |
+| **B. Kits** | **Built.** Part one (B1, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b1.md`): the generator, the TypeScript and Python kits, their samples, `init` for both, publishing to npm and PyPI. Part two (B2, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b2.md`): the Go and Rust kits, their samples, `init` for both, publishing to crates.io; the Go kit by the `go/vX.Y.Z` tag. `tools/sdk-codegen`; the TypeScript, Python, Go and Rust kits, samples, conformance in CI, registry publishing; `init` templates for each; the examples pages. Two plans if it reads better: B1 TypeScript and Python (registries exist), B2 Go and Rust. | A tool's author | SDK 0.10.0 |
 | **C. Catalogue** | **Built.** `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
 | **D. Protocol 2** | Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
 | **E. The GitHub tool** | The tool in its own repository, its catalogue entry, the migration, then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
@@ -583,6 +583,41 @@ above, in one line each:
   `/tools/examples/<language>/`, as the site's other pages are, and the
   copies are Markdown with front matter, which Jekyll renders. There is no
   catalogue page yet.
+
+**Stage B2, as built (2026-10-13).** The plan is
+`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b2.md`;
+its table of decisions lists each choice. Each row marked met was shown by a
+command run on a MacBook Pro (Mac16,5, Apple silicon) with macOS 27.0,
+Xcode 27.0 and Swift 6.4, Bazel 9.3.0.
+
+| What stage B2 was to deliver | What shows it |
+|---|---|
+| The Go kit, with the Swift kit's tests ported | Met: `//packages/vitruvian-sdk/go/toolkit:toolkit_test`, 18 tests (14 of the loop, 4 of the generated types), green, also under `--config=race`. |
+| The Rust kit, with the same tests | Met: `//packages/vitruvian-sdk/kits/rust:tool_test` (14) and `:protocol_test` (3), green. |
+| The generated types, held to the schemas | Met: `//tools/sdk-codegen:in_sync_test`, green. |
+| The samples through the conformance script on Linux and macOS | Met on macOS: `go_sample_test` and `rust_sample_test`, green. Not yet on Linux: no pull request was open when this was written, so the `build-test` and `vitruvian-sdk` jobs have not run them; the pull request's runs are that proof. |
+| `init --template go` and `--template rust` | Met: `go_template_test` and `VitruvianToolCLITests`, green; the Rust template built by hand with `--sdk` on this Mac (cargo 1.92), and `build.sh`, `validate`, `run` and the conformance script all passed. |
+| The guide's Go and Rust sections | Met: `guide_test`, green; the code is the samples' and the table of calls is the kits'. |
+| crates.io publishing | Not yet: the first publish is by hand (section 12), then `crates-publish` in the mirror's `release.yml` publishes the next release. |
+| `go get` and `cargo add` on a clean machine | Not yet: after the first release that carries the kits. |
+
+Where B2 differs from the sections above, in one line each:
+
+- The Go kit is at `go/` of the package, module
+  `github.com/VitruvianSoftware/vitruvian-sdk/go`, not `kits/go` (section
+  5.3): Go requires a module in the folder its path names, and the mirror's
+  root is the package.
+- The Go kit's `go.mod` says `go 1.22`, a registered version pin: the oldest
+  Go an author may use, held by `go_kit_vet_test`.
+- Both kits read standard input on one extra goroutine or thread, not one
+  thread: neither standard library can wait on standard input with a
+  deadline. Handlers still run one at a time, on the caller's thread.
+- Thirteen tests were ported, not twelve: `ToolTests.swift` has thirteen.
+  Each kit adds one for a closed link, and its generated-types tests.
+- The Go tool `init` writes is a module named after the tool's id: the go
+  command reserves the name `tool`.
+- The first crates.io publish is by hand: a trusted publisher is added on a
+  crate's settings page, so the crate must exist first.
 
 **Stage C, as built.** The plan is
 `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-c.md`,

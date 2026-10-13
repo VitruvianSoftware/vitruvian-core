@@ -52,6 +52,14 @@ KIT_PLACES = [
         "$.dependencies['@vitruviansoftware/tool-kit']",
     ),
     ("generic", "samples/hello-python-kit/requirements.txt", None),
+    ("generic", "go/toolkit/version.go", None),
+    ("toml", "kits/rust/Cargo.toml", "$.package.version"),
+    ("generic", "samples/hello-go/go.mod", None),
+    (
+        "toml",
+        "samples/hello-rust/Cargo.toml",
+        "$.dependencies['vitruvian-tool-kit'].version",
+    ),
 ]
 
 

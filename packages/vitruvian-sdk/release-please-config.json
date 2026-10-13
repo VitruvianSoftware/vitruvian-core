@@ -33,6 +33,24 @@
         {
           "type": "generic",
           "path": "samples/hello-python-kit/requirements.txt"
+        },
+        {
+          "type": "generic",
+          "path": "go/toolkit/version.go"
+        },
+        {
+          "type": "toml",
+          "path": "kits/rust/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "generic",
+          "path": "samples/hello-go/go.mod"
+        },
+        {
+          "type": "toml",
+          "path": "samples/hello-rust/Cargo.toml",
+          "jsonpath": "$.dependencies['vitruvian-tool-kit'].version"
         }
       ]
     }

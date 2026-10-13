@@ -497,3 +497,68 @@ jobs:
       - name: Publish
         working-directory: kits/python
         run: uv publish --trusted-publishing always
+
+  # --- Stage B2: the Rust kit to crates.io --------------------------------
+  # The version is Cargo.toml's, which release-please moves with the SDK's.
+  # Asked of crates.io itself, so a run that publishes nothing new does
+  # nothing, and a run that failed half way is finished by the next one.
+  crates-detect:
+    name: Detect an unpublished Rust kit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: detect
+        run: |
+          V="$(sed -n 's/^version = "\(.*\)"$/\1/p' kits/rust/Cargo.toml | head -1)"
+          if [ -z "$V" ]; then
+            echo "::error::could not read the version from kits/rust/Cargo.toml"
+            exit 1
+          fi
+          # crates.io refuses a request with no User-Agent.
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -A 'VitruvianSoftware/vitruvian-sdk release (github.com/VitruvianSoftware/vitruvian-sdk)' \
+            "https://crates.io/api/v1/crates/vitruvian-tool-kit/${V}")"
+          case "$CODE" in
+            200) echo "vitruvian-tool-kit ${V} is already on crates.io -- nothing to do." ;;
+            404)
+              echo "version=${V}" >> "$GITHUB_OUTPUT"
+              echo "Detected UNPUBLISHED vitruvian-tool-kit ${V}."
+              ;;
+            *)
+              echo "::error::crates.io returned HTTP ${CODE} for vitruvian-tool-kit ${V}; refusing to guess."
+              exit 1
+              ;;
+          esac
+
+  crates-publish:
+    name: Publish the Rust kit to crates.io
+    needs: crates-detect
+    if: needs.crates-detect.outputs.version
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Must match the environment named in the crates.io trusted publisher.
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/vitruvian-tool-kit/${{ needs.crates-detect.outputs.version }}
+    permissions:
+      contents: read
+      # OIDC for crates.io trusted publishing: the runner's identity is
+      # exchanged for an upload token that lasts for this job only.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exchange the runner's identity for a crates.io token
+        id: auth
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+      - name: Publish
+        working-directory: kits/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish

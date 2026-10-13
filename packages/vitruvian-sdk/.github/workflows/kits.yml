@@ -1,0 +1,130 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# The kits, in the public mirror VitruvianSoftware/vitruvian-sdk, where this
+# file runs; it never runs in the monorepo. The monorepo builds and tests the
+# same code with Bazel; this is the check that each kit also builds the way an
+# author builds it: Go and Rust with `go` and `cargo`, on the oldest Go and
+# Rust the kits promise and on the newest; TypeScript with `npm`; Python with
+# the runner's `python3`.
+name: kits
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go (${{ matrix.go }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22", "stable"]
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Vet and test the kit
+        working-directory: go
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+      - name: The Go sample through the conformance script
+        run: |
+          mkdir -p "$RUNNER_TEMP/hello-go/bin"
+          (cd samples/hello-go && go build -o "$RUNNER_TEMP/hello-go/bin/tool" .)
+          cp samples/hello-go/vitruvian-tool.json "$RUNNER_TEMP/hello-go/"
+          python3 conformance/conformance.py "$RUNNER_TEMP/hello-go" --expect-refusal
+
+  rust:
+    name: rust (${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ["1.75", "stable"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust ${{ matrix.rust }}
+        env:
+          RUST: ${{ matrix.rust }}
+        run: |
+          rustup toolchain install "$RUST" --profile minimal --component rustfmt
+          rustup default "$RUST"
+      - name: Test the kit
+        working-directory: kits/rust
+        run: |
+          cargo fmt --check
+          cargo test
+      - name: The Rust sample through the conformance script
+        run: |
+          (cd samples/hello-rust && cargo build --release)
+          mkdir -p "$RUNNER_TEMP/hello-rust/bin"
+          cp samples/hello-rust/target/release/tool "$RUNNER_TEMP/hello-rust/bin/tool"
+          cp samples/hello-rust/vitruvian-tool.json "$RUNNER_TEMP/hello-rust/"
+          python3 conformance/conformance.py "$RUNNER_TEMP/hello-rust" --expect-refusal
+
+  typescript:
+    name: typescript
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # No lockfile is exported for the kit: it has no dependencies, and its
+      # development ones resolve from package.json.
+      - name: Build and test the kit
+        working-directory: kits/typescript
+        run: |
+          npm install --no-package-lock
+          npm run build
+          npm test
+
+  python-kit:
+    name: python-kit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the kit
+        working-directory: kits/python
+        run: python3 -m unittest discover -s tests

@@ -35,6 +35,9 @@
 # gazelle:exclude protocol
 # gazelle:exclude samples
 #
+# The Go kit, go/, is the one folder Gazelle writes: go/BUILD names its
+# module. The Rust kit, kits/rust, has a hand-written BUILD of its own.
+#
 # MUST MIRROR Package.swift target for target (packages/peripherals/BUILD says
 # why). The Swift targets are constrained to macOS so a Linux
 # `bazel build //...` skips them.
@@ -45,6 +48,8 @@ load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_go//go:def.bzl", "go_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/pytest:defs.bzl", pytest_test = "py_test")
 
@@ -60,7 +65,7 @@ js_library(
     name = "protocol_files",
     srcs = PROTOCOL_FILES,
     visibility = [
-        "//packages/vitruvian-sdk/kits/typescript:__pkg__",
+        "//packages/vitruvian-sdk:__subpackages__",
         "//tools/sdk-codegen:__pkg__",
     ],
 )
@@ -70,6 +75,8 @@ js_library(
 filegroup(
     name = "generated_kit_files",
     srcs = glob(["kits/python/vitruvian_tool_kit/generated/**"]) + [
+        "//packages/vitruvian-sdk/go/toolkit:protocol_gen.go",
+        "//packages/vitruvian-sdk/kits/rust:src/generated/mod.rs",
         "//packages/vitruvian-sdk/kits/typescript:generated",
     ],
     visibility = ["//tools/sdk-codegen:__pkg__"],
@@ -131,9 +138,14 @@ filegroup(
         "docs/writing-a-tool.md",
         "protocol/README.md",
         "protocol/methods.json",
+        "samples/hello-go/main.go",
+        "samples/hello-go/vitruvian-tool.json",
         "samples/hello-python-kit/README.md",
         "samples/hello-python/bin/tool.py",
         "samples/hello-python/vitruvian-tool.json",
+        "samples/hello-rust/Cargo.toml",
+        "samples/hello-rust/src/main.rs",
+        "samples/hello-rust/vitruvian-tool.json",
         "samples/hello-swift/main.swift",
         "samples/hello-swift/vitruvian-tool.json",
         "samples/hello-typescript/README.md",
@@ -326,6 +338,75 @@ filegroup(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# The samples written in Go and in Rust, built with the hermetic toolchains,
+# so not tied to macOS: the Linux lane builds them and puts them through
+# the conformance script too.
+go_binary(
+    name = "hello-go",
+    srcs = ["samples/hello-go/main.go"],
+    deps = ["//packages/vitruvian-sdk/go/toolkit"],
+)
+
+rust_binary(
+    name = "hello-rust",
+    srcs = ["samples/hello-rust/src/main.rs"],
+    edition = "2021",
+    deps = ["//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit"],
+)
+
+NATIVE_SAMPLES = [
+    "hello-go",
+    "hello-rust",
+]
+
+[
+    genrule(
+        name = sample + "-folder",
+        srcs = [
+            "samples/%s/vitruvian-tool.json" % sample,
+            ":" + sample,
+        ],
+        outs = [
+            "built/%s/vitruvian-tool.json" % sample,
+            "built/%s/bin/tool" % sample,
+        ],
+        cmd = "cp $(location samples/%s/vitruvian-tool.json) $(RULEDIR)/built/%s/vitruvian-tool.json && cp $(location :%s) $(RULEDIR)/built/%s/bin/tool" % (sample, sample, sample, sample),
+    )
+    for sample in NATIVE_SAMPLES
+]
+
+#   bazel build //packages/vitruvian-sdk:native-sample-folders
+#
+# leaves bazel-bin/packages/vitruvian-sdk/built/hello-go and hello-rust, each
+# with its manifest and bin/tool, on any Mac or Linux machine.
+filegroup(
+    name = "native-sample-folders",
+    srcs = [":%s-folder" % sample for sample in NATIVE_SAMPLES],
+)
+
+# Each built sample against the conformance script. They start real
+# processes, a second or two each. Not `manual` and not tied to macOS: a
+# py_test brings Bazel's own Python and the script, and the sample's
+# folder is its data, so nothing outside Bazel is needed.
+[
+    py_test(
+        name = sample.replace("hello-", "") + "_sample_test",
+        size = "small",
+        srcs = [
+            "conformance/conformance.py",
+            "samples/samples_test.py",
+        ],
+        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample],
+        data = [
+            ":%s-folder" % sample,
+            "built/%s/vitruvian-tool.json" % sample,
+        ],
+        main = "samples/samples_test.py",
+        deps = ["@pip//jsonschema"],
+    )
+    for sample in NATIVE_SAMPLES
+]
+
 # What needs no build: every sample's manifest against the schema, one SDK
 # version across the kits, the kit samples and the command, and the plain
 # Python sample against the conformance script. Not `manual` and not tied to
@@ -343,6 +424,8 @@ py_test(
     ]) + [
         "kits/python/pyproject.toml",
         "protocol/manifest.schema.json",
+        "//packages/vitruvian-sdk/go/toolkit:version.go",
+        "//packages/vitruvian-sdk/kits/rust:Cargo.toml",
         "//packages/vitruvian-sdk/kits/typescript:package.json",
     ],
     main = "samples/samples_test.py",
@@ -377,6 +460,7 @@ py_test(
     srcs = ["mirror_workflows_test.py"],
     data = [
         ".github/workflows/ci.yml",
+        ".github/workflows/kits.yml",
         ".github/workflows/release.yml",
     ],
     main = "mirror_workflows_test.py",
@@ -563,6 +647,57 @@ py_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# The Go kit as its own module, outside the workspace, through `go vet` with
+# Bazel's Go: vet holds it to the Go its go.mod names, 1.22, which the
+# build above does not. No network. Not `manual` and not tied to macOS.
+GO_KIT = [
+    "//packages/vitruvian-sdk/go:go.mod",
+    "//packages/vitruvian-sdk/go/toolkit:sources",
+]
+
+py_test(
+    name = "go_kit_vet_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/go_template_test.py",
+    ],
+    args = [
+        "$(rootpath //tools/go-sdk:go)",
+        "$(rootpaths %s)" % GO_KIT[0],
+        "$(rootpaths %s)" % GO_KIT[1],
+    ],
+    data = GO_KIT + ["//tools/go-sdk:go"],
+    main = "samples/go_template_test.py",
+)
+
+# The same, then the tool `init --template go --sdk` writes, built by its
+# own build.sh with Bazel's Go first on the PATH, through `validate`, the
+# conformance script and `run`. It starts the built command, so `manual`
+# and macOS-only, like init_test.
+py_test(
+    name = "go_template_test",
+    size = "medium",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/go_template_test.py",
+    ],
+    args = [
+        "$(rootpath //tools/go-sdk:go)",
+        "$(rootpaths %s)" % GO_KIT[0],
+        "$(rootpaths %s)" % GO_KIT[1],
+        "--tool",
+        "$(rootpath :vitruvian-tool)",
+    ],
+    data = GO_KIT + [
+        ":vitruvian-tool",
+        "//tools/go-sdk:go",
+    ],
+    main = "samples/go_template_test.py",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 # The guide's examples: every message and manifest in it against the schemas,
 # every piece of code in it against the sample it is taken from, every
 # command in it against what exists, and what it quotes the command as saying
@@ -577,6 +712,8 @@ py_test(
         "Sources/VitruvianToolCLI/Words.swift",
         "Sources/VitruvianToolKit/Tool.swift",
         "docs/writing-a-tool.md",
+        "//packages/vitruvian-sdk/go/toolkit:app.go",
+        "//packages/vitruvian-sdk/kits/rust:src/app.rs",
     ],
     main = "docs/guide_test.py",
     deps = ["@pip//jsonschema"],
@@ -593,8 +730,12 @@ py_test(
         "Sources/VitruvianToolCLI/Words.swift",
         "kits/python/pyproject.toml",
         "release-please-config.json",
+        "samples/hello-go/go.mod",
         "samples/hello-python-kit/requirements.txt",
+        "samples/hello-rust/Cargo.toml",
         "samples/hello-typescript/package.json",
+        "//packages/vitruvian-sdk/go/toolkit:version.go",
+        "//packages/vitruvian-sdk/kits/rust:Cargo.toml",
         "//packages/vitruvian-sdk/kits/typescript:package.json",
     ],
     main = "release_version_test.py",
@@ -605,6 +746,9 @@ pipeline_unit(
     persona = "platform",
     runner = "xcode-27",
     test_targets = [
+        "//packages/vitruvian-sdk/go/toolkit:toolkit_test",
+        "//packages/vitruvian-sdk/kits/rust:protocol_test",
+        "//packages/vitruvian-sdk/kits/rust:tool_test",
         "//packages/vitruvian-sdk/kits/typescript:kit_test",
         "//tools/sdk-codegen:in_sync_test",
         "//tools/sdk-codegen:sdk_codegen_test",
@@ -612,6 +756,9 @@ pipeline_unit(
         ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
         ":conformance_test",
+        ":go_kit_vet_test",
+        ":go_sample_test",
+        ":go_template_test",
         ":guide_test",
         ":init_test",
         ":kit_samples_test",
@@ -620,6 +767,7 @@ pipeline_unit(
         ":python_kit_apple_python_test",
         ":python_kit_test",
         ":release_version_test",
+        ":rust_sample_test",
         ":samples_test",
         ":swift_samples_test",
         ":swift_template_test",

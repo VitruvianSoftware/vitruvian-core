@@ -318,6 +318,128 @@ kit by its path: build it once with `npm run build` in
 `packages/vitruvian-sdk/kits/typescript`, then use `npm install --install-links`
 in the tool's folder, so that a copy of the kit, not a link, goes in it.
 
+### In Go or Rust, with a kit
+
+```sh
+vitruvian-tool init ~/my-go-tool --id com.you.my-go-tool --name "My Go tool" --publisher "You" --template go
+vitruvian-tool init ~/my-rust-tool --id com.you.my-rust-tool --name "My Rust tool" --publisher "You" --template rust
+~/my-go-tool/build.sh
+vitruvian-tool validate ~/my-go-tool/tool
+vitruvian-tool run ~/my-go-tool/tool
+```
+
+Each writes a program and, beside it, `tool/`: the folder you add to the
+app. `build.sh` builds the program, with `go build` or `cargo build`, and
+puts it in `tool/bin/`. The Go module requires
+`github.com/VitruvianSoftware/vitruvian-sdk/go` and the Rust package
+`vitruvian-tool-kit`, each at the version of the `vitruvian-tool` you ran,
+so the first build fetches the kit. With `--sdk packages/vitruvian-sdk` the
+tool builds against the kit in this repository instead, and fetches
+nothing for Go.
+
+The Go kit needs Go 1.22 or later and nothing outside Go's standard library.
+The Rust kit needs Rust 1.75 or later and two crates, `serde` and
+`serde_json`: Rust has no JSON of its own. Either way the program is one
+file with nothing to install beside it.
+
+A Go tool is one file:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit"
+)
+
+func main() {
+	tool := toolkit.New("0.1.0")
+
+	tool.Command("hello", func(ctx context.Context, app *toolkit.App) error {
+		return app.Notify.HUD("Hello from a Go tool", "hand.wave")
+	})
+
+	tool.Command("count", func(ctx context.Context, app *toolkit.App) error {
+		saved, err := app.Storage.Get("count")
+		if err != nil {
+			return err
+		}
+		next, _ := saved.(float64)
+		next++
+		if err := app.Storage.Set("count", next); err != nil {
+			return err
+		}
+		return app.Notify.HUD(fmt.Sprintf("Counted to %d", int(next)), "number")
+	})
+
+	tool.Run()
+}
+```
+
+A Rust tool is one file too:
+
+```rust
+use vitruvian_tool_kit::Tool;
+
+fn main() {
+    let mut tool = Tool::new("0.1.0");
+
+    tool.command("hello", |app| {
+        app.notify().hud("Hello from a Rust tool", "hand.wave")
+    });
+
+    tool.command("count", |app| {
+        let next = app.storage().get("count")?.as_f64().unwrap_or(0.0) + 1.0;
+        app.storage().set("count", next)?;
+        app.notify().hud(&format!("Counted to {next}"), "number")
+    });
+
+    tool.run();
+}
+```
+
+The calls are the Swift kit's, grouped by the service they need:
+
+| In Go | In Rust | Message | In `uses` |
+|---|---|---|---|
+| `app.Notify.HUD` | `app.notify().hud` | `notify/hud` | `notify` |
+| `app.Notify.Beep` | `app.notify().beep` | `notify/beep` | `notify` |
+| `app.Open.URL` | `app.open().url` | `open/url` | `open` |
+| `app.Clipboard.ReadText` | `app.clipboard().read_text` | `clipboard/readText` | `clipboard.read` |
+| `app.Clipboard.WriteText` | `app.clipboard().write_text` | `clipboard/writeText` | `clipboard.write` |
+| `app.Keystrokes.Paste` | `app.keystrokes().paste` | `keystrokes/paste` | `keystrokes` |
+| `app.Keystrokes.PressMenuItem` | `app.keystrokes().press_menu_item` | `keystrokes/pressMenuItem` | `keystrokes` |
+| `app.Processes.Terminate` | `app.processes().terminate` | `processes/terminate` | `processes` |
+| `app.Storage.Get`, `app.Storage.Set` | `app.storage().get`, `app.storage().set` | `storage/get`, `storage/set` | `storage` |
+| `app.SetRunnable` | `app.set_runnable` | `commands/state` | |
+| `app.Log` | `app.log` | `log` | |
+
+The three rules of the Swift kit hold for both. **A call can be refused**:
+it returns the app's failure, a `*toolkit.Error` in Go and
+`ToolError::App` in Rust, and a handler that returns it has its command
+answered as refused; return `toolkit.Refuse("why")` or
+`Err(ToolError::refused("why"))` to refuse a command yourself. **Handlers
+run one at a time**, on the thread that called `Run` or `run`, and a call
+waits there for its answer, ten seconds at most; one more thread reads
+standard input, and what comes while a handler waits is handled after it.
+**Never print to standard output**: it is the link.
+
+In Go a handler is also handed a `context.Context`. It is done once the
+app has said goodbye or gone away: a handler that works for long without
+calling the app should watch it. `tool.OnPreferencesChanged` and
+`tool.OnLanguageChanged`, in Rust `tool.on_preferences_changed` and
+`tool.on_language_changed`, are the Swift kit's hooks.
+
+For the two samples, build their folders with Bazel:
+
+```sh
+bazel build //packages/vitruvian-sdk:native-sample-folders
+```
+
+They are then in `bazel-bin/packages/vitruvian-sdk/built/`.
+
 ### A tool that does not ask the app
 
 A tool may do anything itself. [`samples/front-window`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/front-window)

@@ -50,6 +50,9 @@ _IGNORE_GLOBS = [
     "**/node_modules/**",
     "**/*.venv/**",
     "**/.build/**",
+    # Cargo's build output: the root Cargo.toml is a workspace (the SDK's
+    # Rust kit), so `cargo build` anywhere in the tree writes /target/.
+    "target/**",
     "**/dist/**",
     ".git/**",
     # generated / local-only (gitignored; never in a CI checkout, but excluded so

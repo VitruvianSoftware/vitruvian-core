@@ -23,15 +23,15 @@ nowhere they need not.
 
     mirror_workflows_test.py
 
-.github/workflows/ci.yml and release.yml run only in VitruvianSoftware/
-vitruvian-sdk, so nothing in this repository runs them. This test reads them
+.github/workflows/ci.yml, kits.yml and release.yml run only in
+VitruvianSoftware/vitruvian-sdk, so nothing in this repository runs them. This test reads them
 as YAML and runs the `detect` step of release.yml, the shell exactly as
 written, with bash and git, in a repository it makes in a temporary folder,
 once for each kind of manifest. It runs the release notes step the same way,
 with and without a CHANGELOG.md, since a first release can come before the
 file does. It also holds what limits the damage of a
 mistake: the workflow may only read; only the release job may write, and
-only contents, and only the two jobs that publish a kit may ask for an
+only contents, and only the three jobs that publish a kit may ask for an
 identity token; no checkout keeps its credentials; every action is pinned to
 a commit.
 """
@@ -250,6 +250,7 @@ def limit_problems(name, workflow):
             # job's identity token in place of a secret, and nothing else.
             ("release.yml", "publish-npm-kit"): ["id-token"],
             ("release.yml", "publish-pypi-kit"): ["id-token"],
+            ("release.yml", "crates-publish"): ["id-token"],
         }.get((name, job_name), [])
         if writes != allowed:
             problems.append(f"{name}: job {job_name} may write {writes}, not {allowed}")
@@ -273,7 +274,7 @@ def main():
     release = load("release.yml")
     problems = detect_problems(release)
     problems += notes_problems(release)
-    for name in ("ci.yml", "release.yml"):
+    for name in ("ci.yml", "kits.yml", "release.yml"):
         problems += limit_problems(name, load(name))
     for problem in problems:
         print(problem, file=sys.stderr)

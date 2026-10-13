@@ -32,6 +32,10 @@ public enum ToolTemplate: String, CaseIterable, Sendable {
     case typescript
     /// A Swift package that uses the kit. It has to be built first.
     case swift
+    /// A Go module that uses the Go kit. It has to be built first.
+    case go
+    /// A Cargo package that uses the Rust kit. It has to be built first.
+    case rust
 }
 
 /// A tool to start: where, and what its manifest says of it.
@@ -45,7 +49,9 @@ public struct NewTool: Equatable, Sendable {
     /// template's package names it by its path; the TypeScript template's
     /// package.json depends on the kit in it by its path; the Python kit
     /// template copies the kit from it into lib/. The plain Python template
-    /// needs no kit.
+    /// needs no kit. For Go and Rust it is a choice: with it, the tool builds
+    /// against the kit in that checkout; without it, against the kit of this
+    /// command's version from its registry.
     public var sdk: URL?
 
     public init(folder: URL, id: String, name: String, publisher: String) {
@@ -101,6 +107,8 @@ public enum NewToolWriter {
         case .typescript:
             Sample(folder: "hello-typescript", name: "Hello, in TypeScript", manifest: Templates.typescriptManifest)
         case .swift: Sample(folder: "hello-swift", name: "Hello, in Swift", manifest: Templates.swiftManifest)
+        case .go: Sample(folder: "hello-go", name: "Hello, in Go", manifest: Templates.goManifest)
+        case .rust: Sample(folder: "hello-rust", name: "Hello, in Rust", manifest: Templates.rustManifest)
         }
     }
 
@@ -183,6 +191,37 @@ public enum NewToolWriter {
                              File(path: "tool/" + ToolManifestFile.fileName, text: manifest, runs: false),
                              File(path: "build.sh", text: buildScript, runs: true),
                              File(path: ".gitignore", text: ".build/\ntool/bin/\n", runs: false)])
+        case .go:
+            // The tool's id is its module's path: a module may not be called
+            // `tool`, which the go command reserves.
+            var module = goModule.replacingOccurrences(of: "{{module}}", with: tool.id)
+                .replacingOccurrences(of: "{{version}}", with: "v" + sdkVersion)
+            if let sdk {
+                let kit = sdk.appendingPathComponent("go")
+                guard FileManager.default.fileExists(atPath: kit.appendingPathComponent("go.mod").path)
+                else { return .failure(.noSDK) }
+                module += "\n// The kit in the checkout this tool was started from.\n"
+                    + "replace \(goKit) => \(quoted(kit.path))\n"
+            }
+            return .success([File(path: "go.mod", text: module, runs: false),
+                             File(path: "main.go", text: Templates.goProgram, runs: false),
+                             File(path: "tool/" + ToolManifestFile.fileName, text: manifest, runs: false),
+                             File(path: "build.sh", text: goBuildScript, runs: true),
+                             File(path: ".gitignore", text: "tool/bin/\n", runs: false)])
+        case .rust:
+            var kit = quoted(sdkVersion)
+            if let sdk {
+                let folder = sdk.appendingPathComponent("kits/rust")
+                guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("Cargo.toml").path)
+                else { return .failure(.noSDK) }
+                kit = "{ path = \(quoted(folder.path)) }"
+            }
+            return .success([File(path: "Cargo.toml", text: cargoPackage.replacingOccurrences(of: "{{kit}}", with: kit),
+                                  runs: false),
+                             File(path: "src/main.rs", text: Templates.rustProgram, runs: false),
+                             File(path: "tool/" + ToolManifestFile.fileName, text: manifest, runs: false),
+                             File(path: "build.sh", text: rustBuildScript, runs: true),
+                             File(path: ".gitignore", text: "target/\ntool/bin/\n", runs: false)])
         }
     }
 
@@ -201,6 +240,63 @@ public enum NewToolWriter {
         guard files.contains(where: { $0.path == "lib/vitruvian_tool_kit/__init__.py" }) else { return nil }
         return files.sorted { $0.path < $1.path }
     }
+
+    /// The SDK version this command was built as: a Go or Rust tool started
+    /// without `--sdk` asks for the kit of the same version.
+    public static var sdkVersion: String { Words.version }
+
+    /// The Go kit's module path, which `go get` fetches.
+    static let goKit = "github.com/VitruvianSoftware/vitruvian-sdk/go"
+
+    /// The module a Go tool is built as. Its folder, the one the app is
+    /// pointed at, is `tool/` beside it, as for Swift.
+    static let goModule = """
+        module {{module}}
+
+        go 1.22
+
+        require \(goKit) {{version}}
+
+        """
+
+    static let goBuildScript = """
+        #!/bin/sh
+        # Builds the tool, and puts its program where the manifest says it is.
+        set -eu
+        cd "$(dirname "$0")"
+        go build -mod=mod -o tool/bin/tool .
+        echo "Built. The folder to add to Vitruvian is $(pwd)/tool"
+
+        """
+
+    /// The package a Rust tool is built as. `[workspace]` makes it a
+    /// workspace of its own, wherever its folder is.
+    static let cargoPackage = """
+        [package]
+        name = "tool"
+        version = "0.1.0"
+        edition = "2021"
+        publish = false
+
+        [dependencies]
+        vitruvian-tool-kit = {{kit}}
+
+        [workspace]
+
+        """
+
+    static let rustBuildScript = """
+        #!/bin/sh
+        # Builds the tool, and puts its program where the manifest says it is.
+        set -eu
+        cd "$(dirname "$0")"
+        cargo build --release
+        mkdir -p tool/bin
+        cp target/release/tool tool/bin/tool
+        echo "Built. The folder to add to Vitruvian is $(pwd)/tool"
+
+        """
+
 
     /// Writes a new tool into its folder, which must not exist yet or must
     /// be empty. It writes inside that folder and nowhere else. Returns the

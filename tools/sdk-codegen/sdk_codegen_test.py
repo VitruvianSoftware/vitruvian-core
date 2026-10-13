@@ -95,11 +95,12 @@ class OutputTests(unittest.TestCase):
             os.path.join(self.package, "protocol"),
             copy_function=shutil.copyfile,
         )
-        shutil.copytree(
-            os.path.join(PACKAGE, "kits"),
-            os.path.join(self.package, "kits"),
-            copy_function=shutil.copyfile,
-        )
+        for folder in ("kits", "go"):
+            shutil.copytree(
+                os.path.join(PACKAGE, folder),
+                os.path.join(self.package, folder),
+                copy_function=shutil.copyfile,
+            )
 
     def tearDown(self):
         shutil.rmtree(self.folder, ignore_errors=True)
@@ -123,10 +124,16 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(
             changed,
             [
+                "go/toolkit/protocol_gen.go",
                 "kits/python/vitruvian_tool_kit/generated/messages.py",
                 "kits/python/vitruvian_tool_kit/generated/methods.py",
+                "kits/rust/src/generated/mod.rs",
                 "kits/typescript/src/generated/messages.ts",
             ],
+        )
+        self.assertIn("Seconds *float64", after["go/toolkit/protocol_gen.go"])
+        self.assertIn(
+            "pub seconds: Option<f64>", after["kits/rust/src/generated/mod.rs"]
         )
         self.assertIn(
             "seconds?: number;", after["kits/typescript/src/generated/messages.ts"]
@@ -156,7 +163,8 @@ class OutputTests(unittest.TestCase):
 
     def test_every_emitter_is_found(self):
         self.assertEqual(
-            [e.NAME for e in sdk_codegen.emitters()], ["python", "typescript"]
+            [e.NAME for e in sdk_codegen.emitters()],
+            ["go", "python", "rust", "typescript"],
         )
 
 

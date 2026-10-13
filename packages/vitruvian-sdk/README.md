@@ -23,9 +23,11 @@ not work.
 |---|---|
 | [`docs/`](docs/writing-a-tool.md) | The guide for a tool's author. Its examples are tested. |
 | [`protocol/`](protocol/README.md) | The protocol, version 1: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
-| `samples/` | Five tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript` and `hello-python-kit`, each written with its kit; `front-window`, which reads the title of the window in front by asking macOS itself. |
+| `samples/` | Seven tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `front-window`, which reads the title of the window in front by asking macOS itself. |
 | `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands, handle them, call the app. |
 | `kits/` | The same, for TypeScript (`@vitruviansoftware/tool-kit`, npm) and Python (`vitruvian-tool-kit`, PyPI). Their types are written from the schemas by `//tools/sdk-codegen`, and a test fails when they are not what it writes. |
+| `go/` | The same kit in Go, module `github.com/VitruvianSoftware/vitruvian-sdk/go`, package `toolkit`. Go 1.22 or later, standard library only. |
+| `kits/rust` | The same kit in Rust, crate `vitruvian-tool-kit`. Rust 1.75 or later; `serde` and `serde_json`. |
 | `Sources/vitruvian-tool` | A command: `init` starts a new tool from a sample, `validate` reads a folder the way the app will, `run` plays the app's side in a terminal. `Sources/VitruvianToolCLI` is what it is made of. |
 | `Sources/VitruvianToolProtocol` | The protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
 | `conformance/` | A script that plays the app's side to your tool in five scripted checks, and the smallest tool that passes it. |
@@ -172,7 +174,18 @@ Passing is not proof that the app will accept everything your tool does.
 ```sh
 bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:init_test //packages/vitruvian-sdk:swift_template_test
 bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test //packages/vitruvian-sdk:release_version_test //packages/vitruvian-sdk:mirror_workflows_test //tools/sync-site-tools:in_sync_test
+bazel test //packages/vitruvian-sdk/go/toolkit:toolkit_test //packages/vitruvian-sdk/kits/rust:all //packages/vitruvian-sdk:go_kit_vet_test //packages/vitruvian-sdk:go_sample_test //packages/vitruvian-sdk:rust_sample_test //tools/sdk-codegen:in_sync_test
 ```
+
+The third line runs anywhere too: the Go and Rust kits' tests, each the
+Swift kit's tests ported; the Go kit through `go vet` as a module of its
+own, which holds it to Go 1.22; the two samples, built, against the
+conformance script; and the generated types against the schemas. The Go and
+Rust kits' types are written by `bazel run //tools/sdk-codegen`: after a
+change to `protocol/`, run it and commit what it writes.
+
+Go commands for the Go kit outside Bazel: run them with `GOWORK=off` from
+`go/`. In the repository's workspace they would rewrite `go.work.sum`.
 
 The first line needs a Mac: the Swift types against the example files, the
 kit against a link made of two files, the command against folders and real

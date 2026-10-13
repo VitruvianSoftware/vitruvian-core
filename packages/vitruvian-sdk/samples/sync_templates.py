@@ -54,6 +54,10 @@ FILES = [
     ("typescriptPackage", "hello-typescript/package.json"),
     ("swiftManifest", "hello-swift/vitruvian-tool.json"),
     ("swiftProgram", "hello-swift/main.swift"),
+    ("goManifest", "hello-go/vitruvian-tool.json"),
+    ("goProgram", "hello-go/main.go"),
+    ("rustManifest", "hello-rust/vitruvian-tool.json"),
+    ("rustProgram", "hello-rust/src/main.rs"),
 ]
 
 # Where a sample names the kit's version, and what it is replaced with. The

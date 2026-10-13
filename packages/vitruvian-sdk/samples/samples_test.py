@@ -26,8 +26,9 @@ With no argument it checks what needs no build: the manifest of every sample
 against the schema, that the kits and the samples that use them name one
 version of the SDK, and the plain Python sample against the conformance
 script. With arguments it checks the folders Bazel assembled for the other
-samples, each named by the path of its manifest: the Swift samples built, and
-the kit samples with their kit beside them, as an author ships them. A Python
+samples, each named by the path of its manifest: the Swift, Go and Rust
+samples built, and the kit samples with their kit beside them, as an author
+ships them. A Python
 program is started through the interpreter running this test; any other
 through its own first line, with the folder of VITRUVIAN_NODE, when set, at
 the front of the PATH.
@@ -61,6 +62,8 @@ WANTED = {
     "hello-swift": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-typescript": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-python-kit": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-go": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-rust": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "front-window": [
         [
             "a command: showTitle: ran",
@@ -105,7 +108,8 @@ def manifests():
     ) as handle:
         validator = Draft202012Validator(json.load(handle))
     found = sorted(glob.glob(os.path.join(HERE, "*", "vitruvian-tool.json")))
-    problems = [] if len(found) == 5 else [f"five samples, not {len(found)}"]
+    names = sorted(os.path.basename(os.path.dirname(path)) for path in found)
+    problems = [] if names == sorted(WANTED) else [f"the samples are {names}"]
     for path in found:
         with open(path, encoding="utf-8") as handle:
             manifest = json.load(handle)
@@ -124,6 +128,29 @@ def versions():
     bumps some of them.
     """
     found = {}
+    with open(
+        os.path.join(PACKAGE, "go", "toolkit", "version.go"), encoding="utf-8"
+    ) as handle:
+        found["go/toolkit/version.go"] = re.search(
+            r'(?m)^const Version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(
+        os.path.join(PACKAGE, "kits", "rust", "Cargo.toml"), encoding="utf-8"
+    ) as handle:
+        found["kits/rust/Cargo.toml"] = re.search(
+            r'(?m)^version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(os.path.join(HERE, "hello-go", "go.mod"), encoding="utf-8") as handle:
+        found["samples/hello-go/go.mod"] = re.search(
+            r"(?m)^require github\.com/VitruvianSoftware/vitruvian-sdk/go v(\S+)",
+            handle.read(),
+        ).group(1)
+    with open(
+        os.path.join(HERE, "hello-rust", "Cargo.toml"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-rust/Cargo.toml"] = re.search(
+            r'(?m)^vitruvian-tool-kit = \{ version = "([^"]+)"', handle.read()
+        ).group(1)
     with open(
         os.path.join(PACKAGE, "kits", "typescript", "package.json"), encoding="utf-8"
     ) as handle:
@@ -154,13 +181,13 @@ def versions():
                 r'"(\d+\.\d+\.\d+)" // x-release-please-version', handle.read()
             ):
                 found[os.path.relpath(path, PACKAGE)] = version
-    if len(set(found.values())) == 1 and len(found) == 5:
+    if len(set(found.values())) == 1 and len(found) == 9:
         print(
             f"versions: {found['kits/typescript/package.json']}, in {len(found)} places"
         )
         return []
     return [
-        f"one version of the SDK in five places, and these differ or are missing: {found}"
+        f"one version of the SDK in nine places, and these differ or are missing: {found}"
     ]
 
 
