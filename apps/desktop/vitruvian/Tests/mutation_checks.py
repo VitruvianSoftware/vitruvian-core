@@ -908,6 +908,11 @@ MUTATIONS = [
      "           catalogue.generated < before.generated {\n",
      "           catalogue.generated < before.generated, catalogue.tools.isEmpty {\n",
      "a list signed by us but older than the one accepted before is refused"),
+    ("the agreement sheet says nothing of the catalog", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+     "        catalogue = offer.catalogue == nil ? nil : strings.agreeCatalog\n",
+     "        catalogue = nil\n",
+     "a tool from the catalog is asked about on the same sheet, with one more line"),
 ]
 
 

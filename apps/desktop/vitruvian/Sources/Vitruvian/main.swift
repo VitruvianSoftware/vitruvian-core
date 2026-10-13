@@ -28,6 +28,22 @@ MainActor.assumeIsolated { SampleTool.install() }
 // quit. With none added this reads one file that is not there. Top-level
 // code runs on the main thread.
 MainActor.assumeIsolated { ExternalToolStore.shared.restore() }
+#if VITRUVIAN_SAMPLE_TOOL
+// A rehearsal of the tool catalog on this Mac, for the checks by hand: only
+// when both of its variables are set, as `bazel run //catalog:rehearse`
+// prints them. Before anything below reads where the catalog is.
+MainActor.assumeIsolated {
+    if let rehearsal = CatalogueSource.rehearsal(ProcessInfo.processInfo.environment) {
+        CatalogueSource.inUse = rehearsal
+    }
+}
+#endif
+// The tool catalog: a download a quit left behind is deleted, and the list is
+// fetched now and once a day, only while a tool from it is installed.
+MainActor.assumeIsolated {
+    CatalogueInstaller.shared.sweep()
+    CatalogueWatch.shared.start()
+}
 // The island calls back into the services that follow it through these, so
 // it names none of them. Top-level code runs on the main thread.
 MainActor.assumeIsolated {
