@@ -26,7 +26,7 @@ enum Words {
     /// The SDK's version: what `--version` prints, and what `init --template
     /// swift` asks for. release-please writes it at each release (the
     /// extra-files of release-please-config.json); change it only that way.
-    static let version = "1.1.0" // x-release-please-version
+    static let version = "1.2.0" // x-release-please-version
 
     static func problem(_ problem: FolderProblem) -> String {
         switch problem {
