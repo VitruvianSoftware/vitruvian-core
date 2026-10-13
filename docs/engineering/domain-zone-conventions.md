@@ -122,6 +122,13 @@ addresses; the zone holds no A or AAAA records. GitHub routes by the custom
 domain, not by the CNAME target. (It pointed at another account's hostname,
 `bluecentre.github.io`, until 2026-10-12.)
 
+`www` is a **proxied** CNAME to the same hostname, and is the only proxied record
+this package owns. GitHub never added `www` to the site's certificate, and a
+redirect cannot be served over a connection whose TLS handshake fails. Proxied,
+Cloudflare presents its own certificate for `www` and GitHub's 301 to the apex
+passes through. The apex stays DNS-only so GitHub can issue and renew its
+certificate.
+
 ## Guardrails
 
 Two automated checks enforce parts of this, both added after the failures they

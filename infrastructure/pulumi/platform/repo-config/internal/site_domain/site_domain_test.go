@@ -33,6 +33,8 @@ type seen struct {
 	name      string
 	protect   bool
 	importID  string
+	// proxied is the `proxied` input sent to the provider; nil when absent.
+	proxied *bool
 }
 
 // Pulumi registers resources concurrently, so the mock must serialise its own
@@ -45,6 +47,10 @@ type mocks struct {
 
 func (m mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	s := seen{typeToken: args.TypeToken, name: args.Name}
+	if v, ok := args.Inputs["proxied"]; ok && v.IsBool() {
+		b := v.BoolValue()
+		s.proxied = &b
+	}
 	if rpc := args.RegisterRPC; rpc != nil {
 		s.protect = rpc.GetProtect()
 		s.importID = rpc.GetImportId()
@@ -142,12 +148,29 @@ func TestDeclaresExactlyTheFourResourcesProtectedAndImportedWhereTheyExist(t *te
 		if !s.protect {
 			t.Errorf("%s must be protected", s.name)
 		}
+		if s.typeToken == "cloudflare:index/record:Record" {
+			wantProxied := s.name == "site-www-cname"
+			if s.proxied == nil || *s.proxied != wantProxied {
+				t.Errorf("%s sent proxied=%v to the provider, want %v", s.name, s.proxied, wantProxied)
+			}
+		}
 		if created[s.name] {
 			if s.importID != "" {
 				t.Errorf("%s is created by this package, not imported (import id %q)", s.name, s.importID)
 			}
 		} else if s.importID == "" {
 			t.Errorf("%s must be imported by id: it already exists", s.name)
+		}
+	}
+}
+
+// Only www is proxied. The apex must stay DNS-only so GitHub can issue and
+// renew its certificate; proxying it would break that silently, weeks later.
+func TestOnlyWwwIsProxied(t *testing.T) {
+	for _, r := range Records() {
+		want := r.Name == "www"
+		if r.Proxied != want {
+			t.Errorf("record %q (%s): Proxied = %v, want %v", r.Resource, r.Name, r.Proxied, want)
 		}
 	}
 }
