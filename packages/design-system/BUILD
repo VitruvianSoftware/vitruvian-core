@@ -123,7 +123,10 @@ npm_package(
         "src/tokens.json",
         "src/vitruvian.css",
         ":lib",
-    ] + glob(["src/fonts/**"]),
+    ] + glob([
+        "src/brand/**",
+        "src/fonts/**",
+    ]),
     visibility = ["//visibility:public"],
 )
 
@@ -163,7 +166,10 @@ py_test(
         "src/tokens.css",
         "src/tokens.json",
         "src/tokens.ts",
-    ] + glob(["src/fonts/**"]),
+    ] + glob([
+        "src/brand/**",
+        "src/fonts/**",
+    ]),
 )
 
 # The Storybook devserver: `bazel run //packages/design-system:storybook`.

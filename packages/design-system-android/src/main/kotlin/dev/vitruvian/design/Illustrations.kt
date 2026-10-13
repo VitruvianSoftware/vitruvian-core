@@ -21,12 +21,14 @@
 package dev.vitruvian.design
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
@@ -152,6 +155,19 @@ public fun VitruvianPlate(
             end = Offset(cx - r, cy + r),
             strokeWidth = stroke,
             pathEffect = dashEffect,
+        )
+        // Golden-Datum V: raised arms to grounded feet
+        drawLine(
+            color = colors.accentText,
+            start = Offset(cx - r * 0.85f, cy - r * 0.85f),
+            end = Offset(cx, cy + r),
+            strokeWidth = accentStroke * 1.2f,
+        )
+        drawLine(
+            color = colors.accentText,
+            start = Offset(cx + r * 0.85f, cy - r * 0.85f),
+            end = Offset(cx, cy + r),
+            strokeWidth = accentStroke * 1.2f,
         )
         drawCircle(color = colors.accentText, radius = 3.dp.toPx(), center = Offset(cx, cy))
       }
@@ -340,4 +356,57 @@ public fun PlateFigure(
       }
     }
   }
+}
+
+/** Standalone official vector brand mark (Option A Golden-Datum V). */
+@Composable
+public fun BrandMark(
+    modifier: Modifier = Modifier,
+    size: Dp = 32.dp,
+) {
+  VMark(modifier = modifier, markSize = size)
+}
+
+/**
+ * Official horizontal brand lockup pairing the Golden-Datum V mark with tracked display type and
+ * monospace subtitle.
+ */
+@Composable
+public fun BrandLogo(
+    modifier: Modifier = Modifier,
+    title: String = "VITRUVIAN",
+    subtitle: String? = "SOFTWARE",
+    markSize: Dp = 32.dp,
+) {
+  val colors = Vitruvian
+  Row(
+      modifier = modifier,
+      horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    BrandMark(size = markSize)
+    Column {
+      VText(text = title, style = VitruvianType.barTitle, color = colors.text)
+      if (!subtitle.isNullOrEmpty()) {
+        Label(text = subtitle, color = colors.accentText)
+      }
+    }
+  }
+}
+
+/**
+ * Official circular gunmetal Vitruvian medallion (without outer button frame), backed by
+ * `R.drawable.vitruvian_medallion`.
+ */
+@Composable
+public fun BrandMedallion(
+    modifier: Modifier = Modifier,
+    size: Dp = 96.dp,
+    contentDescription: String? = "Vitruvian Software Medallion",
+) {
+  Image(
+      painter = painterResource(id = R.drawable.vitruvian_medallion),
+      contentDescription = contentDescription,
+      modifier = modifier.size(size),
+  )
 }

@@ -17,10 +17,12 @@
     },
     "./vitruvian.css": "./src/vitruvian.css",
     "./tokens.css": "./src/tokens.css",
-    "./tokens.json": "./src/tokens.json"
+    "./tokens.json": "./src/tokens.json",
+    "./brand/*": "./src/brand/*"
   },
   "files": [
     "dist",
+    "src/brand",
     "src/fonts",
     "src/tokens.css",
     "src/tokens.json",

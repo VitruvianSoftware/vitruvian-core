@@ -133,6 +133,14 @@ export const VitruvianPlate = React.forwardRef<
             stroke="var(--color-sanguine-text)"
             strokeWidth="1"
           />
+          {/* Golden-Datum V: raised arms (upper intersections) to grounded feet */}
+          <path
+            d="M46 26L80 100L114 26"
+            stroke="var(--color-accent-text)"
+            strokeWidth="1.75"
+            strokeLinecap="square"
+            strokeLinejoin="miter"
+          />
           <circle cx="80" cy="49.4" r="2.5" fill="var(--color-sanguine-text)" />
           <circle cx="80" cy="60" r="2" fill="var(--color-accent-text)" />
         </g>
