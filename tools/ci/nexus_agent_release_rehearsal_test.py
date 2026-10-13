@@ -297,6 +297,40 @@ def looked_at_what_matters(release_text):
     return problems
 
 
+# Commands after which SwiftPM's checkouts of the package's dependencies
+# exist in a job's own copy of the repository.
+FETCHES = ("swift build", "swift test", "swift package resolve")
+CHECKOUTS = ".build/checkouts"
+
+
+def reads_only_what_it_fetched(text, name, jobs):
+    """Problems where a job reads SwiftPM's checkouts and never fetched them.
+
+    Each job starts from a fresh checkout of the repository. An artifact
+    carries what the build job built, not the dependencies SwiftPM fetched
+    to build it, so a job that looks under .build/checkouts must first run
+    a SwiftPM command itself.
+    """
+    problems = []
+    for job in jobs:
+        lines = job_lines(text, job)
+        if lines is None:
+            continue
+        fetched = False
+        for title, body in split_job(lines)[1]:
+            for line in body:
+                if line.startswith(FETCHES):
+                    fetched = True
+                elif CHECKOUTS in line and not fetched:
+                    problems.append(
+                        "%s, job `%s`, step `%s` reads %s, which nothing in "
+                        "that job has fetched: run `swift package resolve` "
+                        "first" % (name, job, title, CHECKOUTS)
+                    )
+                    break
+    return problems
+
+
 def main(argv):
     if len(argv) != 3:
         print(__doc__)
@@ -306,8 +340,11 @@ def main(argv):
     with open(argv[2], encoding="utf-8") as handle:
         rehearsal_text = handle.read()
 
-    problems = looked_at_what_matters(release_text) + compare(
-        release_text, rehearsal_text
+    problems = (
+        looked_at_what_matters(release_text)
+        + compare(release_text, rehearsal_text)
+        + reads_only_what_it_fetched(release_text, "release.yml", JOBS)
+        + reads_only_what_it_fetched(rehearsal_text, "the rehearsal", JOBS.values())
     )
     if problems:
         print(

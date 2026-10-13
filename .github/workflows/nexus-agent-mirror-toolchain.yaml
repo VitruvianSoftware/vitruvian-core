@@ -347,6 +347,11 @@ jobs:
       # validate`, built from the kit SwiftPM resolved, and play the app to
       # the program with the SDK's conformance script, under a home of its
       # own. A release attaches the zip and judges nothing.
+      #
+      # This job builds nothing, so it has no checkout of the kit: the
+      # artifacts carry what the build job built, not what SwiftPM fetched
+      # to build it. `swift package resolve` fetches the kit here, by the
+      # same rule in Package.swift the build job's `swift build` followed.
       - name: Check the tool's folder
         run: |
           set -euo pipefail
@@ -356,6 +361,7 @@ jobs:
           test -x "$RUNNER_TEMP/tool/bin/tool"
           test -f "$RUNNER_TEMP/tool/bin/mermaid.min.js"
           lipo -archs "$RUNNER_TEMP/tool/bin/tool"
+          swift package resolve --package-path apps/desktop/nexus-agent/macos
           sdk="$(find apps/desktop/nexus-agent/macos/.build/checkouts -maxdepth 1 -name 'vitruvian-sdk*' -type d | head -1)"
           test -n "$sdk"
           swift build --package-path "$sdk" --product vitruvian-tool
