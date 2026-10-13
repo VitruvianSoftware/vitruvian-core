@@ -67,17 +67,11 @@ public fun Card(
         CardSurface.Fill -> colors.surface
         CardSurface.Glass -> colors.glass
       }
-  val borderColor =
-      when (surface) {
-        CardSurface.Glass -> colors.glassBorder
-        else -> colors.divider
-      }
-
   Plate(
       modifier = modifier.fillMaxWidth().background(background),
       marks = marks,
       dashed = dashed,
-      borderColor = borderColor,
+      borderColor = colors.divider,
   ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(contentPadding),

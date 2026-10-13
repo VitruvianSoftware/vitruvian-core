@@ -346,7 +346,7 @@ public fun Crumbs(
   ) {
     items.forEachIndexed { index, item ->
       if (index > 0) {
-        VText(text = "/", style = VitruvianType.listSub, color = colors.textMuted)
+        VText(text = "/", style = VitruvianType.listSub, color = colors.textDim)
       }
       val isLast = index == items.lastIndex
       VText(
@@ -415,7 +415,7 @@ public fun Tabs(
           VText(
               text = tab.count.toString(),
               style = VitruvianType.listSub,
-              color = if (active) colors.accentText else colors.textMuted,
+              color = if (active) colors.accentText else colors.textDim,
               maxLines = 1,
               softWrap = false,
           )
