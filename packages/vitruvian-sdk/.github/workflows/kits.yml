@@ -84,10 +84,16 @@ jobs:
         run: |
           rustup toolchain install "$RUST" --profile minimal --component rustfmt
           rustup default "$RUST"
+      # Formatting is one style, the stable rustfmt's: the kit is formatted
+      # with it, and an older rustfmt wraps macro arguments differently
+      # (the 1.75 job failed on that alone, 2026-10-13). The floor's job
+      # proves the kit builds and passes on the oldest Rust an author may use.
       - name: Test the kit
         working-directory: kits/rust
+        env:
+          RUST: ${{ matrix.rust }}
         run: |
-          cargo fmt --check
+          if [ "$RUST" = stable ]; then cargo fmt --check; fi
           cargo test
       - name: The Rust sample through the conformance script
         run: |
