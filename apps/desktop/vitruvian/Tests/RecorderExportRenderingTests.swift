@@ -6,6 +6,7 @@ import AppKit
 import CoreImage
 import Foundation
 import ImageIO
+import os
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
@@ -14,18 +15,47 @@ import VitruvianUI
 /// Nonisolated: the export probe runs in a detached task while the main
 /// thread waits for it.
 nonisolated enum RecorderExportRenderingTests {
+    /// The step the probe is in, so a run that hits the deadline names the
+    /// export it was waiting on (issue #2942: twice in the merge queue the
+    /// probe ran out of time, and the log said only that it did).
+    private static let stage = OSAllocatedUnfairLock(initialState: (name: "not started", since: 0.0))
+
+    private static func enter(_ name: String) {
+        let now = ProcessInfo.processInfo.systemUptime
+        stage.withLock { $0 = (name, now) }
+    }
+
+    /// The deadline failure: which step was running and how long ago it began.
+    static func deadlineMessage(stage: String, stageStarted: Double, runStarted: Double,
+                                now: Double) -> String {
+        let inStage = Int((now - stageStarted).rounded())
+        let intoRun = Int((stageStarted - runStarted).rounded())
+        return "export regression finishes within its deadline; it was still \(stage) "
+            + "after \(inStage)s, a step that began \(intoRun)s into the run"
+    }
+
     static func run(_ suite: TestSuite) {
+        suite.expect(deadlineMessage(stage: "exporting x", stageStarted: 70, runStarted: 10, now: 90)
+                         == "export regression finishes within its deadline; it was still exporting x "
+                         + "after 20s, a step that began 60s into the run",
+                     "the deadline failure names the step and its timing")
         let done = DispatchSemaphore(value: 0)
+        let started = ProcessInfo.processInfo.systemUptime
+        enter("starting")
         Task.detached {
             do {
                 try await probe(suite)
             } catch {
                 suite.expect(false, "export fixture failed \(error)")
             }
+            enter("finished")
             done.signal()
         }
-        suite.expect(done.wait(timeout: .now() + 90) == .success,
-                     "export regression finishes within its deadline")
+        let finished = done.wait(timeout: .now() + 90) == .success
+        let current = stage.withLock { $0 }
+        suite.expect(finished, deadlineMessage(stage: current.name, stageStarted: current.since,
+                                               runStarted: started,
+                                               now: ProcessInfo.processInfo.systemUptime))
     }
 
     private enum FixtureFailure: Error { case writeFailed }
@@ -36,6 +66,7 @@ nonisolated enum RecorderExportRenderingTests {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let take = RecorderTakeStore.Take(id: UUID(), folder: folder)
+        enter("writing the synthetic 60 fps master")
         let writer = try AVAssetWriter(outputURL: take.videoURL, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 128, AVVideoHeightKey: 128,
@@ -69,6 +100,7 @@ nonisolated enum RecorderExportRenderingTests {
         await writer.finishWriting()
         suite.expect(writer.status == .completed, "the synthetic 60 fps master is written")
         try await audioAndGIF(suite, take: take)
+        enter("exporting an uncomposable edit")
         await uncomposable(suite, take: take, folder: folder)
         // The last case ends protection in the removed interval. The frame
         // held immediately before the splice must retain the pre-cut blur.
@@ -92,6 +124,7 @@ nonisolated enum RecorderExportRenderingTests {
             }
             for speed in [0.25, 0.5, 1.0, 1.37, 4.0] {
                 doc.exportSpeed = speed
+                enter("exporting the production video at \(speed)x with cuts \(hasCuts), blur to \(scenario.blurEnd)")
                 let output = folder.appendingPathComponent("export-\(hasCuts)-\(scenario.blurEnd)-\(speed).mp4")
                 let failure = await RecorderExporter().export(take: take, document: doc,
                     output: .video, to: output, progress: { _ in })
@@ -109,7 +142,8 @@ nonisolated enum RecorderExportRenderingTests {
                 // must still be visible; extending the blur forever cannot pass.
                 for (editedTime, protected) in [(scenario.protectedTime, true), (scenario.clearTime, false)] {
                     let time = floor(editedTime / speed * 60) / 60
-                    let frame = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 60000))
+                    enter("reading frame \(time)s of the production export at \(speed)x with cuts \(hasCuts)")
+                let frame = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 60000))
                     let contrast = contrast(of: frame.image)
                     suite.expect(protected ? contrast < 40 : contrast > 100,
                         "privacy coverage \(protected) at \(speed)x with cuts \(hasCuts), contrast \(contrast)")
@@ -141,6 +175,7 @@ nonisolated enum RecorderExportRenderingTests {
         let folder = take.folder.appendingPathComponent("audio")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let audioTake = RecorderTakeStore.Take(id: UUID(), folder: folder)
+        enter("building the two-track audio fixture")
         let composition = AVMutableComposition()
         let videoAsset = AVURLAsset(url: take.videoURL)
         let video = try await videoAsset.loadTracks(withMediaType: .video)[0]
@@ -174,6 +209,7 @@ nonisolated enum RecorderExportRenderingTests {
         let mux = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough)!
         mux.outputURL = audioTake.videoURL
         mux.outputFileType = .mov
+        enter("muxing the two-track audio fixture")
         await mux.export()
         suite.expect(mux.status == .completed, "two-track fixture retains delayed microphone and its silent gap")
         guard mux.status == .completed else { return }
@@ -184,11 +220,13 @@ nonisolated enum RecorderExportRenderingTests {
             doc.trimStart = 0.05
             doc.cuts = [.init(start: 0.2, end: 0.25)]
             let output = folder.appendingPathComponent("audio-\(speed).mp4")
+            enter("exporting audio at \(speed)x")
             let failure = await RecorderExporter().export(take: audioTake, document: doc, output: .video, to: output, progress: { _ in })
             // Naming the failure, read or write, says where to look if this
             // fails again: it has failed once in about sixty CI runs.
             suite.expect(failure == nil, "audio export succeeds at \(speed)x, found \(String(describing: failure))")
             guard failure == nil else { continue }
+            enter("reading the audio export at \(speed)x")
             let samples = try await readAudio(output)
             func window(_ start: Double, _ end: Double) -> [Float] {
                 // This fixture removes 50 ms at the start and another 50 ms
@@ -214,9 +252,11 @@ nonisolated enum RecorderExportRenderingTests {
         let gifFolder = folder.appendingPathComponent("gif-phase-source")
         try FileManager.default.createDirectory(at: gifFolder, withIntermediateDirectories: true)
         let gifTake = RecorderTakeStore.Take(id: UUID(), folder: gifFolder)
+        enter("writing the GIF phase source")
         try await writePhaseVideo(to: gifTake.videoURL)
         let gifURL = folder.appendingPathComponent("speed.gif")
         let gifDocument = RecorderEditDocument(trimStart: 0.5, trimEnd: 1.5, exportSpeed: 2)
+        enter("exporting the trimmed GIF")
         let gifFailure = await RecorderExporter().export(take: gifTake,
             document: gifDocument, output: .gif, to: gifURL, progress: { _ in })
         suite.expect(gifFailure == nil, "GIF uses the current trim and retimed composition")
@@ -239,6 +279,7 @@ nonisolated enum RecorderExportRenderingTests {
                     || ($0.blue > $0.red * 2 && $0.blue > $0.green * 2)
             }, "trimmed GIF excludes the red opening and white closing phases")
         } else { suite.expect(false, "exported GIF decodes") }
+        enter("publishing the GIF to the clipboard")
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
         pasteboard.setString("keep me", forType: .string)
@@ -289,6 +330,7 @@ nonisolated enum RecorderExportRenderingTests {
         let previousGIF = Data("previous gif".utf8)
         try previousGIF.write(to: savedGIF)
         let gifExporter = RecorderExporter()
+        enter("cancelling a GIF export mid-way")
         let gifCancel = await gifExporter.export(take: take, document: RecorderEditDocument(),
                                                  output: .gif, to: savedGIF,
                                                  progress: { _ in gifExporter.cancel() })
@@ -302,6 +344,7 @@ nonisolated enum RecorderExportRenderingTests {
         try original.write(to: destination)
         let cancelled = RecorderExporter()
         cancelled.cancel()
+        enter("exporting with a cancelled exporter")
         let failure = await cancelled.export(take: take, document: RecorderEditDocument(exportSpeed: 0.5),
                                              output: .video, to: destination, progress: { _ in })
         suite.expect(failure == .cancelled && (try? Data(contentsOf: destination)) == original,
