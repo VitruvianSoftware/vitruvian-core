@@ -143,13 +143,18 @@ filegroup(
         "samples/hello-python-kit/README.md",
         "samples/hello-python/bin/tool.py",
         "samples/hello-python/vitruvian-tool.json",
-        "samples/hello-rust/Cargo.toml",
         "samples/hello-rust/src/main.rs",
         "samples/hello-rust/vitruvian-tool.json",
         "samples/hello-swift/main.swift",
         "samples/hello-swift/vitruvian-tool.json",
         "samples/hello-typescript/README.md",
     ],
+    visibility = ["//tools/sync-site-tools:__pkg__"],
+)
+
+# What a release bumps. The site's sync test holds that it copies none of it.
+exports_files(
+    ["release-please-config.json"],
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
 
