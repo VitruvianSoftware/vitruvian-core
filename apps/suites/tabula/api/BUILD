@@ -286,6 +286,13 @@ itest_service(
     args = [
         "--port",
         "$${PORT}",
+        # Loopback only, like postgres (listen_addresses=127.0.0.1). svcinit
+        # reserves the port on 127.0.0.1; redis-server's default of "*" and
+        # "::*" also contends with any socket on that port on any address,
+        # which lost a merge-queue run to "Address already in use" on the IPv6
+        # wildcard (run 38383931089). :redis_loopback_test guards this.
+        "--bind",
+        "127.0.0.1",
         "--dir",
         "$${TMPDIR}",
     ],
@@ -304,6 +311,17 @@ itest_service(
         "PING",
     ],
     visibility = ["//apps/suites/tabula:__subpackages__"],
+)
+
+# Guard for the redis `--bind` above: every LISTEN socket on the assigned port
+# must be 127.0.0.1. Brings up redis alone, so like redis_hygiene_test it runs
+# on RBE (redis tolerates root) and needs no serialization.
+service_test(
+    name = "redis_loopback_test",
+    size = "small",
+    env = {"ITEST_SERVICE_LABEL": "@@//apps/suites/tabula/api:redis"},
+    services = [":redis"],
+    test = "//tools/testinfra/redis:check_loopback",
 )
 
 itest_task(
