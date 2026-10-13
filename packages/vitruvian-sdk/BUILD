@@ -522,6 +522,16 @@ copy_to_directory(
 )
 
 copy_to_directory(
+    name = "hello-panel-typescript-folder",
+    srcs = glob(["samples/hello-panel-typescript/**"]) + ["//packages/vitruvian-sdk/kits/typescript:tool-kit-typescript"],
+    out = "built/hello-panel-typescript",
+    replace_prefixes = {
+        "samples/hello-panel-typescript/": "",
+        "kits/typescript/tool-kit-typescript": "node_modules/@vitruviansoftware/tool-kit",
+    },
+)
+
+copy_to_directory(
     name = "hello-python-kit-folder",
     srcs = glob(["samples/hello-python-kit/**"]) + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
     out = "built/hello-python-kit",
@@ -531,7 +541,7 @@ copy_to_directory(
     },
 )
 
-# The two kit samples, as shipped, against the conformance script. It starts
+# The kit samples, as shipped, against the conformance script. It starts
 # real processes: Node through the sample's own bin/tool, which finds `node`
 # on the PATH the test gives it, and the Python sample through this test's
 # own Python. Not `manual` and not tied to macOS, so the Linux lane runs it.
@@ -545,8 +555,10 @@ py_test(
     args = [
         "$(rootpath :hello-typescript-folder)/vitruvian-tool.json",
         "$(rootpath :hello-python-kit-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-panel-typescript-folder)/vitruvian-tool.json",
     ],
     data = [
+        ":hello-panel-typescript-folder",
         ":hello-python-kit-folder",
         ":hello-typescript-folder",
         "@nodejs_toolchains//:resolved_toolchain",
@@ -731,6 +743,7 @@ py_test(
         "kits/python/pyproject.toml",
         "release-please-config.json",
         "samples/hello-go/go.mod",
+        "samples/hello-panel-typescript/package.json",
         "samples/hello-python-kit/requirements.txt",
         "samples/hello-rust/Cargo.toml",
         "samples/hello-typescript/package.json",

@@ -53,4 +53,28 @@ exec node "$(dirname "$0")/tool.mjs"
 
 Add the folder in Vitruvian, `node_modules/` and all: Settings, Features,
 Tools from outside, Add a Tool.
+
+## Drawing
+
+[`samples/hello-panel-typescript`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-typescript) is a tool of
+protocol 2, written with the same kit: a counter the app draws in the island
+from blocks the tool sends. The guide's "Drawing" says how. Its page:
+
+```javascript
+/** The island page: what it says now. */
+function page() {
+  return tree([
+    heading("Counter"),
+    text(`Pressed ${counter.count} times`),
+    button("add", `Add ${step()}`, { style: "prominent" }),
+    field("name", {
+      title: "Your name",
+      value: counter.name,
+      placeholder: "Type it and press Return",
+    }),
+    counter.name !== "" &&
+      text(`Hello, ${counter.name}`, { style: "secondary" }),
+  ]);
+}
+```
 {% endraw %}

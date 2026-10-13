@@ -58,7 +58,11 @@ PACKAGE = os.path.dirname(HERE)
 GUIDE = os.path.join(HERE, "writing-a-tool.md")
 
 # The worked examples the website shows beside the guide, one per kit sample.
-EXAMPLES = ["samples/hello-typescript/README.md", "samples/hello-python-kit/README.md"]
+EXAMPLES = [
+    "samples/hello-typescript/README.md",
+    "samples/hello-python-kit/README.md",
+    "samples/hello-panel-typescript/README.md",
+]
 
 # What `vitruvian-tool` takes. Words.swift holds the same list as its usage.
 VERBS = {"init", "validate", "run"}

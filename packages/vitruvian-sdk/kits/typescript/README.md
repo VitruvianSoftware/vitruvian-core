@@ -28,6 +28,12 @@ tool.run();
   the kit never gives Node's event loop a turn while it serves the app.
 - **Never `console.log`.** Standard output is the link to the app. Write to
   standard error, or call `app.log({ message })`.
+- **A tool can draw.** With `"protocol": "2"` and `panels` in its manifest,
+  `tool.panel("counter", { onOpen, onEvent })` says what a panel shows and
+  what each thing the person does gives; a page is
+  `tree([heading("Counter"), button("add", "Add one")])`, one function a kind
+  of block. The handle sends a page unprompted with `render` and sets the
+  tool's badge with `badge`.
 
 ## Shipping it
 

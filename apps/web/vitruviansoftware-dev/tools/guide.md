@@ -824,6 +824,59 @@ An answer is `.page`, `.keep`, `.open` with one of your window panels, or
 not open, and the app draws at most four pages a second for a panel: send
 fewer.
 
+### In TypeScript, with the kit
+
+[`samples/hello-panel-typescript`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-typescript) is
+the same counter, in plain JavaScript that Node runs. A page is `tree` of
+its blocks, one function for each kind, and a block that is `false` is left
+out:
+
+```javascript
+/** The island page: what it says now. */
+function page() {
+  return tree([
+    heading("Counter"),
+    text(`Pressed ${counter.count} times`),
+    button("add", `Add ${step()}`, { style: "prominent" }),
+    field("name", {
+      title: "Your name",
+      value: counter.name,
+      placeholder: "Type it and press Return",
+    }),
+    counter.name !== "" &&
+      text(`Hello, ${counter.name}`, { style: "secondary" }),
+  ]);
+}
+```
+
+`tool.panel` takes the two handlers by name. An answer is `{ page }`,
+`{ keep: true }`, `{ open }` with one of your window panels, or `{ reply }`
+for a web page's call; `event.text` and `event.isOn` are what a field and a
+switch carry, and `event.row` the row of a list that was tapped:
+
+```javascript
+const island = tool.panel("counter", {
+  onOpen: () => page(),
+  onEvent: (_app, panel, event) => {
+    switch (event.block) {
+      case "add":
+        counter.count += step();
+        panel.badge({ count: counter.count });
+        break;
+      case "name":
+        counter.name = event.text ?? counter.name;
+        break;
+      default:
+        return { keep: true };
+    }
+    return { page: page() };
+  },
+});
+```
+
+A web panel's `onCall` is `panel.onCall = (app, method, params) => ...`; throw
+a `Refusal` to refuse a call.
+
 ### A web page
 
 A `web` panel shows `entry`, a page in your folder. It may load what else is
