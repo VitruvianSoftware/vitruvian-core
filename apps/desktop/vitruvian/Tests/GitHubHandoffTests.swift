@@ -62,7 +62,6 @@ enum GitHubHandoffTests {
         let domain = "com.vitruviansoftware.vitruvian.tests.github.handoff.\(name)"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
-        defaults.register(defaults: Defaults.registeredDefaults)
         defaults.set(true, forKey: AppFeature.notchGitHub.availabilityKey)
         defaults.set(true, forKey: AppFeature.notch.availabilityKey)
         defaults[Preferences.notchGitHubEnabled] = true
