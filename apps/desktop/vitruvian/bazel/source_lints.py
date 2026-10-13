@@ -2642,6 +2642,49 @@ def only_the_agreement_sheet_consents(repo):
     return problems
 
 
+_ADDS_A_TOOL = re.compile(r"\bstore\.add\(")
+_ADDS_AND_IS_TOLD = re.compile(r"\bstore\.add\(\w+\)\s*\{\s*\w+\s+in\b")
+
+
+def adds_that_wait(text):
+    """How many times `text` adds a tool, and how many of those hand the
+    store what to do when the tool is added. Prose and strings do not
+    count."""
+    code = "\n".join(code_and_blanked(line)[1] for line in text.split("\n"))
+    return len(_ADDS_A_TOOL.findall(code)), len(_ADDS_AND_IS_TOLD.findall(code))
+
+
+def the_tools_card_never_waits_to_add(repo):
+    """Adding the GitHub tool reads the GitHub feature's token from the
+    Keychain, which holds the read until the person answers its prompt. The
+    store's `add(_:then:)` has that read off the main thread and adds the
+    tool when it returns; its `add(_:)` adds at once with what is at hand.
+    The Add button must take the first, which no test can see: one that
+    takes the second freezes the app behind the prompt, or hands the tool no
+    token."""
+    problems = []
+    sample = "\n".join(
+        [
+            "store.add(consent) { result in",
+            "if case .failure(let refused) = store.add(consent) { show(refused) }",
+            "// store.add(consent), in prose",
+        ]
+    )
+    if adds_that_wait(sample) != (2, 1):
+        problems.append(
+            "the scan tells an add that is told when it is done from one "
+            "that is not, and counts no prose"
+        )
+    adds, told = adds_that_wait(repo.source(TOOLS_SECTION))
+    if adds == 0 or adds != told:
+        problems.append(
+            f"{TOOLS_SECTION}: the card adds a tool {adds} time(s) and only "
+            f"{told} of them through `store.add(consent) {{ result in ... }}`, the add "
+            "that never holds the main thread"
+        )
+    return problems
+
+
 _FOCUS_PLACED = re.compile(r"\bfocus\s*=\s*content\.initialFocus\b")
 _FOCUS_BOUND = re.compile(r"\.focused\(\$focus,\s*equals:\s*choice\)")
 
@@ -2892,6 +2935,7 @@ RULES = [
     migrated_tools_reach_services_through_the_broker,
     the_broker_names_no_tool,
     only_the_agreement_sheet_consents,
+    the_tools_card_never_waits_to_add,
     only_a_by_hand_build_rehearses_the_catalog,
     the_agreement_sheet_places_its_focus,
     a_tools_detail_places_its_focus,

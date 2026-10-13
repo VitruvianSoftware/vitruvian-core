@@ -16,6 +16,11 @@ import VitruvianToolProtocol
 /// first run and clears the handed copy; the feature's Keychain item stays,
 /// so turning the tool off and the feature back on costs nothing.
 ///
+/// The token comes from the Keychain, which may hold the read until the
+/// person answers its prompt (the app is signed ad hoc, so macOS asks again
+/// after an update). `prepare` has it read off the main thread before the
+/// tool is added; `perform` then takes what was read, and waits for nothing.
+///
 /// What does not move: signing in through a browser window, which needs
 /// the app's URL scheme; the feature's page in the island, which becomes a
 /// tile on the island's Tools page; and the `h` key that opened it.
@@ -43,7 +48,11 @@ package enum GitHubHandoff {
 
     package struct Parts {
         package var defaults: UserDefaults
-        /// The feature's token, from its Keychain item; nil with none.
+        /// Reads the feature's token from its Keychain item, off the main
+        /// thread, and calls back on it once `token` can answer at once.
+        package var readToken: (@escaping @MainActor () -> Void) -> Void
+        /// The feature's token as it was read; nil with none, or when the
+        /// person refused the Keychain's prompt. It never waits.
         package var token: () -> String?
         /// Where a tool's preferences are kept: the broker's storage backing.
         package var backing: StorageAccess.Backing
@@ -54,10 +63,12 @@ package enum GitHubHandoff {
         package var availabilityChanged: () -> Void
         package var log: (String) -> Void
 
-        package init(defaults: UserDefaults, token: @escaping () -> String?, backing: StorageAccess.Backing,
+        @MainActor package init(defaults: UserDefaults, readToken: @escaping (@escaping @MainActor () -> Void) -> Void = { $0() },
+                     token: @escaping () -> String?, backing: StorageAccess.Backing,
                      featureOff: @escaping () -> Void, availabilityChanged: @escaping () -> Void,
                      log: @escaping (String) -> Void) {
             self.defaults = defaults
+            self.readToken = readToken
             self.token = token
             self.backing = backing
             self.featureOff = featureOff
@@ -67,6 +78,7 @@ package enum GitHubHandoff {
 
         @MainActor package static let live = Parts(
             defaults: .standard,
+            readToken: { ready in GitHubAuthService.shared.loadToken { _ in ready() } },
             token: { GitHubAuthService.shared.currentToken() },
             backing: CapabilityBroker.shared.backings.storage,
             featureOff: { GitHubAuthService.shared.cancel() },
@@ -84,10 +96,23 @@ package enum GitHubHandoff {
         case handed([String])
     }
 
+    /// Has the token read before a tool is added, and calls `ready` on the
+    /// main thread when `perform` can run without waiting: at once for any
+    /// other tool, and for the GitHub tool once the feature is handed over
+    /// already. The main thread is never held: the Keychain may take as long
+    /// as the person takes to answer its prompt. A refused prompt is ready
+    /// too, with no token, so the tool starts signed out.
+    package static func prepare(_ id: ToolID, parts: Parts, then ready: @escaping @MainActor () -> Void) {
+        guard id == toolID, !parts.defaults[Preferences.githubReplacedByTool] else { return ready() }
+        parts.readToken(ready)
+    }
+
     /// Writes the feature's settings into the tool's storage, turns the
     /// feature off and hides it. Called by the tool store before the tool's
     /// program starts, for a tool added from the catalog or from a folder
     /// alike: a build of the tool a person tries by hand gets the same.
+    /// `prepare` comes first (`ExternalToolStore.add(_:then:)`), so the
+    /// token is there to take.
     @discardableResult
     package static func perform(_ installed: ExternalToolStore.Installed, from origin: CatalogueOrigin?,
                                 parts: Parts) -> Outcome {

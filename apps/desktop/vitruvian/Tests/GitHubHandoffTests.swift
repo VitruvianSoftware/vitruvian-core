@@ -2,6 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
+import Security
 import VitruvianCore
 import VitruvianServices
 import VitruvianToolProtocol
@@ -16,6 +17,11 @@ enum GitHubHandoffTests {
         otherToolsAndAnUpdateHandNothing(suite)
         removalBringsTheFeatureBackOff(suite)
         theStoreTellsBeforeTheProgramStarts(suite)
+        addingNeverWaitsForTheKeychain(suite)
+        aRefusedKeychainHandsOverWithoutAToken(suite)
+        removalWhileTheKeychainIsAskedDropsTheAdd(suite)
+        agreeingTwiceAddsAndHandsOverOnce(suite)
+        anUpdateAsksTheKeychainNothing(suite)
     }
 
     /// The GitHub tool's manifest: its preferences, as `vitruvian-tool.json`
@@ -228,5 +234,169 @@ enum GitHubHandoffTests {
                      "the store tells of the added tool before its program starts, so what is handed is there for its first run")
         _ = bench.store.remove(GitHubHandoff.toolID, deletingData: true)
         suite.expect(bench.removed == [GitHubHandoff.toolID], "and of its removal")
+    }
+
+    // MARK: - The Keychain may hold the token's read
+
+    /// The store, the hand-off and the feature's sign-in as the app wires
+    /// them (`ExternalToolStore.Parts.live`, `GitHubHandoff.Parts.live`),
+    /// over a Keychain that holds its answer the way the real one does while
+    /// "Vitruvian wants to use your confidential information" is on screen.
+    private final class Rig {
+        let bench = ExternalToolStoreTests.Bench()
+        let held: HeldGitHubTokenStore
+        let defaults: UserDefaults
+        let auth: GitHubAuthService
+        /// What each add answered, in the order they answered; nil for one
+        /// that was dropped.
+        var answers: [Result<ExternalToolStore.Installed, ExternalToolStore.Refusal>?] = []
+        var outcomes: [GitHubHandoff.Outcome] = []
+
+        init(_ name: String, keychain: Result<String?, GitHubTokenStoreError>) {
+            held = HeldGitHubTokenStore(answer: keychain)
+            defaults = GitHubHandoffTests.defaults(name)
+            auth = GitHubAuthService(store: held, transport: StubGitHubUserTransport(logins: [:]),
+                                     presenter: HeadlessWebAuthPresenter(), defaults: defaults)
+            let parts = GitHubHandoff.Parts(
+                defaults: defaults,
+                readToken: { [auth] ready in auth.loadToken { _ in ready() } },
+                token: { [auth] in auth.currentToken() },
+                backing: GitHubHandoffTests.backing(bench.box),
+                featureOff: { [auth] in auth.cancel() }, availabilityChanged: {}, log: { _ in })
+            bench.beforeAdding = { id, ready in GitHubHandoff.prepare(id, parts: parts, then: ready) }
+            bench.handOver = { [unowned self] installed, origin in
+                outcomes.append(GitHubHandoff.perform(installed, from: origin, parts: parts))
+            }
+        }
+
+        /// The person presses Add Tool on the sheet. How long it took to return.
+        @discardableResult
+        func agree(_ folder: String = "github") -> TimeInterval {
+            guard case .success(let offer) = bench.store.offer(
+                from: bench.folder(folder, manifest: GitHubHandoffTests.manifest, exec: "bin/tool")) else { return .infinity }
+            let began = ProcessInfo.processInfo.systemUptime
+            bench.store.add(ToolConsent(to: offer)) { [unowned self] in answers.append($0) }
+            return ProcessInfo.processInfo.systemUptime - began
+        }
+
+        var isAdded: Bool { bench.store.isInstalled(GitHubHandoff.toolID) }
+        var handedToken: String? {
+            bench.box.values[ExternalToolManifest.storageKey(tool: GitHubHandoff.toolID, preference: "migratedToken")] as? String
+        }
+        /// True once anything of the feature's was written for the tool.
+        var handedAnything: Bool { bench.box.values.keys.contains { $0.hasPrefix(GitHubHandoff.toolID.rawValue + "/") } }
+
+        /// Lets the main queue run until `done`, or for two seconds.
+        func pump(until done: () -> Bool) {
+            let deadline = Date(timeIntervalSinceNow: 2)
+            while !done(), Date() < deadline {
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.005))
+            }
+        }
+
+        /// The person answers the Keychain's prompt, and the answer
+        /// reaches the main thread.
+        func answerTheKeychain() {
+            held.answerNow()
+            pump { held.finished == held.started }
+            var delivered = false
+            DispatchQueue.main.async { delivered = true }
+            pump { delivered }
+        }
+
+        func close() { bench.close() }
+    }
+
+    static func addingNeverWaitsForTheKeychain(_ suite: TestSuite) {
+        let rig = Rig("held", keychain: .success("gho_saved"))
+        defer { rig.close() }
+        let waited = rig.agree()
+        suite.expect(waited < rig.held.patience / 2,
+                     "Add Tool returns while the Keychain still holds the token's read (\(waited)s)")
+        rig.pump { rig.held.started == 1 }
+        suite.expect(rig.held.started == 1 && rig.held.readsOnMainThread == 0,
+                     "the feature's token is read, and never on the main thread")
+        suite.expect(rig.bench.store.isAdding(GitHubHandoff.toolID) && rig.answers.isEmpty && !rig.isAdded
+                         && !rig.handedAnything && !rig.defaults[Preferences.githubReplacedByTool]
+                         && rig.bench.started.isEmpty,
+                     "while the Keychain is asked the tool is being added: nothing is handed, hidden or started yet")
+
+        rig.answerTheKeychain()
+        suite.expect(rig.answers.count == 1 && (try? rig.answers[0]?.get()) != nil && rig.isAdded
+                         && !rig.bench.store.isAdding(GitHubHandoff.toolID),
+                     "once the Keychain answers, the tool is added: \(rig.answers)")
+        suite.expect(rig.handedToken == "gho_saved" && rig.outcomes.count == 1
+                         && rig.defaults[Preferences.githubReplacedByTool],
+                     "and handed the token the Keychain gave, once: \(rig.outcomes)")
+        suite.expect(rig.bench.added.map(\.programStarted) == [false],
+                     "still before its program starts, so the token is there for its first run")
+        suite.expect(rig.held.started == 1, "the Keychain was asked once")
+    }
+
+    static func aRefusedKeychainHandsOverWithoutAToken(_ suite: TestSuite) {
+        for (name, keychain) in [("denied", Result<String?, GitHubTokenStoreError>.failure(.init(status: errSecAuthFailed))),
+                                 ("empty", .success(nil))] {
+            let rig = Rig(name, keychain: keychain)
+            defer { rig.close() }
+            rig.agree()
+            rig.pump { rig.held.started == 1 }
+            rig.answerTheKeychain()
+            suite.expect(rig.isAdded && rig.answers.count == 1 && rig.defaults[Preferences.githubReplacedByTool]
+                             && !rig.defaults[Preferences.notchGitHubEnabled],
+                         "\(name): the tool is added and the feature handed over all the same")
+            suite.expect(rig.handedToken == nil && rig.handedAnything && rig.outcomes.count == 1,
+                         "\(name): with the feature's settings and no token, so the tool starts signed out: \(rig.outcomes)")
+            suite.expect(rig.auth.state == .signedOut, "\(name): the feature's sign-in is left stopped: \(rig.auth.state)")
+        }
+    }
+
+    static func removalWhileTheKeychainIsAskedDropsTheAdd(_ suite: TestSuite) {
+        let rig = Rig("removed", keychain: .success("gho_saved"))
+        defer { rig.close() }
+        rig.agree()
+        rig.pump { rig.held.started == 1 }
+        suite.expect(rig.bench.store.remove(GitHubHandoff.toolID, deletingData: true) == .notAdded
+                         && !rig.bench.store.isAdding(GitHubHandoff.toolID),
+                     "removing a tool that is still being added stops the add")
+        rig.answerTheKeychain()
+        suite.expect(rig.held.finished == 1, "the held read did return")
+        suite.expect(rig.answers.count == 1 && rig.answers[0] == nil,
+                     "the Keychain's late answer is dropped, and whoever asked is told so: \(rig.answers)")
+        suite.expect(!rig.isAdded && rig.bench.records.isEmpty && !rig.handedAnything && rig.outcomes.isEmpty
+                         && !rig.defaults[Preferences.githubReplacedByTool] && rig.defaults[Preferences.notchGitHubEnabled],
+                     "nothing is added, nothing handed over, and the feature stays as it was")
+    }
+
+    static func agreeingTwiceAddsAndHandsOverOnce(_ suite: TestSuite) {
+        let rig = Rig("twice", keychain: .success("gho_saved"))
+        defer { rig.close() }
+        rig.agree("first")
+        rig.agree("second")
+        rig.pump { rig.held.started == 1 }
+        rig.answerTheKeychain()
+        suite.expect(rig.held.started == 1, "two adds waiting ask the Keychain once: \(rig.held.started)")
+        suite.expect(rig.answers.count == 2 && rig.answers[0] == nil && (try? rig.answers[1]?.get()) != nil,
+                     "the later agreement is the one that adds; the earlier is dropped: \(rig.answers)")
+        suite.expect(rig.bench.added.count == 1 && rig.outcomes.count == 1 && rig.handedToken == "gho_saved"
+                         && rig.bench.records.count == 1,
+                     "so the tool is added once and handed over to once: \(rig.outcomes)")
+    }
+
+    static func anUpdateAsksTheKeychainNothing(_ suite: TestSuite) {
+        let rig = Rig("update", keychain: .success("gho_saved"))
+        defer { rig.close() }
+        rig.defaults[Preferences.githubReplacedByTool] = true
+        rig.agree()
+        suite.expect(rig.answers.count == 1 && rig.isAdded && rig.outcomes == [.alreadyReplaced],
+                     "a tool whose feature is handed over already is added before Add Tool returns: \(rig.answers)")
+        rig.pump { rig.held.started > 0 }
+        suite.expect(rig.held.started == 0 && rig.handedToken == nil,
+                     "and the Keychain is not asked: there is nothing to hand a second time")
+        let other = ExternalToolStoreTests.Bench()
+        defer { other.close() }
+        var ready = 0
+        GitHubHandoff.prepare(ToolID("com.acme.deploys")!, parts: parts(defaults("update-other"), token: nil, box: Box()),
+                              then: { ready += 1 })
+        suite.expect(ready == 1, "another tool waits for nothing either")
     }
 }

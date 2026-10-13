@@ -8,7 +8,7 @@
 // conforms to:
 //
 //   @MainActor protocol GitHubTokenProviding: AnyObject {
-//       func currentToken() -> String?          // nil while signed out
+//       func currentToken() -> String?          // nil while signed out; never asks the Keychain
 //       func handleUnauthorized()               // call on any 401: drops the token, signs out
 //       var signedInChanges: AnyPublisher<Bool, Never> { get }  // true once signed in; replays the current value
 //   }
@@ -31,7 +31,8 @@ import VitruvianCore
 /// What another service needs from the sign-in. See the file header.
 @MainActor
 package protocol GitHubTokenProviding: AnyObject {
-    /// The signed-in user's token, or nil.
+    /// The signed-in user's token, or nil. It answers at once from what the
+    /// service already holds, and never asks the Keychain.
     func currentToken() -> String?
     /// GitHub or the relay answered 401: the token is dead. Drops it and signs out.
     func handleUnauthorized()
@@ -176,6 +177,12 @@ package enum GitHubAuthState: Equatable, Sendable {
 ///
 /// A token is saved before `GET /user` names its login. When GitHub cannot
 /// be reached for that, the token stays and Settings offers to try again.
+///
+/// The saved token is read off the main thread, once (`loadToken`). The app
+/// is signed ad hoc, so after an update macOS asks the person before the new
+/// build may read the item the old one saved, and holds the read until they
+/// answer. On the main thread that froze every window and the menu bar icon
+/// behind a prompt that may be under another window.
 @MainActor
 package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     package static let shared = GitHubAuthService(
@@ -215,6 +222,15 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     private let signedIn = CurrentValueSubject<Bool, Never>(false)
     private var token: String?
     private var tokenLoaded = false
+    /// One read at a time: each may wait for the person's answer to the
+    /// Keychain's prompt.
+    private let keychainQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.github-auth.keychain",
+                                              qos: .userInitiated)
+    /// Who waits for the read of the saved token; nil while no read is out.
+    private var tokenWaiters: [@MainActor (String?) -> Void]?
+    /// True from a `syncWithPreferences` that asked for the saved token until
+    /// it has it, or until the person does something else with the sign-in.
+    private var awaitsSavedToken = false
     private var attempt: Task<Void, Never>?
     /// Set by `disconnect()`: the person signed out on purpose, so the GitHub
     /// CLI login must not sign them straight back in. Lasts until relaunch.
@@ -250,12 +266,6 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
         return false
     }
 
-    /// A token is kept, whether or not GitHub has confirmed it this session.
-    package var hasSavedToken: Bool {
-        loadTokenIfNeeded()
-        return token != nil
-    }
-
     /// The App's client ID, or nil while none is set.
     package var clientID: String? {
         let value = defaults[Preferences.githubClientID].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -278,9 +288,56 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
         AppFeature.notchGitHub.isAvailable(in: defaults) && defaults[Preferences.notchGitHubEnabled]
     }
 
+    /// The token the service holds now: the one just signed in with, or
+    /// the saved one once `loadToken` has read it. It never asks the
+    /// Keychain, so it never waits.
     package func currentToken() -> String? {
-        loadTokenIfNeeded()
-        return token
+        token
+    }
+
+    /// Reads the saved token off the main thread, once, and calls `done` on
+    /// the main thread with the token the service then holds; at once when
+    /// it was read already. The read may take as long as the person takes to
+    /// answer the Keychain's prompt, and the main thread never waits for it.
+    ///
+    /// A sign-in, a disconnect or GitHub's 401 while the read is out says
+    /// what the token is, and the late answer is dropped. A refusal (the
+    /// person pressed Deny) is no token; it shows as the Keychain's error
+    /// only where the sign-in itself waits for the answer
+    /// (`syncWithPreferences`).
+    package func loadToken(then done: @escaping @MainActor (String?) -> Void) {
+        guard !tokenLoaded else { return done(token) }
+        guard tokenWaiters == nil else {
+            tokenWaiters?.append(done)
+            return
+        }
+        tokenWaiters = [done]
+        let store = store
+        keychainQueue.async { [weak self] in
+            let read = Result { try store.load() }
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.tokenWasRead(read) }
+            }
+        }
+    }
+
+    private func tokenWasRead(_ read: Result<String?, any Error>) {
+        let waiters = tokenWaiters ?? []
+        tokenWaiters = nil
+        if !tokenLoaded {
+            tokenLoaded = true
+            switch read {
+            case .success(let saved):
+                token = saved
+            case .failure(let error):
+                token = nil
+                // Said only where the sign-in still waits for this answer.
+                if awaitsSavedToken, state == .exchanging {
+                    state = .failed(.keychain(status: (error as? GitHubTokenStoreError)?.status ?? errSecIO))
+                }
+            }
+        }
+        for waiter in waiters { waiter(token) }
     }
 
     package var signedInChanges: AnyPublisher<Bool, Never> {
@@ -302,10 +359,24 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
             return
         }
         guard state == .signedOut else { return }
-        loadTokenIfNeeded()
+        // Launch never waits for the Keychain: while it is asked, the
+        // sign-in shows as being checked, and the rest follows its answer.
+        awaitsSavedToken = true
+        if !tokenLoaded { state = .exchanging }
+        loadToken { [weak self] token in self?.savedTokenArrived(token) }
+    }
+
+    /// The second half of `syncWithPreferences`, once the saved token is
+    /// known. Dropped when the person cancelled, signed in another way or
+    /// switched the feature off while the Keychain was asked.
+    private func savedTokenArrived(_ token: String?) {
+        guard awaitsSavedToken else { return }
+        awaitsSavedToken = false
+        if state == .exchanging { state = .signedOut }
+        guard Self.isEnabled(in: defaults), state == .signedOut else { return }
         if let token {
             start { service in await service.confirm(token) }
-        } else if state == .signedOut, !cliAutoConnectSuppressed,
+        } else if !cliAutoConnectSuppressed,
                   let detected = detectedCLIAccount, detected.token != rejectedToken {
             connectWithToken(detected.token)
         }
@@ -313,9 +384,11 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
 
     /// Checks the saved token with GitHub again, after it could not be reached.
     package func retry() {
-        loadTokenIfNeeded()
-        guard let token else { state = .signedOut; return }
-        start { service in await service.confirm(token) }
+        loadToken { [weak self] token in
+            guard let self else { return }
+            guard let token else { self.state = .signedOut; return }
+            self.start { service in await service.confirm(token) }
+        }
     }
 
     /// Stops a sign-in in progress.
@@ -574,7 +647,8 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     package func disconnect() {
         stopAttempt()
         cliAutoConnectSuppressed = true
-        loadTokenIfNeeded()
+        // The token the service holds: one the Keychain has not handed over
+        // yet is deleted below all the same, and a late read of it is dropped.
         let revoked = token
         token = nil
         tokenLoaded = true
@@ -605,6 +679,7 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     // MARK: Helpers
 
     private func start(_ work: @escaping @MainActor @Sendable (GitHubAuthService) async -> Void) {
+        awaitsSavedToken = false
         attempt?.cancel()
         attempt = Task { [weak self] in
             guard let self else { return }
@@ -613,20 +688,10 @@ package final class GitHubAuthService: ObservableObject, GitHubTokenProviding {
     }
 
     private func stopAttempt() {
+        awaitsSavedToken = false
         attempt?.cancel()
         attempt = nil
         presenter.cancel()
-    }
-
-    private func loadTokenIfNeeded() {
-        guard !tokenLoaded else { return }
-        tokenLoaded = true
-        do {
-            token = try store.load()
-        } catch {
-            token = nil
-            state = .failed(.keychain(status: (error as? GitHubTokenStoreError)?.status ?? errSecIO))
-        }
     }
 
     private static func host(_ url: URL) -> String { url.host ?? url.absoluteString }

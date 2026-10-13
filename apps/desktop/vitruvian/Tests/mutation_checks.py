@@ -40,6 +40,45 @@ MUTATIONS = [
      "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
      "        parts.availabilityChanged()\n", "",
      "a hand-off that hides the feature tells the feature runtime once, after it is hidden"),
+    ("launch waits for the Keychain prompt again", "github",
+     "Sources/Vitruvian/Services/GitHub/GitHubAuthService.swift",
+     "        keychainQueue.async { [weak self] in\n"
+     "            let read = Result { try store.load() }\n"
+     "            DispatchQueue.main.async { [weak self] in\n"
+     "                MainActor.assumeIsolated { self?.tokenWasRead(read) }\n"
+     "            }\n"
+     "        }\n",
+     "        tokenWasRead(Result { try store.load() })\n",
+     "the saved token is read, and never on the main thread"),
+    ("Add Tool waits for the Keychain prompt again", "platform",
+     "Sources/Vitruvian/Services/GitHub/GitHubAuthService.swift",
+     "        keychainQueue.async { [weak self] in\n"
+     "            let read = Result { try store.load() }\n"
+     "            DispatchQueue.main.async { [weak self] in\n"
+     "                MainActor.assumeIsolated { self?.tokenWasRead(read) }\n"
+     "            }\n"
+     "        }\n",
+     "        tokenWasRead(Result { try store.load() })\n",
+     "the feature's token is read, and never on the main thread"),
+    ("a late Keychain answer replaces the token just signed in with", "github",
+     "Sources/Vitruvian/Services/GitHub/GitHubAuthService.swift",
+     "        if !tokenLoaded {\n            tokenLoaded = true\n            switch read {\n",
+     "        do {\n            tokenLoaded = true\n            switch read {\n",
+     "a sign-in made while the Keychain was asked stands; its late answer is dropped"),
+    ("the GitHub tool is added before the Keychain has answered", "platform",
+     "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
+     "        parts.readToken(ready)\n", "        ready()\n",
+     "while the Keychain is asked the tool is being added: nothing is handed, hidden or started yet"),
+    ("a tool removed while it is being added is added all the same", "platform",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        // nothing and hands nothing over.\n        waitingAdds[id] = nil\n",
+     "        // nothing and hands nothing over.\n",
+     "the Keychain's late answer is dropped, and whoever asked is told so"),
+    ("agreeing to a tool twice adds it twice", "platform",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "            guard let self, self.waitingAdds[id] == turn else { return done(nil) }\n",
+     "            guard let self else { return done(nil) }\n",
+     "the later agreement is the one that adds; the earlier is dropped"),
     ("compact rail eagerly builds history", "notch", "Sources/Vitruvian/UI/Notch/NotchComponents.swift",
      "                    LazyHStack(alignment: .top, spacing: spacing) {",
      "                    HStack(alignment: .top, spacing: spacing) {",

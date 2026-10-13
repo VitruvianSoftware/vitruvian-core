@@ -412,6 +412,10 @@ package struct ExternalToolsSection: View {
     @State private var browsing = false
     /// The tool from the catalog being fetched, and why one was not offered.
     @State private var installing: ToolID?
+    /// The tools the person agreed to that are not added yet. Adding the
+    /// GitHub tool waits for the Keychain, which may be asking the person
+    /// for their password (`ExternalToolStore.add(_:then:)`).
+    @State private var adding: Set<ToolID> = []
     @State private var catalogueRefusal: ToolRefusalMessage?
     @State private var refusal: ToolRefusalMessage?
     @State private var shown: Shown?
@@ -440,6 +444,7 @@ package struct ExternalToolsSection: View {
                     .accessibilityHidden(true)
                 Text(text.sectionTitle).font(.headline)
                 Spacer(minLength: 12)
+                if !adding.isEmpty { ProgressView().controlSize(.small) }
                 Button(text.browseButton) { browse() }
                     .controlSize(.small)
                 Button(text.addButton) { chooseFolder() }
@@ -471,10 +476,18 @@ package struct ExternalToolsSection: View {
                                               cancel: l10n.s.uninstallerCancel),
                 onAgree: { consent in
                     self.asked = nil
-                    if case .failure(let refused) = store.add(consent) { show(refused, of: consent.offer) }
-                    // The download's folder, for a tool from the catalog:
-                    // the store has its own copy now, or nothing.
-                    installer.finished(with: consent.offer)
+                    let offer = consent.offer
+                    let id = offer.tool.manifest.id
+                    // Usually done before this returns. Never a wait on the
+                    // main thread: the card shows the tool is being added.
+                    adding.insert(id)
+                    store.add(consent) { result in
+                        adding.remove(id)
+                        if case .failure(let refused) = result { show(refused, of: offer) }
+                        // The download's folder, for a tool from the catalog:
+                        // the store has its own copy now, or nothing.
+                        installer.finished(with: offer)
+                    }
                 },
                 onCancel: {
                     self.asked = nil
@@ -512,7 +525,7 @@ package struct ExternalToolsSection: View {
                                               update: watch.update(for:), language: l10n.language, strings: text,
                                               close: l10n.s.menuClose)
                     },
-                    installing: installing, refusal: $catalogueRefusal,
+                    installing: installing ?? adding.first, refusal: $catalogueRefusal,
                     install: { install($0) }, close: { browsing = false })
             }
         }
@@ -610,7 +623,7 @@ package struct ExternalToolsSection: View {
     /// Fetches a tool from the catalog, then shows the agreement sheet for
     /// it, as for a folder. Nothing is installed here.
     private func install(_ entry: CatalogueEntry) {
-        guard installing == nil else { return }
+        guard installing == nil, adding.isEmpty else { return }
         installing = entry.id
         installer.prepare(entry) { result in
             installing = nil
