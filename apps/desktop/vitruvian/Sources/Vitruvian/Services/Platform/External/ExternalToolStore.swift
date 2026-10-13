@@ -142,6 +142,12 @@ package final class ExternalToolStore {
         package var watchLanguage: @MainActor (@escaping @MainActor (String) -> Void) -> Any?
         /// What draws the tools' panels and badges; nil where nothing does.
         package var panels: @MainActor () -> ToolPanelHost?
+        /// Asked before a tool is added, with its id: calls back on the
+        /// main thread once what `added` hands the tool can be read without
+        /// waiting. At once, unless a feature of the app's must first fetch
+        /// something that may take a while (`GitHubHandoff.prepare`, whose
+        /// token the Keychain may hold until the person answers its prompt).
+        package var beforeAdding: @MainActor (ToolID, @escaping @MainActor () -> Void) -> Void
         /// Told of a tool just added, with the catalog entry it came from,
         /// before its program is started: a feature of the app's that the
         /// tool takes over hands it what it kept here (`GitHubHandoff`).
@@ -160,6 +166,9 @@ package final class ExternalToolStore {
                      forgetShortcuts: @escaping @MainActor (ToolID) -> Void = { _ in },
                      watchLanguage: @escaping @MainActor (@escaping @MainActor (String) -> Void) -> Any? = { _ in nil },
                      panels: @escaping @MainActor () -> ToolPanelHost? = { nil },
+                     beforeAdding: @escaping @MainActor (ToolID, @escaping @MainActor () -> Void) -> Void = { _, ready in
+                         ready()
+                     },
                      added: @escaping @MainActor (Installed, CatalogueOrigin?) -> Void = { _, _ in },
                      removed: @escaping @MainActor (ToolID) -> Void = { _ in }) {
             self.folders = folders
@@ -175,6 +184,7 @@ package final class ExternalToolStore {
             self.forgetShortcuts = forgetShortcuts
             self.watchLanguage = watchLanguage
             self.panels = panels
+            self.beforeAdding = beforeAdding
             self.added = added
             self.removed = removed
         }
@@ -198,6 +208,7 @@ package final class ExternalToolStore {
             forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
             watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
             panels: { .shared },
+            beforeAdding: { id, ready in GitHubHandoff.prepare(id, parts: .live, then: ready) },
             added: { installed, origin in GitHubHandoff.perform(installed, from: origin, parts: .live) },
             removed: { GitHubHandoff.toolRemoved($0, defaults: .standard) })
     }
@@ -245,6 +256,10 @@ package final class ExternalToolStore {
     private var told: Set<ToolID> = []
     /// Keeps the store told of a change of the app's language.
     private var watchingLanguage: Any?
+    /// The adds that wait for `Parts.beforeAdding`, by tool: the last one
+    /// asked for each. An add that is no longer here when its wait ends is
+    /// dropped.
+    private var waitingAdds: [ToolID: UUID] = [:]
 
     package init(parts: Parts) {
         self.parts = parts
@@ -359,11 +374,43 @@ package final class ExternalToolStore {
                                   catalogue: catalogue))
     }
 
+    /// The second step, as the app takes it: `add`, once whatever the app
+    /// hands the tool is ready to be handed (`Parts.beforeAdding`). It
+    /// returns at once and never holds the main thread; `done` is called on
+    /// it, once, with what `add` answered. Usually that is before this
+    /// returns. For the GitHub tool it may be much later: the Keychain holds
+    /// the feature's token until the person answers its prompt.
+    ///
+    /// Nothing is copied, saved or started while it waits. `done` is given
+    /// nil, and nothing is added, when the wait was overtaken: the tool was
+    /// removed meanwhile, or the person agreed to it again, and then that
+    /// later add is the one that counts. So a tool is added, and handed
+    /// over to, once.
+    package func add(_ consent: ToolConsent, then done: @escaping @MainActor (Result<Installed, Refusal>?) -> Void) {
+        let id = consent.offer.tool.manifest.id
+        let turn = UUID()
+        waitingAdds[id] = turn
+        parts.beforeAdding(id) { [weak self] in
+            guard let self, self.waitingAdds[id] == turn else { return done(nil) }
+            self.waitingAdds[id] = nil
+            done(self.add(consent))
+        }
+    }
+
+    /// True while an add of this tool waits (`add(_:then:)`).
+    package func isAdding(_ id: ToolID) -> Bool {
+        waitingAdds[id] != nil
+    }
+
     /// The second step: the person agreed to an offer, so the tool is
     /// added, in place of the one with its id when there is one. Copies the
     /// folder into the app's own, remembers the tool and what was agreed,
     /// and hands it to the host and the registry. Its program is started by
     /// the host's run rule, or by its first command.
+    ///
+    /// The app reaches this through `add(_:then:)`, which waits for
+    /// `Parts.beforeAdding` first. Called alone it waits for nothing, and
+    /// `Parts.added` hands over only what is at hand already.
     ///
     /// When it is refused before anything is copied, nothing changes: a
     /// tool that was there before is as it was. A copy that turns out not
@@ -493,6 +540,9 @@ package final class ExternalToolStore {
     /// tool again finds both. Nothing deletes either later.
     @discardableResult
     package func remove(_ id: ToolID, deletingData: Bool) -> Removal {
+        // An add of it that still waits is dropped: its late answer adds
+        // nothing and hands nothing over.
+        waitingAdds[id] = nil
         guard let known = records.firstIndex(where: { $0.id == id.rawValue }) else { return .notAdded }
         var next = records
         next.remove(at: known)

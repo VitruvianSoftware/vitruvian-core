@@ -1,0 +1,18 @@
+{
+  "_recorded": "crates.io/api/v1/crates/<crate>/versions, 2026-10-13, trimmed to the fields the check reads",
+  "versions": [
+    {
+      "num": "1.1.0",
+      "created_at": "2026-10-13T17:12:25.170450Z",
+      "yanked": false,
+      "trustpub_data": null,
+      "published_by": {
+        "login": "ipv1337"
+      }
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "next_page": null
+  }
+}

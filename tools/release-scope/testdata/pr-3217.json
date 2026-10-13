@@ -1,0 +1,23 @@
+{
+  "pull_request": {
+    "number": 3217,
+    "title": "fix(ci): the HomeSpeaker tool's manifest keeps the layout release-please writes",
+    "body": "The HomeSpeaker release PR (#3216) cannot go green: its `tidy-check` fails. This fixes that, and stops the next tool from repeating it.\n\n**What went wrong.** When release-please bumps the version in `apps/desktop/home-speaker/tool/vitruvian-tool.json`, it writes the whole file back with every array one item a line. The formatter wants the short form (`[\"commandBar\"]`), so the release PR looks unformatted. The GitHub tool had the same break on its first release (#3198, fixed by #3200). #3211 added a second tool manifest and the fix did not cover it.\n\n**The change.**\n- The manifest is committed in release-please's layout and marked `rules-lint-ignored`, as the GitHub tool's is. The content is the same; only whitespace moved.\n- Both tools' `version_test` now fail when the manifest is not in that layout. A new tool that copies the test finds this on its own PR, not on its first release.\n\n**Verified.**\n- The guard fails on the manifest as it is on `main` and passes on the new one.\n- The new file differs from the one release-please wrote on #3216 by the version line alone (`1.12.0` vs `1.13.0`).\n- The formatter leaves the new file unchanged (same hash before and after).\n- `//apps/desktop/home-speaker:tool_version_test` and `//apps/desktop/vitruvian-tool-github:version_test` pass locally.\n\n**Not verified.** That #3216 goes green. release-please has to rebase it on this merge first.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "user": {
+      "login": "ipv1337",
+      "type": "User"
+    },
+    "head": {
+      "ref": "fix/home-speaker-tool-manifest-layout"
+    }
+  },
+  "commits": [
+    "fix(ci): the HomeSpeaker tool's manifest keeps the layout release-please writes\n\nThe HomeSpeaker release PR (#3216) fails tidy-check. release-please bumps\nthe version in tool/vitruvian-tool.json and writes the whole file back\nwith every array one item a line; the formatter wants the short form.\nThis is the same break the GitHub tool had (#3200), on the second tool.\n\nThe manifest is now committed in release-please's layout and marked\nrules-lint-ignored, so the release PR changes the version line alone.\n\nBoth tools' version_test now fail when the manifest is not in that\nlayout, so the mistake is found on the PR that adds a tool, not on its\nfirst release.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  ],
+  "files": [
+    ".gitattributes",
+    "apps/desktop/home-speaker/tool/version_test.py",
+    "apps/desktop/home-speaker/tool/vitruvian-tool.json",
+    "apps/desktop/vitruvian-tool-github/version_test.py"
+  ]
+}

@@ -116,6 +116,7 @@ jobs:
           path: |
             macos/.build/release/NexusAgent
             macos/.build/release/NexusAgent_NexusAgentUI.bundle
+            macos/.build/release/nexus-agent-tool
           if-no-files-found: error
 
   package:
@@ -149,6 +150,12 @@ jobs:
           lipo -info /tmp/universal/NexusAgent
           # The resources are the same files for both architectures.
           cp -R /tmp/arm64/NexusAgent_NexusAgentUI.bundle /tmp/universal/
+          # The tool for the Vitruvian app, one binary for both as well.
+          lipo -create \
+            /tmp/arm64/nexus-agent-tool \
+            /tmp/x86_64/nexus-agent-tool \
+            -output /tmp/universal/nexus-agent-tool
+          lipo -info /tmp/universal/nexus-agent-tool
 
       - name: Assemble .app bundles
         run: |
@@ -197,6 +204,28 @@ jobs:
           cd "${GITHUB_WORKSPACE}"
           ls -lh *.zip
 
+      # The tool as the Vitruvian app installs it: a zip of its folder with
+      # vitruvian-tool.json at the top, bin/tool, and the copy of Mermaid
+      # the chat's diagram cards draw with beside the program, where it
+      # looks for an executable that is no bundle. The zip is what the
+      # app's catalog (catalog/tools.json in vitruvian-core) pins by its
+      # size and checksum, which the sidecar and the release notes carry.
+      - name: Zip the tool's folder
+        run: |
+          VERSION="${{ needs.detect.outputs.version }}"
+          folder="/tmp/tool/nexus-agent"
+          mkdir -p "$folder/bin"
+          cp macos/tool/vitruvian-tool.json "$folder/"
+          cp /tmp/universal/nexus-agent-tool "$folder/bin/tool"
+          chmod 755 "$folder/bin/tool"
+          cp macos/Sources/NexusAgentUI/Resources/mermaid.min.js "$folder/bin/"
+          asset="nexus-agent-tool-${VERSION}.zip"
+          (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
+          cd "${GITHUB_WORKSPACE}"
+          shasum -a 256 "$asset" > "$asset.sha256"
+          cat "$asset.sha256"
+          ls -l "$asset"
+
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
@@ -204,10 +233,26 @@ jobs:
           VERSION="${{ needs.detect.outputs.version }}"
           TAG="v${VERSION}"
 
-          for f in *.dmg *.zip; do
+          for f in *.dmg *.zip *.sha256; do
             echo "Uploading $f..."
             gh release upload "$TAG" "$f" --clobber
           done
+
+      # What a catalog entry for the tool pins, appended to the generated
+      # notes, so a pull request to vitruvian-core can copy it off the
+      # release page.
+      - name: Say what the catalog entry pins
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          VERSION="${{ needs.detect.outputs.version }}"
+          TAG="v${VERSION}"
+          asset="nexus-agent-tool-${VERSION}.zip"
+          size="$(stat -f %z "$asset")"
+          sha256="$(cut -d' ' -f1 "$asset.sha256")"
+          notes="$(gh release view "$TAG" --json body -q .body)"
+          printf '%s\n\n## The tool for the Vitruvian app\n\n`%s`: `size`: %s, `sha256`: %s\n' "$notes" "$asset" "$size" "$sha256" > /tmp/notes.md
+          gh release edit "$TAG" --notes-file /tmp/notes.md
 
       - name: Update Homebrew Cask
         env:

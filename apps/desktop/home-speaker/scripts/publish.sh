@@ -66,6 +66,13 @@ echo "==> Assembling standalone HomeSpeaker.app bundles (universal, arm64, x86_6
 rm -rf dist
 mkdir -p dist/stage-universal dist/stage-arm64 dist/stage-x86_64
 
+# The HomeSpeaker tool for the Vitruvian app, beside the app: one zip of its
+# folder, named so the packaging helper below uploads it with the rest.
+echo "==> Zipping the HomeSpeaker tool for the Vitruvian app"
+TOOL_BIN="$(dirname "${BIN}")/homespeaker-tool"
+lipo -info "${TOOL_BIN}"
+HOMESPEAKER_REQUIRE_UNIVERSAL=1 ./scripts/zip-tool.sh "${TOOL_BIN}" "${VERSION}" ./dist
+
 HOMESPEAKER_REQUIRE_UNIVERSAL=1 ./scripts/bundle.sh "${BIN}" "${VERSION}" ./dist/stage-universal
 ./scripts/bundle.sh "${BIN_ARM64}" "${VERSION}" ./dist/stage-arm64
 ./scripts/bundle.sh "${BIN_X86_64}" "${VERSION}" ./dist/stage-x86_64

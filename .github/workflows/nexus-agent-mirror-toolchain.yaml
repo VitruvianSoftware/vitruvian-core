@@ -114,6 +114,7 @@ jobs:
           path: |
             apps/desktop/nexus-agent/macos/.build/release/NexusAgent
             apps/desktop/nexus-agent/macos/.build/release/NexusAgent_NexusAgentUI.bundle
+            apps/desktop/nexus-agent/macos/.build/release/nexus-agent-tool
           if-no-files-found: error
           retention-days: 1
 
@@ -171,6 +172,12 @@ jobs:
           lipo -info /tmp/universal/NexusAgent
           # The resources are the same files for both architectures.
           cp -R /tmp/arm64/NexusAgent_NexusAgentUI.bundle /tmp/universal/
+          # The tool for the Vitruvian app, one binary for both as well.
+          lipo -create \
+            /tmp/arm64/nexus-agent-tool \
+            /tmp/x86_64/nexus-agent-tool \
+            -output /tmp/universal/nexus-agent-tool
+          lipo -info /tmp/universal/nexus-agent-tool
 
       - name: Assemble .app bundles
         run: |
@@ -312,6 +319,56 @@ jobs:
           zip -r "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
           cd "${GITHUB_WORKSPACE}"
           ls -lh *.zip
+
+      # The tool as the Vitruvian app installs it: a zip of its folder with
+      # vitruvian-tool.json at the top, bin/tool, and the copy of Mermaid
+      # the chat's diagram cards draw with beside the program, where it
+      # looks for an executable that is no bundle. The zip is what the
+      # app's catalog (catalog/tools.json in vitruvian-core) pins by its
+      # size and checksum, which the sidecar and the release notes carry.
+      - name: Zip the tool's folder
+        run: |
+          VERSION="0.0.0-rehearsal"
+          folder="/tmp/tool/nexus-agent"
+          mkdir -p "$folder/bin"
+          cp apps/desktop/nexus-agent/macos/tool/vitruvian-tool.json "$folder/"
+          cp /tmp/universal/nexus-agent-tool "$folder/bin/tool"
+          chmod 755 "$folder/bin/tool"
+          cp apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/mermaid.min.js "$folder/bin/"
+          asset="nexus-agent-tool-${VERSION}.zip"
+          (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
+          cd "${GITHUB_WORKSPACE}"
+          shasum -a 256 "$asset" > "$asset.sha256"
+          cat "$asset.sha256"
+          ls -l "$asset"
+
+      # What the Vitruvian app does with the zip, on a Mac with nothing of
+      # ours on it: unpack it, judge the folder with `vitruvian-tool
+      # validate`, built from the kit SwiftPM resolved, and play the app to
+      # the program with the SDK's conformance script, under a home of its
+      # own. A release attaches the zip and judges nothing.
+      #
+      # This job builds nothing, so it has no checkout of the kit: the
+      # artifacts carry what the build job built, not what SwiftPM fetched
+      # to build it. `swift package resolve` fetches the kit here, by the
+      # same rule in Package.swift the build job's `swift build` followed.
+      - name: Check the tool's folder
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tool"
+          ditto -x -k nexus-agent-tool-0.0.0-rehearsal.zip "$RUNNER_TEMP/tool"
+          test -f "$RUNNER_TEMP/tool/vitruvian-tool.json"
+          test -x "$RUNNER_TEMP/tool/bin/tool"
+          test -f "$RUNNER_TEMP/tool/bin/mermaid.min.js"
+          lipo -archs "$RUNNER_TEMP/tool/bin/tool"
+          swift package resolve --package-path apps/desktop/nexus-agent/macos
+          sdk="$(find apps/desktop/nexus-agent/macos/.build/checkouts -maxdepth 1 -name 'vitruvian-sdk*' -type d | head -1)"
+          test -n "$sdk"
+          swift build --package-path "$sdk" --product vitruvian-tool
+          "$(swift build --package-path "$sdk" --show-bin-path)/vitruvian-tool" validate "$RUNNER_TEMP/tool"
+          mkdir -p "$RUNNER_TEMP/tool-home"
+          HOME="$RUNNER_TEMP/tool-home" CFFIXED_USER_HOME="$RUNNER_TEMP/tool-home" \
+            python3 "$sdk/conformance/conformance.py" "$RUNNER_TEMP/tool"
 
       # The ZIP is what an installed app updates itself from, so the app that
       # comes back out of it is checked as well: `zip` must have kept the

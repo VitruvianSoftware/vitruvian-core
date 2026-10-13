@@ -59,3 +59,12 @@ doctor(
         "git",
     ],
 )
+
+# The tool's version test (macos/tool/version_test.py) holds release-please
+# to writing the tool's version where the app's goes. A filegroup for the
+# reason release_workflow is one.
+filegroup(
+    name = "release_please_config",
+    srcs = ["release-please-config.json"],
+    visibility = ["//apps/desktop/nexus-agent/macos:__pkg__"],
+)

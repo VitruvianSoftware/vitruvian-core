@@ -17,6 +17,12 @@ import VitruvianToolProtocol
 /// The feature itself went in 3.47; this stays one release more, for a
 /// person who skipped 3.46, where the feature offered the tool. Stage F
 /// removes it with the feature's preferences and its Keychain store.
+///
+/// The token comes from the Keychain, which may hold the read until the
+/// person answers its prompt (the app is signed ad hoc, so macOS asks again
+/// after an update). `prepare` has it read off the main thread before the
+/// tool is added (`GitHubSavedToken`); `perform` then takes what was read,
+/// and waits for nothing.
 /// Design: `docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`,
 /// section 9.
 @MainActor
@@ -41,15 +47,21 @@ package enum GitHubHandoff {
 
     package struct Parts {
         package var defaults: UserDefaults
-        /// The feature's token, from its Keychain item; nil with none.
+        /// Reads the feature's token from its Keychain item, off the main
+        /// thread, and calls back on it once `token` can answer at once.
+        package var readToken: (@escaping @MainActor () -> Void) -> Void
+        /// The feature's token as it was read; nil with none, or when the
+        /// person refused the Keychain's prompt. It never waits.
         package var token: () -> String?
         /// Where a tool's preferences are kept: the broker's storage backing.
         package var backing: StorageAccess.Backing
         package var log: (String) -> Void
 
-        package init(defaults: UserDefaults, token: @escaping () -> String?, backing: StorageAccess.Backing,
+        @MainActor package init(defaults: UserDefaults, readToken: @escaping (@escaping @MainActor () -> Void) -> Void = { $0() },
+                     token: @escaping () -> String?, backing: StorageAccess.Backing,
                      log: @escaping (String) -> Void) {
             self.defaults = defaults
+            self.readToken = readToken
             self.token = token
             self.backing = backing
             self.log = log
@@ -57,7 +69,8 @@ package enum GitHubHandoff {
 
         @MainActor package static let live = Parts(
             defaults: .standard,
-            token: { try? KeychainGitHubTokenStore().load() },
+            readToken: { ready in GitHubSavedToken.shared.load { _ in ready() } },
+            token: { GitHubSavedToken.shared.current() },
             backing: CapabilityBroker.shared.backings.storage,
             log: { Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "github-handoff").notice("\($0, privacy: .public)") })
     }
@@ -72,9 +85,21 @@ package enum GitHubHandoff {
         case handed([String])
     }
 
+    /// Has the token read before a tool is added, and calls `ready` on the
+    /// main thread when `perform` can run without waiting: at once for any
+    /// other tool, and for the GitHub tool once the feature is handed over
+    /// already. The main thread is never held: the Keychain may take as long
+    /// as the person takes to answer its prompt. A refused prompt is ready
+    /// too, with no token, so the tool starts signed out.
+    package static func prepare(_ id: ToolID, parts: Parts, then ready: @escaping @MainActor () -> Void) {
+        guard id == toolID, !parts.defaults[Preferences.githubReplacedByTool] else { return ready() }
+        parts.readToken(ready)
+    }
+
     /// Writes the feature's settings into the tool's storage. Called by the
     /// tool store before the tool's program starts, for a tool added from
-    /// the catalog or from a folder alike.
+    /// the catalog or from a folder alike. `prepare` comes first
+    /// (`ExternalToolStore.add(_:then:)`), so the token is there to take.
     @discardableResult
     package static func perform(_ installed: ExternalToolStore.Installed, from origin: CatalogueOrigin?,
                                 parts: Parts) -> Outcome {
@@ -152,5 +177,69 @@ package enum GitHubHandoff {
         let color = color.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "breathe" else { return color }
         return speed.map { "breathe \(color) \(min(9, max(0, $0)))" } ?? "breathe \(color)"
+    }
+}
+
+/// The GitHub feature's saved token, read from its Keychain item off the
+/// main thread, once. The feature's sign-in did this while there was one
+/// (`GitHubAuthService.loadToken`); the feature is gone, and its token is
+/// still what the hand-off gives the tool.
+///
+/// The app is signed ad hoc, so after an update macOS asks the person before
+/// the new build may read the item an older one saved, and holds the read
+/// until they answer. On the main thread that froze every window and the
+/// menu bar icon behind a prompt that may be under another window.
+@MainActor
+package final class GitHubSavedToken {
+    package static let shared = GitHubSavedToken(store: KeychainGitHubTokenStore())
+
+    private let store: any GitHubTokenStore
+    /// One read at a time: it may wait for the person's answer to the
+    /// Keychain's prompt.
+    private let keychainQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.github-handoff.keychain",
+                                              qos: .userInitiated)
+    private var token: String?
+    private var loaded = false
+    /// Who waits for the read; nil while no read is out.
+    private var waiters: [@MainActor (String?) -> Void]?
+
+    package init(store: any GitHubTokenStore) {
+        self.store = store
+    }
+
+    /// The token as it was read, or nil: none saved, not read yet, or the
+    /// person refused the Keychain's prompt. It never asks the Keychain, so
+    /// it never waits.
+    package func current() -> String? {
+        token
+    }
+
+    /// Reads the saved token off the main thread, once, and calls `done` on
+    /// the main thread with it; at once when it was read already. The read
+    /// may take as long as the person takes to answer the Keychain's prompt,
+    /// and the main thread never waits for it. A refusal (the person pressed
+    /// Deny) is no token.
+    package func load(then done: @escaping @MainActor (String?) -> Void) {
+        guard !loaded else { return done(token) }
+        guard waiters == nil else {
+            waiters?.append(done)
+            return
+        }
+        waiters = [done]
+        let store = store
+        keychainQueue.async { [weak self] in
+            let read = try? store.load()
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { self?.wasRead(read) }
+            }
+        }
+    }
+
+    private func wasRead(_ read: String?) {
+        let waiting = waiters ?? []
+        waiters = nil
+        loaded = true
+        token = read
+        for waiter in waiting { waiter(token) }
     }
 }

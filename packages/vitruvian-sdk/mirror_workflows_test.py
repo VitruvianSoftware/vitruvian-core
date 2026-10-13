@@ -33,7 +33,8 @@ file does. It also holds what limits the damage of a
 mistake: the workflow may only read; only the release job may write, and
 only contents, and only the three jobs that publish a kit may ask for an
 identity token; no checkout keeps its credentials; every action is pinned to
-a commit.
+a commit. And the Python kit's files are attested before they are uploaded,
+so PyPI can say in public which workflow published them.
 """
 
 import json
@@ -270,10 +271,43 @@ def limit_problems(name, workflow):
     return problems
 
 
+def attest_problems(release):
+    """The Python kit's files are attested before they are uploaded, so PyPI
+    can say in public which workflow published them (PEP 740). `uv publish`
+    uploads an attestation it finds beside a file and makes none itself;
+    //tools/registry-trust:check reads what PyPI then says."""
+    steps = release["jobs"]["publish-pypi-kit"]["steps"]
+    publish = [i for i, s in enumerate(steps) if "uv publish" in (s.get("run") or "")]
+    attest = [
+        i
+        for i, s in enumerate(steps)
+        if (s.get("uses") or "").startswith("astral-sh/attest-action@")
+    ]
+    if len(publish) != 1:
+        return [
+            f"release.yml: publish-pypi-kit has {len(publish)} `uv publish` steps, not one"
+        ]
+    problems = []
+    if len(attest) != 1 or attest[0] > publish[0]:
+        problems.append(
+            "release.yml: publish-pypi-kit does not attest the files before `uv publish`: "
+            "PyPI would have nothing public to say about who published them"
+        )
+    elif (steps[attest[0]].get("with") or {}).get("paths") != "kits/python/dist/*":
+        problems.append(
+            "release.yml: the attest step does not attest kits/python/dist/*, "
+            "which is what `uv publish` uploads"
+        )
+    if "--no-attestations" in steps[publish[0]]["run"]:
+        problems.append("release.yml: `uv publish` is told not to upload attestations")
+    return problems
+
+
 def main():
     release = load("release.yml")
     problems = detect_problems(release)
     problems += notes_problems(release)
+    problems += attest_problems(release)
     for name in ("ci.yml", "kits.yml", "release.yml"):
         problems += limit_problems(name, load(name))
     for problem in problems:

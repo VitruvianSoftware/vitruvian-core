@@ -1,0 +1,28 @@
+{
+  "_recorded": "registry.npmjs.org/<package>, 2026-10-13, trimmed to the fields the check reads",
+  "name": "@vitruviansoftware/tool-kit",
+  "time": {
+    "created": "2026-10-13T17:27:08.111Z",
+    "modified": "2026-10-13T17:28:03.850Z",
+    "0.0.0-stage": "2026-10-13T17:27:08.111Z",
+    "1.1.0": "2026-10-13T17:28:03.641Z"
+  },
+  "versions": {
+    "0.0.0-stage": {
+      "name": "@vitruviansoftware/tool-kit",
+      "version": "0.0.0-stage",
+      "_npmUser": {
+        "name": "ipv1337"
+      },
+      "dist": {}
+    },
+    "1.1.0": {
+      "name": "@vitruviansoftware/tool-kit",
+      "version": "1.1.0",
+      "_npmUser": {
+        "name": "ipv1337"
+      },
+      "dist": {}
+    }
+  }
+}

@@ -32,6 +32,30 @@ MUTATIONS = [
     ("the GitHub hand-off forgets the token", "platform", "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
      "        if let token, !token.isEmpty { values[Key.migratedToken] = .string(token) }\n", "",
      "under the tool's keys, as the tool reads them"),
+    ("Add Tool waits for the Keychain prompt again", "platform",
+     "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
+     "        keychainQueue.async { [weak self] in\n"
+     "            let read = try? store.load()\n"
+     "            DispatchQueue.main.async { [weak self] in\n"
+     "                MainActor.assumeIsolated { self?.wasRead(read) }\n"
+     "            }\n"
+     "        }\n",
+     "        wasRead(try? store.load())\n",
+     "the feature's token is read, and never on the main thread"),
+    ("the GitHub tool is added before the Keychain has answered", "platform",
+     "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
+     "        parts.readToken(ready)\n", "        ready()\n",
+     "while the Keychain is asked the tool is being added: nothing is handed or started yet"),
+    ("a tool removed while it is being added is added all the same", "platform",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        // nothing and hands nothing over.\n        waitingAdds[id] = nil\n",
+     "        // nothing and hands nothing over.\n",
+     "the Keychain's late answer is dropped, and whoever asked is told so"),
+    ("agreeing to a tool twice adds it twice", "platform",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "            guard let self, self.waitingAdds[id] == turn else { return done(nil) }\n",
+     "            guard let self else { return done(nil) }\n",
+     "the later agreement is the one that adds; the earlier is dropped"),
     ("compact rail eagerly builds history", "notch", "Sources/Vitruvian/UI/Notch/NotchComponents.swift",
      "                    LazyHStack(alignment: .top, spacing: spacing) {",
      "                    HStack(alignment: .top, spacing: spacing) {",
@@ -1057,6 +1081,21 @@ MUTATIONS = [
      "        catalogue = offer.catalogue == nil ? nil : strings.agreeCatalog\n",
      "        catalogue = nil\n",
      "a tool from the catalog is asked about on the same sheet, with one more line"),
+    ("launch waits for the Bluetooth prompt again", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchAccessoryService.swift",
+     "        bluetoothQueue.async { [weak self] in\n"
+     "            let baseline = readBaseline()\n"
+     "            DispatchQueue.main.async { [weak self] in\n"
+     "                self?.establish(baseline, for: currentGeneration)\n"
+     "            }\n"
+     "        }\n",
+     "        establish(readBaseline(), for: currentGeneration)\n",
+     "the first Bluetooth read runs, and never on the main thread"),
+    ("a Bluetooth answer from before a restart becomes the baseline", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchAccessoryService.swift",
+     "        guard active, generation == readGeneration else { return }\n",
+     "        guard active else { return }\n",
+     "the read from before a restart does not become the new baseline"),
 ]
 
 

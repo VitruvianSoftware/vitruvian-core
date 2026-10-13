@@ -1,0 +1,48 @@
+{
+  "_recorded": "registry.npmjs.org/<package>, 2026-10-13, trimmed to the fields the check reads",
+  "name": "@vitruviansoftware/foundation-pubsub",
+  "time": {
+    "created": "2026-04-28T07:57:19.864Z",
+    "modified": "2026-08-21T18:51:36.873Z",
+    "0.1.0": "2026-04-28T07:57:20.139Z",
+    "0.2.0": "2026-05-06T02:19:50.959Z",
+    "0.4.1": "2026-08-21T18:51:36.370Z"
+  },
+  "versions": {
+    "0.1.0": {
+      "name": "@vitruviansoftware/foundation-pubsub",
+      "version": "0.1.0",
+      "_npmUser": {
+        "name": "ipv1337"
+      },
+      "dist": {}
+    },
+    "0.2.0": {
+      "name": "@vitruviansoftware/foundation-pubsub",
+      "version": "0.2.0",
+      "_npmUser": {
+        "name": "ipv1337"
+      },
+      "dist": {}
+    },
+    "0.4.1": {
+      "name": "@vitruviansoftware/foundation-pubsub",
+      "version": "0.4.1",
+      "_npmUser": {
+        "name": "GitHub Actions",
+        "trustedPublisher": {
+          "id": "github",
+          "oidcConfigId": "oidc:6911a42f-ac92-4e60-abde-e8c9e7f0faa4"
+        }
+      },
+      "dist": {
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@vitruviansoftware%2ffoundation-pubsub@0.4.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      }
+    }
+  }
+}
