@@ -184,6 +184,10 @@ enum TestGroups {
                 ExternalToolStringsTests.run(suite)
                 ExternalToolScreensTests.run(suite)
                 ExternalToolSettingsTests.run(suite)
+                CatalogueListTests.run(suite)
+                CatalogueInstallerTests.run(suite)
+                CatalogueWatchTests.run(suite)
+                CatalogueScreensTests.run(suite)
                 ByHandRulesTests.run(suite)
             }),
             ("utilities", {

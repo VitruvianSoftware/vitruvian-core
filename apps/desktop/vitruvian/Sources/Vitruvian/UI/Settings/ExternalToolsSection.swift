@@ -34,14 +34,21 @@ package struct ExternalToolRow: Identifiable, Equatable {
     package let status: Status
     /// The words beside the row for its status; nil when there are none.
     package let statusText: String?
+    /// "Update available", for a tool from the catalog with a newer version
+    /// listed; nil otherwise.
+    package let updateText: String?
     /// False for a tool that is held back: its switch does nothing until
     /// the person updates it from its folder.
     package var canSwitch: Bool { status != .changed }
 
+    /// `updateAvailable` is true when the catalog lists a newer version of
+    /// this tool, which `CatalogueWatch.update(for:)` says.
     package init(_ listed: ExternalToolStore.Listed, language: AppLanguage, strings: ExternalToolStrings,
+                 updateAvailable: Bool = false,
                  hasSymbol: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
         let agreed = listed.record.agreement
         id = listed.id
+        updateText = updateAvailable ? strings.updateAvailable : nil
         name = listed.tool?.name.text(for: language.rawValue) ?? agreed.name
         byline = "\(listed.tool?.publisher ?? agreed.publisher) · \(listed.tool?.version ?? agreed.version)"
         let wanted = listed.tool?.manifest.tool.symbol ?? ExternalToolManifest.defaultSymbol
@@ -69,9 +76,11 @@ package struct ExternalToolRow: Identifiable, Equatable {
     }
 
     /// A row for each tool the person added, in the order they added them.
-    @MainActor package static func all(store: ExternalToolStore, language: AppLanguage,
-                                       strings: ExternalToolStrings) -> [ExternalToolRow] {
-        store.listed.map { ExternalToolRow($0, language: language, strings: strings) }
+    @MainActor package static func all(store: ExternalToolStore, language: AppLanguage, strings: ExternalToolStrings,
+                                       watch: CatalogueWatch? = nil) -> [ExternalToolRow] {
+        store.listed.map {
+            ExternalToolRow($0, language: language, strings: strings, updateAvailable: watch?.update(for: $0) != nil)
+        }
     }
 }
 
@@ -138,6 +147,9 @@ package struct ExternalToolDetail: Equatable {
     /// True when one of its commands may have a shortcut, which the person
     /// records on the Shortcuts page.
     package let offersShortcuts: Bool
+    /// The button that installs the newer version from the catalog; nil when
+    /// there is none.
+    package let updateNow: String?
 
     /// The app's word above the tool's own settings.
     package let settingsTitle: String
@@ -155,6 +167,8 @@ package struct ExternalToolDetail: Equatable {
         case reveal
         case remove
         case update
+        /// The button that installs the newer version from the catalog.
+        case updateNow
         case close
     }
 
@@ -189,13 +203,15 @@ package struct ExternalToolDetail: Equatable {
     /// `settingsTitle` the app's existing word for Settings.
     package init(_ listed: ExternalToolStore.Listed, files: URL?, language: AppLanguage,
                  strings: ExternalToolStrings, settings: [ExternalToolStore.Setting] = [], settingsTitle: String = "",
-                 home: String = NSHomeDirectory(),
+                 updateAvailable: Bool = false, home: String = NSHomeDirectory(),
                  hasSymbol: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
         let tag = language.rawValue
         self.settingsTitle = settingsTitle
         self.settings = settings.map { ExternalToolSetting($0, language: language) }
             .filter { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty }
-        row = ExternalToolRow(listed, language: language, strings: strings, hasSymbol: hasSymbol)
+        row = ExternalToolRow(listed, language: language, strings: strings, updateAvailable: updateAvailable,
+                              hasSymbol: hasSymbol)
+        updateNow = updateAvailable ? strings.updateNow : nil
         summary = listed.tool?.summary?.text(for: tag)
         commandsTitle = strings.commandsTitle
         let declared = listed.tool?.manifest.tool.commands ?? []
@@ -343,7 +359,15 @@ package struct ExternalToolsSection: View {
     /// Bumped whenever a tool is added, removed, switched, or stands
     /// differently, so the rows are read again.
     @ObservedObject private var registry = ToolRegistry.shared
+    /// Read again when the list of tools changes, so that "Update available"
+    /// comes and goes with it.
+    @ObservedObject private var watch = CatalogueWatch.shared
     @State private var asked: Asked?
+    /// True while the catalog's sheet is open.
+    @State private var browsing = false
+    /// The tool from the catalog being fetched, and why one was not offered.
+    @State private var installing: ToolID?
+    @State private var catalogueRefusal: ToolRefusalMessage?
     @State private var refusal: ToolRefusalMessage?
     @State private var shown: Shown?
     /// What to tell the person about the tool they just removed. It waits
@@ -356,9 +380,10 @@ package struct ExternalToolsSection: View {
 
     private var text: ExternalToolStrings { FeatureStrings.externalTools(l10n.language) }
     private var store: ExternalToolStore { .shared }
+    private var installer: CatalogueInstaller { .shared }
 
     package var body: some View {
-        let rows = ExternalToolRow.all(store: store, language: l10n.language, strings: text)
+        let rows = ExternalToolRow.all(store: store, language: l10n.language, strings: text, watch: watch)
         SettingsCard {
             HStack(spacing: 10) {
                 Image(systemName: ExternalToolManifest.defaultSymbol)
@@ -370,6 +395,8 @@ package struct ExternalToolsSection: View {
                     .accessibilityHidden(true)
                 Text(text.sectionTitle).font(.headline)
                 Spacer(minLength: 12)
+                Button(text.browseButton) { browse() }
+                    .controlSize(.small)
                 Button(text.addButton) { chooseFolder() }
                     .controlSize(.small)
             }
@@ -399,9 +426,15 @@ package struct ExternalToolsSection: View {
                                               cancel: l10n.s.uninstallerCancel),
                 onAgree: { consent in
                     self.asked = nil
-                    if case .failure(let refused) = store.add(consent) { show(refused) }
+                    if case .failure(let refused) = store.add(consent) { show(refused, of: consent.offer) }
+                    // The download's folder, for a tool from the catalog:
+                    // the store has its own copy now, or nothing.
+                    installer.finished(with: consent.offer)
                 },
-                onCancel: { self.asked = nil })
+                onCancel: {
+                    self.asked = nil
+                    installer.finished(with: asked.offer)
+                })
         }
         .background {
             // A second sheet and the alert hang on a view of their own, so
@@ -426,6 +459,19 @@ package struct ExternalToolsSection: View {
                 }
         }
         .background {
+            Color.clear.sheet(isPresented: $browsing) {
+                ExternalToolCatalogueSheet(
+                    watch: watch,
+                    content: { state in
+                        CatalogueSheetContent(state: state, entries: watch.entries, listed: store.listed,
+                                              update: watch.update(for:), language: l10n.language, strings: text,
+                                              close: l10n.s.menuClose)
+                    },
+                    installing: installing, refusal: $catalogueRefusal,
+                    install: { install($0) }, close: { browsing = false })
+            }
+        }
+        .background {
             // Said once, after the row has gone: what the tool saved was to
             // be deleted and was kept, because its program would not stop,
             // or a folder that was to go could not be deleted.
@@ -448,9 +494,11 @@ package struct ExternalToolsSection: View {
     private func detail(of id: ToolID) -> some View {
         if let listed = store.listed.first(where: { $0.id == id }) {
             let name = ExternalToolRow(listed, language: l10n.language, strings: text).name
+            let newer = watch.update(for: listed)
             ExternalToolDetailView(
                 detail: ExternalToolDetail(listed, files: store.folder(of: id), language: l10n.language, strings: text,
-                                           settings: store.settings(of: id), settingsTitle: l10n.s.panelSettings),
+                                           settings: store.settings(of: id), settingsTitle: l10n.s.panelSettings,
+                                           updateAvailable: newer != nil),
                 log: ExternalToolDetail.shownLog(store.tool(id)?.log.text ?? ""),
                 removal: ToolRemovalContent(name: name, strings: text, cancel: l10n.s.uninstallerCancel),
                 text: text,
@@ -466,6 +514,10 @@ package struct ExternalToolsSection: View {
                     // card's, and one sheet shows at a time.
                     shown = nil
                     DispatchQueue.main.async { chooseFolder() }
+                },
+                updateNow: {
+                    shown = nil
+                    if let newer { install(newer) }
                 },
                 remove: { deletingData in
                     shown = nil
@@ -490,8 +542,38 @@ package struct ExternalToolsSection: View {
         }
     }
 
-    private func show(_ refused: ExternalToolStore.Refusal) {
-        refusal = ToolRefusalMessage(refused, language: l10n.language, strings: text)
+    private func show(_ refused: ExternalToolStore.Refusal, of offer: ToolOffer? = nil) {
+        let name = offer?.catalogue == nil ? nil
+            : offer.map { $0.tool.name.text(for: l10n.language.rawValue) ?? $0.tool.manifest.tool.name }
+        refusal = ToolRefusalMessage(refused, language: l10n.language, strings: text, installing: name)
+    }
+
+    /// Opens the catalog, and asks for the list again.
+    private func browse() {
+        catalogueRefusal = nil
+        browsing = true
+        watch.refresh()
+    }
+
+    /// Fetches a tool from the catalog, then shows the agreement sheet for
+    /// it, as for a folder. Nothing is installed here.
+    private func install(_ entry: CatalogueEntry) {
+        guard installing == nil else { return }
+        installing = entry.id
+        installer.prepare(entry) { result in
+            installing = nil
+            switch result {
+            case .success(let offer):
+                // The catalog's sheet closes first: one sheet at a time.
+                browsing = false
+                DispatchQueue.main.async { asked = Asked(offer: offer) }
+            case .failure(let refused):
+                let message = ToolRefusalMessage(catalogue: refused,
+                                                 name: entry.name.text(for: l10n.language.rawValue) ?? entry.id.rawValue,
+                                                 language: l10n.language, strings: text)
+                if browsing { catalogueRefusal = message } else { refusal = message }
+            }
+        }
     }
 }
 
@@ -527,6 +609,9 @@ private struct ExternalToolRowView: View {
                         if let status = row.statusText {
                             ExternalToolStatusLabel(status: row.status, text: status)
                         }
+                        if let update = row.updateText {
+                            ExternalToolUpdateLabel(text: update)
+                        }
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.forward")
@@ -539,7 +624,8 @@ private struct ExternalToolRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel([row.name, row.byline, row.statusText].compactMap { $0 }.joined(separator: ". "))
+            .accessibilityLabel([row.name, row.byline, row.statusText, row.updateText].compactMap { $0 }
+                .joined(separator: ". "))
             if row.status == .stopped(canStartAgain: true) {
                 Button(text.startAgain, action: startAgain).controlSize(.small)
             }
@@ -582,6 +668,21 @@ private struct ExternalToolStatusLabel: View {
         case .stopped: return .red
         case .changed: return .orange
         case .quiet: return .secondary
+        }
+    }
+}
+
+/// "Update available", with a dot in the accent colour.
+private struct ExternalToolUpdateLabel: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 6))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
+            Text(text).font(.caption).foregroundStyle(.secondary)
         }
     }
 }
@@ -683,6 +784,8 @@ private struct ExternalToolDetailView: View {
     let reveal: () -> Void
     let openShortcuts: () -> Void
     let update: () -> Void
+    /// Installs the newer version from the catalog.
+    let updateNow: () -> Void
     let remove: (_ deletingData: Bool) -> Void
     let close: () -> Void
     @State private var confirmingRemoval = false
@@ -709,6 +812,9 @@ private struct ExternalToolDetailView: View {
                     Text(detail.row.byline).font(.callout).foregroundStyle(.secondary).lineLimit(2)
                     if let summary = detail.summary {
                         Text(summary).font(.callout).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let update = detail.row.updateText {
+                        ExternalToolUpdateLabel(text: update)
                     }
                     if let status = detail.row.statusText {
                         HStack(spacing: 10) {
@@ -758,6 +864,10 @@ private struct ExternalToolDetailView: View {
             HStack(spacing: 10) {
                 Button(l10n.s.actionRemove, role: .destructive) { confirmingRemoval = true }
                     .focused($focus, equals: .remove)
+                if let updateNow = detail.updateNow {
+                    Button(updateNow, action: self.updateNow)
+                        .focused($focus, equals: .updateNow)
+                }
                 Button(text.updateButton, action: update)
                     .focused($focus, equals: .update)
                 Spacer()

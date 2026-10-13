@@ -906,6 +906,13 @@ exports_files([
     "publish.sh",
 ])
 
+# The catalog's public key, as the app is built with it. //catalog:catalog_test
+# holds it equal to catalog/public-key.txt.
+exports_files(
+    ["Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift"],
+    visibility = ["//catalog:__pkg__"],
+)
+
 sh_binary(
     name = "publish",
     srcs = ["publish.sh"],
