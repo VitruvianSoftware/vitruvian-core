@@ -61,6 +61,8 @@ apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/** rules-lint-igno
 # by //tools/sdk-codegen:in_sync_test. Collapsed in review, never reformatted.
 packages/vitruvian-sdk/go/toolkit/protocol_gen.go          linguist-generated=true
 packages/vitruvian-sdk/kits/rust/src/generated/mod.rs      linguist-generated=true
-# release-please writes the tool's manifest at each release in its own JSON
+# release-please writes a tool's manifest at each release in its own JSON
 # layout (arrays one item a line); the formatter must leave it as written.
+# Each tool's version_test holds the committed file to that layout.
 apps/desktop/vitruvian-tool-github/vitruvian-tool.json rules-lint-ignored=true
+apps/desktop/home-speaker/tool/vitruvian-tool.json     rules-lint-ignored=true

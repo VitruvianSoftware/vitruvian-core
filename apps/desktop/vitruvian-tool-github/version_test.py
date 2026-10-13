@@ -39,9 +39,21 @@ def semver(text):
     return tuple(int(part) for part in match.groups()) if match else None
 
 
+def release_please_layout(text):
+    """The file as release-please writes it back: JSON.stringify, two spaces."""
+    return json.dumps(json.loads(text), indent=2, ensure_ascii=False) + "\n"
+
+
 def main():
     problems = []
-    manifest_version = json.loads(read("vitruvian-tool.json")).get("version")
+    manifest = read("vitruvian-tool.json")
+    manifest_version = json.loads(manifest).get("version")
+    # release-please rewrites the whole file when it bumps the version, and
+    # tidy-check fails a release PR whose diff is more than the version line.
+    if manifest != release_please_layout(manifest):
+        problems.append(
+            "vitruvian-tool.json is not in the layout release-please writes (every array one item a line); the release PR would fail tidy-check"
+        )
     swift = re.search(
         r'current = "([^"]+)" // x-release-please-version',
         read("Sources/GitHubToolCore/Version.swift"),

@@ -1,6 +1,8 @@
 {
   "id": "dev.vitruvian.homespeaker",
-  "name": { "en": "HomeSpeaker" },
+  "name": {
+    "en": "HomeSpeaker"
+  },
   "description": {
     "en": "Speaks what you type, or the clipboard, on your Google Home speakers through HomeSpeaker, and keeps broadcasting, quiet hours and the volume at hand."
   },
@@ -9,54 +11,88 @@
   "publisher": "VitruvianSoftware",
   "license": "MIT",
   "icon": "hifispeaker.2",
-  "uses": ["notify", "clipboard.read", "open"],
+  "uses": [
+    "notify",
+    "clipboard.read",
+    "open"
+  ],
   "contributes": {
     "commands": [
       {
         "id": "sayClipboard",
-        "title": { "en": "Speak the clipboard" },
+        "title": {
+          "en": "Speak the clipboard"
+        },
         "icon": "hifispeaker.2",
-        "surfaces": ["commandBar", "quickPanel"]
+        "surfaces": [
+          "commandBar",
+          "quickPanel"
+        ]
       },
       {
         "id": "toggleBroadcasting",
-        "title": { "en": "Turn broadcasting on or off" },
+        "title": {
+          "en": "Turn broadcasting on or off"
+        },
         "icon": "power",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "mute",
-        "title": { "en": "Mute the speaker" },
+        "title": {
+          "en": "Mute the speaker"
+        },
         "icon": "speaker.slash",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "unmute",
-        "title": { "en": "Unmute the speaker" },
+        "title": {
+          "en": "Unmute the speaker"
+        },
         "icon": "speaker.wave.2",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "toggleQuietHours",
-        "title": { "en": "Turn quiet hours on or off" },
+        "title": {
+          "en": "Turn quiet hours on or off"
+        },
         "icon": "moon.zzz",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       }
     ],
     "panels": [
       {
         "id": "speaker",
-        "title": { "en": "HomeSpeaker" },
+        "title": {
+          "en": "HomeSpeaker"
+        },
         "placement": "island",
         "icon": "hifispeaker.2"
       },
       {
         "id": "settings",
-        "title": { "en": "HomeSpeaker" },
+        "title": {
+          "en": "HomeSpeaker"
+        },
         "placement": "settings"
       }
     ]
   },
-  "activation": ["onLaunch"],
-  "runtime": { "kind": "external", "exec": "bin/tool" }
+  "activation": [
+    "onLaunch"
+  ],
+  "runtime": {
+    "kind": "external",
+    "exec": "bin/tool"
+  }
 }
