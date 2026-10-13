@@ -23,6 +23,11 @@ import VitruvianToolProtocol
 
 /// What this command says, in plain words, about what it found.
 enum Words {
+    /// The SDK's version: what `--version` prints, and what `init --template
+    /// swift` asks for. release-please writes it at each release (the
+    /// extra-files of release-please-config.json); change it only that way.
+    static let version = "0.9.0" // x-release-please-version
+
     static func problem(_ problem: FolderProblem) -> String {
         switch problem {
         case .noManifest:
@@ -172,6 +177,9 @@ enum Words {
               Reads a tool's folder the way the app does before it offers to
               add it, and says what the app would refuse it for. It starts
               nothing.
+
+          vitruvian-tool --version
+              Prints the version of the SDK this command was built from.
 
           vitruvian-tool run <folder> [--command ID]... [--refuse] [--app-path] [--wait SECONDS]
               Starts the tool's program and plays the app's side to it, in a
