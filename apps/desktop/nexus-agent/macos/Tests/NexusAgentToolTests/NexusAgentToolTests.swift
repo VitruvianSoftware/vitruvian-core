@@ -121,7 +121,10 @@ final class NexusAgentToolTests: XCTestCase {
     private var engine: ToolEngine!
     private var chosenFolder: String?
 
-    override func setUp() {
+    // `async`, so the override runs on the main actor the class is held to.
+    // Swift 6.1.2, the CI Mac's (Xcode 16.4), refuses a plain `setUp()` that
+    // touches the class's own properties; Swift 6.4 lets it by.
+    override func setUp() async throws {
         folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("nexus-agent-tool-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -132,7 +135,7 @@ final class NexusAgentToolTests: XCTestCase {
         engine = ToolEngine(environment: rig.environment, host: settings)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         try? FileManager.default.removeItem(at: folder)
     }
 
