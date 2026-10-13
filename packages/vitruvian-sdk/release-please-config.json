@@ -64,6 +64,11 @@
           "type": "toml",
           "path": "samples/hello-rust/Cargo.toml",
           "jsonpath": "$.dependencies['vitruvian-tool-kit'].version"
+        },
+        {
+          "type": "toml",
+          "path": "samples/hello-panel-rust/Cargo.toml",
+          "jsonpath": "$.dependencies['vitruvian-tool-kit'].version"
         }
       ]
     }

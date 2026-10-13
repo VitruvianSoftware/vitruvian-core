@@ -4,6 +4,13 @@
 version = 3
 
 [[package]]
+name = "hello-panel-rust"
+version = "0.1.0"
+dependencies = [
+ "vitruvian-tool-kit",
+]
+
+[[package]]
 name = "hello-rust"
 version = "0.1.0"
 dependencies = [

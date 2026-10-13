@@ -142,9 +142,7 @@ filegroup(
         "samples/hello-python-kit/README.md",
         "samples/hello-python/bin/tool.py",
         "samples/hello-python/vitruvian-tool.json",
-        "samples/hello-rust/Cargo.toml",
-        "samples/hello-rust/src/main.rs",
-        "samples/hello-rust/vitruvian-tool.json",
+        "samples/hello-rust/README.md",
         "samples/hello-swift/main.swift",
         "samples/hello-swift/vitruvian-tool.json",
         "samples/hello-typescript/README.md",
@@ -363,6 +361,13 @@ rust_binary(
     deps = ["//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit"],
 )
 
+rust_binary(
+    name = "hello-panel-rust",
+    srcs = ["samples/hello-panel-rust/src/main.rs"],
+    edition = "2021",
+    deps = ["//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit"],
+)
+
 # By language: the samples the language's own `<language>_sample_test`
 # puts through the conformance script, one after the other.
 NATIVE_SAMPLES = {
@@ -370,7 +375,10 @@ NATIVE_SAMPLES = {
         "hello-go",
         "hello-panel-go",
     ],
-    "rust": ["hello-rust"],
+    "rust": [
+        "hello-rust",
+        "hello-panel-rust",
+    ],
 }
 
 NATIVE_SAMPLE_FOLDERS = [sample for samples in NATIVE_SAMPLES.values() for sample in samples]
@@ -772,6 +780,7 @@ py_test(
         "samples/hello-go/go.mod",
         "samples/hello-panel-go/go.mod",
         "samples/hello-panel-python/requirements.txt",
+        "samples/hello-panel-rust/Cargo.toml",
         "samples/hello-panel-typescript/package.json",
         "samples/hello-python-kit/requirements.txt",
         "samples/hello-rust/Cargo.toml",

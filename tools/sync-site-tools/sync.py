@@ -187,8 +187,8 @@ def methods_table(base):
     return "\n".join(rows)
 
 
-# The two examples: the sample's folder, its files in the order shown, and
-# what is said above them.
+# The examples made of a sample's files: the sample's folder, its files in
+# the order shown, and what is said above them.
 EXAMPLES = [
     (
         "swift",
@@ -211,22 +211,6 @@ EXAMPLES = [
         "`vitruvian-tool init <folder>` starts a new tool from a copy of this "
         "one. The folder runs as it is: add it to Vitruvian.",
     ),
-    (
-        "rust",
-        "An example in Rust",
-        "samples/hello-rust",
-        [
-            ("vitruvian-tool.json", "json"),
-            ("Cargo.toml", "toml"),
-            ("src/main.rs", "rust"),
-        ],
-        "A tool written with the Rust kit: it says hello, and counts with a "
-        "preference the person can change in Settings.",
-        "`vitruvian-tool init <folder> --template rust` starts a new tool from "
-        "a copy of this one, as a Cargo package that depends on the published "
-        "kit. Its `build.sh` builds the program into `tool/bin/tool`, and "
-        "`tool/` is the folder you add to Vitruvian.",
-    ),
 ]
 
 # The kit samples' examples are pages of their own: each sample's README.md,
@@ -248,6 +232,12 @@ KIT_EXAMPLES = [
         "go",
         "samples/hello-go",
         "A tool written with the Go kit: it says hello, and counts with a "
+        "preference the person can change in Settings.",
+    ),
+    (
+        "rust",
+        "samples/hello-rust",
+        "A tool written with the Rust kit: it says hello, and counts with a "
         "preference the person can change in Settings.",
     ),
 ]

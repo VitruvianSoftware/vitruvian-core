@@ -80,6 +80,10 @@ WANTED = {
         ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
     ],
     "hello-rust": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-panel-rust": [
+        ["a command: addOne: ran"],
+        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+    ],
     "front-window": [
         [
             "a command: showTitle: ran",
@@ -175,6 +179,12 @@ def versions():
             r'(?m)^vitruvian-tool-kit = \{ version = "([^"]+)"', handle.read()
         ).group(1)
     with open(
+        os.path.join(HERE, "hello-panel-rust", "Cargo.toml"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-panel-rust/Cargo.toml"] = re.search(
+            r'(?m)^vitruvian-tool-kit = \{ version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(
         os.path.join(PACKAGE, "kits", "typescript", "package.json"), encoding="utf-8"
     ) as handle:
         found["kits/typescript/package.json"] = json.load(handle)["version"]
@@ -216,13 +226,13 @@ def versions():
                 r'"(\d+\.\d+\.\d+)" // x-release-please-version', handle.read()
             ):
                 found[os.path.relpath(path, PACKAGE)] = version
-    if len(set(found.values())) == 1 and len(found) == 12:
+    if len(set(found.values())) == 1 and len(found) == 13:
         print(
             f"versions: {found['kits/typescript/package.json']}, in {len(found)} places"
         )
         return []
     return [
-        f"one version of the SDK in twelve places, and these differ or are missing: {found}"
+        f"one version of the SDK in thirteen places, and these differ or are missing: {found}"
     ]
 
 

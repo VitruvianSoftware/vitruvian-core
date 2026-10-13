@@ -67,6 +67,11 @@ KIT_PLACES = [
         "samples/hello-rust/Cargo.toml",
         "$.dependencies['vitruvian-tool-kit'].version",
     ),
+    (
+        "toml",
+        "samples/hello-panel-rust/Cargo.toml",
+        "$.dependencies['vitruvian-tool-kit'].version",
+    ),
 ]
 
 

@@ -64,6 +64,7 @@ EXAMPLES = [
     "samples/hello-panel-typescript/README.md",
     "samples/hello-panel-python/README.md",
     "samples/hello-go/README.md",
+    "samples/hello-rust/README.md",
 ]
 
 # What `vitruvian-tool` takes. Words.swift holds the same list as its usage.

@@ -985,6 +985,82 @@ refuse a call. A handler's error refuses what the app asked: a
 `*toolkit.Error` as it is, anything else as an internal error with its
 words.
 
+### In Rust, with the kit
+
+[`../samples/hello-panel-rust`](../samples/hello-panel-rust) is the same
+counter. A page is `tree!` of its blocks, one function for each kind; what
+a block may carry beyond its words is set with a method, and an item that
+is `None` is left out:
+
+```rust file=samples/hello-panel-rust/src/main.rs
+    /// The island page: what it says now.
+    fn page(&self) -> UiTree {
+        tree![
+            heading("Counter"),
+            text(format!("Pressed {} times", self.count)),
+            button("add", format!("Add {}", self.step())).style("prominent"),
+            field("name")
+                .title("Your name")
+                .value(&self.name)
+                .placeholder("Type it and press Return"),
+            (!self.name.is_empty())
+                .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
+        ]
+    }
+```
+
+`tool.panel` takes the two handlers: the first gives `Some` page, or `None`
+for a web panel; the second answers what the person did with one of
+`PanelAnswer`'s four: `Page(tree)`, `Keep`, `Open(panel)` with one of your
+window panels, or `Reply(value)` for a web page's call. `event.text()` and
+`event.is_on()` are what a field and a switch carry, and `event.row()` the
+row of a list that was tapped. The handle it returns is cheap to clone and
+is the same panel: it sends a page unprompted, with `render`, and sets the
+tool's badge in the island, with `badge`, each given the `app` of the
+handler it is called from:
+
+```rust file=samples/hello-panel-rust/src/main.rs
+    let opened = counter.clone();
+    let acted = counter.clone();
+    let island = tool.panel(
+        "counter",
+        move |_app, _panel| Ok(Some(opened.borrow().page())),
+        move |app, panel, event| {
+            let mut counter = acted.borrow_mut();
+            match event.block.as_deref() {
+                Some("add") => {
+                    let step = counter.step();
+                    counter.count += step;
+                    panel.badge(app, Some(counter.count), false)?;
+                }
+                Some("name") => {
+                    if let Some(name) = event.text() {
+                        counter.name = name.to_string();
+                    }
+                }
+                _ => return Ok(PanelAnswer::Keep),
+            }
+            Ok(PanelAnswer::Page(counter.page()))
+        },
+    );
+```
+
+```rust file=samples/hello-panel-rust/src/main.rs
+    let counted = counter.clone();
+    tool.command("addOne", move |app| {
+        let mut counter = counted.borrow_mut();
+        let step = counter.step();
+        counter.count += step;
+        island.render(app, &counter.page());
+        Ok(())
+    });
+```
+
+A web panel's `on_call` is `panel.on_call(|app, method, params| ...)`;
+return `Err(ToolError::App(...))` to refuse a call. A handler's error
+refuses what the app asked: the app's failure as it is, anything else as an
+internal error with its words.
+
 ### A web page
 
 A `web` panel shows `entry`, a page in your folder. It may load what else is

@@ -53,6 +53,10 @@ impl<'a> App<'a> {
         App { state }
     }
 
+    pub(crate) fn state_mut(&mut self) -> &mut State {
+        self.state
+    }
+
     /// The language the app is in, as a tag such as `en-US`. It follows
     /// the person's changes by itself.
     pub fn language(&self) -> &str {
