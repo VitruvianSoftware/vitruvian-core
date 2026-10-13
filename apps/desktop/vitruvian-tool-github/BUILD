@@ -52,3 +52,93 @@ swift_test(
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
 )
+
+# The program: the kit's loop around GitHubToolCore, and nothing else.
+swift_binary(
+    name = "github-tool",
+    srcs = glob(["Sources/github-tool/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "GitHubToolProgram",
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+    deps = [
+        ":GitHubToolCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+# The tool as a folder the app can add: the manifest and bin/tool, as the
+# mirror's release zips them.
+#
+#   bazel build --config=macos-app //apps/desktop/vitruvian-tool-github:tool-folder
+#
+# leaves bazel-bin/apps/desktop/vitruvian-tool-github/built/github/.
+genrule(
+    name = "tool-folder",
+    srcs = [
+        "vitruvian-tool.json",
+        ":github-tool",
+    ],
+    outs = [
+        "built/github/vitruvian-tool.json",
+        "built/github/bin/tool",
+    ],
+    cmd = "cp $(location vitruvian-tool.json) $(RULEDIR)/built/github/vitruvian-tool.json && cp $(location :github-tool) $(RULEDIR)/built/github/bin/tool",
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+)
+
+# The built folder through `vitruvian-tool validate` and the conformance
+# script: the handshake, a command, an unknown command, the island panel
+# opened and tapped, refusals, and a clean exit. It starts the real program.
+py_test(
+    name = "conformance_test",
+    size = "small",
+    srcs = ["conformance_test.py"],
+    args = [
+        "$(rootpath built/github/vitruvian-tool.json)",
+        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
+        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    ],
+    data = [
+        "built/github/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance/conformance.py",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    main = "conformance_test.py",
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = MACOS_ONLY,
+)
+
+# The version is one number in three files, and the kit it builds against
+# is new enough. Not tied to macOS: the Linux lane runs it too.
+py_test(
+    name = "version_test",
+    size = "small",
+    srcs = ["version_test.py"],
+    data = [
+        "Package.swift",
+        "Sources/GitHubToolCore/Version.swift",
+        "vitruvian-tool.json",
+    ],
+    main = "version_test.py",
+)
+
+pipeline_unit(
+    name = "vitruvian-tool-github",
+    persona = "platform",
+    runner = "xcode-27",
+    test_targets = [
+        ":GitHubToolCoreTests",
+        ":conformance_test",
+        ":github-tool",
+        ":version_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 30,
+)

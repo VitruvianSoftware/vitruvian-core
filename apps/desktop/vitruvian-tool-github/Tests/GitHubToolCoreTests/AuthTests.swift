@@ -20,6 +20,17 @@ final class AuthTests: XCTestCase {
         XCTAssertNil(CLIAccount.read(hostsFile: URL(fileURLWithPath: "/nonexistent/hosts.yml")))
     }
 
+    func testTheHomeFolderIsTheEnvironmentsFirst() {
+        let before = ProcessInfo.processInfo.environment["HOME"]
+        defer { if let before { setenv("HOME", before, 1) } else { unsetenv("HOME") } }
+        setenv("HOME", "/tmp/a-scratch-home", 1)
+        XCTAssertEqual(Paths.home, "/tmp/a-scratch-home")
+        XCTAssertEqual(CLIAccount.defaultHostsURL.path, "/tmp/a-scratch-home/.config/gh/hosts.yml",
+                       "a test's scratch home never finds the person's real login")
+        setenv("HOME", "", 1)
+        XCTAssertEqual(Paths.home, NSHomeDirectory(), "an empty HOME is the account's")
+    }
+
     func testDeviceFlowStateMachine() {
         let start = Date(timeIntervalSince1970: 1_000)
         let code = DeviceCode(deviceCode: "dev", userCode: "ABCD-1234", verificationURI: URL(string: "https://github.com/login/device")!,

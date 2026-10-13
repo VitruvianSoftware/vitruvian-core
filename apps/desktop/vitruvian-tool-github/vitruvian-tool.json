@@ -1,0 +1,348 @@
+{
+  "id": "dev.vitruvian.github",
+  "name": {
+    "en": "GitHub"
+  },
+  "description": {
+    "en": "Shows whether main is green on the repositories you watch and where your pull requests stand.",
+    "pt-BR": "Mostra se a main está verde nos repositórios que você acompanha e em que pé estão seus pull requests.",
+    "tr": "İzlediğiniz depolarda main’in yeşil olup olmadığını ve pull request’lerinizin durumunu gösterir.",
+    "ru": "Показывает, зелёная ли main в отслеживаемых репозиториях и в каком состоянии ваши pull request.",
+    "es": "Muestra si main está en verde en los repositorios que sigues y en qué punto están tus pull requests.",
+    "sk": "Ukazuje, či je main zelená v repozitároch, ktoré sledujete, a ako sú na tom vaše pull requesty.",
+    "de": "Zeigt, ob main in den beobachteten Repositorys grün ist und wo deine Pull Requests stehen.",
+    "fr": "Indique si main est au vert dans les dépôts que vous suivez et où en sont vos pull requests.",
+    "it": "Mostra se main è verde nei repository che segui e a che punto sono le tue pull request.",
+    "ja": "監視しているリポジトリで main がグリーンかどうかと、プルリクエストの状況を表示します。",
+    "ko": "지켜보는 저장소에서 main이 초록색인지, 내 풀 리퀘스트가 어디까지 왔는지 보여 줍니다.",
+    "uk": "Показує, чи зелена main у репозиторіях, за якими ви стежите, і на якому етапі ваші pull request.",
+    "zh-Hans": "显示你关注的仓库中 main 是否为绿色，以及你的拉取请求进展如何。",
+    "zh-TW": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
+    "zh-HK": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。"
+  },
+  "version": "1.0.0",
+  "protocol": "2",
+  "publisher": "VitruvianSoftware",
+  "license": "GPL-3.0-or-later",
+  "icon": "arrow.triangle.branch",
+  "uses": ["notify", "open", "storage"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "refresh",
+        "title": {
+          "en": "Refresh GitHub",
+          "pt-BR": "Atualizar o GitHub",
+          "tr": "GitHub’ı yenile",
+          "ru": "Обновить GitHub",
+          "es": "Actualizar GitHub",
+          "sk": "Obnoviť GitHub",
+          "de": "GitHub aktualisieren",
+          "fr": "Actualiser GitHub",
+          "it": "Aggiorna GitHub",
+          "ja": "GitHub を更新",
+          "ko": "GitHub 새로 고침",
+          "uk": "Оновити GitHub",
+          "zh-Hans": "刷新 GitHub",
+          "zh-TW": "重新整理 GitHub",
+          "zh-HK": "重新整理 GitHub"
+        },
+        "icon": "arrow.clockwise",
+        "surfaces": ["commandBar"]
+      },
+      {
+        "id": "openPulls",
+        "title": {
+          "en": "Open my pull requests",
+          "pt-BR": "Abrir meus pull requests",
+          "tr": "Pull request’lerimi aç",
+          "ru": "Открыть мои пул-реквесты",
+          "es": "Abrir mis pull requests",
+          "sk": "Otvoriť moje pull requesty",
+          "de": "Meine Pull Requests öffnen",
+          "fr": "Ouvrir mes pull requests",
+          "it": "Apri le mie pull request",
+          "ja": "自分のプルリクエストを開く",
+          "ko": "내 풀 리퀘스트 열기",
+          "uk": "Відкрити мої пул-реквести",
+          "zh-Hans": "打开我的拉取请求",
+          "zh-TW": "打開我的拉取請求",
+          "zh-HK": "打開我的拉取請求"
+        },
+        "icon": "arrow.triangle.pull",
+        "surfaces": ["commandBar", "quickPanel"]
+      }
+    ],
+    "panels": [
+      {
+        "id": "status",
+        "title": {
+          "en": "GitHub"
+        },
+        "placement": "island",
+        "icon": "arrow.triangle.branch"
+      },
+      {
+        "id": "settings",
+        "title": {
+          "en": "GitHub"
+        },
+        "placement": "settings"
+      }
+    ]
+  },
+  "preferences": [
+    {
+      "id": "watchlist",
+      "title": {
+        "en": "Watched repositories",
+        "pt-BR": "Repositórios acompanhados",
+        "tr": "İzlenen depolar",
+        "ru": "Отслеживаемые репозитории",
+        "es": "Repositorios seguidos",
+        "sk": "Sledované repozitáre",
+        "de": "Beobachtete Repositorys",
+        "fr": "Dépôts suivis",
+        "it": "Repository seguiti",
+        "ja": "監視中のリポジトリ",
+        "ko": "지켜보는 저장소",
+        "uk": "Відстежувані репозиторії",
+        "zh-Hans": "关注的仓库",
+        "zh-TW": "關注的儲存庫",
+        "zh-HK": "關注的儲存庫"
+      },
+      "type": "string",
+      "default": "VitruvianSoftware/vitruvian-core"
+    },
+    {
+      "id": "pollInterval",
+      "title": {
+        "en": "Poll every (seconds)",
+        "pt-BR": "Consultar a cada (segundos)",
+        "tr": "Sorgulama aralığı (saniye)",
+        "ru": "Опрашивать каждые (секунд)",
+        "es": "Consultar cada (segundos)",
+        "sk": "Pýtať sa každých (sekúnd)",
+        "de": "Abfrage alle (Sekunden)",
+        "fr": "Interroger toutes les (secondes)",
+        "it": "Interroga ogni (secondi)",
+        "ja": "問い合わせ間隔（秒）",
+        "ko": "확인 주기(초)",
+        "uk": "Опитувати кожні (секунд)",
+        "zh-Hans": "轮询间隔（秒）",
+        "zh-TW": "輪詢間隔（秒）",
+        "zh-HK": "輪詢間隔（秒）"
+      },
+      "type": "integer",
+      "default": 30
+    },
+    {
+      "id": "pollActiveInterval",
+      "title": {
+        "en": "Poll every while checks run (seconds)",
+        "pt-BR": "Consultar a cada, com verificações em curso (segundos)",
+        "tr": "Denetimler çalışırken sorgulama aralığı (saniye)",
+        "ru": "Опрашивать каждые, пока идут проверки (секунд)",
+        "es": "Consultar cada, con comprobaciones en curso (segundos)",
+        "sk": "Pýtať sa každých, kým bežia kontroly (sekúnd)",
+        "de": "Abfrage alle, solange Prüfungen laufen (Sekunden)",
+        "fr": "Interroger toutes les, pendant les vérifications (secondes)",
+        "it": "Interroga ogni, con controlli in corso (secondi)",
+        "ja": "チェック実行中の問い合わせ間隔（秒）",
+        "ko": "검사 실행 중 확인 주기(초)",
+        "uk": "Опитувати кожні, поки тривають перевірки (секунд)",
+        "zh-Hans": "检查运行时的轮询间隔（秒）",
+        "zh-TW": "檢查執行時的輪詢間隔（秒）",
+        "zh-HK": "檢查執行時的輪詢間隔（秒）"
+      },
+      "type": "integer",
+      "default": 10
+    },
+    {
+      "id": "mouseIndicator",
+      "title": {
+        "en": "Show status on the GravaStar mouse",
+        "pt-BR": "Mostrar o status no mouse GravaStar",
+        "tr": "Durumu GravaStar farede göster",
+        "ru": "Показывать статус на мыши GravaStar",
+        "es": "Mostrar el estado en el ratón GravaStar",
+        "sk": "Zobraziť stav na myši GravaStar",
+        "de": "Status auf der GravaStar-Maus zeigen",
+        "fr": "Afficher l’état sur la souris GravaStar",
+        "it": "Mostra lo stato sul mouse GravaStar",
+        "ja": "GravaStar マウスに状態を表示",
+        "ko": "GravaStar 마우스에 상태 표시",
+        "uk": "Показувати стан на миші GravaStar",
+        "zh-Hans": "在 GravaStar 鼠标上显示状态",
+        "zh-TW": "在 GravaStar 滑鼠上顯示狀態",
+        "zh-HK": "在 GravaStar 滑鼠上顯示狀態"
+      },
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "id": "mouseCommand",
+      "title": {
+        "en": "Mouse command",
+        "pt-BR": "Comando do mouse",
+        "tr": "Fare komutu",
+        "ru": "Команда мыши",
+        "es": "Comando del ratón",
+        "sk": "Príkaz myši",
+        "de": "Maus-Befehl",
+        "fr": "Commande de la souris",
+        "it": "Comando del mouse",
+        "ja": "マウスコマンド",
+        "ko": "마우스 명령",
+        "uk": "Команда миші",
+        "zh-Hans": "鼠标命令",
+        "zh-TW": "滑鼠指令",
+        "zh-HK": "滑鼠指令"
+      },
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "mouseSuccess",
+      "title": {
+        "en": "Mouse when green",
+        "pt-BR": "Mouse quando verde",
+        "tr": "Yeşilken fare",
+        "ru": "Мышь при зелёном",
+        "es": "Ratón en verde",
+        "sk": "Myš pri zelenej",
+        "de": "Maus bei Grün",
+        "fr": "Souris au vert",
+        "it": "Mouse sul verde",
+        "ja": "緑のときのマウス",
+        "ko": "초록일 때 마우스",
+        "uk": "Миша при зеленому",
+        "zh-Hans": "绿色时的鼠标",
+        "zh-TW": "綠色時的滑鼠",
+        "zh-HK": "綠色時的滑鼠"
+      },
+      "type": "string",
+      "default": "green"
+    },
+    {
+      "id": "mouseRunning",
+      "title": {
+        "en": "Mouse when amber",
+        "pt-BR": "Mouse quando âmbar",
+        "tr": "Kehribarken fare",
+        "ru": "Мышь при жёлтом",
+        "es": "Ratón en ámbar",
+        "sk": "Myš pri oranžovej",
+        "de": "Maus bei Gelb",
+        "fr": "Souris à l’orange",
+        "it": "Mouse sull’ambra",
+        "ja": "黄色のときのマウス",
+        "ko": "주황일 때 마우스",
+        "uk": "Миша при жовтому",
+        "zh-Hans": "琥珀色时的鼠标",
+        "zh-TW": "琥珀色時的滑鼠",
+        "zh-HK": "琥珀色時的滑鼠"
+      },
+      "type": "string",
+      "default": "breathe orange"
+    },
+    {
+      "id": "mouseFailure",
+      "title": {
+        "en": "Mouse when red",
+        "pt-BR": "Mouse quando vermelho",
+        "tr": "Kırmızıyken fare",
+        "ru": "Мышь при красном",
+        "es": "Ratón en rojo",
+        "sk": "Myš pri červenej",
+        "de": "Maus bei Rot",
+        "fr": "Souris au rouge",
+        "it": "Mouse sul rosso",
+        "ja": "赤のときのマウス",
+        "ko": "빨강일 때 마우스",
+        "uk": "Миша при червоному",
+        "zh-Hans": "红色时的鼠标",
+        "zh-TW": "紅色時的滑鼠",
+        "zh-HK": "紅色時的滑鼠"
+      },
+      "type": "string",
+      "default": "breathe red"
+    },
+    {
+      "id": "mouseApproval",
+      "title": {
+        "en": "Mouse while waiting for approval",
+        "pt-BR": "Mouse enquanto aguarda aprovação",
+        "tr": "Onay beklenirken fare",
+        "ru": "Мышь при ожидании одобрения",
+        "es": "Ratón mientras espera aprobación",
+        "sk": "Myš počas čakania na schválenie",
+        "de": "Maus beim Warten auf Freigabe",
+        "fr": "Souris en attente d’approbation",
+        "it": "Mouse in attesa di approvazione",
+        "ja": "承認待ちのときのマウス",
+        "ko": "승인 대기 중 마우스",
+        "uk": "Миша під час очікування схвалення",
+        "zh-Hans": "等待批准时的鼠标",
+        "zh-TW": "等待核准時的滑鼠",
+        "zh-HK": "等待核准時的滑鼠"
+      },
+      "type": "string",
+      "default": "breathe blue 9"
+    },
+    {
+      "id": "mouseIdle",
+      "title": {
+        "en": "Mouse when nothing is watched (restore or off)",
+        "pt-BR": "Mouse quando nada é acompanhado (restore ou off)",
+        "tr": "Hiçbir şey izlenmezken fare (restore veya off)",
+        "ru": "Мышь, когда ничего не отслеживается (restore или off)",
+        "es": "Ratón cuando no se sigue nada (restore u off)",
+        "sk": "Myš, keď sa nič nesleduje (restore alebo off)",
+        "de": "Maus, wenn nichts beobachtet wird (restore oder off)",
+        "fr": "Souris quand rien n’est suivi (restore ou off)",
+        "it": "Mouse quando non si segue nulla (restore o off)",
+        "ja": "何も監視していないときのマウス（restore か off）",
+        "ko": "아무것도 보지 않을 때 마우스(restore 또는 off)",
+        "uk": "Миша, коли нічого не відстежується (restore або off)",
+        "zh-Hans": "未关注任何内容时的鼠标（restore 或 off）",
+        "zh-TW": "未關注任何內容時的滑鼠（restore 或 off）",
+        "zh-HK": "未關注任何內容時的滑鼠（restore 或 off）"
+      },
+      "type": "string",
+      "default": "restore"
+    },
+    {
+      "id": "clientID",
+      "title": {
+        "en": "Client ID",
+        "pt-BR": "Client ID",
+        "tr": "Client ID",
+        "ru": "Client ID",
+        "es": "Client ID",
+        "sk": "Client ID",
+        "de": "Client-ID",
+        "fr": "Client ID",
+        "it": "Client ID",
+        "ja": "クライアント ID",
+        "ko": "클라이언트 ID",
+        "uk": "Client ID",
+        "zh-Hans": "客户端 ID",
+        "zh-TW": "用戶端 ID",
+        "zh-HK": "用戶端 ID"
+      },
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "migratedToken",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "activation": ["onLaunch"],
+  "runtime": {
+    "kind": "external",
+    "exec": "bin/tool"
+  }
+}

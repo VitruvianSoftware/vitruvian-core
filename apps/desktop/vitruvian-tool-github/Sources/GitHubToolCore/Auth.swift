@@ -20,11 +20,23 @@ public struct AccessToken: Sendable, Equatable, CustomStringConvertible, CustomD
     public var debugDescription: String { description }
 }
 
+/// Where the person's files are.
+public enum Paths {
+    /// The home folder: `$HOME` when it is set, as a test or a launcher sets
+    /// it, else the account's. `NSHomeDirectory()` alone reads the account's
+    /// and would find the person's real logins under a test's scratch home.
+    public static var home: String {
+        if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty { return home }
+        return NSHomeDirectory()
+    }
+}
+
 /// The GitHub CLI's saved login, read from its `hosts.yml`.
 public enum CLIAccount {
-    /// Where the GitHub CLI keeps its login.
-    public static let defaultHostsURL = URL(
-        fileURLWithPath: ("~/.config/gh/hosts.yml" as NSString).expandingTildeInPath)
+    /// Where the GitHub CLI keeps its login, under `Paths.home`.
+    public static var defaultHostsURL: URL {
+        URL(fileURLWithPath: Paths.home, isDirectory: true).appendingPathComponent(".config/gh/hosts.yml")
+    }
 
     /// The login and the token for github.com, or nil without a token.
     public static func read(hostsFile: URL = defaultHostsURL) -> (login: String, token: String)? {

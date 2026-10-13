@@ -9,7 +9,7 @@ final class WordsTests: XCTestCase {
     func testEveryTextIsInEveryLanguageWithEnglishFirst() {
         XCTAssertEqual(Words.languages.first, "en")
         XCTAssertEqual(Words.languages.count, 15)
-        XCTAssertEqual(Words.table.count, 46)
+        XCTAssertEqual(Words.table.count, 45)
         for (key, entry) in Words.table {
             XCTAssertEqual(Set(entry.keys), Set(Words.languages), key)
             for (language, text) in entry {
