@@ -49,7 +49,7 @@ answer() { # <fixture name>
 case "$1 $2" in
   "pr list") answer prs ;;
   "pr view") answer comments ;;
-  "pr edit" | "pr merge" | "pr comment") exit 0 ;;
+  "pr edit" | "pr merge" | "pr comment" | "label create") exit 0 ;;
   api\ *)
     path="$2"
     case "$path" in
@@ -236,13 +236,32 @@ else
   bad "success with auto-merge on made calls (rc=$rc)"; show
 fi
 
+fresh; fx prs $'42\thead1\tfalse\tfalse\tautorelease: pending,beta-not-built'
+fx runs $'901\tapp5'; fx jobs.901 "$(beta completed success)"
+rc="$(run)"
+if [ "$rc" = "0" ] && grep -q '^pr edit 42 --repo owner/repo --remove-label beta-not-built$' "$work/log" && enabled; then
+  ok "a green beta clears this gate's own hold and enables auto-merge"
+else
+  bad "success after a hold wrong (rc=$rc)"; show
+fi
+
 fresh; fx prs $'42\thead1\tfalse\tfalse\tautorelease: pending,do-not-automerge'
 fx runs $'901\tapp5'; fx jobs.901 "$(beta completed success)"
 rc="$(run)"
-if [ "$rc" = "0" ] && grep -q '^pr edit 42 --repo owner/repo --remove-label do-not-automerge$' "$work/log" && enabled; then
-  ok "a green beta clears an earlier hold and enables auto-merge"
+if [ "$rc" = "0" ] && ! mutated && grep -q 'a person is holding it' "$work/stdout"; then
+  ok "a green beta leaves a person's do-not-automerge on and auto-merge off"
 else
-  bad "success after a hold wrong (rc=$rc)"; show
+  bad "a person's hold was not kept (rc=$rc)"; show
+fi
+
+fresh; fx prs $'42\thead1\tfalse\tfalse\tbeta-not-built,do-not-automerge'
+fx runs $'901\tapp5'; fx jobs.901 "$(beta completed success)"
+rc="$(run)"
+if [ "$rc" = "0" ] && grep -q '^pr edit 42 --repo owner/repo --remove-label beta-not-built$' "$work/log" \
+   && ! grep -q 'remove-label do-not-automerge' "$work/log" && ! enabled; then
+  ok "with both holds on, a green beta clears only its own and leaves auto-merge off"
+else
+  bad "both-holds case wrong (rc=$rc)"; show
 fi
 
 fresh; fx prs $'42\thead1\ttrue\tfalse\t'; fx runs $'901\tapp5'; fx jobs.901 "$(beta completed success)"
@@ -256,10 +275,11 @@ fi
 echo "--- failure ---"
 fresh; fx prs $'42\thead1\tfalse\ttrue\t'; fx runs $'901\tapp5'; fx jobs.901 "$(beta completed failure)"
 rc="$(run)"
-if [ "$rc" = "0" ] && grep -q '^pr edit 42 --repo owner/repo --add-label do-not-automerge$' "$work/log" \
+if [ "$rc" = "0" ] && grep -q '^pr edit 42 --repo owner/repo --add-label beta-not-built$' "$work/log" \
+   && ! grep -q 'add-label do-not-automerge' "$work/log" \
    && disabled && grep -q '^pr comment 42 --repo owner/repo --body <!-- release-beta-gate:app5 -->' "$work/log" \
    && ! enabled; then
-  ok "a red beta holds the PR, disables auto-merge and comments with the commit's marker"
+  ok "a red beta holds the PR with its own label, disables auto-merge and comments with the commit's marker"
 else
   bad "failure path wrong (rc=$rc)"; show
 fi
@@ -328,7 +348,7 @@ done
 
 fresh; fx prs ""
 rc="$(run)"
-if [ "$rc" = "0" ] && [ "$(wc -l <"$work/log")" = "1" ] && grep -q 'No open release PR' "$work/stdout"; then
+if [ "$rc" = "0" ] && [ "$(wc -l <"$work/log" | tr -d " ")" = "1" ] && grep -q 'No open release PR' "$work/stdout"; then
   ok "no open release PR: one lookup, nothing else"
 else
   bad "no-PR case wrong (rc=$rc)"; show

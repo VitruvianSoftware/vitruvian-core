@@ -63,7 +63,7 @@ case "$1 $2" in
   "pr view")
     printf '%s' "${FAKE_PR_VIEW_LABELS_OUT:-}"
     ;;
-  "pr edit" | "pr merge" | "pr comment")
+  "pr edit" | "pr merge" | "pr comment" | "label create")
     exit 0
     ;;
   *)
@@ -118,12 +118,27 @@ else
 fi
 
 jobs_success=$'deploy-dev / deploy\tsuccess'
-rc="$(run FAKE_PR_LIST_OUT=42 FAKE_RUN_VIEW_OUT="$jobs_success" FAKE_PR_VIEW_LABELS_OUT="do-not-automerge")"
-if [ "$rc" = "0" ] && grep -q "^pr edit 42 --repo owner/repo --remove-label do-not-automerge$" "$work/log" \
+rc="$(run FAKE_PR_LIST_OUT=42 FAKE_RUN_VIEW_OUT="$jobs_success" FAKE_PR_VIEW_LABELS_OUT="dev-deploy-red")"
+if [ "$rc" = "0" ] && grep -q "^pr edit 42 --repo owner/repo --remove-label dev-deploy-red$" "$work/log" \
    && grep -q "^pr merge 42 --repo owner/repo --squash --auto$" "$work/log"; then
-  ok "conclusion=success with an existing hold clears the label and re-enables auto-merge"
+  ok "conclusion=success with this workflow's own hold clears the label and re-enables auto-merge"
 else
   bad "success-with-hold path wrong, log:"; sed 's/^/    /' "$work/log" >&2
+fi
+
+rc="$(run FAKE_PR_LIST_OUT=42 FAKE_RUN_VIEW_OUT="$jobs_success" FAKE_PR_VIEW_LABELS_OUT="do-not-automerge")"
+if [ "$rc" = "0" ] && ! grep -q "^pr edit" "$work/log" && ! grep -q "^pr merge" "$work/log"; then
+  ok "conclusion=success with only a person's do-not-automerge makes no mutating calls"
+else
+  bad "a person's hold was touched, log:"; sed 's/^/    /' "$work/log" >&2
+fi
+
+rc="$(run FAKE_PR_LIST_OUT=42 FAKE_RUN_VIEW_OUT="$jobs_success" FAKE_PR_VIEW_LABELS_OUT=$'dev-deploy-red\ndo-not-automerge')"
+if [ "$rc" = "0" ] && grep -q "^pr edit 42 --repo owner/repo --remove-label dev-deploy-red$" "$work/log" \
+   && ! grep -q "remove-label do-not-automerge" "$work/log" && ! grep -q "^pr merge" "$work/log"; then
+  ok "conclusion=success with both holds clears only this workflow's and leaves auto-merge off"
+else
+  bad "both-holds case wrong, log:"; sed 's/^/    /' "$work/log" >&2
 fi
 
 rc="$(run FAKE_PR_LIST_OUT=42 FAKE_RUN_VIEW_OUT="$jobs_success" FAKE_PR_VIEW_LABELS_OUT="")"
@@ -135,10 +150,11 @@ fi
 
 jobs_failure=$'deploy-dev / deploy\tfailure'
 rc="$(run FAKE_PR_LIST_OUT=42 FAKE_RUN_VIEW_OUT="$jobs_failure")"
-if [ "$rc" = "0" ] && grep -q "^pr edit 42 --repo owner/repo --add-label do-not-automerge$" "$work/log" \
+if [ "$rc" = "0" ] && grep -q "^pr edit 42 --repo owner/repo --add-label dev-deploy-red$" "$work/log" \
+   && ! grep -q "add-label do-not-automerge" "$work/log" \
    && grep -q "^pr merge 42 --repo owner/repo --disable-auto$" "$work/log" \
    && grep -q "^pr comment 42 --repo owner/repo --body" "$work/log"; then
-  ok "conclusion=failure adds the hold label, disables auto-merge, and comments"
+  ok "conclusion=failure adds this workflow's own hold label, disables auto-merge, and comments"
 else
   bad "failure path wrong, log:"; sed 's/^/    /' "$work/log" >&2
 fi
