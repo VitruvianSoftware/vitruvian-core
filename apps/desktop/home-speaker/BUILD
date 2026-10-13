@@ -161,6 +161,21 @@ macos_application(
     deps = [":HomeSpeakerLib"],
 )
 
+# The release's zip of the tool (scripts/zip-tool.sh), against a stand-in
+# binary: what it holds, what it is called, and the version it refuses.
+# macOS-only and `manual`, as sync_secrets_test is, for the same reasons.
+sh_test(
+    name = "zip_tool_test",
+    size = "small",
+    srcs = ["scripts/zip-tool_test.sh"],
+    data = [
+        "scripts/zip-tool.sh",
+        "tool/vitruvian-tool.json",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 # `bazel run //apps/desktop/home-speaker:sync-secrets` -- put HomeSpeaker's
 # Slack user token on this Mac from Bitwarden, so the vault is the only place
 # it lives. Uses the session //tools/sync-env-secrets:unlock caches.
