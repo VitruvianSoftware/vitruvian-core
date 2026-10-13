@@ -307,8 +307,10 @@ All four stages of that work are built: the protocol, reading a tool's
 manifest, the runtime that starts a tool, talks to it and stops it, the
 screens, and what a tool's author works with. A person adds a tool in
 Settings, under Features, in the section "Tools from outside": they pick its
-folder and agree on one sheet. Every build has that section. There is no
-store of tools.
+folder and agree on one sheet. Every build has that section. Beside "Add a
+Tool…", "Browse Tools…" lists the Vitruvian catalog: a curated list, kept in
+`catalog/` at the repository's root, that the person installs a tool from
+through the same sheet. There is no other store of tools.
 
 What a tool's author works with is all in `packages/vitruvian-sdk`: a Swift
 kit, the `vitruvian-tool` command, three samples and a guide
@@ -604,6 +606,39 @@ of it but the protocol.
 - The card redraws because it observes `ToolRegistry.shared`. The store
   bumps the registry's `revision` whenever a tool is added, removed,
   switched or stands differently. Nothing polls a tool.
+- The catalog (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-c.md`)
+  is in `Services/Platform/External/Catalogue/`. Nothing of it goes
+  through the broker: it is the app's own code, not a tool.
+  - `CatalogueSigning` checks the list's Ed25519 signature with the key
+    built into the app, `CatalogueSigning.publicKey`. It is the same line as
+    `catalog/public-key.txt`, and `//catalog:catalog_test` fails when they
+    differ. A new key is a new release.
+  - `CatalogueInstaller.prepare` turns an entry into a `ToolOffer` and
+    nothing more, in a fixed order: the download, refused past its pinned
+    size; its size and SHA-256; the zip's directory, refused when an entry
+    would leave its folder, is a link or is encrypted; `/usr/bin/ditto`;
+    a look over what it unpacked; the manifest's id and version; then
+    `ExternalToolStore.offer`. A refusal at any step deletes what it wrote.
+    It never makes a `ToolConsent`: the agreement sheet does, as for a
+    folder, and `only_the_agreement_sheet_consents` holds it.
+  - The download runs off the main thread; the store is touched only on it.
+    Tests hand in a table for the network (`FakeCatalogueFetcher`) and run
+    the steps in order on the main thread; the zip is unpacked by the real
+    ditto, under the temporary folder.
+  - `CatalogueWatch` fetches the list when the sheet opens, and at launch and
+    once a day only while a tool from the catalog is installed, with the
+    ETag of the list it kept. It keeps the last list that verified in
+    `Catalog.json` in the app's support folder, verifies it again whenever
+    it reads it, and refuses a list older than it. Only a record with
+    `catalogue` set, written when a tool was installed from the catalog, is
+    ever compared with it: a tool added from a folder is never matched by
+    its id.
+  - `CatalogueSource.inUse` is the website's list. Only a by-hand build
+    (`--define=vitruvian_sample_tool=true`) can point it at a rehearsal on
+    this Mac, from `main.swift`, given `VITRUVIAN_CATALOGUE_URL` and
+    `VITRUVIAN_CATALOGUE_KEY`; `bazel run //catalog:rehearse` serves one.
+    The source rule `only_a_by_hand_build_rehearses_the_catalog` fails for
+    any other line that does.
 - Limits of stage C that are known and accepted:
   - Remove waits for the tool's own process only. Since 2026-10-12 a
     program the tool started is ended with it, when it is still in the

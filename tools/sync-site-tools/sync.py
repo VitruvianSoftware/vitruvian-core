@@ -41,6 +41,9 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
+
+import catalogue
 
 SDK = "packages/vitruvian-sdk"
 SITE = "apps/web/vitruviansoftware-dev"
@@ -286,35 +289,55 @@ def pages(base):
     return found
 
 
+# The other parts of the section. Each is a module with `outputs(root)`: every
+# file it makes, by its path from the repository's root, and the bytes it must
+# hold. A part is added here, and its sources and outputs to the data of
+# in_sync_test in BUILD.
+PARTS = [catalogue]
+
+
+def wanted(base):
+    """Every file the section is made of, by its path from the repository's
+    root, and the bytes it must hold: the copies, then each part's files."""
+    files = {
+        f"{SITE}/{path}": text.encode("utf-8") for path, text in pages(base).items()
+    }
+    for part in PARTS:
+        files.update(part.outputs(Path(base)))
+    return files
+
+
+def stale(base):
+    """The paths whose committed bytes are not what would be written."""
+    return sorted(
+        path
+        for path, data in wanted(base).items()
+        if not os.path.isfile(os.path.join(base, path))
+        or Path(base, path).read_bytes() != data
+    )
+
+
 def main(arguments):
     base = root()
-    stale = []
-    for path, text in sorted(pages(base).items()):
-        target = os.path.join(base, SITE, path)
-        if "--check" in arguments:
-            try:
-                same = read(base, os.path.join(SITE, path)) == text
-            except OSError:
-                same = False
-            if not same:
-                stale.append(path)
-            continue
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        print(f"wrote {SITE}/{path}")
     if "--check" in arguments:
-        for path in stale:
-            print(f"{SITE}/{path} is not what sync.py writes", file=sys.stderr)
+        behind = stale(base)
+        for path in behind:
+            print(f"{path} is not what sync.py writes", file=sys.stderr)
         print(
             "site tools: "
             + (
                 "OUT OF SYNC, run bazel run //tools/sync-site-tools:sync"
-                if stale
+                if behind
                 else "in sync"
             )
         )
-        return 1 if stale else 0
+        return 1 if behind else 0
+    for path, data in sorted(wanted(base).items()):
+        target = os.path.join(base, path)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as handle:
+            handle.write(data)
+        print(f"wrote {path}")
     return 0
 
 
