@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-13T18:27:46Z",
+  "generated": "2026-10-13T23:25:02Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -102,6 +102,58 @@
             "zh-Hans": "打开我的拉取请求",
             "zh-TW": "打開我的拉取請求",
             "zh-HK": "打開我的拉取請求"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dev.vitruvian.homespeaker",
+      "name": {
+        "en": "HomeSpeaker"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Speaks what you type, or the clipboard, on your Google Home speakers through HomeSpeaker, and keeps broadcasting, quiet hours and the volume at hand."
+      },
+      "version": "1.13.1",
+      "protocol": "2",
+      "minimumAppVersion": "3.45.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.13.1/HomeSpeaker-1.13.1-tool.zip",
+        "sha256": "5159708ba8ca23bd760b96dee48c37a8d656877d03329c1834c9dc01b0a2d404",
+        "size": 1572982
+      },
+      "uses": ["notify", "clipboard.read", "open"],
+      "commands": [
+        {
+          "id": "sayClipboard",
+          "title": {
+            "en": "Speak the clipboard"
+          }
+        },
+        {
+          "id": "toggleBroadcasting",
+          "title": {
+            "en": "Turn broadcasting on or off"
+          }
+        },
+        {
+          "id": "mute",
+          "title": {
+            "en": "Mute the speaker"
+          }
+        },
+        {
+          "id": "unmute",
+          "title": {
+            "en": "Unmute the speaker"
+          }
+        },
+        {
+          "id": "toggleQuietHours",
+          "title": {
+            "en": "Turn quiet hours on or off"
           }
         }
       ]
