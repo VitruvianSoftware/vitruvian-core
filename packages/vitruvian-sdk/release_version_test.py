@@ -42,6 +42,13 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PATH = "packages/vitruvian-sdk"
 WORDS = "Sources/VitruvianToolCLI/Words.swift"
+# Where who-may-use-the-SDK is listed, and what only a tool may use.
+CONSUMERS = "packages/vitruvian-sdk/consumers"
+TOOLS_ONLY = [
+    'name = "VitruvianToolKit"',
+    'name = "vitruvian-tool"',
+    '["conformance/conformance.py"]',
+]
 # The kits and the kit samples, each with the updater release-please needs.
 KIT_PLACES = [
     ("json", "kits/typescript/package.json", "$.version"),
@@ -78,6 +85,47 @@ KIT_PLACES = [
 def read(name):
     with open(os.path.join(HERE, name), encoding="utf-8") as handle:
         return handle.read()
+
+
+def consumer_problems(package, build):
+    """Who may use the SDK is listed in consumers/BUILD, outside a release.
+
+    A new tool has to be let in. While the list was in this folder's BUILD,
+    the pull request that added a tool changed a file the SDK's release
+    counts, and release-please proposed an SDK release with nothing in it
+    (1.1.0 from #3193, 1.2.0 from #3211).
+    """
+    problems = []
+    if CONSUMERS not in package.get("exclude-paths", []):
+        problems.append(
+            f"{CONSUMERS} is not in exclude-paths: letting a new tool use the SDK would cut an SDK release with nothing in it"
+        )
+    named = [
+        line.strip()
+        for line in build.split("\n")
+        if '"//apps/' in line and not line.lstrip().startswith("#")
+    ]
+    if named:
+        problems.append(
+            f"BUILD names another product's folder ({', '.join(named)}): say who may use a target in consumers/BUILD, "
+            "which a release does not count, and name the group here"
+        )
+    # The app links the protocol and never the kit: MIT flows into GPL, and
+    # the app must not come to depend on what tools are written with.
+    for target in TOOLS_ONLY:
+        block = re.search(
+            r"^\w+\(\n(?:(?!^\)).*\n)*?.*"
+            + re.escape(target)
+            + r".*\n(?:(?!^\)).*\n)*?^\)",
+            build,
+            re.M,
+        )
+        text = block.group(0) if block else ""
+        if f'"//{CONSUMERS}:tools"' not in text or f"//{CONSUMERS}:app" in text:
+            problems.append(
+                f"{target} must be visible to //{CONSUMERS}:tools and not to //{CONSUMERS}:app: the app may not use what tools are written with"
+            )
+    return problems
 
 
 def main():
@@ -128,6 +176,7 @@ def main():
         problems.append(
             f"{PATH}/.github is not in exclude-paths: a change to the mirror's CI would cut a release"
         )
+    problems += consumer_problems(package, read("BUILD"))
     marked = [
         line for line in read(WORDS).split("\n") if "x-release-please-version" in line
     ]

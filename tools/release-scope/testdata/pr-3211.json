@@ -1,0 +1,47 @@
+{
+  "pull_request": {
+    "number": 3211,
+    "title": "feat(home-speaker): a tool for the Vitruvian app, beside the app",
+    "body": "Stage F of issue #3130, Tasks 8 and 9 (plan: PR #3190), pull request D: HomeSpeaker's tool for the Vitruvian app. Nothing of the Vitruvian app changes here. Needs SDK 1.1.0 for the kit's waker, which is released.\n\n## What this does\n\n- **The tool lives beside HomeSpeaker**, in `apps/desktop/home-speaker`, MIT: it drives HomeSpeaker's own program and reads the shared config file; English words; no preferences of its own. Five commands (say the clipboard, mute, volume, pick the speaker, broadcasting), an island page and a Settings panel. With HomeSpeaker absent or quit it says so and refuses.\n- **Release:** HomeSpeaker's own release attaches `HomeSpeaker-X.Y.Z-tool.zip` with its `.sha256` (it has no mirror; the catalogue takes any VitruvianSoftware release). `zip-tool.sh` refuses a zip whose manifest version is not the release's.\n- **CI:** the macOS lane names the tool's four tests.\n\n## Checked on the final tree, after merging main\n\n`HomeSpeakerToolTests` (19), `tool_conformance_test` (the built tool validates; `sayClipboard: refused, HomeSpeaker is not installed`; a panel of 3 blocks), `tool_version_test`, `zip_tool_test`; `swift package resolve` now finds the kit at 1.1.0; conformance check 430 ok, 0 fail; actionlint; licence verify; `//:tidy`. Planted regressions each failed their test and were reversed (the program seam ignored, so the test would have driven this Mac's HomeSpeaker; the asset renamed). No test reaches this Mac's HomeSpeaker, its config or the home folder: a scratch home, the `HOMESPEAKER_PROGRAM` seam, and `block-network`.\n\n## Known, not from this change\n\nBazel's `//apps/desktop/home-speaker:HomeSpeakerTests` fails on main (it reads sources by path; CI does not run it).\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "user": {
+      "login": "vitruvian-wren-agent[bot]",
+      "type": "Bot"
+    },
+    "head": {
+      "ref": "feat/home-speaker-tool"
+    }
+  },
+  "commits": [
+    "feat(vitruvian-sdk): a tool can hand work to its thread from another\n\nThe kit gains ToolWaker: tool.waker.later takes work from any thread,\na window's or a child process's, and runs it on the kit's thread as soon\nas it is between messages, after the hello, never while a handler runs or\nwaits for the app. The wire polls a wake pipe beside standard input; an\nerror the handed work throws goes to the tool's log. The guide says so\nand the site's copy is synced. Stage F, Task 1 of issue #3130.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "Merge remote-tracking branch 'origin/feat/vitruvian-sdk-waker' into feat/home-speaker-tool",
+    "feat(home-speaker): a tool for the Vitruvian app, beside the app\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "feat(home-speaker): the release attaches the tool's zip\n\nHomeSpeaker's own release in this repository zips the tool beside the app:\npublish.sh writes HomeSpeaker-X.Y.Z-tool.zip through scripts/zip-tool.sh,\nthe manifest at the top and bin/tool under it, named so the shared packaging\nhelper checksums and uploads it with the app's artifacts. zip_tool_test holds\nthe zip's contents, its name and the version the script refuses; ci.yaml's\nmacOS lane names the tool's four manual tests.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "Merge remote-tracking branch 'refs/remotes/origin/main' into feat/home-speaker-tool",
+    "Merge remote-tracking branch 'refs/remotes/origin/main' into feat/home-speaker-tool",
+    "fix(home-speaker): the tool's zip lands in a dist folder given as ./dist\n\npublish.sh passes the dist folder as ./dist. zip-tool.sh makes the zip\nfrom inside its staging folder, so the relative path named a file there:\n\"Could not create output file\", and the macOS build of this pull request\nfailed. The folder is made whole before the zip is written; the test gave\nonly a whole path, and now gives ./dist from another folder too.\n\nSwiftPM writes Package.resolved now that the package has a dependency; no\npackage here commits one, so it is ignored.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  ],
+  "files": [
+    ".github/workflows/ci.yaml",
+    "apps/desktop/home-speaker/.gitignore",
+    "apps/desktop/home-speaker/BUILD",
+    "apps/desktop/home-speaker/Package.swift",
+    "apps/desktop/home-speaker/Sources/HomeSpeakerTool/main.swift",
+    "apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/Config.swift",
+    "apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/HomeSpeakerTool.swift",
+    "apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/Pages.swift",
+    "apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/Speaker.swift",
+    "apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/Version.swift",
+    "apps/desktop/home-speaker/Tests/HomeSpeakerToolTests/ConfigTests.swift",
+    "apps/desktop/home-speaker/Tests/HomeSpeakerToolTests/DriverTests.swift",
+    "apps/desktop/home-speaker/Tests/HomeSpeakerToolTests/HomeSpeakerToolTests.swift",
+    "apps/desktop/home-speaker/Tests/HomeSpeakerToolTests/PagesTests.swift",
+    "apps/desktop/home-speaker/release-please-config.json",
+    "apps/desktop/home-speaker/scripts/publish.sh",
+    "apps/desktop/home-speaker/scripts/zip-tool.sh",
+    "apps/desktop/home-speaker/scripts/zip-tool_test.sh",
+    "apps/desktop/home-speaker/tool/conformance_test.py",
+    "apps/desktop/home-speaker/tool/version_test.py",
+    "apps/desktop/home-speaker/tool/vitruvian-tool.json",
+    "packages/vitruvian-sdk/BUILD"
+  ]
+}

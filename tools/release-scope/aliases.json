@@ -1,0 +1,17 @@
+{
+  "what": "Scopes people write in a title that mean a product release-please knows by another name. Read by release_scope.py. A scope that is a product's component or package-name needs no line here: those come from the release-please configs.",
+  "aliases": {
+    "desktop": {
+      "components": ["vitruvian"],
+      "why": "The desktop app's titles say desktop as often as vitruvian. The other products under apps/desktop have names of their own and are not meant by it."
+    },
+    "peripherals": {
+      "components": ["gravastar-mouse"],
+      "why": "gravastar-mouse is released from packages/peripherals, and its titles say peripherals."
+    },
+    "remote": {
+      "components": ["android-remote"],
+      "why": "The Android remote's titles say remote; its component is android-remote."
+    }
+  }
+}

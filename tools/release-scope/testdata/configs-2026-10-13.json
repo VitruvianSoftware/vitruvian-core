@@ -1,0 +1,969 @@
+{
+  "apps/cli/devx/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/cli/devx": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "devx",
+        "package-name": "devx",
+        "release-type": "go"
+      }
+    },
+    "tag-separator": "-"
+  },
+  "apps/cli/homelab/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/cli/homelab": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "homelab",
+        "package-name": "homelab",
+        "release-type": "go"
+      }
+    },
+    "tag-separator": "-"
+  },
+  "apps/desktop/home-speaker/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/desktop/home-speaker": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "home-speaker",
+        "extra-files": [
+          {
+            "path": "Sources/HomeSpeakerCore/Version.swift",
+            "type": "generic"
+          },
+          {
+            "path": "Sources/HomeSpeakerToolCore/Version.swift",
+            "type": "generic"
+          },
+          {
+            "jsonpath": "$.version",
+            "path": "tool/vitruvian-tool.json",
+            "type": "json"
+          },
+          {
+            "path": "Resources/Info.plist",
+            "type": "xml",
+            "xpath": "//key[.='CFBundleShortVersionString']/following-sibling::string[1]"
+          },
+          {
+            "path": "Resources/Info.plist",
+            "type": "xml",
+            "xpath": "//key[.='CFBundleVersion']/following-sibling::string[1]"
+          }
+        ],
+        "package-name": "home-speaker"
+      }
+    },
+    "release-type": "simple",
+    "tag-separator": "-"
+  },
+  "apps/desktop/nexus-agent/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "5b9da8f2e5014affda714215f09f0de7b0188c73",
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/desktop/nexus-agent": {
+        "bump-minor-pre-major": true,
+        "changelog-path": "CHANGELOG.md",
+        "component": "nexus-agent",
+        "extra-files": [
+          {
+            "path": "macos/Sources/NexusAgent/Version.swift",
+            "type": "generic"
+          }
+        ],
+        "package-name": "nexus-agent",
+        "release-type": "node"
+      }
+    },
+    "tag-separator": "-"
+  },
+  "apps/desktop/vitruvian-tool-github/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "b4c829496c0d6b6f5f5bfb1b9cf9e90e5ac1b78a",
+    "bump-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/desktop/vitruvian-tool-github": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "vitruvian-tool-github",
+        "exclude-paths": ["apps/desktop/vitruvian-tool-github/.github"],
+        "extra-files": [
+          "Sources/GitHubToolCore/Version.swift",
+          {
+            "jsonpath": "$.version",
+            "path": "vitruvian-tool.json",
+            "type": "json"
+          }
+        ],
+        "initial-version": "1.0.0",
+        "package-name": "vitruvian-tool-github"
+      }
+    },
+    "release-type": "simple",
+    "tag-separator": "-"
+  },
+  "apps/desktop/vitruvian/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/desktop/vitruvian": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "vitruvian",
+        "extra-files": [
+          {
+            "path": "Resources/Info.plist",
+            "type": "xml",
+            "xpath": "//key[.='CFBundleShortVersionString']/following-sibling::string[1]"
+          }
+        ],
+        "package-name": "vitruvian"
+      }
+    },
+    "release-type": "simple",
+    "tag-separator": "-"
+  },
+  "apps/embedded/esp32-s3/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/embedded/esp32-s3": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "esp32-s3",
+        "extra-files": ["include/version.h"],
+        "package-name": "esp32-s3"
+      }
+    },
+    "release-type": "simple",
+    "tag-separator": "-"
+  },
+  "apps/mcp/slack/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/mcp/slack": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "mcp-slack",
+        "extra-files": [
+          {
+            "path": "deploy/chart/Chart.yaml",
+            "type": "generic"
+          }
+        ],
+        "package-name": "@vitruviansoftware/mcp-slack",
+        "release-type": "node"
+      }
+    },
+    "tag-separator": "-"
+  },
+  "apps/mobile/android-remote/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/mobile/android-remote": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "android-remote",
+        "extra-files": [
+          {
+            "path": "BUILD",
+            "type": "generic"
+          }
+        ],
+        "package-name": "android-remote"
+      }
+    },
+    "release-type": "simple",
+    "tag-separator": "-"
+  },
+  "apps/suites/tabula/api/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/suites/tabula/api": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "tabula-api",
+        "package-name": "@tabula/api"
+      }
+    },
+    "release-type": "node",
+    "tag-separator": "-"
+  },
+  "apps/suites/tabula/cli/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/suites/tabula/cli": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "tabula-cli",
+        "package-name": "@tabula/cli"
+      }
+    },
+    "release-type": "node",
+    "tag-separator": "-"
+  },
+  "apps/suites/tabula/extension/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/suites/tabula/extension": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "tabula-extension",
+        "package-name": "@tabula/extension"
+      }
+    },
+    "release-type": "node",
+    "tag-separator": "-"
+  },
+  "apps/suites/tabula/infra/app/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "d7f97a3b8b3e8dda2217d822e423185acb1790af",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/suites/tabula/infra/app": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "tabula-api-infra",
+        "package-name": "tabula-api-infra"
+      }
+    },
+    "release-type": "go",
+    "tag-separator": "-"
+  },
+  "apps/suites/tabula/infra/web/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "d7f97a3b8b3e8dda2217d822e423185acb1790af",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/suites/tabula/infra/web": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "tabula-web-infra",
+        "package-name": "tabula-web-infra"
+      }
+    },
+    "release-type": "go",
+    "tag-separator": "-"
+  },
+  "apps/suites/tabula/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/suites/tabula": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "tabula-shared",
+        "exclude-paths": [
+          "apps/suites/tabula/infra",
+          "apps/suites/tabula/api",
+          "apps/suites/tabula/cli",
+          "apps/suites/tabula/extension",
+          "apps/suites/tabula/web"
+        ],
+        "package-name": "tabula"
+      }
+    },
+    "release-type": "node",
+    "tag-separator": "-"
+  },
+  "apps/suites/tabula/web/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/suites/tabula/web": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "tabula-web",
+        "package-name": "@tabula/web"
+      }
+    },
+    "release-type": "node",
+    "tag-separator": "-"
+  },
+  "apps/web/oauth-user-inspector/infra/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "d7f97a3b8b3e8dda2217d822e423185acb1790af",
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/web/oauth-user-inspector/infra": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "oauth-user-inspector-infra",
+        "package-name": "oauth-user-inspector-infra"
+      }
+    },
+    "release-type": "go",
+    "tag-separator": "-"
+  },
+  "apps/web/oauth-user-inspector/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "c8e48d3f315cef0b8d18a64ffa222be4da3b9f28",
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "apps/web/oauth-user-inspector": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "oauth-user-inspector",
+        "exclude-paths": ["apps/web/oauth-user-inspector/infra"],
+        "package-name": "oauth-user-inspector",
+        "release-type": "node"
+      }
+    },
+    "tag-separator": "-"
+  },
+  "infrastructure/pulumi/foundation/gcp-bootstrap/release-please-config.json": {
+    "packages": {
+      "infrastructure/pulumi/foundation/gcp-bootstrap": {
+        "component": "foundation-gcp-bootstrap",
+        "release-type": "simple"
+      }
+    }
+  },
+  "infrastructure/pulumi/foundation/gcp-environments/release-please-config.json": {
+    "packages": {
+      "infrastructure/pulumi/foundation/gcp-environments": {
+        "component": "foundation-gcp-environments",
+        "release-type": "simple"
+      }
+    }
+  },
+  "infrastructure/pulumi/foundation/gcp-networks/release-please-config.json": {
+    "packages": {
+      "infrastructure/pulumi/foundation/gcp-networks": {
+        "component": "foundation-gcp-networks",
+        "release-type": "simple"
+      }
+    }
+  },
+  "infrastructure/pulumi/foundation/gcp-org/release-please-config.json": {
+    "packages": {
+      "infrastructure/pulumi/foundation/gcp-org": {
+        "component": "foundation-gcp-org",
+        "release-type": "simple"
+      }
+    }
+  },
+  "infrastructure/pulumi/foundation/gcp-projects/release-please-config.json": {
+    "packages": {
+      "infrastructure/pulumi/foundation/gcp-projects": {
+        "component": "foundation-gcp-projects",
+        "release-type": "simple"
+      }
+    }
+  },
+  "infrastructure/pulumi/foundation/org-folders/release-please-config.json": {
+    "packages": {
+      "infrastructure/pulumi/foundation/org-folders": {
+        "component": "foundation-org-folders",
+        "release-type": "simple"
+      }
+    }
+  },
+  "packages/peripherals/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "packages/peripherals": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "gravastar-mouse",
+        "extra-files": ["Sources/GravaStarCLI/CLI.swift"],
+        "package-name": "gravastar-mouse"
+      }
+    },
+    "release-type": "simple",
+    "tag-separator": "-"
+  },
+  "packages/pulumi/library/go/pkg/app/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/app": {
+        "component": "go-app",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/bootstrap/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/bootstrap": {
+        "component": "go-bootstrap",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/cai_monitoring/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/cai_monitoring": {
+        "component": "go-cai-monitoring",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/centralized_logging/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/centralized_logging": {
+        "component": "go-centralized-logging",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/cicd/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/cicd": {
+        "component": "go-cicd",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/cloud_dns/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/cloud_dns": {
+        "component": "go-cloud-dns",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/cloud_functions/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/cloud_functions": {
+        "component": "go-cloud-functions",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/cloud_router/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/cloud_router": {
+        "component": "go-cloud-router",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/cloud_run/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/cloud_run": {
+        "component": "go-cloud-run",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/cloud_storage/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/cloud_storage": {
+        "component": "go-cloud-storage",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/compute_instance/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/compute_instance": {
+        "component": "go-compute-instance",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/data/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/data": {
+        "component": "go-data",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/gcloud/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/gcloud": {
+        "component": "go-gcloud",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/google_group/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/google_group": {
+        "component": "go-google-group",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/iam/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/iam": {
+        "component": "go-iam",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/instance_template/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/instance_template": {
+        "component": "go-instance-template",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/kms/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/kms": {
+        "component": "go-kms",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/log_export/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/log_export": {
+        "component": "go-log-export",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/neon/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/neon": {
+        "component": "go-neon",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/network/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/network": {
+        "component": "go-network",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/network_firewall_policy/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/network_firewall_policy": {
+        "component": "go-network-firewall-policy",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/network_peering/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/network_peering": {
+        "component": "go-network-peering",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/org_policy/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/org_policy": {
+        "component": "go-org-policy",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/private_service_connect/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/private_service_connect": {
+        "component": "go-private-service-connect",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/project_factory/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/project_factory": {
+        "component": "go-project-factory",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/pubsub/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/pubsub": {
+        "component": "go-pubsub",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/upstash/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/upstash": {
+        "component": "go-upstash",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/go/pkg/vpc_service_controls/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/go/pkg/vpc_service_controls": {
+        "component": "go-vpc-service-controls",
+        "release-type": "go"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/app/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/app": {
+        "component": "foundation-app",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/bootstrap/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/bootstrap": {
+        "component": "foundation-bootstrap",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/budget/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/budget": {
+        "component": "foundation-budget",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/cai-monitoring/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/cai-monitoring": {
+        "component": "foundation-cai-monitoring",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/cb-private-pool/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/cb-private-pool": {
+        "component": "foundation-cb-private-pool",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/centralized-logging/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/centralized-logging": {
+        "component": "foundation-centralized-logging",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/cicd/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/cicd": {
+        "component": "foundation-cicd",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/cloud-dns/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/cloud-dns": {
+        "component": "foundation-cloud-dns",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/cloud-functions/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/cloud-functions": {
+        "component": "foundation-cloud-functions",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/cloud-router/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/cloud-router": {
+        "component": "foundation-cloud-router",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/cloud-storage/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/cloud-storage": {
+        "component": "foundation-cloud-storage",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/compute-instance/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/compute-instance": {
+        "component": "foundation-compute-instance",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/data/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/data": {
+        "component": "foundation-data",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/dns-hub/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/dns-hub": {
+        "component": "foundation-dns-hub",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/gcloud/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/gcloud": {
+        "component": "foundation-gcloud",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/google-group/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/google-group": {
+        "component": "foundation-google-group",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/hierarchical-firewall-policy/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/hierarchical-firewall-policy": {
+        "component": "foundation-hierarchical-firewall-policy",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/instance-template/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/instance-template": {
+        "component": "foundation-instance-template",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/kms/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/kms": {
+        "component": "foundation-kms",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/log-export/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/log-export": {
+        "component": "foundation-log-export",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/network-firewall-policy/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/network-firewall-policy": {
+        "component": "foundation-network-firewall-policy",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/network-peering/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/network-peering": {
+        "component": "foundation-network-peering",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/network/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/network": {
+        "component": "foundation-network",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/org-policy/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/org-policy": {
+        "component": "foundation-org-policy",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/parent-iam/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/parent-iam": {
+        "component": "foundation-parent-iam",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/private-service-connect/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/private-service-connect": {
+        "component": "foundation-private-service-connect",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/project-factory/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/project-factory": {
+        "component": "foundation-project-factory",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/pubsub/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/pubsub": {
+        "component": "foundation-pubsub",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/simple-bucket/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/simple-bucket": {
+        "component": "foundation-simple-bucket",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/vpc-service-controls/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/vpc-service-controls": {
+        "component": "foundation-vpc-service-controls",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/pulumi/library/ts/packages/vpn-ha/release-please-config.json": {
+    "packages": {
+      "packages/pulumi/library/ts/packages/vpn-ha": {
+        "component": "foundation-vpn-ha",
+        "release-type": "node"
+      }
+    }
+  },
+  "packages/vitruvian-sdk/release-please-config.json": {
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "bootstrap-sha": "858211bb2e42122ee13fac04b4a97517675226ef",
+    "bump-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "include-v-in-tag": true,
+    "packages": {
+      "packages/vitruvian-sdk": {
+        "changelog-path": "CHANGELOG.md",
+        "component": "vitruvian-sdk",
+        "exclude-paths": ["packages/vitruvian-sdk/.github"],
+        "extra-files": [
+          "Sources/VitruvianToolCLI/Words.swift",
+          {
+            "jsonpath": "$.version",
+            "path": "kits/typescript/package.json",
+            "type": "json"
+          },
+          {
+            "jsonpath": "$.project.version",
+            "path": "kits/python/pyproject.toml",
+            "type": "toml"
+          },
+          {
+            "jsonpath": "$.dependencies['@vitruviansoftware/tool-kit']",
+            "path": "samples/hello-typescript/package.json",
+            "type": "json"
+          },
+          {
+            "path": "samples/hello-python-kit/requirements.txt",
+            "type": "generic"
+          },
+          {
+            "jsonpath": "$.dependencies['@vitruviansoftware/tool-kit']",
+            "path": "samples/hello-panel-typescript/package.json",
+            "type": "json"
+          },
+          {
+            "path": "samples/hello-panel-python/requirements.txt",
+            "type": "generic"
+          },
+          {
+            "path": "go/toolkit/version.go",
+            "type": "generic"
+          },
+          {
+            "jsonpath": "$.package.version",
+            "path": "kits/rust/Cargo.toml",
+            "type": "toml"
+          },
+          {
+            "path": "samples/hello-go/go.mod",
+            "type": "generic"
+          },
+          {
+            "path": "samples/hello-panel-go/go.mod",
+            "type": "generic"
+          },
+          {
+            "jsonpath": "$.dependencies['vitruvian-tool-kit'].version",
+            "path": "samples/hello-rust/Cargo.toml",
+            "type": "toml"
+          },
+          {
+            "jsonpath": "$.dependencies['vitruvian-tool-kit'].version",
+            "path": "samples/hello-panel-rust/Cargo.toml",
+            "type": "toml"
+          }
+        ],
+        "initial-version": "0.9.0",
+        "package-name": "vitruvian-sdk"
+      }
+    },
+    "release-type": "simple",
+    "tag-separator": "-"
+  }
+}
