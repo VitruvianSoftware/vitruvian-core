@@ -206,6 +206,118 @@ one: the kit follows `language/changed` by itself. Set
 `tool.onLanguageChanged` before `run()` only when your tool must do
 something at that moment.
 
+### In TypeScript, with the kit
+
+```sh
+vitruvian-tool init ~/my-ts-tool --id com.you.my-ts-tool --name "My TypeScript tool" --publisher "You" --template typescript
+cd ~/my-ts-tool && npm install
+vitruvian-tool validate ~/my-ts-tool
+vitruvian-tool run ~/my-ts-tool
+```
+
+This writes the manifest, `bin/tool.mjs`, `bin/tool` and a `package.json` that
+depends on [`@vitruviansoftware/tool-kit`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/kits/typescript) at the version
+of this SDK. `npm install` puts the kit in `node_modules/`, inside the tool's
+folder, which is where it must be: the app runs the folder as it is, and
+`node_modules/` goes with it. You need Node 20 or later.
+
+There is no build step. The program is JavaScript that Node runs as it is,
+and its first line, `// @ts-check`, has an editor check it against the kit's
+types. The whole tool is one file:
+
+```javascript
+import { Tool } from "@vitruviansoftware/tool-kit";
+
+const tool = new Tool({ version: "0.1.0" });
+
+tool.command("hello", (app) => {
+  app.notify.hud({ icon: "hand.wave", message: "Hello from TypeScript" });
+});
+
+tool.command("count", (app) => {
+  const next = Number(app.storage.get({ key: "count" }).value) + 1;
+  app.storage.set({ key: "count", value: next });
+  app.notify.hud({ icon: "number", message: `Counted to ${next}` });
+});
+
+tool.run();
+```
+
+The manifest names `bin/tool`, not the `.mjs` file. It is a two-line shell
+script that starts Node, and it exists because the app starts a tool with a
+`PATH` that has no `node` in it: see
+[What a tool must not assume](#what-a-tool-must-not-assume). It looks in
+Homebrew's two places and where the installer from nodejs.org puts Node; if
+yours is elsewhere, say so in it.
+
+### In Python, with the kit
+
+```sh
+vitruvian-tool init ~/my-py-tool --id com.you.my-py-tool --name "My Python tool" --publisher "You" --template python-kit
+/usr/bin/python3 -m pip install --target ~/my-py-tool/lib -r ~/my-py-tool/requirements.txt
+vitruvian-tool validate ~/my-py-tool
+vitruvian-tool run ~/my-py-tool
+```
+
+This writes the manifest, `bin/tool.py`, and a `requirements.txt` that names
+[`vitruvian-tool-kit`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/kits/python) at the version of this SDK. The kit is
+installed into `lib/`, inside the tool's folder, with Apple's `python3`,
+because that is the one the app finds. The kit needs Python 3.9 or later and
+nothing but the standard library. The program puts `lib/` on its path, then:
+
+```python
+tool = Tool(version="0.1.0")
+
+
+@tool.command("hello")
+def hello(app):
+    app.notify.hud(icon="hand.wave", message="Hello from a Python tool, with the kit")
+
+
+@tool.command("count")
+def count(app):
+    counted = app.storage.get(key="count").value + 1
+    app.storage.set(key="count", value=counted)
+    app.notify.hud(icon="number", message=f"Counted to {counted}")
+
+
+tool.run()
+```
+
+The plain Python tool above needs no kit and no install, and stays the
+quickest start. The kit is for a tool with more than a few commands.
+
+### The TypeScript and Python kits
+
+Both kits are the Swift kit's shape, with one difference: a call on `app` is
+named after its message. `notify/hud` is `app.notify.hud`, `storage/get` is
+`app.storage.get`, and `log` is `app.log`. In Python a name in two words is
+written with an underscore: `clipboard/readText` is
+`app.clipboard.read_text`. Each call takes the message's params, by name, and
+returns what the answer carries. The types are made from the schemas, so the
+list of calls is the list of messages a tool may send, above.
+
+- **A call can be refused.** It then throws a `Refusal` (TypeScript) or raises
+  one (Python), whose `code` is the failure's. If your handler lets it
+  through, the command is answered as refused. Throw or raise
+  `CommandRefused("why")` to refuse a command yourself.
+- **One thread, and synchronous.** A call to the app waits for its answer,
+  ten seconds at most, and returns it as a value. A handler must not be
+  `async`: the kit refuses a command whose handler is.
+- **Never write to standard output.** No `console.log`, no `print`. Write to
+  standard error, or call `app.log`.
+- `app.language` and `app.dataFolder` (`app.data_folder` in Python) are what
+  the app said at hello; `tool.onStart`, `tool.onPreferencesChanged` and
+  `tool.onLanguageChanged` (`on_start`, and so on, in Python) are called as in
+  Swift.
+
+To work from a checkout of this repository before a release of the kit, add
+`--sdk packages/vitruvian-sdk` to `init`. The Python kit is then copied from
+the checkout into `lib/`, and the TypeScript tool's `package.json` names the
+kit by its path: build it once with `npm run build` in
+`packages/vitruvian-sdk/kits/typescript`, then use `npm install --install-links`
+in the tool's folder, so that a copy of the kit, not a link, goes in it.
+
 ### A tool that does not ask the app
 
 A tool may do anything itself. [`samples/front-window`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/front-window)
@@ -556,11 +668,14 @@ opened; close it and open it again to see more.
 - **Not the `PATH` of a terminal.** The app starts a tool with the
   environment the app has. Opened from the Finder, that is the short `PATH`
   macOS gives an app: `/usr/bin:/bin:/usr/sbin:/sbin`. A first line of
-  `#!/usr/bin/env node` finds nothing there. `#!/usr/bin/env python3` finds
+  `#!/usr/bin/env node` finds nothing there, which is why the TypeScript
+  template starts Node from `bin/tool`. `#!/usr/bin/env python3` finds
   `/usr/bin/python3`, which is Apple's and is there only once the Command
   Line Tools are installed; it does not find a Python from Homebrew, or the
   packages installed for one. Name the interpreter by its full path, or ship
-  it. `vitruvian-tool run --app-path` shows what the app will find.
+  it, or put what it needs inside the tool's folder, as the Python kit
+  template puts the kit in `lib/`. `vitruvian-tool run --app-path` shows what
+  the app will find.
 - **Not that a request succeeds.** Any one can be refused.
 - **Not that standard output is yours.** One stray `print` is a line that is
   not a message.

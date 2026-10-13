@@ -131,10 +131,12 @@ filegroup(
         "docs/writing-a-tool.md",
         "protocol/README.md",
         "protocol/methods.json",
+        "samples/hello-python-kit/README.md",
         "samples/hello-python/bin/tool.py",
         "samples/hello-python/vitruvian-tool.json",
         "samples/hello-swift/main.swift",
         "samples/hello-swift/vitruvian-tool.json",
+        "samples/hello-typescript/README.md",
     ],
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
@@ -571,6 +573,7 @@ py_test(
     srcs = ["docs/guide_test.py"],
     data = PROTOCOL_FILES + glob(["samples/**"]) + [
         "BUILD",
+        "Sources/VitruvianToolCLI/NewTool.swift",
         "Sources/VitruvianToolCLI/Words.swift",
         "Sources/VitruvianToolKit/Tool.swift",
         "docs/writing-a-tool.md",
