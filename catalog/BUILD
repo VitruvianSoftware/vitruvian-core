@@ -48,7 +48,9 @@ py_test(
     srcs = ["catalog_test.py"],
     data = [
         "catalog.schema.json",
+        "public-key.txt",
         "tools.json",
+        "//apps/desktop/vitruvian:Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift",
     ],
     deps = [
         ":rules",

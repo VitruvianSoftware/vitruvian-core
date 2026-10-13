@@ -26,6 +26,7 @@ that fetches each changed entry's download is .github/workflows/catalog-check.ya
 
 import copy
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -131,6 +132,20 @@ class CatalogTest(unittest.TestCase):
         undated = catalog_with(GOOD)
         undated["generated"] = "yesterday"
         self.assertNotEqual(self.refused(undated), [])
+
+    def test_the_app_is_built_with_this_key(self):
+        swift = Path(
+            "apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift"
+        )
+        found = re.search(
+            r'package static let publicKey = "([^"]*)"',
+            swift.read_text(encoding="utf-8"),
+        )
+        self.assertIsNotNone(found, "CatalogueSigning.swift declares publicKey")
+        self.assertEqual(
+            found.group(1),
+            (HERE / "public-key.txt").read_text(encoding="ascii").strip(),
+        )
 
     def test_versions_sort_as_semver(self):
         order = ["0.9.0", "1.0.0-beta", "1.0.0", "1.0.1", "1.10.0", "2.0.0"]
