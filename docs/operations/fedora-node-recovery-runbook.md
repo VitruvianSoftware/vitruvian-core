@@ -316,3 +316,32 @@ Following the BIOS update to version `0067` on October 6, `intel_idle.max_cstate
 - **Primary Display**: Set to IGD (Intel Integrated Graphics) in BIOS (`Devices > Video > Primary Display`) so headless boot with `nomodeset` does not stall waiting for display init on the dGPU (RTX 2060).
 - **NIC Fallback**: If network lockups recur on the Aquantia AQC113C (`enp110s0`, `atlantic`), move connection to the onboard Intel I225-LM 2.5GbE NIC (`enp109s0`, `igc`).
 
+---
+
+## 7. October 12, 2026 Incident: Why Previous Fixes Were Incomplete & Permanent Resolution
+
+### Why Previous Remediations Failed
+On October 11, remediations were attempted but contained two critical flaws:
+
+1. **Reverting C-States Re-Enabled Deep Sleep Hangs**:
+   - Because `intel_idle.max_cstate=1` kept the CPU spinning in `POLL` at 65–78°C, it was completely removed on Oct 11, resetting `max_cstate` to `9`.
+   - This re-enabled `state3` (`C8`) and `state4` (`C10`), where the Alder Lake i9-12900 spends >80% of its idle time.
+   - At ~17:16 PDT on Oct 12 (~29h after boot), waking from C10 stalled the ring bus and APIC clock generator again.
+   - **Difference Now**: We do *not* revert to C1 (`POLL` spinning) nor leave C8/C10 enabled. We permit `state2` (`C6`)—which lets individual cores power down and drop voltage cleanly (~27.8°C–59°C)—while strictly disabling `state3` (`C8`) and `state4` (`C10`) via persistent unit `/etc/systemd/system/disable-deep-cstates.service` and `intel_idle.max_cstate=2`.
+
+2. **Watchdog Blacklist Failed Silently in Initramfs**:
+   - On Oct 11, `blacklist intel_oc_wdt` was added to `/etc/modprobe.d/blacklist-intel_oc_wdt.conf`.
+   - However, on Fedora Silverblue, `intel_oc_wdt` is bundled in the early `initramfs` (dracut), which loads *before* `/etc/modprobe.d/` is parsed.
+   - `intel_oc_wdt` still claimed `/dev/watchdog0`. Systemd bound to `/dev/watchdog0`, leaving the true motherboard ACPI WDAT watchdog (`/dev/watchdog1`) unmanaged.
+   - Because `intel_oc_wdt` requires CPU interrupts to tick, it was helpless when the CPU ring bus hung.
+   - **Difference Now**:
+     - Hardened modprobe with `install intel_oc_wdt /bin/true`.
+     - Staged `module_blacklist=intel_oc_wdt` into `rpm-ostree kargs`.
+     - Explicitly configured systemd to bind to `/dev/watchdog1` (`WatchdogDevice=/dev/watchdog1`, `RuntimeWatchdogSec=30s`) in `/etc/systemd/system.conf.d/10-watchdog.conf`.
+     - Verified live via `systemctl daemon-reexec` that systemd is actively driving `wdat_wdt` with a 30s hardware timeout.
+
+3. **Wake-on-LAN Subnet Routing**:
+   - `wakeonlan` was broadcasting to `255.255.255.255`, which got swallowed by Tailscale tunnel interfaces on macOS.
+   - Updated `/Users/james/bin/power-cycle-fedora` to explicitly broadcast to `192.168.86.255`.
+
+
