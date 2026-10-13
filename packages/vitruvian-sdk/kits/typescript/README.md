@@ -34,6 +34,13 @@ tool.run();
   `tree([heading("Counter"), button("add", "Add one")])`, one function a kind
   of block. The handle sends a page unprompted with `render` and sets the
   tool's badge with `badge`.
+- **A status, and a choice.** `app.status("busy", { text, icon })` sets the
+  small mark the app draws on the closed island, for a tool whose manifest
+  declares `contributes.status`. `choice(id, value, options)` is a pop-up
+  menu on a page. Both are newer than protocol 2 itself:
+  `app.supports(Feature.choice)` says whether this app has one. On an app
+  from before them `app.status` sends nothing and returns false, and a
+  `choice` is drawn as its fallback text, so send a `field` there instead.
 
 ## Shipping it
 

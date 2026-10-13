@@ -235,6 +235,35 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
 - [ ] **Step 5: Plant one regression per kit by hand:** make the status call send whatever the hello said. The test "writes nothing for an older app" must fail. Undo by hand.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-13).** The names, where a kit's idiom or its generated types asked for another:
+
+| Kit | What the app has | Set the status | Build a choice |
+|---|---|---|---|
+| Swift | `App.supports(_: ProtocolFeature)`, and `supports(_: String)` for a name the kit has no case for | `App.status(_:text:icon:) throws -> Bool`, as proposed | `choice(_:title:value:options:enabled:fallback:)`, and `UIBlock.choice` |
+| TypeScript | `app.supports(feature)`; the names are `Feature.status`, `.choice`, `.preferenceOptions` | `app.status(state, { text, icon })` | `choice(id, value, options, { title, enabled, fallback })` |
+| Python | `app.supports(feature)`; the names are `Feature.STATUS`, `.CHOICE`, `.PREFERENCE_OPTIONS` | `app.status(state, text=None, icon=None)` | `choice(id, value, options, title=None, enabled=None, fallback=None)` |
+| Go | `(*App).Supports(feature string)`; `FeatureStatus`, `FeatureChoice`, `FeaturePreferenceOptions` | `UI.Status(state string, options ...StatusOptions) (shown bool, err error)` | `ui.Choice(id, value, options, more ...ChoiceOptions)` |
+| Rust | `App::supports(&self, feature: &str)`; `features::STATUS`, `CHOICE`, `PREFERENCE_OPTIONS` | `Ui::status(self, state: &str, text: Option<UiText>, icon: Option<&str>) -> Result<bool, ToolError>` | `choice(id, value, options) -> Choice`, with `.title()`, `.enabled()`, `.fallback()` |
+
+- **Go and Rust take the state as text**, with constants (`toolkit.StatusBusy`, `status::BUSY`). The generator gives those two kits no type for a closed list of names: `state` is a `string` and a `String` in the generated params, as a button's style is.
+- **TypeScript and Python have two calls, and only one is the kit's.** Their calls on `app` are generated, one for each message, so `app.ui.status(...)` exists and is the bare request: it is sent whatever the app said, and an older app refuses it with -32601. `app.status(...)` is the kit's call, which sends nothing to an app without `ui.status`. Each one's doc comment says so. It is what Swift's `App.send` and Go's `App.Send` already are.
+- **In TypeScript `supports` and `status` are not enumerable on `app`.** The kit's test of the calls lists `Object.keys(app)` and holds it to the protocol's messages; the two are the kit's own and not messages.
+- **Go's `ChoiceOptions` has `Disabled`, not `Enabled`**, as its `ButtonOptions` and `ToggleOptions` do.
+- **Rust's `Choice` is written by hand**, not with the `writing!` macro the other blocks use: it writes its fallback when it joins a page, after its title is known.
+- **Rust's `every_request_a_tool_may_send_has_a_call` changed on purpose**: its hello now says `ui.status`, since the kit sends no status to an app that does not.
+- **The written fallback is in every language either text has.** A title in two languages with a plain option title gives a fallback in those two languages.
+- **Each kit's README** gained a short paragraph; only the TypeScript and Python ones listed calls before.
+
+Step 5, the planted regression in each kit (the status call sends whatever the hello said), and the test that failed:
+
+| Kit | Failed |
+|---|---|
+| Swift | `testAStatusWritesNothingForAnOlderApp` |
+| TypeScript | "a status writes nothing for an older app", and "… for an app that has other things" |
+| Python | `test_a_status_writes_nothing_for_an_older_app`, and `…_for_an_app_that_has_other_things` |
+| Go | `TestAStatusWritesNothingForAnOlderApp` |
+| Rust | `a_status_writes_nothing_for_an_older_app` |
+
 ---
 
 ### Task 3: The conformance script, `vitruvian-tool run`, and the samples

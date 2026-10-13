@@ -70,7 +70,11 @@ type Tool struct {
 	stopping   bool
 	language   string
 	dataFolder string
-	ctx        context.Context
+	// features is what the app said it has beyond the first release of the
+	// protocol version: the hello's features. Empty for an app that said
+	// nothing, which is every app before 3.48.
+	features map[string]bool
+	ctx      context.Context
 }
 
 // New makes a tool that talks to the app over standard input and output.
@@ -211,6 +215,10 @@ func (t *Tool) greet(m message) {
 	}
 	t.language = hello.Language
 	t.dataFolder = hello.DataFolder
+	t.features = map[string]bool{}
+	for _, feature := range hello.Features {
+		t.features[feature] = true
+	}
 	t.greeted = true
 	t.answer(m.id, InitializeResult{ProtocolVersion: picked, ToolVersion: t.version})
 	if t.OnStart != nil {

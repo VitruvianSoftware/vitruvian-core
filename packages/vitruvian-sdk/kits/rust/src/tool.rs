@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -64,6 +64,10 @@ pub(crate) struct State {
     pub stopping: bool,
     pub language: String,
     pub data_folder: PathBuf,
+    /// What the app said it has beyond the first release of the protocol
+    /// version: the hello's `features`. Empty for an app that said nothing,
+    /// which is every app before 3.48.
+    pub features: BTreeSet<String>,
 }
 
 impl Tool {
@@ -96,6 +100,7 @@ impl Tool {
                 stopping: false,
                 language: "en".to_string(),
                 data_folder: std::env::current_dir().unwrap_or_default(),
+                features: BTreeSet::new(),
             },
         }
     }
@@ -245,6 +250,7 @@ impl Tool {
         };
         self.state.language = hello.language;
         self.state.data_folder = PathBuf::from(hello.data_folder);
+        self.state.features = hello.features.unwrap_or_default().into_iter().collect();
         self.state.greeted = true;
         let answer = InitializeResult {
             protocol_version: picked.to_string(),

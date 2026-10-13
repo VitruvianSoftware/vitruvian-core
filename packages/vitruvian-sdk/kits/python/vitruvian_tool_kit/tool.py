@@ -27,7 +27,7 @@ import os
 import signal
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, FrozenSet, List, Optional
 
 from .generated.messages import (
     PROTOCOL_VERSIONS,
@@ -37,9 +37,11 @@ from .generated.messages import (
     PreferencesChangedParams,
     RPCErrorObject,
     ShapeError,
+    StatusState,
     UICloseParams,
     UIEventParams,
     UIOpenParams,
+    UIText,
 )
 from .generated.methods import METHODS, AppCalls
 from .panels import TOOLS_OWN, Acted, Opened, Panel, PanelAnswer, PanelEvent
@@ -69,6 +71,18 @@ class RefusalCode:
     """The app: not available right now."""
     COMMAND_REFUSED = -32010
     """The tool: it would not run the command."""
+
+
+class Feature:
+    """What an app may have beyond the first release of a protocol version, by
+    the name it gives at hello. Ask with `app.supports(Feature.CHOICE)`."""
+
+    STATUS = "ui.status"
+    """`ui/status`: the tool's status on the closed island."""
+    CHOICE = "ui.choice"
+    """The `choice` block."""
+    PREFERENCE_OPTIONS = "preferences.options"
+    """`options` on a text preference, drawn as a pop-up menu."""
 
 
 class CommandRefused(Exception):
@@ -129,6 +143,40 @@ class App(AppCalls):
         """The folder the tool may keep its own files in; also the folder it is started in."""
         return self._tool.data_folder
 
+    def supports(self, feature: str) -> bool:
+        """Whether this app has something a later release added to the
+        protocol version: it named it at hello. `Feature` holds the names.
+        False for an app that named nothing, as every app before 3.48 does.
+        Ask before using a `choice` block, and send a `field` to an app
+        without it."""
+        return feature in self._tool.features
+
+    def status(
+        self,
+        state: StatusState,
+        text: Optional[UIText] = None,
+        icon: Optional[str] = None,
+    ) -> bool:
+        """Sets the tool's status, a small mark the app draws on the closed
+        island: ui/status. `state` is none, ok, busy, attention or failure.
+        Each one replaces the last; "none" takes it away; and it goes when the
+        tool's program ends, so a tool that wants it to last starts with the
+        app ("activation": ["onLaunch"]). `text` says what it means, for
+        VoiceOver. `icon`, an SF Symbol name, replaces the state's own glyph.
+        The manifest must declare contributes.status: without it the app
+        refuses, and this raises the Refusal. It needs nothing in uses.
+
+        False, and nothing is sent, when the app did not say it has
+        ui.status: an app before 3.48 shows no status. True when it was sent
+        and answered; the person may still have switched the mark off.
+
+        `app.ui.status(...)` is the bare request: it is sent whatever the app
+        said, and an older app answers it with a Refusal, -32601."""
+        if not self.supports(Feature.STATUS):
+            return False
+        self.ui.status(state=state, text=text, icon=icon)
+        return True
+
 
 Handler = Callable[[App], Any]
 
@@ -166,6 +214,10 @@ class Tool:
         """Called when the person changed the app's language."""
         self.language = "en"
         self.data_folder = os.getcwd()
+        self.features: FrozenSet[str] = frozenset()
+        """What the app said it has beyond the first release of the protocol
+        version, by name: the hello's `features`. Empty for an app that said
+        nothing, which is every app before 3.48. Ask with `app.supports`."""
         self._handlers: Dict[str, Handler] = {}
         self._panels: Dict[str, Panel] = {}
         self._wire = Wire(input, output)
@@ -282,6 +334,7 @@ class Tool:
             )
         self.language = hello.language
         self.data_folder = hello.data_folder
+        self.features = frozenset(hello.features or [])
         self._greeted = True
         self._wire.send(
             Result(id, {"protocolVersion": picked, "toolVersion": self.version})
