@@ -313,6 +313,24 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+# The mirror's own workflows (.github/workflows/, which run only in
+# VitruvianSoftware/vitruvian-sdk): release.yml's `detect` step, run as written
+# with bash, git and jq, releases a version once and never 0.0.0; and no job
+# may write more than it must. `no-remote-exec`: the step needs jq and git on
+# the machine, and the remote execution image has no jq.
+py_test(
+    name = "mirror_workflows_test",
+    size = "small",
+    srcs = ["mirror_workflows_test.py"],
+    data = [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+    ],
+    main = "mirror_workflows_test.py",
+    tags = ["no-remote-exec"],
+    deps = ["@pip//pyyaml"],
+)
+
 # `vitruvian-tool init` starts a new tool from a copy of a hello sample, and
 # the copies are compiled into the command as text. This writes that text:
 #
@@ -426,6 +444,7 @@ pipeline_unit(
         ":conformance_test",
         ":guide_test",
         ":init_test",
+        ":mirror_workflows_test",
         ":protocol_examples_test",
         ":samples_test",
         ":swift_samples_test",
