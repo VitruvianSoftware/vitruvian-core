@@ -861,6 +861,11 @@ MUTATIONS = [
      "",
      "what is left of a process group is ended only when no process has its leader's id: "
      "while one has, nothing is signalled"),
+    ("a sentence about the catalog left in English", "tool-runtime",
+     "Sources/Vitruvian/Core/ExternalToolStrings.swift",
+     "        agreeCatalog: \"Aus dem Vitruvian-Katalog: VitruvianSoftware hat dieses Werkzeug aufgenommen, und der Download ist genau der aufgeführte.\",\n",
+     "        agreeCatalog: \"From the Vitruvian catalog: VitruvianSoftware listed this tool, and the download is exactly the one it listed.\",\n",
+     "no text about tools from outside is left in English in de (agreeCatalog)"),
 ]
 
 
