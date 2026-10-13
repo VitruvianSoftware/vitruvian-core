@@ -57,10 +57,11 @@ In vitruvian-core, from its root:
 
 ```sh
 bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:init_test //packages/vitruvian-sdk:swift_template_test
-bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test //packages/vitruvian-sdk:release_version_test //tools/sync-site-tools:in_sync_test
+bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test //packages/vitruvian-sdk:release_version_test //packages/vitruvian-sdk:mirror_workflows_test //tools/sync-site-tools:in_sync_test
 ```
 
-The first line needs a Mac with Xcode. The second runs anywhere.
+The first line needs a Mac with Xcode. The second runs anywhere with bash,
+git and jq.
 
 In a clone of vitruvian-sdk there is no Bazel. Its own CI runs `swift build`,
 `swift test`, the conformance script on every sample, and the checks of the
