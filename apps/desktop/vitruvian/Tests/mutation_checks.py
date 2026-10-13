@@ -892,6 +892,22 @@ MUTATIONS = [
      "                then(.success(offer))\n",
      "                _ = store().add(ToolConsent(to: offer))\n                then(.success(offer))\n",
      "until the person agrees nothing is installed, started or remembered"),
+    ("a tool added from a folder is matched to the catalog by its id", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+     "        guard let origin = listed.record.catalogue, origin.id == listed.id.rawValue else { return nil }\n",
+     "        let origin = listed.record.catalogue ?? CatalogueOrigin(id: listed.id.rawValue,\n            version: listed.record.agreement.version, source: \"\", download: \"\")\n",
+     "a tool added from a folder is never matched to the catalog by its id"),
+    ("an update is offered for an older version", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+     "        return entries.first { $0.id == listed.id && Catalogue.isNewer($0.version, than: origin.version) }\n",
+     "        return entries.first { $0.id == listed.id && $0.version != origin.version }\n",
+     "a tool from the catalog has an update only when the catalog lists a newer version this "
+     "app can install (an older version)"),
+    ("an older list signed by us replaces a newer one", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+     "           catalogue.generated < before.generated {\n",
+     "           catalogue.generated < before.generated, catalogue.tools.isEmpty {\n",
+     "a list signed by us but older than the one accepted before is refused"),
 ]
 
 
