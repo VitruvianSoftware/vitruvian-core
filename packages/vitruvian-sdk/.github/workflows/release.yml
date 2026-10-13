@@ -506,6 +506,16 @@ jobs:
           test -f "dist/vitruvian_tool_kit-${VERSION}-py3-none-any.whl"
           test -f "dist/vitruvian_tool_kit-${VERSION}.tar.gz"
           uvx twine check dist/*
+      # So PyPI can say in public which workflow published these files (PEP
+      # 740). `uv publish` uploads an attestation it finds beside a file and
+      # makes none itself; this makes them, signed with the same identity
+      # token the upload uses, so it needs no permission the job lacks.
+      # vitruvian-core's //tools/registry-trust:check reads what PyPI then
+      # says, and fails on a version with no provenance.
+      - name: Attest the built files
+        uses: astral-sh/attest-action@f589a42a7efb6fe400b4f400de60b4bc90390027 # v0.0.6
+        with:
+          paths: kits/python/dist/*
       - name: Publish
         working-directory: kits/python
         run: uv publish --trusted-publishing always
