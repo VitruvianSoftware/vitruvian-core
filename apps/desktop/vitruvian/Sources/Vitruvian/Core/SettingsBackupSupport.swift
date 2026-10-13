@@ -160,7 +160,6 @@ package enum SettingsBackupSupport {
         // command. The chosen provider (just an id) is harmless and travels.
         DefaultsKey.nexusAgentSavedProviders,
         // So is where the GravaStar mouse command is installed.
-        DefaultsKey.githubMouseBinaryPath,
         // A local watermark file is authority on this Mac, not portable data.
         DefaultsKey.mediaImageWatermarkLogoPath,
         DefaultsKey.simulateUpdate,

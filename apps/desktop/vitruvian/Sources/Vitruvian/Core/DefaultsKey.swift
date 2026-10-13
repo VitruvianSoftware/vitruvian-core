@@ -856,7 +856,6 @@ package enum DefaultsKey {
     package static let notchDownloadsFolderBookmark = "notchDownloadsFolderBookmark"
     // Watch: any part of any window read live in the island.
     package static let notchWatchEnabled = "notchWatchEnabled"
-    package static let notchGitHubEnabled = "notchGitHubEnabled"
     package static let notchWatchSound = "notchWatchSound"
     package static let notchWatchCondition = "notchWatchCondition"
     package static let notchCalendarEnabled = "notchCalendarEnabled"
@@ -954,7 +953,6 @@ package enum DefaultsKey {
 
     // GitHub in the notch
     package static let githubWatchedRepositories = "githubWatchedRepositories"
-    package static let githubRelayURL = "githubRelayURL"
     package static let githubMouseIndicator = "githubMouseIndicator"
     package static let githubClientID = "githubClientID"
     package static let githubPollInterval = "githubPollInterval"

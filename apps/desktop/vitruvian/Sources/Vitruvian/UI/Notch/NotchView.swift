@@ -638,7 +638,6 @@ package struct NotchView: View {
             case .scratchpad: NotchScratchpadView(service: service)
             case .agents: NotchAgentsView(size: pageSize)
             case .watch: NotchWatchView(size: pageSize)
-            case .github: NotchGitHubView(size: pageSize)
             }
         }
     }

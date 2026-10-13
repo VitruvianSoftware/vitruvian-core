@@ -6,19 +6,17 @@ import os
 import VitruvianCore
 import VitruvianToolProtocol
 
-/// The GitHub feature hands what it kept to the GitHub tool
-/// (`dev.vitruvian.github`), once, when the tool is added: the token, the
-/// watched repositories, the poll intervals, the mouse settings and the
-/// client ID, each written as one of the tool's own preferences through
-/// `storage`, the only thing the app lets a tool read. The feature's switch
-/// goes off and the feature is hidden (`AppFeature.isReplaced`) until the
-/// tool is removed. The tool moves the token into a file of its own on its
-/// first run and clears the handed copy; the feature's Keychain item stays,
-/// so turning the tool off and the feature back on costs nothing.
+/// What the GitHub feature kept goes to the GitHub tool
+/// (`dev.vitruvian.github`), once, when the tool is added: the token from
+/// the feature's Keychain item, the watched repositories, the poll
+/// intervals, the mouse settings and the client ID, each written as one of
+/// the tool's own preferences through `storage`, the only thing the app
+/// lets a tool read. The tool moves the token into a file of its own on its
+/// first run and clears the handed copy.
 ///
-/// What does not move: signing in through a browser window, which needs
-/// the app's URL scheme; the feature's page in the island, which becomes a
-/// tile on the island's Tools page; and the `h` key that opened it.
+/// The feature itself went in 3.47; this stays one release more, for a
+/// person who skipped 3.46, where the feature offered the tool. Stage F
+/// removes it with the feature's preferences and its Keychain store.
 /// Design: `docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`,
 /// section 9.
 @MainActor
@@ -47,46 +45,41 @@ package enum GitHubHandoff {
         package var token: () -> String?
         /// Where a tool's preferences are kept: the broker's storage backing.
         package var backing: StorageAccess.Backing
-        /// Stops the feature's sign-in and its polling, now.
-        package var featureOff: () -> Void
         package var log: (String) -> Void
 
         package init(defaults: UserDefaults, token: @escaping () -> String?, backing: StorageAccess.Backing,
-                     featureOff: @escaping () -> Void, log: @escaping (String) -> Void) {
+                     log: @escaping (String) -> Void) {
             self.defaults = defaults
             self.token = token
             self.backing = backing
-            self.featureOff = featureOff
             self.log = log
         }
 
         @MainActor package static let live = Parts(
             defaults: .standard,
-            token: { GitHubAuthService.shared.currentToken() },
+            token: { try? KeychainGitHubTokenStore().load() },
             backing: CapabilityBroker.shared.backings.storage,
-            featureOff: { GitHubAuthService.shared.cancel() },
             log: { Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "github-handoff").notice("\($0, privacy: .public)") })
     }
 
     package enum Outcome: Equatable, Sendable {
         /// Not the GitHub tool: nothing to do.
         case notTheTool
-        /// The feature was handed over already; the tool was updated.
-        case alreadyReplaced
+        /// Handed over already; the tool was updated.
+        case alreadyHanded
         /// Handed over, these preferences written. A preference the tool's
         /// manifest does not declare is left out and logged.
         case handed([String])
     }
 
-    /// Writes the feature's settings into the tool's storage, turns the
-    /// feature off and hides it. Called by the tool store before the tool's
-    /// program starts, for a tool added from the catalog or from a folder
-    /// alike: a build of the tool a person tries by hand gets the same.
+    /// Writes the feature's settings into the tool's storage. Called by the
+    /// tool store before the tool's program starts, for a tool added from
+    /// the catalog or from a folder alike.
     @discardableResult
     package static func perform(_ installed: ExternalToolStore.Installed, from origin: CatalogueOrigin?,
                                 parts: Parts) -> Outcome {
         guard installed.tool.manifest.id == toolID else { return .notTheTool }
-        guard !parts.defaults[Preferences.githubReplacedByTool] else { return .alreadyReplaced }
+        guard !parts.defaults[Preferences.githubReplacedByTool] else { return .alreadyHanded }
         // The tool's own storage, by its manifest's keys and kinds: a value
         // of another kind, or a key the manifest lacks, is refused as it
         // would be for the tool.
@@ -101,15 +94,12 @@ package enum GitHubHandoff {
             }
         }
         parts.defaults[Preferences.githubReplacedByTool] = true
-        parts.defaults[Preferences.notchGitHubEnabled] = false
-        parts.featureOff()
         parts.log("handed the GitHub feature's settings to the GitHub tool"
             + (origin.map { ", version \($0.version) from the catalog" } ?? ", added from a folder"))
         return .handed(written.sorted())
     }
 
-    /// The tool was removed: the feature comes back, switched off, with
-    /// its token still in the Keychain.
+    /// The tool was removed: added again, it is handed the settings again.
     package static func toolRemoved(_ id: ToolID, defaults: UserDefaults) {
         guard id == toolID, defaults[Preferences.githubReplacedByTool] else { return }
         defaults[Preferences.githubReplacedByTool] = false
@@ -122,8 +112,7 @@ package enum GitHubHandoff {
     /// `breathe blue 9`. The token goes only when there is one.
     package static func values(defaults: UserDefaults, token: String?) -> [String: PreferenceDeclaration.Value] {
         var values: [String: PreferenceDeclaration.Value] = [
-            Key.watchlist: .string(GitHubWatchlist.decode(defaults[Preferences.githubWatchedRepositories])
-                .map(\.fullName).joined(separator: ", ")),
+            Key.watchlist: .string(watchlist(defaults[Preferences.githubWatchedRepositories])),
             Key.pollInterval: .int(defaults[Preferences.githubPollInterval]),
             Key.pollActiveInterval: .int(defaults[Preferences.githubPollActiveInterval]),
             Key.mouseIndicator: .bool(defaults[Preferences.githubMouseIndicator]),
@@ -142,6 +131,19 @@ package enum GitHubHandoff {
         ]
         if let token, !token.isEmpty { values[Key.migratedToken] = .string(token) }
         return values
+    }
+
+    /// The feature's watchlist, a JSON array of `owner/name`, as the tool's
+    /// field reads it: `owner/name, owner/name`. What cannot be read is the
+    /// feature's default, as the feature read it.
+    static func watchlist(_ raw: String) -> String {
+        guard let data = raw.data(using: .utf8), let names = try? JSONDecoder().decode([String].self, from: data) else {
+            return "VitruvianSoftware/vitruvian-core"
+        }
+        var seen = Set<String>()
+        return names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.split(separator: "/").count == 2 && seen.insert($0.lowercased()).inserted }
+            .joined(separator: ", ")
     }
 
     /// One light as the tool's setting reads: `breathe <colour> [speed]`

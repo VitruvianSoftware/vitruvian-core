@@ -162,7 +162,6 @@ package enum Preferences {
     package static let notchWatchSound = Preference(DefaultsKey.notchWatchSound, default: true)
     /// On once the feature is installed, like the other island extensions;
     /// the feature itself is opt-in (`AppFeature.installedByDefault`).
-    package static let notchGitHubEnabled = Preference(DefaultsKey.notchGitHubEnabled, default: true)
     package static let notchEnabled = Preference(DefaultsKey.notchEnabled, default: false)
     package static let notchOpenOnHover = Preference(DefaultsKey.notchOpenOnHover, default: false)
     package static let notchHideInFullscreen = Preference(DefaultsKey.notchHideInFullscreen, default: false)
@@ -911,11 +910,12 @@ package enum Preferences {
     package static let commandBarRowShortcuts = Preference(DefaultsKey.commandBarRowShortcuts, default: "")
     package static let toolCommandShortcuts = Preference(DefaultsKey.toolCommandShortcuts, default: "")
 
-    // GitHub in the notch
+    // The GitHub feature's settings, kept one release after the feature
+    // went (stage E), so the hand-off to the GitHub tool from the catalog
+    // (`GitHubHandoff`) still reaches a person who skipped the release that
+    // offered it. Nothing else reads them; stage F removes them.
     package static let githubWatchedRepositories = Preference(
-        DefaultsKey.githubWatchedRepositories, default: GitHubWatchlist.defaultEncoded)
-    package static let githubRelayURL = Preference(
-        DefaultsKey.githubRelayURL, default: "https://github-relay.ipv1337.dev")
+        DefaultsKey.githubWatchedRepositories, default: #"["VitruvianSoftware/vitruvian-core"]"#)
     package static let githubMouseIndicator = Preference(
         DefaultsKey.githubMouseIndicator, default: true)
     /// The GitHub App's OAuth client ID. Empty until the App is registered
@@ -954,8 +954,8 @@ package enum Preferences {
     package static let githubMouseBinaryPath = Preference(
         DefaultsKey.githubMouseBinaryPath, default: "")
     /// True once the GitHub tool from the catalog (`dev.vitruvian.github`)
-    /// is installed and the feature has handed it the sign-in and the
-    /// settings: the feature is then hidden, its switch off, until the tool
-    /// is removed (`GitHubHandoff`).
+    /// has been handed the feature's sign-in and settings; cleared when the
+    /// tool is removed, so a tool added again is handed them again
+    /// (`GitHubHandoff`).
     package static let githubReplacedByTool = Preference(DefaultsKey.githubReplacedByTool, default: false)
 }
