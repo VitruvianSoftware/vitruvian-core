@@ -20,12 +20,15 @@
     "zh-TW": "為 Antigravity 代理程式執行你的 Telegram 機器人，並透過快速提問隨時隨地向代理程式提問",
     "zh-HK": "為 Antigravity 代理程式執行你的 Telegram 機械人，並透過快速提問隨時隨地向代理程式提問"
   },
-  "version": "1.21.0",
+  "version": "1.22.0",
   "protocol": "2",
   "publisher": "VitruvianSoftware",
   "license": "MIT",
   "icon": "paperplane",
-  "uses": ["notify", "storage"],
+  "uses": [
+    "notify",
+    "storage"
+  ],
   "contributes": {
     "commands": [
       {
@@ -48,7 +51,10 @@
           "zh-HK": "打開 Quick Prompt"
         },
         "icon": "paperplane",
-        "surfaces": ["commandBar", "quickPanel"]
+        "surfaces": [
+          "commandBar",
+          "quickPanel"
+        ]
       },
       {
         "id": "newChat",
@@ -70,7 +76,9 @@
           "zh-HK": "與代理程式開始新對話"
         },
         "icon": "plus.bubble",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "startBot",
@@ -92,7 +100,9 @@
           "zh-HK": "啟動 Telegram 機器人"
         },
         "icon": "play",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "stopBot",
@@ -114,7 +124,9 @@
           "zh-HK": "停止 Telegram 機器人"
         },
         "icon": "stop",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       }
     ],
     "panels": [
@@ -273,7 +285,9 @@
       "default": ""
     }
   ],
-  "activation": ["onLaunch"],
+  "activation": [
+    "onLaunch"
+  ],
   "runtime": {
     "kind": "external",
     "exec": "bin/tool"
