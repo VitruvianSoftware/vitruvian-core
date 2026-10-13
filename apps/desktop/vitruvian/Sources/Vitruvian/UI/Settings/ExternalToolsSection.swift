@@ -170,6 +170,8 @@ package struct ExternalToolDetail: Equatable {
         /// The button that installs the newer version from the catalog.
         case updateNow
         case close
+        /// A control of the tool's Settings panel, by its block's id.
+        case panel(String)
     }
 
     /// The control the keyboard is on when the detail opens. It is never

@@ -99,6 +99,9 @@ package final class ToolPanelHost: ObservableObject {
         /// The tool did what the app does not put up with, through a web
         /// panel: it is stopped as a flood is.
         package var misbehaved: @MainActor (ToolID) -> Void
+        /// Opens a link of a tool's page through the tool's own `open`
+        /// service. False when it was refused, or nothing opened it.
+        package var openLink: @MainActor (ToolID, URL) -> Bool
 
         package init(clock: any ToolClock, limits: ToolLimits = .standard,
                      tool: @escaping @MainActor (ToolID) -> ExternalTool?,
@@ -108,7 +111,8 @@ package final class ToolPanelHost: ObservableObject {
                          -> Void = ToolPanelHost.readAway,
                      log: @escaping @MainActor (ToolID, String) -> Void = { _, _ in },
                      beep: @escaping @MainActor () -> Void = {},
-                     misbehaved: @escaping @MainActor (ToolID) -> Void = { _ in }) {
+                     misbehaved: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     openLink: @escaping @MainActor (ToolID, URL) -> Bool = { _, _ in false }) {
             self.clock = clock
             self.limits = limits
             self.tool = tool
@@ -118,6 +122,7 @@ package final class ToolPanelHost: ObservableObject {
             self.log = log
             self.beep = beep
             self.misbehaved = misbehaved
+            self.openLink = openLink
         }
 
         /// The app as it is.
@@ -128,7 +133,11 @@ package final class ToolPanelHost: ObservableObject {
             folder: { id in ExternalToolStore.shared.installed[id]?.files },
             log: { id, text in ExternalToolStore.shared.tool(id)?.log.add(text, from: .runtime) },
             beep: { CapabilityBroker.shared.backings.notify.beep() },
-            misbehaved: { ExternalToolStore.shared.tool($0)?.misbehaved(.flood) })
+            misbehaved: { ExternalToolStore.shared.tool($0)?.misbehaved(.flood) },
+            openLink: { id, url in
+                guard let manifest = ExternalToolStore.shared.installed[id]?.tool.manifest else { return false }
+                return (try? CapabilityBroker.shared.services(for: manifest).open.url(url).get()) == true
+            })
     }
 
     /// Reads a page on a queue of its own and hands it back on the main
@@ -330,6 +339,21 @@ package final class ToolPanelHost: ObservableObject {
     private func openAsked(_ tool: ToolID, _ panel: String) {
         if let refusal = open(Key(tool: tool, panel: panel), in: .window) {
             parts.log(tool, "the window \(panel) was not opened: \(refusal.error.message)")
+        }
+    }
+
+    /// The schemes a `link` block may open.
+    nonisolated package static let linkSchemes: Set<String> = ["http", "https", "mailto"]
+
+    /// The person clicked a `link` block. It opens through the tool's own
+    /// `open` service, so a tool whose manifest does not list `open` is
+    /// refused, and the alert sound plays, as for a command that did not
+    /// run.
+    package func follow(_ key: Key, _ url: URL) {
+        guard shown[key] != nil else { return }
+        guard let scheme = url.scheme?.lowercased(), Self.linkSchemes.contains(scheme), parts.openLink(key.tool, url) else {
+            parts.log(key.tool, "the link \(url.absoluteString) of the panel \(key.panel) was not opened")
+            return parts.beep()
         }
     }
 

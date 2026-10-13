@@ -25,6 +25,7 @@ enum ToolPanelHostTests {
         aFloodOfCalls(suite)
         badges(suite)
         readAway(suite)
+        links(suite)
     }
 
     static let id = ToolID("com.acme.deploys")!
@@ -66,6 +67,10 @@ enum ToolPanelHostTests {
         var logged: [String] = []
         var beeps = 0
         var stopped: [ToolID] = []
+        /// The links the tool's `open` service was asked to open, and
+        /// whether it does.
+        var opened: [URL] = []
+        var opens = true
         /// How many pages the host has had read.
         var reads = 0
         /// Pages handed to the reader and not read yet, when reading waits.
@@ -115,7 +120,11 @@ enum ToolPanelHostTests {
                 },
                 log: { [unowned self] _, text in logged.append(text) },
                 beep: { [unowned self] in beeps += 1 },
-                misbehaved: { [unowned self] in stopped.append($0) }))
+                misbehaved: { [unowned self] in stopped.append($0) },
+                openLink: { [unowned self] _, url in
+                    opened.append(url)
+                    return opens
+                }))
             tool.start()
         }
 
@@ -458,5 +467,22 @@ enum ToolPanelHostTests {
         ToolRuntimeSupport.wait(upTo: 5) { read != nil }
         suite.expect((try? read?.get())?.blocks.count == 1 && onMain,
                      "it is read on a queue of its own and handed back on the main thread")
+    }
+
+    static func links(_ suite: TestSuite) {
+        let bench = Bench.open()
+        let page = URL(string: "https://example.com/deploys")!
+        bench.host.follow(key("deploys"), page)
+        suite.expect(bench.opened == [page] && bench.beeps == 0,
+                     "a link block opens through the tool's own open service")
+        bench.opens = false
+        bench.host.follow(key("deploys"), page)
+        suite.expect(bench.beeps == 1 && bench.logged.last == "the link https://example.com/deploys of the panel deploys was not opened",
+                     "a link the service refuses plays the alert sound, and the log says so")
+        bench.host.follow(key("deploys"), URL(string: "file:///etc/hosts")!)
+        suite.expect(bench.opened.count == 2 && bench.beeps == 2,
+                     "a link that is no web or mail address is never handed to the service")
+        bench.host.follow(key("log"), page)
+        suite.expect(bench.opened.count == 2, "a link of a panel that is not open does nothing")
     }
 }
