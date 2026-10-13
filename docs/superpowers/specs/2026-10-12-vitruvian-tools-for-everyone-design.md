@@ -561,7 +561,7 @@ the dependency order; James approves each plan before it is built.
 | **B. Kits** | **Built.** Part one (B1, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b1.md`): the generator, the TypeScript and Python kits, their samples, `init` for both, publishing to npm and PyPI. Part two (B2, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b2.md`): the Go and Rust kits, their samples, `init` for both, publishing to crates.io; the Go kit by the `go/vX.Y.Z` tag. `tools/sdk-codegen`; the TypeScript, Python, Go and Rust kits, samples, conformance in CI, registry publishing; `init` templates for each; the examples pages. Two plans if it reads better: B1 TypeScript and Python (registries exist), B2 Go and Rust. | A tool's author | SDK 0.10.0 |
 | **C. Catalogue** | **Built.** `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
 | **D. Protocol 2** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-d.md`), but for the four kits after Swift, which wait for B1 and B2. Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
-| **E. The GitHub tool** | The tool in its own repository, its catalogue entry, the migration, then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
+| **E. The GitHub tool** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-e.md`), the removal one release after the rest. The tool in its own folder, exported to its own repository; its catalogue entry; the migration; then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
 | **F. Nexus Agent and HomeSpeaker** | As E, one at a time. | Their users | Minor app releases |
 
 **Stage A, as built.** The plan is
@@ -657,6 +657,44 @@ its plan:
   shown, and the switch "Show in the Dynamic Island".
 - The `panels` API is built in Swift; TypeScript, Python, Go and Rust follow
   B1 and B2, with the Swift kit as the reference.
+
+**Stage E, as built.** The plan is
+`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-e.md`,
+its mock-ups `docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-stage-e-mockups.html`.
+Where it differs from section 9, each a decision of its plan:
+
+- The tool is developed in the monorepo, `apps/desktop/vitruvian-tool-github`,
+  and exported to `VitruvianSoftware/vitruvian-tool-github` by Copybara, as
+  the SDK is; the mirror's own `release.yml` tags, builds and attaches the
+  zip the catalogue pins. It is GPL-3.0-or-later, the licence gate exempting
+  the folder as it does the app's.
+- It is written in Swift with the Swift kit, which gained `Tool.every(seconds:)`
+  for it: a tool that polls needed a timer the kit's one thread runs between
+  messages.
+- The token is kept in a 0600 file in the tool's data folder, never in the
+  Keychain: a program signed ad hoc is a new program to the Keychain with
+  every release. The app's feature hands its Keychain token over once,
+  through `storage`, under a preference with no title; the tool moves it
+  and clears the handed copy on its first run.
+- The migration carries everything the feature kept, not the token and
+  watchlist alone: the poll intervals, the mouse settings and the client ID,
+  each as one of the tool's titled preferences, which the app draws in the
+  tool's detail; the tool's own Settings panel is the account alone. While
+  the tool is installed the feature is hidden (its page, its row, its island
+  page), not only switched off; removing the tool brings it back, off.
+- The mouse's ten pickers became five one-line settings in the mouse
+  command's own words (`green`, `breathe orange`, `breathe blue 9`); the
+  command is found on the Mac as the feature found it, not shipped in the zip.
+- Signing in through the browser does not move: a custom URL scheme belongs
+  to an app, and the relay is gone. The feature's island page, its place in
+  a saved layout and its `h` key do not move either: the tool's page is a
+  tile on the Tools page. The app's one new text says so.
+- The catalogue's schema admits `"protocol": "2"`; the app's one new text is
+  `movesToTool`, in fifteen languages.
+- The removal keeps the hand-off one release more, reading the Keychain
+  item and the feature's old preference keys, for a person who skipped the
+  release that offered the tool; stage F removes it. The app keeps shipping
+  the `gravastar-mouse` helper the tool finds.
 
 What can start before a stage is approved: nothing is built, but the
 mock-ups for C and D can be drawn while A and B are being built, as Stage
