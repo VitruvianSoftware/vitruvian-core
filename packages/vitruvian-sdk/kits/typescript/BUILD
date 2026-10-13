@@ -66,3 +66,30 @@ npm_package(
     package = "@vitruviansoftware/tool-kit",
     visibility = ["//packages/vitruvian-sdk:__pkg__"],
 )
+
+# The thirteen tests of the Swift kit's ToolTests, and the kit's own. One test
+# starts a real Node process over a pipe, from the built kit. Not `manual` and
+# not tied to macOS, so the Linux lane runs it too.
+jest_test(
+    name = "kit_test",
+    size = "small",
+    config = "jest.config.cjs",
+    data = glob(["src/**/*.ts"]) + [
+        "jest.config.cjs",
+        "package.json",
+        "test/generated.test.ts",
+        "test/tool.test.ts",
+        "tsconfig.json",
+        "tsconfig.test.json",
+        ":kit",
+        ":node_modules/@types/jest",
+        ":node_modules/@types/node",
+        ":node_modules/ts-jest",
+        ":node_modules/typescript",
+        "//packages/vitruvian-sdk:protocol_files",
+    ],
+    node_modules = ":node_modules",
+    # Node 22.12+ require(esm) makes jest's generated config throw
+    # ERR_REQUIRE_ASYNC_MODULE; force the import() fallback, as mcp-slack does.
+    node_options = ["--no-experimental-require-module"],
+)
