@@ -228,7 +228,7 @@ export const OAuthInspector: StoryObj = {
   "aud": "api.vitruvian.dev",
   "exp": 1770854400,
   "user": {
-    "email": "james.nguyen@flyr.com",
+    "email": "james.nguyen@example.com",
     "roles": ["admin", "developer"]
   }
 }`}
@@ -276,7 +276,7 @@ export const OAuthInspector: StoryObj = {
           <div className="col-span-5 space-y-5">
             <Card
               kicker="Active Identity"
-              title="james.nguyen@flyr.com"
+              title="james.nguyen@example.com"
               meta="GitHub OAuth2 · Authenticated 4m ago"
             >
               <div className="flex gap-2 my-2">
