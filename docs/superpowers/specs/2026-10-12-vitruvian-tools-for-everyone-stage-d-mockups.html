@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage D mock-ups</title>
+<style>
+:root{
+  --s:1;
+  /* page */
+  --page:#f4f4f6; --ink:#1c1c1e; --ink2:#55555a; --ink3:#6c6c72; --rule:#d9d9de; --panel:#ffffff;
+  /* the app, light: macOS window, SettingsCard, controls */
+  --win:#ececec; --win-edge:#c9c9cc; --title:#e3e3e5;
+  --label:#1d1d1f; --label2:#5c5c61; --label3:#77777c;
+  --card:rgba(0,0,0,.045); --hover:rgba(0,0,0,.04); --divider:rgba(0,0,0,.11);
+  --accent:#0064d2; --accent-tile:rgba(0,122,255,.12); --on-accent:#ffffff;
+  --btn:#ffffff; --btn-edge:rgba(0,0,0,.18); --btn-ink:#1d1d1f;
+  --switch-off:#c4c4c8; --knob:#ffffff; --field:#ffffff; --field-edge:rgba(0,0,0,.16);
+  --track:rgba(0,0,0,.10);
+  --orange:#a85400; --green:#1a7f37; --red:#c4001a;
+  --doc:#ffffff; --shadow:0 .75rem 2.25rem rgba(0,0,0,.20);
+  --desk:#c9d3df; --menubar:rgba(255,255,255,.72); --menubar-ink:#1d1d1f;
+  --ok-fill:#e3f3e6; --ok-ink:#12602a; --stop-fill:#fbe4e6; --stop-ink:#9a0014; --wait-fill:#fff1d6; --wait-ink:#7a4a00; --go-fill:#e1eefc; --go-ink:#0b4a9c;
+  /* the island: black in both appearances, as the hardware is */
+  --isl:#000000; --isl-ink:#ffffff; --isl-ink2:rgba(255,255,255,.62); --isl-ink3:rgba(255,255,255,.42);
+  --isl-fill:rgba(255,255,255,.08); --isl-fill2:rgba(255,255,255,.14); --isl-rule:rgba(255,255,255,.12);
+  --isl-accent:#4da3ff; --isl-badge:#ff453a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+    --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+    --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+    --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+    --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+    --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+    --switch-off:#5c5c62; --knob:#e9e9ec; --field:#1f1f22; --field-edge:rgba(255,255,255,.16);
+    --track:rgba(255,255,255,.14);
+    --orange:#ffb04a; --green:#4cd964; --red:#ff6961;
+    --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+    --desk:#1d2430; --menubar:rgba(30,30,34,.72); --menubar-ink:#f2f2f4;
+    --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+  --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+  --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+  --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+  --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+  --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+  --switch-off:#5c5c62; --knob:#e9e9ec; --field:#1f1f22; --field-edge:rgba(255,255,255,.16);
+  --track:rgba(255,255,255,.14);
+  --orange:#ffb04a; --green:#4cd964; --red:#ff6961;
+  --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+  --desk:#1d2430; --menubar:rgba(30,30,34,.72); --menubar-ink:#f2f2f4;
+  --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+}
+html{font-size:calc(16px * var(--s))}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;font-size:1rem;line-height:1.5;-webkit-text-size-adjust:100%}
+.wrap{max-width:60rem;margin:0 auto;padding:0 16px 4rem}
+header.bar{position:sticky;top:0;z-index:5;background:var(--page);border-bottom:1px solid var(--rule)}
+header.bar .wrap{display:flex;flex-wrap:wrap;gap:.75rem 1rem;align-items:center;justify-content:space-between;padding-top:.75rem;padding-bottom:.75rem}
+header.bar h1{font-size:1.0625rem;margin:0;font-weight:650}
+header.bar p{margin:0;font-size:.8125rem;color:var(--ink2)}
+.tools{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:.5rem;overflow:hidden;background:var(--panel)}
+.seg button,.size button{font:inherit;font-size:.8125rem;color:var(--ink);background:transparent;border:0;padding:.3125rem .625rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.size{display:inline-flex;align-items:center;border:1px solid var(--rule);border-radius:.5rem;background:var(--panel)}
+.size output{font-size:.8125rem;min-width:3.25rem;text-align:center;color:var(--ink2);font-variant-numeric:tabular-nums}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main h2{font-size:1.25rem;margin:2.75rem 0 .25rem;font-weight:650}
+main h2 small{font-weight:500;color:var(--ink3);font-size:.8125rem;margin-left:.375rem}
+.lead{color:var(--ink2);max-width:46rem;margin:.25rem 0 1rem}
+.note{font-size:.9375rem;color:var(--ink);max-width:46rem;margin:.875rem 0 0}
+.note p{margin:.25rem 0}
+.note .alt{color:var(--ink2)}
+.stage{background:var(--panel);border:1px solid var(--rule);border-radius:.875rem;padding:1.25rem;display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;overflow:hidden}
+.flow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:stretch;margin:1rem 0 0}
+.flow .box{border-radius:.625rem;padding:.5rem .75rem;font-size:.8125rem;line-height:1.35;flex:1 1 9rem;min-width:0}
+.flow .box b{display:block;font-size:.875rem}
+.flow .arrow{align-self:center;color:var(--ink3);font-size:.875rem}
+.go{background:var(--go-fill);color:var(--go-ink)} .ok{background:var(--ok-fill);color:var(--ok-ink)}
+.stop{background:var(--stop-fill);color:var(--stop-ink)} .wait{background:var(--wait-fill);color:var(--wait-ink)}
+.key{font-size:.8125rem;color:var(--ink2);margin:.5rem 0 0}
+table{border-collapse:collapse;width:100%;font-size:.875rem}
+th,td{text-align:left;padding:.375rem .5rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{color:var(--ink2);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.875em;overflow-wrap:anywhere}
+.scroll{overflow-x:auto}
+.caption{font-size:.75rem;color:var(--ink3);text-align:center;margin:.375rem 0 0}
+.fig{display:flex;flex-direction:column;align-items:center;min-width:0;max-width:100%}
+
+/* ---- a desktop, for the island ---- */
+.desk{background:var(--desk);border-radius:.75rem;width:100%;max-width:38rem;overflow:hidden;padding-bottom:1.25rem}
+.desk.lightdesk{--desk:#c9d3df;--menubar:rgba(255,255,255,.72);--menubar-ink:#1d1d1f}
+.desk.darkdesk{--desk:#1d2430;--menubar:rgba(30,30,34,.72);--menubar-ink:#f2f2f4}
+.menubar{height:1.5rem;background:var(--menubar);color:var(--menubar-ink);font-size:.6875rem;display:flex;align-items:center;gap:.875rem;padding:0 .75rem;font-weight:500}
+.menubar .grow{flex:1}
+
+/* ---- the island ---- */
+.island{background:var(--isl);color:var(--isl-ink);border-radius:0 0 1.75rem 1.75rem;width:calc(100% - 2rem);max-width:33.75rem;margin:-1.5rem auto 0;padding:2.125rem .875rem .875rem;font-size:.75rem;line-height:1.3;position:relative}
+.island .hdr{display:flex;align-items:center;gap:.5rem;height:1.75rem;margin-bottom:.5rem}
+.island .hdr .t{font-size:.9375rem;font-weight:650;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.island .ib{width:1.75rem;height:1.75rem;border-radius:.5rem;display:grid;place-items:center;color:var(--isl-ink2)}
+.island .ib svg{width:.875rem;height:.875rem}
+.island .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:.375rem}
+.island .qt{height:3.5rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3125rem;font-size:.625rem;color:var(--isl-ink2);min-width:0;position:relative}
+.island .qt i{width:2rem;height:2rem;border-radius:50%;background:var(--isl-fill2);display:grid;place-items:center;font-style:normal}
+.island .qt svg{width:1rem;height:1rem;color:var(--isl-ink)}
+.island .qt span{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 .25rem}
+.island .sect{font-size:.6875rem;font-weight:600;color:var(--isl-ink3);margin:.75rem .25rem .3125rem}
+.island .prow{display:flex;align-items:center;gap:.625rem;padding:.4375rem .5rem;border-radius:.625rem;background:var(--isl-fill)}
+.island .prow + .prow{margin-top:.25rem}
+.island .prow .ico{width:1.5rem;height:1.5rem;border-radius:.4375rem;background:var(--isl-fill2);display:grid;place-items:center;flex:none}
+.island .prow .ico svg{width:.8125rem;height:.8125rem}
+.island .prow .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.island .prow .by{color:var(--isl-ink3);font-weight:400;margin-left:.375rem}
+.island .badge{background:var(--isl-badge);color:#fff;border-radius:.5rem;min-width:1rem;height:1rem;padding:0 .3125rem;font-size:.625rem;font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.island .bdot{width:.5rem;height:.5rem;border-radius:50%;background:var(--isl-badge)}
+.island .chev{width:.5625rem;height:.5625rem;color:var(--isl-ink3);flex:none}
+.island .pagehdr{display:flex;align-items:center;gap:.375rem;margin:0 0 .5rem}
+.island .pagehdr b{font-size:.8125rem;font-weight:650}
+.island .backc{width:1.125rem;height:1.125rem;border-radius:50%;background:var(--isl-fill2);display:grid;place-items:center;color:var(--isl-ink2)}
+.island .backc svg{width:.5rem;height:.5rem}
+.island .qt .badge{position:absolute;top:.0625rem;right:calc(50% - 1.5rem)}
+.island .qt .bdot{position:absolute;top:.25rem;right:calc(50% - 1.125rem)}
+
+/* blocks, island size */
+.ib-blocks{display:flex;flex-direction:column;gap:.5rem}
+.ib-h{font-size:.8125rem;font-weight:650}
+.ib-t{color:var(--isl-ink2);font-size:.6875rem}
+.ib-list{background:var(--isl-fill);border-radius:.625rem;overflow:hidden}
+.ib-row{display:flex;align-items:center;gap:.5rem;padding:.375rem .5rem}
+.ib-row + .ib-row{border-top:1px solid var(--isl-rule)}
+.ib-row .ico{width:1rem;height:1rem;flex:none;color:var(--isl-ink2)}
+.ib-row .tx{flex:1;min-width:0}
+.ib-row .tx b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib-row .tx i{display:block;font-style:normal;color:var(--isl-ink3);font-size:.625rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib-row .tr{color:var(--isl-ink3);font-size:.625rem;flex:none;font-variant-numeric:tabular-nums}
+.ib-prog{display:flex;align-items:center;gap:.5rem;font-size:.625rem;color:var(--isl-ink2)}
+.ib-prog .track{flex:1;height:.25rem;border-radius:.125rem;background:var(--isl-fill2);overflow:hidden}
+.ib-prog .fill{height:100%;background:var(--isl-accent);border-radius:.125rem}
+.ib-btns{display:flex;gap:.375rem;flex-wrap:wrap}
+.ib-btn{background:var(--isl-fill2);color:var(--isl-ink);border-radius:.4375rem;padding:.25rem .625rem;font-size:.6875rem;font-weight:600}
+.ib-btn.pro{background:var(--isl-accent);color:#06121f}
+
+/* ---- the app's windows ---- */
+.app{font-size:.8125rem;line-height:1.35;color:var(--label);width:100%}
+.window{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);width:100%;overflow:hidden;margin:0 auto}
+.titlebar{background:var(--title);border-bottom:1px solid var(--divider);padding:.4375rem .75rem;display:flex;align-items:center;gap:.375rem;min-height:2.125rem}
+.titlebar i{width:.6875rem;height:.6875rem;border-radius:50%;background:var(--switch-off);display:block;flex:none}
+.titlebar .ttl{flex:1;text-align:center;min-width:0;margin-right:2.5rem}
+.titlebar .ttl b{display:block;font-weight:600;color:var(--label);font-size:.8125rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlebar .ttl span{display:block;color:var(--label2);font-size:.6875rem}
+.sheet{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);padding:1.375rem;width:100%;max-width:30rem;display:flex;flex-direction:column;gap:1rem;margin:0 auto}
+.sheet .top{display:flex;gap:.875rem;align-items:flex-start}
+.sheet h3{font-size:.9375rem;margin:0;font-weight:700;line-height:1.25}
+.sheet .by{color:var(--label2);font-size:.75rem;margin:.125rem 0 0}
+.sheet .sum{font-size:.75rem;margin:.125rem 0 0}
+.tile{width:1.625rem;height:1.625rem;border-radius:.4375rem;background:var(--accent-tile);color:var(--accent);display:grid;place-items:center;flex:none}
+.tile svg{width:.875rem;height:.875rem}
+.tile.big{width:2.5rem;height:2.5rem;border-radius:.625rem}
+.tile.big svg{width:1.25rem;height:1.25rem}
+.status{display:flex;align-items:baseline;gap:.3125rem;font-size:.6875rem;color:var(--label2);margin:.25rem 0 0}
+.dot{width:.375rem;height:.375rem;border-radius:50%;display:inline-block;flex:none;transform:translateY(-.0625rem)}
+.dot.green{background:var(--green)}
+.group b.gt{display:block;font-size:.75rem;margin-bottom:.3125rem}
+.group ul{list-style:none;margin:0;padding:0;font-size:.75rem}
+.group li{display:flex;gap:.5rem;align-items:baseline;margin:.1875rem 0}
+.group li::before{content:"";width:.25rem;height:.25rem;border-radius:50%;background:var(--label3);flex:none;transform:translateY(-.125rem)}
+.group .small{font-size:.6875rem;color:var(--label2);margin:.375rem 0 0}
+.btn{display:inline-block;font:inherit;font-size:.75rem;background:var(--btn);color:var(--btn-ink);border:1px solid var(--btn-edge);border-radius:.375rem;padding:.1875rem .625rem;white-space:nowrap;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.btn.small{font-size:.6875rem;padding:.125rem .5rem}
+.btn.default{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.btn.danger{color:var(--red)}
+.actions{display:flex;gap:.625rem;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.actions .push{flex:1 1 auto}
+.quiet{color:var(--label2);font-size:.75rem}
+.switch{width:1.625rem;height:.9375rem;border-radius:.5rem;background:var(--accent);position:relative;flex:none;display:inline-block}
+.switch::after{content:"";position:absolute;top:.0625rem;right:.0625rem;width:.8125rem;height:.8125rem;border-radius:50%;background:var(--knob);box-shadow:0 1px 1px rgba(0,0,0,.25)}
+.switch.off{background:var(--switch-off)} .switch.off::after{right:auto;left:.0625rem}
+.setrow{display:flex;align-items:center;gap:.75rem;font-size:.75rem;margin:.25rem 0}
+.setrow span.l{flex:1;min-width:0}
+.panelbox{border-top:1px solid var(--divider);padding-top:.75rem}
+.winrow{display:flex;align-items:center;gap:.5rem;font-size:.75rem;margin:.25rem 0}
+.winrow svg{width:.875rem;height:.875rem;color:var(--accent);flex:none}
+.winrow span{flex:1;min-width:0}
+
+/* blocks, standard size: Settings and windows */
+.b-blocks{display:flex;flex-direction:column;gap:.625rem;font-size:.8125rem}
+.b-h{font-size:.9375rem;font-weight:650;line-height:1.25}
+.b-t{font-size:.8125rem}
+.b-t.sec{color:var(--label2)} .b-t.cap{color:var(--label2);font-size:.6875rem} .b-t.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.6875rem;background:var(--card);border-radius:.375rem;padding:.375rem .5rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.b-row{display:flex;align-items:center;gap:.625rem;padding:.4375rem .5rem;border-radius:.625rem}
+.b-row.tap{background:var(--hover)}
+.b-row .ico{width:1.125rem;height:1.125rem;color:var(--accent);flex:none}
+.b-row .tx{flex:1;min-width:0}
+.b-row .tx b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b-row .tx i{display:block;font-style:normal;color:var(--label2);font-size:.6875rem}
+.b-row .tr{color:var(--label2);font-size:.6875rem;flex:none}
+.b-row .chev{width:.5625rem;height:.5625rem;color:var(--label3);flex:none}
+.b-list{background:var(--card);border-radius:.75rem;padding:.25rem}
+.b-list .b-row + .b-row{border-top:1px solid var(--divider);border-radius:0}
+.b-toggle{display:flex;align-items:center;gap:.75rem}
+.b-toggle > span:first-child{flex:1;min-width:0}
+.b-field{display:flex;flex-direction:column;gap:.25rem}
+.b-field label{font-size:.75rem;color:var(--label2)}
+.b-field .in{background:var(--field);border:1px solid var(--field-edge);border-radius:.3125rem;padding:.25rem .5rem;font-size:.75rem;color:var(--label);min-height:1.5rem}
+.b-field .in.ph{color:var(--label3)}
+.b-prog{display:flex;flex-direction:column;gap:.25rem;font-size:.6875rem;color:var(--label2)}
+.b-prog .track{height:.375rem;border-radius:.1875rem;background:var(--track);overflow:hidden}
+.b-prog .fill{height:100%;background:var(--accent);border-radius:.1875rem}
+.b-prog .track.ind .fill{width:30%;margin-left:20%}
+.b-img{border-radius:.5rem;background:linear-gradient(135deg,var(--accent-tile),var(--card));height:4.5rem;display:grid;place-items:center;color:var(--label2);font-size:.6875rem}
+.b-div{height:1px;background:var(--divider)}
+.b-link{color:var(--accent);font-size:.8125rem}
+.b-spacer{height:.5rem;background:repeating-linear-gradient(90deg,transparent 0 .25rem,var(--divider) .25rem .5rem);opacity:.6}
+.b-fallback{font-size:.75rem;color:var(--label2);font-style:italic}
+
+/* the style sheet table of blocks */
+.sheetgrid{display:grid;grid-template-columns:minmax(0,7.5rem) minmax(0,1fr);gap:.75rem 1rem;align-items:start;width:100%;max-width:40rem}
+.sheetgrid .nm{font-size:.8125rem;font-weight:600;color:var(--ink)}
+.sheetgrid .nm code{display:block;font-weight:400;color:var(--ink2);font-size:.6875rem}
+
+/* web panel */
+.web{background:#ffffff;color:#1d1d1f;min-height:12rem;padding:1rem;font-family:Georgia,serif;font-size:.8125rem}
+.web h4{margin:0 0 .5rem;font-size:1rem}
+.web .bars{display:flex;align-items:flex-end;gap:.375rem;height:5rem;margin-top:.75rem}
+.web .bars i{flex:1;background:#7a5af8;border-radius:.1875rem .1875rem 0 0;display:block}
+.notshown{min-height:12rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.625rem;padding:1.5rem;text-align:center;color:var(--label2);font-size:.8125rem;background:var(--win)}
+.notshown svg{width:1.75rem;height:1.75rem;color:var(--label3)}
+@media (max-width:30rem){.stage{padding:.75rem}.sheet{padding:1rem}.island{padding-left:.5rem;padding-right:.5rem;width:calc(100% - 1rem)}.island .grid{grid-template-columns:repeat(3,1fr)}.sheetgrid{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-box" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 6.5 10 3l7 3.5v7L10 17l-7-3.5v-7Zm0 0L10 10l7-3.5M10 10v7"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3.5 1.5 7 5 3.5 8.5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6.5 1.5 3 5l3.5 3.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 20 20"><circle cx="5" cy="10" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/><circle cx="15" cy="10" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m5 10.5 3.2 3L15 6.5"/></symbol>
+  <symbol id="i-cross" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="m6 6 8 8m0-8-8 8"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M10 6.5V10l2.5 1.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3Zm8 0h6v6h-6V3ZM3 11h6v6H3v-6Zm8 0h6v6h-6v-6Z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 20 20"><path fill="currentColor" d="M11 2 4 11h5l-1 7 7-9h-5l1-7Z"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 20 20"><rect x="5" y="4" width="10" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="7.5" y="2.5" width="5" height="3" rx="1" fill="currentColor"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.5" fill="currentColor"/><path stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M10 2v2m0 12v2M2 10h2m12 0h2M4.3 4.3l1.4 1.4m8.6 8.6 1.4 1.4m0-11.4-1.4 1.4m-8.6 8.6-1.4 1.4"/></symbol>
+  <symbol id="i-cup" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 7h10v5a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V7Zm10 1.5h1.5a2 2 0 0 1 0 4H14"/></symbol>
+  <symbol id="i-window" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path stroke="currentColor" stroke-width="1.6" d="M2.5 7.5h15"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 16.5h14M5.5 13V9m4.5 4V5.5m4.5 7.5V8"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2.2c.5 0 1 .27 1.25.72l6.9 12.2c.52.93-.14 2.08-1.25 2.08H3.1c-1.1 0-1.77-1.15-1.25-2.08l6.9-12.2c.25-.45.74-.72 1.25-.72Zm0 4.3c-.5 0-.9.4-.87.9l.27 4.5a.6.6 0 0 0 1.2 0l.27-4.5c.03-.5-.37-.9-.87-.9Zm0 7.3a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="wrap">
+    <div>
+      <h1>Tools for everyone, stage D: mock-ups</h1>
+      <p>Vitruvian for macOS. A tool that can draw: pictures of the new screens, before any code.</p>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+      <div class="size" role="group" aria-label="Text size">
+        <button type="button" id="smaller" aria-label="Smaller text">A−</button>
+        <output id="scale" aria-live="polite">100%</output>
+        <button type="button" id="larger" aria-label="Larger text">A+</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="lead" style="margin-top:1.5rem">A tool written to protocol 2 can describe a page and the app draws it, in its own style, in three places: a page in the Dynamic Island's Tools area, a section of the tool's detail in Settings, and a window. The tool sends a list of blocks; the app draws each with the controls it already has. A tool that needs more brings a web page from its own folder instead. The example tool here is "Deploys", by Acme: its name, its titles and every word inside a panel are the tool's own and are examples. The app's own words are the plan's string table, word for word: two new texts, and one the app already has.</p>
+
+  <div class="flow" aria-label="How a panel is drawn">
+    <div class="box go"><b>The person opens it</b>The app asks the tool: ui/open.</div><span class="arrow">→</span>
+    <div class="box go"><b>The tool answers with blocks</b>At most 256 KB. Read away from the main thread.</div><span class="arrow">→</span>
+    <div class="box ok"><b>The app draws them</b>Its own controls, fonts and colours, on the main thread.</div><span class="arrow">→</span>
+    <div class="box wait"><b>The person acts</b>A tap, a switch, a field: ui/event. The answer is the next page.</div>
+  </div>
+  <div class="flow">
+    <div class="box go"><b>The tool has news</b>ui/render: four a second at most are drawn; the rest wait for the next.</div>
+    <div class="box stop"><b>Forty a second</b>A flood: the tool is stopped, as a flood of lines is today.</div>
+    <div class="box stop"><b>No answer, or a web page that fails</b>"This page could not be shown." The log says why.</div>
+  </div>
+  <p class="key">Colour is status: blue in progress, amber waiting for the person, green done, red stopped.</p>
+
+  <h2>a. A page in the island, drawn from blocks <small>the island is black in both appearances</small></h2>
+  <p class="lead">The tool's island page, opened from the Tools area. A heading, a list of rows, a progress bar and two buttons: five of the twelve kinds of block. Shown over a light desktop and a dark one.</p>
+  <div class="stage">
+    <div class="fig" style="flex:1 1 18rem">
+      <div class="desk lightdesk">
+        <div class="menubar"><b>Finder</b><span>File</span><span>Edit</span><span class="grow"></span><span>Mon 9:41</span></div>
+        <div class="island">
+          <div class="hdr"><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="t">Tools</span><span class="ib"><svg><use href="#i-more"/></svg></span></div>
+          <div class="pagehdr"><span class="backc"><svg><use href="#i-back"/></svg></span><b>Deploys</b></div>
+          <div class="ib-blocks">
+            <div class="ib-h">Today</div>
+            <div class="ib-list">
+              <div class="ib-row"><svg class="ico" style="color:#30d158"><use href="#i-check"/></svg><span class="tx"><b>web 1.42.0</b><i>main, by Ana</i></span><span class="tr">9:12</span></div>
+              <div class="ib-row"><svg class="ico" style="color:#ff6961"><use href="#i-cross"/></svg><span class="tx"><b>api 3.8.1</b><i>a check failed</i></span><span class="tr">8:40</span></div>
+              <div class="ib-row"><svg class="ico"><use href="#i-clock"/></svg><span class="tx"><b>worker 0.9.4</b><i>rolling out</i></span><span class="tr">now</span></div>
+            </div>
+            <div class="ib-prog"><span>worker 0.9.4</span><span class="track"><span class="fill" style="width:62%;display:block"></span></span><span>62%</span></div>
+            <div class="ib-btns"><span class="ib-btn pro">Deploy again</span><span class="ib-btn">Open dashboard</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">Light desktop</p>
+    </div>
+    <div class="fig" style="flex:1 1 18rem">
+      <div class="desk darkdesk">
+        <div class="menubar"><b>Finder</b><span>File</span><span>Edit</span><span class="grow"></span><span>Mon 9:41</span></div>
+        <div class="island">
+          <div class="hdr"><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="t">Tools</span><span class="ib"><svg><use href="#i-more"/></svg></span></div>
+          <div class="pagehdr"><span class="backc"><svg><use href="#i-back"/></svg></span><b>Deploys</b></div>
+          <div class="ib-blocks">
+            <div class="ib-h">Today</div>
+            <div class="ib-list">
+              <div class="ib-row"><svg class="ico" style="color:#30d158"><use href="#i-check"/></svg><span class="tx"><b>web 1.42.0</b><i>main, by Ana</i></span><span class="tr">9:12</span></div>
+              <div class="ib-row"><svg class="ico" style="color:#ff6961"><use href="#i-cross"/></svg><span class="tx"><b>api 3.8.1</b><i>a check failed</i></span><span class="tr">8:40</span></div>
+              <div class="ib-row"><svg class="ico"><use href="#i-clock"/></svg><span class="tx"><b>worker 0.9.4</b><i>rolling out</i></span><span class="tr">now</span></div>
+            </div>
+            <div class="ib-prog"><span>worker 0.9.4</span><span class="track"><span class="fill" style="width:62%;display:block"></span></span><span>62%</span></div>
+            <div class="ib-btns"><span class="ib-btn pro">Deploy again</span><span class="ib-btn">Open dashboard</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">Dark desktop</p>
+    </div>
+  </div>
+  <div class="note">
+    <p>The island draws blocks at its own small sizes: 12 point text, 13 point semibold headings, white on black, rows on the island's faint fill. The island's header still says Tools; under it the page has a back button and the panel's title from the manifest. A tap on a row or a button is a <code>ui/event</code>; the tool answers with the next page.</p>
+    <p>Choice: the island page lives inside the Tools area, behind a back button, the way a hosted utility (Homebrew, Window Layout) already does. Escape and the back button return to the tiles; collapsing the island closes the page and tells the tool. The island's own list of pages is not opened to tools.</p>
+    <p class="alt">Alternative: a page of its own in the island's section picker, as the design's <code>NotchModule.tool(ToolID)</code>. That turns a fixed list of seventeen pages, saved by name in the person's layout, into an open one: thirty-seven files and every saved layout are touched for it.</p>
+  </div>
+
+  <h2>b. The same tool's Settings panel, inside its detail</h2>
+  <div class="stage"><div class="app"><div class="sheet">
+    <div class="top">
+      <span class="tile big"><svg><use href="#i-box"/></svg></span>
+      <div>
+        <h3>Deploys</h3>
+        <p class="by">Acme · 2.0.0</p>
+        <p class="sum">Your deploys, in the island.</p>
+        <p class="status"><span class="dot green"></span>Running</p>
+      </div>
+    </div>
+    <div class="group">
+      <b class="gt">Settings</b>
+      <div class="setrow"><span class="l">Show in the Dynamic Island</span><span class="switch" role="img" aria-label="On"></span></div>
+      <div class="panelbox b-blocks">
+        <div class="b-toggle"><span>Tell me when a deploy ends</span><span class="switch" role="img" aria-label="On"></span></div>
+        <div class="b-field"><label>Project</label><div class="in">acme/web</div></div>
+        <div class="b-t cap">Deploys of this project are listed in the island.</div>
+      </div>
+    </div>
+    <div class="group">
+      <b class="gt">Commands</b>
+      <ul><li>Deploy again</li></ul>
+      <div class="winrow"><svg><use href="#i-window"/></svg><span>Deploy log</span><span class="btn small">Open</span></div>
+      <div class="winrow"><svg><use href="#i-chart"/></svg><span>Dashboard</span><span class="btn small">Open</span></div>
+    </div>
+    <div class="group"><b class="gt">What it says it uses</b><ul><li>Show messages and play the alert sound</li><li>Open links</li></ul><p class="small">This list comes from the tool. It is not a limit on what the tool can do.</p></div>
+    <div class="actions"><span class="btn danger">Remove</span><span class="btn">Update from Folder…</span><span class="push"></span><span class="btn default">Close</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>The tool's Settings panel is drawn under "Settings", after the app's own switch and the settings the manifest gives a title. It is the same renderer at the standard size: the system's switch, field and text. The detail opens the panel when it opens and closes it when it closes, and Close keeps the keyboard, as today: every control of the panel is bound to the detail's one focus.</p>
+    <p>New in the app's words: <b>Show in the Dynamic Island</b>, the switch that answers the design's open question 4 (on by default). A tool's window panels are listed under Commands, each with the app's existing word <b>Open</b>.</p>
+    <p class="alt">Alternative: a tab of its own in the Features hub for a tool's panel. The detail is where a person already goes to change a tool; a second place would split its settings in two.</p>
+  </div>
+
+  <h2>c. A window panel, drawn from blocks</h2>
+  <div class="stage"><div class="app" style="max-width:24rem"><div class="window">
+    <div class="titlebar"><i></i><i></i><i></i><span class="ttl"><b>Deploy log</b><span>Deploys</span></span></div>
+    <div style="padding:1rem">
+      <div class="b-blocks">
+        <div class="b-h">worker 0.9.4</div>
+        <div class="b-prog"><span>Rolling out to 5 of 8 hosts</span><span class="track"><span class="fill" style="width:62%;display:block"></span></span></div>
+        <div class="b-t mono">09:40:12 build ok
+09:41:03 host-1 ok
+09:41:20 host-2 ok</div>
+        <div class="b-div"></div>
+        <div class="b-link">Open in the dashboard</div>
+      </div>
+    </div>
+  </div></div></div>
+  <div class="note">
+    <p>A window the app owns, titled with the panel's title and the tool's name under it. It is 380 points wide and as tall as its blocks, up to 560 points; past that its blocks scroll. It closes when the person closes it, and when the tool ends. A link opens through the app's <code>open</code> service, so it needs <code>open</code> in the tool's <code>uses</code>: without it, a click plays the alert sound.</p>
+    <p>Choice: a window opens only when the person asks: from the detail's Open, or as the answer to something they did in another of the tool's panels. A tool cannot open a window by itself.</p>
+    <p class="alt">Alternative: a window the person can resize. A blocks page has nothing to gain from width, and a fixed width keeps every tool's window alike.</p>
+  </div>
+
+  <h2>d. A web panel in a window, and the state when it cannot be shown</h2>
+  <div class="stage">
+    <div class="fig app" style="flex:1 1 18rem;max-width:26rem"><div class="window">
+      <div class="titlebar"><i></i><i></i><i></i><span class="ttl"><b>Dashboard</b><span>Deploys</span></span></div>
+      <div class="web"><h4>Deploys this week</h4><div>The tool's own page, from <code>ui/dashboard.html</code> in its folder.</div><div class="bars"><i style="height:40%"></i><i style="height:65%"></i><i style="height:30%"></i><i style="height:85%"></i><i style="height:55%"></i></div></div>
+    </div><p class="caption">The page as the tool drew it</p></div>
+    <div class="fig app" style="flex:1 1 18rem;max-width:26rem"><div class="window">
+      <div class="titlebar"><i></i><i></i><i></i><span class="ttl"><b>Dashboard</b><span>Deploys</span></span></div>
+      <div class="notshown"><svg><use href="#i-box"/></svg><span>This page could not be shown. The tool’s log, in Settings, says why.</span></div>
+    </div><p class="caption">It could not be shown</p></div>
+  </div>
+  <div class="note">
+    <p>The app's chrome is the window: the title bar with the panel's and the tool's names. Everything below it is the tool's page, drawn by WebKit from the tool's own folder. It may reach the app only through <code>window.vitruvian.call</code>, which the app passes to the tool's program, under the same <code>uses</code> and the same flood rule as every other request.</p>
+    <p>New in the app's words: <b>This page could not be shown. The tool’s log, in Settings, says why.</b> It is shown when the page fails to load, leaves its folder, or the tool does not answer in time, for a web panel and a blocks panel alike.</p>
+    <p class="alt">Alternative: show WebKit's own error page. It names a file path and an error code, and it is in English only.</p>
+  </div>
+
+  <h2>e. The island's Tools area, with the tool's page as a tile</h2>
+  <div class="stage"><div class="desk darkdesk" style="max-width:38rem">
+    <div class="menubar"><b>Finder</b><span>File</span><span>Edit</span><span class="grow"></span><span>Mon 9:41</span></div>
+    <div class="island">
+      <div class="hdr"><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="t">Tools</span><span class="ib"><svg><use href="#i-more"/></svg></span></div>
+      <div class="grid">
+        <div class="qt"><i><svg><use href="#i-cup"/></svg></i><span>Keep Awake</span></div>
+        <div class="qt"><i><svg><use href="#i-clip"/></svg></i><span>Clipboard</span></div>
+        <div class="qt"><i><svg><use href="#i-sun"/></svg></i><span>Brightness</span></div>
+        <div class="qt"><i><svg><use href="#i-box"/></svg></i><span>Deploys</span><b class="badge">2</b></div>
+        <div class="qt"><i><svg><use href="#i-chart"/></svg></i><span>Release notes</span><b class="bdot" role="img" aria-label="Something new"></b></div>
+      </div>
+    </div>
+  </div></div>
+  <div class="note">
+    <p>A tool's island page is a tile after the quick tools: the panel's icon and title, and the tool's badge where a quick tool shows that it is on, a count or a dot, set with <code>ui/badge</code>. A count over 99 reads 99+. Clicking the tile opens the page of (a). The tile is there while the tool is switched on, until the person turns off "Show in the Dynamic Island" in the tool's detail.</p>
+    <p>Choice: a tile in the same rail, so the island sizes, scrolls and lays it out as it does any tool, and the rail's saved order stays the app's own: a tool's tiles always come last and are not moved in edit mode.</p>
+    <p class="alt">Alternative: a row of its own under the rail, with a chevron. It reads more like a page that opens, but the island's height is worked out from its tiles, and a row under them would need that rule changed. Known limit either way: the arrow keys and Return move over the quick tools only; a tool's tile is reached with the pointer.</p>
+  </div>
+
+  <h2>f. Every block, once <small>the twelve kinds, at the standard size</small></h2>
+  <p class="lead">What a tool may send, and nothing else: <code>text</code>, <code>heading</code>, <code>row</code>, <code>button</code>, <code>toggle</code>, <code>field</code>, <code>list</code>, <code>progress</code>, <code>image</code>, <code>divider</code>, <code>link</code>, <code>spacer</code>. A kind the app does not know is drawn as its <code>fallback</code> text, or left out.</p>
+  <div class="stage"><div class="app"><div class="sheetgrid">
+    <div class="nm">text<code>text, style, lines</code></div>
+    <div class="b-blocks"><div class="b-t">Body text, up to four lines by default.</div><div class="b-t sec">Secondary text.</div><div class="b-t cap">Caption text.</div><div class="b-t mono">monospaced text</div></div>
+    <div class="nm">heading<code>text</code></div>
+    <div class="b-h">A heading of two lines at most</div>
+    <div class="nm">row<code>title, subtitle, icon, trailing</code></div>
+    <div><div class="b-row tap"><svg class="ico"><use href="#i-box"/></svg><span class="tx"><b>A row with an id</b><i>its subtitle</i></span><span class="tr">trailing</span><svg class="chev"><use href="#i-chev"/></svg></div></div>
+    <div class="nm">button<code>title, style, enabled</code></div>
+    <div class="actions" style="justify-content:flex-start"><span class="btn">Plain</span><span class="btn default">Prominent</span><span class="btn danger">Destructive</span><span class="btn" style="opacity:.45">Not enabled</span></div>
+    <div class="nm">toggle<code>title, value, enabled</code></div>
+    <div class="b-toggle"><span>A switch</span><span class="switch" role="img" aria-label="On"></span></div>
+    <div class="nm">field<code>title, value, placeholder, kind</code></div>
+    <div class="b-field"><label>A field</label><div class="in ph">Its placeholder</div></div>
+    <div class="nm">list<code>rows: id, title, subtitle, icon, trailing</code></div>
+    <div class="b-list"><div class="b-row"><svg class="ico"><use href="#i-check"/></svg><span class="tx"><b>First row</b><i>with a subtitle</i></span><span class="tr">9:12</span></div><div class="b-row"><svg class="ico"><use href="#i-clock"/></svg><span class="tx"><b>Second row</b></span><span class="tr">now</span></div></div>
+    <div class="nm">progress<code>value, label</code></div>
+    <div class="b-blocks"><div class="b-prog"><span>With a value</span><span class="track"><span class="fill" style="width:40%;display:block"></span></span></div><div class="b-prog"><span>With none: under way</span><span class="track ind"><span class="fill" style="display:block"></span></span></div></div>
+    <div class="nm">image<code>source, alt, height</code></div>
+    <div class="b-img">an image from the tool's folder, or inline</div>
+    <div class="nm">divider<code>(no fields)</code></div>
+    <div style="padding:.5rem 0"><div class="b-div"></div></div>
+    <div class="nm">link<code>title, url</code></div>
+    <div class="b-link">A link, opened through the app</div>
+    <div class="nm">spacer<code>size</code></div>
+    <div class="b-spacer" aria-label="empty space"></div>
+    <div class="nm">a later kind<code>fallback</code></div>
+    <div class="b-fallback">Its fallback text, as a plain line.</div>
+  </div></div></div>
+  <div class="note">
+    <p>Every block may carry an <code>id</code>; a <code>button</code>, <code>toggle</code>, <code>field</code> and <code>list</code> must, since that is how their events name them, and a <code>row</code> with one can be tapped. Text a tool sends is drawn as plain text with a line limit, never as markdown and never as a link. The look is the app's: a tool chooses a style from a short list, never a colour, a font or a size.</p>
+    <p class="alt">Alternative: a <code>stack</code> block that holds others, for columns. It is the first step to a layout language; twelve flat kinds keep a page a list that reads well in fifteen languages and at the island's width.</p>
+  </div>
+
+  <h2>Where the look comes from <small>the app's own tokens and components</small></h2>
+  <div class="scroll"><table>
+    <tr><th>In the mock-ups</th><th>In the app</th></tr>
+    <tr><td>The island</td><td>Black, as the hardware; its header as <code>NotchView.header</code>; rows on <code>Color.white.opacity(0.08)</code> with 10 pt corners, as <code>NotchGitHubView</code>; text 12 pt, secondary at 62% white; the back chevron as a hosted utility's</td></tr>
+    <tr><td>A tool's tile in the Tools area</td><td>As a quick tool's tile in <code>QuickLauncherView</code>'s island rail: a 32 pt circle at 10% white, a 16 pt semibold symbol, a 10 pt title of two lines; the badge in <code>Color.red</code> where a quick tool's green "on" dot sits</td></tr>
+    <tr><td>The detail</td><td>Stage C's <code>ExternalToolDetailView</code>, unchanged above and below the new panel; its <code>section</code> headings in <code>.subheadline.weight(.semibold)</code></td></tr>
+    <tr><td>Blocks at the standard size</td><td><code>.callout</code> body, <code>.caption</code> in <code>.secondary</code>, <code>.headline</code> headings, the system <code>Toggle(.switch)</code>, <code>TextField</code> and <code>SecureField</code>, <code>ProgressView</code>, <code>Divider</code>; a row and a list as <code>FeatureHubRow</code>: 7 and 8 pt padding, 10 pt corners</td></tr>
+    <tr><td>Buttons</td><td>The system button; <code>.borderedProminent</code> for <code>prominent</code>; role <code>.destructive</code> for <code>destructive</code></td></tr>
+    <tr><td>Windows</td><td>An <code>NSPanel</code> with the standard title bar, title and subtitle</td></tr>
+    <tr><td>Status colours in the flow above</td><td>The page's own legend, as stage C's</td></tr>
+  </table></div>
+  <p class="key">The mock-ups use slightly darker secondary text than macOS draws, so this page meets WCAG AA at every size. The app itself uses the system's own label colours.</p>
+</main>
+
+<script>
+(function(){
+  var root=document.documentElement, KEY_T="cowork-artifact-theme", KEY_S="cowork-artifact-fontscale";
+  function read(key){try{return window.localStorage.getItem(key);}catch(e){return null;}}
+  function write(key,value){try{window.localStorage.setItem(key,value);}catch(e){}}
+  function setTheme(choice,save){
+    if(choice==="light"||choice==="dark"){root.setAttribute("data-theme",choice);}else{choice="system";root.removeAttribute("data-theme");}
+    var buttons=document.querySelectorAll("[data-theme-choice]");
+    for(var i=0;i<buttons.length;i++){buttons[i].setAttribute("aria-pressed",String(buttons[i].getAttribute("data-theme-choice")===choice));}
+    if(save){write(KEY_T,choice);}
+  }
+  var scale=1;
+  function setScale(value,save){
+    scale=Math.min(1.4,Math.max(0.8,Math.round(value*10)/10));
+    root.style.setProperty("--s",String(scale));
+    document.getElementById("scale").textContent=Math.round(scale*100)+"%";
+    if(save){write(KEY_S,String(scale));}
+  }
+  setTheme(read(KEY_T)||"system",false);
+  var saved=parseFloat(read(KEY_S));
+  setScale(isNaN(saved)?1:saved,false);
+  var choices=document.querySelectorAll("[data-theme-choice]");
+  for(var i=0;i<choices.length;i++){choices[i].addEventListener("click",function(){setTheme(this.getAttribute("data-theme-choice"),true);});}
+  document.getElementById("smaller").addEventListener("click",function(){setScale(scale-0.1,true);});
+  document.getElementById("larger").addEventListener("click",function(){setScale(scale+0.1,true);});
+})();
+</script>
+</body>
+</html>
