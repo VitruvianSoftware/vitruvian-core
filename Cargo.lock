@@ -4,6 +4,13 @@
 version = 3
 
 [[package]]
+name = "hello-rust"
+version = "0.1.0"
+dependencies = [
+ "vitruvian-tool-kit",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"

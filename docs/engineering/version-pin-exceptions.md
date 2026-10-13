@@ -21,8 +21,8 @@ a pin past its `review_by`; and a registry pin that is **not documented in this 
 
 ### The Vitruvian SDK's Go kit: Go 1.22, not 1.26.6
 
-- **File:** `packages/vitruvian-sdk/go/go.mod`.
-- **Why:** the Go kit is published (module `github.com/VitruvianSoftware/vitruvian-sdk/go`) for other people's tools. Its `go` line is the oldest Go they may build it with, not the Go this repository builds with: on 1.26.6 every author would need 1.26.6. Bazel builds both with the canonical SDK either way.
+- **Files:** `packages/vitruvian-sdk/go/go.mod` and `packages/vitruvian-sdk/samples/hello-go/go.mod`.
+- **Why:** the Go kit is published (module `github.com/VitruvianSoftware/vitruvian-sdk/go`) for other people's tools. Its `go` line is the oldest Go they may build it with, not the Go this repository builds with: on 1.26.6 every author would need 1.26.6. The sample says the same so it shows what the kit needs. Bazel builds both with the canonical SDK either way.
 - **Risk:** the kit using something of Go's standard library newer than 1.22. `//packages/vitruvian-sdk:go_kit_vet_test` runs `go vet` on the kit as its own module, which refuses exactly that; Bazel's build does not see it.
 - **Removal:** when the kit raises its floor to the canonical Go, or the repository decides a published module's floor is not a pin. Re-justify at each `review_by` while the kit supports Go 1.22.
 

@@ -48,6 +48,8 @@ load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_go//go:def.bzl", "go_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/pytest:defs.bzl", pytest_test = "py_test")
 
@@ -330,6 +332,75 @@ filegroup(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
+
+# The samples written in Go and in Rust, built with the hermetic toolchains,
+# so not tied to macOS: the Linux lane builds them and puts them through
+# the conformance script too.
+go_binary(
+    name = "hello-go",
+    srcs = ["samples/hello-go/main.go"],
+    deps = ["//packages/vitruvian-sdk/go/toolkit"],
+)
+
+rust_binary(
+    name = "hello-rust",
+    srcs = ["samples/hello-rust/src/main.rs"],
+    edition = "2021",
+    deps = ["//packages/vitruvian-sdk/kits/rust:vitruvian_tool_kit"],
+)
+
+NATIVE_SAMPLES = [
+    "hello-go",
+    "hello-rust",
+]
+
+[
+    genrule(
+        name = sample + "-folder",
+        srcs = [
+            "samples/%s/vitruvian-tool.json" % sample,
+            ":" + sample,
+        ],
+        outs = [
+            "built/%s/vitruvian-tool.json" % sample,
+            "built/%s/bin/tool" % sample,
+        ],
+        cmd = "cp $(location samples/%s/vitruvian-tool.json) $(RULEDIR)/built/%s/vitruvian-tool.json && cp $(location :%s) $(RULEDIR)/built/%s/bin/tool" % (sample, sample, sample, sample),
+    )
+    for sample in NATIVE_SAMPLES
+]
+
+#   bazel build //packages/vitruvian-sdk:native-sample-folders
+#
+# leaves bazel-bin/packages/vitruvian-sdk/built/hello-go and hello-rust, each
+# with its manifest and bin/tool, on any Mac or Linux machine.
+filegroup(
+    name = "native-sample-folders",
+    srcs = [":%s-folder" % sample for sample in NATIVE_SAMPLES],
+)
+
+# Each built sample against the conformance script. They start real
+# processes, a second or two each. Not `manual` and not tied to macOS: a
+# py_test brings Bazel's own Python and the script, and the sample's
+# folder is its data, so nothing outside Bazel is needed.
+[
+    py_test(
+        name = sample.replace("hello-", "") + "_sample_test",
+        size = "small",
+        srcs = [
+            "conformance/conformance.py",
+            "samples/samples_test.py",
+        ],
+        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample],
+        data = [
+            ":%s-folder" % sample,
+            "built/%s/vitruvian-tool.json" % sample,
+        ],
+        main = "samples/samples_test.py",
+        deps = ["@pip//jsonschema"],
+    )
+    for sample in NATIVE_SAMPLES
+]
 
 # What needs no build: every sample's manifest against the schema, one SDK
 # version across the kits, the kit samples and the command, and the plain
@@ -645,6 +716,7 @@ pipeline_unit(
         ":VitruvianToolProtocolTests",
         ":conformance_test",
         ":go_kit_vet_test",
+        ":go_sample_test",
         ":guide_test",
         ":init_test",
         ":kit_samples_test",
@@ -653,6 +725,7 @@ pipeline_unit(
         ":python_kit_apple_python_test",
         ":python_kit_test",
         ":release_version_test",
+        ":rust_sample_test",
         ":samples_test",
         ":swift_samples_test",
         ":swift_template_test",
