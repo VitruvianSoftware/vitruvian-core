@@ -54,13 +54,13 @@ final class PagesTests: XCTestCase {
     func testTheIslandPageListsRepositoriesThenPullRequestsThenButtons() {
         let page = Pages.island(summary: summary(red: true, pulls: 2, failedRun: true), auth: .signedIn(login: "me"))
         XCTAssertEqual(page.kinds, ["row", "heading", "list", "button", "button"])
-        XCTAssertEqual(page.ids, ["repo:acme/web", "pulls", "refresh", "rerun"])
+        XCTAssertEqual(page.ids, ["repo.acme.web", "pulls", "refresh", "rerun"])
         XCTAssertEqual(page.english(0), "acme/web")
         guard case .row(let row) = page.blocks[0].content else { return XCTFail() }
         XCTAssertEqual(row.subtitle?.text(for: "en"), "1 passed, 1 failed, 0 running")
         XCTAssertEqual(row.icon, "xmark.circle.fill")
         guard case .list(let list) = page.blocks[2].content else { return XCTFail() }
-        XCTAssertEqual(list.rows.map(\.id), ["pr:acme/web#2", "pr:acme/web#1"], "newest first")
+        XCTAssertEqual(list.rows.map(\.id), ["pr.acme.web.2", "pr.acme.web.1"], "newest first")
         XCTAssertEqual(list.rows[0].title.text(for: "en"), "#2 Change 2")
         XCTAssertEqual(list.rows[0].subtitle?.text(for: "en"), "acme/web · @ana")
         XCTAssertEqual(list.rows[0].trailing?.text(for: "en"), "Approved")
@@ -68,19 +68,62 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(list.rows[0].icon, "circle.dashed", "a pull request with no checks is grey")
         guard case .button(let rerun) = page.blocks[4].content else { return XCTFail() }
         XCTAssertEqual(rerun.style, .destructive)
-        XCTAssertEqual(Pages.pull(ofRow: "pr:acme/web#2")?.number, 2)
-        XCTAssertEqual(Pages.pull(ofRow: "pr:acme/web#2")?.repo, Self.repo)
-        XCTAssertNil(Pages.pull(ofRow: "repo:acme/web"))
-        XCTAssertEqual(Pages.repo(ofRow: "repo:acme/web"), Self.repo)
+        XCTAssertEqual(Pages.pull(ofRow: "pr.acme.web.2")?.number, 2)
+        XCTAssertEqual(Pages.pull(ofRow: "pr.acme.web.2")?.repo, Self.repo)
+        XCTAssertNil(Pages.pull(ofRow: "repo.acme.web"))
+        XCTAssertEqual(Pages.repo(ofRow: "repo.acme.web"), Self.repo)
+    }
+
+    /// The app reads a page with the protocol's own reader and draws none of
+    /// it when one id is not a well-formed name. Version 1.0.0 sent
+    /// `repo:acme/web` and `pr:acme/web#2`: signed in, the island page was a
+    /// spinner for ever, and no test read a page back.
+    func testEveryPageIsOneTheAppWillRead() throws {
+        let pages: [(String, UITree)] = [
+            ("the island, signed in", Pages.island(summary: summary(red: true, pulls: 2, failedRun: true),
+                                                   auth: .signedIn(login: "me"))),
+            ("the island, signed out", Pages.island(summary: summary(), auth: .signedOut)),
+            ("the settings, signed in", Pages.settings(.init(auth: .signedIn(login: "me"), cliLogin: "me"))),
+            ("the settings, signed out", Pages.settings(.init(auth: .signedOut))),
+        ]
+        for (name, page) in pages {
+            let sent = try JSONEncoder().encode(page)
+            XCTAssertNoThrow(try JSONDecoder().decode(UITree.self, from: sent), name)
+        }
+    }
+
+    func testARowsIdIsAWellFormedNameWhateverTheRepositoryIsCalled() {
+        let odd = ["acme/web", "acme/.github", "acme/a.b", "acme/a_b", "acme/a__d", "a-b/c-d", "acme/x_dy",
+                   "acme/v1.2.3", "acme/a..b", "acme/trailing."]
+        for fullName in odd {
+            guard let repo = RepoKey(fullName: fullName) else { return XCTFail(fullName) }
+            let row = Pages.repoRow(repo)
+            XCTAssertTrue(ManifestRules.isWellFormedName(row), "\(fullName) gives \(row)")
+            XCTAssertEqual(Pages.repo(ofRow: row), repo, "\(fullName) comes back from \(row)")
+            let pull = Pages.pullRow(repo, 42)
+            XCTAssertTrue(ManifestRules.isWellFormedName(pull), "\(fullName) gives \(pull)")
+            XCTAssertEqual(Pages.pull(ofRow: pull)?.repo, repo, "\(fullName) comes back from \(pull)")
+            XCTAssertEqual(Pages.pull(ofRow: pull)?.number, 42)
+            XCTAssertNil(Pages.repo(ofRow: pull), "a pull request's row is not a repository's")
+            XCTAssertNil(Pages.pull(ofRow: row), "a repository's row is not a pull request's")
+        }
+        // A name too long for an id still gives a page the app reads; its row
+        // names nothing, so a tap on it does nothing.
+        let long = RepoKey(owner: "acme", name: String(repeating: "n", count: 200))
+        XCTAssertTrue(ManifestRules.isWellFormedName(Pages.repoRow(long)))
+        XCTAssertNil(Pages.repo(ofRow: Pages.repoRow(long)))
+        XCTAssertTrue(ManifestRules.isWellFormedName(Pages.pullRow(long, 7)))
+        XCTAssertNil(Pages.pull(ofRow: Pages.pullRow(long, 7)))
+        XCTAssertNotEqual(Pages.pullRow(long, 7), Pages.pullRow(long, 8), "two rows of one list never share an id")
     }
 
     func testTheIslandPageWithoutPullRequestsOrFailures() {
         let page = Pages.island(summary: summary(), auth: .signedIn(login: "me"))
         XCTAssertEqual(page.kinds, ["row", "heading", "text", "button"])
         XCTAssertEqual(page.english(2), "No pull requests need you.")
-        XCTAssertEqual(page.ids, ["repo:acme/web", "refresh"], "no re-run button without a failed run")
+        XCTAssertEqual(page.ids, ["repo.acme.web", "refresh"], "no re-run button without a failed run")
         let green = Pages.island(summary: summary(red: true), auth: .signedIn(login: "me"))
-        XCTAssertEqual(green.ids, ["repo:acme/web", "refresh"], "a failed check run, not a workflow run, cannot be re-run")
+        XCTAssertEqual(green.ids, ["repo.acme.web", "refresh"], "a failed check run, not a workflow run, cannot be re-run")
     }
 
     func testThePageStaysWithinTheProtocolsLimits() throws {
@@ -94,7 +137,7 @@ final class PagesTests: XCTestCase {
         XCTAssertLessThanOrEqual(page.blocks.count, UILimits.maxBlocks)
         guard case .list(let list) = page.blocks[2].content else { return XCTFail() }
         XCTAssertEqual(list.rows.count, Pages.maxPullRows, "the list is cut to the newest a page may hold")
-        XCTAssertEqual(list.rows.first?.id, "pr:acme/web#300", "the newest come first")
+        XCTAssertEqual(list.rows.first?.id, "pr.acme.web.300", "the newest come first")
         XCTAssertEqual(list.rows.first?.title.text(for: "en").count, "#300 ".count + Pages.maxTitleLength)
         let bytes = try JSONEncoder().encode(page).count
         XCTAssertLessThanOrEqual(bytes, UILimits.maxTreeBytes)
