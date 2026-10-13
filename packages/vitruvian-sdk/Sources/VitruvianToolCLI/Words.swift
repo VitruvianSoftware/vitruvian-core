@@ -70,6 +70,9 @@ enum Words {
             case .typescript, .pythonKit, .python:
                 return "--sdk is the path of packages/vitruvian-sdk, or of a copy of the vitruvian-sdk repository, "
                     + "and \(tool.sdk.map { shell($0.path) } ?? "that path") holds no kit for this template"
+            case .go, .rust:
+                return "--sdk is not a copy of packages/vitruvian-sdk with the \(tool.template.rawValue) kit in it. "
+                    + "Leave --sdk out to use the published kit"
             }
         case .notWritten(let why):
             return "the files could not be written: \(why)"
@@ -117,8 +120,14 @@ enum Words {
                 Then add the folder in Vitruvian: Settings, Features, Tools from outside. node_modules/ goes with it.
                 bin/tool starts Node: if yours is not in /opt/homebrew/bin or /usr/local/bin, say where in it.
                 """
-        case .swift:
-            let fetch = tool.sdk == nil ? "The first build fetches the SDK, version \(version), from GitHub.\n" : ""
+        case .swift, .go, .rust:
+            let published: String
+            switch tool.template {
+            case .go: published = "the Go kit, version \(version), through the Go module proxy"
+            case .rust: published = "the Rust kit, version \(version), from crates.io"
+            default: published = "the SDK, version \(version), from GitHub"
+            }
+            let fetch = tool.sdk == nil ? "The first build fetches \(published).\n" : ""
             return fetch + """
                 Next:
                   \(folder)/build.sh
@@ -209,9 +218,11 @@ enum Words {
                 --template      python, the default: one file, runs as it is.
                                 python-kit: Python with the kit, from PyPI.
                                 typescript: JavaScript with the kit, from npm.
-                                swift: a package that uses the kit, to build
+                                swift, go or rust: a program that uses the
+                                kit in that language, to build
                 --sdk PATH      a checkout of the SDK, not the published one:
-                                swift builds against it; the kits are taken from it
+                                swift builds against it; the kits are taken from it;
+                                go and rust build against the kit there
 
           vitruvian-tool validate <folder>
               Reads a tool's folder the way the app does before it offers to

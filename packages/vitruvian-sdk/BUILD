@@ -663,6 +663,33 @@ py_test(
     main = "samples/go_template_test.py",
 )
 
+# The same, then the tool `init --template go --sdk` writes, built by its
+# own build.sh with Bazel's Go first on the PATH, through `validate`, the
+# conformance script and `run`. It starts the built command, so `manual`
+# and macOS-only, like init_test.
+py_test(
+    name = "go_template_test",
+    size = "medium",
+    srcs = [
+        "conformance/conformance.py",
+        "samples/go_template_test.py",
+    ],
+    args = [
+        "$(rootpath //tools/go-sdk:go)",
+        "$(rootpaths %s)" % GO_KIT[0],
+        "$(rootpaths %s)" % GO_KIT[1],
+        "--tool",
+        "$(rootpath :vitruvian-tool)",
+    ],
+    data = GO_KIT + [
+        ":vitruvian-tool",
+        "//tools/go-sdk:go",
+    ],
+    main = "samples/go_template_test.py",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 # The guide's examples: every message and manifest in it against the schemas,
 # every piece of code in it against the sample it is taken from, every
 # command in it against what exists, and what it quotes the command as saying
@@ -717,6 +744,7 @@ pipeline_unit(
         ":conformance_test",
         ":go_kit_vet_test",
         ":go_sample_test",
+        ":go_template_test",
         ":guide_test",
         ":init_test",
         ":kit_samples_test",

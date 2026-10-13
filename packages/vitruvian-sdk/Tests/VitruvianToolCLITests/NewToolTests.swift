@@ -263,6 +263,47 @@ final class NewToolTests: XCTestCase {
                                   encoding: .utf8), "# kit\n")
     }
 
+    func testTheGoAndRustTemplatesAreProgramsBesideTheToolsFolder() throws {
+        let sdk = scratch.folder("my-sdk")
+        for (template, program, built) in [(ToolTemplate.go, "main.go", "go.mod"),
+                                           (ToolTemplate.rust, "src/main.rs", "Cargo.toml")] {
+            var new = tool("published-\(template.rawValue)")
+            new.template = template
+            XCTAssertEqual(try NewToolWriter.write(new).get(),
+                           [built, program, "tool/vitruvian-tool.json", "build.sh", ".gitignore"])
+            XCTAssertEqual(try Data(contentsOf: new.folder.appendingPathComponent(program)),
+                           PackageFiles.data("samples/hello-\(template.rawValue)/\(template == .go ? "main.go" : "src/main.rs")"))
+            let text = try String(contentsOf: new.folder.appendingPathComponent(built), encoding: .utf8)
+            XCTAssertTrue(text.contains(template == .go
+                                        ? "require github.com/VitruvianSoftware/vitruvian-sdk/go v\(NewToolWriter.sdkVersion)\n"
+                                        : "vitruvian-tool-kit = \"\(NewToolWriter.sdkVersion)\"\n"),
+                          "without --sdk, the published kit of this command's version: \(text)")
+            XCTAssertFalse(text.contains("replace") || text.contains("path ="), text)
+            XCTAssertTrue(FileManager.default.isExecutableFile(atPath: new.folder.appendingPathComponent("build.sh").path))
+            XCTAssertEqual(FolderCheck.check(new.folder.appendingPathComponent("tool")).verdict, "programMissing")
+
+            var local = tool("local-\(template.rawValue)")
+            local.template = template
+            local.sdk = sdk
+            XCTAssertEqual(NewToolWriter.write(local), .failure(.noSDK), "a folder with no kit in it")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: local.folder.path))
+        }
+        Scratch.write("module github.com/VitruvianSoftware/vitruvian-sdk/go\n", to: sdk.appendingPathComponent("go/go.mod"))
+        Scratch.write("[package]\n", to: sdk.appendingPathComponent("kits/rust/Cargo.toml"))
+        for template in [ToolTemplate.go, .rust] {
+            var local = tool("local-\(template.rawValue)")
+            local.template = template
+            local.sdk = sdk
+            _ = try NewToolWriter.write(local).get()
+            let built = local.folder.appendingPathComponent(template == .go ? "go.mod" : "Cargo.toml")
+            let text = try String(contentsOf: built, encoding: .utf8)
+            XCTAssertTrue(text.contains(template == .go
+                                        ? "=> \"\(sdk.standardizedFileURL.path)/go\"\n"
+                                        : "{ path = \"\(sdk.standardizedFileURL.path)/kits/rust\" }"),
+                          "with --sdk, the kit in that checkout: \(text)")
+        }
+    }
+
     func testTheCommandSaysWhatItWroteAndWhatToDoNext() {
         let folder = scratch.url.appendingPathComponent("said").path
         let arguments = ["init", folder, "--id", "com.example.said", "--name", "Said", "--publisher", "Example"]
