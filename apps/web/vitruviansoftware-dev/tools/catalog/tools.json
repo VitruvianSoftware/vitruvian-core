@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-13T07:47:51Z",
+  "generated": "2026-10-13T15:40:12Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -26,6 +26,82 @@
           "id": "hello",
           "title": {
             "en": "Say hello"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dev.vitruvian.github",
+      "name": {
+        "en": "GitHub"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Shows whether main is green on the repositories you watch and where your pull requests stand.",
+        "pt-BR": "Mostra se a main está verde nos repositórios que você acompanha e em que pé estão seus pull requests.",
+        "tr": "İzlediğiniz depolarda main’in yeşil olup olmadığını ve pull request’lerinizin durumunu gösterir.",
+        "ru": "Показывает, зелёная ли main в отслеживаемых репозиториях и в каком состоянии ваши pull request.",
+        "es": "Muestra si main está en verde en los repositorios que sigues y en qué punto están tus pull requests.",
+        "sk": "Ukazuje, či je main zelená v repozitároch, ktoré sledujete, a ako sú na tom vaše pull requesty.",
+        "de": "Zeigt, ob main in den beobachteten Repositorys grün ist und wo deine Pull Requests stehen.",
+        "fr": "Indique si main est au vert dans les dépôts que vous suivez et où en sont vos pull requests.",
+        "it": "Mostra se main è verde nei repository che segui e a che punto sono le tue pull request.",
+        "ja": "監視しているリポジトリで main がグリーンかどうかと、プルリクエストの状況を表示します。",
+        "ko": "지켜보는 저장소에서 main이 초록색인지, 내 풀 리퀘스트가 어디까지 왔는지 보여 줍니다.",
+        "uk": "Показує, чи зелена main у репозиторіях, за якими ви стежите, і на якому етапі ваші pull request.",
+        "zh-Hans": "显示你关注的仓库中 main 是否为绿色，以及你的拉取请求进展如何。",
+        "zh-TW": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
+        "zh-HK": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。"
+      },
+      "version": "1.0.0",
+      "protocol": "2",
+      "minimumAppVersion": "3.46.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-tool-github",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.0.0/github-tool-1.0.0.zip",
+        "sha256": "8aa383cfb61c4e1db386a93eac9b0be347ea8c6f3d40c2b3596f6a18fac60545",
+        "size": 1063533
+      },
+      "uses": ["notify", "open", "storage"],
+      "commands": [
+        {
+          "id": "refresh",
+          "title": {
+            "en": "Refresh GitHub",
+            "pt-BR": "Atualizar o GitHub",
+            "tr": "GitHub’ı yenile",
+            "ru": "Обновить GitHub",
+            "es": "Actualizar GitHub",
+            "sk": "Obnoviť GitHub",
+            "de": "GitHub aktualisieren",
+            "fr": "Actualiser GitHub",
+            "it": "Aggiorna GitHub",
+            "ja": "GitHub を更新",
+            "ko": "GitHub 새로 고침",
+            "uk": "Оновити GitHub",
+            "zh-Hans": "刷新 GitHub",
+            "zh-TW": "重新整理 GitHub",
+            "zh-HK": "重新整理 GitHub"
+          }
+        },
+        {
+          "id": "openPulls",
+          "title": {
+            "en": "Open my pull requests",
+            "pt-BR": "Abrir meus pull requests",
+            "tr": "Pull request’lerimi aç",
+            "ru": "Открыть мои пул-реквесты",
+            "es": "Abrir mis pull requests",
+            "sk": "Otvoriť moje pull requesty",
+            "de": "Meine Pull Requests öffnen",
+            "fr": "Ouvrir mes pull requests",
+            "it": "Apri le mie pull request",
+            "ja": "自分のプルリクエストを開く",
+            "ko": "내 풀 리퀘스트 열기",
+            "uk": "Відкрити мої пул-реквести",
+            "zh-Hans": "打开我的拉取请求",
+            "zh-TW": "打開我的拉取請求",
+            "zh-HK": "打開我的拉取請求"
           }
         }
       ]

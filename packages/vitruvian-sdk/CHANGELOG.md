@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.0.0...vitruvian-sdk-v1.1.0) (2026-10-13)
+
+
+### Features
+
+* **vitruvian-sdk:** a tool can hand work to its thread from another ([#3203](https://github.com/VitruvianSoftware/vitruvian-core/issues/3203)) ([5e3178c](https://github.com/VitruvianSoftware/vitruvian-core/commit/5e3178ce0f119857a7da3edeb76351091961b78d))
+* **vitruvian-tool-github:** the GitHub tool, released from its mirror ([#3193](https://github.com/VitruvianSoftware/vitruvian-core/issues/3193)) ([fb589e5](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb589e5ac633b85edb75234fdeb21f1a74b90cd6))
+
 ## [1.0.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v0.10.0...vitruvian-sdk-v1.0.0) (2026-10-13)
 
 
