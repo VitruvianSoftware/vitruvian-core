@@ -129,6 +129,29 @@ def versions():
     """
     found = {}
     with open(
+        os.path.join(PACKAGE, "go", "toolkit", "version.go"), encoding="utf-8"
+    ) as handle:
+        found["go/toolkit/version.go"] = re.search(
+            r'(?m)^const Version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(
+        os.path.join(PACKAGE, "kits", "rust", "Cargo.toml"), encoding="utf-8"
+    ) as handle:
+        found["kits/rust/Cargo.toml"] = re.search(
+            r'(?m)^version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(os.path.join(HERE, "hello-go", "go.mod"), encoding="utf-8") as handle:
+        found["samples/hello-go/go.mod"] = re.search(
+            r"(?m)^require github\.com/VitruvianSoftware/vitruvian-sdk/go v(\S+)",
+            handle.read(),
+        ).group(1)
+    with open(
+        os.path.join(HERE, "hello-rust", "Cargo.toml"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-rust/Cargo.toml"] = re.search(
+            r'(?m)^vitruvian-tool-kit = \{ version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(
         os.path.join(PACKAGE, "kits", "typescript", "package.json"), encoding="utf-8"
     ) as handle:
         found["kits/typescript/package.json"] = json.load(handle)["version"]
@@ -158,13 +181,13 @@ def versions():
                 r'"(\d+\.\d+\.\d+)" // x-release-please-version', handle.read()
             ):
                 found[os.path.relpath(path, PACKAGE)] = version
-    if len(set(found.values())) == 1 and len(found) == 5:
+    if len(set(found.values())) == 1 and len(found) == 9:
         print(
             f"versions: {found['kits/typescript/package.json']}, in {len(found)} places"
         )
         return []
     return [
-        f"one version of the SDK in five places, and these differ or are missing: {found}"
+        f"one version of the SDK in nine places, and these differ or are missing: {found}"
     ]
 
 

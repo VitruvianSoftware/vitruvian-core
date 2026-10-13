@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 exports_files([
     "app.go",
     "protocol_gen.go",
+    "version.go",
 ])
 
 # The kit's sources as files, for //packages/vitruvian-sdk:go_kit_vet_test,

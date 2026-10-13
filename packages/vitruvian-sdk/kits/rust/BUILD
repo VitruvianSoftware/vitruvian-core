@@ -30,6 +30,7 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 package(default_visibility = ["//packages/vitruvian-sdk:__subpackages__"])
 
 exports_files([
+    "Cargo.toml",
     "src/app.rs",
     "src/generated/mod.rs",
 ])

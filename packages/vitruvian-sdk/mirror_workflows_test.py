@@ -31,7 +31,7 @@ once for each kind of manifest. It runs the release notes step the same way,
 with and without a CHANGELOG.md, since a first release can come before the
 file does. It also holds what limits the damage of a
 mistake: the workflow may only read; only the release job may write, and
-only contents, and only the two jobs that publish a kit may ask for an
+only contents, and only the three jobs that publish a kit may ask for an
 identity token; no checkout keeps its credentials; every action is pinned to
 a commit.
 """
@@ -250,6 +250,7 @@ def limit_problems(name, workflow):
             # job's identity token in place of a secret, and nothing else.
             ("release.yml", "publish-npm-kit"): ["id-token"],
             ("release.yml", "publish-pypi-kit"): ["id-token"],
+            ("release.yml", "crates-publish"): ["id-token"],
         }.get((name, job_name), [])
         if writes != allowed:
             problems.append(f"{name}: job {job_name} may write {writes}, not {allowed}")
