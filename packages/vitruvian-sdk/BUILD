@@ -96,6 +96,22 @@ filegroup(
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
+# What the Tools section of vitruviansoftware.dev is copied from
+# (//tools/sync-site-tools), so its test sees the same files.
+filegroup(
+    name = "site_sources",
+    srcs = [
+        "docs/writing-a-tool.md",
+        "protocol/README.md",
+        "protocol/methods.json",
+        "samples/hello-python/bin/tool.py",
+        "samples/hello-python/vitruvian-tool.json",
+        "samples/hello-swift/main.swift",
+        "samples/hello-swift/vitruvian-tool.json",
+    ],
+    visibility = ["//tools/sync-site-tools:__pkg__"],
+)
+
 # The protocol's example messages. The app's tests hold what the app sends a
 # tool to the example of it here.
 filegroup(

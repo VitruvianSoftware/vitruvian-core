@@ -1,0 +1,108 @@
+---
+layout: page
+title: Tools
+permalink: /tools/
+eyebrow: Tools
+heading: Add your own commands to Vitruvian.
+lead: >-
+  A tool is a small program, in any language, that the Vitruvian app starts and
+  talks to. It adds commands to the command bar, the radial menu, the Quick
+  panel and your shortcuts.
+description: >-
+  Write a tool for the Vitruvian Mac app: install vitruvian-tool, read the
+  guide and the protocol, and start from an example in Swift or Python.
+---
+
+<section class="section">
+  <div class="container">
+    <div class="grid grid-2">
+      <div>
+        <span class="eyebrow">Trust</span>
+        <h2>A tool is trusted like an app.</h2>
+      </div>
+      <div>
+        <p class="muted">A tool can do anything Vitruvian can. The app starts it as an ordinary program that runs as you, with every permission Vitruvian has: if Vitruvian may read the screen or control other apps, so may the tool, with no prompt of its own. The app does not limit or check what a tool does.</p>
+        <p class="muted">So you agree once, when you add a tool from its folder in Settings, on a sheet that says exactly this, and nothing asks again. Add a tool whose source you can read or whose author you trust, as you would an app. There is no list of tools to install yet: a tool comes as a folder.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Get started</span>
+      <h2>Three ways in.</h2>
+      <p>The <code>vitruvian-tool</code> command starts a new tool, checks a folder the way the app will, and plays the app's side in a terminal.</p>
+    </div>
+
+    <div class="grid grid-3">
+      <article class="plate card">
+        <div class="card-head">
+          <h3>Homebrew</h3>
+        </div>
+        <p>Builds the command from source on your Mac, so macOS runs it without asking.</p>
+        <div class="card-foot">
+          <div class="install-block">
+            <span class="install-label">Homebrew Formula</span>
+            <code class="install">brew install VitruvianSoftware/tap/vitruvian-tool</code>
+          </div>
+        </div>
+      </article>
+
+      <article class="plate card">
+        <div class="card-head">
+          <h3>Download</h3>
+        </div>
+        <p>One program for Apple silicon and Intel, with its checksum. It is signed ad hoc, not with an Apple Developer ID, so clear macOS's download mark once, as <a class="text-link" href="{{ '/tools/guide/' | relative_url }}#your-first-tool-in-ten-minutes">the guide</a> shows.</p>
+        <div class="card-foot">
+          <div class="card-links">
+            <a class="text-link" href="https://github.com/VitruvianSoftware/vitruvian-sdk/releases">Releases</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="plate card">
+        <div class="card-head">
+          <h3>A Swift package</h3>
+        </div>
+        <p>The protocol and the kit, by version. <code>vitruvian-tool init --template swift</code> writes a package that depends on it.</p>
+        <div class="card-foot">
+          <div class="install-block">
+            <span class="install-label">Swift Package Manager</span>
+            <code class="install">https://github.com/VitruvianSoftware/vitruvian-sdk</code>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">Read</span>
+      <h2>The guide, the protocol, and two examples.</h2>
+      <p>Each is the SDK's own file, and the code on each page is checked by the SDK's tests.</p>
+    </div>
+
+    <div class="grid grid-2">
+      <a class="plate plate-live card" href="{{ '/tools/guide/' | relative_url }}">
+        <div class="card-head"><h3>Writing a tool</h3></div>
+        <p>From nothing to a working tool in ten minutes, then the manifest, every message, the limits, and how to find out why a tool does not work.</p>
+      </a>
+      <a class="plate plate-live card" href="{{ '/tools/protocol/' | relative_url }}">
+        <div class="card-head"><h3>The protocol</h3></div>
+        <p>How the app and a tool talk: one JSON message per line, every message, and what each refusal means.</p>
+      </a>
+      <a class="plate plate-live card" href="{{ '/tools/examples/swift/' | relative_url }}">
+        <div class="card-head"><h3>An example in Swift</h3></div>
+        <p>A tool written with the Swift kit, which <code>init --template swift</code> starts from.</p>
+      </a>
+      <a class="plate plate-live card" href="{{ '/tools/examples/python/' | relative_url }}">
+        <div class="card-head"><h3>An example in Python</h3></div>
+        <p>A tool in plain Python with nothing else, which <code>init</code> starts from.</p>
+      </a>
+    </div>
+  </div>
+</section>

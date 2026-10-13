@@ -71,6 +71,12 @@ After changing `samples/hello-python` or `samples/hello-swift`, run
 `bazel run //packages/vitruvian-sdk:sync-templates` and commit what it
 writes: `vitruvian-tool init` holds a copy of each.
 
+After changing `docs/writing-a-tool.md`, `protocol/README.md`,
+`protocol/methods.json` or a hello sample, run
+`bazel run //tools/sync-site-tools:sync` and commit what it writes:
+vitruviansoftware.dev/tools holds a copy of each, and
+`//tools/sync-site-tools:in_sync_test` fails until the copy matches.
+
 ## Releases
 
 One version for the whole SDK. release-please keeps it, in vitruvian-core:

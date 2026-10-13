@@ -33,6 +33,8 @@ navigation:
     url: /projects/
   - title: Downloads
     url: /downloads/
+  - title: Tools
+    url: /tools/
   - title: AI
     url: /ai/
   - title: Engineering
