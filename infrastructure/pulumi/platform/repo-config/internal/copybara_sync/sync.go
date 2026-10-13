@@ -207,6 +207,20 @@ var syncedProjects = []syncedProject{
 		HomebrewTapKey: true,
 		Description:    "Build tools for the Vitruvian Mac app: the protocol, the Swift kit and the vitruvian-tool command",
 	},
+	{
+		// The GitHub tool for the Vitruvian app (apps/desktop/vitruvian-tool-github).
+		// Export-only: developed here, released from the mirror, whose own
+		// release.yml tags vX.Y.Z and attaches the tool's zip, which
+		// catalog/tools.json pins by checksum. No tap key: nothing of it goes
+		// to Homebrew. Name uppercase-snakes to
+		// VITRUVIAN_TOOL_GITHUB_SYNC_SSH_KEY, consumed by
+		// copybara-export-vitruvian-tool-github.yaml.
+		Name:           "vitruvian-tool-github",
+		StandaloneRepo: "vitruvian-tool-github",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "The GitHub tool for the Vitruvian Mac app: pull requests and checks in the Dynamic Island, and a GravaStar mouse as a status light",
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its

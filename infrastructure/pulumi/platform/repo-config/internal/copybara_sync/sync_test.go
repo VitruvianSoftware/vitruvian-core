@@ -111,6 +111,34 @@ func TestTheSDKMirrorIsMadePublicWithItsExportKey(t *testing.T) {
 	}
 }
 
+// The GitHub tool's mirror is a public repository this package makes, with
+// the export's write key on it and the key's private half in the monorepo,
+// and no key to the tap: its release is a zip the catalog pins.
+func TestTheGitHubToolMirrorIsMadePublicWithItsExportKeyAndNoTapKey(t *testing.T) {
+	got := run(t)
+	if r := got["vitruvian-tool-github"]; r.typeToken != "github:index/repository:Repository" {
+		t.Fatalf("vitruvian-tool-github is %q, want a github repository", r.typeToken)
+	}
+	if v := text(t, got, "vitruvian-tool-github", "visibility"); v != "public" {
+		t.Errorf("visibility is %q, want public: the app downloads the release's zip with no account", v)
+	}
+	if v := text(t, got, "vitruvian-tool-github-standalone-deploy-key", "repository"); v != "vitruvian-tool-github" {
+		t.Errorf("the export key is on %q, want vitruvian-tool-github", v)
+	}
+	if v := text(t, got, "vitruvian-tool-github-sync-ssh-key-secret", "secretName"); v != "VITRUVIAN_TOOL_GITHUB_SYNC_SSH_KEY" {
+		t.Errorf("the export secret is %q, want VITRUVIAN_TOOL_GITHUB_SYNC_SSH_KEY", v)
+	}
+	if _, ok := got["vitruvian-tool-github-mirror-readonly"]; !ok {
+		t.Error("the mirror's main is not made read-only")
+	}
+	if _, ok := got["vitruvian-tool-github-dispatch-app-private-key-secret"]; ok {
+		t.Error("an export-only mirror must not hold the App's key")
+	}
+	if _, ok := got["vitruvian-tool-github-homebrew-tap-key"]; ok {
+		t.Error("the GitHub tool's mirror must hold no key to the tap: it publishes a zip, not a formula")
+	}
+}
+
 // The mirror's release.yml writes its formula with a key that can write the
 // tap and nothing else.
 func TestTheSDKMirrorHoldsAWriteKeyToTheTapOnly(t *testing.T) {
