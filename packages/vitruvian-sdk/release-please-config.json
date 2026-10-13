@@ -12,7 +12,10 @@
       "component": "vitruvian-sdk",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.9.0",
-      "exclude-paths": ["packages/vitruvian-sdk/.github"],
+      "exclude-paths": [
+        "packages/vitruvian-sdk/.github",
+        "packages/vitruvian-sdk/consumers"
+      ],
       "extra-files": [
         "Sources/VitruvianToolCLI/Words.swift",
         {
