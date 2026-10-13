@@ -97,11 +97,17 @@ extension UIBadgeParams: AppRequest {
     public static var method: ToolMethod { .uiBadge }
 }
 
+extension UIStatusParams: AppRequest {
+    public typealias Answer = EmptyObject
+    public static var method: ToolMethod { .uiStatus }
+}
+
 /// The requests above, by name, for a test to hold against `ToolMethod`.
 public enum AppRequests {
     public static let methods: [ToolMethod] = [
         NotifyHUDParams.method, NotifyBeepParams.method, OpenURLParams.method, ClipboardReadTextParams.method,
         ClipboardWriteTextParams.method, KeystrokesPasteParams.method, KeystrokesPressMenuItemParams.method,
         ProcessesTerminateParams.method, StorageGetParams.method, StorageSetParams.method, UIBadgeParams.method,
+        UIStatusParams.method,
     ]
 }

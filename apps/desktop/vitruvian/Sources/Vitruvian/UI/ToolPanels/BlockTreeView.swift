@@ -128,6 +128,10 @@ package struct BlockTreeContent: Equatable {
                 kind = .spacer(spacer.size ?? Self.spacerSize)
             case .unknown:
                 kind = words(block.fallback).map(Kind.fallback)
+            case .choice:
+                // Read, and not drawn yet: its fallback stands in, as for a
+                // kind the app does not know.
+                kind = words(block.fallback).map(Kind.fallback)
             }
             if let kind { items.append(Item(id: index, kind: kind)) }
         }

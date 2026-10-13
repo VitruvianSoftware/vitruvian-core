@@ -81,8 +81,8 @@ class ModelTests(unittest.TestCase):
     def test_protocol_2_is_in_the_model(self):
         """Each kind of block is a definition of its own, and uiBlock names
         them as its variants by the value of `type`; a tool's text is a
-        string or a map of languages; the manifest has panels; the five ui
-        messages are in the table."""
+        string or a map of languages; the manifest has panels, a status and
+        options on a preference; the six ui messages are in the table."""
         block = self.model.definition("uiBlock")
         self.assertEqual(block.tag, "type")
         self.assertEqual(
@@ -100,6 +100,7 @@ class ModelTests(unittest.TestCase):
                 "divider",
                 "link",
                 "spacer",
+                "choice",
             ],
         )
         for kind, name in block.variants:
@@ -113,6 +114,33 @@ class ModelTests(unittest.TestCase):
         self.assertIn(
             "panels", [f.name for f in self.model.definition("contributes").fields]
         )
+        self.assertIn(
+            "status", [f.name for f in self.model.definition("contributes").fields]
+        )
+        self.assertIn(
+            "options", [f.name for f in self.model.definition("preference").fields]
+        )
+        self.assertIn(
+            "features",
+            [f.name for f in self.model.definition("initializeParams").fields],
+        )
+        self.assertEqual(
+            {e.name: e.values for e in self.model.enums if e.name.startswith("S")},
+            {
+                "Service": (
+                    "notify",
+                    "open",
+                    "clipboard.read",
+                    "clipboard.write",
+                    "keystrokes",
+                    "processes",
+                    "storage",
+                ),
+                "StatusPlacement": ("island",),
+                "StatusState": ("none", "ok", "busy", "attention", "failure"),
+                "Surface": ("commandBar", "radial", "quickPanel", "shortcut"),
+            },
+        )
         self.assertEqual(
             {e.name: e.values for e in self.model.enums if e.name.startswith("P")},
             {
@@ -124,7 +152,14 @@ class ModelTests(unittest.TestCase):
         )
         self.assertEqual(
             [m.method for m in self.model.methods if m.method.startswith("ui/")],
-            ["ui/open", "ui/event", "ui/close", "ui/render", "ui/badge"],
+            [
+                "ui/open",
+                "ui/event",
+                "ui/close",
+                "ui/render",
+                "ui/badge",
+                "ui/status",
+            ],
         )
 
     def test_a_variant_whose_kind_is_not_defined_stops_the_generator(self):
@@ -227,6 +262,48 @@ class OutputTests(unittest.TestCase):
         for path, text in sdk_codegen.generate(self.package).items():
             if path.endswith(".py"):
                 ast.parse(text, filename=path, feature_version=(3, 9))
+
+    def test_every_name_a_python_call_uses_is_imported(self):
+        """A call's arguments name their types, a closed list of names
+        among them: each is imported from messages.py, so the file means
+        what it says to a type checker and to `typing.get_type_hints`."""
+        text = sdk_codegen.generate(self.package)[
+            "kits/python/vitruvian_tool_kit/generated/methods.py"
+        ]
+        tree = ast.parse(text)
+        imported = {
+            alias.name
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+        }
+        defined = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        } | {
+            target.id
+            for node in tree.body
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+            for target in (
+                node.targets if isinstance(node, ast.Assign) else [node.target]
+            )
+            if isinstance(target, ast.Name)
+        }
+        named = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                for argument in node.args.args:
+                    if argument.annotation is not None:
+                        named |= {
+                            part.id
+                            for part in ast.walk(argument.annotation)
+                            if isinstance(part, ast.Name)
+                        }
+        self.assertIn("StatusState", named, "ui/status takes a closed list of names")
+        self.assertEqual(
+            sorted(named - imported - defined - {"str", "int", "bool", "float"}), []
+        )
 
     def test_every_emitter_is_found(self):
         self.assertEqual(

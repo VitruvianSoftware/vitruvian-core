@@ -1045,6 +1045,388 @@
         "method": "ui/badge",
         "params": { "count": -1 }
       }
+    },
+    {
+      "about": "the app starts, and says what it has beyond the first release of the version",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersions": ["1", "2"],
+          "language": "en-US",
+          "dataFolder": "/Users/example/Library/Application Support/Vitruvian/ToolData/com.acme.deploys",
+          "features": ["ui.status", "ui.choice", "preferences.options"]
+        }
+      }
+    },
+    {
+      "about": "a status on the closed island: something failed",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": {
+          "state": "failure",
+          "text": "main is red on vitruvian-core"
+        }
+      }
+    },
+    {
+      "about": "the status was set",
+      "valid": true,
+      "answers": "ui/status",
+      "message": { "jsonrpc": "2.0", "id": 24, "result": {} }
+    },
+    {
+      "about": "a status with a glyph of the tool's own, and words in two languages",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 25,
+        "method": "ui/status",
+        "params": {
+          "state": "busy",
+          "icon": "arrow.triangle.branch",
+          "text": { "en": "Checks are running", "fr": "Vérifications en cours" }
+        }
+      }
+    },
+    {
+      "about": "a status that asks for the person",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 26,
+        "method": "ui/status",
+        "params": {
+          "state": "attention",
+          "text": "A check is waiting for approval"
+        }
+      }
+    },
+    {
+      "about": "a status that says all is well",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 27,
+        "method": "ui/status",
+        "params": { "state": "ok" }
+      }
+    },
+    {
+      "about": "no status",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 28,
+        "method": "ui/status",
+        "params": { "state": "none" }
+      }
+    },
+    {
+      "about": "refused: the manifest declares no status",
+      "valid": true,
+      "answers": "ui/status",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "error": {
+          "code": -32602,
+          "message": "the manifest declares no status"
+        }
+      }
+    },
+    {
+      "about": "a page with a choice among fixed options",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "light",
+                "title": "Mouse when green",
+                "value": "green",
+                "options": [
+                  { "value": "green", "title": "Green" },
+                  {
+                    "value": "breathe green",
+                    "title": {
+                      "en": "Pulsing green",
+                      "de": "Pulsierendes Grün"
+                    }
+                  }
+                ],
+                "enabled": true,
+                "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a choice with only what is required",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "light",
+                "value": "",
+                "options": [{ "value": "", "title": "Nothing" }]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "the person picks an option",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 31,
+        "method": "ui/event",
+        "params": {
+          "panel": "deploys",
+          "block": "light",
+          "event": "change",
+          "value": "breathe green"
+        }
+      }
+    },
+    {
+      "about": "a status that does not say which",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": { "text": "main is red" }
+      }
+    },
+    {
+      "about": "a status the protocol does not have",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": { "state": "broken" }
+      }
+    },
+    {
+      "about": "a status whose words have no English",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": { "state": "failure", "text": { "fr": "main est rouge" } }
+      }
+    },
+    {
+      "about": "a status whose glyph is not a name",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": { "state": "busy", "icon": 7 }
+      }
+    },
+    {
+      "about": "what the app has, not as a list",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersions": ["2"],
+          "language": "en",
+          "dataFolder": "/tmp/data",
+          "features": "ui.status"
+        }
+      }
+    },
+    {
+      "about": "a choice with no id",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "title": "Mouse when green",
+                "value": "green",
+                "options": [
+                  { "value": "green", "title": "Green" },
+                  {
+                    "value": "breathe green",
+                    "title": {
+                      "en": "Pulsing green",
+                      "de": "Pulsierendes Grün"
+                    }
+                  }
+                ],
+                "enabled": true,
+                "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a choice with no options",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "light",
+                "title": "Mouse when green",
+                "value": "green",
+                "enabled": true,
+                "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a choice with an empty list of options",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "light",
+                "title": "Mouse when green",
+                "value": "green",
+                "options": [],
+                "enabled": true,
+                "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a choice that does not say what is selected",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "light",
+                "title": "Mouse when green",
+                "options": [
+                  { "value": "green", "title": "Green" },
+                  {
+                    "value": "breathe green",
+                    "title": {
+                      "en": "Pulsing green",
+                      "de": "Pulsierendes Grün"
+                    }
+                  }
+                ],
+                "enabled": true,
+                "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a choice whose option has no title",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "light",
+                "title": "Mouse when green",
+                "value": "green",
+                "options": [{ "value": "green" }],
+                "enabled": true,
+                "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a choice whose option's value is 129 characters",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "light",
+                "title": "Mouse when green",
+                "value": "green",
+                "options": [
+                  {
+                    "value": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+                    "title": "Green"
+                  }
+                ],
+                "enabled": true,
+                "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }

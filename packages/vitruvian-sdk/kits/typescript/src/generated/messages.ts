@@ -125,6 +125,14 @@ export type ProtocolVersion = (typeof PROTOCOL_VERSIONS)[number];
 export const SERVICES = ["notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage"] as const;
 export type Service = (typeof SERVICES)[number];
 
+/** Where it is shown. island: on the closed island, beside the agent mark. */
+export const STATUS_PLACEMENTS = ["island"] as const;
+export type StatusPlacement = (typeof STATUS_PLACEMENTS)[number];
+
+/** none: no mark. ok: all is well. busy: something is under way. attention: something waits for the person. failure: something failed. */
+export const STATUS_STATES = ["none", "ok", "busy", "attention", "failure"] as const;
+export type StatusState = (typeof STATUS_STATES)[number];
+
 export const SURFACES = ["commandBar", "radial", "quickPanel", "shortcut"] as const;
 export type Surface = (typeof SURFACES)[number];
 
@@ -132,7 +140,7 @@ export type Surface = (typeof SURFACES)[number];
 export const TEXT_STYLES = ["body", "secondary", "caption", "monospaced"] as const;
 export type TextStyle = (typeof TEXT_STYLES)[number];
 
-/** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call. */
+/** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call. */
 export const UI_EVENT_KINDS = ["tap", "toggle", "submit", "change", "bridge"] as const;
 export type UIEventKind = (typeof UI_EVENT_KINDS)[number];
 
@@ -194,6 +202,8 @@ export interface InitializeParams {
   language: string;
   /** The folder the tool may keep its own files in. It is also the folder the tool is started in. */
   dataFolder: string;
+  /** What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them. */
+  features?: string[];
 }
 
 export function readInitializeParams(value: unknown, where = "initializeParams"): InitializeParams {
@@ -203,6 +213,9 @@ export function readInitializeParams(value: unknown, where = "initializeParams")
     language: expectString(object["language"], `${where}.language`),
     dataFolder: expectString(object["dataFolder"], `${where}.dataFolder`),
   };
+  if (object["features"] !== undefined) {
+    read.features = expectArray(object["features"], `${where}.features`).map((item, index) => expectString(item, `${`${where}.features`}[${index}]`));
+  }
   return read;
 }
 
@@ -540,9 +553,9 @@ export interface UIEventParams {
   panel: string;
   /** The id of the block the person acted on. Left out for bridge. */
   block?: string;
-  /** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call. */
+  /** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call. */
   event: UIEventKind;
-  /** For toggle, the switch's new state. For submit and change, the field's text. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own. */
+  /** For toggle, the switch's new state. For submit and change, the field's text; for the change of a choice, the picked option's value. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own. */
   value?: JSONValue;
 }
 
@@ -642,6 +655,30 @@ export function readUIBadgeParams(value: unknown, where = "uiBadgeParams"): UIBa
   return read;
 }
 
+/** The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. An app before 3.48 answers failure -32601. */
+export interface UIStatusParams {
+  /** none: no mark. ok: all is well. busy: something is under way. attention: something waits for the person. failure: something failed. */
+  state: StatusState;
+  /** What it means, in one short line, for VoiceOver and the tooltip. Shown as one line of at most 120 characters. Left out, the app says its own word for the state. */
+  text?: UIText;
+  /** An SF Symbol name, drawn in place of the state's own glyph. The colour, the size and the motion stay the app's. A name this Mac does not have, or a blank one, draws the state's own glyph. */
+  icon?: string;
+}
+
+export function readUIStatusParams(value: unknown, where = "uiStatusParams"): UIStatusParams {
+  const object = expectObject(value, where);
+  const read: UIStatusParams = {
+    state: expectOneOf(object["state"], `${where}.state`, STATUS_STATES),
+  };
+  if (object["text"] !== undefined) {
+    read.text = readUIText(object["text"], `${where}.text`);
+  }
+  if (object["icon"] !== undefined) {
+    read.icon = expectString(object["icon"], `${where}.icon`);
+  }
+  return read;
+}
+
 /** A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an image written into it included: the app does not draw a larger one, and the tool's log says so. */
 export interface UITree {
   /** The blocks, at most 200. */
@@ -658,7 +695,7 @@ export function readUITree(value: unknown, where = "uiTree"): UITree {
 
 /** The fields every kind of UIBlock has. */
 export interface UIBlockFields {
-  /** The block's name within the page, as the events it causes name it. Required for button, toggle, field and list; a row with one can be tapped. The same characters as a command id. */
+  /** The block's name within the page, as the events it causes name it. Required for button, toggle, field, list and choice; a row with one can be tapped. The same characters as a command id. */
   id?: string;
   /** What an app that does not know this kind draws instead, as plain text. */
   fallback?: UIText;
@@ -670,7 +707,7 @@ export interface UIBlockOther extends UIBlockFields {
   [key: string]: unknown;
 }
 
-/** One block. type says which of the twelve kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one. */
+/** One block. type says which of the thirteen kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one. */
 export type UIBlock =
   | (UIBlockFields & TextBlock & { type: "text" })
   | (UIBlockFields & HeadingBlock & { type: "heading" })
@@ -684,6 +721,7 @@ export type UIBlock =
   | (UIBlockFields & DividerBlock & { type: "divider" })
   | (UIBlockFields & LinkBlock & { type: "link" })
   | (UIBlockFields & SpacerBlock & { type: "spacer" })
+  | (UIBlockFields & ChoiceBlock & { type: "choice" })
   | UIBlockOther;
 
 export function readUIBlock(value: unknown, where = "uiBlock"): UIBlock {
@@ -721,6 +759,8 @@ export function readUIBlock(value: unknown, where = "uiBlock"): UIBlock {
       return { ...common, ...readLinkBlock(value, where), type };
     case "spacer":
       return { ...common, ...readSpacerBlock(value, where), type };
+    case "choice":
+      return { ...common, ...readChoiceBlock(value, where), type };
     default:
       return { ...object, ...common, type };
   }
@@ -1009,6 +1049,50 @@ export function readSpacerBlock(value: unknown, where = "spacerBlock"): SpacerBl
   const read: SpacerBlock = {};
   if (object["size"] !== undefined) {
     read.size = expectNumber(object["size"], `${where}.size`);
+  }
+  return read;
+}
+
+/** One option of a choice. */
+export interface UIChoiceOption {
+  /** What the event carries when the person picks it. At most 128 characters. It may be empty. */
+  value: string;
+  /** What the menu shows for it, as one line. */
+  title: UIText;
+}
+
+export function readUIChoiceOption(value: unknown, where = "uiChoiceOption"): UIChoiceOption {
+  const object = expectObject(value, where);
+  const read: UIChoiceOption = {
+    value: expectString(object["value"], `${where}.value`),
+    title: readUIText(object["title"], `${where}.title`),
+  };
+  return read;
+}
+
+/** A pop-up menu: one of a fixed list of options. Picking one is the event change, with the option's value. No two options share a value: JSON Schema cannot say that, and the app refuses a page that breaks it. An app before 3.48 does not know this kind and draws its fallback, which nobody can change: ask the app for ui.choice first, and send a field to an app without it. */
+export interface ChoiceBlock {
+  /** What is being chosen, beside the menu. */
+  title?: UIText;
+  /** The selected option's value. One that is no option's is drawn as an extra first row, as written. */
+  value: string;
+  /** The options, from 1 to 64. */
+  options: UIChoiceOption[];
+  /** False draws it dimmed, and nothing can be picked. */
+  enabled?: boolean;
+}
+
+export function readChoiceBlock(value: unknown, where = "choiceBlock"): ChoiceBlock {
+  const object = expectObject(value, where);
+  const read: ChoiceBlock = {
+    value: expectString(object["value"], `${where}.value`),
+    options: expectArray(object["options"], `${where}.options`).map((item, index) => readUIChoiceOption(item, `${`${where}.options`}[${index}]`)),
+  };
+  if (object["title"] !== undefined) {
+    read.title = readUIText(object["title"], `${where}.title`);
+  }
+  if (object["enabled"] !== undefined) {
+    read.enabled = expectBoolean(object["enabled"], `${where}.enabled`);
   }
   return read;
 }

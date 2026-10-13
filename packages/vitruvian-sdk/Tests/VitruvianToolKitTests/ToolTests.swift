@@ -83,7 +83,7 @@ final class ToolTests: XCTestCase {
     func testEveryRequestAToolMaySendHasAType() {
         let wanted = ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }
         XCTAssertEqual(Set(AppRequests.methods), Set(wanted))
-        XCTAssertEqual(AppRequests.methods.count, 11, "each request once")
+        XCTAssertEqual(AppRequests.methods.count, 12, "each request once")
     }
 
     func testHelloACommandAndGoodbye() throws {
@@ -492,7 +492,7 @@ final class PanelTests: XCTestCase {
                                                  "toggle", "field", "progress", "image", "link"])
         XCTAssertEqual(page.blocks[2].id, "add")
         XCTAssertEqual(page.blocks.compactMap { $0.id }, ["add", "web", "api", "deploys", "notify", "name"])
-        XCTAssertEqual(UIBlock.kinds.count, 12)
+        XCTAssertEqual(UIBlock.kinds.count, 13)
     }
 }
 

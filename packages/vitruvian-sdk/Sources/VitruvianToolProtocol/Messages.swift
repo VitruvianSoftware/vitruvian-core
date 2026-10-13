@@ -40,7 +40,20 @@ public enum AppService: String, CaseIterable, Sendable {
     case storage
 }
 
-/// Every message of the protocol, by its name on the link. The last five
+/// What an app may have beyond the first release of a protocol version, by
+/// the name it gives in `initialize`'s `features`. A tool asks before it
+/// uses one: an app that does not name it does not have it. The list on the
+/// link is plain text, so that a name of a later app is read and ignored.
+public enum ProtocolFeature: String, CaseIterable, Sendable {
+    /// `ui/status`: the tool's status on the closed island.
+    case status = "ui.status"
+    /// The `choice` block.
+    case choice = "ui.choice"
+    /// `options` on a text preference, drawn as a pop-up menu.
+    case preferenceOptions = "preferences.options"
+}
+
+/// Every message of the protocol, by its name on the link. The last six
 /// are version 2's.
 /// `protocol/methods.json` is the same table, and a test holds the two
 /// together.
@@ -67,6 +80,7 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     case uiClose = "ui/close"
     case uiRender = "ui/render"
     case uiBadge = "ui/badge"
+    case uiStatus = "ui/status"
 
     public enum Sender: String, Sendable {
         case app, tool
@@ -79,7 +93,7 @@ public enum ToolMethod: String, CaseIterable, Sendable {
             return .app
         case .commandsState, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText, .clipboardWriteText,
              .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet, .storageSet, .log,
-             .uiRender, .uiBadge:
+             .uiRender, .uiBadge, .uiStatus:
             return .tool
         }
     }
@@ -91,7 +105,7 @@ public enum ToolMethod: String, CaseIterable, Sendable {
             return false
         case .initialize, .commandRun, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText,
              .clipboardWriteText, .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet,
-             .storageSet, .uiOpen, .uiEvent, .uiBadge:
+             .storageSet, .uiOpen, .uiEvent, .uiBadge, .uiStatus:
             return true
         }
     }
@@ -101,7 +115,7 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     public var service: AppService? {
         switch self {
         case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
-             .uiOpen, .uiEvent, .uiClose, .uiRender:
+             .uiOpen, .uiEvent, .uiClose, .uiRender, .uiStatus:
             return nil
         case .notifyHUD, .notifyBeep, .uiBadge: return .notify
         case .openURL: return .open
@@ -196,11 +210,17 @@ public struct InitializeParams: Codable, Equatable, Sendable {
     public let language: String
     /// The folder the tool may keep its own files in.
     public let dataFolder: String
+    /// What this app has beyond the first release of the protocol version,
+    /// by the names `ProtocolFeature` lists. Nil from an app that says
+    /// nothing, which has none of them. A name nobody knows is kept and
+    /// ignored.
+    public let features: [String]?
 
-    public init(protocolVersions: [String], language: String, dataFolder: String) {
+    public init(protocolVersions: [String], language: String, dataFolder: String, features: [String]? = nil) {
         self.protocolVersions = protocolVersions
         self.language = language
         self.dataFolder = dataFolder
+        self.features = features
     }
 }
 

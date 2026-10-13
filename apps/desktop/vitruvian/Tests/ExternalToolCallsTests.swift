@@ -20,6 +20,7 @@ enum ExternalToolCallsTests {
         refusals(suite)
         overTheLimit(suite)
         badges(suite)
+        statuses(suite)
     }
 
     /// A tool that lists every service a manifest may, with a preference of
@@ -309,9 +310,12 @@ enum ExternalToolCallsTests {
                          "\(method.rawValue) from a tool that does not list its service is refused with -32001, "
                              + "which names the service")
         }
-        suite.expect(Set(requests.map(\.0)) == Set(ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered })
+        let asked = ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }
+        suite.expect(Set(requests.map(\.0)) == Set(asked.filter { $0.service != nil })
+                         && asked.filter { $0.service == nil } == [.uiStatus]
                          && bench.world.undeclared.count == requests.count,
-                     "that is every request a tool can make, and each was reported as the tool's mistake")
+                     "that is every request a tool can make but ui/status, which needs no service, "
+                         + "and each was reported as the tool's mistake")
         suite.expect(bench.said.isEmpty && bench.beeps == 0 && bench.opened.isEmpty && bench.written.isEmpty
                          && bench.pastes.isEmpty && bench.menu.pressed.isEmpty && bench.ended.isEmpty
                          && bench.box.reads.isEmpty && bench.box.values.isEmpty && bench.rig.lane.isEmpty,
@@ -374,6 +378,16 @@ enum ExternalToolCallsTests {
 }
 
 extension ExternalToolCallsTests {
+    /// `ui/status`: read by the protocol, and not kept by the app yet.
+    static func statuses(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let answer = error(bench.ask(.uiStatus, #"{"state": "busy"}"#))
+        suite.expect(answer == RPCErrorObject(code: -32601, message: "unknown method"),
+                     "until the app keeps a status, ui/status is answered as an app before 3.48 answers it: "
+                         + "unknown method")
+    }
+
     /// `ui/badge`: behind `notify`, handed to whoever draws the island's
     /// Tools area, and answered at once.
     static func badges(_ suite: TestSuite) {

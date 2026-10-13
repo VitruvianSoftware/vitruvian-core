@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Vitruvian tool manifest",
-  "description": "The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; and the whole file is at most 65,536 bytes.",
+  "description": "The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Four rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; the whole file is at most 65,536 bytes; no two options of one preference share a value; and a preference with options has a default that is one of them.",
   "type": "object",
   "required": ["id", "name", "version", "protocol", "publisher", "runtime"],
   "properties": {
@@ -84,6 +84,13 @@
       "then": {
         "properties": { "contributes": { "not": { "required": ["panels"] } } }
       }
+    },
+    {
+      "description": "A status is protocol 2's too: a manifest that says 1 declares none.",
+      "if": { "properties": { "protocol": { "const": "1" } } },
+      "then": {
+        "properties": { "contributes": { "not": { "required": ["status"] } } }
+      }
     }
   ],
   "$defs": {
@@ -94,7 +101,7 @@
       "additionalProperties": { "type": "string", "pattern": "\\S" }
     },
     "contributes": {
-      "description": "What the tool adds to the app: commands, and in protocol 2 panels.",
+      "description": "What the tool adds to the app: commands, and in protocol 2 panels and a status.",
       "type": "object",
       "properties": {
         "commands": {
@@ -126,6 +133,21 @@
               "maxContains": 1
             }
           ]
+        },
+        "status": {
+          "description": "The tool shows a status: a small mark the app draws, which the tool sets with ui/status. Without this, the app refuses ui/status. Protocol 2 only. An app before 3.48 ignores it, and shows no status.",
+          "$ref": "#/$defs/statusContribution"
+        }
+      }
+    },
+    "statusContribution": {
+      "description": "That the tool shows a status, and where.",
+      "type": "object",
+      "required": ["placement"],
+      "properties": {
+        "placement": {
+          "description": "Where it is shown. island: on the closed island, beside the agent mark.",
+          "enum": ["island"]
         }
       }
     },
@@ -225,9 +247,21 @@
         },
         "default": {
           "description": "The value before anything is saved. It is of the type named."
+        },
+        "options": {
+          "description": "The values the person chooses among: the app draws the setting as a pop-up menu, not a field. From 1 to 64, no two with one value, and the default is one of them. Only a string preference may have them. They are how the app draws, not a rule on the value: a saved value that is no option's is kept and shown as written. An app before 3.48 ignores them, and draws a text field.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/preferenceOption" }
         }
       },
       "allOf": [
+        {
+          "description": "Options are a text setting's: a preference of another type has none.",
+          "if": { "required": ["options"] },
+          "then": { "properties": { "type": { "const": "string" } } }
+        },
         {
           "if": { "properties": { "type": { "const": "string" } } },
           "then": { "properties": { "default": { "type": "string" } } }
@@ -245,6 +279,27 @@
           "then": { "properties": { "default": { "type": "number" } } }
         }
       ]
+    },
+    "preferenceOption": {
+      "description": "One value a preference with options may be set to, and what the person reads for it.",
+      "type": "object",
+      "required": ["value", "title"],
+      "properties": {
+        "value": {
+          "description": "What is saved when the person picks it. At most 128 characters, with no line break and no other control character. It may be empty.",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "title": {
+          "description": "What the menu shows for it, as written. Held to what a preference's title is: at most 60 characters in each language, with no line break and no other control character.",
+          "$ref": "#/$defs/localizedText",
+          "additionalProperties": {
+            "maxLength": 60,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+          }
+        }
+      }
     },
     "runtime": {
       "description": "The program the app starts.",

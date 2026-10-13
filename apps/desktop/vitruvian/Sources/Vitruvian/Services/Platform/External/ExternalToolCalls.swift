@@ -42,6 +42,12 @@ package struct ExternalToolCalls {
             // that does not.
             reply(.failure(RPCErrorObject(code: RPCErrorCode.methodNotFound, message: "unknown method")))
 
+        case .uiStatus:
+            // A tool's request, so it has an arm of its own. Until the app
+            // keeps a status it honestly has none, and says what an app
+            // before 3.48 says: the method is not one it knows.
+            reply(.failure(RPCErrorObject(code: RPCErrorCode.methodNotFound, message: "unknown method")))
+
         case .uiBadge:
             // Behind `notify`, as the protocol says.
             guard let asked = Self.read(UIBadgeParams.self, params) else { return reply(Self.badParams) }

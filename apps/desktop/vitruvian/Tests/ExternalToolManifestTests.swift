@@ -187,6 +187,34 @@ enum ExternalToolManifestTests {
              {"preferences": [{"id": "project", "type": "string", "default": ""},
                               {"id": "project", "type": "boolean", "default": false}]}
              """#),
+            ("options on a setting that is not text", .invalid(.optionsNeedString(preference: "loud")),
+             #"""
+             {"preferences": [{"id": "loud", "type": "boolean", "default": true,
+                               "options": [{"value": "yes", "title": {"en": "Yes"}}]}]}
+             """#),
+            ("a default that is none of the options", .invalid(.defaultNotAnOption(preference: "project")),
+             #"""
+             {"preferences": [{"id": "project", "type": "string", "default": "initech",
+                               "options": [{"value": "acme", "title": {"en": "Acme"}}]}]}
+             """#),
+            ("two options with one value", .invalid(.duplicateOption(preference: "project", value: "acme")),
+             #"""
+             {"preferences": [{"id": "project", "type": "string", "default": "acme",
+                               "options": [{"value": "acme", "title": {"en": "Acme"}},
+                                           {"value": "acme", "title": {"en": "Acme again"}}]}]}
+             """#),
+            ("an empty list of options", .invalid(.optionCountOutOfRange(preference: "project", count: 0)),
+             #"{"preferences": [{"id": "project", "type": "string", "default": "", "options": []}]}"#),
+            ("a status in a manifest of protocol 1", .invalid(.statusNeedsProtocol2("1")),
+             #"{"contributes": {"status": {"placement": "island"}}}"#),
+            ("a status in a place the app does not have", .invalid(.unknownStatusPlacement("menuBar")),
+             #"{"protocol": "2", "contributes": {"status": {"placement": "menuBar"}}}"#),
+            ("a kind of preference no app has, with options",
+             .invalid(.unknownPreferenceType(preference: "project", type: "choice")),
+             #"""
+             {"preferences": [{"id": "project", "type": "choice", "default": "acme",
+                               "options": [{"value": "acme", "title": {"en": "Acme"}}]}]}
+             """#),
             ("more commands than a tool may have", .invalid(.tooManyCommands(33)),
              #"{"contributes": {"commands": \#(manyCommands)}}"#),
             ("more preferences than a tool may have", .invalid(.tooManyPreferences(17)),

@@ -43,13 +43,15 @@ import {
   type ProtocolVersion,
   SERVICES,
   type Service,
+  STATUS_PLACEMENTS,
+  type StatusPlacement,
   SURFACES,
   type Surface,
   readLocalizedText,
   type LocalizedText,
 } from "./messages.js";
 
-/** The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; and the whole file is at most 65,536 bytes. */
+/** The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Four rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; the whole file is at most 65,536 bytes; no two options of one preference share a value; and a preference with options has a default that is one of them. */
 export interface ToolManifest {
   /** The tool's identity, in reverse-DNS form, for example com.acme.deploys. Letters, digits, hyphens and underscores in parts joined by single dots. It must have a dot: an id with none belongs to a feature built into the app. At most 128 characters. It never changes between versions of a tool. */
   id: string;
@@ -113,12 +115,14 @@ export function readToolManifest(value: unknown, where = "manifest"): ToolManife
   return read;
 }
 
-/** What the tool adds to the app: commands, and in protocol 2 panels. */
+/** What the tool adds to the app: commands, and in protocol 2 panels and a status. */
 export interface Contributes {
   /** The tool's commands. At most 32. */
   commands?: Command[];
   /** What the tool draws, and where. At most 8; at most one in the island and one in Settings. Protocol 2 only. */
   panels?: Panel[];
+  /** The tool shows a status: a small mark the app draws, which the tool sets with ui/status. Without this, the app refuses ui/status. Protocol 2 only. An app before 3.48 ignores it, and shows no status. */
+  status?: StatusContribution;
 }
 
 export function readContributes(value: unknown, where = "contributes"): Contributes {
@@ -130,6 +134,23 @@ export function readContributes(value: unknown, where = "contributes"): Contribu
   if (object["panels"] !== undefined) {
     read.panels = expectArray(object["panels"], `${where}.panels`).map((item, index) => readPanel(item, `${`${where}.panels`}[${index}]`));
   }
+  if (object["status"] !== undefined) {
+    read.status = readStatusContribution(object["status"], `${where}.status`);
+  }
+  return read;
+}
+
+/** That the tool shows a status, and where. */
+export interface StatusContribution {
+  /** Where it is shown. island: on the closed island, beside the agent mark. */
+  placement: StatusPlacement;
+}
+
+export function readStatusContribution(value: unknown, where = "statusContribution"): StatusContribution {
+  const object = expectObject(value, where);
+  const read: StatusContribution = {
+    placement: expectOneOf(object["placement"], `${where}.placement`, STATUS_PLACEMENTS),
+  };
   return read;
 }
 
@@ -205,6 +226,8 @@ export interface Preference {
   type: PreferenceType;
   /** The value before anything is saved. It is of the type named. */
   default: JSONValue;
+  /** The values the person chooses among: the app draws the setting as a pop-up menu, not a field. From 1 to 64, no two with one value, and the default is one of them. Only a string preference may have them. They are how the app draws, not a rule on the value: a saved value that is no option's is kept and shown as written. An app before 3.48 ignores them, and draws a text field. */
+  options?: PreferenceOption[];
 }
 
 export function readPreference(value: unknown, where = "preference"): Preference {
@@ -217,6 +240,26 @@ export function readPreference(value: unknown, where = "preference"): Preference
   if (object["title"] !== undefined) {
     read.title = readLocalizedText(object["title"], `${where}.title`);
   }
+  if (object["options"] !== undefined) {
+    read.options = expectArray(object["options"], `${where}.options`).map((item, index) => readPreferenceOption(item, `${`${where}.options`}[${index}]`));
+  }
+  return read;
+}
+
+/** One value a preference with options may be set to, and what the person reads for it. */
+export interface PreferenceOption {
+  /** What is saved when the person picks it. At most 128 characters, with no line break and no other control character. It may be empty. */
+  value: string;
+  /** What the menu shows for it, as written. Held to what a preference's title is: at most 60 characters in each language, with no line break and no other control character. */
+  title: LocalizedText;
+}
+
+export function readPreferenceOption(value: unknown, where = "preferenceOption"): PreferenceOption {
+  const object = expectObject(value, where);
+  const read: PreferenceOption = {
+    value: expectString(object["value"], `${where}.value`),
+    title: readLocalizedText(object["title"], `${where}.title`),
+  };
   return read;
 }
 

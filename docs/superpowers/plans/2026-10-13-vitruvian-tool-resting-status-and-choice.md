@@ -189,6 +189,17 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
 
 - [ ] **Step 8: Commit**, with `git status --short` first.
 
+**As built (2026-10-13).** Where the code proved the plan wrong:
+
+- **This commit alone leaves four kit tests red; Task 2's commit makes them green.** Every kit holds a test that each request a tool may send has a call (`every_request_a_tool_may_send_has_a_call` in Rust, `TestEveryRequestAToolMaySendHasACall` in Go, and the count of calls in Python and TypeScript). So `ui/status` in `methods.json` fails them until the kit has the call. Tasks 1 and 2 were built together and committed apart, by file. Decision 3 ("each task must build and pass by itself") does not hold between these two.
+- **`Desk.swift` answers `ui/status` for real already**, not in Task 3. `DeskTests.testEveryRequestATooMaySendIsAnswered` holds that the desk answers every request a tool may send, so an arm that refused it would have needed that test bent. The desk says "the app would show <state> on the closed island", and refuses a tool whose manifest declares none with -32602.
+- **`Sources/VitruvianToolCLI/Words.swift` gained eight sentences.** Its `switch` over `ManifestProblem` is exhaustive; the plan's list of files did not name it.
+- **`tools/sdk-codegen/emitters/python.py` had a bug this change was the first to reach.** A call whose argument is a closed list of names (`state: StatusState`) named a type the file never imported. Fixed, with a test (`test_every_name_a_python_call_uses_is_imported`) that was seen to fail without the fix.
+- **A choice's duplicate values have no example in `messages.json`.** JSON Schema cannot say the rule and the file has no `schema: false` mark for messages, so the schema's description says it and the Swift tests hold it (`testAChoiceIsHeldToItsRules`, and the app's `ToolPanelTests.choices`).
+- **The app's `ExternalToolCallsTests.refusals` changed on purpose.** It held that every request a tool makes is refused with -32001 when its service is not in `uses`. `ui/status` needs no service, so the test now says so by name.
+- **More examples than the plan lists**, each naming its problem: a status with no placement, an option with no title, a blank option title, sixty-four options with a value of 128 characters, a choice with only what is required.
+- `platform` ran 879 checks after this task. The count before was not run separately: this task adds 15 expectations, so it was 864.
+
 ---
 
 ### Task 2: Every kit sets a status, builds a choice, and asks what the app has

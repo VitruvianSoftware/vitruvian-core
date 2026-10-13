@@ -1,5 +1,5 @@
 {
-  "about": "Every message of protocol version 2: version 1's, and the five ui/ messages version 2 adds. `sender` is who sends it. A `request` is answered; a `notice` is not. `uses` is the entry the tool's manifest must list in `uses` before the app will do it. `params` and `result` name a definition in messages.schema.json; null means the message carries none.",
+  "about": "Every message of protocol version 2: version 1's, and the six ui/ messages version 2 adds. `sender` is who sends it. A `request` is answered; a `notice` is not. `uses` is the entry the tool's manifest must list in `uses` before the app will do it. `params` and `result` name a definition in messages.schema.json; null means the message carries none.",
   "protocol": "2",
   "methods": [
     {
@@ -176,6 +176,14 @@
       "kind": "request",
       "uses": "notify",
       "params": "uiBadgeParams",
+      "result": "empty"
+    },
+    {
+      "method": "ui/status",
+      "sender": "tool",
+      "kind": "request",
+      "uses": null,
+      "params": "uiStatusParams",
       "result": "empty"
     }
   ]

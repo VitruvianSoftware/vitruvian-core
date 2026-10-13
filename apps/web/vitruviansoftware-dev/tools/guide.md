@@ -522,8 +522,8 @@ refuses its command and says why.
 | `license` | no | Text. Not shown yet. |
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
-| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. |
-| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. The tool reads and writes any of them with `storage/get` and `storage/set`. |
+| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. And `status`, `{ "placement": "island" }`: the tool shows a small status mark on the closed island, which it sets with `ui/status`. `island` is the only placement. Without it the app refuses `ui/status`. |
+| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. A `string` preference may carry `options`: from 1 to 64 of `{ value, title }`, and the app then draws a pop-up menu in place of the text field. A `value` is text of at most 128 characters, with no line break, and may be empty; no two options share one; the default is one of them. A `title` is a map of languages held to what the preference's own title is. The tool reads and writes any of them with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
 
@@ -538,6 +538,14 @@ refuses its command and says why.
   know: the tool is added and runs there as before, and the person is shown
   no setting. The manifest has no field for the oldest app a tool needs, and
   a title needs none.
+- **`options` and `status` are newer still**, from Vitruvian 3.48. An app
+  from before them ignores both fields: a preference with options is a text
+  field there, holding the same text, and the tool shows no status. So the
+  options are how the app draws, never a rule on the value: the app keeps a
+  saved value that is no option's and shows it as written.
+- **Never write a preference `type` the table above does not list.** A list
+  of choices is `"type": "string"` with `options`. A type an app does not
+  know refuses the whole tool, on every app released so far.
 - **The file is at most 65,536 bytes.**
 
 ## Every message
@@ -553,9 +561,15 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys"}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options"]}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
+
+`features` names what this app has beyond the first release of the protocol
+version: `ui.status` (the `ui/status` request), `ui.choice` (the `choice`
+block) and `preferences.options` (a preference's `options`, drawn as a
+menu). Vitruvian 3.48 and later send it. An older app sends no `features`
+at all, and has none of them. Ignore a name you do not know.
 
 `command/run` runs a command, named by the id the manifest gives it. Answer
 `{}` when it ran, or failure -32010 when you will not run it.
@@ -676,7 +690,7 @@ is saved.
 
 ### What version 2 adds
 
-Protocol 2 adds five messages, for a tool that draws: its manifest says
+Protocol 2 adds six messages, for a tool that draws: its manifest says
 `"protocol": "2"` and lists `panels`. Nothing of version 1 changes, and a
 tool that draws nothing never sees them. "Drawing", below, says how a tool
 uses them.
@@ -701,6 +715,21 @@ news. `ui/badge` puts a count or a dot beside the tool in the island; it needs
 {"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"text","text":"Nothing deployed today."}]}}}
 {"jsonrpc":"2.0","id":"l","method":"ui/badge","params":{"count":2}}
 {"jsonrpc":"2.0","id":"l","result":{}}
+```
+
+`ui/status` sets the tool's status: a small mark the app draws on the closed
+island. `state` is `none`, `ok`, `busy`, `attention` or `failure`. `text`, a
+string or a map of languages, says what it means, for VoiceOver. `icon`, an
+SF Symbol name, replaces the state's own glyph. It needs nothing in `uses`:
+the manifest declares it, under `contributes.status`, and without that the
+app answers failure -32602. Each one replaces the last, and the mark goes
+when your program ends. An app before 3.48 answers failure -32601.
+
+```json
+{"jsonrpc":"2.0","id":"m","method":"ui/status","params":{"state":"busy","icon":"arrow.triangle.branch","text":{"en":"Checks are running","fr":"Vérifications en cours"}}}
+{"jsonrpc":"2.0","id":"m","result":{}}
+{"jsonrpc":"2.0","id":"n","method":"ui/status","params":{"state":"none"}}
+{"jsonrpc":"2.0","id":"n","result":{}}
 ```
 
 ### Being refused
@@ -769,7 +798,7 @@ a `ui/event`, answered with the next page; `ui/close` says the panel went
 away. To change an open page by yourself, send `ui/render`. "What version 2
 adds", above, shows each message.
 
-### The twelve kinds of block
+### The thirteen kinds of block
 
 | Kind | Fields | What the person does |
 |---|---|---|
@@ -785,11 +814,14 @@ adds", above, shows each message.
 | `divider` | none | |
 | `link` | `title`, `url`: a web or mail address, opened through the app, so it needs `open` in `uses` | clicks it |
 | `spacer` | `size`, up to 40 points | |
+| `choice` | `title`, `value`, `options`, each `{ value, title }`, from 1 to 64, no two with one `value`; `enabled`; needs an `id` | picks an option: `change`, with the option's `value` |
 
 Any text is a string or a map of languages, and it is drawn as you wrote it:
 never as markdown, never as a link, and cut to its lines. A block of a kind
 this app does not know, from a later protocol, is drawn as its `fallback`
-text, or left out. A page is at most 262,144 bytes and 200 blocks; one over
+text, or left out. `choice` is such a kind to an app before 3.48: it is in
+the hello's `features` as `ui.choice`, and a tool sends a `field` to an app
+that does not name it. A page is at most 262,144 bytes and 200 blocks; one over
 either is not drawn, the panel keeps the page it had, and your log says why.
 
 ### In Swift, with the kit

@@ -41,6 +41,7 @@ import {
   type StorageSetParams,
   type UIBadgeParams,
   type UIRenderParams,
+  type UIStatusParams,
   readClipboardReadTextResult,
   readClipboardWriteTextResult,
   readEmptyObject,
@@ -89,6 +90,7 @@ export const METHODS: readonly MethodInfo[] = [
   { method: "ui/close", sender: "app", kind: "notice", uses: null, params: "uiCloseParams", result: null },
   { method: "ui/render", sender: "tool", kind: "notice", uses: null, params: "uiRenderParams", result: null },
   { method: "ui/badge", sender: "tool", kind: "request", uses: "notify", params: "uiBadgeParams", result: "empty" },
+  { method: "ui/status", sender: "tool", kind: "request", uses: null, params: "uiStatusParams", result: "empty" },
 ];
 
 /** Sends a request and returns what its answer carries, or throws. */
@@ -133,6 +135,8 @@ export interface AppCalls {
   readonly ui: {
     /** `ui/badge`. A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses. Needs `notify` in the manifest's `uses`. */
     badge(params: UIBadgeParams): EmptyObject;
+    /** `ui/status`. The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. An app before 3.48 answers failure -32601. */
+    status(params: UIStatusParams): EmptyObject;
     /** `ui/render`. A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped. A notice: the app does not answer it. */
     render(params: UIRenderParams): void;
   };
@@ -171,6 +175,7 @@ export function appCalls(request: Requester, notice: Noticer): AppCalls {
     },
     ui: {
       badge: (params: UIBadgeParams) => readEmptyObject(request("ui/badge", params), "the answer to ui/badge"),
+      status: (params: UIStatusParams) => readEmptyObject(request("ui/status", params), "the answer to ui/status"),
       render: (params: UIRenderParams) => notice("ui/render", params),
     },
     commands: {

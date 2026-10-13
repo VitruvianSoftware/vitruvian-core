@@ -149,9 +149,9 @@ app from a page the tool sends. A `web` panel is a page from the tool's own
 folder, named by `entry`.
 
 - **At most 8 panels**, one in the island and one in Settings at most.
-- **A page is a list of blocks**, of twelve kinds: `text`, `heading`, `row`,
+- **A page is a list of blocks**, of thirteen kinds: `text`, `heading`, `row`,
   `button`, `toggle`, `field`, `list`, `progress`, `image`, `divider`,
-  `link`, `spacer`. Each kind's fields are in `messages.schema.json`. A block
+  `link`, `spacer`, `choice`. Each kind's fields are in `messages.schema.json`. A block
   of a kind the app does not know is drawn as its `fallback`, or left out.
 - **Limits**: a page is at most 262,144 bytes as JSON, an image written into
   it included, and at most 200 blocks; a list at most 200 rows. The app draws
@@ -170,6 +170,34 @@ folder, named by `entry`.
   (`unsupportedProtocol`). **An app of version 2 runs a version 1 tool as
   it always did**: it offers both versions at `initialize`, and the tool
   picks.
+
+## Added to version 2 without a new version
+
+Vitruvian 3.48 added four things to version 2. An older app ignores each
+key and answers the one new request with failure -32601, so a tool that
+uses them still installs and runs there.
+
+- **`features` in `initialize`**: the names of what this app has beyond the
+  first release of the version: `ui.status`, `ui.choice`,
+  `preferences.options`. An app before 3.48 sends none. A tool asks before
+  it uses one, and ignores a name it does not know.
+- **A status, `ui/status`**: a request from the tool, with a `state` of
+  `none`, `ok`, `busy`, `attention` or `failure`, an optional `text` and an
+  optional `icon`. The app draws it as a small mark on the closed island.
+  The manifest declares it, as `contributes.status` with a `placement` of
+  `island`, in protocol 2 only; it needs nothing in `uses`. One from a tool
+  that did not declare it is answered with failure -32602. Each replaces
+  the last, and it goes when the tool's program ends.
+- **A `choice` block**: a pop-up menu of 1 to 64 options, each a `value` and
+  a `title`, with the selected `value`. Picking one is the event `change`,
+  with the option's value. An app before 3.48 draws its `fallback`.
+- **`options` on a `string` preference**: 1 to 64 of a `value` and a `title`
+  in several languages. The app draws a pop-up menu in place of a text
+  field. They are how the app draws, not a rule on the value: a saved value
+  that is no option's is kept. An app before 3.48 draws a text field.
+
+A list of choices is never a new preference `type`: every app refuses a
+manifest with a type it does not know.
 
 ## Changing the protocol
 
@@ -207,4 +235,5 @@ see a difference an example crosses.
 | `ui/close` | app | notice |  |
 | `ui/render` | tool | notice |  |
 | `ui/badge` | tool | request | `notify` |
+| `ui/status` | tool | request |  |
 {% endraw %}

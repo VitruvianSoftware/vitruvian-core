@@ -53,6 +53,7 @@ final class ProtocolExamplesTests: XCTestCase {
         case .uiClose: return try again(value, as: UICloseParams.self)
         case .uiRender: return try again(value, as: UIRenderParams.self)
         case .uiBadge: return try again(value, as: UIBadgeParams.self)
+        case .uiStatus: return try again(value, as: UIStatusParams.self)
         case .shutdown, .notifyBeep, .clipboardReadText: return try again(value, as: EmptyObject.self)
         }
     }
@@ -69,7 +70,8 @@ final class ProtocolExamplesTests: XCTestCase {
         case .storageGet: return try again(value, as: StorageGetResult.self)
         case .uiOpen: return try again(value, as: UIOpenResult.self)
         case .uiEvent: return try again(value, as: UIEventResult.self)
-        case .commandRun, .notifyHUD, .notifyBeep, .keystrokesPaste, .processesTerminate, .storageSet, .uiBadge:
+        case .commandRun, .notifyHUD, .notifyBeep, .keystrokesPaste, .processesTerminate, .storageSet, .uiBadge,
+             .uiStatus:
             return try again(value, as: EmptyObject.self)
         case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log, .uiClose, .uiRender:
             return nil
@@ -110,6 +112,7 @@ final class ProtocolExamplesTests: XCTestCase {
         ("uiCloseParams", UICloseParams(panel: "")),
         ("uiRenderParams", UIRenderParams(panel: "", tree: UITree(blocks: []))),
         ("uiBadgeParams", UIBadgeParams()),
+        ("uiStatusParams", UIStatusParams(state: .none)),
         ("uiTree", UITree(blocks: [])),
         ("uiListRow", UIListRow(id: "", title: "")),
         ("textBlock", TextBlock(text: "")),
@@ -124,6 +127,8 @@ final class ProtocolExamplesTests: XCTestCase {
         ("dividerBlock", DividerBlock()),
         ("linkBlock", LinkBlock(title: "", url: "")),
         ("spacerBlock", SpacerBlock()),
+        ("uiChoiceOption", UIChoiceOption(value: "", title: "")),
+        ("choiceBlock", ChoiceBlock(value: "", options: [])),
     ]
 
     /// The definitions that are the message itself, read by `RPCMessage`.
@@ -247,7 +252,7 @@ final class ProtocolExamplesTests: XCTestCase {
         let definitions = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]
         let block = definitions?["uiBlock"]
         XCTAssertEqual(ProtocolFiles.fields(declaredBy: block), ["type", "id", "fallback"])
-        // Each kind picks the definition of its own fields, and the twelve
+        // Each kind picks the definition of its own fields, and the thirteen
         // are the kinds the Swift type reads.
         let picked = (block?["allOf"]?.arrayValue ?? []).compactMap { branch -> (String, String)? in
             guard let kind = branch["if"]?["properties"]?["type"]?["const"]?.stringValue,
@@ -279,5 +284,74 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(listed("fieldBlock", "kind"), FieldBlock.Kind.allCases.map(\.rawValue))
         let said = definitions?["uiTree"]?["description"]?.stringValue ?? ""
         XCTAssertTrue(said.contains("262,144 bytes"), "the schema says the number the code holds: \(said)")
+        XCTAssertEqual(UIBlock.kinds.count, 13)
+        XCTAssertEqual(UIBlock.kinds.last, "choice")
+        let choice = definitions?["choiceBlock"]?["properties"]
+        XCTAssertEqual(choice?["options"]?["maxItems"]?.numberValue, Double(UILimits.maxChoiceOptions))
+        XCTAssertEqual(choice?["options"]?["minItems"]?.numberValue, 1)
+        XCTAssertEqual(choice?["value"]?["maxLength"]?.numberValue, Double(UILimits.maxChoiceValueLength))
+        XCTAssertEqual(definitions?["uiChoiceOption"]?["properties"]?["value"]?["maxLength"]?.numberValue,
+                       Double(UILimits.maxChoiceValueLength))
+    }
+
+    func testAStatusIsOneOfFiveStatesAndNeedsNoService() {
+        let definitions = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]
+        let states = definitions?["uiStatusParams"]?["properties"]?["state"]?["enum"]?.arrayValue
+        XCTAssertEqual(states?.compactMap(\.stringValue), StatusState.allCases.map(\.rawValue))
+        XCTAssertEqual(StatusState.allCases.map(\.rawValue), ["none", "ok", "busy", "attention", "failure"])
+        XCTAssertEqual(ToolMethod.uiStatus.rawValue, "ui/status")
+        XCTAssertEqual(ToolMethod.uiStatus.sender, .tool)
+        XCTAssertTrue(ToolMethod.uiStatus.isAnswered, "a request, so a tool with no kit learns from -32601")
+        XCTAssertNil(ToolMethod.uiStatus.service, "the manifest's declaration is the permission")
+        XCTAssertEqual(ToolMethod.allCases.last, .uiStatus)
+    }
+
+    func testTheHelloMaySayWhatTheAppHas() throws {
+        // An app before 3.48 sends no such field, and its hello is read
+        // and written back exactly as it was.
+        let old = InitializeParams(protocolVersions: ["1", "2"], language: "en", dataFolder: "/d")
+        XCTAssertNil(old.features)
+        XCTAssertEqual(try JSONValue(encoding: old),
+                       .object(["protocolVersions": .array([.string("1"), .string("2")]), "language": .string("en"),
+                                "dataFolder": .string("/d")]),
+                       "no features key at all when there is none")
+        let new = InitializeParams(protocolVersions: ["2"], language: "en", dataFolder: "/d",
+                                   features: ProtocolFeature.allCases.map(\.rawValue) + ["ui.later"])
+        let read = try JSONValue(encoding: new).decode(InitializeParams.self)
+        XCTAssertEqual(read.features, ["ui.status", "ui.choice", "preferences.options", "ui.later"],
+                       "a name nobody knows is kept, not refused")
+        let said = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["initializeParams"]?["properties"]?[
+            "features"]?["description"]?.stringValue ?? ""
+        for feature in ProtocolFeature.allCases {
+            XCTAssertTrue(said.contains(feature.rawValue), "the schema names \(feature.rawValue): \(said)")
+        }
+    }
+
+    func testAChoiceIsHeldToItsRules() throws {
+        func choice(value: String = "a", _ options: [(String, String)]) -> JSONValue {
+            .object(["type": .string("choice"), "id": .string("pick"), "value": .string(value),
+                     "options": .array(options.map { .object(["value": .string($0.0), "title": .string($0.1)]) })])
+        }
+        func reads(_ block: JSONValue) -> Bool { (try? block.decode(UIBlock.self)) != nil }
+        XCTAssertTrue(reads(choice([("a", "A"), ("b", "B")])))
+        XCTAssertTrue(reads(choice(value: "typed by hand", [("a", "A")])), "a value that is no option's is read")
+        XCTAssertTrue(reads(choice(value: "", [("", "Nothing")])), "an empty value is a value")
+        XCTAssertFalse(reads(choice([])), "no option")
+        let many = (0..<UILimits.maxChoiceOptions).map { ("v\($0)", "V\($0)") }
+        XCTAssertTrue(reads(choice(many)))
+        XCTAssertFalse(reads(choice(many + [("more", "More")])), "sixty-five options")
+        XCTAssertFalse(reads(choice([("a", "A"), ("a", "A again")])), "two options with one value")
+        let longest = String(repeating: "\u{1F680}", count: UILimits.maxChoiceValueLength)
+        XCTAssertTrue(reads(choice(value: longest, [(longest, "Long")])))
+        XCTAssertFalse(reads(choice([("a", "A"), (longest + "a", "Too long")])))
+        XCTAssertFalse(reads(choice(value: longest + "a", [("a", "A")])))
+        var noID = choice([("a", "A")]).objectValue ?? [:]
+        noID["id"] = nil
+        XCTAssertFalse(reads(.object(noID)), "its event names it, so it needs an id")
+        let block = try choice([("a", "A"), ("b", "B")]).decode(UIBlock.self)
+        XCTAssertEqual(block.type, "choice")
+        XCTAssertEqual(block.content, .choice(ChoiceBlock(value: "a", options: [UIChoiceOption(value: "a", title: "A"),
+                                                                                UIChoiceOption(value: "b", title: "B")])))
+        XCTAssertEqual(try JSONValue(encoding: block), choice([("a", "A"), ("b", "B")]))
     }
 }

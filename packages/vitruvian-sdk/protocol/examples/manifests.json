@@ -1,5 +1,5 @@
 {
-  "about": "Manifests the schema and the Swift reader must judge alike. Each example is `base` with the top-level fields in `change` replaced; a field changed to null is left out. `problem` is the case of ManifestProblem the Swift reader gives, and `names` are words its reason carries. `schema: false` marks the three rules JSON Schema cannot say, so the schema accepts those manifests.",
+  "about": "Manifests the schema and the Swift reader must judge alike. Each example is `base` with the top-level fields in `change` replaced; a field changed to null is left out. `problem` is the case of ManifestProblem the Swift reader gives, and `names` are words its reason carries. `schema: false` marks the rules JSON Schema cannot say, so the schema accepts those manifests.",
   "base": {
     "id": "com.acme.deploys",
     "name": { "en": "Deploys", "fr": "Déploiements" },
@@ -843,6 +843,475 @@
             }
           ]
         }
+      }
+    },
+    {
+      "about": "a status on the closed island",
+      "valid": true,
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "status": { "placement": "island" }
+        }
+      }
+    },
+    {
+      "about": "a text preference with options, each title in two languages",
+      "valid": true,
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [
+              { "value": "acme", "title": { "en": "Acme", "fr": "Acmé" } },
+              {
+                "value": "globex",
+                "title": { "en": "Globex", "fr": "Globex SA" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an option whose value is empty, and the default is that one",
+      "valid": true,
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "",
+            "options": [
+              { "value": "", "title": { "en": "No project" } },
+              { "value": "acme", "title": { "en": "Acme" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "sixty-four options, and a value of 128 characters",
+      "valid": true,
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "p0",
+            "options": [
+              { "value": "p0", "title": { "en": "Project 0" } },
+              { "value": "p1", "title": { "en": "Project 1" } },
+              { "value": "p2", "title": { "en": "Project 2" } },
+              { "value": "p3", "title": { "en": "Project 3" } },
+              { "value": "p4", "title": { "en": "Project 4" } },
+              { "value": "p5", "title": { "en": "Project 5" } },
+              { "value": "p6", "title": { "en": "Project 6" } },
+              { "value": "p7", "title": { "en": "Project 7" } },
+              { "value": "p8", "title": { "en": "Project 8" } },
+              { "value": "p9", "title": { "en": "Project 9" } },
+              { "value": "p10", "title": { "en": "Project 10" } },
+              { "value": "p11", "title": { "en": "Project 11" } },
+              { "value": "p12", "title": { "en": "Project 12" } },
+              { "value": "p13", "title": { "en": "Project 13" } },
+              { "value": "p14", "title": { "en": "Project 14" } },
+              { "value": "p15", "title": { "en": "Project 15" } },
+              { "value": "p16", "title": { "en": "Project 16" } },
+              { "value": "p17", "title": { "en": "Project 17" } },
+              { "value": "p18", "title": { "en": "Project 18" } },
+              { "value": "p19", "title": { "en": "Project 19" } },
+              { "value": "p20", "title": { "en": "Project 20" } },
+              { "value": "p21", "title": { "en": "Project 21" } },
+              { "value": "p22", "title": { "en": "Project 22" } },
+              { "value": "p23", "title": { "en": "Project 23" } },
+              { "value": "p24", "title": { "en": "Project 24" } },
+              { "value": "p25", "title": { "en": "Project 25" } },
+              { "value": "p26", "title": { "en": "Project 26" } },
+              { "value": "p27", "title": { "en": "Project 27" } },
+              { "value": "p28", "title": { "en": "Project 28" } },
+              { "value": "p29", "title": { "en": "Project 29" } },
+              { "value": "p30", "title": { "en": "Project 30" } },
+              { "value": "p31", "title": { "en": "Project 31" } },
+              { "value": "p32", "title": { "en": "Project 32" } },
+              { "value": "p33", "title": { "en": "Project 33" } },
+              { "value": "p34", "title": { "en": "Project 34" } },
+              { "value": "p35", "title": { "en": "Project 35" } },
+              { "value": "p36", "title": { "en": "Project 36" } },
+              { "value": "p37", "title": { "en": "Project 37" } },
+              { "value": "p38", "title": { "en": "Project 38" } },
+              { "value": "p39", "title": { "en": "Project 39" } },
+              { "value": "p40", "title": { "en": "Project 40" } },
+              { "value": "p41", "title": { "en": "Project 41" } },
+              { "value": "p42", "title": { "en": "Project 42" } },
+              { "value": "p43", "title": { "en": "Project 43" } },
+              { "value": "p44", "title": { "en": "Project 44" } },
+              { "value": "p45", "title": { "en": "Project 45" } },
+              { "value": "p46", "title": { "en": "Project 46" } },
+              { "value": "p47", "title": { "en": "Project 47" } },
+              { "value": "p48", "title": { "en": "Project 48" } },
+              { "value": "p49", "title": { "en": "Project 49" } },
+              { "value": "p50", "title": { "en": "Project 50" } },
+              { "value": "p51", "title": { "en": "Project 51" } },
+              { "value": "p52", "title": { "en": "Project 52" } },
+              { "value": "p53", "title": { "en": "Project 53" } },
+              { "value": "p54", "title": { "en": "Project 54" } },
+              { "value": "p55", "title": { "en": "Project 55" } },
+              { "value": "p56", "title": { "en": "Project 56" } },
+              { "value": "p57", "title": { "en": "Project 57" } },
+              { "value": "p58", "title": { "en": "Project 58" } },
+              { "value": "p59", "title": { "en": "Project 59" } },
+              { "value": "p60", "title": { "en": "Project 60" } },
+              { "value": "p61", "title": { "en": "Project 61" } },
+              { "value": "p62", "title": { "en": "Project 62" } },
+              {
+                "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "title": { "en": "The longest" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "a status in a manifest of protocol 1",
+      "valid": false,
+      "problem": "statusNeedsProtocol2",
+      "names": ["1"],
+      "change": {
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "status": { "placement": "island" }
+        }
+      }
+    },
+    {
+      "about": "a status in a place the app does not have",
+      "valid": false,
+      "problem": "unknownStatusPlacement",
+      "names": ["menuBar"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "status": { "placement": "menuBar" }
+        }
+      }
+    },
+    {
+      "about": "a status that does not say where",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["status", "placement"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "status": {}
+        }
+      }
+    },
+    {
+      "about": "options on a setting that is not text",
+      "valid": false,
+      "problem": "optionsNeedString",
+      "names": ["notify"],
+      "change": {
+        "preferences": [
+          {
+            "id": "notify",
+            "title": { "en": "Tell me when a deploy ends" },
+            "type": "boolean",
+            "default": true,
+            "options": [
+              { "value": "yes", "title": { "en": "Yes" } },
+              { "value": "no", "title": { "en": "No" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an empty list of options",
+      "valid": false,
+      "problem": "optionCountOutOfRange",
+      "names": ["project", "0"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": []
+          }
+        ]
+      }
+    },
+    {
+      "about": "sixty-five options",
+      "valid": false,
+      "problem": "optionCountOutOfRange",
+      "names": ["project", "65"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "p0",
+            "options": [
+              { "value": "p0", "title": { "en": "Project 0" } },
+              { "value": "p1", "title": { "en": "Project 1" } },
+              { "value": "p2", "title": { "en": "Project 2" } },
+              { "value": "p3", "title": { "en": "Project 3" } },
+              { "value": "p4", "title": { "en": "Project 4" } },
+              { "value": "p5", "title": { "en": "Project 5" } },
+              { "value": "p6", "title": { "en": "Project 6" } },
+              { "value": "p7", "title": { "en": "Project 7" } },
+              { "value": "p8", "title": { "en": "Project 8" } },
+              { "value": "p9", "title": { "en": "Project 9" } },
+              { "value": "p10", "title": { "en": "Project 10" } },
+              { "value": "p11", "title": { "en": "Project 11" } },
+              { "value": "p12", "title": { "en": "Project 12" } },
+              { "value": "p13", "title": { "en": "Project 13" } },
+              { "value": "p14", "title": { "en": "Project 14" } },
+              { "value": "p15", "title": { "en": "Project 15" } },
+              { "value": "p16", "title": { "en": "Project 16" } },
+              { "value": "p17", "title": { "en": "Project 17" } },
+              { "value": "p18", "title": { "en": "Project 18" } },
+              { "value": "p19", "title": { "en": "Project 19" } },
+              { "value": "p20", "title": { "en": "Project 20" } },
+              { "value": "p21", "title": { "en": "Project 21" } },
+              { "value": "p22", "title": { "en": "Project 22" } },
+              { "value": "p23", "title": { "en": "Project 23" } },
+              { "value": "p24", "title": { "en": "Project 24" } },
+              { "value": "p25", "title": { "en": "Project 25" } },
+              { "value": "p26", "title": { "en": "Project 26" } },
+              { "value": "p27", "title": { "en": "Project 27" } },
+              { "value": "p28", "title": { "en": "Project 28" } },
+              { "value": "p29", "title": { "en": "Project 29" } },
+              { "value": "p30", "title": { "en": "Project 30" } },
+              { "value": "p31", "title": { "en": "Project 31" } },
+              { "value": "p32", "title": { "en": "Project 32" } },
+              { "value": "p33", "title": { "en": "Project 33" } },
+              { "value": "p34", "title": { "en": "Project 34" } },
+              { "value": "p35", "title": { "en": "Project 35" } },
+              { "value": "p36", "title": { "en": "Project 36" } },
+              { "value": "p37", "title": { "en": "Project 37" } },
+              { "value": "p38", "title": { "en": "Project 38" } },
+              { "value": "p39", "title": { "en": "Project 39" } },
+              { "value": "p40", "title": { "en": "Project 40" } },
+              { "value": "p41", "title": { "en": "Project 41" } },
+              { "value": "p42", "title": { "en": "Project 42" } },
+              { "value": "p43", "title": { "en": "Project 43" } },
+              { "value": "p44", "title": { "en": "Project 44" } },
+              { "value": "p45", "title": { "en": "Project 45" } },
+              { "value": "p46", "title": { "en": "Project 46" } },
+              { "value": "p47", "title": { "en": "Project 47" } },
+              { "value": "p48", "title": { "en": "Project 48" } },
+              { "value": "p49", "title": { "en": "Project 49" } },
+              { "value": "p50", "title": { "en": "Project 50" } },
+              { "value": "p51", "title": { "en": "Project 51" } },
+              { "value": "p52", "title": { "en": "Project 52" } },
+              { "value": "p53", "title": { "en": "Project 53" } },
+              { "value": "p54", "title": { "en": "Project 54" } },
+              { "value": "p55", "title": { "en": "Project 55" } },
+              { "value": "p56", "title": { "en": "Project 56" } },
+              { "value": "p57", "title": { "en": "Project 57" } },
+              { "value": "p58", "title": { "en": "Project 58" } },
+              { "value": "p59", "title": { "en": "Project 59" } },
+              { "value": "p60", "title": { "en": "Project 60" } },
+              { "value": "p61", "title": { "en": "Project 61" } },
+              { "value": "p62", "title": { "en": "Project 62" } },
+              { "value": "p63", "title": { "en": "Project 63" } },
+              { "value": "p64", "title": { "en": "Project 64" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an option's value of 129 characters",
+      "valid": false,
+      "problem": "optionValueNotWellFormed",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [
+              { "value": "acme", "title": { "en": "Acme" } },
+              {
+                "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "title": { "en": "Too long" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an option's value with a line break",
+      "valid": false,
+      "problem": "optionValueNotWellFormed",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [
+              { "value": "acme", "title": { "en": "Acme" } },
+              { "value": "glo\nbex", "title": { "en": "Globex" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "two options with one value",
+      "valid": false,
+      "schema": false,
+      "problem": "duplicateOption",
+      "names": ["project", "acme"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [
+              { "value": "acme", "title": { "en": "Acme" } },
+              { "value": "acme", "title": { "en": "Acme again" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "a default that is none of the options",
+      "valid": false,
+      "schema": false,
+      "problem": "defaultNotAnOption",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "initech",
+            "options": [
+              { "value": "acme", "title": { "en": "Acme", "fr": "Acmé" } },
+              {
+                "value": "globex",
+                "title": { "en": "Globex", "fr": "Globex SA" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an option's title of 61 characters",
+      "valid": false,
+      "problem": "optionTitleNotWellFormed",
+      "names": ["project"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [
+              {
+                "value": "acme",
+                "title": {
+                  "en": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                }
+              },
+              { "value": "globex", "title": { "en": "Globex" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an option's title with no English",
+      "valid": false,
+      "problem": "noEnglish",
+      "names": ["project", "options", "title"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [
+              { "value": "acme", "title": { "en": "Acme" } },
+              { "value": "globex", "title": { "fr": "Globex SA" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an option's title that is blank in one language",
+      "valid": false,
+      "problem": "blankText",
+      "names": ["project", "options", "title"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [
+              { "value": "acme", "title": { "en": "Acme", "fr": " " } },
+              { "value": "globex", "title": { "en": "Globex" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "about": "an option with no title",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["options", "title"],
+      "change": {
+        "preferences": [
+          {
+            "id": "project",
+            "title": { "en": "Project" },
+            "type": "string",
+            "default": "acme",
+            "options": [{ "value": "acme" }]
+          }
+        ]
       }
     }
   ]

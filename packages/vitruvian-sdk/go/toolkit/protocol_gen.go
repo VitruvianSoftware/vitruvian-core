@@ -56,6 +56,7 @@ const (
 	MethodUIClose                 = "ui/close"
 	MethodUIRender                = "ui/render"
 	MethodUIBadge                 = "ui/badge"
+	MethodUIStatus                = "ui/status"
 )
 
 // Services are the names a manifest's `uses` may list.
@@ -98,6 +99,7 @@ var Methods = []Method{
 	{Name: MethodUIClose, Sender: "app", Kind: "notice", Uses: "", Params: "UICloseParams", Result: ""},
 	{Name: MethodUIRender, Sender: "tool", Kind: "notice", Uses: "", Params: "UIRenderParams", Result: ""},
 	{Name: MethodUIBadge, Sender: "tool", Kind: "request", Uses: "notify", Params: "UIBadgeParams", Result: "Empty"},
+	{Name: MethodUIStatus, Sender: "tool", Kind: "request", Uses: "", Params: "UIStatusParams", Result: "Empty"},
 }
 
 // Error: Why a request was not done. Codes: -32700 the line was not JSON;
@@ -145,6 +147,12 @@ type InitializeParams struct {
 	// The folder the tool may keep its own files in. It is also the
 	// folder the tool is started in.
 	DataFolder string `json:"dataFolder"`
+
+	// What this app has beyond the first release of the protocol version,
+	// by name: ui.status, ui.choice, preferences.options. A name the tool
+	// does not know is ignored. An app before 3.48 sends none, and has
+	// none of them.
+	Features []string `json:"features,omitempty"`
 }
 
 // MarshalJSON writes InitializeParams with an empty list or map, not null, for
@@ -374,14 +382,15 @@ type UIEventParams struct {
 
 	// What the person did. tap: a button, a row or a list's row was
 	// pressed. toggle: a switch was turned. submit: Return was pressed in
-	// a field. change: a field was left with other text in it. bridge: a
-	// web panel's page called window.vitruvian.call. One of: tap, toggle,
-	// submit, change, bridge.
+	// a field. change: a field was left with other text in it, or an
+	// option of a choice was picked. bridge: a web panel's page called
+	// window.vitruvian.call. One of: tap, toggle, submit, change, bridge.
 	Event string `json:"event"`
 
 	// For toggle, the switch's new state. For submit and change, the
-	// field's text. For a tap on a list's row, the row's id. For bridge,
-	// an object: method, the request the page made, and params, what it
+	// field's text; for the change of a choice, the picked option's
+	// value. For a tap on a list's row, the row's id. For bridge, an
+	// object: method, the request the page made, and params, what it
 	// carries. A tool sends such a request to the app as its own; a
 	// method that starts with tool/ is the tool's own.
 	Value any `json:"value,omitempty"`
@@ -433,6 +442,29 @@ type UIBadgeParams struct {
 	Dot *bool `json:"dot,omitempty"`
 }
 
+// UIStatusParams: The tool's status: a small mark the app draws on the closed
+// island. Each one replaces the last, and it goes when the tool's program
+// ends. The manifest must declare it, under contributes.status: without that
+// the app answers failure -32602. The person can switch it off for the tool;
+// it is then still answered with {} and nothing is drawn. An app before 3.48
+// answers failure -32601.
+type UIStatusParams struct {
+	// none: no mark. ok: all is well. busy: something is under way.
+	// attention: something waits for the person. failure: something
+	// failed. One of: none, ok, busy, attention, failure.
+	State string `json:"state"`
+
+	// What it means, in one short line, for VoiceOver and the tooltip.
+	// Shown as one line of at most 120 characters. Left out, the app says
+	// its own word for the state.
+	Text UIText `json:"text,omitempty"`
+
+	// An SF Symbol name, drawn in place of the state's own glyph. The
+	// colour, the size and the motion stay the app's. A name this Mac
+	// does not have, or a blank one, draws the state's own glyph.
+	Icon *string `json:"icon,omitempty"`
+}
+
 // UITree: A page: blocks, drawn one under the other. At most 262,144 bytes as
 // JSON, an image written into it included: the app does not draw a larger
 // one, and the tool's log says so.
@@ -451,17 +483,17 @@ func (v UITree) MarshalJSON() ([]byte, error) {
 	return json.Marshal(plain(v))
 }
 
-// UIBlock: One block. type says which of the twelve kinds it is, and the
+// UIBlock: One block. type says which of the thirteen kinds it is, and the
 // kind's own fields go beside it. A kind the app does not know is drawn as
 // its fallback, or left out: that is how a later version adds one.
 type UIBlock struct {
 	// The kind: text, heading, row, button, toggle, field, list,
-	// progress, image, divider, link or spacer.
+	// progress, image, divider, link, spacer or choice.
 	Type string `json:"type"`
 
 	// The block's name within the page, as the events it causes name it.
-	// Required for button, toggle, field and list; a row with one can be
-	// tapped. The same characters as a command id.
+	// Required for button, toggle, field, list and choice; a row with one
+	// can be tapped. The same characters as a command id.
 	ID *string `json:"id,omitempty"`
 
 	// What an app that does not know this kind draws instead, as plain
@@ -482,6 +514,7 @@ type UIBlock struct {
 	Divider *DividerBlock `json:"-"`
 	Link *LinkBlock `json:"-"`
 	Spacer *SpacerBlock `json:"-"`
+	Choice *ChoiceBlock `json:"-"`
 	Other map[string]any `json:"-"`
 }
 
@@ -513,6 +546,8 @@ func (v UIBlock) MarshalJSON() ([]byte, error) {
 		own = v.Link
 	case "spacer":
 		own = v.Spacer
+	case "choice":
+		own = v.Choice
 	}
 	fields := map[string]any{}
 	if own != nil {
@@ -585,6 +620,9 @@ func (v *UIBlock) UnmarshalJSON(data []byte) error {
 	case "spacer":
 		v.Spacer = &SpacerBlock{}
 		return json.Unmarshal(data, v.Spacer)
+	case "choice":
+		v.Choice = &ChoiceBlock{}
+		return json.Unmarshal(data, v.Choice)
 	default:
 		if err := json.Unmarshal(data, &v.Other); err != nil {
 			return err
@@ -759,12 +797,55 @@ type SpacerBlock struct {
 	Size *float64 `json:"size,omitempty"`
 }
 
+// UIChoiceOption: One option of a choice.
+type UIChoiceOption struct {
+	// What the event carries when the person picks it. At most 128
+	// characters. It may be empty.
+	Value string `json:"value"`
+
+	// What the menu shows for it, as one line.
+	Title UIText `json:"title"`
+}
+
+// ChoiceBlock: A pop-up menu: one of a fixed list of options. Picking one is
+// the event change, with the option's value. No two options share a value:
+// JSON Schema cannot say that, and the app refuses a page that breaks it. An
+// app before 3.48 does not know this kind and draws its fallback, which
+// nobody can change: ask the app for ui.choice first, and send a field to an
+// app without it.
+type ChoiceBlock struct {
+	// What is being chosen, beside the menu.
+	Title UIText `json:"title,omitempty"`
+
+	// The selected option's value. One that is no option's is drawn as an
+	// extra first row, as written.
+	Value string `json:"value"`
+
+	// The options, from 1 to 64.
+	Options []UIChoiceOption `json:"options"`
+
+	// False draws it dimmed, and nothing can be picked.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// MarshalJSON writes ChoiceBlock with an empty list or map, not null, for
+// one left nil.
+func (v ChoiceBlock) MarshalJSON() ([]byte, error) {
+	type plain ChoiceBlock
+	if v.Options == nil {
+		v.Options = []UIChoiceOption{}
+	}
+	return json.Marshal(plain(v))
+}
+
 // Manifest: The file vitruvian-tool.json at the top of a tool's folder. It
 // says what the tool is, which of the app's services it calls, what it adds,
 // and which program to start. A field this schema does not name is ignored,
-// which is how a later version adds one. Two rules are not written here
+// which is how a later version adds one. Four rules are not written here
 // because JSON Schema cannot say them: no two commands, no two panels and no
-// two preferences share an id; and the whole file is at most 65,536 bytes.
+// two preferences share an id; the whole file is at most 65,536 bytes; no two
+// options of one preference share a value; and a preference with options has
+// a default that is one of them.
 type Manifest struct {
 	// The tool's identity, in reverse-DNS form, for example
 	// com.acme.deploys. Letters, digits, hyphens and underscores in parts
@@ -822,7 +903,7 @@ type Manifest struct {
 }
 
 // Contributes: What the tool adds to the app: commands, and in protocol 2
-// panels.
+// panels and a status.
 type Contributes struct {
 	// The tool's commands. At most 32.
 	Commands []Command `json:"commands,omitempty"`
@@ -830,6 +911,19 @@ type Contributes struct {
 	// What the tool draws, and where. At most 8; at most one in the
 	// island and one in Settings. Protocol 2 only.
 	Panels []Panel `json:"panels,omitempty"`
+
+	// The tool shows a status: a small mark the app draws, which the tool
+	// sets with ui/status. Without this, the app refuses ui/status.
+	// Protocol 2 only. An app before 3.48 ignores it, and shows no
+	// status.
+	Status *StatusContribution `json:"status,omitempty"`
+}
+
+// StatusContribution: That the tool shows a status, and where.
+type StatusContribution struct {
+	// Where it is shown. island: on the closed island, beside the agent
+	// mark. One of: island.
+	Placement string `json:"placement"`
 }
 
 // Command: One thing the tool can be asked to do.
@@ -905,6 +999,27 @@ type Preference struct {
 
 	// The value before anything is saved. It is of the type named.
 	Default any `json:"default"`
+
+	// The values the person chooses among: the app draws the setting as a
+	// pop-up menu, not a field. From 1 to 64, no two with one value, and
+	// the default is one of them. Only a string preference may have them.
+	// They are how the app draws, not a rule on the value: a saved value
+	// that is no option's is kept and shown as written. An app before
+	// 3.48 ignores them, and draws a text field.
+	Options []PreferenceOption `json:"options,omitempty"`
+}
+
+// PreferenceOption: One value a preference with options may be set to, and
+// what the person reads for it.
+type PreferenceOption struct {
+	// What is saved when the person picks it. At most 128 characters,
+	// with no line break and no other control character. It may be empty.
+	Value string `json:"value"`
+
+	// What the menu shows for it, as written. Held to what a preference's
+	// title is: at most 60 characters in each language, with no line
+	// break and no other control character.
+	Title LocalizedText `json:"title"`
 }
 
 // Runtime: The program the app starts.
@@ -986,6 +1101,8 @@ func roundTrip(name string, raw []byte) ([]byte, bool, error) {
 		value = &UIRenderParams{}
 	case "UIBadgeParams":
 		value = &UIBadgeParams{}
+	case "UIStatusParams":
+		value = &UIStatusParams{}
 	case "UITree":
 		value = &UITree{}
 	case "UIBlock":
@@ -1020,16 +1137,24 @@ func roundTrip(name string, raw []byte) ([]byte, bool, error) {
 		value = &LinkBlock{}
 	case "SpacerBlock":
 		value = &SpacerBlock{}
+	case "UIChoiceOption":
+		value = &UIChoiceOption{}
+	case "ChoiceBlock":
+		value = &ChoiceBlock{}
 	case "Manifest":
 		value = &Manifest{}
 	case "Contributes":
 		value = &Contributes{}
+	case "StatusContribution":
+		value = &StatusContribution{}
 	case "Command":
 		value = &Command{}
 	case "Panel":
 		value = &Panel{}
 	case "Preference":
 		value = &Preference{}
+	case "PreferenceOption":
+		value = &PreferenceOption{}
 	case "Runtime":
 		value = &Runtime{}
 	default:
