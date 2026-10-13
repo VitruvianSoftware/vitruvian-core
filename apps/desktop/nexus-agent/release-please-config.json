@@ -15,6 +15,15 @@
         {
           "type": "generic",
           "path": "macos/Sources/NexusAgent/Version.swift"
+        },
+        {
+          "type": "generic",
+          "path": "macos/Sources/NexusAgentToolCore/Version.swift"
+        },
+        {
+          "type": "json",
+          "path": "macos/tool/vitruvian-tool.json",
+          "jsonpath": "$.version"
         }
       ]
     }
