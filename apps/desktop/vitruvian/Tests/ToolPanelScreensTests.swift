@@ -17,7 +17,23 @@ enum ToolPanelScreensTests {
         defaultsAndLimits(suite)
         linksAndPictures(suite)
         laterKinds(suite)
+        detail(suite)
+        islandSwitch(suite)
     }
+
+    static let id = ExternalToolTests.id
+
+    /// The design's example tool, of protocol 2, with a panel in each place
+    /// and two windows.
+    static let drawing = ExternalToolManifestTests.file(#"""
+        {"protocol": "2", "uses": ["notify"], "contributes": {
+          "commands": [{"id": "copyLatest", "title": {"en": "Copy latest deploy"}}],
+          "panels": [
+            {"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"},
+            {"id": "settings", "title": {"en": "Deploys"}, "placement": "settings"},
+            {"id": "log", "title": {"en": "Deploy log", "fr": "Journal"}, "placement": "window", "icon": "doc.text"},
+            {"id": "dashboard", "title": {"en": "Dashboard"}, "placement": "window", "kind": "web", "entry": "ui/d.html"}]}}
+        """#)
 
     static func content(_ page: String, language: String = "en", folder: URL? = nil,
                         size: BlockTreeContent.Size = .standard) -> BlockTreeContent? {
@@ -133,5 +149,64 @@ enum ToolPanelScreensTests {
         suite.expect(drawn?.items.map(\.kind) == [.fallback("Fünf Deployments"), .divider]
                          && drawn?.items.map(\.id) == [0, 2],
                      "a block of a later kind is drawn as its fallback in the person's language, or left out")
+    }
+
+    static func detail(_ suite: TestSuite) {
+        let english = FeatureStrings.externalTools(.enUS)
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: drawing))
+        guard let listed = bench.store.listed.first else { return suite.expect(false, "the tool is added") }
+        let detail = ExternalToolDetail(listed, files: nil, language: .fr, strings: english, settingsTitle: "Settings",
+                                        showsInIsland: bench.store.showsInIsland(id))
+        suite.expect(detail.settingsPanel == "settings" && detail.showsInIsland == true
+                         && detail.showInIslandTitle == "Show in the Dynamic Island",
+                     "a tool with a Settings panel has it drawn in its detail, under the switch for its island page")
+        suite.expect(detail.windows == [ExternalToolDetail.Window(id: "log", title: "Journal", symbol: "doc.text"),
+                                        ExternalToolDetail.Window(id: "dashboard", title: "Dashboard",
+                                                                  symbol: "shippingbox")],
+                     "its windows are listed in the person's language, each to be opened with the app's word Open")
+        suite.expect(detail.listsScroll && detail.listRows == 1 + 2 + 1 + 1,
+                     "with a Settings panel of any height the lists scroll, so the buttons stay in view")
+
+        bench.store.setOn(id, false)
+        if let off = bench.store.listed.first {
+            let quiet = ExternalToolDetail(off, files: nil, language: .enUS, strings: english)
+            suite.expect(quiet.settingsPanel == nil && quiet.windows.isEmpty && quiet.showsInIsland == true,
+                         "a tool that is switched off draws no panel and opens no window; its island switch stays")
+        }
+
+        let plain = ExternalToolStoreTests.Bench()
+        defer { plain.close() }
+        plain.add(plain.folder())
+        if let listed = plain.store.listed.first {
+            let old = ExternalToolDetail(listed, files: nil, language: .enUS, strings: english)
+            suite.expect(old.settingsPanel == nil && old.windows.isEmpty && old.showsInIsland == nil && !old.listsScroll,
+                         "a tool of protocol 1 has a detail as before: no panel, no window, no island switch")
+        }
+    }
+
+    static func islandSwitch(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: drawing))
+        suite.expect(bench.store.showsInIsland(id) && bench.records.first?.showsInIsland == nil,
+                     "a tool's island page is listed until the person says otherwise, and nothing is written for it")
+        let island = ToolPanelHost.Key(tool: id, panel: "deploys")
+        bench.panels.open(island, in: .island)
+        bench.current.greets()
+        let revision = bench.registry.revision
+        bench.store.setShowsInIsland(id, false)
+        suite.expect(!bench.store.showsInIsland(id) && bench.records.first?.showsInIsland == false
+                         && bench.panels.shown[island] == nil && bench.registry.revision > revision,
+                     "turned off, it is remembered, its open island page closes, and the lists are drawn again")
+        let relaunched = bench.relaunched()
+        relaunched.store.restore()
+        suite.expect(!relaunched.store.showsInIsland(id), "the next launch remembers it")
+        bench.add(bench.folder(manifest: drawing))
+        suite.expect(!bench.store.showsInIsland(id), "an update keeps it")
+        bench.store.setShowsInIsland(id, true)
+        suite.expect(bench.store.showsInIsland(id) && bench.records.first?.showsInIsland == nil,
+                     "turned on again, the record is as it was before")
     }
 }

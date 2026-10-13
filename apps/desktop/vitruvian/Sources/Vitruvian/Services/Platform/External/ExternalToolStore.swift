@@ -508,6 +508,28 @@ package final class ExternalToolStore {
         return deletingData ? .deleted : .keptAsAsked
     }
 
+    // MARK: - A tool's page in the island
+
+    /// Whether the island's Tools area lists the tool's page. Yes until the
+    /// person turns it off in the tool's detail.
+    package func showsInIsland(_ id: ToolID) -> Bool {
+        records.first { $0.id == id.rawValue }?.showsInIsland ?? true
+    }
+
+    /// The switch in the tool's detail. Off closes the tool's island page
+    /// when it is open, and the Tools area lists it no more.
+    package func setShowsInIsland(_ id: ToolID, _ shows: Bool) {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }), showsInIsland(id) != shows else { return }
+        var next = records
+        next[known].showsInIsland = shows ? nil : false
+        guard save(next) else { return }
+        records = next
+        if !shows, let island = installed[id]?.tool.panel(in: .island) {
+            parts.panels()?.close(ToolPanelHost.Key(tool: id, panel: island.id))
+        }
+        parts.registry().noteAvailabilityChanged()
+    }
+
     // MARK: - A tool's own settings
 
     /// The settings of an added tool that the person may see and change:
