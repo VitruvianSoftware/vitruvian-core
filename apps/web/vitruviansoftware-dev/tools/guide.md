@@ -208,6 +208,15 @@ one: the kit follows `language/changed` by itself. Set
 `tool.onLanguageChanged` before `run()` only when your tool must do
 something at that moment.
 
+A tool that watches something, a service it polls or a folder it reads,
+sets a timer before `run()`: `tool.every(seconds: 30) { app in … }`. The
+handler runs on the kit's one thread, between messages: never while a
+command or a panel's handler is running or waiting for the app, and not
+before the app has said hello, so it may call the app like any handler. A
+handler that runs late runs once, not again to catch up; an error it
+throws goes to the tool's log and the timer goes on. Ask for a few seconds
+at least.
+
 ### In TypeScript, with the kit
 
 ```sh
