@@ -495,3 +495,148 @@ final class PanelTests: XCTestCase {
         XCTAssertEqual(UIBlock.kinds.count, 12)
     }
 }
+
+// MARK: - Timers
+
+/// A link of two pipes, which stay open until the test closes them, so a
+/// timer has time to run. The tool serves on a thread of its own; the test
+/// is the app.
+private final class LiveBench {
+    private let fromApp = Pipe()
+    private let toApp = Pipe()
+    private var read = Data()
+    private let lock = NSLock()
+    private var status: Int32?
+
+    let tool: Tool
+
+    init(_ build: (Tool) -> Void) {
+        tool = Tool(version: "9.9.9", input: fromApp.fileHandleForReading, output: toApp.fileHandleForWriting)
+        build(tool)
+        // What the tool writes is read as it comes, so a full pipe never
+        // holds the tool.
+        let handle = toApp.fileHandleForReading
+        Thread.detachNewThread { [self] in
+            while true {
+                let piece = handle.availableData
+                if piece.isEmpty { return }
+                lock.withLock { read.append(piece) }
+            }
+        }
+    }
+
+    func serve() {
+        Thread.detachNewThread { [self] in
+            let ended = tool.serve()
+            lock.withLock { status = ended }
+        }
+    }
+
+    func app(_ line: String) {
+        fromApp.fileHandleForWriting.write(Data((line + "\n").utf8))
+    }
+
+    func hello() {
+        app(#"{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/tmp/kit-data"}}"#)
+    }
+
+    /// Says goodbye, closes the link, and waits for the tool to stop.
+    func goodbye() -> Int32? {
+        app(#"{"jsonrpc":"2.0","method":"shutdown"}"#)
+        try? fromApp.fileHandleForWriting.close()
+        let until = Date().addingTimeInterval(5)
+        while Date() < until {
+            if let status = lock.withLock({ status }) {
+                try? toApp.fileHandleForWriting.close()
+                Thread.sleep(forTimeInterval: 0.05)
+                return status
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        return nil
+    }
+
+    func written() throws -> [RPCMessage] {
+        let text = String(decoding: lock.withLock { read }, as: UTF8.self)
+        return try text.split(separator: "\n").map { try LineFraming.message(from: Data($0.utf8)) }
+    }
+}
+
+extension ToolTests {
+    private func logs(_ messages: [RPCMessage]) -> [String] {
+        messages.compactMap { message in
+            guard case .notice("log", let params) = message else { return nil }
+            return params?["message"]?.stringValue
+        }
+    }
+
+    func testATimerRunsBetweenMessagesAndCountsFromTheHello() throws {
+        // Guarded by the tool's one thread: read after serve() has returned.
+        nonisolated(unsafe) var ticks = 0
+        let bench = LiveBench { tool in
+            tool.every(seconds: 0.05) { app in
+                ticks += 1
+                app.log("tick \(ticks)")
+            }
+        }
+        bench.serve()
+        // Before the hello the timer is not running.
+        Thread.sleep(forTimeInterval: 0.2)
+        bench.hello()
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertEqual(bench.goodbye(), 0)
+        let written = try bench.written()
+        XCTAssertEqual(ticks, logs(written).count, "each run of the timer wrote its line")
+        XCTAssertTrue((3...8).contains(ticks), "a timer of 50 ms ran about six times in 300 ms, not \(ticks)")
+        guard case .result(id: .string("hello"), _)? = written.first else {
+            return XCTFail("the hello is answered before any timer runs: \(written.first.map(String.init(describing:)) ?? "nothing")")
+        }
+    }
+
+    func testATimerDoesNotRunWhileAHandlerWaitsForTheApp() throws {
+        nonisolated(unsafe) var ticks = 0
+        nonisolated(unsafe) var ticksWhenTheCommandRan = -1
+        let bench = LiveBench { tool in
+            tool.every(seconds: 0.05) { app in
+                ticks += 1
+                app.log("tick")
+            }
+            tool.command("copy") { app in
+                _ = try app.clipboardText()
+                ticksWhenTheCommandRan = ticks
+            }
+        }
+        bench.serve()
+        bench.hello()
+        bench.app(#"{"jsonrpc":"2.0","id":2,"method":"command/run","params":{"command":"copy"}}"#)
+        // The handler waits for the clipboard for 300 ms: six timer runs' worth.
+        Thread.sleep(forTimeInterval: 0.3)
+        bench.app(#"{"jsonrpc":"2.0","id":1,"result":{"text":"x"}}"#)
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(bench.goodbye(), 0)
+        let written = try bench.written()
+        XCTAssertEqual(ticksWhenTheCommandRan, 0, "no timer ran while the handler waited for its answer")
+        XCTAssertGreaterThanOrEqual(ticks, 1, "the timer ran once the handler had returned")
+        let answered = written.firstIndex { if case .result(id: .number(2), _) = $0 { return true } else { return false } }
+        let firstLog = written.firstIndex { if case .notice("log", _) = $0 { return true } else { return false } }
+        XCTAssertNotNil(answered)
+        XCTAssertTrue(firstLog.map { $0 > (answered ?? .max) } ?? false, "every line of the timer came after the command's answer")
+    }
+
+    func testATimersErrorIsLoggedAndTheTimerGoesOn() throws {
+        nonisolated(unsafe) var ticks = 0
+        let bench = LiveBench { tool in
+            tool.every(seconds: 0.05) { _ in
+                ticks += 1
+                throw CommandRefused("not now")
+            }
+        }
+        bench.serve()
+        bench.hello()
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertEqual(bench.goodbye(), 0)
+        let lines = logs(try bench.written())
+        XCTAssertEqual(lines.count, ticks)
+        XCTAssertTrue(ticks >= 2 && lines.allSatisfy { $0.contains("not now") }, "\(lines)")
+    }
+}
