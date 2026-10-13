@@ -108,24 +108,37 @@ fi
 
 echo "Development job '${DEV_JOB}' concluded '${CONCLUSION}' in run ${RUN_ID}; release PR is #${PR}."
 
+# This workflow's own hold is HOLD_LABEL, the only label it adds or removes.
+# PERSON_LABEL is a person's hold: never touched, and auto-merge stays off while
+# it is on (2026-10-13: the vitruvian beta gate, which shared the label, cleared
+# a hold a person had just placed on release 3.43.0).
+HOLD_LABEL="dev-deploy-red"
+PERSON_LABEL="do-not-automerge"
+
 case "$CONCLUSION" in
   success | skipped)
     # Clear a hold THIS workflow previously applied. Re-enabling auto-merge is
     # idempotent and is what actually releases the PR; removing the label
     # alone would not (see the header note).
-    if gh pr view "$PR" --repo "$REPO" --json labels \
-         --jq '.labels[].name' 2>/dev/null | grep -qx 'do-not-automerge'; then
-      echo "Development is green again — releasing the hold on #${PR}."
-      gh pr edit "$PR" --repo "$REPO" --remove-label do-not-automerge || true
-      gh pr merge "$PR" --repo "$REPO" --squash --auto || \
-        echo "::warning title=auto-merge not re-enabled::could not re-enable auto-merge on #${PR}; merge it manually or re-run this workflow"
+    labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null)"
+    if printf '%s\n' "$labels" | grep -qx "$HOLD_LABEL"; then
+      echo "Development is green again — releasing this workflow's hold on #${PR}."
+      gh pr edit "$PR" --repo "$REPO" --remove-label "$HOLD_LABEL" || true
+      if printf '%s\n' "$labels" | grep -qx "$PERSON_LABEL"; then
+        echo "#${PR} also carries ${PERSON_LABEL}: a person is holding it. Leaving auto-merge off."
+      else
+        gh pr merge "$PR" --repo "$REPO" --squash --auto || \
+          echo "::warning title=auto-merge not re-enabled::could not re-enable auto-merge on #${PR}; merge it manually or re-run this workflow"
+      fi
     else
-      echo "No hold in place on #${PR}; nothing to do."
+      echo "No hold of this workflow's on #${PR}; nothing to do."
     fi
     ;;
   failure | cancelled | timed_out | action_required | startup_failure)
     echo "::warning title=release PR held::${COMPONENT}'s development deploy concluded '${CONCLUSION}' — holding release PR #${PR} out of auto-merge"
-    gh pr edit "$PR" --repo "$REPO" --add-label do-not-automerge || true
+    gh label create "$HOLD_LABEL" --repo "$REPO" --force --color d93f0b \
+      --description "Held by release-hold: this component's development deploy is red" >/dev/null 2>&1 || true
+    gh pr edit "$PR" --repo "$REPO" --add-label "$HOLD_LABEL" || true
     # THE load-bearing call: the label documents the hold, this enforces it.
     gh pr merge "$PR" --repo "$REPO" --disable-auto || \
       echo "::warning title=auto-merge still enabled::could not disable auto-merge on #${PR} — it may merge despite the hold label"

@@ -56,8 +56,12 @@
 # unfinished job decides nothing.
 #
 # Decision for the open release PR:
-#   success          enable auto-merge (clearing a hold this gate applied)
-#   failed           hold: add do-not-automerge, disable auto-merge, comment
+#   success          enable auto-merge, clearing this gate's own hold label,
+#                    beta-not-built. A do-not-automerge label is a person's
+#                    hold: this gate never removes it, and leaves auto-merge
+#                    off while it is on (2026-10-13: release 3.43.0 was held
+#                    by hand and this gate cleared the hold within a minute).
+#   failed           hold: add beta-not-built, disable auto-merge, comment
 #   anything else    no run has decided yet: keep auto-merge off and wait;
 #                    the next run's completion runs this again
 #
@@ -76,7 +80,8 @@ WORKFLOW="${WORKFLOW:?WORKFLOW must be set}"
 # release-please's branch name is deterministic and per-component, so this
 # targets exactly one PR and can never touch a human's branch.
 BRANCH="release-please--branches--main--components--${COMPONENT}"
-HOLD_LABEL="do-not-automerge"
+HOLD_LABEL="beta-not-built"      # this gate's own hold: the only label it adds or removes
+PERSON_LABEL="do-not-automerge"  # a person's hold: never touched; auto-merge stays off while it is on
 
 # A fork can name its branch the same; only the in-repo release PR counts.
 pr_json="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
@@ -220,6 +225,10 @@ case "$CONCLUSION" in
     if printf '%s' "$LABELS" | tr ',' '\n' | grep -qx "$HOLD_LABEL"; then
       gh pr edit "$PR" --repo "$REPO" --remove-label "$HOLD_LABEL" || true
     fi
+    if printf '%s' "$LABELS" | tr ',' '\n' | grep -qx "$PERSON_LABEL"; then
+      echo "Release PR #${PR} carries ${PERSON_LABEL}: a person is holding it. Leaving auto-merge off."
+      exit 0
+    fi
     if [ "$AUTO_ON" = "true" ]; then
       echo "Auto-merge already enabled on #${PR}."
     else
@@ -232,6 +241,8 @@ case "$CONCLUSION" in
     ;;
   failure | cancelled | timed_out | action_required | startup_failure)
     echo "::warning title=release PR held::${BETA_JOB} concluded '${CONCLUSION}' for ${CODE_SHA} — holding release PR #${PR}"
+    gh label create "$HOLD_LABEL" --repo "$REPO" --force --color d93f0b \
+      --description "Held by release-beta-gate: the beta build for this release's code is not green" >/dev/null 2>&1 || true
     gh pr edit "$PR" --repo "$REPO" --add-label "$HOLD_LABEL" || true
     disable_auto
     # One comment per failed commit, however many times this re-evaluates it.

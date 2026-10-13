@@ -49,6 +49,15 @@ The workflow skips both. To release a held PR back into the auto-merge flow,
 **remove the label** (and mark it ready if it was a draft) — the `unlabeled` /
 `ready_for_review` events re-trigger the workflow.
 
+The automated gates hold with labels of their own, never with yours:
+`release-beta-gate` uses **`beta-not-built`** and `release-hold` uses
+**`dev-deploy-red`**. Each clears only its own label when its condition is
+green again, and leaves auto-merge off while your `do-not-automerge` is on.
+(Before 2026-10-13 they shared your label, and a green beta cleared a hold a
+person had just placed on the 3.43.0 release.) A hold must also turn auto-merge
+off: `gh pr merge <n> --disable-auto`; the label alone does not stop a merge
+that was already armed.
+
 ### `dependabot-auto-merge.yaml` — auto-merge Dependabot minor/patch PRs
 
 The same idea for Dependabot's grouped `*-minor-patch` PRs, but triggered on
