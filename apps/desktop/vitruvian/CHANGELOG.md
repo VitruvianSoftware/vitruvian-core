@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.42.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.42.2...vitruvian-v3.42.3) (2026-10-13)
+
+
+### Bug Fixes
+
+* **desktop:** a radial action whose tool is away shows plain words, not its id ([#3150](https://github.com/VitruvianSoftware/vitruvian-core/issues/3150)) ([6ae3a13](https://github.com/VitruvianSoftware/vitruvian-core/commit/6ae3a13b77fb34461820182e41f4a8ee9a7f3723)), closes [#3149](https://github.com/VitruvianSoftware/vitruvian-core/issues/3149)
+
 ## [3.42.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.42.1...vitruvian-v3.42.2) (2026-10-12)
 
 
