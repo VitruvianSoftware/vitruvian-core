@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tool catalogue mock-ups</title>
+<style>
+:root{
+  --s:1;
+  /* page */
+  --page:#f4f4f6; --ink:#1c1c1e; --ink2:#55555a; --ink3:#6c6c72; --rule:#d9d9de; --panel:#ffffff;
+  /* the app, light: macOS window, SettingsCard, controls */
+  --win:#ececec; --win-edge:#c9c9cc; --title:#e3e3e5;
+  --label:#1d1d1f; --label2:#5c5c61; --label3:#77777c;
+  --card:rgba(0,0,0,.045); --hover:rgba(0,0,0,.04); --divider:rgba(0,0,0,.11);
+  --accent:#0064d2; --accent-tile:rgba(0,122,255,.12); --on-accent:#ffffff;
+  --btn:#ffffff; --btn-edge:rgba(0,0,0,.18); --btn-ink:#1d1d1f;
+  --switch-off:#c4c4c8; --knob:#ffffff;
+  --orange:#a85400; --orange-fill:rgba(255,149,0,.14);
+  --green:#1a7f37; --red:#c4001a;
+  --hud:#f7f7f8; --hud-edge:rgba(0,0,0,.14);
+  --doc:#ffffff; --shadow:0 .75rem 2.25rem rgba(0,0,0,.20);
+  --ok-fill:#e3f3e6; --ok-ink:#12602a; --stop-fill:#fbe4e6; --stop-ink:#9a0014; --wait-fill:#fff1d6; --wait-ink:#7a4a00; --go-fill:#e1eefc; --go-ink:#0b4a9c;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+    --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+    --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+    --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+    --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+    --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+    --switch-off:#5c5c62; --knob:#e9e9ec;
+    --orange:#ffb04a; --orange-fill:rgba(255,159,10,.18);
+    --green:#4cd964; --red:#ff6961;
+    --hud:#3a3a3e; --hud-edge:rgba(255,255,255,.14);
+    --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+    --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#151517; --ink:#f2f2f4; --ink2:#b9b9c0; --ink3:#a3a3ab; --rule:#34343a; --panel:#1e1e21;
+  --win:#2a2a2d; --win-edge:#48484d; --title:#333337;
+  --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+  --card:rgba(255,255,255,.06); --hover:rgba(255,255,255,.05); --divider:rgba(255,255,255,.13);
+  --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+  --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4;
+  --switch-off:#5c5c62; --knob:#e9e9ec;
+  --orange:#ffb04a; --orange-fill:rgba(255,159,10,.18);
+  --green:#4cd964; --red:#ff6961;
+  --hud:#3a3a3e; --hud-edge:rgba(255,255,255,.14);
+  --doc:#232326; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+  --ok-fill:#16351f; --ok-ink:#8fe3a4; --stop-fill:#3f171b; --stop-ink:#ffa6a1; --wait-fill:#3d2e0f; --wait-ink:#ffcf7a; --go-fill:#12304f; --go-ink:#9ccbff;
+}
+html{font-size:calc(16px * var(--s))}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;font-size:1rem;line-height:1.5;-webkit-text-size-adjust:100%}
+.wrap{max-width:60rem;margin:0 auto;padding:0 16px 4rem}
+header.bar{position:sticky;top:0;z-index:5;background:var(--page);border-bottom:1px solid var(--rule)}
+header.bar .wrap{display:flex;flex-wrap:wrap;gap:.75rem 1rem;align-items:center;justify-content:space-between;padding-top:.75rem;padding-bottom:.75rem}
+header.bar h1{font-size:1.0625rem;margin:0;font-weight:650}
+header.bar p{margin:0;font-size:.8125rem;color:var(--ink2)}
+.tools{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:.5rem;overflow:hidden;background:var(--panel)}
+.seg button,.size button{font:inherit;font-size:.8125rem;color:var(--ink);background:transparent;border:0;padding:.3125rem .625rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.size{display:inline-flex;align-items:center;border:1px solid var(--rule);border-radius:.5rem;background:var(--panel)}
+.size output{font-size:.8125rem;min-width:3.25rem;text-align:center;color:var(--ink2);font-variant-numeric:tabular-nums}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main h2{font-size:1.25rem;margin:2.75rem 0 .25rem;font-weight:650}
+main h2 small{font-weight:500;color:var(--ink3);font-size:.8125rem;margin-left:.375rem}
+.lead{color:var(--ink2);max-width:46rem;margin:.25rem 0 1rem}
+.note{font-size:.9375rem;color:var(--ink);max-width:46rem;margin:.875rem 0 0}
+.note p{margin:.25rem 0}
+.note .alt{color:var(--ink2)}
+.note .words{margin:.25rem 0 0;padding-left:1.125rem;color:var(--ink2)}
+.note .words li{margin:.1875rem 0}
+.stage{background:var(--panel);border:1px solid var(--rule);border-radius:.875rem;padding:1.25rem;display:flex;justify-content:center;overflow:hidden}
+.flow{display:flex;flex-wrap:wrap;gap:.5rem;align-items:stretch;margin:1rem 0 0}
+.flow .box{border-radius:.625rem;padding:.5rem .75rem;font-size:.8125rem;line-height:1.35;flex:1 1 9rem;min-width:0}
+.flow .box b{display:block;font-size:.875rem}
+.flow .arrow{align-self:center;color:var(--ink3);font-size:.875rem}
+.go{background:var(--go-fill);color:var(--go-ink)} .ok{background:var(--ok-fill);color:var(--ok-ink)}
+.stop{background:var(--stop-fill);color:var(--stop-ink)} .wait{background:var(--wait-fill);color:var(--wait-ink)}
+.key{font-size:.8125rem;color:var(--ink2);margin:.5rem 0 0}
+table{border-collapse:collapse;width:100%;font-size:.875rem}
+th,td{text-align:left;padding:.375rem .5rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{color:var(--ink2);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.875em;overflow-wrap:anywhere}
+.scroll{overflow-x:auto}
+
+/* ---- the app ---- */
+.app{font-size:.8125rem;line-height:1.35;color:var(--label);width:100%}
+.window{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);width:100%;max-width:47.5rem;overflow:hidden}
+.titlebar{background:var(--title);border-bottom:1px solid var(--divider);padding:.5rem .75rem;display:flex;align-items:center;gap:.375rem}
+.titlebar i{width:.6875rem;height:.6875rem;border-radius:50%;background:var(--switch-off);display:block}
+.titlebar span{margin-left:.5rem;font-weight:600;color:var(--label2)}
+.page{padding:1.375rem;display:flex;flex-direction:column;gap:1.25rem}
+.card{background:var(--card);border-radius:1rem;padding:1rem;display:flex;flex-direction:column;gap:.8125rem}
+.card.faint{opacity:.55}
+.head{display:flex;align-items:center;gap:.625rem;flex-wrap:wrap}
+.head .title{font-size:.8125rem;font-weight:700;flex:1 1 auto}
+.count{color:var(--label2);font-variant-numeric:tabular-nums;font-size:.6875rem}
+.tile{width:1.625rem;height:1.625rem;border-radius:.4375rem;background:var(--accent-tile);color:var(--accent);display:grid;place-items:center;flex:none}
+.tile svg{width:.875rem;height:.875rem}
+.tile.big{width:2.5rem;height:2.5rem;border-radius:.625rem}
+.tile.big svg{width:1.25rem;height:1.25rem}
+.quiet{color:var(--label2);font-size:.75rem}
+.btn{display:inline-block;font:inherit;font-size:.75rem;background:var(--btn);color:var(--btn-ink);border:1px solid var(--btn-edge);border-radius:.375rem;padding:.1875rem .625rem;white-space:nowrap;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.btn.small{font-size:.6875rem;padding:.125rem .5rem}
+.btn.default{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.btn.danger{color:var(--red)}
+.btn.wide{display:block;width:100%;text-align:center;padding:.3125rem .625rem;white-space:normal}
+.row{display:flex;align-items:center;gap:.75rem;padding:.4375rem .5rem;border-radius:.625rem;flex-wrap:wrap}
+.row .text{flex:1 1 10rem;min-width:0}
+.row .name{display:block}
+.cap{display:block;font-size:.6875rem;color:var(--label2)}
+.status{display:flex;align-items:baseline;gap:.3125rem;font-size:.6875rem;color:var(--label2)}
+.dot{width:.375rem;height:.375rem;border-radius:50%;display:inline-block;flex:none;transform:translateY(-.0625rem)}
+.dot.green{background:var(--green)} .dot.red{background:var(--red)} .dot.orange{background:var(--orange)}
+.sep{height:1px;background:var(--divider);margin-left:.5rem}
+.chev{color:var(--label3);width:.625rem;height:.625rem;flex:none}
+.switch{width:1.625rem;height:.9375rem;border-radius:.5rem;background:var(--accent);position:relative;flex:none}
+.switch::after{content:"";position:absolute;top:.0625rem;right:.0625rem;width:.8125rem;height:.8125rem;border-radius:50%;background:var(--knob);box-shadow:0 1px 1px rgba(0,0,0,.25)}
+.switch.off{background:var(--switch-off)} .switch.off::after{right:auto;left:.0625rem}
+.sheet{background:var(--win);border:1px solid var(--win-edge);border-radius:.75rem;box-shadow:var(--shadow);padding:1.375rem;width:100%;max-width:30rem;display:flex;flex-direction:column;gap:1rem}
+.sheet .top{display:flex;gap:.875rem;align-items:flex-start}
+.sheet h3{font-size:.9375rem;margin:0;font-weight:700;line-height:1.25}
+.sheet .by{color:var(--label2);font-size:.75rem;margin:.125rem 0 0}
+.sheet .sum{font-size:.75rem;margin:.125rem 0 0}
+.sheet .small{font-size:.6875rem;color:var(--label2);margin:.1875rem 0 0;overflow-wrap:anywhere}
+.statement{background:var(--orange-fill);border-radius:.625rem;padding:.75rem;display:flex;gap:.625rem;align-items:flex-start}
+.statement svg{width:1rem;height:1rem;color:var(--orange);flex:none;margin-top:.0625rem}
+.statement b{display:block;font-size:.8125rem}
+.statement p{margin:.25rem 0 0;font-size:.75rem}
+.group b{display:block;font-size:.75rem;margin-bottom:.3125rem}
+.group ul{list-style:none;margin:0;padding:0;font-size:.75rem}
+.group li{display:flex;gap:.5rem;align-items:baseline;margin:.1875rem 0}
+.group li::before{content:"";width:.25rem;height:.25rem;border-radius:50%;background:var(--label3);flex:none;transform:translateY(-.125rem)}
+.group .small{font-size:.6875rem;color:var(--label2);margin:.375rem 0 0}
+.upd{font-size:.75rem} .upd p{margin:.125rem 0} .upd .dim{color:var(--label2)}
+.actions{display:flex;gap:.625rem;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.actions .push{flex:1 1 auto}
+.path{display:flex;gap:.625rem;align-items:center;flex-wrap:wrap}
+.path code{flex:1 1 12rem;color:var(--label2);font-size:.6875rem}
+.alert{background:var(--win);border:1px solid var(--win-edge);border-radius:.875rem;box-shadow:var(--shadow);padding:1.25rem 1rem 1rem;width:100%;max-width:16.5rem;text-align:center;display:flex;flex-direction:column;gap:.5rem;align-items:center}
+.alert .appicon{width:3.25rem;height:3.25rem;border-radius:.75rem;background:var(--accent-tile);color:var(--accent);display:grid;place-items:center}
+.alert .appicon svg{width:1.625rem;height:1.625rem}
+.alert h3{font-size:.8125rem;margin:.25rem 0 0;font-weight:700}
+.alert p{font-size:.6875rem;margin:0;color:var(--label)}
+.alert code{font-size:.625rem;display:block;text-align:left;background:var(--card);border-radius:.375rem;padding:.375rem .5rem;width:100%}
+.alert .stack{display:flex;flex-direction:column;gap:.375rem;width:100%;margin-top:.5rem}
+.hud{background:var(--hud);border:1px solid var(--hud-edge);border-radius:.625rem;padding:.5625rem .875rem;display:inline-flex;gap:.5rem;align-items:center;font-size:.75rem;font-weight:600;color:var(--label);box-shadow:var(--shadow);max-width:100%}
+.hud svg{width:.875rem;height:.875rem;color:var(--accent);flex:none}
+.docpage{background:var(--doc);border:1px solid var(--rule);border-radius:.75rem;padding:1.25rem 1.5rem;max-width:44rem;width:100%;font-size:.9375rem;line-height:1.55;color:var(--ink)}
+.docpage h3{font-size:1.125rem;margin:0 0 .5rem}
+.docpage ul{padding-left:1.125rem;margin:.5rem 0}
+.docpage li{margin:.375rem 0}
+@media (max-width:30rem){.stage{padding:.75rem}.page{padding:.875rem}.sheet{padding:1rem}}
+/* ---- added for the catalogue ---- */
+:root{
+  --site-bg:#eeebe4; --site-surface:#f5f3ee; --site-text:#1a2024; --site-dim:#5c666d; --site-line:rgba(26,32,36,.18); --site-accent:#3b5776; --site-quiet:rgba(89,128,166,.16);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --site-bg:#0e1317; --site-surface:#141b20; --site-text:#e7e4dd; --site-dim:#9aa3a9; --site-line:rgba(231,228,221,.15); --site-accent:#93b0ca; --site-quiet:rgba(89,128,166,.18);
+  }
+}
+:root[data-theme="dark"]{
+  --site-bg:#0e1317; --site-surface:#141b20; --site-text:#e7e4dd; --site-dim:#9aa3a9; --site-line:rgba(231,228,221,.15); --site-accent:#93b0ca; --site-quiet:rgba(89,128,166,.18);
+}
+/* One mock-up drawn in each appearance, whatever the page's theme. */
+.scope-light{
+  --win:#ececec; --win-edge:#c9c9cc; --title:#e3e3e5; --label:#1d1d1f; --label2:#5c5c61; --label3:#77777c;
+  --card:rgba(0,0,0,.045); --divider:rgba(0,0,0,.11); --accent:#0064d2; --accent-tile:rgba(0,122,255,.12); --on-accent:#ffffff;
+  --btn:#ffffff; --btn-edge:rgba(0,0,0,.18); --btn-ink:#1d1d1f; --red:#c4001a; --shadow:0 .75rem 2.25rem rgba(0,0,0,.20);
+  color:var(--label);
+}
+.scope-dark{
+  --win:#2a2a2d; --win-edge:#48484d; --title:#333337; --label:#f2f2f4; --label2:#b4b4bb; --label3:#9a9aa2;
+  --card:rgba(255,255,255,.06); --divider:rgba(255,255,255,.13); --accent:#4da3ff; --accent-tile:rgba(10,132,255,.20); --on-accent:#06121f;
+  --btn:#5a5a60; --btn-edge:rgba(255,255,255,.10); --btn-ink:#f2f2f4; --red:#ff6961; --shadow:0 .75rem 2.25rem rgba(0,0,0,.55);
+  color:var(--label);
+}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr));gap:1rem;width:100%;align-items:start}
+.pair .label{font-size:.75rem;color:var(--ink2);margin:0 0 .375rem}
+.sheet.wide{max-width:30rem}
+.sheet .msg{font-size:.75rem;color:var(--label2);margin:0}
+.catrow{display:flex;gap:.75rem;align-items:flex-start;padding:.5rem}
+.catrow .text{flex:1 1 auto;min-width:0}
+.catrow .name{display:block;font-size:.8125rem}
+.catrow .sum{display:block;font-size:.75rem;margin:.125rem 0 0}
+.catrow .uses{list-style:none;margin:.25rem 0 0;padding:0;font-size:.6875rem;color:var(--label2)}
+.catrow .uses b{display:block;font-weight:600;color:var(--label)}
+.catrow .uses li{display:flex;gap:.375rem;align-items:baseline}
+.catrow .uses li::before{content:"";width:.25rem;height:.25rem;border-radius:50%;background:var(--label3);flex:none;transform:translateY(-.125rem)}
+.catrow .act{flex:none;font-size:.6875rem;color:var(--label2);padding-top:.125rem}
+.dot.blue{background:var(--accent)}
+.spin{width:.875rem;height:.875rem;border-radius:50%;border:2px solid var(--divider);border-top-color:var(--label2);display:inline-block}
+.newline{font-size:.6875rem;color:var(--label2);margin:.1875rem 0 0}
+.newline mark{background:var(--accent-tile);color:var(--label);border-radius:.25rem;padding:0 .125rem}
+/* the website, in its own tokens */
+.site{background:var(--site-bg);color:var(--site-text);border:1px solid var(--rule);border-radius:.75rem;padding:1.25rem;width:100%;font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+.site .eyebrow{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.6875rem;letter-spacing:.08em;text-transform:uppercase;color:var(--site-accent)}
+.site h3{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:1.375rem;margin:.25rem 0 .5rem;font-weight:600}
+.site p{margin:.375rem 0;font-size:.875rem}
+.site .dim{color:var(--site-dim)}
+.site .band{background:var(--site-surface);border:1px solid var(--site-line);padding:.875rem;margin:.875rem 0;font-size:.8125rem}
+.site .cardgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:.75rem}
+.site .tcard{background:var(--site-surface);border:1px solid var(--site-line);padding:.875rem;display:flex;flex-direction:column;gap:.375rem}
+.site .tcard h4{margin:0;font-size:1rem;display:flex;justify-content:space-between;gap:.5rem;align-items:baseline}
+.site .ver{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.6875rem;color:var(--site-dim)}
+.site .tags{display:flex;flex-wrap:wrap;gap:.25rem;margin:0;padding:0;list-style:none}
+.site .tag{font-size:.6875rem;border:1px solid var(--site-line);padding:.0625rem .375rem;background:var(--site-quiet)}
+.site .lbl{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.625rem;text-transform:uppercase;letter-spacing:.06em;color:var(--site-dim)}
+.site code{font-size:.6875rem;color:var(--site-text)}
+.site a{color:var(--site-accent)}
+.site .sbtn{display:inline-block;border:1px solid var(--site-line);padding:.1875rem .5rem;font-size:.75rem;color:var(--site-text);text-decoration:none}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-puzzle" viewBox="0 0 20 20"><path fill="currentColor" d="M8 2.5a2 2 0 0 1 4 0V4h3a1 1 0 0 1 1 1v3h1.5a2 2 0 0 1 0 4H16v4a1 1 0 0 1-1 1h-3.5v-1.5a1.5 1.5 0 0 0-3 0V17H5a1 1 0 0 1-1-1v-3.5H2.5a1.5 1.5 0 0 1 0-3H4V5a1 1 0 0 1 1-1h3V2.5Z"/></symbol>
+  <symbol id="i-box" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 6.5 10 3l7 3.5v7L10 17l-7-3.5v-7Zm0 0L10 10l7-3.5M10 10v7"/></symbol>
+  <symbol id="i-window" viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path stroke="currentColor" stroke-width="1.6" d="M2.5 7.5h15"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2.2c.5 0 1 .27 1.25.72l6.9 12.2c.52.93-.14 2.08-1.25 2.08H3.1c-1.1 0-1.77-1.15-1.25-2.08l6.9-12.2c.25-.45.74-.72 1.25-.72Zm0 4.3c-.5 0-.9.4-.87.9l.27 4.5a.6.6 0 0 0 1.2 0l.27-4.5c.03-.5-.37-.9-.87-.9Zm0 7.3a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3.5 1.5 7 5 3.5 8.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3Zm8 0h6v6h-6V3ZM3 11h6v6H3v-6Zm8 0h6v6h-6v-6Z"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="wrap">
+    <div>
+      <h1>Tools for everyone, stage C: the catalogue</h1>
+      <p>Vitruvian for macOS and vitruviansoftware.dev. Static pictures of the new screens, before any code.</p>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+      <div class="size" role="group" aria-label="Text size">
+        <button type="button" id="smaller" aria-label="Smaller text">A−</button>
+        <output id="scale" aria-live="polite">100%</output>
+        <button type="button" id="larger" aria-label="Larger text">A+</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="lead" style="margin-top:1.5rem">Stage C lets a person install a tool from a curated list, the catalogue, in two steps: pick it, then agree on the same sheet a folder gets. It adds one button to the card "Tools from outside", one sheet that lists the catalogue, one line on the agreement sheet, four refusals, "Update available" on a tool's row and detail, and a page of the website. Every sentence in a mock-up is the exact English text of the plan's string table. The app's English says "catalog", as the rest of its English is American; this page and the plan say "catalogue". Tool names, publishers, versions and summaries are examples.</p>
+
+  <div class="flow" aria-label="How a tool is installed from the catalogue">
+    <div class="box go"><b>The list</b>Fetched with its signature. Not ours: refused.</div><span class="arrow">→</span>
+    <div class="box go"><b>Size</b>Refused while reading, past the pinned size.</div><span class="arrow">→</span>
+    <div class="box go"><b>SHA-256</b>Must be the pinned one.</div><span class="arrow">→</span>
+    <div class="box go"><b>The zip</b>Read before unpacking. Nothing may leave its folder.</div><span class="arrow">→</span>
+    <div class="box go"><b>The manifest</b>The entry's id and version.</div>
+  </div>
+  <div class="flow">
+    <div class="box wait"><b>The sheet asks</b>The same sheet as a folder, one line more. Return and Escape cancel.</div><span class="arrow">→</span>
+    <div class="box ok"><b>Add Tool</b>Copied, remembered as from the catalogue. The download is deleted.</div>
+  </div>
+  <div class="flow">
+    <div class="box stop"><b>Refused at any step</b>One plain sentence. Nothing left on disk. Nothing installed. (d)</div>
+    <div class="box stop"><b>Cancel</b>The download is deleted. Nothing installed.</div>
+  </div>
+  <p class="key">Colour is status: blue in progress, amber waiting for the person, green done, red stopped. Nothing is installed, started or remembered before the green box.</p>
+
+  <h2>a. The card, with its second button</h2>
+  <div class="stage"><div class="app"><div class="window" style="margin:0 auto">
+    <div class="titlebar"><i></i><i></i><i></i><span>Features</span></div>
+    <div class="page">
+      <div class="card">
+        <div class="head"><span class="tile"><svg><use href="#i-puzzle"/></svg></span><span class="title">Tools from outside</span><span class="btn small">Browse Tools…</span><span class="btn small">Add a Tool…</span></div>
+        <div class="quiet">No tools added. A tool from outside is a separate program that adds commands to Vitruvian.</div>
+      </div>
+    </div>
+  </div></div></div>
+  <div class="note">
+    <p>"Browse Tools…" sits before "Add a Tool…": the catalogue is the easier way in, and a folder stays one click further. The card's empty line is unchanged.</p>
+    <p>Choice: a second button, not a menu on the first. Each button says where it leads, and neither hides the other.</p>
+    <p class="alt">Alternative: a page of its own in the Settings sidebar. It would cost a translated page title and an edit to the sidebar's fixed list, for one list.</p>
+  </div>
+
+  <h2>b. The catalogue, light and dark</h2>
+  <p class="lead">Three tools: one to install, one installed with a newer version listed, one installed and current.</p>
+  <div class="stage"><div class="pair">
+    <div><p class="label">Light</p><div class="app scope-light"><div class="sheet wide">
+      <h3>The Vitruvian catalog</h3>
+      <div>
+        <div class="catrow">
+          <span class="tile"><svg><use href="#i-puzzle"/></svg></span>
+          <span class="text"><span class="name">Deploys</span><span class="cap">Acme · 1.3.0</span><span class="sum">Copies the address of your latest deploy.</span>
+            <div class="uses"><b>What it says it uses</b><ul class="uses"><li>Write to the clipboard</li><li>Show messages and play the alert sound</li><li>Save its own settings</li></ul></div></span>
+          <span class="act"><span class="btn small">Update</span></span>
+        </div>
+        <div class="sep"></div>
+        <div class="catrow">
+          <span class="tile"><svg><use href="#i-puzzle"/></svg></span>
+          <span class="text"><span class="name">Reference tool</span><span class="cap">VitruvianSoftware · 0.1.0</span><span class="sum">Says hello. The smallest tool that speaks protocol 1.</span>
+            <div class="uses"><b>What it says it uses</b><ul class="uses"><li>Show messages and play the alert sound</li></ul></div></span>
+          <span class="act"><span class="btn small">Install</span></span>
+        </div>
+        <div class="sep"></div>
+        <div class="catrow">
+          <span class="tile"><svg><use href="#i-puzzle"/></svg></span>
+          <span class="text"><span class="name">Front Window</span><span class="cap">Example Labs · 0.3.1</span><span class="sum">Names the window in front.</span></span>
+          <span class="act">Installed</span>
+        </div>
+      </div>
+      <div class="actions"><span class="btn default">Close</span></div>
+    </div></div></div>
+    <div><p class="label">Dark</p><div class="app scope-dark"><div class="sheet wide">
+      <h3>The Vitruvian catalog</h3>
+      <div>
+        <div class="catrow">
+          <span class="tile"><svg><use href="#i-puzzle"/></svg></span>
+          <span class="text"><span class="name">Deploys</span><span class="cap">Acme · 1.3.0</span><span class="sum">Copies the address of your latest deploy.</span>
+            <div class="uses"><b>What it says it uses</b><ul class="uses"><li>Write to the clipboard</li><li>Show messages and play the alert sound</li><li>Save its own settings</li></ul></div></span>
+          <span class="act"><span class="btn small">Update</span></span>
+        </div>
+        <div class="sep"></div>
+        <div class="catrow">
+          <span class="tile"><svg><use href="#i-puzzle"/></svg></span>
+          <span class="text"><span class="name">Reference tool</span><span class="cap">VitruvianSoftware · 0.1.0</span><span class="sum">Says hello. The smallest tool that speaks protocol 1.</span>
+            <div class="uses"><b>What it says it uses</b><ul class="uses"><li>Show messages and play the alert sound</li></ul></div></span>
+          <span class="act"><span class="spin" role="img" aria-label="Fetching"></span></span>
+        </div>
+        <div class="sep"></div>
+        <div class="catrow">
+          <span class="tile"><svg><use href="#i-puzzle"/></svg></span>
+          <span class="text"><span class="name">Front Window</span><span class="cap">Example Labs · 0.3.1</span><span class="sum">Names the window in front.</span></span>
+          <span class="act">Installed</span>
+        </div>
+      </div>
+      <div class="actions"><span class="btn default">Close</span></div>
+    </div></div></div>
+  </div></div>
+  <div class="note">
+    <p>Every word but the buttons' is the catalogue's copy of the tool's own manifest, so the list draws without downloading anything. The dark picture shows Install pressed: the row waits with a small spinner and every other button waits too, until the download is checked and the agreement sheet opens.</p>
+    <p>Choice: "Installed" is plain text, not a disabled button. A tool added by hand from a folder with the same id also reads "Installed" and is never offered an update: the catalogue matches only tools installed from it.</p>
+    <p class="alt">Alternative: show a tool that needs a newer Vitruvian, greyed, with a reason. One more string; the plan leaves such a tool out of the list instead.</p>
+    <ul class="words"><li>The Vitruvian catalog</li><li>Install</li><li>Installed</li><li>Update</li><li>What it says it uses (the app's existing text)</li><li>Close (the app's existing text)</li></ul>
+  </div>
+
+  <h2>c. The agreement sheet, for a tool from the catalogue</h2>
+  <div class="stage"><div class="app"><div class="sheet" style="margin:0 auto">
+    <div class="top">
+      <span class="tile big"><svg><use href="#i-puzzle"/></svg></span>
+      <div>
+        <h3>Add “Reference tool” to Vitruvian?</h3>
+        <p class="by">VitruvianSoftware · 0.1.0</p>
+        <p class="sum">Says hello. The smallest tool that speaks protocol 1.</p>
+        <p class="small">From github.com/VitruvianSoftware/vitruvian-sdk</p>
+        <p class="newline"><mark>From the Vitruvian catalog: VitruvianSoftware listed this tool, and the download is exactly the one it listed.</mark></p>
+        <p class="small">The name, publisher and description are the tool’s own words. Vitruvian has not checked them.</p>
+      </div>
+    </div>
+    <div class="statement"><svg><use href="#i-warn"/></svg><div><b>This tool can do anything Vitruvian can on this Mac.</b><p>It is a separate program. It can read the screen, control other apps, read your files and use the network. Vitruvian does not limit or check what it does. Add it only if you trust who made it.</p></div></div>
+    <div class="group"><b>Commands</b><ul><li>Say hello</li></ul></div>
+    <div class="group"><b>What it says it uses</b><ul><li>Show messages and play the alert sound</li></ul><p class="small">This list comes from the tool. It is not a limit on what the tool can do.</p></div>
+    <div class="actions"><span class="btn">Add Tool</span><span class="btn default">Cancel</span></div>
+  </div></div></div>
+  <div class="note">
+    <p>The same sheet a folder gets, word for word, with one line more (highlighted here only, not in the app). "From" names the tool's source instead of a folder: the folder the download was unpacked into is the app's own and is deleted when the sheet closes. Cancel is still the default; Return and Escape install nothing.</p>
+    <p>Choice: the line says what listing is, a pinned download from a list VitruvianSoftware keeps, and the bold statement below it still says the tool can do anything. Listing is not presented as a safety check.</p>
+    <p class="alt">Alternative: skip the sheet for catalogue tools. Refused: the sheet is the one safety moment, and curation is not a sandbox.</p>
+  </div>
+
+  <h2>d. The four refusals</h2>
+  <p class="lead">The list could not be fetched; the list is not ours; the download is not the pinned one; the download is not the tool it says. The first two take the list's place in the sheet. The last two, and a download that could not be fetched, are an alert over the sheet.</p>
+  <div class="stage"><div class="pair">
+    <div class="app"><div class="sheet">
+      <h3>The Vitruvian catalog</h3>
+      <p class="msg">Vitruvian could not reach the catalog. Check your connection and try again.</p>
+      <div class="actions"><span class="btn default">Close</span></div>
+    </div></div>
+    <div class="app"><div class="sheet">
+      <h3>The Vitruvian catalog</h3>
+      <p class="msg">This list of tools is not signed by VitruvianSoftware, so Vitruvian will not use it.</p>
+      <div class="actions"><span class="btn default">Close</span></div>
+    </div></div>
+    <div class="app"><div class="alert" style="margin:0 auto">
+      <span class="appicon"><svg><use href="#i-puzzle"/></svg></span>
+      <h3>“Deploys” was not installed</h3>
+      <p>The download is not the one the catalog lists, so nothing was installed.</p>
+      <div class="stack"><span class="btn wide default">Close</span></div>
+    </div></div>
+    <div class="app"><div class="alert" style="margin:0 auto">
+      <span class="appicon"><svg><use href="#i-puzzle"/></svg></span>
+      <h3>“Deploys” was not installed</h3>
+      <p>The download is not the tool the catalog says it is, so nothing was installed.</p>
+      <div class="stack"><span class="btn wide default">Close</span></div>
+    </div></div>
+  </div></div>
+  <div class="note">
+    <p>One plain sentence each, and nothing on disk after any of them. "Not the pinned one" covers a size or a checksum that differs. "Not the tool it says" covers a zip that is no tool, one with a path that would leave its folder or a link, and a manifest with another id or version. The technical reason goes to no screen: CI already checked the same things, so any of these means something changed after the listing.</p>
+    <p>Choice: reopening the sheet tries again; there is no Try Again button. A download that could not be fetched uses the first sentence in an alert, under the same title as the last two.</p>
+    <p class="alt">Alternative: a sentence for each check (size, checksum, zip, manifest). Four more strings in fifteen languages for a difference only a tool's author can act on.</p>
+  </div>
+
+  <h2>e. "Update available", in the row and the detail</h2>
+  <div class="stage"><div class="pair">
+    <div class="app"><div class="window">
+      <div class="titlebar"><i></i><i></i><i></i><span>Features</span></div>
+      <div class="page"><div class="card">
+        <div class="head"><span class="tile"><svg><use href="#i-puzzle"/></svg></span><span class="title">Tools from outside</span><span class="btn small">Browse Tools…</span><span class="btn small">Add a Tool…</span></div>
+        <div class="row">
+          <span class="tile"><svg><use href="#i-box"/></svg></span>
+          <span class="text"><span class="name">Deploys</span><span class="cap">Acme · 1.2.0</span><span class="status"><span class="dot green"></span>Running</span><span class="status"><span class="dot blue"></span>Update available</span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+          <span class="switch" role="img" aria-label="On"></span>
+        </div>
+      </div></div>
+    </div></div>
+    <div class="app"><div class="sheet">
+      <div class="top">
+        <span class="tile big"><svg><use href="#i-box"/></svg></span>
+        <div>
+          <h3>Deploys</h3>
+          <p class="by">Acme · 1.2.0</p>
+          <p class="sum">Copies the address of your latest deploy.</p>
+          <p class="status" style="margin-top:.25rem"><span class="dot blue"></span>Update available</p>
+          <p class="status"><span class="dot green"></span>Running</p>
+        </div>
+      </div>
+      <div class="group"><b>Commands</b><ul><li>Copy latest deploy</li></ul></div>
+      <div class="actions"><span class="btn danger">Remove</span><span class="btn">Update</span><span class="btn">Update from Folder…</span><span class="push"></span><span class="btn default">Close</span></div>
+    </div></div>
+  </div></div>
+  <div class="note">
+    <p>A second status line, with a dot in the accent colour, only for a tool installed from the catalogue when the catalogue lists a newer version this app can install. "Update" fetches it and opens the same sheet, titled as an update; it keeps what the tool saved and says so, and its bold line says when the tool's own description changed.</p>
+    <p>Choice: the detail opens on Close, as today; "Update" is never where the keyboard starts.</p>
+    <p class="alt">Alternative: update by itself. Refused by the design: a tool can do anything the app can, and the person decides when it changes.</p>
+    <ul class="words"><li>Update available</li><li>Update</li></ul>
+  </div>
+
+  <h2>f. The website's catalogue page</h2>
+  <div class="stage"><div class="site">
+    <span class="eyebrow">Tools</span>
+    <h3>The tool catalog.</h3>
+    <p class="dim">Tools VitruvianSoftware lists for the Vitruvian app. Install one from inside the app: Settings, Features, Tools from outside, Browse Tools.</p>
+    <div class="band"><span class="eyebrow">What listing means</span><p>VitruvianSoftware read each tool's manifest and pinned its download to one file and its checksum; the app refuses any other file. A tool can still do anything Vitruvian can on your Mac, and the app asks before it installs one.</p></div>
+    <div class="cardgrid">
+      <div class="tcard">
+        <h4>Reference tool <span class="ver">v0.1.0</span></h4>
+        <p>Says hello. The smallest tool that speaks protocol 1.</p>
+        <p class="dim">VitruvianSoftware</p>
+        <span class="lbl">What it says it uses</span>
+        <ul class="tags"><li class="tag">Show messages and play the alert sound</li></ul>
+        <span class="lbl">SHA-256</span>
+        <code>3b0f…9c21</code>
+        <span><a class="sbtn" href="#f">Download (4 KB)</a> <a href="#f">Source</a></span>
+      </div>
+    </div>
+    <p class="dim" style="margin-top:.875rem"><span class="lbl">The signed list, as the app reads it</span><br><code>/tools/catalog/tools.json and tools.json.sig, Ed25519, public key …</code></p>
+  </div></div>
+  <div class="note">
+    <p>A page of the site's Tools section, drawn by Jekyll from <code>_data/tools.yml</code>, which a sync script writes from <code>catalog/tools.json</code>. It reuses the downloads page's cards. With an empty list it says "There are no tools in the catalog yet." The words on this page are the site's, in English only; the uses are the app's English words.</p>
+    <p>Choice: the full checksum and the public key are on the page, for a person who wants to check a download by hand.</p>
+    <p class="alt">Alternative: a download button only. Shorter, and it hides what the app checks.</p>
+  </div>
+
+  <h2>The thirteen new texts <small>the plan's string table, in English</small></h2>
+  <div class="scroll"><table>
+    <tr><th>Key</th><th>English</th><th>Where</th></tr>
+    <tr><td><code>browseButton</code></td><td>Browse Tools…</td><td>a</td></tr>
+    <tr><td><code>catalogTitle</code></td><td>The Vitruvian catalog</td><td>b, d</td></tr>
+    <tr><td><code>catalogEmpty</code></td><td>There are no tools in the catalog yet.</td><td>b</td></tr>
+    <tr><td><code>installButton</code></td><td>Install</td><td>b</td></tr>
+    <tr><td><code>installedLabel</code></td><td>Installed</td><td>b</td></tr>
+    <tr><td><code>updateAvailable</code></td><td>Update available</td><td>e</td></tr>
+    <tr><td><code>updateNow</code></td><td>Update</td><td>b, e</td></tr>
+    <tr><td><code>agreeCatalog</code></td><td>From the Vitruvian catalog: VitruvianSoftware listed this tool, and the download is exactly the one it listed.</td><td>c</td></tr>
+    <tr><td><code>catalogUnreachable</code></td><td>Vitruvian could not reach the catalog. Check your connection and try again.</td><td>d</td></tr>
+    <tr><td><code>catalogNotOurs</code></td><td>This list of tools is not signed by VitruvianSoftware, so Vitruvian will not use it.</td><td>d</td></tr>
+    <tr><td><code>downloadMismatch</code></td><td>The download is not the one the catalog lists, so nothing was installed.</td><td>d</td></tr>
+    <tr><td><code>downloadNotTheTool</code></td><td>The download is not the tool the catalog says it is, so nothing was installed.</td><td>d</td></tr>
+    <tr><td><code>installRefusedFormat</code></td><td>“%@” was not installed</td><td>d</td></tr>
+  </table></div>
+
+  <h2>Where the look comes from <small>the app's own Design tokens and components</small></h2>
+  <div class="scroll"><table>
+    <tr><th>In the mock-ups</th><th>In the app</th></tr>
+    <tr><td>The card and its buttons</td><td><code>SettingsCard</code>, two <code>.controlSize(.small)</code> buttons in the header row, as "Add a Tool…" is today</td></tr>
+    <tr><td>The catalogue sheet</td><td>480 pt wide, 22 pt padding, <code>.title3.bold()</code> title, a list in a <code>ScrollView</code> of at most 420 pt, Close as the default button, as the tool's detail</td></tr>
+    <tr><td>A catalogue row</td><td>The 26 pt icon tile with <code>puzzlepiece.extension</code> (the catalogue carries no icon), body name, <code>.caption</code> byline, <code>.callout</code> summary, the uses one to a line with a 4 pt dot</td></tr>
+    <tr><td>Fetching</td><td><code>ProgressView().controlSize(.small)</code> in place of the button</td></tr>
+    <tr><td>"Update available"</td><td><code>circle.fill</code> at 6 pt in <code>Color.accentColor</code>, beside the words, under the row's status</td></tr>
+    <tr><td>Refusals</td><td>The sheet's own text in <code>.callout</code> <code>.secondary</code>, or the system alert through SwiftUI's <code>.alert</code></td></tr>
+    <tr><td>The website</td><td>The site's own tokens and its downloads page's card, plate and tag classes</td></tr>
+  </table></div>
+  <p class="key">Mock-ups (b) draw one sheet in each appearance whatever the page's theme; the theme control changes everything else. The secondary text is slightly darker than macOS draws, so this page meets WCAG AA.</p>
+</main>
+
+<script>
+(function(){
+  var root=document.documentElement, KEY_T="cowork-artifact-theme", KEY_S="cowork-artifact-fontscale";
+  function read(key){try{return window.localStorage.getItem(key);}catch(e){return null;}}
+  function write(key,value){try{window.localStorage.setItem(key,value);}catch(e){}}
+  function setTheme(choice,save){
+    if(choice==="light"||choice==="dark"){root.setAttribute("data-theme",choice);}else{choice="system";root.removeAttribute("data-theme");}
+    var buttons=document.querySelectorAll("[data-theme-choice]");
+    for(var i=0;i<buttons.length;i++){buttons[i].setAttribute("aria-pressed",String(buttons[i].getAttribute("data-theme-choice")===choice));}
+    if(save){write(KEY_T,choice);}
+  }
+  var scale=1;
+  function setScale(value,save){
+    scale=Math.min(1.4,Math.max(0.8,Math.round(value*10)/10));
+    root.style.setProperty("--s",String(scale));
+    document.getElementById("scale").textContent=Math.round(scale*100)+"%";
+    if(save){write(KEY_S,String(scale));}
+  }
+  setTheme(read(KEY_T)||"system",false);
+  var saved=parseFloat(read(KEY_S));
+  setScale(isNaN(saved)?1:saved,false);
+  var choices=document.querySelectorAll("[data-theme-choice]");
+  for(var i=0;i<choices.length;i++){choices[i].addEventListener("click",function(){setTheme(this.getAttribute("data-theme-choice"),true);});}
+  document.getElementById("smaller").addEventListener("click",function(){setScale(scale-0.1,true);});
+  document.getElementById("larger").addEventListener("click",function(){setScale(scale+0.1,true);});
+})();
+</script>
+</body>
+</html>
