@@ -120,7 +120,7 @@ enum CatalogueListTests {
     static func installable(_ suite: TestSuite) {
         let list = CatalogueFixtures.list([
             CatalogueFixtures.entry(),
-            CatalogueFixtures.entry(["id": "com.acme.next", "protocol": "2"]),
+            CatalogueFixtures.entry(["id": "com.acme.next", "protocol": "3"]),
             CatalogueFixtures.entry(["id": "com.acme.newer", "minimumAppVersion": "9.0.0"]),
         ])
         let catalogue = Catalogue.read(list, permits: CatalogueFixtures.source.permits)
