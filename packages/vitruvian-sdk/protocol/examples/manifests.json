@@ -1,5 +1,5 @@
 {
-  "about": "Manifests the schema and the Swift reader must judge alike. Each example is `base` with the top-level fields in `change` replaced; a field changed to null is left out. `problem` is the case of ManifestProblem the Swift reader gives, and `names` are words its reason carries. `schema: false` marks the two rules JSON Schema cannot say, so the schema accepts those manifests.",
+  "about": "Manifests the schema and the Swift reader must judge alike. Each example is `base` with the top-level fields in `change` replaced; a field changed to null is left out. `problem` is the case of ManifestProblem the Swift reader gives, and `names` are words its reason carries. `schema: false` marks the three rules JSON Schema cannot say, so the schema accepts those manifests.",
   "base": {
     "id": "com.acme.deploys",
     "name": { "en": "Deploys", "fr": "Déploiements" },
@@ -112,8 +112,8 @@
       "about": "a protocol the app does not speak",
       "valid": false,
       "problem": "unsupportedProtocol",
-      "names": ["2"],
-      "change": { "protocol": "2" }
+      "names": ["3"],
+      "change": { "protocol": "3" }
     },
     {
       "about": "a kind of runtime a file may not name",
@@ -477,6 +477,372 @@
             "default": ""
           }
         ]
+      }
+    },
+    {
+      "about": "protocol 2, with a panel in each place",
+      "valid": true,
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "deploys",
+              "title": { "en": "Deploys" },
+              "placement": "island",
+              "icon": "shippingbox"
+            },
+            {
+              "id": "settings",
+              "title": { "en": "Deploys" },
+              "placement": "settings",
+              "kind": "blocks"
+            },
+            {
+              "id": "dashboard",
+              "title": { "en": "Dashboard" },
+              "placement": "window",
+              "kind": "web",
+              "entry": "ui/dashboard.html",
+              "icon": "chart.bar"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "protocol 2 with no panels is protocol 1 with another number",
+      "valid": true,
+      "change": { "protocol": "2" }
+    },
+    {
+      "about": "as many windows as there is room for",
+      "valid": true,
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            { "id": "w0", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w1", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w2", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w3", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w4", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w5", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w6", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w7", "title": { "en": "Deploys" }, "placement": "window" }
+          ]
+        }
+      }
+    },
+    {
+      "about": "panels in a manifest of protocol 1",
+      "valid": false,
+      "problem": "panelsNeedProtocol2",
+      "names": ["1"],
+      "change": {
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "deploys",
+              "title": { "en": "Deploys" },
+              "placement": "island",
+              "icon": "shippingbox"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "an empty list of panels in a manifest of protocol 1",
+      "valid": false,
+      "problem": "panelsNeedProtocol2",
+      "change": {
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": []
+        }
+      }
+    },
+    {
+      "about": "nine panels",
+      "valid": false,
+      "problem": "tooManyPanels",
+      "names": ["9"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            { "id": "w0", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w1", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w2", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w3", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w4", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w5", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w6", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w7", "title": { "en": "Deploys" }, "placement": "window" },
+            { "id": "w8", "title": { "en": "Deploys" }, "placement": "window" }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a panel id with a space",
+      "valid": false,
+      "problem": "panelNotWellFormed",
+      "names": ["my deploys"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "my deploys",
+              "title": { "en": "Deploys" },
+              "placement": "island"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "two panels with one id",
+      "valid": false,
+      "schema": false,
+      "problem": "duplicatePanel",
+      "names": ["deploys"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "deploys",
+              "title": { "en": "Deploys" },
+              "placement": "island"
+            },
+            {
+              "id": "deploys",
+              "title": { "en": "Deploys" },
+              "placement": "window"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a panel with no placement",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["placement"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [{ "id": "deploys", "title": { "en": "Deploys" } }]
+        }
+      }
+    },
+    {
+      "about": "a placement the app does not have",
+      "valid": false,
+      "problem": "unknownPlacement",
+      "names": ["deploys", "menuBar"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "deploys",
+              "title": { "en": "Deploys" },
+              "placement": "menuBar"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a kind of panel the app does not have",
+      "valid": false,
+      "problem": "unknownPanelKind",
+      "names": ["deploys", "native"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "deploys",
+              "title": { "en": "Deploys" },
+              "placement": "island",
+              "kind": "native"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "two panels in the island",
+      "valid": false,
+      "problem": "placementTaken",
+      "names": ["checks", "island"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "deploys",
+              "title": { "en": "Deploys" },
+              "placement": "island"
+            },
+            {
+              "id": "checks",
+              "title": { "en": "Checks" },
+              "placement": "island"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "two panels in Settings",
+      "valid": false,
+      "problem": "placementTaken",
+      "names": ["advanced", "settings"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "general",
+              "title": { "en": "Deploys" },
+              "placement": "settings"
+            },
+            {
+              "id": "advanced",
+              "title": { "en": "Deploys" },
+              "placement": "settings"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a panel title with no English",
+      "valid": false,
+      "problem": "noEnglish",
+      "names": ["deploys", "title"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "deploys",
+              "title": { "fr": "Déploiements" },
+              "placement": "island"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a web panel with no page",
+      "valid": false,
+      "problem": "webPanelWithoutEntry",
+      "names": ["dashboard"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "dashboard",
+              "title": { "en": "Deploys" },
+              "placement": "window",
+              "kind": "web"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a web panel whose page is above the folder",
+      "valid": false,
+      "problem": "panelEntryLeavesFolder",
+      "names": ["dashboard", "../dashboard.html"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "dashboard",
+              "title": { "en": "Deploys" },
+              "placement": "window",
+              "kind": "web",
+              "entry": "../dashboard.html"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "about": "a web panel whose page is named from the root of the disk",
+      "valid": false,
+      "problem": "panelEntryLeavesFolder",
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "panels": [
+            {
+              "id": "dashboard",
+              "title": { "en": "Deploys" },
+              "placement": "window",
+              "kind": "web",
+              "entry": "/tmp/page.html"
+            }
+          ]
+        }
       }
     }
   ]

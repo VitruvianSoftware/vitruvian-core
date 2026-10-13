@@ -262,7 +262,7 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json message
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys"}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys"}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
 
@@ -381,6 +381,35 @@ is saved.
 ```json message
 {"jsonrpc":"2.0","id":"j","method":"storage/set","params":{"key":"project","value":"api"}}
 {"jsonrpc":"2.0","id":"j","result":{}}
+```
+
+### What version 2 adds
+
+Protocol 2 adds five messages, for a tool that draws: its manifest says
+`"protocol": "2"` and lists `panels`. Nothing of version 1 changes, and a
+tool that draws nothing never sees them. "Drawing", below, says how a tool
+uses them.
+
+`ui/open` asks for a panel's first page; `ui/event` says what the person did
+in it, and the answer is the next page, or `keep`. `ui/close` says the panel
+went away.
+
+```json message
+{"jsonrpc":"2.0","id":14,"method":"ui/open","params":{"panel":"deploys"}}
+{"jsonrpc":"2.0","id":14,"result":{"tree":{"blocks":[{"type":"heading","text":"Today"},{"type":"button","id":"again","title":"Deploy again"}]}}}
+{"jsonrpc":"2.0","id":15,"method":"ui/event","params":{"panel":"deploys","block":"again","event":"tap"}}
+{"jsonrpc":"2.0","id":15,"result":{"keep":true}}
+{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"deploys"}}
+```
+
+`ui/render` sends a new page for a panel that is open, when the tool has
+news. `ui/badge` puts a count or a dot beside the tool in the island; it needs
+`notify` in `uses`.
+
+```json message
+{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"text","text":"Nothing deployed today."}]}}}
+{"jsonrpc":"2.0","id":"l","method":"ui/badge","params":{"count":2}}
+{"jsonrpc":"2.0","id":"l","result":{}}
 ```
 
 ### Being refused

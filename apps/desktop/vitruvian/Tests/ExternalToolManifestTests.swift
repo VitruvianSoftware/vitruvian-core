@@ -17,6 +17,7 @@ enum ExternalToolManifestTests {
         listsAgree(suite)
         languages(suite)
         folders(suite)
+        panels(suite)
     }
 
     /// The manifest in the design, section 6, with a publisher.
@@ -171,7 +172,7 @@ enum ExternalToolManifestTests {
              #"{"runtime": {"kind": "external", "exec": "bin/../../deploys"}}"#),
             ("a kind of runtime a file may not name", .invalid(.unsupportedRuntime("bundled")),
              #"{"runtime": {"kind": "bundled", "exec": "bin/deploys"}}"#),
-            ("a protocol the app does not speak", .invalid(.unsupportedProtocol("2")), #"{"protocol": "2"}"#),
+            ("a protocol the app does not speak", .invalid(.unsupportedProtocol("3")), #"{"protocol": "3"}"#),
             ("a name with no English", .invalid(.noEnglish(field: "name")), #"{"name": {"fr": "Déploiements"}}"#),
             ("a name that is only spaces", .invalid(.blankText(field: "name")), #"{"name": {"en": " "}}"#),
             ("no publisher", .invalid(.malformed(field: "publisher")), #"{"publisher": null}"#),
@@ -248,8 +249,10 @@ enum ExternalToolManifestTests {
         suite.expect(names.allSatisfy { ManifestRules.isWellFormedName($0) == (ToolID($0) != nil) }
                          && ManifestLimits.maxNameLength == ToolID.maxLength,
                      "the protocol and the app agree on what a well-formed id is")
-        suite.expect(ProtocolVersion.supported == ["1"] && WireLimits.maxLineBytes == 1_048_576,
-                     "the app links protocol version 1, with its 1 MB line")
+        suite.expect(ProtocolVersion.supported == ["1", "2"] && WireLimits.maxLineBytes == 1_048_576,
+                     "the app links protocol versions 1 and 2, with the 1 MB line")
+        suite.expect(PanelPlacement.allCases.map(\.rawValue) == ToolPanelPlacement.allCases.map(\.rawValue),
+                     "the protocol's placements are the app's")
     }
 
     static func languages(_ suite: TestSuite) {
@@ -323,5 +326,47 @@ enum ExternalToolManifestTests {
         suite.expect(refused(make("breaks-a-rule", manifest: file(#"{"id": "deploys"}"#)))
                          == .invalid(.idWithoutDot("deploys")),
                      "a manifest that breaks a rule is refused for that rule, whatever the folder holds")
+    }
+}
+
+extension ExternalToolManifestTests {
+    /// Protocol 2's panels: read into descriptors the app's lists hold, and
+    /// refused in a manifest of protocol 1.
+    static func panels(_ suite: TestSuite) {
+        let three = #"""
+            {"protocol": "2", "contributes": {"commands": [{"id": "copyLatest", "title": {"en": "Copy"}}], "panels": [
+              {"id": "deploys", "title": {"en": "Deploys", "fr": "Déploiements"}, "placement": "island", "icon": "list.bullet"},
+              {"id": "settings", "title": {"en": "Deploys"}, "placement": "settings", "entry": "ignored.html"},
+              {"id": "dashboard", "title": {"en": "Dashboard"}, "placement": "window", "kind": "web", "entry": "ui/dashboard.html"}
+            ]}}
+            """#
+        let drawn = tool(three)
+        suite.expect(drawn?.panels.map(\.id) == ["deploys", "settings", "dashboard"]
+                         && drawn?.panels.map(\.placement) == [.island, .settings, .window],
+                     "a tool of protocol 2 has its panels, in the manifest's order, each in its place")
+        suite.expect(drawn?.panel("deploys")?.symbol == "list.bullet" && drawn?.panel("settings")?.symbol == "shippingbox",
+                     "a panel's icon is its own, else the tool's")
+        suite.expect(drawn?.panel("dashboard")?.entry == "ui/dashboard.html" && drawn?.panel("dashboard")?.isWeb == true
+                         && drawn?.panel("settings")?.entry == nil && drawn?.panel("settings")?.isWeb == false,
+                     "only a web panel has a page; a blocks panel ignores an entry")
+        suite.expect(drawn?.panel(in: .island)?.id == "deploys" && drawn?.panel(in: .settings)?.id == "settings"
+                         && drawn?.panel("nothing") == nil,
+                     "a panel is found by its id, and the island's and Settings' by their place")
+        suite.expect(drawn?.panel("deploys")?.title.text(for: AppLanguage.fr.rawValue) == "Déploiements",
+                     "a panel's title is in every language its author wrote")
+        suite.expect(drawn?.manifest.tool.commands.map(\.id.name) == ["copyLatest"] && drawn?.protocolVersion == "2",
+                     "protocol 2 changes nothing else the manifest says")
+
+        let plain = tool()
+        suite.expect(plain?.panels.isEmpty == true && plain?.protocolVersion == "1",
+                     "a tool of protocol 1 has no panels and is read as it always was")
+        suite.expect(refusal(#"{"contributes": {"panels": [{"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"}]}}"#)
+                         == .invalid(.panelsNeedProtocol2("1")),
+                     "a manifest of protocol 1 with panels is refused, and the reason names its protocol")
+        suite.expect(refusal(#"{"protocol": "3"}"#) == .invalid(.unsupportedProtocol("3")),
+                     "a protocol after 2 is refused")
+        suite.expect(refusal(#"{"protocol": "2", "contributes": {"panels": [{"id": "d", "title": {"en": "D"}, "placement": "window", "kind": "web", "entry": "../page.html"}]}}"#)
+                         == .invalid(.panelEntryLeavesFolder(panel: "d", entry: "../page.html")),
+                     "a web panel's page that leaves the folder by its text is refused, as the program is")
     }
 }

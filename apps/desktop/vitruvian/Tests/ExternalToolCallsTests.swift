@@ -44,6 +44,7 @@ enum ExternalToolCallsTests {
         (.processesTerminate, #"{"pid": 42, "name": "node", "force": true}"#),
         (.storageGet, #"{"key": "project"}"#),
         (.storageSet, #"{"key": "project", "value": "api"}"#),
+        (.uiBadge, #"{"count": 2}"#),
     ]
 
     /// A broker whose services record what they were asked, and the world

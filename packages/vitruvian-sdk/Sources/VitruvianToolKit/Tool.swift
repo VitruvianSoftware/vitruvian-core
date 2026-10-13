@@ -155,13 +155,16 @@ public final class Tool {
         guard let hello = try? params?.decode(InitializeParams.self) else {
             return refuse(id, RPCErrorCode.invalidParams, "invalid params")
         }
-        guard hello.protocolVersions.contains(ProtocolVersion.current) else {
-            return refuse(id, RPCErrorCode.invalidParams, "this tool speaks protocol \(ProtocolVersion.current) only")
+        // The newest version both speak. Version 2 only adds to version 1,
+        // so a tool of either is answered by an app of either.
+        guard let picked = ProtocolVersion.supported.last(where: hello.protocolVersions.contains) else {
+            let spoken = ProtocolVersion.supported.joined(separator: " and ")
+            return refuse(id, RPCErrorCode.invalidParams, "this tool speaks protocols \(spoken) only")
         }
         language = hello.language
         dataFolder = URL(fileURLWithPath: hello.dataFolder, isDirectory: true)
         greeted = true
-        answer(id, InitializeResult(protocolVersion: ProtocolVersion.current, toolVersion: version))
+        answer(id, InitializeResult(protocolVersion: picked, toolVersion: version))
         onStart?(App(tool: self))
     }
 

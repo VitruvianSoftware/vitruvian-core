@@ -27,6 +27,7 @@ the schemas and the types cannot drift apart unnoticed:
      they call invalid fails it;
   2. the valid examples between them use every field the schemas declare, so
      a field one side has and the other lacks shows up as a failure there;
+     a block's fields count through the definition its kind picks;
   3. methods.json and messages.schema.json name the same messages.
 """
 
@@ -56,6 +57,11 @@ def cover(node, instance, root, seen, where):
             if key in instance:
                 seen.add((where, key))
                 cover(child, instance[key], root, seen, where)
+        # A block's own fields are in the definition its kind picks.
+        for branch in node.get("allOf", []):
+            picked = branch.get("if", {}).get("properties", {}).get("type", {})
+            if "const" in picked and instance.get("type") == picked["const"]:
+                cover(branch["then"], instance, root, seen, where)
     elif isinstance(instance, list) and "items" in node:
         for item in instance:
             cover(node["items"], item, root, seen, where)

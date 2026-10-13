@@ -861,6 +861,11 @@ MUTATIONS = [
      "",
      "what is left of a process group is ended only when no process has its leader's id: "
      "while one has, nothing is signalled"),
+    ("a manifest of protocol 1 may contribute panels", "platform",
+     "../../../packages/vitruvian-sdk/Sources/VitruvianToolProtocol/ToolManifestFile.swift",
+     "        guard `protocol` != \"1\" else { return [.panelsNeedProtocol2(`protocol`)] }\n",
+     "",
+     "a manifest of protocol 1 with panels is refused, and the reason names its protocol"),
 ]
 
 

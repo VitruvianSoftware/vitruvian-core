@@ -41,11 +41,26 @@ package struct ExternalToolManifest: Equatable, Sendable {
     /// preference with no title is not here: it is the tool's alone, and
     /// the person is never shown it.
     package let preferenceTitles: [String: LocalizedText]
+    /// What the tool draws, and where: protocol 2's panels, in the order
+    /// the manifest lists them. None for a tool of protocol 1.
+    package let panels: [ToolPanelDescriptor]
     package let version: String
     package let publisher: String
     package let license: String?
     /// The protocol version the tool speaks.
     package let protocolVersion: String
+
+    /// The tool's panel with this id; nil for one the manifest does not
+    /// declare.
+    package func panel(_ id: String) -> ToolPanelDescriptor? {
+        panels.first { $0.id == id }
+    }
+
+    /// The tool's panel in a place where it has at most one: the island or
+    /// Settings.
+    package func panel(in placement: ToolPanelPlacement) -> ToolPanelDescriptor? {
+        panels.first { $0.placement == placement }
+    }
     /// The program to start, as a path inside the tool's folder.
     package let program: String
 
@@ -133,6 +148,18 @@ package struct ExternalToolManifest: Equatable, Sendable {
             preferenceTitles[key] = preference.title
         }
 
+        var panels: [ToolPanelDescriptor] = []
+        for panel in file.contributes?.panels ?? [] {
+            guard let placement = ToolPanelPlacement(rawValue: panel.placement) else {
+                return .failure(.notOfferedHere(panel.placement))
+            }
+            let kind = panel.kind ?? PanelKind.blocks.rawValue
+            guard let drawn = PanelKind(rawValue: kind) else { return .failure(.notOfferedHere(kind)) }
+            panels.append(ToolPanelDescriptor(id: panel.id, title: panel.title, placement: placement,
+                                              symbol: symbol(panel.icon ?? file.icon),
+                                              entry: drawn == .web ? panel.entry : nil))
+        }
+
         var activation: [Activation] = []
         for name in file.activation ?? [] {
             guard let when = Activation(rawValue: name) else { return .failure(.notOfferedHere(name)) }
@@ -150,7 +177,7 @@ package struct ExternalToolManifest: Equatable, Sendable {
 
         return .success(ExternalToolManifest(manifest: manifest, name: file.name, summary: file.description,
                                              commandTitles: titles, preferenceTitles: preferenceTitles,
-                                             version: file.version,
+                                             panels: panels, version: file.version,
                                              publisher: file.publisher, license: file.license,
                                              protocolVersion: file.`protocol`, program: file.runtime.exec))
     }

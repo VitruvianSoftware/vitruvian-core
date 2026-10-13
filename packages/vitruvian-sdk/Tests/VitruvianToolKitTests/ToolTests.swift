@@ -83,7 +83,7 @@ final class ToolTests: XCTestCase {
     func testEveryRequestAToolMaySendHasAType() {
         let wanted = ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }
         XCTAssertEqual(Set(AppRequests.methods), Set(wanted))
-        XCTAssertEqual(AppRequests.methods.count, 10, "each request once")
+        XCTAssertEqual(AppRequests.methods.count, 11, "each request once")
     }
 
     func testHelloACommandAndGoodbye() throws {
@@ -279,14 +279,23 @@ final class ToolTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 
+    func testTheNewestVersionBothSpeakIsPicked() throws {
+        for (offered, picked) in [(#"["1","2"]"#, "2"), (#"["1"]"#, "1"), (#"["2","1"]"#, "2"), (#"["2","3"]"#, "2")] {
+            let bench = Bench().hello(versions: offered).goodbye()
+            XCTAssertEqual(try bench.tool().serve(), 0)
+            XCTAssertEqual(try bench.written().first?.answer?["protocolVersion"], .string(picked), offered)
+        }
+    }
+
     func testAVersionTheToolDoesNotSpeakIsRefused() throws {
-        let bench = Bench().hello(versions: #"["2"]"#).run("hello", id: 2).goodbye()
+        let bench = Bench().hello(versions: #"["3"]"#).run("hello", id: 2).goodbye()
         var ran = false
         let tool = try bench.tool { $0.command("hello") { _ in ran = true } }
         XCTAssertEqual(tool.serve(), 0)
         XCTAssertFalse(ran)
         XCTAssertEqual(try bench.written(), [
-            .failure(id: .string("hello"), error: RPCErrorObject(code: -32602, message: "this tool speaks protocol 1 only")),
+            .failure(id: .string("hello"), error: RPCErrorObject(code: -32602,
+                                                                  message: "this tool speaks protocols 1 and 2 only")),
             .failure(id: .number(2), error: RPCErrorObject(code: -32600, message: "initialize comes first")),
         ])
     }
@@ -314,5 +323,13 @@ final class ToolTests: XCTestCase {
             .notice(method: "commands/state", params: .object(["runnable": .array([.string("hello")])])),
             .notice(method: "log", params: .object(["message": .string("started")])),
         ], "after the answer to initialize, never before it")
+    }
+}
+
+extension RPCMessage {
+    /// A result's value; nil for anything else.
+    var answer: JSONValue? {
+        if case .result(_, let value) = self { return value }
+        return nil
     }
 }

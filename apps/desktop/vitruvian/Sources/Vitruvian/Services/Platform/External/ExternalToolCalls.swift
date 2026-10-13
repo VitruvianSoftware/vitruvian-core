@@ -31,11 +31,19 @@ package struct ExternalToolCalls {
     /// the work is done.
     package func serve(_ method: ToolMethod, _ params: JSONValue?, _ reply: @escaping ToolLink.Reply) {
         switch method {
-        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
-            // The app's own messages, and the two notices: not requests a
-            // tool makes. The link answers these itself; this is for a
-            // caller that does not.
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
+             .uiOpen, .uiEvent, .uiClose, .uiRender:
+            // The app's own messages, and the notices: not requests a tool
+            // makes. The link answers these itself; this is for a caller
+            // that does not.
             reply(.failure(RPCErrorObject(code: RPCErrorCode.methodNotFound, message: "unknown method")))
+
+        case .uiBadge:
+            // Behind `notify`, as the protocol says. Nothing draws a badge
+            // yet: the island's Tools area comes with the panels.
+            guard Self.read(UIBadgeParams.self, params) != nil else { return reply(Self.badParams) }
+            if let refusal = services.gate(.notify)() { return reply(.failure(Self.error(for: refusal))) }
+            reply(.failure(RefusalCode.unavailable.error()))
 
         case .notifyHUD:
             guard let asked = Self.read(NotifyHUDParams.self, params) else { return reply(Self.badParams) }

@@ -77,8 +77,16 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(ProtocolFiles.fields(of: preference),
                        ProtocolFiles.fields(declaredBy: schema["$defs"]?["preference"]))
         XCTAssertEqual(ProtocolFiles.fields(of: read.runtime), ProtocolFiles.fields(declaredBy: schema["$defs"]?["runtime"]))
+        let drawn = try ToolManifestFile.read(manifest(changing: [
+            "protocol": .string("2"),
+            "contributes": .object(["panels": .array([.object(["id": .string("deploys"),
+                                                                "title": .object(["en": .string("Deploys")]),
+                                                                "placement": .string("island")])])]),
+        ])).get()
+        let panel = try XCTUnwrap(drawn.contributes?.panels?.first)
+        XCTAssertEqual(ProtocolFiles.fields(of: panel), ProtocolFiles.fields(declaredBy: schema["$defs"]?["panel"]))
         XCTAssertEqual(Set((schema["$defs"]?.objectValue ?? [:]).keys),
-                       ["localizedText", "contributes", "command", "preference", "runtime"])
+                       ["localizedText", "contributes", "command", "panel", "preference", "runtime"])
     }
 
     func testTheListsAreTheSchemasLists() {
@@ -92,7 +100,16 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(listed(schema["properties"]?["activation"]), ActivationName.allCases.map(\.rawValue))
         XCTAssertEqual(listed(command?["surfaces"]), SurfaceName.allCases.map(\.rawValue))
         XCTAssertEqual(listed(preference?["type"]), PreferenceKind.allCases.map(\.rawValue))
-        XCTAssertEqual(schema["properties"]?["protocol"]?["const"]?.stringValue, ProtocolVersion.current)
+        XCTAssertEqual(listed(schema["properties"]?["protocol"]), ProtocolVersion.supported)
+        XCTAssertEqual(ProtocolVersion.supported.last, ProtocolVersion.current)
+        let panel = schema["$defs"]?["panel"]?["properties"]
+        XCTAssertEqual(listed(panel?["placement"]), PanelPlacement.allCases.map(\.rawValue))
+        XCTAssertEqual(listed(panel?["kind"]), PanelKind.allCases.map(\.rawValue))
+        XCTAssertEqual(panel?["id"]?["maxLength"]?.numberValue, Double(ManifestLimits.maxNameLength))
+        XCTAssertEqual(panel?["entry"]?["pattern"], schema["$defs"]?["runtime"]?["properties"]?["exec"]?["pattern"],
+                       "a web panel's page stays inside the folder by the program's rule")
+        XCTAssertEqual(schema["$defs"]?["contributes"]?["properties"]?["panels"]?["maxItems"]?.numberValue,
+                       Double(ManifestLimits.maxPanels))
         XCTAssertEqual(schema["$defs"]?["runtime"]?["properties"]?["kind"]?["const"]?.stringValue,
                        ToolManifestFile.externalRuntime)
         XCTAssertEqual(schema["properties"]?["id"]?["maxLength"]?.numberValue, Double(ManifestLimits.maxNameLength))
@@ -114,6 +131,7 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(ManifestLimits.maxPreferences, 16)
         XCTAssertEqual(ManifestLimits.maxNameLength, 128)
         XCTAssertEqual(ManifestLimits.maxPreferenceTitleLength, 60)
+        XCTAssertEqual(ManifestLimits.maxPanels, 8)
 
         func commands(_ count: Int) -> JSONValue {
             .object(["commands": .array((0..<count).map { index in
@@ -174,6 +192,8 @@ final class ManifestFileTests: XCTestCase {
         case commandNotWellFormed, duplicateCommand, unknownSurface, tooManyPreferences, preferenceNotWellFormed
         case duplicatePreference, unknownPreferenceType, defaultOfWrongType, programLeavesFolder
         case preferenceTitleNotWellFormed
+        case panelsNeedProtocol2, tooManyPanels, panelNotWellFormed, duplicatePanel, unknownPlacement
+        case unknownPanelKind, placementTaken, webPanelWithoutEntry, panelEntryLeavesFolder
 
         init(_ problem: ManifestProblem) {
             switch problem {
@@ -200,6 +220,15 @@ final class ManifestFileTests: XCTestCase {
             case .defaultOfWrongType: self = .defaultOfWrongType
             case .programLeavesFolder: self = .programLeavesFolder
             case .preferenceTitleNotWellFormed: self = .preferenceTitleNotWellFormed
+            case .panelsNeedProtocol2: self = .panelsNeedProtocol2
+            case .tooManyPanels: self = .tooManyPanels
+            case .panelNotWellFormed: self = .panelNotWellFormed
+            case .duplicatePanel: self = .duplicatePanel
+            case .unknownPlacement: self = .unknownPlacement
+            case .unknownPanelKind: self = .unknownPanelKind
+            case .placementTaken: self = .placementTaken
+            case .webPanelWithoutEntry: self = .webPanelWithoutEntry
+            case .panelEntryLeavesFolder: self = .panelEntryLeavesFolder
             }
         }
     }
@@ -239,7 +268,7 @@ final class ManifestFileTests: XCTestCase {
         let missing = Set(ProblemName.allCases).subtracting(names).map(\.rawValue).sorted()
         XCTAssertEqual(missing, [], "no test gives these problems")
         XCTAssertEqual(names.count, ProblemName.allCases.count)
-        XCTAssertEqual(ProblemName.allCases.count, 23)
+        XCTAssertEqual(ProblemName.allCases.count, 32)
     }
 
     func testNamesAndPaths() {
@@ -333,6 +362,27 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertFalse(PreferenceKind.integer.accepts(.number(1.5)))
         XCTAssertFalse(PreferenceKind.boolean.accepts(.number(1)))
         XCTAssertFalse(PreferenceKind.string.accepts(.null))
+    }
+
+    func testProtocolTwoAddsPanelsAndChangesNothingElse() throws {
+        // The design's example manifest, read as protocol 2: every field of
+        // protocol 1 is read as it was.
+        let one = try ToolManifestFile.read(manifest()).get()
+        let two = try ToolManifestFile.read(manifest(changing: ["protocol": .string("2")])).get()
+        XCTAssertEqual(two.contributes?.commands, one.contributes?.commands)
+        XCTAssertEqual(two.preferences, one.preferences)
+        XCTAssertNil(two.contributes?.panels)
+
+        let island = JSONValue.object(["id": .string("deploys"), "title": .object(["en": .string("Deploys")]),
+                                       "placement": .string("island")])
+        let panels = JSONValue.object(["panels": .array([island])])
+        let read = try ToolManifestFile.read(manifest(changing: ["protocol": .string("2"), "contributes": panels])).get()
+        XCTAssertEqual(read.contributes?.panels?.map(\.id), ["deploys"])
+        XCTAssertNil(read.contributes?.panels?.first?.kind, "a panel's kind is blocks when left out")
+        XCTAssertEqual(problem(["contributes": panels]), .panelsNeedProtocol2("1"),
+                       "an app reading a protocol 1 manifest never finds panels in it")
+        XCTAssertEqual(problem(["protocol": .string("3"), "contributes": panels]), .unsupportedProtocol("3"))
+        XCTAssertEqual(ProtocolVersion.supported, ["1", "2"])
     }
 
     func testTheReferenceToolsManifestIsRead() throws {

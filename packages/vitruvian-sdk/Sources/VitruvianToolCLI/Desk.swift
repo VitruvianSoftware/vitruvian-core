@@ -81,9 +81,15 @@ public struct Desk {
         let wrong = (Self.badParams, "params that are not this message's")
 
         switch known {
-        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log:
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
+             .uiOpen, .uiEvent, .uiClose, .uiRender:
             // Not reached: none of these has a service.
             return wrong
+        case .uiBadge:
+            guard let asked = read(UIBadgeParams.self) else { return wrong }
+            let badge = asked.count.flatMap { $0 > 0 ? "the count \($0)" : nil }
+                ?? (asked.dot == true ? "a dot" : "no badge")
+            return (Self.done, "the app would show \(badge) beside the tool in the island")
         case .notifyHUD:
             guard let asked = read(NotifyHUDParams.self) else { return wrong }
             return (Self.done, "the app would show \"\(asked.message)\" with the symbol \(asked.icon)")

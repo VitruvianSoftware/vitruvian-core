@@ -24,7 +24,7 @@ import Foundation
 /// A request a tool makes of the app: what it carries is the value itself,
 /// `method` is its name on the link, and `Answer` is what a result holds.
 ///
-/// Every request of protocol version 1 has one type here, and a test holds
+/// Every request of the protocol has one type here, and a test holds
 /// the list against `ToolMethod`. A tool calls one with `App.send`, or with
 /// the method of `App` that wraps it.
 public protocol AppRequest: Encodable {
@@ -92,11 +92,16 @@ extension StorageSetParams: AppRequest {
     public static var method: ToolMethod { .storageSet }
 }
 
+extension UIBadgeParams: AppRequest {
+    public typealias Answer = EmptyObject
+    public static var method: ToolMethod { .uiBadge }
+}
+
 /// The requests above, by name, for a test to hold against `ToolMethod`.
 public enum AppRequests {
     public static let methods: [ToolMethod] = [
         NotifyHUDParams.method, NotifyBeepParams.method, OpenURLParams.method, ClipboardReadTextParams.method,
         ClipboardWriteTextParams.method, KeystrokesPasteParams.method, KeystrokesPressMenuItemParams.method,
-        ProcessesTerminateParams.method, StorageGetParams.method, StorageSetParams.method,
+        ProcessesTerminateParams.method, StorageGetParams.method, StorageSetParams.method, UIBadgeParams.method,
     ]
 }

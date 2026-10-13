@@ -384,7 +384,7 @@ enum ExternalToolStoreTests {
                          && bench.started[0].program == bench.files.appendingPathComponent("bin/deploys")
                          && bench.started[0].data == bench.data,
                      "running its command starts the program of the app's copy, in the tool's data folder")
-        let hello = JSONValue.object(["protocolVersions": .array([.string("1")]), "language": .string("fr"),
+        let hello = JSONValue.object(["protocolVersions": .array([.string("1"), .string("2")]), "language": .string("fr"),
                                       "dataFolder": .string(bench.data.path)])
         suite.expect(bench.current.sent == [.request(id: .number(1), method: "initialize", params: hello)],
                      "it is greeted with the versions the app speaks, the app's language and its data folder")

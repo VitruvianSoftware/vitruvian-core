@@ -58,7 +58,7 @@ final class RunTests: XCTestCase {
               [ "$HOW" = chatty ] && say "starting up"
               [ "$HOW" = mute ] && continue
               version=1
-              [ "$HOW" = newer ] && version=2
+              [ "$HOW" = newer ] && version=3
               say "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"$version\",\"toolVersion\":\"7\"}}"
               say '{"jsonrpc":"2.0","method":"commands/state","params":{"runnable":["hello","where"]}}'
               if [ "$HOW" = flood ]; then
@@ -405,7 +405,7 @@ final class RunTests: XCTestCase {
         XCTAssertTrue(said.contains { $0.hasPrefix("NOT OK   a line that is not a message: starting up") }, "\(said)")
         (said, status) = try run(["hello"], how: "newer")
         XCTAssertEqual(status, 1)
-        XCTAssertTrue(said.contains { $0.hasPrefix("NOT OK   the tool picked protocol 2") }, "\(said)")
+        XCTAssertTrue(said.contains { $0.hasPrefix("NOT OK   the tool picked protocol 3") }, "\(said)")
     }
 
     func testAFolderTheAppWouldRefuseIsNotStarted() throws {
