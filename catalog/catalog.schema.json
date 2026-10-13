@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "The Vitruvian tool catalog",
+  "description": "catalog/tools.json: the tools VitruvianSoftware lists, each pinned to one download. The app reads the signed copy the website serves. Rules JSON Schema cannot say are in catalog_rules.py: no id is listed twice, versions are semver, a download address has no segment that walks up, and no two commands of a tool share an id.",
+  "type": "object",
+  "required": ["version", "generated", "tools"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "The version of this file's shape. The app reads version 1 only.",
+      "const": 1
+    },
+    "generated": {
+      "description": "When the list was last changed, in UTC. Each change sets it later than the one before: the app refuses a list older than one it has already accepted.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tool" }
+    }
+  },
+  "$defs": {
+    "localizedText": {
+      "description": "As in the tool manifest: text keyed by language tag, English under en required.",
+      "type": "object",
+      "required": ["en"],
+      "additionalProperties": { "type": "string", "pattern": "\\S" }
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "tool": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "publisher",
+        "summary",
+        "version",
+        "protocol",
+        "minimumAppVersion",
+        "source",
+        "download",
+        "uses",
+        "commands"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "The tool's id, as its manifest gives it.",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+$"
+        },
+        "name": {
+          "description": "The manifest's name, copied.",
+          "$ref": "#/$defs/localizedText"
+        },
+        "publisher": {
+          "description": "The manifest's publisher, copied.",
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "summary": {
+          "description": "The manifest's description, copied.",
+          "$ref": "#/$defs/localizedText"
+        },
+        "version": {
+          "description": "The manifest's version, copied. Semver, so the app can tell which is newer.",
+          "$ref": "#/$defs/version"
+        },
+        "protocol": {
+          "description": "The manifest's protocol, copied.",
+          "enum": ["1"]
+        },
+        "minimumAppVersion": {
+          "description": "The oldest Vitruvian that may install it. An older one does not show it.",
+          "$ref": "#/$defs/version"
+        },
+        "source": {
+          "description": "Where the tool's source is.",
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "download": {
+          "type": "object",
+          "required": ["url", "sha256", "size"],
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "description": "A zip of the tool's folder, with vitruvian-tool.json at its top, from a GitHub release of VitruvianSoftware. Another place is added here and in catalog_rules.py by a reviewed change.",
+              "type": "string",
+              "pattern": "^https://github\\.com/VitruvianSoftware/[A-Za-z0-9_.-]+/releases/download/[^\\s?#%]+\\.zip$"
+            },
+            "sha256": {
+              "description": "The zip's SHA-256, in lower-case hex.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "size": {
+              "description": "The zip's size in bytes. At most 256 MB, the most a tool's folder may hold.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 268435456
+            }
+          }
+        },
+        "uses": {
+          "description": "The manifest's uses, copied.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "notify",
+              "open",
+              "clipboard.read",
+              "clipboard.write",
+              "keystrokes",
+              "processes",
+              "storage"
+            ]
+          }
+        },
+        "commands": {
+          "description": "The manifest's commands, each its id and title, copied.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "title"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$"
+              },
+              "title": { "$ref": "#/$defs/localizedText" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -31,8 +31,9 @@ every module in emitters/. Each emitter returns its files, by their path in
 the package. A language is added by adding its emitter, and nothing else here
 changes: this finds the emitters by looking.
 
-Each emitter writes only inside folders named `generated`, and --check reads
-every file under every such folder in kits/, so a file an emitter stopped
+Each emitter writes only inside folders named `generated`, or, for Go, whose
+packages are folders, a file named `*_gen.go` beside the kit's own; --check
+reads every such file under kits/ and go/, so a file an emitter stopped
 writing is caught as well as one that changed.
 """
 
@@ -63,13 +64,22 @@ def emitters():
     return found
 
 
+def is_generated(path):
+    """Whether a path is one an emitter may write: inside a folder named
+    `generated`, or a Go file named `*_gen.go` (a Go package is a folder, so
+    the Go kit's types sit beside its hand-written files, under Go's own name
+    for a made file)."""
+    parts = path.replace(os.sep, "/").split("/")
+    return "generated" in parts[:-1] or parts[-1].endswith("_gen.go")
+
+
 def generate(package):
     """Every generated file, by its path under `package`, and its text."""
     built = model.load(os.path.join(package, "protocol"))
     files = {}
     for emitter in emitters():
         for path, text in emitter.emit(built).items():
-            if "/generated/" not in "/" + path:
+            if not is_generated(path):
                 raise SystemExit(
                     f"{emitter.NAME} writes {path}, which is not inside a folder named generated"
                 )
@@ -80,21 +90,20 @@ def generate(package):
 
 
 def committed(package):
-    """Every file under a folder named `generated` in the package's kits."""
+    """Every generated file in the package's kits and its Go module."""
     found = {}
-    kits = os.path.join(package, "kits")
-    for root, folders, names in os.walk(kits):
-        folders[:] = [
-            f for f in folders if f not in ("node_modules", "__pycache__", "dist")
-        ]
-        if "generated" not in os.path.relpath(root, package).split(os.sep):
-            continue
-        for name in names:
-            path = os.path.join(root, name)
-            with open(path, encoding="utf-8") as handle:
-                found[os.path.relpath(path, package).replace(os.sep, "/")] = (
-                    handle.read()
-                )
+    for folder in ("kits", "go"):
+        for root, folders, names in os.walk(os.path.join(package, folder)):
+            folders[:] = [
+                f for f in folders if f not in ("node_modules", "__pycache__", "dist")
+            ]
+            for name in names:
+                path = os.path.join(root, name)
+                relative = os.path.relpath(path, package).replace(os.sep, "/")
+                if not is_generated(relative):
+                    continue
+                with open(path, encoding="utf-8") as handle:
+                    found[relative] = handle.read()
     return found
 
 

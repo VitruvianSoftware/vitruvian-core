@@ -2,6 +2,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@vitruviansoftware/tool-kit": "0.9.0"
+    "@vitruviansoftware/tool-kit": "0.10.0"
   }
 }

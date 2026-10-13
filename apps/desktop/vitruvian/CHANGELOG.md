@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.44.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.43.0...vitruvian-v3.44.0) (2026-10-13)
+
+
+### Features
+
+* **ci:** the tool catalogue: its list, signature, checks and website page ([#3169](https://github.com/VitruvianSoftware/vitruvian-core/issues/3169)) ([5187efb](https://github.com/VitruvianSoftware/vitruvian-core/commit/5187efb7a9cd06bcd297c593fa87d91178e556b5))
+
 ## [3.43.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.42.3...vitruvian-v3.43.0) (2026-10-13)
 
 

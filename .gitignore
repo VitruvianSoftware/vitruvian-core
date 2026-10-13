@@ -84,3 +84,6 @@ ds-bundle/
 site/
 uv.lock
 
+
+# Cargo build output: the root Cargo.toml is a workspace (the SDK Rust kit).
+/target/

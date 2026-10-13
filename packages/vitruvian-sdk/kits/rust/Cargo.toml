@@ -1,0 +1,40 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+[package]
+name = "vitruvian-tool-kit"
+version = "0.10.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Write a Vitruvian tool in Rust: declare commands, handle them, call the app."
+license = "MIT"
+repository = "https://github.com/VitruvianSoftware/vitruvian-sdk"
+readme = "README.md"
+keywords = ["vitruvian", "macos", "tool", "json-rpc"]
+categories = ["command-line-utilities", "api-bindings"]
+# What crates.io gets: the library alone. The tests read the protocol's
+# examples from the folders above this one, which are not in the crate.
+include = ["Cargo.toml", "README.md", "src/**/*.rs"]
+
+[dependencies]
+# Rust has no JSON in its standard library. These two are the only
+# dependencies, with nothing else enabled.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -5,6 +5,11 @@ use (
 	./apps/cli/devx
 	./apps/cli/homelab
 
+	// The Vitruvian SDK's Go kit. The public mirror holds it at go/, so its
+	// module path ends in /go and its tags are go/vX.Y.Z. Standard library
+	// only: it adds nothing to the go_deps graph.
+	./packages/vitruvian-sdk/go
+
 	// pulumi-library: the GCP Pulumi component library, grafted from the
 	// standalone pulumi-library repo. Each component is its own module (kept
 	// from upstream so the public mirror keeps publishing per-package tags);

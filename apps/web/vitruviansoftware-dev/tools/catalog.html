@@ -1,0 +1,70 @@
+---
+layout: page
+title: Tool catalog
+permalink: /tools/catalog/
+eyebrow: Tools
+heading: The tool catalog.
+lead: >-
+  Tools VitruvianSoftware lists for the Vitruvian app. Install one from inside
+  the app: Settings, Features, Tools from outside, Browse Tools.
+description: >-
+  The curated list of tools for the Vitruvian macOS app: what each says it
+  uses, its source, and its pinned download.
+---
+{%- comment -%}
+  The list is _data/tools.yml, written from catalog/tools.json by
+  tools/sync-site-tools. Do not list a tool here by hand.
+{%- endcomment -%}
+{%- assign catalog = site.data.tools -%}
+<section class="section">
+  <div class="container">
+    <div class="plate band">
+      <div>
+        <span class="eyebrow">What listing means</span>
+        <p>VitruvianSoftware read each tool's manifest and pinned its download to one file and its checksum; the app refuses any other file. A tool can still do anything Vitruvian can on your Mac, and the app asks before it installs one.</p>
+      </div>
+    </div>
+
+    {%- if catalog.tools.size == 0 -%}
+    <p class="lead">There are no tools in the catalog yet.</p>
+    {%- else -%}
+    <div class="grid grid-3">
+      {%- for tool in catalog.tools -%}
+      <article class="plate plate-live card download-card" id="{{ tool.id }}">
+        <div class="card-head">
+          <h3>{{ tool.name }}</h3>
+          <span class="status status-released">v{{ tool.version }}</span>
+        </div>
+        <p>{{ tool.summary }}</p>
+        <p class="muted">{{ tool.publisher }}</p>
+        {%- if tool.uses.size > 0 -%}
+        <span class="install-label">What it says it uses</span>
+        <ul class="tags">
+          {%- for words in tool.uses -%}
+          <li class="tag">{{ words }}</li>
+          {%- endfor -%}
+        </ul>
+        {%- endif -%}
+        <div class="card-foot">
+          <div class="install-block">
+            <span class="install-label">SHA-256</span>
+            <code class="install">{{ tool.sha256 }}</code>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-sm" href="{{ tool.download }}">Download ({{ tool.size }})</a>
+          </div>
+          <div class="card-links">
+            <a class="text-link" href="{{ tool.source }}">Source</a>
+          </div>
+        </div>
+      </article>
+      {%- endfor -%}
+    </div>
+    {%- endif -%}
+
+    <div class="install-block" style="margin-top: var(--space-6);">
+      <span class="install-label">The signed list, as the app reads it</span>
+      <code class="install"><a href="/tools/catalog/tools.json">/tools/catalog/tools.json</a> and <a href="/tools/catalog/tools.json.sig">tools.json.sig</a>, Ed25519, public key {{ catalog.public_key }}</code>
+    </div>
+  </div>
+</section>

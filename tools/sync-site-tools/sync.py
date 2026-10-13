@@ -41,6 +41,9 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
+
+import catalogue
 
 SDK = "packages/vitruvian-sdk"
 SITE = "apps/web/vitruviansoftware-dev"
@@ -54,6 +57,8 @@ ON_SITE = {
     "samples/hello-python": "/tools/examples/python/",
     "samples/hello-typescript": "/tools/examples/typescript/",
     "samples/hello-python-kit": "/tools/examples/python-kit/",
+    "samples/hello-go": "/tools/examples/go/",
+    "samples/hello-rust": "/tools/examples/rust/",
 }
 
 FENCE = re.compile(r"^(\s*)(```+)(.*)$")
@@ -206,6 +211,34 @@ EXAMPLES = [
         "`vitruvian-tool init <folder>` starts a new tool from a copy of this "
         "one. The folder runs as it is: add it to Vitruvian.",
     ),
+    (
+        "go",
+        "An example in Go",
+        "samples/hello-go",
+        [("vitruvian-tool.json", "json"), ("main.go", "go")],
+        "A tool written with the Go kit: it says hello, and counts with a "
+        "preference the person can change in Settings.",
+        "`vitruvian-tool init <folder> --template go` starts a new tool from "
+        "a copy of this one, as a Go module that requires the published kit. "
+        "Its `build.sh` builds the program into `tool/bin/tool`, and "
+        "`tool/` is the folder you add to Vitruvian.",
+    ),
+    (
+        "rust",
+        "An example in Rust",
+        "samples/hello-rust",
+        [
+            ("vitruvian-tool.json", "json"),
+            ("Cargo.toml", "toml"),
+            ("src/main.rs", "rust"),
+        ],
+        "A tool written with the Rust kit: it says hello, and counts with a "
+        "preference the person can change in Settings.",
+        "`vitruvian-tool init <folder> --template rust` starts a new tool from "
+        "a copy of this one, as a Cargo package that depends on the published "
+        "kit. Its `build.sh` builds the program into `tool/bin/tool`, and "
+        "`tool/` is the folder you add to Vitruvian.",
+    ),
 ]
 
 # The kit samples' examples are pages of their own: each sample's README.md,
@@ -286,35 +319,55 @@ def pages(base):
     return found
 
 
+# The other parts of the section. Each is a module with `outputs(root)`: every
+# file it makes, by its path from the repository's root, and the bytes it must
+# hold. A part is added here, and its sources and outputs to the data of
+# in_sync_test in BUILD.
+PARTS = [catalogue]
+
+
+def wanted(base):
+    """Every file the section is made of, by its path from the repository's
+    root, and the bytes it must hold: the copies, then each part's files."""
+    files = {
+        f"{SITE}/{path}": text.encode("utf-8") for path, text in pages(base).items()
+    }
+    for part in PARTS:
+        files.update(part.outputs(Path(base)))
+    return files
+
+
+def stale(base):
+    """The paths whose committed bytes are not what would be written."""
+    return sorted(
+        path
+        for path, data in wanted(base).items()
+        if not os.path.isfile(os.path.join(base, path))
+        or Path(base, path).read_bytes() != data
+    )
+
+
 def main(arguments):
     base = root()
-    stale = []
-    for path, text in sorted(pages(base).items()):
-        target = os.path.join(base, SITE, path)
-        if "--check" in arguments:
-            try:
-                same = read(base, os.path.join(SITE, path)) == text
-            except OSError:
-                same = False
-            if not same:
-                stale.append(path)
-            continue
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        print(f"wrote {SITE}/{path}")
     if "--check" in arguments:
-        for path in stale:
-            print(f"{SITE}/{path} is not what sync.py writes", file=sys.stderr)
+        behind = stale(base)
+        for path in behind:
+            print(f"{path} is not what sync.py writes", file=sys.stderr)
         print(
             "site tools: "
             + (
                 "OUT OF SYNC, run bazel run //tools/sync-site-tools:sync"
-                if stale
+                if behind
                 else "in sync"
             )
         )
-        return 1 if stale else 0
+        return 1 if behind else 0
+    for path, data in sorted(wanted(base).items()):
+        target = os.path.join(base, path)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as handle:
+            handle.write(data)
+        print(f"wrote {path}")
     return 0
 
 
