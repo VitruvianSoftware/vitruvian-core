@@ -23,8 +23,8 @@ nowhere they need not.
 
     mirror_workflows_test.py
 
-.github/workflows/ci.yml and release.yml run only in VitruvianSoftware/
-vitruvian-sdk, so nothing in this repository runs them. This test reads them
+.github/workflows/ci.yml, kits.yml and release.yml run only in
+VitruvianSoftware/vitruvian-sdk, so nothing in this repository runs them. This test reads them
 as YAML and runs the `detect` step of release.yml, the shell exactly as
 written, with bash and git, in a repository it makes in a temporary folder,
 once for each kind of manifest. It runs the release notes step the same way,
@@ -273,7 +273,7 @@ def main():
     release = load("release.yml")
     problems = detect_problems(release)
     problems += notes_problems(release)
-    for name in ("ci.yml", "release.yml"):
+    for name in ("ci.yml", "kits.yml", "release.yml"):
         problems += limit_problems(name, load(name))
     for problem in problems:
         print(problem, file=sys.stderr)

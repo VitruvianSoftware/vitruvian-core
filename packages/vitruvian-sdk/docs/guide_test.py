@@ -30,6 +30,8 @@ Every fenced block in the guide says what it is, and each kind is checked:
   swift file=P    these lines are in the file P, together and in this order.
   python file=P   the same.
   javascript file=P   the same.
+  go file=P       the same.
+  rust file=P     the same.
   sh file=P       the same: lines of the shell script P.
   sh              every `vitruvian-tool` verb and flag, every template named
                   after --template, and every target of this package, is one
@@ -40,8 +42,8 @@ Every fenced block in the guide says what it is, and each kind is checked:
 
 A block of any other kind fails. So does a message of the protocol the guide
 never shows, a field of the manifest it never names, a field in a manifest
-example that the schema does not have, and a row of the table of the kit's
-calls that names a call the kit does not have or the wrong message for it.
+example that the schema does not have, and a row of a table of the kits'
+calls that names a call a kit does not have or the wrong message for it.
 """
 
 import json
@@ -214,6 +216,50 @@ def kit_problems(guide, table, kit):
     return problems
 
 
+def native_kit_problems(guide, table, go, rust):
+    """The table of the Go and Rust kits' calls: each is the kit's, and each
+    message is the protocol's and needs the service the row says."""
+    problems, rows, inside = [], 0, False
+    for number, line in enumerate(guide.split("\n"), 1):
+        cells = [cell.strip() for cell in line.split("|")[1:-1]]
+        if cells[:3] == ["In Go", "In Rust", "Message"]:
+            inside = True
+            continue
+        if not line.startswith("|"):
+            inside = False
+        if not inside or len(cells) != 4 or not cells[0].startswith("`"):
+            continue
+        where = f"writing-a-tool.md:{number}"
+        rows += 1
+        for call in re.findall(r"`app\.(?:(\w+)\.)?(\w+)`", cells[0]):
+            group, name = call
+            owner = group or "App"
+            if not re.search(rf"func \(\w+ \*?{owner}\) {name}\(", go):
+                problems.append(
+                    f"{where}: the Go kit has no call app.{group + '.' if group else ''}{name}"
+                )
+        for call in re.findall(r"`app\.(?:(\w+)\(\)\.)?(\w+)`", cells[1]):
+            group, name = call
+            if group and not re.search(rf"pub fn {group}\(", rust):
+                problems.append(f"{where}: the Rust kit has no app.{group}()")
+            if not re.search(rf"pub fn {name}\(", rust):
+                problems.append(f"{where}: the Rust kit has no call {name}")
+        for method in re.findall(r"`([\w/]+)`", cells[2]):
+            if method not in table:
+                problems.append(f"{where}: {method} is no message of version 1")
+                continue
+            uses = table[method]["uses"]
+            if table[method]["sender"] == "tool" and cells[3] != (
+                f"`{uses}`" if uses else ""
+            ):
+                problems.append(f"{where}: {method} needs {uses or 'nothing'} in uses")
+    if rows < 11:
+        problems.append(
+            f"the table of the Go and Rust calls has {rows} rows this test can read"
+        )
+    return problems
+
+
 def templates():
     """The names `init --template` takes: ToolTemplate's cases in NewTool.swift."""
     source = read("Sources/VitruvianToolCLI/NewTool.swift")
@@ -271,7 +317,9 @@ def main():
                 problems.append(f"{where}: {error.message}")
             for field in unknown_fields(example, manifest, manifest["$defs"]):
                 problems.append(f"{where}: the manifest has no field `{field}`")
-        elif kind in ("swift", "python", "javascript") and " file=" in info:
+        elif (
+            kind in ("swift", "python", "javascript", "go", "rust") and " file=" in info
+        ):
             problems += excerpt_problems(lines, where, info.split(" file=")[1])
         elif info == "sh":
             problems += shell_problems(lines, where, build)
@@ -309,6 +357,9 @@ def main():
                 f"the guide's table of the manifest has no row for `{field}`"
             )
     problems += kit_problems(guide, table, read("Sources/VitruvianToolKit/Tool.swift"))
+    problems += native_kit_problems(
+        guide, table, read("go/toolkit/app.go"), read("kits/rust/src/app.rs")
+    )
     for flag in FLAGS | VERBS | ALONE:
         if flag not in read("Sources/VitruvianToolCLI/Words.swift"):
             problems.append(f"the command's usage does not name {flag}")

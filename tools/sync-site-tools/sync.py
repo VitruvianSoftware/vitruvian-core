@@ -54,6 +54,8 @@ ON_SITE = {
     "samples/hello-python": "/tools/examples/python/",
     "samples/hello-typescript": "/tools/examples/typescript/",
     "samples/hello-python-kit": "/tools/examples/python-kit/",
+    "samples/hello-go": "/tools/examples/go/",
+    "samples/hello-rust": "/tools/examples/rust/",
 }
 
 FENCE = re.compile(r"^(\s*)(```+)(.*)$")
@@ -205,6 +207,34 @@ EXAMPLES = [
         "A tool in plain Python with nothing else: it says hello, and copies the time.",
         "`vitruvian-tool init <folder>` starts a new tool from a copy of this "
         "one. The folder runs as it is: add it to Vitruvian.",
+    ),
+    (
+        "go",
+        "An example in Go",
+        "samples/hello-go",
+        [("vitruvian-tool.json", "json"), ("main.go", "go")],
+        "A tool written with the Go kit: it says hello, and counts with a "
+        "preference the person can change in Settings.",
+        "`vitruvian-tool init <folder> --template go` starts a new tool from "
+        "a copy of this one, as a Go module that requires the published kit. "
+        "Its `build.sh` builds the program into `tool/bin/tool`, and "
+        "`tool/` is the folder you add to Vitruvian.",
+    ),
+    (
+        "rust",
+        "An example in Rust",
+        "samples/hello-rust",
+        [
+            ("vitruvian-tool.json", "json"),
+            ("Cargo.toml", "toml"),
+            ("src/main.rs", "rust"),
+        ],
+        "A tool written with the Rust kit: it says hello, and counts with a "
+        "preference the person can change in Settings.",
+        "`vitruvian-tool init <folder> --template rust` starts a new tool from "
+        "a copy of this one, as a Cargo package that depends on the published "
+        "kit. Its `build.sh` builds the program into `tool/bin/tool`, and "
+        "`tool/` is the folder you add to Vitruvian.",
     ),
 ]
 

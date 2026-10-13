@@ -29,7 +29,10 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//packages/vitruvian-sdk:__subpackages__"])
 
-exports_files(["src/generated/mod.rs"])
+exports_files([
+    "src/app.rs",
+    "src/generated/mod.rs",
+])
 
 rust_library(
     name = "vitruvian_tool_kit",
