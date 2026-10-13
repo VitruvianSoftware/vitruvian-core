@@ -22,6 +22,8 @@ fail() { echo "  ✗ $1" >&2; fail_n=$((fail_n + 1)); }
 mkdir -p "$work/repo/pulumi/library/ts/packages/a" "$work/repo/mcp-slack" "$work/bin"
 printf '{"name":"@v/a","version":"1.0.0","private":false}\n' >"$work/repo/pulumi/library/ts/packages/a/package.json"
 printf '{"name":"@v/mcp","version":"1.0.0","private":false}\n' >"$work/repo/mcp-slack/package.json"
+mkdir -p "$work/repo/vitruvian-sdk/kits/typescript"
+printf '{"name":"@v/kit","version":"1.0.0","private":false}\n' >"$work/repo/vitruvian-sdk/kits/typescript/package.json"
 mkdir -p "$work/repo/pulumi/library/ts/packages/priv"
 printf '{"name":"@v/priv","version":"1.0.0","private":true}\n' >"$work/repo/pulumi/library/ts/packages/priv/package.json"
 
@@ -227,8 +229,9 @@ fi
 echo "--- configures each package against its MIRROR repo ---"
 r="$(run STUB_LOGGED_IN=1)"
 if grep -q -- '--repo VitruvianSoftware/pulumi-library' "$work/calls" \
-   && grep -q -- '--repo VitruvianSoftware/mcp-slack' "$work/calls"; then
-    pass "library -> pulumi-library, mcp-slack -> mcp-slack"
+   && grep -q -- '--repo VitruvianSoftware/mcp-slack' "$work/calls" \
+   && grep -q -- '@v/kit --repo VitruvianSoftware/vitruvian-sdk' "$work/calls"; then
+    pass "library -> pulumi-library, mcp-slack -> mcp-slack, the SDK's kit -> vitruvian-sdk"
 else
     fail "wrong mirror mapping: $(tr '\n' ';' <"$work/calls")"
 fi
@@ -369,7 +372,7 @@ out="$(cd "$work/repo" && env NPM_TP_TTY_OK=1 OTP_WAIT_SECONDS=20 OTP_POLL_SECON
     PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
     CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 STUB_OTP_UNTIL=2 \
     bash "$SCRIPT" 2>&1 </dev/null || true)"
-if printf '%s' "$out" | grep -q '2 configured, 0 already set, 0 failed'; then
+if printf '%s' "$out" | grep -q '3 configured, 0 already set, 0 failed'; then
     pass "waits out the two-factor authentication and configures every package"
 else
     fail "bailed instead of waiting: $(printf '%s' "$out" | tail -3 | tr '\n' ';')"
