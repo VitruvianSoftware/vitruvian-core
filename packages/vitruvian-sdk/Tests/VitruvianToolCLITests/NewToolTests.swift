@@ -206,6 +206,63 @@ final class NewToolTests: XCTestCase {
                        "until build.sh has put the program there")
     }
 
+    func testTheTypeScriptTemplateIsTheSampleWithTheKitAtThisVersion() throws {
+        var new = tool("typescript")
+        new.template = .typescript
+        XCTAssertEqual(try NewToolWriter.write(new).get(),
+                       ["vitruvian-tool.json", "bin/tool", "bin/tool.mjs", "package.json"])
+        for path in ["bin/tool", "bin/tool.mjs"] {
+            XCTAssertEqual(try Data(contentsOf: new.folder.appendingPathComponent(path)),
+                           PackageFiles.data("samples/hello-typescript/\(path)"), "\(path) is the sample's")
+        }
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: new.folder.appendingPathComponent("bin/tool").path))
+        let package = try JSONSerialization.jsonObject(
+            with: Data(contentsOf: new.folder.appendingPathComponent("package.json"))) as? [String: Any]
+        XCTAssertEqual((package?["dependencies"] as? [String: String])?["@vitruviansoftware/tool-kit"],
+                       VitruvianToolCommand.version, "the kit this command was built with, from npm")
+        let written = try manifest(at: new.folder.appendingPathComponent("vitruvian-tool.json"))
+        XCTAssertEqual([written.id, written.name.english, written.runtime.exec], ["com.example.fresh", "Fresh", "bin/tool"])
+        XCTAssertEqual(FolderCheck.check(new.folder).verdict, "ok")
+    }
+
+    func testThePythonKitTemplateIsTheSampleWithTheKitAtThisVersion() throws {
+        var new = tool("python-kit")
+        new.template = .pythonKit
+        XCTAssertEqual(try NewToolWriter.write(new).get(), ["vitruvian-tool.json", "bin/tool.py", "requirements.txt"])
+        XCTAssertEqual(try Data(contentsOf: new.folder.appendingPathComponent("bin/tool.py")),
+                       PackageFiles.data("samples/hello-python-kit/bin/tool.py"))
+        XCTAssertEqual(try String(contentsOf: new.folder.appendingPathComponent("requirements.txt"), encoding: .utf8),
+                       "vitruvian-tool-kit==\(VitruvianToolCommand.version)\n", "the kit this command was built with, from PyPI")
+        XCTAssertEqual(try manifest(at: new.folder.appendingPathComponent("vitruvian-tool.json")).name.english, "Fresh")
+        XCTAssertEqual(FolderCheck.check(new.folder).verdict, "ok")
+    }
+
+    func testTheKitTemplatesTakeTheKitFromACheckout() throws {
+        let sdk = scratch.folder("checkout")
+        var typescript = tool("ts-sdk")
+        typescript.template = .typescript
+        typescript.sdk = sdk
+        var python = tool("py-sdk")
+        python.template = .pythonKit
+        python.sdk = sdk
+        XCTAssertEqual(NewToolWriter.write(typescript), .failure(.noSDK), "a checkout with no kit in it")
+        XCTAssertEqual(NewToolWriter.write(python), .failure(.noSDK))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: typescript.folder.path))
+
+        Scratch.write("{}\n", to: sdk.appendingPathComponent("kits/typescript/package.json"))
+        Scratch.write("# kit\n", to: sdk.appendingPathComponent("kits/python/vitruvian_tool_kit/__init__.py"))
+        Scratch.write("# made\n", to: sdk.appendingPathComponent("kits/python/vitruvian_tool_kit/generated/messages.py"))
+        _ = try NewToolWriter.write(typescript).get()
+        let package = try String(contentsOf: typescript.folder.appendingPathComponent("package.json"), encoding: .utf8)
+        XCTAssertTrue(package.contains(#""@vitruviansoftware/tool-kit": "file:\#(sdk.standardizedFileURL.path)/kits/typescript""#),
+                      package)
+        XCTAssertEqual(try NewToolWriter.write(python).get(),
+                       ["vitruvian-tool.json", "bin/tool.py", "requirements.txt", "lib/vitruvian_tool_kit/__init__.py",
+                        "lib/vitruvian_tool_kit/generated/messages.py"], "the kit, where pip would have put it")
+        XCTAssertEqual(try String(contentsOf: python.folder.appendingPathComponent("lib/vitruvian_tool_kit/__init__.py"),
+                                  encoding: .utf8), "# kit\n")
+    }
+
     func testTheCommandSaysWhatItWroteAndWhatToDoNext() {
         let folder = scratch.url.appendingPathComponent("said").path
         let arguments = ["init", folder, "--id", "com.example.said", "--name", "Said", "--publisher", "Example"]
@@ -218,7 +275,7 @@ final class NewToolTests: XCTestCase {
         XCTAssertTrue(said.first?.hasPrefix("NOT OK   \(folder) is already there") == true)
         XCTAssertEqual(said.last, "Nothing was written.")
         for bad in [["init"], ["init", folder], ["init", folder, "--id", "a.b", "--name", "N"],
-                    ["init", folder, "--id", "a.b", "--name", "N", "--publisher", "P", "--template", "rust"],
+                    ["init", folder, "--id", "a.b", "--name", "N", "--publisher", "P", "--template", "cobol"],
                     ["init", folder, "other", "--id", "a.b", "--name", "N", "--publisher", "P"]] {
             XCTAssertEqual(VitruvianToolCommand.main(bad, say: { _ in }), 2, "\(bad)")
         }

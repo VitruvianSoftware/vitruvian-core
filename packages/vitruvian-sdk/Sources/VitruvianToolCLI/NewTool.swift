@@ -25,6 +25,11 @@ import VitruvianToolProtocol
 public enum ToolTemplate: String, CaseIterable, Sendable {
     /// One file of plain Python. It runs as it is written.
     case python
+    /// Python with the kit. The kit goes in the tool's folder, in lib/.
+    case pythonKit = "python-kit"
+    /// JavaScript, with the TypeScript kit's types. Node runs it as it is,
+    /// with the kit in the tool's node_modules/.
+    case typescript
     /// A Swift package that uses the kit. It has to be built first.
     case swift
 }
@@ -36,9 +41,11 @@ public struct NewTool: Equatable, Sendable {
     public var name: String
     public var publisher: String
     public var template = ToolTemplate.python
-    /// For the Swift template: a checkout of the SDK to build against, named
-    /// by its path. Nil, the tool's package depends on the published SDK, at
-    /// the version this command was built from.
+    /// Where `packages/vitruvian-sdk` is, to work from a checkout. The Swift
+    /// template's package names it by its path; the TypeScript template's
+    /// package.json depends on the kit in it by its path; the Python kit
+    /// template copies the kit from it into lib/. The plain Python template
+    /// needs no kit.
     public var sdk: URL?
 
     public init(folder: URL, id: String, name: String, publisher: String) {
@@ -60,7 +67,7 @@ public enum NewToolProblem: Error, Equatable, Sendable {
     /// The id, the name or the publisher would not make a manifest the app
     /// takes.
     case manifest(ManifestProblem)
-    /// The path given in `--sdk` holds no `Package.swift`.
+    /// The path given with `--sdk` does not hold the kit the template needs.
     case noSDK
     case notWritten(String)
 }
@@ -77,19 +84,40 @@ public enum NewToolWriter {
         public let runs: Bool
     }
 
+    /// Each template's sample: its folder under samples/, the name its
+    /// manifest gives it, and the manifest.
+    struct Sample {
+        let folder: String
+        let name: String
+        let manifest: String
+    }
+
+    static func sample(_ template: ToolTemplate) -> Sample {
+        switch template {
+        case .python: Sample(folder: "hello-python", name: "Hello, in Python", manifest: Templates.pythonManifest)
+        case .pythonKit:
+            Sample(folder: "hello-python-kit", name: "Hello, in Python, with the kit",
+                   manifest: Templates.pythonKitManifest)
+        case .typescript:
+            Sample(folder: "hello-typescript", name: "Hello, in TypeScript", manifest: Templates.typescriptManifest)
+        case .swift: Sample(folder: "hello-swift", name: "Hello, in Swift", manifest: Templates.swiftManifest)
+        }
+    }
+
+    /// The mark sync_templates.py puts where a sample names the kit's version.
+    static let versionMark = "{{sdk-version}}"
+
     /// The files a new tool is made of. Nothing is written.
     public static func files(for tool: NewTool) -> Result<[File], NewToolProblem> {
-        let sample = tool.template == .python ? Templates.pythonManifest : Templates.swiftManifest
-        let from = tool.template == .python ? "hello-python" : "hello-swift"
+        let sample = sample(tool.template)
         // The sample's manifest with three of its values replaced. Each is
         // in the sample once, written exactly this way. Each is first swapped
         // for a mark no text holds, so that a name the person gives is never
         // taken for one of the sample's values and replaced in its turn.
         let marks = ["\u{1}id\u{1}", "\u{1}name\u{1}", "\u{1}publisher\u{1}"]
-        let manifest = sample
-            .replacingOccurrences(of: quoted("dev.vitruvian.samples.\(from)"), with: marks[0])
-            .replacingOccurrences(of: quoted(tool.template == .python ? "Hello, in Python" : "Hello, in Swift"),
-                                  with: marks[1])
+        let manifest = sample.manifest
+            .replacingOccurrences(of: quoted("dev.vitruvian.samples.\(sample.folder)"), with: marks[0])
+            .replacingOccurrences(of: quoted(sample.name), with: marks[1])
             .replacingOccurrences(of: quoted("VitruvianSoftware"), with: marks[2])
             .replacingOccurrences(of: marks[0], with: quoted(tool.id))
             .replacingOccurrences(of: marks[1], with: quoted(tool.name))
@@ -98,10 +126,37 @@ public enum NewToolWriter {
         if case .failure(let problem) = ToolManifestFile.read(Data(manifest.utf8)) {
             return .failure(.manifest(problem))
         }
+        let sdk = tool.sdk?.standardizedFileURL
         switch tool.template {
         case .python:
             return .success([File(path: ToolManifestFile.fileName, text: manifest, runs: false),
                              File(path: "bin/tool.py", text: Templates.pythonProgram, runs: true)])
+        case .pythonKit:
+            var files = [File(path: ToolManifestFile.fileName, text: manifest, runs: false),
+                         File(path: "bin/tool.py", text: Templates.pythonKitProgram, runs: true),
+                         File(path: "requirements.txt",
+                              text: Templates.pythonKitRequirements.replacingOccurrences(of: versionMark,
+                                                                                          with: Words.version),
+                              runs: false)]
+            if let sdk {
+                // From a checkout: the kit as it is there, where pip would put it.
+                guard let kit = pythonKit(in: sdk) else { return .failure(.noSDK) }
+                files += kit
+            }
+            return .success(files)
+        case .typescript:
+            var dependency = quoted(Words.version)
+            if let sdk {
+                let kit = sdk.appendingPathComponent("kits/typescript")
+                guard FileManager.default.fileExists(atPath: kit.appendingPathComponent("package.json").path)
+                else { return .failure(.noSDK) }
+                dependency = quoted("file:" + kit.path)
+            }
+            let package = Templates.typescriptPackage.replacingOccurrences(of: quoted(versionMark), with: dependency)
+            return .success([File(path: ToolManifestFile.fileName, text: manifest, runs: false),
+                             File(path: "bin/tool", text: Templates.typescriptLauncher, runs: true),
+                             File(path: "bin/tool.mjs", text: Templates.typescriptProgram, runs: false),
+                             File(path: "package.json", text: package, runs: false)])
         case .swift:
             // SwiftPM names a package it depends on by the last part of its
             // path or its address, and a product is asked for by that name.
@@ -129,6 +184,22 @@ public enum NewToolWriter {
                              File(path: "build.sh", text: buildScript, runs: true),
                              File(path: ".gitignore", text: ".build/\ntool/bin/\n", runs: false)])
         }
+    }
+
+    /// The Python kit's files in a checkout, as `lib/vitruvian_tool_kit/...`;
+    /// nil when the checkout holds no kit.
+    static func pythonKit(in sdk: URL) -> [File]? {
+        let kit = sdk.appendingPathComponent("kits/python/vitruvian_tool_kit")
+        guard let walk = FileManager.default.enumerator(atPath: kit.path) else { return nil }
+        var files: [File] = []
+        while let relative = walk.nextObject() as? String {
+            guard relative.hasSuffix(".py"),
+                  let text = try? String(contentsOf: kit.appendingPathComponent(relative), encoding: .utf8)
+            else { continue }
+            files.append(File(path: "lib/vitruvian_tool_kit/" + relative, text: text, runs: false))
+        }
+        guard files.contains(where: { $0.path == "lib/vitruvian_tool_kit/__init__.py" }) else { return nil }
+        return files.sorted { $0.path < $1.path }
     }
 
     /// Writes a new tool into its folder, which must not exist yet or must

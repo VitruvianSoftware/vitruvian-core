@@ -15,6 +15,12 @@ tools/tools.lock.json  rules-lint-ignored=true
 tools/*.sh             rules-lint-ignored=true
 tools/**/*.sh          rules-lint-ignored=true
 
+# Written by //tools/sdk-codegen and held by its drift test
+# (//tools/sdk-codegen:in_sync_test): the generator's output is the format, so
+# the formatter must not change it. Not linguist-generated: a change to the
+# protocol should be read in the pull request, generated code and all.
+packages/vitruvian-sdk/kits/**/generated/** rules-lint-ignored=true
+
 # Copybara bidi-synced components: owned and formatted in their standalone repos;
 # the monorepo only vendors them. Exclude from //tools/format / //:tidy so the
 # Tidy Check stays focused on vitruvian-core's own code and synced content is not

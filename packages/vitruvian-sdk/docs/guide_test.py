@@ -19,6 +19,9 @@
 # SOFTWARE.
 """The guide's examples are true: docs/writing-a-tool.md cannot rot unseen.
 
+The kit samples' README.md files, which the website shows as worked examples,
+are held to the same rules for each kind of block below.
+
 Every fenced block in the guide says what it is, and each kind is checked:
 
   json message    each line is a message the schema accepts. A result is also
@@ -26,8 +29,11 @@ Every fenced block in the guide says what it is, and each kind is checked:
   json manifest   a manifest the schema accepts.
   swift file=P    these lines are in the file P, together and in this order.
   python file=P   the same.
-  sh              every `vitruvian-tool` verb and flag, and every target of
-                  this package, is one that exists.
+  javascript file=P   the same.
+  sh file=P       the same: lines of the shell script P.
+  sh              every `vitruvian-tool` verb and flag, every template named
+                  after --template, and every target of this package, is one
+                  that exists.
   text said=P     each line is something the command says: it is in the file
                   P, once the line breaks Swift allows inside a text are joined.
   text            not checked. The guide has none.
@@ -48,6 +54,9 @@ from jsonschema import Draft202012Validator
 HERE = os.path.dirname(os.path.abspath(__file__))
 PACKAGE = os.path.dirname(HERE)
 GUIDE = os.path.join(HERE, "writing-a-tool.md")
+
+# The worked examples the website shows beside the guide, one per kit sample.
+EXAMPLES = ["samples/hello-typescript/README.md", "samples/hello-python-kit/README.md"]
 
 # What `vitruvian-tool` takes. Words.swift holds the same list as its usage.
 VERBS = {"init", "validate", "run"}
@@ -205,6 +214,15 @@ def kit_problems(guide, table, kit):
     return problems
 
 
+def templates():
+    """The names `init --template` takes: ToolTemplate's cases in NewTool.swift."""
+    source = read("Sources/VitruvianToolCLI/NewTool.swift")
+    body = source[source.index("public enum ToolTemplate") :].split("}", 1)[0]
+    return {
+        raw or name for name, raw in re.findall(r'case (\w+)(?: = "([\w-]+)")?', body)
+    }
+
+
 def shell_problems(lines, where, build):
     problems = []
     for line in lines:
@@ -221,6 +239,9 @@ def shell_problems(lines, where, build):
             for word in words:
                 if word.startswith("--") and word not in FLAGS:
                     problems.append(f"{where}: vitruvian-tool has no flag {word}")
+            for named in re.findall(r"--template (\S+)", line):
+                if named not in templates():
+                    problems.append(f"{where}: init has no template {named}")
         for target in re.findall(r"//packages/vitruvian-sdk:([\w.-]+)", line):
             if f'name = "{target}"' not in build:
                 problems.append(f"{where}: this package has no target {target}")
@@ -250,16 +271,34 @@ def main():
                 problems.append(f"{where}: {error.message}")
             for field in unknown_fields(example, manifest, manifest["$defs"]):
                 problems.append(f"{where}: the manifest has no field `{field}`")
-        elif kind in ("swift", "python") and " file=" in info:
+        elif kind in ("swift", "python", "javascript") and " file=" in info:
             problems += excerpt_problems(lines, where, info.split(" file=")[1])
         elif info == "sh":
             problems += shell_problems(lines, where, build)
+        elif info.startswith("sh file="):
+            problems += excerpt_problems(lines, where, info.split(" file=")[1])
         elif info.startswith("text said="):
             problems += said_problems(lines, where, info.split("said=")[1])
         elif info != "text":
             problems.append(
                 f"{where}: a block of a kind this test does not know: `{info}`"
             )
+
+    for example in EXAMPLES:
+        for info, lines, start in blocks(read(example)):
+            where = f"{example}:{start}"
+            if info == "sh":
+                problems += shell_problems(lines, where, build)
+            elif " file=" in info and info.split(" file=")[0] in (
+                "sh",
+                "javascript",
+                "python",
+            ):
+                problems += excerpt_problems(lines, where, info.split(" file=")[1])
+            else:
+                problems.append(
+                    f"{where}: a block of a kind this test does not know: `{info}`"
+                )
 
     for method in table:
         if method not in shown:

@@ -23,9 +23,14 @@ script.
     samples_test.py [a built sample's vitruvian-tool.json ...]
 
 With no argument it checks what needs no build: the manifest of every sample
-against the schema, and the plain Python sample against the conformance
-script. With arguments it checks the folders Bazel assembled for the Swift
-samples, each named by the path of its manifest.
+against the schema, that the kits and the samples that use them name one
+version of the SDK, and the plain Python sample against the conformance
+script. With arguments it checks the folders Bazel assembled for the other
+samples, each named by the path of its manifest: the Swift samples built, and
+the kit samples with their kit beside them, as an author ships them. A Python
+program is started through the interpreter running this test; any other
+through its own first line, with the folder of VITRUVIAN_NODE, when set, at
+the front of the PATH.
 
 The sample that reads the front window's title needs the Accessibility
 permission of whoever starts it. A test runner has none, and nothing here
@@ -40,6 +45,7 @@ import glob
 import io
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -53,6 +59,8 @@ import conformance
 WANTED = {
     "hello-python": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-swift": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-typescript": [["a command: hello: ran"], ["refusals: 1 refused"]],
+    "hello-python-kit": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "front-window": [
         [
             "a command: showTitle: ran",
@@ -97,7 +105,7 @@ def manifests():
     ) as handle:
         validator = Draft202012Validator(json.load(handle))
     found = sorted(glob.glob(os.path.join(HERE, "*", "vitruvian-tool.json")))
-    problems = [] if len(found) == 3 else [f"three samples, not {len(found)}"]
+    problems = [] if len(found) == 5 else [f"five samples, not {len(found)}"]
     for path in found:
         with open(path, encoding="utf-8") as handle:
             manifest = json.load(handle)
@@ -109,13 +117,97 @@ def manifests():
     return problems
 
 
+def versions():
+    """The kits, the kit samples and the command name one version of the SDK.
+
+    release-please bumps them all in one change; this fails a change that
+    bumps some of them.
+    """
+    found = {}
+    with open(
+        os.path.join(PACKAGE, "kits", "typescript", "package.json"), encoding="utf-8"
+    ) as handle:
+        found["kits/typescript/package.json"] = json.load(handle)["version"]
+    with open(
+        os.path.join(PACKAGE, "kits", "python", "pyproject.toml"), encoding="utf-8"
+    ) as handle:
+        found["kits/python/pyproject.toml"] = re.search(
+            r'(?m)^version = "([^"]+)"', handle.read()
+        ).group(1)
+    with open(
+        os.path.join(HERE, "hello-typescript", "package.json"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-typescript/package.json"] = json.load(handle)[
+            "dependencies"
+        ]["@vitruviansoftware/tool-kit"]
+    with open(
+        os.path.join(HERE, "hello-python-kit", "requirements.txt"), encoding="utf-8"
+    ) as handle:
+        found["samples/hello-python-kit/requirements.txt"] = re.search(
+            r"vitruvian-tool-kit==(\S+)", handle.read()
+        ).group(1)
+    for path in sorted(
+        glob.glob(os.path.join(PACKAGE, "Sources", "VitruvianToolCLI", "*.swift"))
+    ):
+        with open(path, encoding="utf-8") as handle:
+            for version in re.findall(
+                r'"(\d+\.\d+\.\d+)" // x-release-please-version', handle.read()
+            ):
+                found[os.path.relpath(path, PACKAGE)] = version
+    if len(set(found.values())) == 1 and len(found) == 5:
+        print(
+            f"versions: {found['kits/typescript/package.json']}, in {len(found)} places"
+        )
+        return []
+    return [
+        f"one version of the SDK in five places, and these differ or are missing: {found}"
+    ]
+
+
+def hermetic_node(path):
+    """The absolute path of Bazel's Node, from the `external/<repo>/...` name
+    the toolchain gives, or None if it is not there."""
+    runfiles = os.path.dirname(os.getcwd())
+    candidates = [os.path.abspath(path)]
+    if path.startswith("external/"):
+        inside = path[len("external/") :]
+        candidates.append(os.path.join(runfiles, inside))
+        if os.environ.get("RUNFILES_DIR"):
+            candidates.append(os.path.join(os.environ["RUNFILES_DIR"], inside))
+    for candidate in candidates:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def main(arguments):
     if arguments:
         problems = []
+        node = os.environ.get("VITRUVIAN_NODE")
+        if node:
+            # Bazel names its Node as `external/<repo>/.../node`. In a test's
+            # runfiles that repository sits beside `_main`, the folder the test
+            # runs in, not under it; and with remote execution there is no
+            # `external` link at all. A Node that cannot be found is a failure,
+            # not a fall-through to whatever `node` the Mac has: that hid this
+            # from the Mac lane while the Linux lane had no Node at all.
+            found = hermetic_node(node)
+            if found is None:
+                problems.append(
+                    f"the hermetic Node is not where VITRUVIAN_NODE says: {node}"
+                )
+            else:
+                os.environ["PATH"] = (
+                    os.path.dirname(found) + os.pathsep + os.environ.get("PATH", "")
+                )
         for manifest in arguments:
-            problems += conforms(os.path.dirname(os.path.abspath(manifest)))
+            folder = os.path.dirname(os.path.abspath(manifest))
+            with open(manifest, encoding="utf-8") as handle:
+                program = json.load(handle)["runtime"]["exec"]
+            via = ["--via", sys.executable] if program.endswith(".py") else []
+            problems += conforms(folder, *via)
     else:
-        problems = manifests()
+        problems = manifests() + versions()
         # Through the interpreter running this test: the sample's own first
         # line asks for whatever `python3` is on the PATH.
         problems += conforms(
