@@ -39,6 +39,8 @@ import {
   type StorageGetParams,
   type StorageGetResult,
   type StorageSetParams,
+  type UIBadgeParams,
+  type UIRenderParams,
   readClipboardReadTextResult,
   readClipboardWriteTextResult,
   readEmptyObject,
@@ -49,7 +51,7 @@ import {
 import type { Service } from "./messages.js";
 
 /** The protocol version this file was made from. */
-export const PROTOCOL_VERSION = "1";
+export const PROTOCOL_VERSION = "2";
 
 /** One message of the protocol: who sends it, whether it is answered, and what it carries. */
 export interface MethodInfo {
@@ -82,6 +84,11 @@ export const METHODS: readonly MethodInfo[] = [
   { method: "storage/get", sender: "tool", kind: "request", uses: "storage", params: "storageGetParams", result: "storageGetResult" },
   { method: "storage/set", sender: "tool", kind: "request", uses: "storage", params: "storageSetParams", result: "empty" },
   { method: "log", sender: "tool", kind: "notice", uses: null, params: "logParams", result: null },
+  { method: "ui/open", sender: "app", kind: "request", uses: null, params: "uiOpenParams", result: "uiOpenResult" },
+  { method: "ui/event", sender: "app", kind: "request", uses: null, params: "uiEventParams", result: "uiEventResult" },
+  { method: "ui/close", sender: "app", kind: "notice", uses: null, params: "uiCloseParams", result: null },
+  { method: "ui/render", sender: "tool", kind: "notice", uses: null, params: "uiRenderParams", result: null },
+  { method: "ui/badge", sender: "tool", kind: "request", uses: "notify", params: "uiBadgeParams", result: "empty" },
 ];
 
 /** Sends a request and returns what its answer carries, or throws. */
@@ -123,6 +130,12 @@ export interface AppCalls {
     /** `storage/set`. Save one of the preferences the manifest declares. Needs `storage` in the manifest's `uses`. */
     set(params: StorageSetParams): EmptyObject;
   };
+  readonly ui: {
+    /** `ui/badge`. A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses. Needs `notify` in the manifest's `uses`. */
+    badge(params: UIBadgeParams): EmptyObject;
+    /** `ui/render`. A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped. A notice: the app does not answer it. */
+    render(params: UIRenderParams): void;
+  };
   readonly commands: {
     /** `commands/state`. Which of the tool's commands can run now. The tool sends it whenever that changes; each one replaces the last. Until the first one, all of them can. A notice: the app does not answer it. */
     state(params: CommandsStateParams): void;
@@ -155,6 +168,10 @@ export function appCalls(request: Requester, notice: Noticer): AppCalls {
     storage: {
       get: (params: StorageGetParams) => readStorageGetResult(request("storage/get", params), "the answer to storage/get"),
       set: (params: StorageSetParams) => readEmptyObject(request("storage/set", params), "the answer to storage/set"),
+    },
+    ui: {
+      badge: (params: UIBadgeParams) => readEmptyObject(request("ui/badge", params), "the answer to ui/badge"),
+      render: (params: UIRenderParams) => notice("ui/render", params),
     },
     commands: {
       state: (params: CommandsStateParams) => notice("commands/state", params),

@@ -138,7 +138,7 @@ class ToolTests(unittest.TestCase):
             for method in wanted
         ]
         self.assertEqual(sorted(calls), sorted(python))
-        self.assertEqual(len(wanted), 12, "each message once")
+        self.assertEqual(len(wanted), 14, "each message once")
 
     def test_hello_a_command_and_goodbye(self):
         seen = []
@@ -387,10 +387,27 @@ class ToolTests(unittest.TestCase):
         self.assertEqual([(e.reason, e.seconds) for e in thrown], [("no_answer", 0.05)])
         self.assertLess(time.monotonic() - started, 5)
 
+    def test_the_newest_version_both_speak_is_picked(self):
+        for offered, picked in [
+            ('["1","2"]', "2"),
+            ('["1"]', "1"),
+            ('["2","1"]', "2"),
+            ('["2","3"]', "2"),
+        ]:
+            with self.subTest(offered):
+                bench = Bench()
+                tool = bench.hello(offered).goodbye().tool()
+                self.assertEqual(tool.serve(), 0)
+                self.assertEqual(
+                    bench.written()[0]["result"],
+                    {"protocolVersion": picked, "toolVersion": "9.9.9"},
+                )
+                bench.done()
+
     def test_a_version_the_tool_does_not_speak_is_refused(self):
         ran = []
         tool = (
-            self.bench.hello('["2"]')
+            self.bench.hello('["3"]')
             .run("hello", 2)
             .goodbye()
             .tool(lambda t: t.command("hello", lambda app: ran.append(True)))
@@ -400,7 +417,7 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(
             self.bench.written(),
             [
-                failure("hello", -32602, "this tool speaks protocol 1 only"),
+                failure("hello", -32602, "this tool speaks protocols 1 and 2 only"),
                 failure(2, -32600, "initialize comes first"),
             ],
         )

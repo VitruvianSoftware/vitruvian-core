@@ -78,6 +78,73 @@ class ModelTests(unittest.TestCase):
         have = {(d.name, f.name) for d in self.model.messages for f in d.fields}
         self.assertEqual(have, wanted)
 
+    def test_protocol_2_is_in_the_model(self):
+        """Each kind of block is a definition of its own, and uiBlock names
+        them as its variants by the value of `type`; a tool's text is a
+        string or a map of languages; the manifest has panels; the five ui
+        messages are in the table."""
+        block = self.model.definition("uiBlock")
+        self.assertEqual(block.tag, "type")
+        self.assertEqual(
+            [kind for kind, _ in block.variants],
+            [
+                "text",
+                "heading",
+                "row",
+                "button",
+                "toggle",
+                "field",
+                "list",
+                "progress",
+                "image",
+                "divider",
+                "link",
+                "spacer",
+            ],
+        )
+        for kind, name in block.variants:
+            self.assertEqual(name, kind + "Block")
+            self.assertIsNone(self.model.definition(name).alias)
+        self.assertEqual(self.model.definition("uiText").alias.kind, "text")
+        self.assertEqual(self.model.definition("uiText").alias.ref, "localizedText")
+        self.assertEqual(self.model.title("uiTree"), "UITree")
+        self.assertEqual(self.model.title("uiOpenParams"), "UIOpenParams")
+        self.assertIn("panel", [d.name for d in self.model.manifest])
+        self.assertIn(
+            "panels", [f.name for f in self.model.definition("contributes").fields]
+        )
+        self.assertEqual(
+            {e.name: e.values for e in self.model.enums if e.name.startswith("P")},
+            {
+                "PanelKind": ("blocks", "web"),
+                "PanelPlacement": ("island", "settings", "window"),
+                "PreferenceType": ("string", "boolean", "integer", "number"),
+                "ProtocolVersion": ("1", "2"),
+            },
+        )
+        self.assertEqual(
+            [m.method for m in self.model.methods if m.method.startswith("ui/")],
+            ["ui/open", "ui/event", "ui/close", "ui/render", "ui/badge"],
+        )
+
+    def test_a_variant_whose_kind_is_not_defined_stops_the_generator(self):
+        node = {
+            "type": "object",
+            "required": ["type"],
+            "properties": {"type": {"type": "string"}},
+            "allOf": [
+                {
+                    "if": {"properties": {"type": {"const": "chart"}}},
+                    "then": {"$ref": "#/$defs/chartBlock"},
+                },
+            ],
+        }
+        definition = model.definition_of("block", node, "here", {})
+        self.assertEqual(definition.variants, (("chart", "chartBlock"),))
+        with self.assertRaises(model.SchemaProblem) as raised:
+            model.check_references((definition,), ())
+        self.assertIn("chartBlock", str(raised.exception))
+
     def test_a_list_of_names_with_no_name_stops_the_generator(self):
         node = {"type": "object", "properties": {"color": {"enum": ["red", "blue"]}}}
         with self.assertRaises(model.SchemaProblem) as raised:

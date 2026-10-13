@@ -95,18 +95,46 @@ export function expectOneOf<const T extends readonly string[]>(value: unknown, w
 export const ACTIVATIONS = ["onCommand", "onLaunch"] as const;
 export type Activation = (typeof ACTIVATIONS)[number];
 
+/** plain when left out. prominent is the page's main action; destructive one that deletes. */
+export const BUTTON_STYLES = ["plain", "prominent", "destructive"] as const;
+export type ButtonStyle = (typeof BUTTON_STYLES)[number];
+
+/** text when left out. number takes digits; secret hides what is typed. */
+export const FIELD_KINDS = ["text", "number", "secret"] as const;
+export type FieldKind = (typeof FIELD_KINDS)[number];
+
 export const MODIFIERS = ["shift", "option", "control"] as const;
 export type Modifier = (typeof MODIFIERS)[number];
+
+/** What draws it. blocks: the app, from blocks the tool sends. web: a web page from the tool's folder. Left out, it is blocks. */
+export const PANEL_KINDS = ["blocks", "web"] as const;
+export type PanelKind = (typeof PANEL_KINDS)[number];
+
+/** Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks. */
+export const PANEL_PLACEMENTS = ["island", "settings", "window"] as const;
+export type PanelPlacement = (typeof PANEL_PLACEMENTS)[number];
 
 /** What kind of value it holds. */
 export const PREFERENCE_TYPES = ["string", "boolean", "integer", "number"] as const;
 export type PreferenceType = (typeof PREFERENCE_TYPES)[number];
+
+/** The protocol version the tool speaks. Version 2 adds panels, what a tool draws, and changes nothing of version 1. An app that speaks only version 1 refuses a manifest that says 2. */
+export const PROTOCOL_VERSIONS = ["1", "2"] as const;
+export type ProtocolVersion = (typeof PROTOCOL_VERSIONS)[number];
 
 export const SERVICES = ["notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage"] as const;
 export type Service = (typeof SERVICES)[number];
 
 export const SURFACES = ["commandBar", "radial", "quickPanel", "shortcut"] as const;
 export type Surface = (typeof SURFACES)[number];
+
+/** body when left out. secondary and caption are quieter; monospaced is for code and logs. */
+export const TEXT_STYLES = ["body", "secondary", "caption", "monospaced"] as const;
+export type TextStyle = (typeof TEXT_STYLES)[number];
+
+/** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call. */
+export const UI_EVENT_KINDS = ["tap", "toggle", "submit", "change", "bridge"] as const;
+export type UIEventKind = (typeof UI_EVENT_KINDS)[number];
 
 /** Why a request was not done. Codes: -32700 the line was not JSON; -32600 it was not a message; -32601 the method is not known; -32602 its params are wrong; -32603 something broke inside. A refusal by the app: -32001 the service is not listed in the tool's uses; -32002 the tool is not installed; -32003 Vitruvian lacks a macOS permission the service needs; -32004 not available right now. A refusal by the tool: -32010 the command was not run. A tool must cope with any request being refused. */
 export interface RPCErrorObject {
@@ -474,5 +502,513 @@ export function readLogParams(value: unknown, where = "logParams"): LogParams {
   const read: LogParams = {
     message: expectString(object["message"], `${where}.message`),
   };
+  return read;
+}
+
+/** The person opened one of the tool's panels. A blocks panel is answered with its first page; a web panel with {}. */
+export interface UIOpenParams {
+  /** The panel's id, as the manifest gives it. */
+  panel: string;
+}
+
+export function readUIOpenParams(value: unknown, where = "uiOpenParams"): UIOpenParams {
+  const object = expectObject(value, where);
+  const read: UIOpenParams = {
+    panel: expectString(object["panel"], `${where}.panel`),
+  };
+  return read;
+}
+
+/** The answer to ui/open. */
+export interface UIOpenResult {
+  /** The first page. Left out for a web panel, and for a page the tool will send later with ui/render. */
+  tree?: UITree;
+}
+
+export function readUIOpenResult(value: unknown, where = "uiOpenResult"): UIOpenResult {
+  const object = expectObject(value, where);
+  const read: UIOpenResult = {};
+  if (object["tree"] !== undefined) {
+    read.tree = readUITree(object["tree"], `${where}.tree`);
+  }
+  return read;
+}
+
+/** The person acted in an open panel. Answered with the next page, or with keep. */
+export interface UIEventParams {
+  /** The panel's id. */
+  panel: string;
+  /** The id of the block the person acted on. Left out for bridge. */
+  block?: string;
+  /** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call. */
+  event: UIEventKind;
+  /** For toggle, the switch's new state. For submit and change, the field's text. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own. */
+  value?: JSONValue;
+}
+
+export function readUIEventParams(value: unknown, where = "uiEventParams"): UIEventParams {
+  const object = expectObject(value, where);
+  const read: UIEventParams = {
+    panel: expectString(object["panel"], `${where}.panel`),
+    event: expectOneOf(object["event"], `${where}.event`, UI_EVENT_KINDS),
+  };
+  if (object["block"] !== undefined) {
+    read.block = expectString(object["block"], `${where}.block`);
+  }
+  if (object["value"] !== undefined) {
+    read.value = expectJSON(object["value"], `${where}.value`);
+  }
+  return read;
+}
+
+/** The answer to ui/event. With no tree, or with keep, the page stays as it is. */
+export interface UIEventResult {
+  /** The next page. */
+  tree?: UITree;
+  /** True: the page stays as it is. */
+  keep?: boolean;
+  /** For bridge: what the page's call gets back. */
+  reply?: JSONValue;
+  /** A window panel of the same tool to open, in answer to what the person did. A tool cannot open a window at any other time. */
+  open?: string;
+}
+
+export function readUIEventResult(value: unknown, where = "uiEventResult"): UIEventResult {
+  const object = expectObject(value, where);
+  const read: UIEventResult = {};
+  if (object["tree"] !== undefined) {
+    read.tree = readUITree(object["tree"], `${where}.tree`);
+  }
+  if (object["keep"] !== undefined) {
+    read.keep = expectBoolean(object["keep"], `${where}.keep`);
+  }
+  if (object["reply"] !== undefined) {
+    read.reply = expectJSON(object["reply"], `${where}.reply`);
+  }
+  if (object["open"] !== undefined) {
+    read.open = expectString(object["open"], `${where}.open`);
+  }
+  return read;
+}
+
+/** The panel went away: the person closed it, or the app did. */
+export interface UICloseParams {
+  /** The panel's id. */
+  panel: string;
+}
+
+export function readUICloseParams(value: unknown, where = "uiCloseParams"): UICloseParams {
+  const object = expectObject(value, where);
+  const read: UICloseParams = {
+    panel: expectString(object["panel"], `${where}.panel`),
+  };
+  return read;
+}
+
+/** A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped. */
+export interface UIRenderParams {
+  /** The panel's id. */
+  panel: string;
+  /** The page. */
+  tree: UITree;
+}
+
+export function readUIRenderParams(value: unknown, where = "uiRenderParams"): UIRenderParams {
+  const object = expectObject(value, where);
+  const read: UIRenderParams = {
+    panel: expectString(object["panel"], `${where}.panel`),
+    tree: readUITree(object["tree"], `${where}.tree`),
+  };
+  return read;
+}
+
+/** A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses. */
+export interface UIBadgeParams {
+  /** A whole number from 0. 0 is no count. */
+  count?: number;
+  /** True for a dot, when there is no count. */
+  dot?: boolean;
+}
+
+export function readUIBadgeParams(value: unknown, where = "uiBadgeParams"): UIBadgeParams {
+  const object = expectObject(value, where);
+  const read: UIBadgeParams = {};
+  if (object["count"] !== undefined) {
+    read.count = expectInteger(object["count"], `${where}.count`);
+  }
+  if (object["dot"] !== undefined) {
+    read.dot = expectBoolean(object["dot"], `${where}.dot`);
+  }
+  return read;
+}
+
+/** A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an image written into it included: the app does not draw a larger one, and the tool's log says so. */
+export interface UITree {
+  /** The blocks, at most 200. */
+  blocks: UIBlock[];
+}
+
+export function readUITree(value: unknown, where = "uiTree"): UITree {
+  const object = expectObject(value, where);
+  const read: UITree = {
+    blocks: expectArray(object["blocks"], `${where}.blocks`).map((item, index) => readUIBlock(item, `${`${where}.blocks`}[${index}]`)),
+  };
+  return read;
+}
+
+/** The fields every kind of UIBlock has. */
+export interface UIBlockFields {
+  /** The block's name within the page, as the events it causes name it. Required for button, toggle, field and list; a row with one can be tapped. The same characters as a command id. */
+  id?: string;
+  /** What an app that does not know this kind draws instead, as plain text. */
+  fallback?: UIText;
+}
+
+/** A UIBlock of a kind these types do not have, from a later protocol: kept as it came. */
+export interface UIBlockOther extends UIBlockFields {
+  type: string;
+  [key: string]: unknown;
+}
+
+/** One block. type says which of the twelve kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one. */
+export type UIBlock =
+  | (UIBlockFields & TextBlock & { type: "text" })
+  | (UIBlockFields & HeadingBlock & { type: "heading" })
+  | (UIBlockFields & RowBlock & { type: "row" })
+  | (UIBlockFields & ButtonBlock & { type: "button" })
+  | (UIBlockFields & ToggleBlock & { type: "toggle" })
+  | (UIBlockFields & FieldBlock & { type: "field" })
+  | (UIBlockFields & ListBlock & { type: "list" })
+  | (UIBlockFields & ProgressBlock & { type: "progress" })
+  | (UIBlockFields & ImageBlock & { type: "image" })
+  | (UIBlockFields & DividerBlock & { type: "divider" })
+  | (UIBlockFields & LinkBlock & { type: "link" })
+  | (UIBlockFields & SpacerBlock & { type: "spacer" })
+  | UIBlockOther;
+
+export function readUIBlock(value: unknown, where = "uiBlock"): UIBlock {
+  const object = expectObject(value, where);
+  const common: UIBlockFields = {};
+  if (object["id"] !== undefined) {
+    common.id = expectString(object["id"], `${where}.id`);
+  }
+  if (object["fallback"] !== undefined) {
+    common.fallback = readUIText(object["fallback"], `${where}.fallback`);
+  }
+  const type = expectString(object["type"], `${where}.type`);
+  switch (type) {
+    case "text":
+      return { ...common, ...readTextBlock(value, where), type };
+    case "heading":
+      return { ...common, ...readHeadingBlock(value, where), type };
+    case "row":
+      return { ...common, ...readRowBlock(value, where), type };
+    case "button":
+      return { ...common, ...readButtonBlock(value, where), type };
+    case "toggle":
+      return { ...common, ...readToggleBlock(value, where), type };
+    case "field":
+      return { ...common, ...readFieldBlock(value, where), type };
+    case "list":
+      return { ...common, ...readListBlock(value, where), type };
+    case "progress":
+      return { ...common, ...readProgressBlock(value, where), type };
+    case "image":
+      return { ...common, ...readImageBlock(value, where), type };
+    case "divider":
+      return { ...common, ...readDividerBlock(value, where), type };
+    case "link":
+      return { ...common, ...readLinkBlock(value, where), type };
+    case "spacer":
+      return { ...common, ...readSpacerBlock(value, where), type };
+    default:
+      return { ...object, ...common, type };
+  }
+}
+
+/** Text in one or more languages, keyed by language tag, as a manifest's text is. English, under en, is required. */
+export type LocalizedText = { [key: string]: string };
+
+export function readLocalizedText(value: unknown, where = "localizedText"): LocalizedText {
+  return expectMap(value, where, (item, key) => expectString(item, `${where}.${key}`));
+}
+
+/** Text the person reads: a string, or one entry per language. Drawn as written, never as markdown. */
+export type UIText = string | LocalizedText;
+
+export function readUIText(value: unknown, where = "uiText"): UIText {
+  return (typeof value === "string" ? value : readLocalizedText(value, where));
+}
+
+/** Words. */
+export interface TextBlock {
+  /** The words. */
+  text: UIText;
+  /** body when left out. secondary and caption are quieter; monospaced is for code and logs. */
+  style?: TextStyle;
+  /** The most lines the words take. 4 when left out. */
+  lines?: number;
+}
+
+export function readTextBlock(value: unknown, where = "textBlock"): TextBlock {
+  const object = expectObject(value, where);
+  const read: TextBlock = {
+    text: readUIText(object["text"], `${where}.text`),
+  };
+  if (object["style"] !== undefined) {
+    read.style = expectOneOf(object["style"], `${where}.style`, TEXT_STYLES);
+  }
+  if (object["lines"] !== undefined) {
+    read.lines = expectInteger(object["lines"], `${where}.lines`);
+  }
+  return read;
+}
+
+/** A heading, of two lines at most. */
+export interface HeadingBlock {
+  /** The heading. */
+  text: UIText;
+}
+
+export function readHeadingBlock(value: unknown, where = "headingBlock"): HeadingBlock {
+  const object = expectObject(value, where);
+  const read: HeadingBlock = {
+    text: readUIText(object["text"], `${where}.text`),
+  };
+  return read;
+}
+
+/** One line that stands alone. With an id it can be tapped. */
+export interface RowBlock {
+  /** The row's words. */
+  title: UIText;
+  /** A quieter line under it. */
+  subtitle?: UIText;
+  /** An SF Symbol name. */
+  icon?: string;
+  /** A few words at the row's end, such as a time. */
+  trailing?: UIText;
+}
+
+export function readRowBlock(value: unknown, where = "rowBlock"): RowBlock {
+  const object = expectObject(value, where);
+  const read: RowBlock = {
+    title: readUIText(object["title"], `${where}.title`),
+  };
+  if (object["subtitle"] !== undefined) {
+    read.subtitle = readUIText(object["subtitle"], `${where}.subtitle`);
+  }
+  if (object["icon"] !== undefined) {
+    read.icon = expectString(object["icon"], `${where}.icon`);
+  }
+  if (object["trailing"] !== undefined) {
+    read.trailing = readUIText(object["trailing"], `${where}.trailing`);
+  }
+  return read;
+}
+
+/** A button. Pressing it is the event tap. */
+export interface ButtonBlock {
+  /** What it says. */
+  title: UIText;
+  /** plain when left out. prominent is the page's main action; destructive one that deletes. */
+  style?: ButtonStyle;
+  /** False draws it dimmed, and it cannot be pressed. */
+  enabled?: boolean;
+}
+
+export function readButtonBlock(value: unknown, where = "buttonBlock"): ButtonBlock {
+  const object = expectObject(value, where);
+  const read: ButtonBlock = {
+    title: readUIText(object["title"], `${where}.title`),
+  };
+  if (object["style"] !== undefined) {
+    read.style = expectOneOf(object["style"], `${where}.style`, BUTTON_STYLES);
+  }
+  if (object["enabled"] !== undefined) {
+    read.enabled = expectBoolean(object["enabled"], `${where}.enabled`);
+  }
+  return read;
+}
+
+/** A switch. Turning it is the event toggle, with its new state. */
+export interface ToggleBlock {
+  /** What it switches. */
+  title: UIText;
+  /** On or off. */
+  value: boolean;
+  /** False draws it dimmed, and it cannot be turned. */
+  enabled?: boolean;
+}
+
+export function readToggleBlock(value: unknown, where = "toggleBlock"): ToggleBlock {
+  const object = expectObject(value, where);
+  const read: ToggleBlock = {
+    title: readUIText(object["title"], `${where}.title`),
+    value: expectBoolean(object["value"], `${where}.value`),
+  };
+  if (object["enabled"] !== undefined) {
+    read.enabled = expectBoolean(object["enabled"], `${where}.enabled`);
+  }
+  return read;
+}
+
+/** A field to type in. Return is the event submit; leaving it with other text is the event change. */
+export interface FieldBlock {
+  /** What it is for, above it. */
+  title?: UIText;
+  /** The text in it. */
+  value?: string;
+  /** What it shows while it is empty. */
+  placeholder?: UIText;
+  /** text when left out. number takes digits; secret hides what is typed. */
+  kind?: FieldKind;
+}
+
+export function readFieldBlock(value: unknown, where = "fieldBlock"): FieldBlock {
+  const object = expectObject(value, where);
+  const read: FieldBlock = {};
+  if (object["title"] !== undefined) {
+    read.title = readUIText(object["title"], `${where}.title`);
+  }
+  if (object["value"] !== undefined) {
+    read.value = expectString(object["value"], `${where}.value`);
+  }
+  if (object["placeholder"] !== undefined) {
+    read.placeholder = readUIText(object["placeholder"], `${where}.placeholder`);
+  }
+  if (object["kind"] !== undefined) {
+    read.kind = expectOneOf(object["kind"], `${where}.kind`, FIELD_KINDS);
+  }
+  return read;
+}
+
+/** One row of a list. */
+export interface UIListRow {
+  /** The row's name, as a tap on it names it. */
+  id: string;
+  /** The row's words. */
+  title: UIText;
+  /** A quieter line under it. */
+  subtitle?: UIText;
+  /** An SF Symbol name. */
+  icon?: string;
+  /** A few words at the row's end. */
+  trailing?: UIText;
+}
+
+export function readUIListRow(value: unknown, where = "uiListRow"): UIListRow {
+  const object = expectObject(value, where);
+  const read: UIListRow = {
+    id: expectString(object["id"], `${where}.id`),
+    title: readUIText(object["title"], `${where}.title`),
+  };
+  if (object["subtitle"] !== undefined) {
+    read.subtitle = readUIText(object["subtitle"], `${where}.subtitle`);
+  }
+  if (object["icon"] !== undefined) {
+    read.icon = expectString(object["icon"], `${where}.icon`);
+  }
+  if (object["trailing"] !== undefined) {
+    read.trailing = readUIText(object["trailing"], `${where}.trailing`);
+  }
+  return read;
+}
+
+/** Rows, drawn together. Tapping one is the event tap; its value is the row's id. */
+export interface ListBlock {
+  /** The rows, at most 200. */
+  rows: UIListRow[];
+}
+
+export function readListBlock(value: unknown, where = "listBlock"): ListBlock {
+  const object = expectObject(value, where);
+  const read: ListBlock = {
+    rows: expectArray(object["rows"], `${where}.rows`).map((item, index) => readUIListRow(item, `${`${where}.rows`}[${index}]`)),
+  };
+  return read;
+}
+
+/** How far something has got. */
+export interface ProgressBlock {
+  /** From 0 to 1. Left out, it is under way and nobody knows how far. */
+  value?: number;
+  /** What is under way. */
+  label?: UIText;
+}
+
+export function readProgressBlock(value: unknown, where = "progressBlock"): ProgressBlock {
+  const object = expectObject(value, where);
+  const read: ProgressBlock = {};
+  if (object["value"] !== undefined) {
+    read.value = expectNumber(object["value"], `${where}.value`);
+  }
+  if (object["label"] !== undefined) {
+    read.label = readUIText(object["label"], `${where}.label`);
+  }
+  return read;
+}
+
+/** A picture. */
+export interface ImageBlock {
+  /** A file in the tool's folder, as a path inside it, or the picture itself as a data: address of a PNG or JPEG. It counts toward the page's 262,144 bytes. */
+  source: string;
+  /** What it shows, for VoiceOver. */
+  alt?: UIText;
+  /** Its height in points, up to 300. The app's own when left out. */
+  height?: number;
+}
+
+export function readImageBlock(value: unknown, where = "imageBlock"): ImageBlock {
+  const object = expectObject(value, where);
+  const read: ImageBlock = {
+    source: expectString(object["source"], `${where}.source`),
+  };
+  if (object["alt"] !== undefined) {
+    read.alt = readUIText(object["alt"], `${where}.alt`);
+  }
+  if (object["height"] !== undefined) {
+    read.height = expectNumber(object["height"], `${where}.height`);
+  }
+  return read;
+}
+
+/** A line between blocks. It has no fields. */
+export type DividerBlock = Record<string, never>;
+
+export function readDividerBlock(value: unknown, where = "dividerBlock"): DividerBlock {
+  expectObject(value, where);
+  return {};
+}
+
+/** A link the app opens through its open service, so the manifest must list open in uses: without it, a click plays the alert sound. */
+export interface LinkBlock {
+  /** What it says. */
+  title: UIText;
+  /** Where it goes. */
+  url: string;
+}
+
+export function readLinkBlock(value: unknown, where = "linkBlock"): LinkBlock {
+  const object = expectObject(value, where);
+  const read: LinkBlock = {
+    title: readUIText(object["title"], `${where}.title`),
+    url: expectString(object["url"], `${where}.url`),
+  };
+  return read;
+}
+
+/** Room between blocks. */
+export interface SpacerBlock {
+  /** In points, up to 40. 8 when left out. */
+  size?: number;
+}
+
+export function readSpacerBlock(value: unknown, where = "spacerBlock"): SpacerBlock {
+  const object = expectObject(value, where);
+  const read: SpacerBlock = {};
+  if (object["size"] !== undefined) {
+    read.size = expectNumber(object["size"], `${where}.size`);
+  }
   return read;
 }

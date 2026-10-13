@@ -114,7 +114,7 @@ fn every_request_a_tool_may_send_has_a_call() {
     // tool wrote names each request a tool may send, once, in order. A
     // request added to the protocol fails this until the kit has its call.
     let mut bench = Bench::default().hello().run("all", 100);
-    for id in 1..=10 {
+    for id in 1..=11 {
         bench = bench.app(&format!(
             r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32004,"message":"not available right now"}}}}"#
         ));
@@ -132,6 +132,7 @@ fn every_request_a_tool_may_send_has_a_call() {
         let _ = app.processes().terminate(4242, "node", false);
         let _ = app.storage().get("count");
         let _ = app.storage().set("count", 1);
+        let _ = app.ui().badge(Some(2), false);
         Ok(())
     });
     assert_eq!(tool.serve(), 0);
@@ -146,7 +147,7 @@ fn every_request_a_tool_may_send_has_a_call() {
         .map(|row| row.name)
         .collect();
     assert_eq!(asked, wanted, "each request once, in the protocol's order");
-    assert_eq!(wanted.len(), 10);
+    assert_eq!(wanted.len(), 11);
 }
 
 #[test]
@@ -426,9 +427,29 @@ fn a_call_gives_up_when_no_answer_comes() {
 }
 
 #[test]
+fn the_newest_version_both_speak_is_picked() {
+    for (offered, picked) in [
+        (r#"["1","2"]"#, "2"),
+        (r#"["1"]"#, "1"),
+        (r#"["2","1"]"#, "2"),
+        (r#"["2","3"]"#, "2"),
+    ] {
+        let bench = Bench::default().hello_offering(offered).goodbye();
+        assert_eq!(bench.tool().serve(), 0);
+        assert_eq!(
+            bench.lines(),
+            messages(&[&format!(
+                r#"{{"jsonrpc":"2.0","id":"hello","result":{{"protocolVersion":"{picked}","toolVersion":"9.9.9"}}}}"#
+            )]),
+            "{offered}"
+        );
+    }
+}
+
+#[test]
 fn a_version_the_tool_does_not_speak_is_refused() {
     let bench = Bench::default()
-        .hello_offering(r#"["2"]"#)
+        .hello_offering(r#"["3"]"#)
         .run("hello", 2)
         .goodbye();
     let mut tool = bench.tool();
@@ -443,7 +464,7 @@ fn a_version_the_tool_does_not_speak_is_refused() {
     assert_eq!(
         bench.lines(),
         messages(&[
-            r#"{"jsonrpc":"2.0","id":"hello","error":{"code":-32602,"message":"this tool speaks protocol 1 only"}}"#,
+            r#"{"jsonrpc":"2.0","id":"hello","error":{"code":-32602,"message":"this tool speaks protocols 1 and 2 only"}}"#,
             r#"{"jsonrpc":"2.0","id":2,"error":{"code":-32600,"message":"initialize comes first"}}"#,
         ])
     );

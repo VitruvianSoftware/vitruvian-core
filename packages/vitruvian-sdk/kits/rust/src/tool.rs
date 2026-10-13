@@ -31,7 +31,7 @@ use crate::app::App;
 use crate::error::{codes, ToolError};
 use crate::generated::{
     methods, CommandRunParams, Empty, Error, InitializeParams, InitializeResult,
-    LanguageChangedParams, PreferencesChangedParams, PROTOCOL_VERSION,
+    LanguageChangedParams, PreferencesChangedParams, PROTOCOL_VERSIONS,
 };
 use crate::link::{Link, Message, Next, Outgoing};
 
@@ -196,19 +196,22 @@ impl Tool {
                 .state
                 .refuse(&id, codes::INVALID_PARAMS, "invalid params", None);
         };
-        if !hello
-            .protocol_versions
+        // The newest version both speak. Version 2 only adds to version 1,
+        // so a tool of either is answered by an app of either.
+        let picked = PROTOCOL_VERSIONS
             .iter()
-            .any(|v| v == PROTOCOL_VERSION)
-        {
-            let words = format!("this tool speaks protocol {PROTOCOL_VERSION} only");
+            .rev()
+            .find(|v| hello.protocol_versions.iter().any(|h| h == *v));
+        let Some(picked) = picked else {
+            let spoken = PROTOCOL_VERSIONS.join(" and ");
+            let words = format!("this tool speaks protocols {spoken} only");
             return self.state.refuse(&id, codes::INVALID_PARAMS, &words, None);
-        }
+        };
         self.state.language = hello.language;
         self.state.data_folder = PathBuf::from(hello.data_folder);
         self.state.greeted = true;
         let answer = InitializeResult {
-            protocol_version: PROTOCOL_VERSION.to_string(),
+            protocol_version: picked.to_string(),
             tool_version: self.state.version.clone(),
         };
         self.state.answer(&id, &answer);

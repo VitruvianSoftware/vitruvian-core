@@ -49,6 +49,9 @@ func exported(definition string) string {
 	if definition == "" {
 		return ""
 	}
+	if strings.HasPrefix(definition, "ui") && len(definition) > 2 && strings.ToUpper(definition[2:3]) == definition[2:3] {
+		return "UI" + definition[2:]
+	}
 	return strings.ToUpper(definition[:1]) + definition[1:]
 }
 

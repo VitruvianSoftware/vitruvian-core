@@ -30,6 +30,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from .generated.messages import (
+    PROTOCOL_VERSIONS,
     CommandRunParams,
     InitializeParams,
     LanguageChangedParams,
@@ -37,7 +38,7 @@ from .generated.messages import (
     RPCErrorObject,
     ShapeError,
 )
-from .generated.methods import PROTOCOL_VERSION, AppCalls
+from .generated.methods import AppCalls
 from .wire import Failure, Message, Notice, Request, Result, RPCID, Wire
 
 
@@ -235,19 +236,23 @@ class Tool:
         hello = _try(lambda: InitializeParams.from_json(params))
         if hello is None:
             return self._refuse(id, RPCErrorCode.INVALID_PARAMS, "invalid params")
-        if PROTOCOL_VERSION not in hello.protocol_versions:
+        # The newest version both speak. Version 2 only adds to version 1,
+        # so a tool of either is answered by an app of either.
+        picked = next(
+            (v for v in reversed(PROTOCOL_VERSIONS) if v in hello.protocol_versions),
+            None,
+        )
+        if picked is None:
             return self._refuse(
                 id,
                 RPCErrorCode.INVALID_PARAMS,
-                f"this tool speaks protocol {PROTOCOL_VERSION} only",
+                f"this tool speaks protocols {' and '.join(PROTOCOL_VERSIONS)} only",
             )
         self.language = hello.language
         self.data_folder = hello.data_folder
         self._greeted = True
         self._wire.send(
-            Result(
-                id, {"protocolVersion": PROTOCOL_VERSION, "toolVersion": self.version}
-            )
+            Result(id, {"protocolVersion": picked, "toolVersion": self.version})
         )
         if self.on_start is not None:
             self.on_start(self._app)

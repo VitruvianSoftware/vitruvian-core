@@ -34,6 +34,7 @@ has no nil list, and the schema refuses null.
 
 import textwrap
 
+from model import PROTOCOL_VERSIONS
 from model import licence as licence_lines
 
 OUTPUT = "go/toolkit/protocol_gen.go"
@@ -64,9 +65,17 @@ def adapt(model):
             return {"type": "string", "enum": list(type_.values)}
         if type_.kind == "const":
             return {"type": "string"}
+        if type_.kind == "text":
+            return {"type": "text"}
         return {"type": "any"}
 
     def entry(definition):
+        if definition.alias is not None and definition.alias.kind == "text":
+            return {
+                "name": definition.name,
+                "doc": definition.description,
+                "shape": "text",
+            }
         if definition.alias is not None:
             return {
                 "name": definition.name,
@@ -78,6 +87,8 @@ def adapt(model):
             "name": definition.name,
             "doc": definition.description,
             "shape": "struct",
+            "tag": definition.tag,
+            "variants": list(definition.variants),
             "fields": [
                 {
                     "name": field.name,
@@ -90,8 +101,10 @@ def adapt(model):
         }
 
     services = next(list(e.values) for e in model.enums if e.name == "Service")
+    versions = next(list(e.values) for e in model.enums if e.name == PROTOCOL_VERSIONS)
     return {
         "protocol": model.protocol,
+        "versions": versions,
         "services": services,
         "methods": [
             {
@@ -110,12 +123,16 @@ def adapt(model):
 
 
 # Whole names Go writes in capitals.
-INITIALISMS = {"id": "ID", "url": "URL", "pid": "PID", "hud": "HUD"}
+INITIALISMS = {"id": "ID", "url": "URL", "pid": "PID", "hud": "HUD", "ui": "UI"}
 
 
 def exported(name):
-    """notifyHUDParams -> NotifyHUDParams; url -> URL."""
-    return INITIALISMS.get(name, name[:1].upper() + name[1:])
+    """notifyHUDParams -> NotifyHUDParams; url -> URL; uiBlock -> UIBlock."""
+    if name in INITIALISMS:
+        return INITIALISMS[name]
+    if name.startswith("ui") and name[2:3].isupper():
+        return "UI" + name[2:]
+    return name[:1].upper() + name[1:]
 
 
 def method_name(method):
@@ -145,18 +162,141 @@ def go_type(kind, required, maps):
         return "[]" + go_type(kind["items"], True, maps)
     if kind["type"] == "map":
         return "map[string]" + go_type(kind["values"], True, maps)
+    if kind["type"] == "text":
+        # A string or a map; nil when left out, so never a pointer.
+        return "UIText"
     if kind["ref"] in maps:
         return exported(kind["ref"])
     return ("" if required else "*") + exported(kind["ref"])
 
 
+def field_lines(field, maps):
+    """One field of a struct, with its comment and tag."""
+    doc = field["doc"]
+    if "enum" in field["kind"] or "enum" in field["kind"].get("items", {}):
+        values = field["kind"].get("enum") or field["kind"]["items"]["enum"]
+        doc += " One of: " + ", ".join(str(value) for value in values) + "."
+    tag = field["name"] + ("" if field["required"] else ",omitempty")
+    kind = go_type(field["kind"], field["required"], maps)
+    return comment(doc, "\t") + [f'\t{exported(field["name"])} {kind} `json:"{tag}"`']
+
+
+def variant_struct(entry, maps):
+    """An object that is one of several kinds by the value of `tag`: a
+    struct with the fields every kind has, one pointer a kind for the
+    kind's own fields, and Other for a kind these types do not have, with
+    the two JSON methods that write them as one object and read it back."""
+    name, tag = exported(entry["name"]), entry["tag"]
+    common = [field for field in entry["fields"] if field["name"] != tag]
+    tag_field = next(field for field in entry["fields"] if field["name"] == tag)
+    lines = comment(f"{name}: {entry['doc']}") if entry["doc"] else []
+    lines.append(f"type {name} struct {{")
+    lines += field_lines(tag_field, maps)
+    for field in common:
+        lines += [""] + field_lines(field, maps)
+    lines += [
+        "",
+        f"\t// The kind's own fields: the one of these that {exported(tag)} names,",
+        "\t// or Other for a kind these types do not have, as it came.",
+    ]
+    for value, ref in entry["variants"]:
+        lines.append(f'\t{exported(value)} *{exported(ref)} `json:"-"`')
+    lines.append('\tOther map[string]any `json:"-"`')
+    lines.append("}")
+    lines += [
+        "",
+        f"// MarshalJSON writes the fields every kind has beside the kind's own.",
+        f"func (v {name}) MarshalJSON() ([]byte, error) {{",
+        "\tvar own any = v.Other",
+        f"\tswitch v.{exported(tag)} {{",
+    ]
+    for value, ref in entry["variants"]:
+        lines += [f'\tcase "{value}":', f"\t\town = v.{exported(value)}"]
+    lines += [
+        "\t}",
+        "\tfields := map[string]any{}",
+        "\tif own != nil {",
+        "\t\traw, err := json.Marshal(own)",
+        "\t\tif err != nil {",
+        "\t\t\treturn nil, err",
+        "\t\t}",
+        "\t\tif err := json.Unmarshal(raw, &fields); err != nil {",
+        "\t\t\treturn nil, err",
+        "\t\t}",
+        "\t}",
+        f'\tfields["{tag}"] = v.{exported(tag)}',
+    ]
+    for field in common:
+        go_name = exported(field["name"])
+        if field["required"]:
+            lines.append(f'\tfields["{field["name"]}"] = v.{go_name}')
+            continue
+        star = "*" if go_type(field["kind"], False, maps).startswith("*") else ""
+        lines += [
+            f"\tif v.{go_name} != nil {{",
+            f'\t\tfields["{field["name"]}"] = {star}v.{go_name}',
+            "\t}",
+        ]
+    lines += ["\treturn json.Marshal(fields)", "}"]
+    lines += [
+        "",
+        f"// UnmarshalJSON reads the kind {exported(tag)} names into its field, and any",
+        "// other kind into Other.",
+        f"func (v *{name}) UnmarshalJSON(data []byte) error {{",
+        "\tvar head struct {",
+    ]
+    for number, field in enumerate([tag_field] + common):
+        if number:
+            lines.append("")
+        tag_text = field["name"] + ("" if field["required"] else ",omitempty")
+        kind = go_type(field["kind"], field["required"], maps)
+        lines.append(f'\t\t{exported(field["name"])} {kind} `json:"{tag_text}"`')
+    lines += [
+        "\t}",
+        "\tif err := json.Unmarshal(data, &head); err != nil {",
+        "\t\treturn err",
+        "\t}",
+        f"\t*v = {name}{{"
+        + ", ".join(
+            f"{exported(f['name'])}: head.{exported(f['name'])}"
+            for f in [tag_field] + common
+        )
+        + "}",
+        f"\tswitch v.{exported(tag)} {{",
+    ]
+    for value, ref in entry["variants"]:
+        lines += [
+            f'\tcase "{value}":',
+            f"\t\tv.{exported(value)} = &{exported(ref)}{{}}",
+            f"\t\treturn json.Unmarshal(data, v.{exported(value)})",
+        ]
+    lines += [
+        "\tdefault:",
+        "\t\tif err := json.Unmarshal(data, &v.Other); err != nil {",
+        "\t\t\treturn err",
+        "\t\t}",
+    ]
+    for field in [tag_field] + common:
+        lines.append(f'\t\tdelete(v.Other, "{field["name"]}")')
+    lines += ["\t\treturn nil", "\t}", "}"]
+    return lines
+
+
 def struct(entry, maps):
     name = exported(entry["name"])
     lines = comment(f"{name}: {entry['doc']}") if entry["doc"] else []
+    if entry["shape"] == "text":
+        return (
+            lines
+            + comment("A string, or a map from a language tag to a string.")
+            + [f"type {name} = any"]
+        )
     if entry["shape"] == "map":
         return lines + [
             f"type {name} map[string]{go_type(entry['values'], True, maps)}"
         ]
+    if entry.get("variants"):
+        return variant_struct(entry, maps)
     if not entry["fields"]:
         return lines + [f"type {name} struct{{}}"]
     lines.append(f"type {name} struct {{")
@@ -225,6 +365,13 @@ def emit(model, licence=None):
         "// ProtocolVersion is the version of the protocol these types are.",
         f'const ProtocolVersion = "{model["protocol"]}"',
         "",
+        "// ProtocolVersions are the versions a tool of these types speaks, oldest",
+        "// first: a later version only adds to the one before it, so the tool",
+        "// answers hello with the newest of them the app offers.",
+        "var ProtocolVersions = []string{"
+        + ", ".join(f'"{version}"' for version in model["versions"])
+        + "}",
+        "",
         "// The name of each message on the link.",
         "const (",
     ]
@@ -272,10 +419,12 @@ def emit(model, licence=None):
         "\tswitch name {",
     ]
     for entry in types:
-        lines += [
-            f'\tcase "{exported(entry["name"])}":',
-            f"\t\tvalue = &{exported(entry['name'])}{{}}",
-        ]
+        made = (
+            f"new({exported(entry['name'])})"
+            if entry["shape"] == "text"
+            else f"&{exported(entry['name'])}{{}}"
+        )
+        lines += [f'\tcase "{exported(entry["name"])}":', f"\t\tvalue = {made}"]
     lines += [
         "\tdefault:",
         "\t\treturn nil, false, nil",

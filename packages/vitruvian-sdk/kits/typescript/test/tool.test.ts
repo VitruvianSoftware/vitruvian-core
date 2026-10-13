@@ -141,7 +141,7 @@ test("every request a tool may send is a call on the app", () => {
     (m) => m.method,
   );
   expect(calls.sort()).toEqual([...wanted].sort());
-  expect(wanted).toHaveLength(12);
+  expect(wanted).toHaveLength(14);
 });
 
 test("hello, a command, and goodbye", () => {
@@ -396,17 +396,36 @@ test("a call gives up when no answer comes", () => {
   closeSync(input);
 });
 
+test("the newest version both speak is picked", () => {
+  for (const [offered, picked] of [
+    ['["1","2"]', "2"],
+    ['["1"]', "1"],
+    ['["2","1"]', "2"],
+    ['["2","3"]', "2"],
+  ]) {
+    const one = new Bench();
+    const tool = one.hello(offered).goodbye().tool();
+    expect(tool.serve()).toBe(0);
+    const first = one.written()[0];
+    expect(first.kind === "result" && first.result).toEqual({
+      protocolVersion: picked,
+      toolVersion: "9.9.9",
+    });
+    one.done();
+  }
+});
+
 test("a version the tool does not speak is refused", () => {
   let ran = false;
   const tool = bench
-    .hello('["2"]')
+    .hello('["3"]')
     .run("hello", 2)
     .goodbye()
     .tool((tool) => tool.command("hello", () => void (ran = true)));
   expect(tool.serve()).toBe(0);
   expect(ran).toBe(false);
   expect(bench.written()).toEqual([
-    failure("hello", -32602, "this tool speaks protocol 1 only"),
+    failure("hello", -32602, "this tool speaks protocols 1 and 2 only"),
     failure(2, -32600, "initialize comes first"),
   ]);
 });

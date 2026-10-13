@@ -46,7 +46,10 @@ def load(name):
 
 def type_named(name):
     title = {"empty": "EmptyObject", "error": "RPCErrorObject"}.get(
-        name, name[:1].upper() + name[1:]
+        name,
+        "UI" + name[2:]
+        if name.startswith("ui") and name[2:3].isupper()
+        else name[:1].upper() + name[1:],
     )
     return getattr(messages, title)
 

@@ -33,6 +33,7 @@ it is None. The file is written the way rustfmt leaves it.
 import re
 import textwrap
 
+from model import PROTOCOL_VERSIONS
 from model import licence as licence_lines
 
 OUTPUT = "kits/rust/src/generated/mod.rs"
@@ -63,9 +64,18 @@ def adapt(model):
             return {"type": "string", "enum": list(type_.values)}
         if type_.kind == "const":
             return {"type": "string"}
+        if type_.kind == "text":
+            return {"type": "text"}
         return {"type": "any"}
 
     def entry(definition):
+        if definition.alias is not None and definition.alias.kind == "text":
+            return {
+                "name": definition.name,
+                "doc": definition.description,
+                "shape": "text",
+                "languages": definition.alias.ref,
+            }
         if definition.alias is not None:
             return {
                 "name": definition.name,
@@ -77,6 +87,8 @@ def adapt(model):
             "name": definition.name,
             "doc": definition.description,
             "shape": "struct",
+            "tag": definition.tag,
+            "variants": list(definition.variants),
             "fields": [
                 {
                     "name": field.name,
@@ -89,8 +101,10 @@ def adapt(model):
         }
 
     services = next(list(e.values) for e in model.enums if e.name == "Service")
+    versions = next(list(e.values) for e in model.enums if e.name == PROTOCOL_VERSIONS)
     return {
         "protocol": model.protocol,
+        "versions": versions,
         "services": services,
         "methods": [
             {
@@ -150,37 +164,125 @@ def rust_type(kind, maps):
         if kind["values"]["type"] == "any":
             return "Map<String, Value>"
         return f"BTreeMap<String, {rust_type(kind['values'], maps)}>"
+    if kind["type"] == "text":
+        return "UiText"
     return type_name(kind["ref"])
+
+
+def field_lines(field, maps, extra=()):
+    """One field of a struct, with its comment and serde attributes."""
+    doc = field["doc"]
+    if "enum" in field["kind"] or "enum" in field["kind"].get("items", {}):
+        values = field["kind"].get("enum") or field["kind"]["items"]["enum"]
+        doc += " One of: " + ", ".join(str(value) for value in values) + "."
+    lines = comment(doc, "    ")
+    rust = field_name(field["name"])
+    options = list(extra)
+    if rust.removeprefix("r#") != field["name"]:
+        options.append(f'rename = "{field["name"]}"')
+    kind = rust_type(field["kind"], maps)
+    if not field["required"]:
+        options.append('default, skip_serializing_if = "Option::is_none"')
+        kind = f"Option<{kind}>"
+    if options:
+        lines.append(f"    #[serde({', '.join(options)})]")
+    lines.append(f"    pub {rust}: {kind},")
+    return lines
+
+
+def text_item(entry):
+    """Text a tool draws: a string, or a map of languages. serde reads
+    whichever the JSON is."""
+    name, languages = type_name(entry["name"]), type_name(entry["languages"])
+    lines = comment(entry["doc"]) if entry["doc"] else []
+    return lines + [
+        "#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]",
+        "#[serde(untagged)]",
+        f"pub enum {name} {{",
+        "    /// The words, whatever the language.",
+        "    Plain(String),",
+        "    /// One entry per language, with English under `en`.",
+        f"    Languages({languages}),",
+        "}",
+        "",
+        f"impl Default for {name} {{",
+        "    fn default() -> Self {",
+        f"        {name}::Plain(String::new())",
+        "    }",
+        "}",
+        "",
+        f"impl From<&str> for {name} {{",
+        "    fn from(text: &str) -> Self {",
+        f"        {name}::Plain(text.to_string())",
+        "    }",
+        "}",
+        "",
+        f"impl From<String> for {name} {{",
+        "    fn from(text: String) -> Self {",
+        f"        {name}::Plain(text)",
+        "    }",
+        "}",
+    ]
+
+
+def variant_item(entry, maps):
+    """An object that is one of several kinds by the value of `tag`: a
+    struct of the fields every kind has, with the kind flattened into it as
+    an enum serde tells apart by the tag, whose last variant keeps a kind
+    these types do not have as it came."""
+    name, tag = type_name(entry["name"]), entry["tag"]
+    common = [field for field in entry["fields"] if field["name"] != tag]
+    content = f"{name}Content"
+    lines = comment(entry["doc"]) if entry["doc"] else []
+    lines += [
+        "#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]",
+        f"pub struct {name} {{",
+    ]
+    for field in common:
+        lines += field_lines(field, maps)
+    lines += [
+        f"    /// The kind, as `{tag}` names it, with its own fields.",
+        "    #[serde(flatten)]",
+        f"    pub content: {content},",
+        "}",
+        "",
+        f"/// What a {name} is: one of the kinds these types have, by `{tag}`, or",
+        "/// another kind kept as it came, `" + tag + "` included.",
+        "#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]",
+        f'#[serde(tag = "{tag}")]',
+        f"pub enum {content} {{",
+    ]
+    for value, ref in entry["variants"]:
+        lines += [
+            f'    #[serde(rename = "{value}")]',
+            f"    {type_name(value)}({type_name(ref)}),",
+        ]
+    lines += [
+        "    /// A kind these types do not have, from a later protocol.",
+        "    #[serde(untagged)]",
+        "    Other(Map<String, Value>),",
+        "}",
+    ]
+    return lines
 
 
 def item(entry, maps):
     name = type_name(entry["name"])
     lines = comment(entry["doc"]) if entry["doc"] else []
+    if entry["shape"] == "text":
+        return text_item(entry)
     if entry["shape"] == "map":
         return lines + [
             f"pub type {name} = BTreeMap<String, {rust_type(entry['values'], maps)}>;"
         ]
+    if entry.get("variants"):
+        return variant_item(entry, maps)
     lines.append("#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]")
     if not entry["fields"]:
         return lines + [f"pub struct {name} {{}}"]
     lines.append(f"pub struct {name} {{")
     for field in entry["fields"]:
-        doc = field["doc"]
-        if "enum" in field["kind"] or "enum" in field["kind"].get("items", {}):
-            values = field["kind"].get("enum") or field["kind"]["items"]["enum"]
-            doc += " One of: " + ", ".join(str(value) for value in values) + "."
-        lines += comment(doc, "    ")
-        rust = field_name(field["name"])
-        options = []
-        if rust.removeprefix("r#") != field["name"]:
-            options.append(f'rename = "{field["name"]}"')
-        kind = rust_type(field["kind"], maps)
-        if not field["required"]:
-            options.append('default, skip_serializing_if = "Option::is_none"')
-            kind = f"Option<{kind}>"
-        if options:
-            lines.append(f"    #[serde({', '.join(options)})]")
-        lines.append(f"    pub {rust}: {kind},")
+        lines += field_lines(field, maps)
     lines.append("}")
     return lines
 
@@ -212,6 +314,13 @@ def emit(model, licence=None):
         "",
         "/// The version of the protocol these types are.",
         f'pub const PROTOCOL_VERSION: &str = "{model["protocol"]}";',
+        "",
+        "/// The versions a tool of these types speaks, oldest first: a later",
+        "/// version only adds to the one before it, so the tool answers hello",
+        "/// with the newest of them the app offers.",
+        "pub const PROTOCOL_VERSIONS: &[&str] = &["
+        + ", ".join(f'"{version}"' for version in model["versions"])
+        + "];",
         "",
         "/// The name of each message on the link.",
         "pub mod methods {",

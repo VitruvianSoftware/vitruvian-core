@@ -20,17 +20,14 @@
 
 import {
   type JSONValue,
+  PROTOCOL_VERSIONS,
   readCommandRunParams,
   readInitializeParams,
   readLanguageChangedParams,
   readPreferencesChangedParams,
   type RPCErrorObject,
 } from "./generated/messages.js";
-import {
-  type AppCalls,
-  appCalls,
-  PROTOCOL_VERSION,
-} from "./generated/methods.js";
+import { type AppCalls, appCalls } from "./generated/methods.js";
 import { now, type RPCID, type RPCMessage, Wire } from "./wire.js";
 
 /** JSON-RPC's own failure codes. */
@@ -260,11 +257,16 @@ export class Tool {
     const hello = tryRead(() => readInitializeParams(params));
     if (hello === undefined)
       return this.refuse(id, RPCErrorCode.invalidParams, "invalid params");
-    if (!hello.protocolVersions.includes(PROTOCOL_VERSION)) {
+    // The newest version both speak. Version 2 only adds to version 1, so
+    // a tool of either is answered by an app of either.
+    const picked = [...PROTOCOL_VERSIONS]
+      .reverse()
+      .find((version) => hello.protocolVersions.includes(version));
+    if (picked === undefined) {
       return this.refuse(
         id,
         RPCErrorCode.invalidParams,
-        `this tool speaks protocol ${PROTOCOL_VERSION} only`,
+        `this tool speaks protocols ${PROTOCOL_VERSIONS.join(" and ")} only`,
       );
     }
     this.languageTag = hello.language;
@@ -273,7 +275,7 @@ export class Tool {
     this.wire.send({
       kind: "result",
       id,
-      result: { protocolVersion: PROTOCOL_VERSION, toolVersion: this.version },
+      result: { protocolVersion: picked, toolVersion: this.version },
     });
     this.onStart?.(this.app);
   }

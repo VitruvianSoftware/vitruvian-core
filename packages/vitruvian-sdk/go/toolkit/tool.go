@@ -29,6 +29,7 @@ import (
 	"os/signal"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -183,14 +184,22 @@ func (t *Tool) greet(m message) {
 		t.refuse(m.id, CodeInvalidParams, "invalid params", nil)
 		return
 	}
-	if !slices.Contains(hello.ProtocolVersions, ProtocolVersion) {
-		t.refuse(m.id, CodeInvalidParams, "this tool speaks protocol "+ProtocolVersion+" only", nil)
+	// The newest version both speak. Version 2 only adds to version 1, so a
+	// tool of either is answered by an app of either.
+	picked := ""
+	for i := len(ProtocolVersions) - 1; i >= 0 && picked == ""; i-- {
+		if slices.Contains(hello.ProtocolVersions, ProtocolVersions[i]) {
+			picked = ProtocolVersions[i]
+		}
+	}
+	if picked == "" {
+		t.refuse(m.id, CodeInvalidParams, "this tool speaks protocols "+strings.Join(ProtocolVersions, " and ")+" only", nil)
 		return
 	}
 	t.language = hello.Language
 	t.dataFolder = hello.DataFolder
 	t.greeted = true
-	t.answer(m.id, InitializeResult{ProtocolVersion: ProtocolVersion, ToolVersion: t.version})
+	t.answer(m.id, InitializeResult{ProtocolVersion: picked, ToolVersion: t.version})
 	if t.OnStart != nil {
 		t.OnStart(t.app)
 	}

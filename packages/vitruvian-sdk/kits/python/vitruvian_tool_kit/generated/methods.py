@@ -46,9 +46,12 @@ from .messages import (
     StorageGetParams,
     StorageGetResult,
     StorageSetParams,
+    UIBadgeParams,
+    UIRenderParams,
+    UITree,
 )
 
-PROTOCOL_VERSION = "1"
+PROTOCOL_VERSION = "2"
 """The protocol version this file was made from."""
 
 
@@ -82,6 +85,11 @@ METHODS: Tuple[MethodInfo, ...] = (
     MethodInfo("storage/get", "tool", "request", "storage", "storageGetParams", "storageGetResult"),
     MethodInfo("storage/set", "tool", "request", "storage", "storageSetParams", "empty"),
     MethodInfo("log", "tool", "notice", None, "logParams", None),
+    MethodInfo("ui/open", "app", "request", None, "uiOpenParams", "uiOpenResult"),
+    MethodInfo("ui/event", "app", "request", None, "uiEventParams", "uiEventResult"),
+    MethodInfo("ui/close", "app", "notice", None, "uiCloseParams", None),
+    MethodInfo("ui/render", "tool", "notice", None, "uiRenderParams", None),
+    MethodInfo("ui/badge", "tool", "request", "notify", "uiBadgeParams", "empty"),
 )
 """Every message of the protocol, as methods.json lists them."""
 
@@ -179,6 +187,22 @@ class _Storage:
         return EmptyObject.from_json(self._request("storage/set", StorageSetParams(key=key, value=value).to_json()), "the answer to storage/set")
 
 
+class _Ui:
+    """The `ui/...` messages."""
+
+    def __init__(self, request: Requester, notice: Noticer) -> None:
+        self._request = request
+        self._notice = notice
+
+    def badge(self, count: Optional[int] = None, dot: Optional[bool] = None) -> EmptyObject:
+        """`ui/badge`. A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses. Needs `notify` in the manifest's `uses`."""
+        return EmptyObject.from_json(self._request("ui/badge", UIBadgeParams(count=count, dot=dot).to_json()), "the answer to ui/badge")
+
+    def render(self, panel: str, tree: UITree) -> None:
+        """`ui/render`. A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped. A notice: the app does not answer it."""
+        self._notice("ui/render", UIRenderParams(panel=panel, tree=tree).to_json())
+
+
 class _Commands:
     """The `commands/...` messages."""
 
@@ -203,6 +227,7 @@ class AppCalls:
         self.keystrokes = _Keystrokes(request, notice)
         self.processes = _Processes(request, notice)
         self.storage = _Storage(request, notice)
+        self.ui = _Ui(request, notice)
         self.commands = _Commands(request, notice)
 
     def log(self, message: str) -> None:

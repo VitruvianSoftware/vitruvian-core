@@ -27,7 +27,12 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
 /// The version of the protocol these types are.
-pub const PROTOCOL_VERSION: &str = "1";
+pub const PROTOCOL_VERSION: &str = "2";
+
+/// The versions a tool of these types speaks, oldest first: a later
+/// version only adds to the one before it, so the tool answers hello
+/// with the newest of them the app offers.
+pub const PROTOCOL_VERSIONS: &[&str] = &["1", "2"];
 
 /// The name of each message on the link.
 pub mod methods {
@@ -48,6 +53,11 @@ pub mod methods {
     pub const STORAGE_GET: &str = "storage/get";
     pub const STORAGE_SET: &str = "storage/set";
     pub const LOG: &str = "log";
+    pub const UI_OPEN: &str = "ui/open";
+    pub const UI_EVENT: &str = "ui/event";
+    pub const UI_CLOSE: &str = "ui/close";
+    pub const UI_RENDER: &str = "ui/render";
+    pub const UI_BADGE: &str = "ui/badge";
 }
 
 /// The names a manifest's `uses` may list.
@@ -211,6 +221,46 @@ pub const METHODS: &[Method] = &[
         uses: None,
         params: Some("LogParams"),
         result: None,
+    },
+    Method {
+        name: methods::UI_OPEN,
+        sender: "app",
+        kind: "request",
+        uses: None,
+        params: Some("UiOpenParams"),
+        result: Some("UiOpenResult"),
+    },
+    Method {
+        name: methods::UI_EVENT,
+        sender: "app",
+        kind: "request",
+        uses: None,
+        params: Some("UiEventParams"),
+        result: Some("UiEventResult"),
+    },
+    Method {
+        name: methods::UI_CLOSE,
+        sender: "app",
+        kind: "notice",
+        uses: None,
+        params: Some("UiCloseParams"),
+        result: None,
+    },
+    Method {
+        name: methods::UI_RENDER,
+        sender: "tool",
+        kind: "notice",
+        uses: None,
+        params: Some("UiRenderParams"),
+        result: None,
+    },
+    Method {
+        name: methods::UI_BADGE,
+        sender: "tool",
+        kind: "request",
+        uses: Some("notify"),
+        params: Some("UiBadgeParams"),
+        result: Some("Empty"),
     },
 ];
 
@@ -430,12 +480,352 @@ pub struct LogParams {
     pub message: String,
 }
 
+/// The person opened one of the tool's panels. A blocks panel is answered with
+/// its first page; a web panel with {}.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiOpenParams {
+    /// The panel's id, as the manifest gives it.
+    pub panel: String,
+}
+
+/// The answer to ui/open.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiOpenResult {
+    /// The first page. Left out for a web panel, and for a page the tool will
+    /// send later with ui/render.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree: Option<UiTree>,
+}
+
+/// The person acted in an open panel. Answered with the next page, or with
+/// keep.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiEventParams {
+    /// The panel's id.
+    pub panel: String,
+    /// The id of the block the person acted on. Left out for bridge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block: Option<String>,
+    /// What the person did. tap: a button, a row or a list's row was pressed.
+    /// toggle: a switch was turned. submit: Return was pressed in a field.
+    /// change: a field was left with other text in it. bridge: a web panel's
+    /// page called window.vitruvian.call. One of: tap, toggle, submit, change,
+    /// bridge.
+    pub event: String,
+    /// For toggle, the switch's new state. For submit and change, the field's
+    /// text. For a tap on a list's row, the row's id. For bridge, an object:
+    /// method, the request the page made, and params, what it carries. A tool
+    /// sends such a request to the app as its own; a method that starts with
+    /// tool/ is the tool's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
+}
+
+/// The answer to ui/event. With no tree, or with keep, the page stays as it is.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiEventResult {
+    /// The next page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree: Option<UiTree>,
+    /// True: the page stays as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep: Option<bool>,
+    /// For bridge: what the page's call gets back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<Value>,
+    /// A window panel of the same tool to open, in answer to what the person
+    /// did. A tool cannot open a window at any other time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open: Option<String>,
+}
+
+/// The panel went away: the person closed it, or the app did.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiCloseParams {
+    /// The panel's id.
+    pub panel: String,
+}
+
+/// A new page for a panel that is open, sent unprompted. The app draws at most
+/// four a second for each panel, the last one of the ones between; more than
+/// forty in one second is a flood, and the tool is stopped. One for a panel the
+/// manifest does not declare, or that is not open, is dropped.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiRenderParams {
+    /// The panel's id.
+    pub panel: String,
+    /// The page.
+    pub tree: UiTree,
+}
+
+/// A count or a dot beside the tool in the island's Tools area. With neither,
+/// the badge goes. Needs notify in the manifest's uses.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiBadgeParams {
+    /// A whole number from 0. 0 is no count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<i64>,
+    /// True for a dot, when there is no count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dot: Option<bool>,
+}
+
+/// A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an
+/// image written into it included: the app does not draw a larger one, and the
+/// tool's log says so.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiTree {
+    /// The blocks, at most 200.
+    pub blocks: Vec<UiBlock>,
+}
+
+/// One block. type says which of the twelve kinds it is, and the kind's own
+/// fields go beside it. A kind the app does not know is drawn as its fallback,
+/// or left out: that is how a later version adds one.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UiBlock {
+    /// The block's name within the page, as the events it causes name it.
+    /// Required for button, toggle, field and list; a row with one can be
+    /// tapped. The same characters as a command id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// What an app that does not know this kind draws instead, as plain text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<UiText>,
+    /// The kind, as `type` names it, with its own fields.
+    #[serde(flatten)]
+    pub content: UiBlockContent,
+}
+
+/// What a UiBlock is: one of the kinds these types have, by `type`, or
+/// another kind kept as it came, `type` included.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum UiBlockContent {
+    #[serde(rename = "text")]
+    Text(TextBlock),
+    #[serde(rename = "heading")]
+    Heading(HeadingBlock),
+    #[serde(rename = "row")]
+    Row(RowBlock),
+    #[serde(rename = "button")]
+    Button(ButtonBlock),
+    #[serde(rename = "toggle")]
+    Toggle(ToggleBlock),
+    #[serde(rename = "field")]
+    Field(FieldBlock),
+    #[serde(rename = "list")]
+    List(ListBlock),
+    #[serde(rename = "progress")]
+    Progress(ProgressBlock),
+    #[serde(rename = "image")]
+    Image(ImageBlock),
+    #[serde(rename = "divider")]
+    Divider(DividerBlock),
+    #[serde(rename = "link")]
+    Link(LinkBlock),
+    #[serde(rename = "spacer")]
+    Spacer(SpacerBlock),
+    /// A kind these types do not have, from a later protocol.
+    #[serde(untagged)]
+    Other(Map<String, Value>),
+}
+
+/// Text in one or more languages, keyed by language tag, as a manifest's text
+/// is. English, under en, is required.
+pub type LocalizedText = BTreeMap<String, String>;
+
+/// Text the person reads: a string, or one entry per language. Drawn as
+/// written, never as markdown.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UiText {
+    /// The words, whatever the language.
+    Plain(String),
+    /// One entry per language, with English under `en`.
+    Languages(LocalizedText),
+}
+
+impl Default for UiText {
+    fn default() -> Self {
+        UiText::Plain(String::new())
+    }
+}
+
+impl From<&str> for UiText {
+    fn from(text: &str) -> Self {
+        UiText::Plain(text.to_string())
+    }
+}
+
+impl From<String> for UiText {
+    fn from(text: String) -> Self {
+        UiText::Plain(text)
+    }
+}
+
+/// Words.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TextBlock {
+    /// The words.
+    pub text: UiText,
+    /// body when left out. secondary and caption are quieter; monospaced is for
+    /// code and logs. One of: body, secondary, caption, monospaced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
+    /// The most lines the words take. 4 when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<i64>,
+}
+
+/// A heading, of two lines at most.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct HeadingBlock {
+    /// The heading.
+    pub text: UiText,
+}
+
+/// One line that stands alone. With an id it can be tapped.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RowBlock {
+    /// The row's words.
+    pub title: UiText,
+    /// A quieter line under it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<UiText>,
+    /// An SF Symbol name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// A few words at the row's end, such as a time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trailing: Option<UiText>,
+}
+
+/// A button. Pressing it is the event tap.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ButtonBlock {
+    /// What it says.
+    pub title: UiText,
+    /// plain when left out. prominent is the page's main action; destructive
+    /// one that deletes. One of: plain, prominent, destructive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
+    /// False draws it dimmed, and it cannot be pressed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+/// A switch. Turning it is the event toggle, with its new state.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ToggleBlock {
+    /// What it switches.
+    pub title: UiText,
+    /// On or off.
+    pub value: bool,
+    /// False draws it dimmed, and it cannot be turned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+/// A field to type in. Return is the event submit; leaving it with other text
+/// is the event change.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FieldBlock {
+    /// What it is for, above it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<UiText>,
+    /// The text in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// What it shows while it is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<UiText>,
+    /// text when left out. number takes digits; secret hides what is typed. One
+    /// of: text, number, secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+/// One row of a list.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiListRow {
+    /// The row's name, as a tap on it names it.
+    pub id: String,
+    /// The row's words.
+    pub title: UiText,
+    /// A quieter line under it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<UiText>,
+    /// An SF Symbol name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// A few words at the row's end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trailing: Option<UiText>,
+}
+
+/// Rows, drawn together. Tapping one is the event tap; its value is the row's
+/// id.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ListBlock {
+    /// The rows, at most 200.
+    pub rows: Vec<UiListRow>,
+}
+
+/// How far something has got.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProgressBlock {
+    /// From 0 to 1. Left out, it is under way and nobody knows how far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    /// What is under way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<UiText>,
+}
+
+/// A picture.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ImageBlock {
+    /// A file in the tool's folder, as a path inside it, or the picture itself
+    /// as a data: address of a PNG or JPEG. It counts toward the page's 262,144
+    /// bytes.
+    pub source: String,
+    /// What it shows, for VoiceOver.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt: Option<UiText>,
+    /// Its height in points, up to 300. The app's own when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+}
+
+/// A line between blocks. It has no fields.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DividerBlock {}
+
+/// A link the app opens through its open service, so the manifest must list
+/// open in uses: without it, a click plays the alert sound.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LinkBlock {
+    /// What it says.
+    pub title: UiText,
+    /// Where it goes.
+    pub url: String,
+}
+
+/// Room between blocks.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SpacerBlock {
+    /// In points, up to 40. 8 when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<f64>,
+}
+
 /// The file vitruvian-tool.json at the top of a tool's folder. It says what the
 /// tool is, which of the app's services it calls, what it adds, and which
 /// program to start. A field this schema does not name is ignored, which is how
 /// a later version adds one. Two rules are not written here because JSON Schema
-/// cannot say them: no two commands share an id, no two preferences share an
-/// id; and the whole file is at most 65,536 bytes.
+/// cannot say them: no two commands, no two panels and no two preferences share
+/// an id; and the whole file is at most 65,536 bytes.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {
     /// The tool's identity, in reverse-DNS form, for example com.acme.deploys.
@@ -451,7 +841,9 @@ pub struct Manifest {
     pub description: Option<LocalizedText>,
     /// The tool's own version, as its author writes it.
     pub version: String,
-    /// The protocol version the tool speaks.
+    /// The protocol version the tool speaks. Version 2 adds panels, what a tool
+    /// draws, and changes nothing of version 1. An app that speaks only version
+    /// 1 refuses a manifest that says 2. One of: 1, 2.
     pub protocol: String,
     /// Who made the tool. Shown beside its name. The app does not check it.
     pub publisher: String,
@@ -484,18 +876,16 @@ pub struct Manifest {
     pub runtime: Runtime,
 }
 
-/// A piece of text in one or more languages, keyed by language tag (en, fr, pt-
-/// BR). English, under en, is required. The app shows the entry for the
-/// language in use, then the entry for that language without its region, then
-/// English.
-pub type LocalizedText = BTreeMap<String, String>;
-
-/// What the tool adds to the app. Version 1 has commands only.
+/// What the tool adds to the app: commands, and in protocol 2 panels.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Contributes {
     /// The tool's commands. At most 32.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commands: Option<Vec<Command>>,
+    /// What the tool draws, and where. At most 8; at most one in the island and
+    /// one in Settings. Protocol 2 only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panels: Option<Vec<Panel>>,
 }
 
 /// One thing the tool can be asked to do.
@@ -514,6 +904,34 @@ pub struct Command {
     /// radial, quickPanel, shortcut.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surfaces: Option<Vec<String>>,
+}
+
+/// One place the tool draws in. The app opens it with ui/open and the tool
+/// answers with blocks to draw; or, for a web panel, the app shows the page at
+/// entry.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Panel {
+    /// The panel's name within the tool. The same characters as a command id.
+    pub id: String,
+    /// What the panel is called: the island page's title, the window's title.
+    pub title: LocalizedText,
+    /// Where it is shown. island: a page in the island's Tools area. settings:
+    /// a part of the tool's detail in Settings. window: a window the app owns,
+    /// opened when the person asks. One of: island, settings, window.
+    pub placement: String,
+    /// An SF Symbol name. Left out, the tool's icon is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// What draws it. blocks: the app, from blocks the tool sends. web: a web
+    /// page from the tool's folder. Left out, it is blocks. One of: blocks,
+    /// web.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// A web panel's page, as a path inside the tool's folder, with / between
+    /// its parts. No part is empty, . or .., so the path cannot leave the
+    /// folder. A blocks panel ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
 }
 
 /// One setting. The tool reads and writes it with storage/get and storage/set.
@@ -581,10 +999,34 @@ pub fn round_trip(name: &str, value: &Value) -> Option<serde_json::Result<Value>
         "StorageGetResult" => again::<StorageGetResult>(value),
         "StorageSetParams" => again::<StorageSetParams>(value),
         "LogParams" => again::<LogParams>(value),
-        "Manifest" => again::<Manifest>(value),
+        "UiOpenParams" => again::<UiOpenParams>(value),
+        "UiOpenResult" => again::<UiOpenResult>(value),
+        "UiEventParams" => again::<UiEventParams>(value),
+        "UiEventResult" => again::<UiEventResult>(value),
+        "UiCloseParams" => again::<UiCloseParams>(value),
+        "UiRenderParams" => again::<UiRenderParams>(value),
+        "UiBadgeParams" => again::<UiBadgeParams>(value),
+        "UiTree" => again::<UiTree>(value),
+        "UiBlock" => again::<UiBlock>(value),
         "LocalizedText" => again::<LocalizedText>(value),
+        "UiText" => again::<UiText>(value),
+        "TextBlock" => again::<TextBlock>(value),
+        "HeadingBlock" => again::<HeadingBlock>(value),
+        "RowBlock" => again::<RowBlock>(value),
+        "ButtonBlock" => again::<ButtonBlock>(value),
+        "ToggleBlock" => again::<ToggleBlock>(value),
+        "FieldBlock" => again::<FieldBlock>(value),
+        "UiListRow" => again::<UiListRow>(value),
+        "ListBlock" => again::<ListBlock>(value),
+        "ProgressBlock" => again::<ProgressBlock>(value),
+        "ImageBlock" => again::<ImageBlock>(value),
+        "DividerBlock" => again::<DividerBlock>(value),
+        "LinkBlock" => again::<LinkBlock>(value),
+        "SpacerBlock" => again::<SpacerBlock>(value),
+        "Manifest" => again::<Manifest>(value),
         "Contributes" => again::<Contributes>(value),
         "Command" => again::<Command>(value),
+        "Panel" => again::<Panel>(value),
         "Preference" => again::<Preference>(value),
         "Runtime" => again::<Runtime>(value),
         _ => return None,
