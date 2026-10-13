@@ -294,6 +294,22 @@ Step 5, the planted regression in each kit (the status call sends whatever the h
 - [ ] **Step 5: Plant by hand:** in `conformance.py`, answer the "older app" `ui/status` with `{}`. The test that a refused tool survives must no longer prove anything: confirm the test that checks the answer was -32601 fails. Undo.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-13).**
+
+- **The panel samples let the person pick the status; they do not set `busy` "while the counter runs".** The counter does nothing that takes time, so that status would have shown for an instant. And by-hand check 1 needs a sample that can show each of the five states. So each `hello-panel-*` sample starts at `ok`, sets it when its program starts (`onStart`), and its island page has a `choice` block, "Status on the closed island", that picks among the five. On an app without `ui.choice` the block is a `field` to type the word in. The status is exercised by the conformance script because it is set at start: `a command: addOne: ran, and set the status: ok`.
+- **The panel samples now start with the app** (`"activation": ["onLaunch"]`, was `onCommand`). A status goes when the program ends, and a tool that rests after two idle minutes would lose its mark while the person looked at it. This is what the guide tells an author to do.
+- **`hello-swift` and `hello-python-kit` gained a preference; none could "gain options".** Their one preference, `count`, is an integer, and only a `string` preference may have options. They have a new one, `step` ("Count by": One, Two, Five), and their `count` command reads it. It reads the text defensively, since an older app draws a text field and anything may be saved.
+- **The desk's part of this task was done in Task 1** (see there). What was left for `vitruvian-tool run` is its hello, which now names all three features.
+- **The script fails a `ui/status` from a tool whose manifest declares none**, after answering it with -32602 as the app does. The plan said such a tool "is told so"; a request the app will always refuse is the author's mistake, as a `ui/render` for an undeclared panel already is.
+- **"A handful" is five.** More than five `ui/status` to an app that answers each with -32601 fails the older-app step.
+- **The older-app step also opens the panel**, and says so when the page holds a `choice` (that app draws its fallback). That is a remark, not a failure.
+- **One existing test changed on purpose:** `never_stops_writing` read the script's last line, which is now the older app's. It reads the `shutdown` line by name, and allows the second run to end either of the two ways the first may.
+- **`samples_test.WANTED`** holds each panel sample to three lines: its status, its page of five blocks, and that it carried on with an older app and sent it no `ui/status`.
+- **The docs' excerpts moved with the samples.** Twenty-six `file=` excerpts in the guide and the samples' READMEs quote the lines that changed; each was moved to the same code as it is now. The two panel READMEs gained a section on the status and the choice. `README.md`'s account of the script says seven checks; the guide said "five" where there were six, and now says seven.
+- **Between this merging and SDK 1.3.0 being published, the TypeScript and Python panel samples do not run from the registries.** They pin the kit (`1.2.0` until release-please bumps it) and use calls 1.3.0 adds. In this repository and in the mirror's CI they build against the kit beside them, so every test passes. It is the same window protocol 2's samples had.
+
+Step 5, planted: the older app answers `ui/status` with `{}`. `conformance_test` failed with "a tool that dies when refused is not caught". Reversed.
+
 ---
 
 ### Task 4: The app keeps a tool's status and a setting's options

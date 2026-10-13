@@ -148,7 +148,11 @@ tool.command("hello") { app in
 }
 
 tool.command("count") { app in
-    let next = (try app.value("count").numberValue ?? 0) + 1
+    // The step is saved as text. The options are how the app draws the
+    // setting, not a rule on what is saved: an app before 3.48 draws a text
+    // field, so anything may be there. What is no number counts as one.
+    let step = Double(try app.value("step").stringValue ?? "") ?? 1
+    let next = (try app.value("count").numberValue ?? 0) + step
     try app.setValue(.number(next), for: "count")
     try app.showMessage("Counted to \(Int(next))", icon: "number")
 }
@@ -283,7 +287,11 @@ def hello(app):
 
 @tool.command("count")
 def count(app):
-    counted = app.storage.get(key="count").value + 1
+    # The step is saved as text. The options are how the app draws the
+    # setting, not a rule on what is saved: an app before 3.48 draws a text
+    # field, so anything may be there. What is no number counts as one.
+    step = str(app.storage.get(key="step").value)
+    counted = app.storage.get(key="count").value + (int(step) if step.isdigit() else 1)
     app.storage.set(key="count", value=counted)
     app.notify.hud(icon="number", message=f"Counted to {counted}")
 
@@ -820,13 +828,14 @@ in the island and a switch in Settings. A page is written as the blocks it
 holds, one function for each kind:
 
 ```swift file=samples/hello-panel-swift/main.swift
-    func page() -> UITree {
+    func page(_ app: App) -> UITree {
         UITree {
             heading("Counter")
             text("Pressed \(count) times")
             button("add", "Add \(step)", style: .prominent)
             field("name", title: "Your name", value: name, placeholder: "Type it and press Return")
             if !name.isEmpty { text("Hello, \(name)", style: .secondary) }
+            statusPicker(app)
         }
     }
 ```
@@ -836,24 +845,29 @@ person does gives. The handle it returns sends a page unprompted, with
 `render`, and sets the tool's badge in the island, with `badge`:
 
 ```swift file=samples/hello-panel-swift/main.swift
-let island = tool.panel("counter", onOpen: { _, _ in counter.page() }, onEvent: { _, panel, event in
+let island = tool.panel("counter", onOpen: { app, _ in counter.page(app) }, onEvent: { app, panel, event in
     switch event.block {
     case "add"?:
         counter.count += counter.step
         try panel.badge(count: counter.count)
     case "name"?:
         counter.name = event.text ?? counter.name
+    case "status"?:
+        // A pick is the event `change`, as leaving a field changed is.
+        guard let picked = event.text.flatMap(StatusState.init(rawValue:)) else { return .keep }
+        counter.status = picked
+        try counter.showStatus(app)
     default:
         return .keep
     }
-    return .page(counter.page())
+    return .page(counter.page(app))
 })
 ```
 
 ```swift file=samples/hello-panel-swift/main.swift
-tool.command("addOne") { _ in
+tool.command("addOne") { app in
     counter.count += counter.step
-    island.render(counter.page())
+    island.render(counter.page(app))
 }
 ```
 
@@ -871,7 +885,7 @@ out:
 
 ```javascript file=samples/hello-panel-typescript/bin/tool.mjs
 /** The island page: what it says now. */
-function page() {
+function page(app) {
   return tree([
     heading("Counter"),
     text(`Pressed ${counter.count} times`),
@@ -883,6 +897,7 @@ function page() {
     }),
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
+    statusPicker(app),
   ]);
 }
 ```
@@ -894,8 +909,8 @@ switch carry, and `event.row` the row of a list that was tapped:
 
 ```javascript file=samples/hello-panel-typescript/bin/tool.mjs
 const island = tool.panel("counter", {
-  onOpen: () => page(),
-  onEvent: (_app, panel, event) => {
+  onOpen: (app) => page(app),
+  onEvent: (app, panel, event) => {
     switch (event.block) {
       case "add":
         counter.count += step();
@@ -904,10 +919,17 @@ const island = tool.panel("counter", {
       case "name":
         counter.name = event.text ?? counter.name;
         break;
+      case "status":
+        // A pick is the event `change`, as leaving a field changed is.
+        if (!STATUSES.some(({ state }) => state === event.text))
+          return { keep: true };
+        counter.status = event.text;
+        showStatus(app);
+        break;
       default:
         return { keep: true };
     }
-    return { page: page() };
+    return { page: page(app) };
   },
 });
 ```
@@ -923,7 +945,7 @@ and a block that is `None` is left out; `list` is `list_`, as Python has the
 word:
 
 ```python file=samples/hello-panel-python/bin/tool.py
-    def page(self):
+    def page(self, app):
         """The island page: what it says now."""
         return tree(
             heading("Counter"),
@@ -936,6 +958,7 @@ word:
                 placeholder="Type it and press Return",
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
+            self.status_picker(app),
         )
 ```
 
@@ -952,13 +975,19 @@ def island_event(app, panel, event):
         panel.badge(count=counter.count)
     elif event.block == "name":
         counter.name = event.text if event.text is not None else counter.name
+    elif event.block == "status":
+        # A pick is the event change, as leaving a field changed is.
+        if event.text not in STATUSES:
+            return PanelAnswer.keep()
+        counter.status = event.text
+        counter.show_status(app)
     else:
         return PanelAnswer.keep()
-    return PanelAnswer.page(counter.page())
+    return PanelAnswer.page(counter.page(app))
 
 
 island = tool.panel(
-    "counter", on_open=lambda app, panel: counter.page(), on_event=island_event
+    "counter", on_open=lambda app, panel: counter.page(app), on_event=island_event
 )
 ```
 
@@ -975,13 +1004,14 @@ out:
 
 ```go file=samples/hello-panel-go/main.go
 // page is the island page: what it says now.
-func (c *counter) page() toolkit.UITree {
+func (c *counter) page(app *toolkit.App) toolkit.UITree {
 	return ui.Tree(
 		ui.Heading("Counter"),
 		ui.Text(fmt.Sprintf("Pressed %d times", c.count)),
 		ui.Button("add", fmt.Sprintf("Add %d", c.step()), ui.ButtonOptions{Style: ui.Prominent}),
 		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
 		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
+		c.statusPicker(app),
 	)
 }
 ```
@@ -998,7 +1028,7 @@ unprompted, with `Render`, and sets the tool's badge in the island, with
 ```go file=samples/hello-panel-go/main.go
 	island := tool.Panel("counter",
 		func(app *toolkit.App, panel *toolkit.PanelHandle) (*toolkit.UITree, error) {
-			page := state.page()
+			page := state.page(app)
 			return &page, nil
 		},
 		func(app *toolkit.App, panel *toolkit.PanelHandle, event toolkit.PanelEvent) (toolkit.PanelAnswer, error) {
@@ -1012,17 +1042,27 @@ unprompted, with `Render`, and sets the tool's badge in the island, with
 				if text, ok := event.Text(); ok {
 					state.name = text
 				}
+			case "status":
+				// A pick is the event change, as leaving a field changed is.
+				picked, ok := event.Text()
+				if !ok || !isStatus(picked) {
+					return toolkit.Keep(), nil
+				}
+				state.status = picked
+				if _, err := state.showStatus(app); err != nil {
+					return toolkit.Keep(), err
+				}
 			default:
 				return toolkit.Keep(), nil
 			}
-			return toolkit.Page(state.page()), nil
+			return toolkit.Page(state.page(app)), nil
 		})
 ```
 
 ```go file=samples/hello-panel-go/main.go
 	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {
 		state.count += state.step()
-		island.Render(state.page())
+		island.Render(state.page(app))
 		return nil
 	})
 ```
@@ -1042,7 +1082,7 @@ is `None` is left out:
 
 ```rust file=samples/hello-panel-rust/src/main.rs
     /// The island page: what it says now.
-    fn page(&self) -> UiTree {
+    fn page(&self, app: &App<'_>) -> UiTree {
         tree![
             heading("Counter"),
             text(format!("Pressed {} times", self.count)),
@@ -1053,6 +1093,7 @@ is `None` is left out:
                 .placeholder("Type it and press Return"),
             (!self.name.is_empty())
                 .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
+            self.status_picker(app),
         ]
     }
 ```
@@ -1072,7 +1113,7 @@ handler it is called from:
     let acted = counter.clone();
     let island = tool.panel(
         "counter",
-        move |_app, _panel| Ok(Some(opened.borrow().page())),
+        move |app, _panel| Ok(Some(opened.borrow().page(app))),
         move |app, panel, event| {
             let mut counter = acted.borrow_mut();
             match event.block.as_deref() {
@@ -1086,9 +1127,21 @@ handler it is called from:
                         counter.name = name.to_string();
                     }
                 }
+                Some("status") => {
+                    // A pick is the event `change`, as leaving a field
+                    // changed is.
+                    let picked = event
+                        .text()
+                        .filter(|word| STATUSES.iter().any(|(state, _, _)| state == word));
+                    let Some(picked) = picked else {
+                        return Ok(PanelAnswer::Keep);
+                    };
+                    counter.status = picked.to_string();
+                    counter.show_status(app)?;
+                }
                 _ => return Ok(PanelAnswer::Keep),
             }
-            Ok(PanelAnswer::Page(counter.page()))
+            Ok(PanelAnswer::Page(counter.page(app)))
         },
     );
 ```
@@ -1099,7 +1152,7 @@ handler it is called from:
         let mut counter = counted.borrow_mut();
         let step = counter.step();
         counter.count += step;
-        island.render(app, &counter.page());
+        island.render(app, &counter.page(app));
         Ok(())
     });
 ```
@@ -1240,7 +1293,7 @@ vitruvian-tool run ~/my-tool --command hello --app-path
 - `--app-path` starts the tool with the short `PATH` the app has. Use it when
   the tool works in a terminal and not in the app.
 - `python3 conformance/conformance.py <folder>`, in `packages/vitruvian-sdk`,
-  runs five scripted checks and exits with 0 when they pass. It needs Python
+  runs seven scripted checks and exits with 0 when they pass. It needs Python
   and nothing else.
 
 In the app, open the tool's row in Settings. The detail view shows the tool's

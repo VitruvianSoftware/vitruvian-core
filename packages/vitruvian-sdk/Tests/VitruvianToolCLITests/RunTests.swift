@@ -55,6 +55,7 @@ final class RunTests: XCTestCase {
           case "$line" in
             *'"method":"initialize"'*)
               n=1
+              hello="$line"
               [ "$HOW" = chatty ] && say "starting up"
               [ "$HOW" = mute ] && continue
               version=1
@@ -80,6 +81,15 @@ final class RunTests: XCTestCase {
               ask storage/set '{"key":"count","value":3}'
               ask storage/get '{"key":"count"}'
               ask clipboard/writeText '{"text":"copied"}'
+              done_
+              ;;
+            *'"command":"status"'*)
+              n=$((n + 1))
+              case "$hello" in
+                *'"features":["ui.status","ui.choice","preferences.options"]'*)
+                  say '{"jsonrpc":"2.0","method":"log","params":{"message":"the app has a status"}}' ;;
+              esac
+              ask ui/status '{"state":"busy","text":"Working"}' || say '{"jsonrpc":"2.0","method":"log","params":{"message":"no status"}}'
               done_
               ;;
             *'"command":"hang"'*)
@@ -109,6 +119,18 @@ final class RunTests: XCTestCase {
          "runtime":{"kind":"external","exec":"bin/tool"}}
         """#
 
+    /// A tool of protocol 2 with the one command `status`, which declares a
+    /// status when `declared`.
+    private static func statusManifest(declared: Bool) -> String {
+        #"""
+        {"id":"com.example.run","name":{"en":"Run"},"version":"7","protocol":"2","publisher":"Example",
+         "contributes":{"commands":[{"id":"status","title":{"en":"Status"}}]\#(declared ? #","status":{"placement":"island"}"# : "")},
+         "runtime":{"kind":"external","exec":"bin/tool"}}
+        """#
+    }
+
+    /// The manifest the next run's tool has.
+    private var manifest = RunTests.manifest
     private var scratch = Scratch()
 
     override func setUp() {
@@ -121,7 +143,7 @@ final class RunTests: XCTestCase {
 
     private func toolFolder() -> URL {
         let folder = scratch.folder("tool")
-        Scratch.write(Self.manifest, to: folder.appendingPathComponent("vitruvian-tool.json"))
+        Scratch.write(manifest, to: folder.appendingPathComponent("vitruvian-tool.json"))
         // The listing's indentation is not part of the script.
         let script = Self.script.split(separator: "\n", omittingEmptySubsequences: false).joined(separator: "\n")
         Scratch.write(script + "\n", to: folder.appendingPathComponent("bin/tool"), mode: 0o755)
@@ -232,6 +254,26 @@ final class RunTests: XCTestCase {
         let (said, status) = try run(["where"]) { $0.appPath = true }
         XCTAssertEqual(status, 0)
         XCTAssertTrue(said.contains { $0.hasSuffix("path=/usr/bin:/bin:/usr/sbin:/sbin") }, "\(said)")
+    }
+
+    func testTheHelloSaysWhatTheAppHasAndAStatusIsSaid() throws {
+        manifest = Self.statusManifest(declared: true)
+        let (said, status) = try run(["status"])
+        XCTAssertEqual(status, 0, "\(said)")
+        XCTAssertEqual(said.filter { $0.hasPrefix("asked") || $0.hasPrefix("log") || $0.hasPrefix("ran") }, [
+            "log      the app has a status",
+            "asked    ui/status: the app would show busy on the closed island, saying \"Working\"",
+            "ran      status",
+        ], "run says hello as an app that has all three, and needs nothing in `uses` for a status")
+
+        manifest = Self.statusManifest(declared: false)
+        let (refused, again) = try run(["status"])
+        XCTAssertEqual(again, 0, "a tool that copes with the refusal passes: \(refused)")
+        XCTAssertEqual(refused.filter { $0.hasPrefix("asked") || $0.hasPrefix("log") }, [
+            "log      the app has a status",
+            "asked    ui/status: refused: the manifest declares no status. Add `contributes.status`",
+            "log      no status",
+        ], "a status the manifest does not declare is refused, as the app refuses it")
     }
 
     func testEveryRequestRefused() throws {

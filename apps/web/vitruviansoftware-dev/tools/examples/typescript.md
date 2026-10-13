@@ -62,7 +62,7 @@ from blocks the tool sends. The guide's "Drawing" says how. Its page:
 
 ```javascript
 /** The island page: what it says now. */
-function page() {
+function page(app) {
   return tree([
     heading("Counter"),
     text(`Pressed ${counter.count} times`),
@@ -74,6 +74,7 @@ function page() {
     }),
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
+    statusPicker(app),
   ]);
 }
 ```

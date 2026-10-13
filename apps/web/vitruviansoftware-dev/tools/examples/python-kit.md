@@ -40,7 +40,11 @@ def hello(app):
 
 @tool.command("count")
 def count(app):
-    counted = app.storage.get(key="count").value + 1
+    # The step is saved as text. The options are how the app draws the
+    # setting, not a rule on what is saved: an app before 3.48 draws a text
+    # field, so anything may be there. What is no number counts as one.
+    step = str(app.storage.get(key="step").value)
+    counted = app.storage.get(key="count").value + (int(step) if step.isdigit() else 1)
     app.storage.set(key="count", value=counted)
     app.notify.hud(icon="number", message=f"Counted to {counted}")
 
@@ -58,7 +62,7 @@ written with the same kit: a counter the app draws in the island from blocks
 the tool sends. The guide's "Drawing" says how. Its page:
 
 ```python
-    def page(self):
+    def page(self, app):
         """The island page: what it says now."""
         return tree(
             heading("Counter"),
@@ -71,6 +75,7 @@ the tool sends. The guide's "Drawing" says how. Its page:
                 placeholder="Type it and press Return",
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
+            self.status_picker(app),
         )
 ```
 {% endraw %}

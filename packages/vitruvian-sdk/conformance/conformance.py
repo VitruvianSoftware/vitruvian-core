@@ -27,7 +27,7 @@ started the way the app starts it: in a folder of its own, with this script on
 its standard input and output. `--via` starts it through another program, for
 example a Python interpreter, when the file cannot be run by itself.
 
-Six things are checked, in order, and the first failure stops the run:
+Seven things are checked, in order, and the first failure stops the run:
 
   handshake   the tool answers `initialize` first, with a version offered
   a command   its first command is run and answered
@@ -39,10 +39,15 @@ Six things are checked, in order, and the first failure stops the run:
               refused, and is still answered
   shutdown    after `shutdown` and the end of its input, the tool exits with 0,
               and what it wrote on the way out is messages too
+  an older app  the tool is started once more, by an app from before 3.48: its
+              hello names no `features`, and a `ui/status` is answered with
+              -32601. The tool must still answer the hello, run its command,
+              draw its panel and leave on `shutdown`
 
 Every line the tool writes must be one JSON-RPC 2.0 message, at most 1 MB,
 and a message the protocol has must carry the params the protocol gives it.
-A page sent with `ui/render` must be for a panel the manifest declares.
+A page sent with `ui/render` must be for a panel the manifest declares, and a
+`ui/status` must come from a tool whose manifest declares a status.
 While a command runs, the script answers the tool's requests as the app would:
 a service the manifest's `uses` does not list is refused with -32001.
 
@@ -67,8 +72,18 @@ EXIT_SECONDS = 2
 
 MAX_TREE_BYTES = 262_144
 MAX_BLOCKS = 200
-NEEDS_ID = ("button", "toggle", "field", "list")
+NEEDS_ID = ("button", "toggle", "field", "list", "choice")
 VERSIONS = ["1", "2"]
+# What this app says it has beyond the first release of the protocol version,
+# in the hello. An app before 3.48 says nothing.
+FEATURES = ["ui.status", "ui.choice", "preferences.options"]
+STATES = ("none", "ok", "busy", "attention", "failure")
+MAX_CHOICE_OPTIONS = 64
+MAX_CHOICE_VALUE = 128
+# The most `ui/status` a tool may send an app that answers each with -32601.
+# One learns that the app has none; a handful is patience; more is a tool
+# that does not read the answer.
+MAX_STATUS_AFTER_REFUSAL = 5
 
 INVALID_PARAMS = -32602
 METHOD_NOT_FOUND = -32601
@@ -131,13 +146,51 @@ def is_count(value):
     return is_whole(value) and value >= 0
 
 
+def is_ui_text(value):
+    """Text the person reads: a string, or one entry per language with
+    English under en."""
+    if is_text(value):
+        return True
+    return (
+        isinstance(value, dict)
+        and is_text(value.get("en"))
+        and all(map(is_text, value.values()))
+    )
+
+
+def is_state(value):
+    return value in STATES
+
+
+def is_choice(value):
+    """A choice's own fields: what is selected, and from 1 to 64 options,
+    each a value and a title, no two with one value."""
+    options = value.get("options")
+    if not is_text(value.get("value")) or len(value["value"]) > MAX_CHOICE_VALUE:
+        return False
+    if not isinstance(options, list) or not 1 <= len(options) <= MAX_CHOICE_OPTIONS:
+        return False
+    for option in options:
+        if not isinstance(option, dict) or not is_ui_text(option.get("title")):
+            return False
+        if not is_text(option.get("value")) or len(option["value"]) > MAX_CHOICE_VALUE:
+            return False
+    if len({option["value"] for option in options}) != len(options):
+        return False
+    return ("title" not in value or is_ui_text(value["title"])) and (
+        "enabled" not in value or is_flag(value["enabled"])
+    )
+
+
 def is_block(value):
-    """A block: a kind, and an id where its kind needs one. A kind this
-    script does not know is a later version's, and is fine."""
+    """A block: a kind, and an id where its kind needs one. A choice is held
+    to its own rules. A kind this script does not know is a later version's,
+    and is fine."""
     return (
         isinstance(value, dict)
         and is_text(value.get("type"))
         and (value["type"] not in NEEDS_ID or is_text(value.get("id")))
+        and (value["type"] != "choice" or is_choice(value))
     )
 
 
@@ -167,11 +220,13 @@ PARAMS = {
     "storage/set": {"key": is_text, "value": is_saved},
     "ui/render": {"panel": is_text, "tree": is_tree},
     "ui/badge": {},
+    "ui/status": {"state": is_state},
 }
 
 # The params a message may carry, and must carry rightly when it does.
 OPTIONAL_PARAMS = {
     "ui/badge": {"count": is_count, "dot": is_flag},
+    "ui/status": {"text": is_ui_text, "icon": is_text},
 }
 
 
@@ -300,9 +355,20 @@ class Link:
 class Run:
     """One tool put through the checks."""
 
-    def __init__(self, link, manifest, data_folder):
+    def __init__(self, link, manifest, data_folder, features=FEATURES):
+        """`features` is what the app says it has, in the hello. None is an
+        app from before 3.48: it says nothing, and answers `ui/status` with
+        -32601."""
         self.link = link
         self.data_folder = data_folder
+        self.features = features
+        self.shows_status = "status" in manifest.get("contributes", {})
+        # Each status the tool set, in order, and how many an older app
+        # refused.
+        self.statuses = []
+        self.status_refused = 0
+        # Whether the first page of the panel held a choice.
+        self.drew_choice = False
         self.uses = set(manifest.get("uses", []))
         self.commands = [
             c["id"] for c in manifest.get("contributes", {}).get("commands", [])
@@ -331,6 +397,8 @@ class Run:
     def serve(self, request, refuse_all):
         """Answers one request from the tool as the app would."""
         method, params = request["method"], request.get("params", {})
+        if method == "ui/status":
+            return self.status(request, refuse_all)
         if method not in SERVICES:
             return self.fail(request, METHOD_NOT_FOUND, "method not found")
         service, result = SERVICES[method]
@@ -352,6 +420,32 @@ class Run:
             else:
                 result = {"value": self.values[params["key"]]}
         return self.link.send({"jsonrpc": "2.0", "id": request["id"], "result": result})
+
+    def status(self, request, refuse_all):
+        """Answers `ui/status` as the app would. It needs nothing in `uses`:
+        the manifest's declaration is the permission."""
+        if self.features is None:
+            # An app before 3.48 does not know the method.
+            self.status_refused += 1
+            self.fail(request, METHOD_NOT_FOUND, "unknown method")
+            if self.status_refused > MAX_STATUS_AFTER_REFUSAL:
+                raise Failure(
+                    "the tool went on sending ui/status to an app that answered it with "
+                    f"-32601: {self.status_refused} times. Ask what the app has first, "
+                    "or stop at the first refusal"
+                )
+            return None
+        if not self.shows_status:
+            self.fail(request, INVALID_PARAMS, "the manifest declares no status")
+            raise Failure(
+                "ui/status from a tool whose manifest declares no status. The app "
+                "answers it with -32602: add `contributes.status`"
+            )
+        if refuse_all:
+            self.refused += 1
+            return self.fail(request, UNAVAILABLE, "not available right now")
+        self.statuses.append(request["params"]["state"])
+        return self.link.send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
 
     def answer(self, request_id, seconds, refuse_all=False):
         """Plays the app until the tool answers request `request_id`."""
@@ -380,13 +474,19 @@ class Run:
             )
         self.rendered[params["panel"]] = params["tree"]
 
-    def handshake(self):
+    def hello(self):
+        """What `initialize` carries. An app before 3.48 has no `features`."""
         params = {
             "protocolVersions": VERSIONS,
             "language": "en-US",
             "dataFolder": self.data_folder,
         }
-        sent = self.request("initialize", params)
+        if self.features is not None:
+            params["features"] = list(self.features)
+        return params
+
+    def handshake(self):
+        sent = self.request("initialize", self.hello())
         message = self.link.receive(
             time.monotonic() + FIRST_ANSWER_SECONDS, FIRST_ANSWER_SECONDS
         )
@@ -407,14 +507,18 @@ class Run:
     def a_command(self):
         if not self.commands:
             return "the manifest declares no command"
+        before = len(self.statuses)
         kind, message = self.answer(
             self.request("command/run", {"command": self.commands[0]}), ANSWER_SECONDS
         )
         if kind == "result" and not isinstance(message["result"], dict):
             raise Failure(f"a result that is not an object: {message!r}")
-        return f"{self.commands[0]}: " + (
+        said = f"{self.commands[0]}: " + (
             "ran" if kind == "result" else f"refused, {message['error']['message']}"
         )
+        if len(self.statuses) > before:
+            said += ", and set the status: " + ", ".join(self.statuses[before:])
+        return said
 
     def unknown(self):
         sent = self.request("command/run", {"command": "conformance.no-such-command"})
@@ -440,6 +544,9 @@ class Run:
         first = message["result"].get("tree", self.rendered.get(panel))
         if first is None or not is_tree(first):
             raise Failure(f"ui/open was not answered with a page: {message!r}")
+        self.drew_choice = any(
+            block.get("type") == "choice" for block in first["blocks"]
+        )
         buttons = [
             block["id"]
             for block in first["blocks"]
@@ -524,6 +631,57 @@ class Run:
             check_params(message)
 
 
+def an_older_app(command, manifest):
+    """The tool, started once more by an app from before 3.48: its hello
+    names no `features`, and it answers `ui/status` with -32601. The tool
+    must do everything it did, less the status. A tool that needs what the
+    app lacks degrades; it does not stop."""
+    with tempfile.TemporaryDirectory(prefix="vitruvian-conformance-") as data_folder:
+        link = Link(command, data_folder)
+        try:
+            run = Run(link, manifest, data_folder, features=None)
+            try:
+                run.handshake()
+                did = ["answered the hello"]
+                if run.commands:
+                    run.a_command()
+                    did.append(f"ran {run.commands[0]}")
+                if not run.a_panel().startswith("the manifest declares no panel"):
+                    drawn = [
+                        panel
+                        for panel in run.panels
+                        if panel.get("kind", "blocks") == "blocks"
+                    ]
+                    did.append(f"drew {drawn[0]['id']}")
+                run.shutdown()
+            except Failure as failure:
+                if run.status_refused == 0 or str(failure).startswith(
+                    "the tool went on"
+                ):
+                    raise
+                raise Failure(
+                    "the tool did not carry on after an app that has no ui/status refused "
+                    f"it with -32601 ({failure}). Ask what the app has first, or treat "
+                    "the refusal as no status"
+                ) from None
+        finally:
+            link.close()
+    said = ", ".join(did) + " and left with 0; "
+    if run.status_refused:
+        said += (
+            f"{run.status_refused} ui/status refused with -32601, as an app before "
+            "3.48 does"
+        )
+    else:
+        said += "it sent no ui/status"
+    if run.drew_choice:
+        said += (
+            "; its page holds a choice, which that app draws as its fallback text "
+            "and nobody can change: send a field to an app without ui.choice"
+        )
+    return said
+
+
 def main(arguments=None):
     parser = argparse.ArgumentParser(
         description="Check a tool against the Vitruvian tool protocol, versions 1 and 2."
@@ -560,6 +718,7 @@ def main(arguments=None):
                 ("a panel", run.a_panel),
                 ("refusals", run.refusals),
                 ("shutdown", run.shutdown),
+                ("an older app", lambda: an_older_app(command, manifest)),
             ]
             for name, check in checks:
                 if not passed:
