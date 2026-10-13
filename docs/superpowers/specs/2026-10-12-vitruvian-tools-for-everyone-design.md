@@ -581,8 +581,7 @@ above, in one line each:
   the export-only mirrors before it have none.
 - The site's pages are at `/tools/guide/`, `/tools/protocol/` and
   `/tools/examples/<language>/`, as the site's other pages are, and the
-  copies are Markdown with front matter, which Jekyll renders. There is no
-  catalogue page yet.
+  copies are Markdown with front matter, which Jekyll renders. The catalogue page came with stage C.
 
 **Stage B2, as built (2026-10-13).** The plan is
 `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b2.md`;
