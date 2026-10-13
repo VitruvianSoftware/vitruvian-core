@@ -57,7 +57,7 @@ In vitruvian-core, from its root:
 
 ```sh
 bazel test --config=macos-app //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:init_test //packages/vitruvian-sdk:swift_template_test
-bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test
+bazel test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:templates_in_sync_test //packages/vitruvian-sdk:guide_test //packages/vitruvian-sdk:release_version_test //tools/sync-site-tools:in_sync_test
 ```
 
 The first line needs a Mac with Xcode. The second runs anywhere.
@@ -82,8 +82,11 @@ vitruviansoftware.dev/tools holds a copy of each, and
 One version for the whole SDK. release-please keeps it, in vitruvian-core:
 
 - A pull request whose title starts `feat(vitruvian-sdk):` or
-  `fix(vitruvian-sdk):` and that changes this folder makes the next release.
-  `chore(vitruvian-sdk):` makes none.
+  `fix(vitruvian-sdk):` and that changes this folder makes the next release:
+  `fix` the next patch, `feat` the next minor version. `chore(vitruvian-sdk):`
+  makes none, and neither does a change to `.github/` alone. Until 1.0.0 a
+  breaking change also moves only the minor version; 1.0.0 is chosen, not
+  reached by accident.
 - release-please opens the release pull request. It writes the version into
   `.release-please-manifest.json`, `CHANGELOG.md` and
   `Sources/VitruvianToolCLI/Words.swift`. Never change the version by hand.

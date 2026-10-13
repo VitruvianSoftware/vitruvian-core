@@ -449,6 +449,20 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+# The version in release-please's two files and the one `--version` prints
+# agree. Plain Python, so the Linux lane runs it too.
+py_test(
+    name = "release_version_test",
+    size = "small",
+    srcs = ["release_version_test.py"],
+    data = [
+        ".release-please-manifest.json",
+        "Sources/VitruvianToolCLI/Words.swift",
+        "release-please-config.json",
+    ],
+    main = "release_version_test.py",
+)
+
 pipeline_unit(
     name = "vitruvian-sdk",
     persona = "platform",
@@ -462,6 +476,7 @@ pipeline_unit(
         ":init_test",
         ":mirror_workflows_test",
         ":protocol_examples_test",
+        ":release_version_test",
         ":samples_test",
         ":swift_samples_test",
         ":swift_template_test",
