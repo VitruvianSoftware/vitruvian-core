@@ -22,3 +22,16 @@
 # site is exported to its standalone repo, whose jekyll.yml builds and deploys
 # it (see README.md). This file only declares the inter-app boundary.
 package(default_visibility = ["//apps/web/vitruviansoftware-dev:__subpackages__"])
+
+# The Tools section. Its copies of the SDK's docs and samples are held to their
+# sources by //tools/sync-site-tools:in_sync_test, which reads them here.
+filegroup(
+    name = "tools_pages",
+    # allow_empty: so that the test can run, and say what is missing, before
+    # the first copies are written.
+    srcs = glob(
+        ["tools/**"],
+        allow_empty = True,
+    ),
+    visibility = ["//tools/sync-site-tools:__pkg__"],
+)

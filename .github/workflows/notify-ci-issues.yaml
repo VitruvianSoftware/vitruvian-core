@@ -130,4 +130,5 @@ jobs:
             VitruvianSoftware/pulumi_go-example-foundation
             VitruvianSoftware/pulumi_ts-example-foundation
             VitruvianSoftware/site-vitruviansoftware-dev
+            VitruvianSoftware/vitruvian-sdk
         run: bash tools/ci/notify-ci-issues.sh

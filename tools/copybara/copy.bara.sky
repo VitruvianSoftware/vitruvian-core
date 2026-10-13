@@ -547,6 +547,22 @@ COMPONENTS = [
         "export_only": True,
         "export_transformations": _ts_example_export_transforms(),
     },
+    # vitruvian-sdk: EXPORT-ONLY mirror of packages/vitruvian-sdk, the public
+    # home of the Vitruvian tool SDK. The folder becomes the mirror's root,
+    # which is the shape SwiftPM needs: Package.swift at the top, semver tags.
+    # The mirror's own release.yml (exported from the subtree) tags vX.Y.Z and
+    # go/vX.Y.Z from the exported .release-please-manifest.json and publishes.
+    # Contributions are pull requests to this repository
+    # (packages/vitruvian-sdk/CONTRIBUTING.md), so there is no import path.
+    {
+        "name": "vitruvian-sdk",
+        "repo": "vitruvian-sdk",
+        "subtree": "packages/vitruvian-sdk",
+        "standalone_rev_id": "VITRUVIAN_SDK_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [],
+        "export_only": True,
+    },
 ]
 
 def _make_skip_guard(workflow_name, peer_label, origin_desc):

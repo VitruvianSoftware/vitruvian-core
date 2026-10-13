@@ -43,6 +43,10 @@ public enum VitruvianToolCommand {
         case "init"?:
             guard let tool = initArguments(rest, environment) else { return usage(say) }
             return start(tool, say: say)
+        case "--version"?:
+            guard rest.isEmpty else { return usage(say) }
+            say(version)
+            return 0
         case "help"?, "--help"?, "-h"?:
             say(Words.usage)
             return 0
@@ -50,6 +54,9 @@ public enum VitruvianToolCommand {
             return usage(say)
         }
     }
+
+    /// The SDK's version, which this command was built from.
+    public static var version: String { Words.version }
 
     static func usage(_ say: (String) -> Void) -> Int32 {
         say(Words.usage)
