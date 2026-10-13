@@ -2966,7 +2966,10 @@ check_owners() {
 }
 
 check_root_directories() {
-  local allowed="apps packages infrastructure gitops tools docs requirements node_modules ds-bundle scratchpad"
+  # catalog: the curated list of tools the Vitruvian app offers, and its
+  # checks. Content, not an app, a library or tooling; it is a root of its own
+  # so its pull requests and its history read as listings.
+  local allowed="apps packages infrastructure gitops tools docs requirements node_modules ds-bundle scratchpad catalog"
   local violations=()
   for dir in "$ROOT"/*/; do
     [ -d "$dir" ] || continue

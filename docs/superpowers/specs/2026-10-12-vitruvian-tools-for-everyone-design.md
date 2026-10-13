@@ -559,7 +559,7 @@ the dependency order; James approves each plan before it is built.
 |---|---|---|---|
 | **A. Publish** | **Built.** The mirror and its CI; release-please for `vitruvian-sdk`; the mirror's `release.yml` with the universal binary, the formula and the Swift tag; `--version`; `init --template swift` against the published package; `CONTRIBUTING.md`; the `/tools/` section with the guide, the protocol reference and the Swift and Python examples; the first release, `0.9.0`. | A tool's author | SDK 0.9.0; no app release |
 | **B. Kits** | **Built.** Part one (B1, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b1.md`): the generator, the TypeScript and Python kits, their samples, `init` for both, publishing to npm and PyPI. Part two (B2, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b2.md`): the Go and Rust kits, their samples, `init` for both, publishing to crates.io; the Go kit by the `go/vX.Y.Z` tag. `tools/sdk-codegen`; the TypeScript, Python, Go and Rust kits, samples, conformance in CI, registry publishing; `init` templates for each; the examples pages. Two plans if it reads better: B1 TypeScript and Python (registries exist), B2 Go and Rust. | A tool's author | SDK 0.10.0 |
-| **C. Catalogue** | `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
+| **C. Catalogue** | **Built.** `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
 | **D. Protocol 2** | Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
 | **E. The GitHub tool** | The tool in its own repository, its catalogue entry, the migration, then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
 | **F. Nexus Agent and HomeSpeaker** | As E, one at a time. | Their users | Minor app releases |
@@ -618,6 +618,25 @@ Where B2 differs from the sections above, in one line each:
   command reserves the name `tool`.
 - The first crates.io publish is by hand: a trusted publisher is added on a
   crate's settings page, so the crate must exist first.
+
+**Stage C, as built.** The plan is
+`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-c.md`,
+its mock-ups `docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-stage-c-mockups.html`.
+Where it differs from section 7:
+
+- The app fetches the list at launch and once a day only while a tool from
+  the catalog is installed, and whenever Browse Tools… opens; with none
+  installed it makes no request of its own.
+- The app keeps the last list that verified, with its signature and ETag,
+  and refuses a signed list older than it.
+- A catalog zip may hold no links, and has `vitruvian-tool.json` at its top;
+  the app unpacks it with `/usr/bin/ditto` after reading its directory.
+- The app's English says "catalog", as the rest of its English is American;
+  the new texts number 13.
+- `catalog/` at the repository's root needed one word in
+  `tools/conformance/check.sh`'s list of allowed roots.
+- A by-hand build can be pointed at a rehearsal catalog on the Mac
+  (`bazel run //catalog:rehearse`); a release build cannot.
 
 What can start before a stage is approved: nothing is built, but the
 mock-ups for C and D can be drawn while A and B are being built, as Stage
