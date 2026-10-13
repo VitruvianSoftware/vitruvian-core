@@ -45,6 +45,7 @@ name: release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -322,3 +323,177 @@ jobs:
           "$fresh/build.sh"
           vitruvian-tool validate "$fresh/tool"
           vitruvian-tool run "$fresh/tool" --command hello
+
+  # --- The kits, to npm and PyPI (stage B1 of "tools for everyone") ---------
+  # Each block is self-contained: it reads the SDK's version itself, from
+  # .release-please-manifest.json, and needs no other job, so it sits in this
+  # file beside the jobs that tag and build the command, or alone. A kit is
+  # published only by a push that changed that manifest, which is a release,
+  # or by running this workflow by hand to retry one; and only when the
+  # registry does not have that version yet. Both registries trust THIS file of
+  # THIS repository (VitruvianSoftware/vitruvian-sdk, release.yml): renaming
+  # either stops publishing until the registry is told.
+
+  # @vitruviansoftware/tool-kit, by npm trusted publishing (OIDC), as mcp-slack
+  # publishes. npm trusts the job, so there is no token anywhere.
+  publish-npm-kit:
+    name: Publish the TypeScript kit to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # OIDC for npm trusted publishing. Without it the runner cannot mint the
+      # identity token npm exchanges for a short-lived publish credential.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: detect
+        name: Is there a released version npm does not have?
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ ! -f .release-please-manifest.json ]; then
+            echo "No release of the SDK yet: nothing to publish."
+            exit 0
+          fi
+          if [ "$EVENT" = "push" ] && git diff --quiet HEAD~1 HEAD -- .release-please-manifest.json; then
+            echo "This push is not a release of the SDK: nothing to publish."
+            exit 0
+          fi
+          V="$(jq -r 'to_entries[0].value' .release-please-manifest.json)"
+          KIT="$(jq -r .version kits/typescript/package.json)"
+          if [ "$KIT" != "$V" ]; then
+            echo "::error::kits/typescript/package.json says $KIT and the SDK is $V: release-please did not bump the kit."
+            exit 1
+          fi
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/@vitruviansoftware%2Ftool-kit/${V}")"
+          case "$CODE" in
+            200) echo "@vitruviansoftware/tool-kit@$V is on npm already: nothing to do." ;;
+            404) echo "version=$V" >> "$GITHUB_OUTPUT"; echo "Publishing @vitruviansoftware/tool-kit@$V." ;;
+            *) echo "::error::npm answered HTTP $CODE for @vitruviansoftware/tool-kit@$V; refusing to guess whether it is published."; exit 1 ;;
+          esac
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.detect.outputs.version
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+      # No lockfile is exported for the kit: it has no dependencies, and its
+      # development ones resolve from package.json.
+      - name: Build and test the kit
+        if: steps.detect.outputs.version
+        working-directory: kits/typescript
+        run: |
+          npm install --no-package-lock
+          npm run build
+          npm test
+      - name: Ensure npm can do trusted publishing
+        if: steps.detect.outputs.version
+        run: |
+          set -euo pipefail
+          # Node 22 bundles npm 10; trusted publishing needs 11.5.1 or later,
+          # and an older npm fails as an auth error rather than saying so.
+          npm install -g npm@latest >/dev/null
+          have="$(npm --version)"
+          if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"
+            exit 1
+          fi
+          # setup-node writes `_authToken=${NODE_AUTH_TOKEN}`; empty, it stops
+          # npm doing the OIDC exchange (actions/setup-node#1551).
+          rc="$(npm config get userconfig)"
+          if [ -n "$rc" ] && [ -f "$rc" ]; then
+            sed -i.bak '/_authToken/d' "$rc" && rm -f "$rc.bak"
+            if grep -q '_authToken' "$rc"; then
+              echo "::error::_authToken still present in $rc; OIDC will not trigger"
+              exit 1
+            fi
+          fi
+      - name: Publish
+        if: steps.detect.outputs.version
+        working-directory: kits/typescript
+        run: npm publish --access public
+
+  # vitruvian-tool-kit, by PyPI trusted publishing, as mcp-roborock publishes.
+  # Two jobs, so that the `pypi` environment is entered only when there is
+  # something to publish.
+  detect-pypi-kit:
+    name: Is there a released version PyPI does not have?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ ! -f .release-please-manifest.json ]; then
+            echo "No release of the SDK yet: nothing to publish."
+            exit 0
+          fi
+          if [ "$EVENT" = "push" ] && git diff --quiet HEAD~1 HEAD -- .release-please-manifest.json; then
+            echo "This push is not a release of the SDK: nothing to publish."
+            exit 0
+          fi
+          V="$(jq -r 'to_entries[0].value' .release-please-manifest.json)"
+          KIT="$(sed -n 's/^version = "\(.*\)"$/\1/p' kits/python/pyproject.toml)"
+          if [ "$KIT" != "$V" ]; then
+            echo "::error::kits/python/pyproject.toml says $KIT and the SDK is $V: release-please did not bump the kit."
+            exit 1
+          fi
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/vitruvian-tool-kit/${V}/json")"
+          case "$CODE" in
+            200) echo "vitruvian-tool-kit $V is on PyPI already: nothing to do." ;;
+            404) echo "version=$V" >> "$GITHUB_OUTPUT"; echo "Publishing vitruvian-tool-kit $V." ;;
+            *) echo "::error::PyPI answered HTTP $CODE for vitruvian-tool-kit $V; refusing to guess whether it is published."; exit 1 ;;
+          esac
+
+  publish-pypi-kit:
+    name: Publish the Python kit to PyPI
+    needs: detect-pypi-kit
+    if: needs.detect-pypi-kit.outputs.version
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Must match the environment named in the PyPI trusted publisher.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/vitruvian-tool-kit/${{ needs.detect-pypi-kit.outputs.version }}/
+    permissions:
+      contents: read
+      # OIDC for PyPI trusted publishing.
+      id-token: write
+    env:
+      VERSION: ${{ needs.detect-pypi-kit.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+      # On the oldest Python the kit promises: 3.9, Apple's python3.
+      - name: Test the kit on Python 3.9
+        working-directory: kits/python
+        run: uv run --no-project --python 3.9 python -m unittest discover -s tests
+      - name: Build
+        working-directory: kits/python
+        run: uv build
+      - name: Check the built files are the version detected
+        working-directory: kits/python
+        run: |
+          ls -l dist
+          test -f "dist/vitruvian_tool_kit-${VERSION}-py3-none-any.whl"
+          test -f "dist/vitruvian_tool_kit-${VERSION}.tar.gz"
+          uvx twine check dist/*
+      - name: Publish
+        working-directory: kits/python
+        run: uv publish --trusted-publishing always

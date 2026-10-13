@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vitruviansoftware/tool-kit": "0.9.0"
+  }
+}

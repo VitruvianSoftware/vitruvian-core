@@ -1,0 +1,53 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vitruvian-tool-kit"
+# The SDK's version: every kit is published at it on every release
+# (release-please, component vitruvian-sdk).
+version = "0.9.0"
+description = "Write a tool for the Vitruvian app in Python: declare its commands, handle them, call the app."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+# 3.9: the python3 the Command Line Tools put on every Mac, which is the one
+# the app finds when it starts a tool. The standard library only.
+requires-python = ">=3.9"
+authors = [{ name = "VitruvianSoftware" }]
+keywords = ["vitruvian", "macos", "tool", "json-rpc"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/VitruvianSoftware/vitruvian-sdk"
+Documentation = "https://github.com/VitruvianSoftware/vitruvian-sdk/blob/main/docs/writing-a-tool.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["vitruvian_tool_kit"]
+
+[tool.hatch.build.targets.sdist]
+include = ["vitruvian_tool_kit", "tests", "README.md", "LICENSE"]
