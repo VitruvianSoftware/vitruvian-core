@@ -88,6 +88,11 @@ also holds mail, identity and other tools' records (see
 
 The apex CNAME, the TXT record and the Pages setting already existed, so each is
 **imported**; `www` is **created**. All four are **protected**.
+
+`www` is the one **proxied** record: GitHub never added it to the site's
+certificate, so Cloudflare terminates TLS for it and GitHub's redirect to the
+apex passes through. The apex must stay DNS-only so GitHub can renew its
+certificate; `TestOnlyWwwIsProxied` enforces both.
 The first apply with the switch on shows 3 imports and 2 in-place updates that
 change nothing real (a client-side `allowOverwrite` flag, and `content` set to
 the value already live). It must show no create, replace or delete.

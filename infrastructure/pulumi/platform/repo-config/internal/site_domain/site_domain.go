@@ -86,6 +86,9 @@ type Record struct {
 	Content string
 	// TTL is in seconds; 1 means "automatic" in Cloudflare.
 	TTL int
+	// Proxied routes the hostname through Cloudflare, which then presents its
+	// own certificate for it. Only www sets it; see its entry below.
+	Proxied bool
 }
 
 // Records is the whole DNS surface of this package.
@@ -124,15 +127,24 @@ func Records() []Record {
 			TTL:     1,
 		},
 		{
-			// www. GitHub's guidance is a CNAME to the organisation's Pages
-			// hostname; with the apex as the custom domain, GitHub then
-			// redirects www to it and adds www to the certificate. It did not
-			// exist before 2026-10-12, so it is created, not imported (no ID).
+			// www. A CNAME to the organisation's Pages hostname. With the apex
+			// as the custom domain GitHub answers www with a 301 to the apex,
+			// preserving the path. It did not exist before 2026-10-12, so it is
+			// created, not imported (no ID).
+			//
+			// PROXIED, unlike the apex. GitHub never added www to the site's
+			// certificate (18+ hours, a re-save and a remove/re-add later), so a
+			// browser failed the TLS handshake before it could be redirected. A
+			// redirect needs a connection first. Proxied, Cloudflare terminates
+			// TLS with its own certificate and GitHub's 301 passes through.
+			// Only www is proxied: the apex must stay DNS-only so GitHub can
+			// issue and renew its certificate.
 			Resource: "site-www-cname",
 			Type:     "CNAME",
 			Name:     "www",
 			Content:  "vitruviansoftware.github.io",
 			TTL:      1,
+			Proxied:  true,
 		},
 	}
 }
@@ -170,10 +182,10 @@ func Manage(ctx *pulumi.Context) error {
 				Type:    pulumi.String(r.Type),
 				Content: pulumi.String(r.Content),
 				Ttl:     pulumi.Int(r.TTL),
-				// DNS-only. GitHub Pages must see the request itself to issue and
-				// renew the certificate; proxying the record through Cloudflare
-				// would break that.
-				Proxied: pulumi.Bool(false),
+				// DNS-only unless the record says otherwise: GitHub Pages must
+				// see the request itself to issue and renew the apex's
+				// certificate, and proxying the apex would break that.
+				Proxied: pulumi.Bool(r.Proxied),
 			},
 			opts...,
 		)
