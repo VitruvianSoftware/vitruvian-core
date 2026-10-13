@@ -31,6 +31,7 @@
 # gazelle:exclude Tests
 # gazelle:exclude conformance
 # gazelle:exclude docs
+# gazelle:exclude kits
 # gazelle:exclude protocol
 # gazelle:exclude samples
 #
@@ -38,6 +39,7 @@
 # why). The Swift targets are constrained to macOS so a Linux
 # `bazel build //...` skips them.
 
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
@@ -47,6 +49,34 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # The protocol as it is written down: the schemas, the table of messages, and
 # the examples both halves of the drift test read.
 PROTOCOL_FILES = glob(["protocol/**/*.json"])
+
+# The protocol's files, for the TypeScript kit's tests, which read the
+# examples as the Swift tests and protocol_examples_test do. A js_library,
+# because rules_js copies a test's data into the output tree and will take a
+# file from another package only that way.
+js_library(
+    name = "protocol_files",
+    srcs = PROTOCOL_FILES,
+    visibility = [
+        "//packages/vitruvian-sdk/kits/typescript:__pkg__",
+        "//tools/sdk-codegen:__pkg__",
+    ],
+)
+
+# Every file //tools/sdk-codegen wrote into the kits, for its drift test. A kit
+# in a Bazel package of its own lists its generated files there.
+filegroup(
+    name = "generated_kit_files",
+    srcs = glob(
+        [
+            "kits/python/vitruvian_tool_kit/generated/**",
+            "kits/typescript/src/generated/**",
+        ],
+        # Until the generator first runs, there is nothing to match.
+        allow_empty = True,
+    ),
+    visibility = ["//tools/sdk-codegen:__pkg__"],
+)
 
 # The smallest tool that speaks the protocol. The conformance script is proven
 # against it, and its manifest is read by both halves of the drift test.
