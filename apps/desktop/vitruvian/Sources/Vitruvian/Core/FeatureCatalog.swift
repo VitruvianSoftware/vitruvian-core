@@ -226,7 +226,16 @@ extension AppFeature {
     }
 
     package func isAvailable(in defaults: UserDefaults) -> Bool {
-        defaults.bool(forKey: availabilityKey)
+        defaults.bool(forKey: availabilityKey) && !isReplaced(in: defaults)
+    }
+
+    /// A feature a tool from the catalog has taken over: it is hidden, its
+    /// island page and Settings page with it, for as long as the tool is
+    /// installed, and comes back, switched off, when the tool is removed.
+    /// GitHub, until the release after the tool's first: the feature's
+    /// sign-in and settings were handed to the tool (`GitHubHandoff`).
+    package func isReplaced(in defaults: UserDefaults = .standard) -> Bool {
+        self == .notchGitHub && defaults[Preferences.githubReplacedByTool]
     }
 
     /// The feature's own enable keys; any one being true means the feature is

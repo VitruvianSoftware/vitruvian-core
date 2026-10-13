@@ -1027,6 +1027,7 @@ package enum Defaults {
         DefaultsKey.githubMouseApprovalMode: Preferences.githubMouseApprovalMode.defaultValue,
         DefaultsKey.githubMouseApprovalSpeed: Preferences.githubMouseApprovalSpeed.defaultValue,
         DefaultsKey.githubMouseBinaryPath: Preferences.githubMouseBinaryPath.defaultValue,
+        DefaultsKey.githubReplacedByTool: Preferences.githubReplacedByTool.defaultValue,
     ]
 
     package static func register() {

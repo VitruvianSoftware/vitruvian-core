@@ -953,4 +953,9 @@ package enum Preferences {
     /// Empty searches for it (`GitHubMouseBinary.locate`).
     package static let githubMouseBinaryPath = Preference(
         DefaultsKey.githubMouseBinaryPath, default: "")
+    /// True once the GitHub tool from the catalog (`dev.vitruvian.github`)
+    /// is installed and the feature has handed it the sign-in and the
+    /// settings: the feature is then hidden, its switch off, until the tool
+    /// is removed (`GitHubHandoff`).
+    package static let githubReplacedByTool = Preference(DefaultsKey.githubReplacedByTool, default: false)
 }

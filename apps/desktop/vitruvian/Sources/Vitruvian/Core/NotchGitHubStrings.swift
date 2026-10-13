@@ -56,6 +56,9 @@ package struct NotchGitHubStrings {
     /// `%@` is GitHub's `error` value, such as `device_flow_disabled`.
     package let deviceFlowFormat: String
     package let invalidRelayURL: String
+    /// Shown at the top of the page while the GitHub tool from the catalog
+    /// is not installed: what moves to it, and what does not.
+    package let movesToTool: String
 
     package func mouseCommandFound(_ path: String) -> String {
         String(format: mouseCommandFoundFormat, locale: Locale.current, path)
@@ -135,7 +138,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub refused the request (HTTP %@).",
             keychainFormat: "The Keychain couldn’t keep the sign-in (error %@).",
             deviceFlowFormat: "GitHub couldn’t start the code sign-in (%@).",
-            invalidRelayURL: "The relay URL under Advanced isn’t a valid web address.")
+            invalidRelayURL: "The relay URL under Advanced isn’t a valid web address.",
+            movesToTool: "GitHub is becoming a tool from the catalog. Install it under Features, Tools from outside: your sign-in, watched repositories and mouse settings move with it, this page goes, and its island page becomes a tile on the island’s Tools page. Signing in through the browser does not move: the tool signs in with the GitHub CLI, a token or a code.")
         case .ptBR: return NotchGitHubStrings(
             title: "GitHub",
             description: "Mostra se a main está verde nos repositórios que você acompanha e em que pé estão seus pull requests.",
@@ -178,7 +182,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "O GitHub recusou o pedido (HTTP %@).",
             keychainFormat: "O Keychain não conseguiu guardar o login (erro %@).",
             deviceFlowFormat: "O GitHub não conseguiu iniciar o login por código (%@).",
-            invalidRelayURL: "A URL do relay em Avançado não é um endereço web válido.")
+            invalidRelayURL: "A URL do relay em Avançado não é um endereço web válido.",
+            movesToTool: "O GitHub está virando uma ferramenta do catálogo. Instale-a em Recursos, Ferramentas de fora: seu login, os repositórios acompanhados e os ajustes do mouse vão junto, esta página some, e a página da ilha vira um bloco na página Ferramentas da ilha. O login pelo navegador não vai: a ferramenta entra com a CLI do GitHub, um token ou um código.")
         case .es: return NotchGitHubStrings(
             title: "GitHub",
             description: "Muestra si main está en verde en los repositorios que sigues y en qué punto están tus pull requests.",
@@ -221,7 +226,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub rechazó la solicitud (HTTP %@).",
             keychainFormat: "El llavero no pudo guardar el inicio de sesión (error %@).",
             deviceFlowFormat: "GitHub no pudo iniciar el inicio de sesión con código (%@).",
-            invalidRelayURL: "La URL del relay en Avanzado no es una dirección web válida.")
+            invalidRelayURL: "La URL del relay en Avanzado no es una dirección web válida.",
+            movesToTool: "GitHub pasa a ser una herramienta del catálogo. Instálala en Funciones, Herramientas externas: tu inicio de sesión, los repositorios seguidos y los ajustes del ratón pasan con ella, esta página desaparece y su página en la isla pasa a ser un mosaico en la página Herramientas de la isla. El inicio de sesión por el navegador no pasa: la herramienta inicia sesión con GitHub CLI, un token o un código.")
         case .sk: return NotchGitHubStrings(
             title: "GitHub",
             description: "Ukazuje, či je main zelená v repozitároch, ktoré sledujete, a ako sú na tom vaše pull requesty.",
@@ -264,7 +270,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub odmietol požiadavku (HTTP %@).",
             keychainFormat: "Kľúčenka nedokázala uložiť prihlásenie (chyba %@).",
             deviceFlowFormat: "GitHub nedokázal spustiť prihlásenie kódom (%@).",
-            invalidRelayURL: "URL relay v časti Pokročilé nie je platná webová adresa.")
+            invalidRelayURL: "URL relay v časti Pokročilé nie je platná webová adresa.",
+            movesToTool: "GitHub sa stáva nástrojom z katalógu. Nainštalujte ho v časti Funkcie, Nástroje zvonka: prihlásenie, sledované repozitáre a nastavenia myši prejdú s ním, táto stránka zmizne a jeho stránka na ostrove sa stane dlaždicou na stránke Nástroje. Prihlásenie cez prehliadač sa neprenáša: nástroj sa prihlasuje cez GitHub CLI, token alebo kód.")
         case .de: return NotchGitHubStrings(
             title: "GitHub",
             description: "Zeigt, ob main in den beobachteten Repositorys grün ist und wo deine Pull Requests stehen.",
@@ -307,7 +314,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub hat die Anfrage abgelehnt (HTTP %@).",
             keychainFormat: "Der Schlüsselbund konnte die Anmeldung nicht speichern (Fehler %@).",
             deviceFlowFormat: "GitHub konnte die Anmeldung per Code nicht starten (%@).",
-            invalidRelayURL: "Die Relay-URL unter „Erweitert“ ist keine gültige Webadresse.")
+            invalidRelayURL: "Die Relay-URL unter „Erweitert“ ist keine gültige Webadresse.",
+            movesToTool: "GitHub wird ein Werkzeug aus dem Katalog. Installiere es unter Funktionen, Werkzeuge von außen: deine Anmeldung, die beobachteten Repositorys und die Mauseinstellungen ziehen mit um, diese Seite verschwindet, und seine Inselseite wird eine Kachel auf der Werkzeuge-Seite der Insel. Die Anmeldung über den Browser zieht nicht um: das Werkzeug meldet sich mit der GitHub-CLI, einem Token oder einem Code an.")
         case .fr: return NotchGitHubStrings(
             title: "GitHub",
             description: "Indique si main est au vert dans les dépôts que vous suivez et où en sont vos pull requests.",
@@ -350,7 +358,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub a refusé la requête (HTTP %@).",
             keychainFormat: "Le trousseau n’a pas pu conserver la connexion (erreur %@).",
             deviceFlowFormat: "GitHub n’a pas pu lancer la connexion par code (%@).",
-            invalidRelayURL: "L’URL du relais dans Avancé n’est pas une adresse web valide.")
+            invalidRelayURL: "L’URL du relais dans Avancé n’est pas une adresse web valide.",
+            movesToTool: "GitHub devient un outil du catalogue. Installez-le dans Fonctions, Outils externes : votre connexion, les dépôts suivis et les réglages de la souris le suivent, cette page disparaît, et sa page de l’île devient une tuile sur la page Outils de l’île. La connexion par le navigateur ne suit pas : l’outil se connecte avec GitHub CLI, un jeton ou un code.")
         case .it: return NotchGitHubStrings(
             title: "GitHub",
             description: "Mostra se main è verde nei repository che segui e a che punto sono le tue pull request.",
@@ -393,7 +402,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub ha rifiutato la richiesta (HTTP %@).",
             keychainFormat: "Il portachiavi non è riuscito a conservare l’accesso (errore %@).",
             deviceFlowFormat: "GitHub non è riuscito ad avviare l’accesso con codice (%@).",
-            invalidRelayURL: "L’URL del relay in Avanzate non è un indirizzo web valido.")
+            invalidRelayURL: "L’URL del relay in Avanzate non è un indirizzo web valido.",
+            movesToTool: "GitHub diventa uno strumento del catalogo. Installalo in Funzioni, Strumenti esterni: l’accesso, i repository seguiti e le impostazioni del mouse passano con lui, questa pagina sparisce e la sua pagina nell’isola diventa un riquadro nella pagina Strumenti dell’isola. L’accesso dal browser non passa: lo strumento accede con GitHub CLI, un token o un codice.")
         case .ru: return NotchGitHubStrings(
             title: "GitHub",
             description: "Показывает, зелёная ли main в отслеживаемых репозиториях и в каком состоянии ваши pull request.",
@@ -436,7 +446,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub отклонил запрос (HTTP %@).",
             keychainFormat: "Связке ключей не удалось сохранить вход (ошибка %@).",
             deviceFlowFormat: "GitHub не смог начать вход по коду (%@).",
-            invalidRelayURL: "URL ретранслятора в разделе «Дополнительно» не является веб-адресом.")
+            invalidRelayURL: "URL ретранслятора в разделе «Дополнительно» не является веб-адресом.",
+            movesToTool: "GitHub становится инструментом из каталога. Установите его в разделе Функции, Внешние инструменты: вход, отслеживаемые репозитории и настройки мыши перейдут к нему, эта страница исчезнет, а его страница на острове станет плиткой на странице Инструменты. Вход через браузер не переносится: инструмент входит через GitHub CLI, токен или код.")
         case .tr: return NotchGitHubStrings(
             title: "GitHub",
             description: "İzlediğiniz depolarda main’in yeşil olup olmadığını ve pull request’lerinizin durumunu gösterir.",
@@ -479,7 +490,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub isteği reddetti (HTTP %@).",
             keychainFormat: "Anahtar Zinciri oturum açmayı saklayamadı (hata %@).",
             deviceFlowFormat: "GitHub kodla oturum açmayı başlatamadı (%@).",
-            invalidRelayURL: "Gelişmiş bölümündeki aktarıcı URL’si geçerli bir web adresi değil.")
+            invalidRelayURL: "Gelişmiş bölümündeki aktarıcı URL’si geçerli bir web adresi değil.",
+            movesToTool: "GitHub, katalogdan bir araç oluyor. Özellikler, Dışarıdan araçlar altından kurun: oturumunuz, izlenen depolar ve fare ayarları onunla taşınır, bu sayfa kalkar ve adadaki sayfası adanın Araçlar sayfasında bir karo olur. Tarayıcıyla oturum açma taşınmaz: araç GitHub CLI, bir belirteç veya bir kodla oturum açar.")
         case .ja: return NotchGitHubStrings(
             title: "GitHub",
             description: "監視しているリポジトリで main がグリーンかどうかと、プルリクエストの状況を表示します。",
@@ -522,7 +534,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub がリクエストを拒否しました（HTTP %@）。",
             keychainFormat: "キーチェーンにサインイン情報を保存できませんでした（エラー %@）。",
             deviceFlowFormat: "GitHub はコードによるサインインを開始できませんでした（%@）。",
-            invalidRelayURL: "「詳細」のリレー URL が有効な Web アドレスではありません。")
+            invalidRelayURL: "「詳細」のリレー URL が有効な Web アドレスではありません。",
+            movesToTool: "GitHub はカタログのツールになります。設定、機能、外部ツールからインストールしてください。サインイン、監視中のリポジトリ、マウスの設定はツールに引き継がれ、このページはなくなり、アイランドのページはアイランドの「ツール」ページのタイルになります。ブラウザーでのサインインは引き継がれません。ツールは GitHub CLI、トークン、またはコードでサインインします。")
         case .ko: return NotchGitHubStrings(
             title: "GitHub",
             description: "지켜보는 저장소에서 main이 초록색인지, 내 풀 리퀘스트가 어디까지 왔는지 보여 줍니다.",
@@ -565,7 +578,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub가 요청을 거부했습니다(HTTP %@).",
             keychainFormat: "키체인에 로그인 정보를 보관하지 못했습니다(오류 %@).",
             deviceFlowFormat: "GitHub가 코드 로그인을 시작하지 못했습니다(%@).",
-            invalidRelayURL: "고급의 릴레이 URL이 올바른 웹 주소가 아닙니다.")
+            invalidRelayURL: "고급의 릴레이 URL이 올바른 웹 주소가 아닙니다.",
+            movesToTool: "GitHub는 카탈로그의 도구가 됩니다. 기능, 외부 도구에서 설치하세요. 로그인, 보는 저장소, 마우스 설정이 함께 옮겨지고, 이 페이지는 사라지며, 아일랜드의 페이지는 아일랜드 도구 페이지의 타일이 됩니다. 브라우저를 통한 로그인은 옮겨지지 않습니다. 도구는 GitHub CLI, 토큰 또는 코드로 로그인합니다.")
         case .uk: return NotchGitHubStrings(
             title: "GitHub",
             description: "Показує, чи зелена main у репозиторіях, за якими ви стежите, і на якому етапі ваші pull request.",
@@ -608,7 +622,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub відхилив запит (HTTP %@).",
             keychainFormat: "Звʼязці ключів не вдалося зберегти вхід (помилка %@).",
             deviceFlowFormat: "GitHub не зміг почати вхід за кодом (%@).",
-            invalidRelayURL: "URL ретранслятора в розділі «Додатково» не є вебадресою.")
+            invalidRelayURL: "URL ретранслятора в розділі «Додатково» не є вебадресою.",
+            movesToTool: "GitHub стає інструментом із каталогу. Установіть його в розділі Функції, Зовнішні інструменти: вхід, відстежувані репозиторії та налаштування миші перейдуть до нього, ця сторінка зникне, а його сторінка на острові стане плиткою на сторінці Інструменти. Вхід через браузер не переноситься: інструмент входить через GitHub CLI, токен або код.")
         case .zhHans: return NotchGitHubStrings(
             title: "GitHub",
             description: "显示你关注的仓库中 main 是否为绿色，以及你的拉取请求进展如何。",
@@ -651,7 +666,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub 拒绝了请求（HTTP %@）。",
             keychainFormat: "钥匙串无法保存登录信息（错误 %@）。",
             deviceFlowFormat: "GitHub 无法开始代码登录（%@）。",
-            invalidRelayURL: "“高级”中的中继 URL 不是有效的网址。")
+            invalidRelayURL: "“高级”中的中继 URL 不是有效的网址。",
+            movesToTool: "GitHub 将成为目录中的一个工具。请在功能、外部工具中安装它：你的登录、关注的仓库和鼠标设置会随之迁移，此页面将消失，它在岛上的页面将变为岛上“工具”页面中的一个磁贴。通过浏览器登录不会迁移：该工具使用 GitHub CLI、令牌或代码登录。")
         case .zhTW: return NotchGitHubStrings(
             title: "GitHub",
             description: "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
@@ -694,7 +710,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub 拒絕了要求（HTTP %@）。",
             keychainFormat: "鑰匙圈無法儲存登入資訊（錯誤 %@）。",
             deviceFlowFormat: "GitHub 無法開始代碼登入（%@）。",
-            invalidRelayURL: "「進階」中的中繼 URL 不是有效的網址。")
+            invalidRelayURL: "「進階」中的中繼 URL 不是有效的網址。",
+            movesToTool: "GitHub 將成為目錄中的工具。請在功能、外部工具中安裝它：你的登入、關注的儲存庫和滑鼠設定會隨之搬移，此頁面將消失，它在島上的頁面將成為島上「工具」頁面中的一個方塊。透過瀏覽器登入不會搬移：該工具以 GitHub CLI、權杖或代碼登入。")
         case .zhHK: return NotchGitHubStrings(
             title: "GitHub",
             description: "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
@@ -737,7 +754,8 @@ extension FeatureStrings {
             gitHubRefusedFormat: "GitHub 拒絕了要求（HTTP %@）。",
             keychainFormat: "鑰匙圈無法儲存登入資訊（錯誤 %@）。",
             deviceFlowFormat: "GitHub 無法開始代碼登入（%@）。",
-            invalidRelayURL: "「進階」中的中繼 URL 不是有效的網址。")
+            invalidRelayURL: "「進階」中的中繼 URL 不是有效的網址。",
+            movesToTool: "GitHub 將成為目錄中的工具。請在功能、外部工具中安裝它：你的登入、關注的儲存庫和滑鼠設定會隨之搬移，此頁面將消失，它在島上的頁面將成為島上「工具」頁面中的一個方塊。透過瀏覽器登入不會搬移：該工具以 GitHub CLI、權杖或代碼登入。")
         }
     }
 }
