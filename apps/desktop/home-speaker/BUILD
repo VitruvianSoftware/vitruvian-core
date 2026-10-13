@@ -1,4 +1,6 @@
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
+load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
@@ -21,10 +23,131 @@ swift_library(
 
 swift_test(
     name = "HomeSpeakerTests",
-    srcs = glob(["Tests/**/*.swift"]),
+    # The tool's tests are a target of their own, below: they link the
+    # tool's core, which this target does not.
+    srcs = glob(
+        ["Tests/**/*.swift"],
+        exclude = ["Tests/HomeSpeakerToolTests/**"],
+    ),
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":HomeSpeakerCore"],
+)
+
+# The HomeSpeaker tool for the Vitruvian app (docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md):
+# a second door to this app. What it knows, apart from the link to the
+# app: the settings file both share, HomeSpeaker's program and its flags,
+# the two pages, and the state machine behind a link protocol, so the tests
+# drive it without a process. It links the MIT kit and protocol
+# (packages/vitruvian-sdk) and HomeSpeakerCore, for the settings' shape.
+swift_library(
+    name = "HomeSpeakerToolCore",
+    srcs = glob(["Sources/HomeSpeakerToolCore/**/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "HomeSpeakerToolCore",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":HomeSpeakerCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+# Against a settings file in the temporary folder, a driver that answers
+# itself and a link that records. Nothing here starts HomeSpeaker.
+swift_test(
+    name = "HomeSpeakerToolTests",
+    size = "small",
+    srcs = glob(["Tests/HomeSpeakerToolTests/**/*.swift"]),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":HomeSpeakerCore",
+        ":HomeSpeakerToolCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+# The tool's program: the kit's loop around HomeSpeakerToolCore, and
+# nothing else.
+swift_binary(
+    name = "homespeaker-tool",
+    srcs = glob(["Sources/HomeSpeakerTool/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "HomeSpeakerToolProgram",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":HomeSpeakerToolCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+# The tool as a folder the app can add: the manifest and bin/tool, as the
+# release zips them (scripts/publish.sh).
+#
+#   bazel build --config=macos-app //apps/desktop/home-speaker:tool-folder
+#
+# leaves bazel-bin/apps/desktop/home-speaker/built/homespeaker/.
+genrule(
+    name = "tool-folder",
+    srcs = [
+        "tool/vitruvian-tool.json",
+        ":homespeaker-tool",
+    ],
+    outs = [
+        "built/homespeaker/vitruvian-tool.json",
+        "built/homespeaker/bin/tool",
+    ],
+    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/homespeaker/vitruvian-tool.json && cp $(location :homespeaker-tool) $(RULEDIR)/built/homespeaker/bin/tool",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The built folder through `vitruvian-tool validate` and the conformance
+# script, under a home of its own with no HomeSpeaker in it: the handshake,
+# a command, an unknown command, the island panel opened and tapped,
+# refusals, and a clean exit. It starts the real program.
+py_test(
+    name = "tool_conformance_test",
+    size = "medium",
+    srcs = ["tool/conformance_test.py"],
+    args = [
+        "$(rootpath built/homespeaker/vitruvian-tool.json)",
+        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
+        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    ],
+    data = [
+        "built/homespeaker/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance/conformance.py",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    main = "tool/conformance_test.py",
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The tool's version is the app's, in the manifest, the tool's Version.swift
+# and the app's; and release-please writes all three. Not tied to macOS.
+py_test(
+    name = "tool_version_test",
+    size = "small",
+    srcs = ["tool/version_test.py"],
+    data = [
+        "Package.swift",
+        "Sources/HomeSpeakerCore/Version.swift",
+        "Sources/HomeSpeakerToolCore/Version.swift",
+        "release-please-config.json",
+        "tool/vitruvian-tool.json",
+    ],
+    main = "tool/version_test.py",
 )
 
 macos_application(
