@@ -51,7 +51,7 @@ Themes are driven by `data-theme` on `<html>` (`dark` is the default board,
 | File                    | Exports                                                                                             |
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
 | `src/tokens.ts`         | `VitruvianTokens` / `tokens` — typed programmatic access to colors, fonts, spacing, and motion      |
-| `src/Plate.tsx`         | `Plate`, `Rule`, `VMark`, `RegistrationMarks`                                                       |
+| `src/Plate.tsx`         | `Plate`, `Rule`, `VMark`, `BrandMark`, `BrandLogo`, `BrandMedallion`, `RegistrationMarks`, `Glass`  |
 | `src/Card.tsx`          | `Card` (`plate` / `fill` / `glass` surfaces, `live` indicator, `marks`, `dashed`)                   |
 | `src/Button.tsx`        | `Button` (`primary` / `secondary` / `ghost` / `danger`, `sm` / `md` / `touch`)                      |
 | `src/Tag.tsx`           | `Tag`, `Label`, `Kbd`                                                                               |
@@ -72,6 +72,7 @@ Themes are driven by `data-theme` on `<html>` (`dark` is the default board,
 | `src/tokens.css`    | The token layer: colour, type, space, motion, `@font-face` |
 | `src/tokens.json`   | The same tokens in W3C Design Tokens format, for native |
 | `src/tokens.ts`     | Typed TypeScript token constants (`VitruvianTokens`)    |
+| `src/brand/`        | Official `vitruvian-mark.svg` & `vitruvian-medallion.png` |
 | `src/fonts/`        | Vendored `IBM Plex Sans` & `JetBrains Mono` `.woff2`    |
 | `src/vitruvian.css` | The single stylesheet an app imports                    |
 | `src/*.tsx`         | Components, one file per family (`Plate`, `Form`, …)    |

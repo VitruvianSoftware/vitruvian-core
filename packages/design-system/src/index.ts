@@ -22,8 +22,22 @@
 export { cn } from "./cn.js";
 export { VitruvianTokens, tokens } from "./tokens.js";
 export type { VitruvianColorScheme } from "./tokens.js";
-export { Plate, RegistrationMarks, VMark, Rule, Glass } from "./Plate.js";
-export type { PlateProps } from "./Plate.js";
+export {
+  Plate,
+  RegistrationMarks,
+  VMark,
+  BrandMark,
+  BrandLogo,
+  BrandMedallion,
+  Rule,
+  Glass,
+} from "./Plate.js";
+export type {
+  PlateProps,
+  VMarkProps,
+  BrandLogoProps,
+  BrandMedallionProps,
+} from "./Plate.js";
 export { Button } from "./Button.js";
 export type { ButtonProps, ButtonVariant } from "./Button.js";
 export { Tag, Label, Kbd } from "./Tag.js";

@@ -27,6 +27,8 @@ import {
   type VitruvianPlateVariant,
 } from "./Illustrations.js";
 import { AutoGrid } from "./Layout.js";
+import { Plate, BrandMark, BrandLogo, BrandMedallion } from "./Plate.js";
+import { Label } from "./Tag.js";
 
 const illustrationsMeta: Meta = {
   title: "Foundations/Technical plates & imagery",
@@ -60,6 +62,46 @@ const PLATE_SPECS: ReadonlyArray<{
     scale: "440HZ",
   },
 ];
+
+export const OfficialBrandLogos: StoryObj = {
+  render: () => (
+    <div className="grid grid-cols-3 gap-5">
+      <Plate field="sm" className="p-5 flex flex-col justify-between gap-4">
+        <Label accent>I. Vector BrandMark (Golden-Datum V)</Label>
+        <div className="flex items-center justify-center gap-5 py-4">
+          <BrandMark size={72} />
+          <BrandMark size={34} />
+          <BrandMark size={16} />
+        </div>
+        <span className="text-xs text-steel-dim font-mono">
+          72px · 34px · 16px responsive scale
+        </span>
+      </Plate>
+
+      <Plate field="sm" className="p-5 flex flex-col justify-between gap-4">
+        <Label accent>II. Official Wordmark Lockups</Label>
+        <div className="flex flex-col gap-4 py-2">
+          <BrandLogo markSize={34} />
+          <BrandLogo title="VITRUVIAN" subtitle="TABULA SUITE" markSize={28} />
+        </div>
+        <span className="text-xs text-steel-dim font-mono">
+          IBM Plex Sans + JetBrains Mono lockup
+        </span>
+      </Plate>
+
+      <Plate field="sm" className="p-5 flex flex-col justify-between gap-4">
+        <Label accent>III. Circular Gunmetal Medallion</Label>
+        <div className="flex items-center justify-center gap-5 py-2">
+          <BrandMedallion size={96} />
+          <BrandMedallion size={48} />
+        </div>
+        <span className="text-xs text-steel-dim font-mono">
+          src/brand/vitruvian-medallion.png (transparent alpha)
+        </span>
+      </Plate>
+    </div>
+  ),
+};
 
 export const VectorPlates: StoryObj = {
   render: () => (

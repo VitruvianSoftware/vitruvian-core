@@ -343,6 +343,7 @@ code { font-family: var(--font-mono); font-size: 0.9em; padding: 1px 5px; backgr
 .duotone { position: relative; overflow: hidden; }
 .duotone::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: var(--color-accent); mix-blend-mode: color; }
 .duotone img { filter: grayscale(1) contrast(1.05); }
+.brand-medallion { display: inline-block; flex: none; background-image: url("./brand/vitruvian-medallion.png"); background-size: contain; background-position: center; background-repeat: no-repeat; }
 
 /* ───────────────────────────── buttons ──────────────────────────────────── */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); cursor: pointer; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1; color: var(--color-text); background: transparent; border: 1px solid var(--color-divider); border-radius: 0; padding: 11px var(--space-4); text-decoration: none; transition: background var(--dur-1) var(--ease-mech), color var(--dur-1) var(--ease-mech), border-color var(--dur-1) var(--ease-mech), transform var(--dur-1) var(--ease-snap); }
