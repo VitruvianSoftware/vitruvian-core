@@ -97,7 +97,7 @@ class CatalogTest(unittest.TestCase):
             "an id with no dot": entry(id="reference"),
             "a version that is not semver": entry(version="1.0"),
             "an app version that is not semver": entry(minimumAppVersion="3.43"),
-            "a protocol the app has not": entry(protocol="2"),
+            "a protocol the app has not": entry(protocol="3"),
             "a summary with no English": entry(summary={"fr": "Bonjour"}),
             "a download over http": entry(
                 download__url=GOOD["download"]["url"].replace("https", "http")
