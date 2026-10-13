@@ -179,10 +179,36 @@ else
   bad "current-code shortcut wrong (rc=$rc)"; show
 fi
 
+# The code commit's own run is not listed, so nothing says a listed run is
+# newer than the code: 900 built older code (app4) and is not app5's beta.
+fresh; fx code.main app5; fx runs $'900\tmain8\n899\tmain7'; fx code.main8 app4
+fx jobs.900 "$(beta completed success)"; fx jobs.899 "$(beta completed success)"
+rc="$(run)"
+if [ "$rc" = "0" ] && ! enabled && grep -q 'waiting' "$work/stdout" \
+   && ! grep -qE 'runs/(900|899)/jobs|sha=main7&' "$work/log"; then
+  ok "without the code's own run listed, an older build is not credited (and nothing older is read)"
+else
+  bad "an older build was credited as the release's beta (rc=$rc)"; show
+fi
+
 echo "--- code built before the per-app split (LEGACY_WORKFLOW) ---"
+# 2026-10-13, release 3.47.0: the new workflow's run for app5 had not created
+# its beta job yet, and the legacy workflow's newest run (a week older, green)
+# was credited as app5's build.
+fresh; fx code.main app5; fx runs $'905\tapp5'; fx jobs.905 $'orchestrate\tin_progress\t'
+fx runs.legacy $'801\told2\n800\told1'; fx code.old2 app1
+fx jobs.801 "$(beta completed success)"; fx jobs.800 "$(beta completed success)"
+rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
+if [ "$rc" = "0" ] && ! enabled && grep -q 'waiting' "$work/stdout" \
+   && ! grep -qE 'runs/(801|800)/jobs|sha=old1&' "$work/log"; then
+  ok "a legacy run that built older code is not credited as this release's beta"
+else
+  bad "an old legacy build let the release through (rc=$rc)"; show
+fi
+
 # The new workflow has a run for the same code that skipped the beta (its diff
 # base already covered app5); the legacy workflow's own app5 run built it.
-fresh; fx code.main app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta completed skipped)"
+fresh; fx code.main app5; fx code.main14 app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta completed skipped)"
 fx runs.legacy $'901\tapp5'; fx jobs.901 "$(beta completed success)"
 rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
 if [ "$rc" = "0" ] && enabled && grep -q 'actions/workflows/legacy.yaml/runs?event=push' "$work/log" \
@@ -199,7 +225,7 @@ else
   bad "legacy read without LEGACY_WORKFLOW (rc=$rc)"; show
 fi
 
-fresh; fx code.main app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta in_progress '')"
+fresh; fx code.main app5; fx code.main14 app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta in_progress '')"
 fx runs.legacy $'901\tapp5'; fx jobs.901 "$(beta completed success)"
 rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
 if [ "$rc" = "0" ] && ! enabled && grep -q "still running in run 905" "$work/stdout" && ! grep -q legacy.yaml "$work/log"; then
@@ -208,7 +234,7 @@ else
   bad "legacy history overrode a running beta (rc=$rc)"; show
 fi
 
-fresh; fx code.main app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta completed failure)"
+fresh; fx code.main app5; fx code.main14 app5; fx runs $'905\tmain14'; fx jobs.905 "$(beta completed failure)"
 fx runs.legacy $'901\tapp5'; fx jobs.901 "$(beta completed success)"
 rc="$(run LEGACY_WORKFLOW=legacy.yaml)"
 if [ "$rc" = "0" ] && ! enabled && grep -q '^pr comment 42' "$work/log" && ! grep -q 'legacy.yaml' "$work/log"; then
