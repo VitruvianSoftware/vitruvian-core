@@ -47,8 +47,12 @@ package struct ToolAgreementContent: Equatable {
     package let byline: String
     /// The tool's own sentence about itself, in the person's language.
     package let summary: String?
-    /// The folder the person picked.
+    /// The folder the person picked, or for a tool from the catalog the
+    /// address of its source.
     package let from: String
+    /// For a tool from the catalog: that VitruvianSoftware listed it and the
+    /// download is the one listed. Nil for a folder the person picked.
+    package let catalogue: String?
     /// That the name, publisher and description are the tool's own words.
     package let ownWords: String
     /// For an update: the version agreed to before, and this one.
@@ -99,7 +103,11 @@ package struct ToolAgreementContent: Equatable {
         symbol = hasSymbol(tool.manifest.tool.symbol) ? tool.manifest.tool.symbol : ExternalToolManifest.defaultSymbol
         byline = "\(tool.publisher) · \(tool.version)"
         summary = tool.summary?.text(for: tag)
-        from = strings.agreeFrom(Self.abbreviated(offer.folder.path, home: home))
+        // A tool from the catalog was unpacked into a folder of the app's
+        // own; where it comes from is its source.
+        from = strings.agreeFrom(offer.catalogue.map { Self.withoutScheme($0.source) }
+            ?? Self.abbreviated(offer.folder.path, home: home))
+        catalogue = offer.catalogue == nil ? nil : strings.agreeCatalog
         ownWords = strings.agreeOwnWords
         versions = offer.replaces.map {
             strings.updateVersions(agreed: ToolOwnWords.oneLine($0.version), offered: ToolOwnWords.oneLine(tool.version))
@@ -115,6 +123,11 @@ package struct ToolAgreementContent: Equatable {
         usesNote = strings.usesNote
         agree = isUpdate ? strings.updateConfirm : strings.agreeAdd
         self.cancel = cancel
+    }
+
+    /// An address as a person reads it: `github.com/acme/deploys`.
+    package static func withoutScheme(_ address: String) -> String {
+        address.hasPrefix("https://") ? String(address.dropFirst("https://".count)) : address
     }
 
     /// A path with the person's home folder written as a tilde.
@@ -137,9 +150,17 @@ package struct ToolRefusalMessage: Equatable {
 
     /// `numbers` is how a count is written; left out, it is the person's
     /// own region's way, as everywhere in the app.
+    package init(title: String, message: String, command: String? = nil) {
+        self.title = title
+        self.message = message
+        self.command = command
+    }
+
+    /// `installing` is the name of a tool from the catalog the refusal is
+    /// about; nil for a folder the person picked.
     package init(_ refusal: ExternalToolStore.Refusal, language: AppLanguage, strings: ExternalToolStrings,
-                 numbers: Locale? = nil) {
-        title = strings.refusalTitle
+                 numbers: Locale? = nil, installing: String? = nil) {
+        title = installing.map { strings.installRefused(ToolOwnWords.oneLine($0)) } ?? strings.refusalTitle
         var command: String?
         switch refusal {
         case .manifest(.noManifest):
@@ -271,6 +292,12 @@ package struct ToolAgreementSheet: View {
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .fixedSize(horizontal: false, vertical: true)
+                if let catalogue = content.catalogue {
+                    Text(catalogue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text(content.ownWords)
                     .font(.caption)
                     .foregroundStyle(.secondary)

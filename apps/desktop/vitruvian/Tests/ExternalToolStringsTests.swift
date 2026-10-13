@@ -11,7 +11,7 @@ import VitruvianCore
 enum ExternalToolStringsTests {
     /// How many texts the screens for tools from outside add. A text added
     /// or taken away changes this number on purpose, with the plan's table.
-    static let count = 46
+    static let count = 59
 
     static func run(_ suite: TestSuite) {
         let english = FeatureStrings.externalTools(.enUS).all
@@ -57,7 +57,8 @@ enum ExternalToolStringsTests {
                          == "The folder is too large. A tool can hold up to 256 MB and 10,000 files."
                          && strings.stopped("Deploys") == "“Deploys” stopped working"
                          && strings.removeKeptTitle("Deploys") == "What “Deploys” saved was kept"
-                         && strings.removeUndeletedTitle("Deploys") == "Some files of “Deploys” could not be deleted",
+                         && strings.removeUndeletedTitle("Deploys") == "Some files of “Deploys” could not be deleted"
+                         && strings.installRefused("Deploys") == "“Deploys” was not installed",
                      "a format is filled with what it is handed, in the order the sentence names it")
         let listable: [Capability] = [.notify, .open, .clipboardRead, .clipboardWrite, .keystrokes, .processes, .storage]
         suite.expect(Capability.allCases.filter { strings.use($0) != nil } == Capability.allCases.filter(listable.contains)
@@ -66,7 +67,10 @@ enum ExternalToolStringsTests {
                      "each of the seven services a tool from outside may list has its own plain words, and no other has any")
         suite.expect(FeatureStrings.externalTools(.de).removeTitle("Deploys") == "„Deploys“ entfernen?"
                          && FeatureStrings.externalTools(.fr).agreeTitle("Deploys")
-                         == "Ajouter «\u{00A0}Deploys\u{00A0}» à Vitruvian\u{00A0}?",
+                         == "Ajouter «\u{00A0}Deploys\u{00A0}» à Vitruvian\u{00A0}?"
+                         && FeatureStrings.externalTools(.fr).installRefused("Deploys")
+                         == "«\u{00A0}Deploys\u{00A0}» n’a pas été installé"
+                         && FeatureStrings.externalTools(.ja).installRefused("Deploys") == "「Deploys」はインストールされませんでした",
                      "a tool's name is quoted the way each language quotes")
     }
 }

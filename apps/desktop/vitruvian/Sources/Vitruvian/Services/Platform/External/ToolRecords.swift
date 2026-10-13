@@ -30,6 +30,27 @@ package struct ToolAgreement: Codable, Equatable, Sendable {
     }
 }
 
+/// Where a tool installed from the catalog came from: the entry it was
+/// installed from. Only a tool with one is ever compared with the catalog
+/// for a newer version.
+package struct CatalogueOrigin: Codable, Equatable, Sendable {
+    /// The entry's id, which is the tool's.
+    package let id: String
+    /// The version the catalog listed, and the person agreed to.
+    package let version: String
+    /// Where the tool's source is, as the catalog gives it.
+    package let source: String
+    /// The address the zip came from.
+    package let download: String
+
+    package init(id: String, version: String, source: String, download: String) {
+        self.id = id
+        self.version = version
+        self.source = source
+        self.download = download
+    }
+}
+
 /// One tool the person added, as the app remembers it from one launch to
 /// the next.
 package struct ToolRecord: Codable, Equatable, Sendable {
@@ -37,11 +58,16 @@ package struct ToolRecord: Codable, Equatable, Sendable {
     /// The tool's switch in Settings.
     package var isOn: Bool
     package var agreement: ToolAgreement
+    /// For a tool installed from the catalog, the entry it came from; nil for
+    /// one added from a folder. Left out of the file when nil, so the record
+    /// of a tool added from a folder is written as before.
+    package var catalogue: CatalogueOrigin?
 
-    package init(id: String, isOn: Bool, agreement: ToolAgreement) {
+    package init(id: String, isOn: Bool, agreement: ToolAgreement, catalogue: CatalogueOrigin? = nil) {
         self.id = id
         self.isOn = isOn
         self.agreement = agreement
+        self.catalogue = catalogue
     }
 }
 
@@ -54,6 +80,10 @@ package struct ToolRecord: Codable, Equatable, Sendable {
 ///                                   "version": "1.2.0", "publisher": "Acme",
 ///                                   "fingerprint": "<64 hex digits>",
 ///                                   "source": "/Users/me/tools/deploys" } } ] }
+///
+/// A tool installed from the catalog also has `"catalogue": { "id", "version",
+/// "source", "download" }`, and its agreement's `source` is the download's
+/// address. An older app reads such a record and ignores the field.
 ///
 /// It is not a preference and is in no settings backup: a tool is a program
 /// on this Mac, and agreeing to one is done on the Mac it runs on.

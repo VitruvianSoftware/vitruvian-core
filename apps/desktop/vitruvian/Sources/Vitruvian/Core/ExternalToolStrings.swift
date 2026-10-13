@@ -79,6 +79,31 @@ package struct ExternalToolStrings {
     package let removeUndeletedMessage: String
     /// The app's short on-screen message. `%@` is the tool's name, as the tool wrote it.
     package let stoppedFormat: String
+    /// The button beside "Add a Tool…" that opens the catalog.
+    package let browseButton: String
+    /// The title of the sheet that lists the catalog.
+    package let catalogTitle: String
+    /// The sheet's one line when the catalog lists no tool this app can install.
+    package let catalogEmpty: String
+    package let installButton: String
+    /// In place of the install button, for a tool that is added already.
+    package let installedLabel: String
+    /// Beside a tool from the catalog, in its row and its detail, when the catalog has a newer version.
+    package let updateAvailable: String
+    /// The button that fetches the newer version from the catalog.
+    package let updateNow: String
+    /// The one line the agreement sheet adds for a tool from the catalog.
+    package let agreeCatalog: String
+    /// The list, or a tool's download, could not be fetched.
+    package let catalogUnreachable: String
+    /// The list's signature is not one the app's own key made.
+    package let catalogNotOurs: String
+    /// The download's size or SHA-256 is not the one the catalog pins.
+    package let downloadMismatch: String
+    /// The download is no tool, holds a path that leaves its folder or a link, or names another tool or version.
+    package let downloadNotTheTool: String
+    /// The title of the alert after an install from the catalog was refused. `%@` is the tool's name, as the catalog gives it.
+    package let installRefusedFormat: String
 
     package func agreeTitle(_ name: String) -> String {
         String(format: agreeTitleFormat, locale: Locale.current, name)
@@ -110,6 +135,10 @@ package struct ExternalToolStrings {
 
     package func stopped(_ name: String) -> String {
         String(format: stoppedFormat, locale: Locale.current, name)
+    }
+
+    package func installRefused(_ name: String) -> String {
+        String(format: installRefusedFormat, locale: Locale.current, name)
     }
 
     package func refusalMistake(_ detail: String) -> String {
@@ -193,6 +222,19 @@ package struct ExternalToolStrings {
             ("removeUndeletedTitleFormat", removeUndeletedTitleFormat),
             ("removeUndeletedMessage", removeUndeletedMessage),
             ("stoppedFormat", stoppedFormat),
+            ("browseButton", browseButton),
+            ("catalogTitle", catalogTitle),
+            ("catalogEmpty", catalogEmpty),
+            ("installButton", installButton),
+            ("installedLabel", installedLabel),
+            ("updateAvailable", updateAvailable),
+            ("updateNow", updateNow),
+            ("agreeCatalog", agreeCatalog),
+            ("catalogUnreachable", catalogUnreachable),
+            ("catalogNotOurs", catalogNotOurs),
+            ("downloadMismatch", downloadMismatch),
+            ("downloadNotTheTool", downloadNotTheTool),
+            ("installRefusedFormat", installRefusedFormat),
         ]
     }
 }
@@ -244,7 +286,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Its program would not stop, so Vitruvian did not delete what the tool saved. It is in this folder:",
         removeUndeletedTitleFormat: "Some files of “%@” could not be deleted",
         removeUndeletedMessage: "The tool is removed, but Vitruvian could not delete all of its files. What is left is here:",
-        stoppedFormat: "“%@” stopped working")
+        stoppedFormat: "“%@” stopped working",
+        browseButton: "Browse Tools…",
+        catalogTitle: "The Vitruvian catalog",
+        catalogEmpty: "There are no tools in the catalog yet.",
+        installButton: "Install",
+        installedLabel: "Installed",
+        updateAvailable: "Update available",
+        updateNow: "Update",
+        agreeCatalog: "From the Vitruvian catalog: VitruvianSoftware listed this tool, and the download is exactly the one it listed.",
+        catalogUnreachable: "Vitruvian could not reach the catalog. Check your connection and try again.",
+        catalogNotOurs: "This list of tools is not signed by VitruvianSoftware, so Vitruvian will not use it.",
+        downloadMismatch: "The download is not the one the catalog lists, so nothing was installed.",
+        downloadNotTheTool: "The download is not the tool the catalog says it is, so nothing was installed.",
+        installRefusedFormat: "“%@” was not installed")
 
     package static let ptBR = ExternalToolStrings(
         sectionTitle: "Ferramentas de fora",
@@ -292,7 +347,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "O programa dela não parou, então o Vitruvian não apagou o que a ferramenta salvou. Está nesta pasta:",
         removeUndeletedTitleFormat: "Alguns arquivos de “%@” não puderam ser apagados",
         removeUndeletedMessage: "A ferramenta foi removida, mas o Vitruvian não conseguiu apagar todos os arquivos dela. O que restou está aqui:",
-        stoppedFormat: "“%@” parou de funcionar")
+        stoppedFormat: "“%@” parou de funcionar",
+        browseButton: "Explorar ferramentas…",
+        catalogTitle: "O catálogo do Vitruvian",
+        catalogEmpty: "Ainda não há ferramentas no catálogo.",
+        installButton: "Instalar",
+        installedLabel: "Instalada",
+        updateAvailable: "Atualização disponível",
+        updateNow: "Atualizar",
+        agreeCatalog: "Do catálogo do Vitruvian: a VitruvianSoftware listou esta ferramenta, e o download é exatamente o que ela listou.",
+        catalogUnreachable: "O Vitruvian não conseguiu acessar o catálogo. Verifique sua conexão e tente novamente.",
+        catalogNotOurs: "Esta lista de ferramentas não foi assinada pela VitruvianSoftware, então o Vitruvian não vai usá-la.",
+        downloadMismatch: "O download não é o que o catálogo lista, então nada foi instalado.",
+        downloadNotTheTool: "O download não é a ferramenta que o catálogo diz que é, então nada foi instalado.",
+        installRefusedFormat: "A ferramenta “%@” não foi instalada")
 
     package static let tr = ExternalToolStrings(
         sectionTitle: "Dışarıdan araçlar",
@@ -340,7 +408,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Programı durmadığı için Vitruvian aracın kaydettiklerini silmedi. Kaydettikleri şu klasörde:",
         removeUndeletedTitleFormat: "“%@” aracının bazı dosyaları silinemedi",
         removeUndeletedMessage: "Araç kaldırıldı, ancak Vitruvian aracın tüm dosyalarını silemedi. Kalanlar burada:",
-        stoppedFormat: "“%@” çalışmayı durdurdu")
+        stoppedFormat: "“%@” çalışmayı durdurdu",
+        browseButton: "Araçlara göz at…",
+        catalogTitle: "Vitruvian kataloğu",
+        catalogEmpty: "Katalogda henüz araç yok.",
+        installButton: "Yükle",
+        installedLabel: "Yüklendi",
+        updateAvailable: "Güncelleme var",
+        updateNow: "Güncelle",
+        agreeCatalog: "Vitruvian kataloğundan: Bu aracı VitruvianSoftware listeledi ve indirilen dosya tam olarak listelenen dosya.",
+        catalogUnreachable: "Vitruvian kataloğa ulaşamadı. Bağlantınızı kontrol edip yeniden deneyin.",
+        catalogNotOurs: "Bu araç listesi VitruvianSoftware tarafından imzalanmamış, bu yüzden Vitruvian onu kullanmayacak.",
+        downloadMismatch: "İndirilen dosya katalogda listelenen dosya değil, bu yüzden hiçbir şey yüklenmedi.",
+        downloadNotTheTool: "İndirilen dosya, kataloğun söylediği araç değil, bu yüzden hiçbir şey yüklenmedi.",
+        installRefusedFormat: "“%@” yüklenmedi")
 
     package static let ru = ExternalToolStrings(
         sectionTitle: "Сторонние инструменты",
@@ -388,7 +469,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Его программа не завершилась, поэтому Vitruvian не удалил сохранённые инструментом данные. Они в этой папке:",
         removeUndeletedTitleFormat: "Некоторые файлы «%@» не удалось удалить",
         removeUndeletedMessage: "Инструмент удалён, но Vitruvian не смог удалить все его файлы. То, что осталось, находится здесь:",
-        stoppedFormat: "«%@» перестал работать")
+        stoppedFormat: "«%@» перестал работать",
+        browseButton: "Обзор инструментов…",
+        catalogTitle: "Каталог Vitruvian",
+        catalogEmpty: "В каталоге пока нет инструментов.",
+        installButton: "Установить",
+        installedLabel: "Установлен",
+        updateAvailable: "Доступно обновление",
+        updateNow: "Обновить",
+        agreeCatalog: "Из каталога Vitruvian: VitruvianSoftware включила этот инструмент в каталог, и загруженный файл в точности тот, что указан в каталоге.",
+        catalogUnreachable: "Vitruvian не удалось связаться с каталогом. Проверьте подключение и попробуйте снова.",
+        catalogNotOurs: "Этот список инструментов не подписан VitruvianSoftware, поэтому Vitruvian не будет его использовать.",
+        downloadMismatch: "Загруженный файл не совпадает с указанным в каталоге, поэтому ничего не установлено.",
+        downloadNotTheTool: "Загруженный файл не является инструментом, указанным в каталоге, поэтому ничего не установлено.",
+        installRefusedFormat: "Инструмент «%@» не установлен")
 
     package static let es = ExternalToolStrings(
         sectionTitle: "Herramientas externas",
@@ -436,7 +530,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Su programa no se detuvo, así que Vitruvian no borró lo que la herramienta guardó. Está en esta carpeta:",
         removeUndeletedTitleFormat: "Algunos archivos de “%@” no se pudieron borrar",
         removeUndeletedMessage: "La herramienta se ha eliminado, pero Vitruvian no pudo borrar todos sus archivos. Lo que queda está aquí:",
-        stoppedFormat: "“%@” dejó de funcionar")
+        stoppedFormat: "“%@” dejó de funcionar",
+        browseButton: "Explorar herramientas…",
+        catalogTitle: "El catálogo de Vitruvian",
+        catalogEmpty: "Todavía no hay herramientas en el catálogo.",
+        installButton: "Instalar",
+        installedLabel: "Instalada",
+        updateAvailable: "Actualización disponible",
+        updateNow: "Actualizar",
+        agreeCatalog: "Del catálogo de Vitruvian: VitruvianSoftware incluyó esta herramienta, y la descarga es exactamente la que incluyó.",
+        catalogUnreachable: "Vitruvian no pudo acceder al catálogo. Comprueba tu conexión e inténtalo de nuevo.",
+        catalogNotOurs: "Esta lista de herramientas no está firmada por VitruvianSoftware, así que Vitruvian no la usará.",
+        downloadMismatch: "La descarga no es la que indica el catálogo, así que no se instaló nada.",
+        downloadNotTheTool: "La descarga no es la herramienta que el catálogo dice, así que no se instaló nada.",
+        installRefusedFormat: "No se instaló “%@”")
 
     package static let sk = ExternalToolStrings(
         sectionTitle: "Nástroje zvonka",
@@ -484,7 +591,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Jeho program sa nezastavil, preto Vitruvian nevymazal to, čo si nástroj uložil. Nachádza sa to v tomto priečinku:",
         removeUndeletedTitleFormat: "Niektoré súbory nástroja „%@“ sa nepodarilo vymazať",
         removeUndeletedMessage: "Nástroj je odstránený, ale Vitruvian nedokázal vymazať všetky jeho súbory. To, čo zostalo, sa nachádza tu:",
-        stoppedFormat: "„%@“ prestal fungovať")
+        stoppedFormat: "„%@“ prestal fungovať",
+        browseButton: "Prehľadávať nástroje…",
+        catalogTitle: "Katalóg Vitruvian",
+        catalogEmpty: "V katalógu zatiaľ nie sú žiadne nástroje.",
+        installButton: "Inštalovať",
+        installedLabel: "Nainštalovaný",
+        updateAvailable: "K dispozícii je aktualizácia",
+        updateNow: "Aktualizovať",
+        agreeCatalog: "Z katalógu Vitruvian: VitruvianSoftware tento nástroj zaradil do katalógu a stiahnutý súbor je presne ten, ktorý uviedol.",
+        catalogUnreachable: "Vitruvian sa nedokázal spojiť s katalógom. Skontrolujte pripojenie a skúste to znova.",
+        catalogNotOurs: "Tento zoznam nástrojov nepodpísal VitruvianSoftware, preto ho Vitruvian nepoužije.",
+        downloadMismatch: "Stiahnutý súbor nie je ten, ktorý uvádza katalóg, preto sa nič nenainštalovalo.",
+        downloadNotTheTool: "Stiahnutý súbor nie je nástroj, za ktorý ho katalóg vydáva, preto sa nič nenainštalovalo.",
+        installRefusedFormat: "Nástroj „%@“ sa nenainštaloval")
 
     package static let de = ExternalToolStrings(
         sectionTitle: "Werkzeuge von außen",
@@ -532,7 +652,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Sein Programm ließ sich nicht beenden, daher hat Vitruvian nicht gelöscht, was das Werkzeug gespeichert hat. Es liegt in diesem Ordner:",
         removeUndeletedTitleFormat: "Einige Dateien von „%@“ konnten nicht gelöscht werden",
         removeUndeletedMessage: "Das Werkzeug ist entfernt, aber Vitruvian konnte nicht alle seine Dateien löschen. Was übrig ist, liegt hier:",
-        stoppedFormat: "„%@“ funktioniert nicht mehr")
+        stoppedFormat: "„%@“ funktioniert nicht mehr",
+        browseButton: "Werkzeuge durchsuchen…",
+        catalogTitle: "Der Vitruvian-Katalog",
+        catalogEmpty: "Im Katalog sind noch keine Werkzeuge.",
+        installButton: "Installieren",
+        installedLabel: "Installiert",
+        updateAvailable: "Aktualisierung verfügbar",
+        updateNow: "Aktualisieren",
+        agreeCatalog: "Aus dem Vitruvian-Katalog: VitruvianSoftware hat dieses Werkzeug aufgenommen, und der Download ist genau der aufgeführte.",
+        catalogUnreachable: "Vitruvian konnte den Katalog nicht erreichen. Prüfe deine Verbindung und versuche es erneut.",
+        catalogNotOurs: "Diese Werkzeugliste ist nicht von VitruvianSoftware signiert, darum verwendet Vitruvian sie nicht.",
+        downloadMismatch: "Der Download ist nicht der, den der Katalog aufführt, darum wurde nichts installiert.",
+        downloadNotTheTool: "Der Download ist nicht das Werkzeug, das der Katalog angibt, darum wurde nichts installiert.",
+        installRefusedFormat: "„%@“ wurde nicht installiert")
 
     package static let fr = ExternalToolStrings(
         sectionTitle: "Outils externes",
@@ -580,7 +713,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Son programme ne s’est pas arrêté, donc Vitruvian n’a pas effacé ce que l’outil a enregistré. Cela se trouve dans ce dossier\u{00A0}:",
         removeUndeletedTitleFormat: "Certains fichiers de «\u{00A0}%@\u{00A0}» n’ont pas pu être effacés",
         removeUndeletedMessage: "L’outil est supprimé, mais Vitruvian n’a pas pu effacer tous ses fichiers. Ce qui reste se trouve ici\u{00A0}:",
-        stoppedFormat: "«\u{00A0}%@\u{00A0}» a cessé de fonctionner")
+        stoppedFormat: "«\u{00A0}%@\u{00A0}» a cessé de fonctionner",
+        browseButton: "Parcourir les outils…",
+        catalogTitle: "Le catalogue Vitruvian",
+        catalogEmpty: "Le catalogue ne contient encore aucun outil.",
+        installButton: "Installer",
+        installedLabel: "Installé",
+        updateAvailable: "Mise à jour disponible",
+        updateNow: "Mettre à jour",
+        agreeCatalog: "Du catalogue Vitruvian\u{00A0}: VitruvianSoftware a répertorié cet outil, et le téléchargement est exactement celui qui est répertorié.",
+        catalogUnreachable: "Vitruvian n’a pas pu joindre le catalogue. Vérifiez votre connexion et réessayez.",
+        catalogNotOurs: "Cette liste d’outils n’est pas signée par VitruvianSoftware, donc Vitruvian ne l’utilisera pas.",
+        downloadMismatch: "Le téléchargement n’est pas celui que le catalogue indique, donc rien n’a été installé.",
+        downloadNotTheTool: "Le téléchargement n’est pas l’outil que le catalogue annonce, donc rien n’a été installé.",
+        installRefusedFormat: "«\u{00A0}%@\u{00A0}» n’a pas été installé")
 
     package static let it = ExternalToolStrings(
         sectionTitle: "Strumenti esterni",
@@ -628,7 +774,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Il suo programma non si è fermato, quindi Vitruvian non ha eliminato ciò che lo strumento ha salvato. Si trova in questa cartella:",
         removeUndeletedTitleFormat: "Non è stato possibile eliminare alcuni file di “%@”",
         removeUndeletedMessage: "Lo strumento è stato rimosso, ma Vitruvian non è riuscito a eliminare tutti i suoi file. Ciò che resta si trova qui:",
-        stoppedFormat: "“%@” ha smesso di funzionare")
+        stoppedFormat: "“%@” ha smesso di funzionare",
+        browseButton: "Sfoglia strumenti…",
+        catalogTitle: "Il catalogo di Vitruvian",
+        catalogEmpty: "Non ci sono ancora strumenti nel catalogo.",
+        installButton: "Installa",
+        installedLabel: "Installato",
+        updateAvailable: "Aggiornamento disponibile",
+        updateNow: "Aggiorna",
+        agreeCatalog: "Dal catalogo di Vitruvian: VitruvianSoftware ha inserito questo strumento, e il download è esattamente quello indicato.",
+        catalogUnreachable: "Vitruvian non è riuscito a raggiungere il catalogo. Controlla la connessione e riprova.",
+        catalogNotOurs: "Questo elenco di strumenti non è firmato da VitruvianSoftware, quindi Vitruvian non lo userà.",
+        downloadMismatch: "Il download non è quello indicato nel catalogo, quindi non è stato installato nulla.",
+        downloadNotTheTool: "Il download non è lo strumento che il catalogo dichiara, quindi non è stato installato nulla.",
+        installRefusedFormat: "“%@” non è stato installato")
 
     package static let ja = ExternalToolStrings(
         sectionTitle: "外部ツール",
@@ -676,7 +835,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "プログラムが停止しなかったため、Vitruvianはツールが保存したデータを削除しませんでした。データは次のフォルダにあります:",
         removeUndeletedTitleFormat: "「%@」の一部のファイルを削除できませんでした",
         removeUndeletedMessage: "ツールは削除されましたが、Vitruvianはそのファイルをすべて削除することはできませんでした。残っているものは次の場所にあります:",
-        stoppedFormat: "「%@」が動作を停止しました")
+        stoppedFormat: "「%@」が動作を停止しました",
+        browseButton: "ツールを参照…",
+        catalogTitle: "Vitruvianカタログ",
+        catalogEmpty: "カタログにはまだツールがありません。",
+        installButton: "インストール",
+        installedLabel: "インストール済み",
+        updateAvailable: "アップデートがあります",
+        updateNow: "アップデート",
+        agreeCatalog: "Vitruvianカタログから：VitruvianSoftwareがこのツールを掲載しており、ダウンロードしたファイルは掲載されたものと完全に一致しています。",
+        catalogUnreachable: "Vitruvianはカタログに接続できませんでした。接続を確認して、もう一度お試しください。",
+        catalogNotOurs: "このツールの一覧はVitruvianSoftwareによって署名されていないため、Vitruvianは使用しません。",
+        downloadMismatch: "ダウンロードしたファイルがカタログに掲載されたものと一致しないため、何もインストールされていません。",
+        downloadNotTheTool: "ダウンロードしたファイルがカタログに記載されたツールではないため、何もインストールされていません。",
+        installRefusedFormat: "「%@」はインストールされませんでした")
 
     package static let ko = ExternalToolStrings(
         sectionTitle: "외부 도구",
@@ -724,7 +896,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "프로그램이 멈추지 않아 Vitruvian이 도구가 저장한 내용을 삭제하지 않았습니다. 저장한 내용은 다음 폴더에 있습니다:",
         removeUndeletedTitleFormat: "‘%@’의 일부 파일을 삭제하지 못했습니다",
         removeUndeletedMessage: "도구는 제거되었지만 Vitruvian이 도구의 파일을 모두 삭제하지는 못했습니다. 남은 파일은 다음 위치에 있습니다:",
-        stoppedFormat: "‘%@’의 작동이 중지되었습니다")
+        stoppedFormat: "‘%@’의 작동이 중지되었습니다",
+        browseButton: "도구 둘러보기…",
+        catalogTitle: "Vitruvian 카탈로그",
+        catalogEmpty: "카탈로그에 아직 도구가 없습니다.",
+        installButton: "설치",
+        installedLabel: "설치됨",
+        updateAvailable: "업데이트 있음",
+        updateNow: "업데이트",
+        agreeCatalog: "Vitruvian 카탈로그에서: VitruvianSoftware가 이 도구를 등록했으며, 다운로드한 파일은 등록된 파일과 정확히 같습니다.",
+        catalogUnreachable: "Vitruvian이 카탈로그에 연결하지 못했습니다. 연결을 확인하고 다시 시도하세요.",
+        catalogNotOurs: "이 도구 목록은 VitruvianSoftware가 서명하지 않았으므로 Vitruvian은 사용하지 않습니다.",
+        downloadMismatch: "다운로드한 파일이 카탈로그에 등록된 파일과 달라 아무것도 설치되지 않았습니다.",
+        downloadNotTheTool: "다운로드한 파일이 카탈로그에 적힌 도구가 아니어서 아무것도 설치되지 않았습니다.",
+        installRefusedFormat: "‘%@’이(가) 설치되지 않았습니다")
 
     package static let uk = ExternalToolStrings(
         sectionTitle: "Сторонні інструменти",
@@ -772,7 +957,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "Його програма не завершилася, тому Vitruvian не видалив збережені інструментом дані. Вони в цій папці:",
         removeUndeletedTitleFormat: "Деякі файли «%@» не вдалося видалити",
         removeUndeletedMessage: "Інструмент вилучено, але Vitruvian не зміг видалити всі його файли. Те, що залишилося, міститься тут:",
-        stoppedFormat: "«%@» перестав працювати")
+        stoppedFormat: "«%@» перестав працювати",
+        browseButton: "Огляд інструментів…",
+        catalogTitle: "Каталог Vitruvian",
+        catalogEmpty: "У каталозі ще немає інструментів.",
+        installButton: "Встановити",
+        installedLabel: "Встановлено",
+        updateAvailable: "Доступне оновлення",
+        updateNow: "Оновити",
+        agreeCatalog: "З каталогу Vitruvian: VitruvianSoftware додала цей інструмент до каталогу, і завантажений файл точно той, що вказаний у каталозі.",
+        catalogUnreachable: "Vitruvian не вдалося зв’язатися з каталогом. Перевірте підключення та спробуйте ще раз.",
+        catalogNotOurs: "Цей список інструментів не підписано VitruvianSoftware, тому Vitruvian не використовуватиме його.",
+        downloadMismatch: "Завантажений файл не той, що вказаний у каталозі, тому нічого не встановлено.",
+        downloadNotTheTool: "Завантажений файл не є інструментом, указаним у каталозі, тому нічого не встановлено.",
+        installRefusedFormat: "Інструмент «%@» не встановлено")
 
     package static let zhHans = ExternalToolStrings(
         sectionTitle: "外部工具",
@@ -820,7 +1018,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "它的程序没有停止，所以 Vitruvian 没有删除工具保存的内容。这些内容在此文件夹中：",
         removeUndeletedTitleFormat: "“%@”的部分文件无法删除",
         removeUndeletedMessage: "工具已移除，但 Vitruvian 无法删除它的全部文件。剩下的内容在这里：",
-        stoppedFormat: "“%@”已停止工作")
+        stoppedFormat: "“%@”已停止工作",
+        browseButton: "浏览工具…",
+        catalogTitle: "Vitruvian 目录",
+        catalogEmpty: "目录中还没有工具。",
+        installButton: "安装",
+        installedLabel: "已安装",
+        updateAvailable: "有可用更新",
+        updateNow: "更新",
+        agreeCatalog: "来自 Vitruvian 目录：VitruvianSoftware 收录了此工具，且下载的文件与收录的完全一致。",
+        catalogUnreachable: "Vitruvian 无法连接到目录。请检查网络连接，然后重试。",
+        catalogNotOurs: "此工具列表未经 VitruvianSoftware 签名，因此 Vitruvian 不会使用它。",
+        downloadMismatch: "下载的文件与目录中列出的不一致，因此未安装任何内容。",
+        downloadNotTheTool: "下载的文件不是目录所说的工具，因此未安装任何内容。",
+        installRefusedFormat: "未安装“%@”")
 
     package static let zhTW = ExternalToolStrings(
         sectionTitle: "外部工具",
@@ -868,7 +1079,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "它的程式沒有停止，所以 Vitruvian 沒有刪除工具儲存的內容。這些內容在此檔案夾中：",
         removeUndeletedTitleFormat: "「%@」的部分檔案無法刪除",
         removeUndeletedMessage: "工具已移除，但 Vitruvian 無法刪除它的全部檔案。剩下的內容在這裡：",
-        stoppedFormat: "「%@」已停止運作")
+        stoppedFormat: "「%@」已停止運作",
+        browseButton: "瀏覽工具…",
+        catalogTitle: "Vitruvian 目錄",
+        catalogEmpty: "目錄中還沒有工具。",
+        installButton: "安裝",
+        installedLabel: "已安裝",
+        updateAvailable: "有可用的更新",
+        updateNow: "更新",
+        agreeCatalog: "來自 Vitruvian 目錄：VitruvianSoftware 收錄了此工具，且下載的檔案與收錄的完全一致。",
+        catalogUnreachable: "Vitruvian 無法連線到目錄。請檢查網路連線，然後再試一次。",
+        catalogNotOurs: "此工具列表未經 VitruvianSoftware 簽署，因此 Vitruvian 不會使用它。",
+        downloadMismatch: "下載的檔案與目錄中列出的不一致，因此未安裝任何內容。",
+        downloadNotTheTool: "下載的檔案不是目錄所說的工具，因此未安裝任何內容。",
+        installRefusedFormat: "未安裝「%@」")
 
     package static let zhHK = ExternalToolStrings(
         sectionTitle: "外部工具",
@@ -916,7 +1140,20 @@ extension ExternalToolStrings {
         removeKeptMessage: "它的程式沒有停止，所以 Vitruvian 沒有刪除工具儲存的內容。這些內容在此資料夾中：",
         removeUndeletedTitleFormat: "「%@」的部分檔案無法刪除",
         removeUndeletedMessage: "工具已移除，但 Vitruvian 無法刪除它的全部檔案。剩下的內容在這裡：",
-        stoppedFormat: "「%@」已停止運作")
+        stoppedFormat: "「%@」已停止運作",
+        browseButton: "瀏覽工具…",
+        catalogTitle: "Vitruvian 目錄",
+        catalogEmpty: "目錄中仍未有工具。",
+        installButton: "安裝",
+        installedLabel: "已安裝",
+        updateAvailable: "有可用的更新",
+        updateNow: "更新",
+        agreeCatalog: "來自 Vitruvian 目錄：VitruvianSoftware 收錄了此工具，而下載的檔案與收錄的完全相同。",
+        catalogUnreachable: "Vitruvian 無法連接到目錄。請檢查網絡連線，然後再試一次。",
+        catalogNotOurs: "此工具列表未經 VitruvianSoftware 簽署，因此 Vitruvian 不會使用它。",
+        downloadMismatch: "下載的檔案與目錄中列出的不相符，因此未安裝任何內容。",
+        downloadNotTheTool: "下載的檔案不是目錄所指的工具，因此未安裝任何內容。",
+        installRefusedFormat: "未安裝「%@」")
 }
 
 extension FeatureStrings {

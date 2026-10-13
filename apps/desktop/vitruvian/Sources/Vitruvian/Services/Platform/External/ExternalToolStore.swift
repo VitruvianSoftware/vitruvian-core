@@ -310,7 +310,10 @@ package final class ExternalToolStore {
     /// folder the person picked and says what adding it would mean. Nothing
     /// is copied, nothing is run and nothing is saved. The second step is
     /// `add`, and it takes the person's consent to what this returns.
-    package func offer(from picked: URL) -> Result<ToolOffer, Refusal> {
+    ///
+    /// `catalogue` is the entry a folder the catalog's installer unpacked
+    /// came from; nil for a folder the person picked.
+    package func offer(from picked: URL, catalogue: CatalogueOrigin? = nil) -> Result<ToolOffer, Refusal> {
         // A picked folder that is a link is followed first, so that what is
         // read, shown and copied is the folder, never the link to it.
         let folder = picked.resolvingSymlinksInPath().standardizedFileURL
@@ -329,7 +332,8 @@ package final class ExternalToolStore {
             return .failure(.tooBig(bytes: most.bytes, items: most.items))
         }
         let before = records.first { $0.id == tool.manifest.id.rawValue }?.agreement
-        return .success(ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint, replaces: before))
+        return .success(ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint, replaces: before,
+                                  catalogue: catalogue))
     }
 
     /// The second step: the person agreed to an offer, so the tool is
@@ -384,14 +388,19 @@ package final class ExternalToolStore {
         case .failure(let refusal): return failed(.manifest(refusal))
         }
 
+        // A tool from the catalog came from its download, not from the
+        // installer's folder, which is gone once the sheet closes.
         let agreement = ToolAgreement(date: consent.date, name: tool.manifest.tool.name, version: tool.version,
                                       publisher: tool.publisher, fingerprint: offer.fingerprint,
-                                      source: offer.folder.path)
+                                      source: offer.catalogue?.download ?? offer.folder.path)
         var next = records
         if let known {
             next[known].agreement = agreement
+            // Updated from a folder, a tool from the catalog is one added
+            // by hand from then on, and no longer compared with the catalog.
+            next[known].catalogue = offer.catalogue
         } else {
-            next.append(ToolRecord(id: id.rawValue, isOn: true, agreement: agreement))
+            next.append(ToolRecord(id: id.rawValue, isOn: true, agreement: agreement, catalogue: offer.catalogue))
         }
         guard save(next) else { return failed(.notRemembered) }
         records = next
