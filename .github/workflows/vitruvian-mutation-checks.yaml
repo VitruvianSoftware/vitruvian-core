@@ -25,9 +25,12 @@ name: Vitruvian Mutation Checks
 # that still passes with its regression in place is too weak to rely on
 # (REFACTOR.md step 7).
 #
-# Weekly, not per PR: each of its 56 mutations rebuilds a module and reruns a
-# suite on macOS. NOT a required check: it gates nothing, and a red run files
-# (or refreshes) one tracking issue.
+# Weekly, not per PR: each of its mutations (219 on 2026-10-13) rebuilds a
+# module and reruns a suite on macOS. NOT a required check: it gates nothing,
+# and a red run files (or refreshes) one tracking issue.
+#
+# What does run per PR is //apps/desktop/vitruvian:mutation_fixtures_test, which
+# only reads: every mutation still quotes its source exactly.
 
 on:
   schedule:

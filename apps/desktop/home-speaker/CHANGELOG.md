@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.13.0...home-speaker-v1.13.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **home-speaker:** a release ships its files, or the run fails ([#3230](https://github.com/VitruvianSoftware/vitruvian-core/issues/3230)) ([40fba15](https://github.com/VitruvianSoftware/vitruvian-core/commit/40fba155ab0ab25d5fc7450d1f33148aab287f3b))
+
 ## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.12.0...home-speaker-v1.13.0) (2026-10-13)
 
 
