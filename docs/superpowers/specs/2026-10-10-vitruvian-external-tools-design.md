@@ -683,7 +683,7 @@ is in `packages/vitruvian-sdk` but one check in the app and its tests.
 | The command-line tool: `run` | Met in tests. Control-C in a real terminal not checked: by hand | `DeskTests` and `RunTests`, 20 of the 38: a command, each refusal, a tool that hangs, floods, dies, will not leave, or speaks out of turn, and an interrupt sent with a signal, after which the tool's process is gone and its folder deleted. `testTheCommandCanReachNothingOfThePersons` holds that the command's sources name no pasteboard, workspace, sound, script or event API. Each test that starts a process was run ten times in a row: ten passes each. By-hand check 3 is the key itself. |
 | The three samples | Met in tests. In the app, not checked: by hand | `samples_test` and `swift_samples_test`: every sample's manifest against the schema, and each sample through the conformance script. For `front-window` the test printed `a command: showTitle: ran`: the Mac's test runner has Accessibility. Its refusal without Accessibility was not seen, and the title it read was not looked at. No sample has been added to the app: by-hand checks 7 to 12 and 19 to 21. |
 | The documentation | Met for its examples. The prose is not checked | `packages/vitruvian-sdk/docs/writing-a-tool.md`. `guide_test` checks each of its 29 fenced blocks: 17 of messages and 1 manifest against the schemas, 4 pieces of code against the sample each is taken from, 5 of commands against the verbs, flags and targets that exist, 2 of the command's own words against its source. No block is unchecked. Six mistakes planted one at a time were each caught with the block's line, and each was undone. The guide's first tool was followed step by step with the built command, in a folder that was then removed. The numbers in its table of limits were read against `ToolLimits`, not tested. |
-| The by-hand checks | Done in part on 2026-10-12 | The list below, and the table of results under its first paragraph. Checks 21, 29 and 32 were not done. |
+| The by-hand checks | Done on 2026-10-12, but for two | The list below, and the table of results under its first paragraph. Check 32 cannot be done without an administrator, and check 29 waits for a real update that resets permissions. |
 | A person sees no change | Met in tests, not by hand | `platform` is unchanged at 766 checks and a full run reports `TESTS OK (49 suites)`; `selftest` passes. The app has no new text. Under the app's `Sources/` this stage changed one comment and one check: a program must be a file. |
 
 Where stage D differs from the sections above it, and from its own plan:
@@ -811,9 +811,10 @@ by hand of 2026-10-12, which were run on the released app (3.41.0, 3.41.2 and
    Quick panel, the radial menu and a recorded shortcut.
 2. *A second sample reads the front window's title with no prompt of its
    own.* Met, but for the refusal. By-hand checks 20 and 38: `front-window`
-   showed the title of a Finder window, with no prompt. Check 21, what it
-   says with Accessibility switched off, and check 29, after a later update,
-   are a person's and have not been done.
+   showed the title of a Finder window, with no prompt. Check 21, with
+   Accessibility switched off by the person, passed on 3.42.2: no title and
+   no prompt, and the title came back when it was switched on again. What
+   check 29 adds, a real update that resets permissions, has not happened.
 3. *Killing, hanging or flooding a tool leaves the app responsive, and the
    person is told once.* Met for killing, by hand (checks 15 and 16: told
    once, started again, then "Stopped working" and Start Again). Hanging and
@@ -857,20 +858,20 @@ history. Nothing was added to the app that was not removed again.
 | 11 | 3.42.0 | Pass: the command ran from the Quick panel's tile, from a slice of the radial menu, and from a recorded shortcut (check 35). |
 | 13, 14, 15, 16, 17, 18, 19 | 3.41.0 | Pass. |
 | 20 | 3.41.0, then 3.42.0 | Pass. On 3.42.0 by a recorded shortcut with a Finder window in front: the message was that window's title. No prompt. |
-| 21 | | Not done. It needs Accessibility switched off, a security setting only the person changes. |
+| 21 | 3.42.2 | Pass, with the person switching Accessibility off and on. With it off, the `front-window` command showed no title and no prompt appeared for the tool or for Vitruvian. The alert sound was not heard at that moment, by a person not listening for it; a tool that refuses its own command the same way was then run with the person listening, and the alert sound played. |
 | 22, 23, 24 | 3.41.0 | Pass. |
 | 25 | 3.41.0, then 3.42.0 | Pass. Measured on 3.42.0: the sheet for a tool with 32 commands is 480 by 518 points, so it fits a display 900 points high. No small display was used. |
 | 26 | 3.41.0 | Pass. Two lines on the sheet, one in the row, plain text. |
 | 27 | 3.41.0 | Pass. Remove took about 1.1 seconds and the program was gone. |
 | 28 | 3.41.0, 3.41.2, 3.42.0 | Pass after each sitting. |
-| 29 | | Not done. It needs a later update and Accessibility granted again by the person. |
+| 29 | 3.42.2 | The part that can be done in a sitting passed: with Accessibility switched back on and nothing restarted, the same command showed the front window's title again, with nothing to do for the tool. After a real update that resets permissions it has not been done. |
 | 30, 31 | 3.41.2 | Pass. |
 | 32 | | Cannot be done without an administrator. It needs a program the app may not signal, and a person's own program always dies when killed: one that suspended its whole task was tried on macOS 27.0, and the kill signal ended it at once. Only a program of another user or of root would do. The alert is shown by tests of its words and by a stand-in. |
 | 33 | 3.41.2 | Pass. |
 | 34 | 3.41.2, then 3.42.0 | Pass in the island's Tools tab: the tile is dimmed, a click and its digit do nothing, and the command bar has no row. On 3.42.0, in edit mode ("Customize tools") the tile is not dimmed and has its hide button like the others, and it is dimmed again on leaving. Dragging it, the arrows with Return, and light appearance were not done. |
 | 35, 36, 37, 38, 39 | 3.41.2 | Pass. Check 38 was run again on 3.42.0 as check 20. |
 | 40 | 3.42.2 | Pass. The detail of a tool whose first setting is a switch opened with the keyboard on Close; Space closed it and the switch did not change. Tab went to the switch and Space then turned it on; a text setting still saved on Return. |
-| A stale pick | | Not done. That the command bar and the wheel play the alert sound when a command that just stopped being runnable is picked can only be heard, and nobody listened. Tests hold that the refusal path runs. |
+| A stale pick | 3.42.2 | Pass, heard by the person: with the command bar open on a tool's command, the tool was switched off and Return pressed. The bar closed, nothing ran, and the alert sound played. The first try was not heard and the second was. The wheel was not tried. |
 | Light appearance | 3.42.0 | The card, the agreement sheet, a tool's detail and the removal question were looked at once in light appearance. Nothing was wrong. |
 
 Three older lists of checks by hand, from the plans of the tool registry and

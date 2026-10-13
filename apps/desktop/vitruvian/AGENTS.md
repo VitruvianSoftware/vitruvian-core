@@ -675,6 +675,10 @@ Before you use it:
   from the shell put a macOS prompt on the person's screen asking to let the
   terminal control Finder. Open a folder with `open`, close a window through
   System Events, and leave that prompt to the person if it ever appears.
+- **A sound can only be heard.** The system log shows no alert sound and the
+  power assertions cannot tell one from music that is already playing. Ask the
+  person to listen, say when, and play a plain `osascript -e beep` first so
+  both know the Mac's alert sound is audible.
 - **Never click a place on the screen by its coordinates.** A panel that had
   closed left the click to land on another app's window.
 

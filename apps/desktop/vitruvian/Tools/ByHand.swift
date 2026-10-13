@@ -361,16 +361,20 @@ func showPage(_ title: String, in app: AXUIElement, step: String) {
 /// the last card, "Tools from outside", is not there to find until it is.
 func showToolsCard(_ app: AXUIElement, step: String) -> [Control] {
     showPage(Words.featuresPage, in: app, step: step)
-    for _ in 0..<2 {
+    // The page fills in as it is scrolled, and more slowly when the Settings
+    // window has only just opened: one pass once missed a card that was there.
+    for _ in 0..<5 {
+        for _ in 0..<2 {
+            pause(0.8)
+            scrollToEnd(in: app, window: Words.settingsWindow)
+        }
         pause(0.8)
-        scrollToEnd(in: app, window: Words.settingsWindow)
+        let all = controls(of: app, window: Words.settingsWindow)
+        if let card = all.firstIndex(where: { $0.value == Words.toolsCard || $0.title == Words.toolsCard }) {
+            return Array(all[card...])
+        }
     }
-    pause(0.8)
-    let all = controls(of: app, window: Words.settingsWindow)
-    guard let card = all.firstIndex(where: { $0.value == Words.toolsCard || $0.title == Words.toolsCard }) else {
-        stop(.notFound, "\(step): the Features page has no \"\(Words.toolsCard)\" card, even scrolled to its end.")
-    }
-    return Array(all[card...])
+    stop(.notFound, "\(step): the Features page has no \"\(Words.toolsCard)\" card, even scrolled to its end five times.")
 }
 
 /// The first words of the sheet over the Settings window, or nil with none.
