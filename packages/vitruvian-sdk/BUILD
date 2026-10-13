@@ -591,7 +591,11 @@ py_test(
     data = [
         ".release-please-manifest.json",
         "Sources/VitruvianToolCLI/Words.swift",
+        "kits/python/pyproject.toml",
         "release-please-config.json",
+        "samples/hello-python-kit/requirements.txt",
+        "samples/hello-typescript/package.json",
+        "//packages/vitruvian-sdk/kits/typescript:package.json",
     ],
     main = "release_version_test.py",
 )

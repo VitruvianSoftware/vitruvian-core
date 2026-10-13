@@ -18,13 +18,16 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-"""The SDK's version is one number, kept in three files that must agree.
+"""The SDK's version is one number, kept in files that must agree.
 
     release_version_test.py
 
 release-please writes it into .release-please-manifest.json and, through the
 extra-files of release-please-config.json, into Words.swift, which is what
-`vitruvian-tool --version` prints and what `init --template swift` asks for.
+`vitruvian-tool --version` prints and what `init --template swift` asks for,
+and into the kits and the kit samples, which samples_test holds to one
+version: a release that bumps fewer than all of them fails there, after it
+has merged. This finds a missing extra-file before it merges.
 The mirror's release.yml refuses a binary that reports another version than
 the manifest; this finds the same mistake before it merges. Before the first
 release the manifest says 0.0.0, and the version is the config's
@@ -39,6 +42,17 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PATH = "packages/vitruvian-sdk"
 WORDS = "Sources/VitruvianToolCLI/Words.swift"
+# The kits and the kit samples, each with the updater release-please needs.
+KIT_PLACES = [
+    ("json", "kits/typescript/package.json", "$.version"),
+    ("toml", "kits/python/pyproject.toml", "$.project.version"),
+    (
+        "json",
+        "samples/hello-typescript/package.json",
+        "$.dependencies['@vitruviansoftware/tool-kit']",
+    ),
+    ("generic", "samples/hello-python-kit/requirements.txt", None),
+]
 
 
 def read(name):
@@ -69,6 +83,27 @@ def main():
         problems.append(
             f"{WORDS} is not in extra-files: --version would not follow a release"
         )
+    for kind, path, jsonpath in KIT_PLACES:
+        entry = next(
+            (
+                e
+                for e in package.get("extra-files", [])
+                if isinstance(e, dict) and e.get("path") == path
+            ),
+            None,
+        )
+        want = f"{kind}" + (f" at {jsonpath}" if jsonpath else "")
+        if (
+            entry is None
+            or entry.get("type") != kind
+            or (jsonpath and entry.get("jsonpath") != jsonpath)
+        ):
+            problems.append(
+                f"{path} is not in extra-files as {want}: a release would bump "
+                "Words.swift and not it, and samples_test would fail the release"
+            )
+        elif not os.path.exists(os.path.join(HERE, path)):
+            problems.append(f"extra-files names {path}, which is not there")
     if f"{PATH}/.github" not in package.get("exclude-paths", []):
         problems.append(
             f"{PATH}/.github is not in exclude-paths: a change to the mirror's CI would cut a release"
