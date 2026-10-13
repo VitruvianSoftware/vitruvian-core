@@ -164,13 +164,42 @@ def versions():
     ]
 
 
+def hermetic_node(path):
+    """The absolute path of Bazel's Node, from the `external/<repo>/...` name
+    the toolchain gives, or None if it is not there."""
+    runfiles = os.path.dirname(os.getcwd())
+    candidates = [os.path.abspath(path)]
+    if path.startswith("external/"):
+        inside = path[len("external/") :]
+        candidates.append(os.path.join(runfiles, inside))
+        if os.environ.get("RUNFILES_DIR"):
+            candidates.append(os.path.join(os.environ["RUNFILES_DIR"], inside))
+    for candidate in candidates:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def main(arguments):
     if arguments:
         problems = []
         node = os.environ.get("VITRUVIAN_NODE")
         if node:
-            folder = os.path.dirname(os.path.abspath(node))
-            os.environ["PATH"] = folder + os.pathsep + os.environ.get("PATH", "")
+            # Bazel names its Node as `external/<repo>/.../node`. In a test's
+            # runfiles that repository sits beside `_main`, the folder the test
+            # runs in, not under it; and with remote execution there is no
+            # `external` link at all. A Node that cannot be found is a failure,
+            # not a fall-through to whatever `node` the Mac has: that hid this
+            # from the Mac lane while the Linux lane had no Node at all.
+            found = hermetic_node(node)
+            if found is None:
+                problems.append(
+                    f"the hermetic Node is not where VITRUVIAN_NODE says: {node}"
+                )
+            else:
+                os.environ["PATH"] = (
+                    os.path.dirname(found) + os.pathsep + os.environ.get("PATH", "")
+                )
         for manifest in arguments:
             folder = os.path.dirname(os.path.abspath(manifest))
             with open(manifest, encoding="utf-8") as handle:
