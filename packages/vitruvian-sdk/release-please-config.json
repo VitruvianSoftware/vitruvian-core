@@ -13,7 +13,28 @@
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.9.0",
       "exclude-paths": ["packages/vitruvian-sdk/.github"],
-      "extra-files": ["Sources/VitruvianToolCLI/Words.swift"]
+      "extra-files": [
+        "Sources/VitruvianToolCLI/Words.swift",
+        {
+          "type": "json",
+          "path": "kits/typescript/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "toml",
+          "path": "kits/python/pyproject.toml",
+          "jsonpath": "$.project.version"
+        },
+        {
+          "type": "json",
+          "path": "samples/hello-typescript/package.json",
+          "jsonpath": "$.dependencies['@vitruviansoftware/tool-kit']"
+        },
+        {
+          "type": "generic",
+          "path": "samples/hello-python-kit/requirements.txt"
+        }
+      ]
     }
   }
 }

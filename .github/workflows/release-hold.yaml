@@ -90,6 +90,7 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
+      issues: write # the gate's own hold label is created if the repository lacks it
     strategy:
       # Independent per component: tabula-api's red development must never hold
       # tabula-web's release PR. fail-fast off so one component's API hiccup

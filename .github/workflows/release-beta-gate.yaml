@@ -80,6 +80,7 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
+      issues: write # the gate's own hold label is created if the repository lacks it
     steps:
       # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
       # `uses: ./...` without the repo already checked out onto the runner.

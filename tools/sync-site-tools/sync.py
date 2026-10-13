@@ -55,6 +55,8 @@ ON_SITE = {
     "protocol/README.md": "/tools/protocol/",
     "samples/hello-swift": "/tools/examples/swift/",
     "samples/hello-python": "/tools/examples/python/",
+    "samples/hello-typescript": "/tools/examples/typescript/",
+    "samples/hello-python-kit": "/tools/examples/python-kit/",
 }
 
 FENCE = re.compile(r"^(\s*)(```+)(.*)$")
@@ -209,6 +211,23 @@ EXAMPLES = [
     ),
 ]
 
+# The kit samples' examples are pages of their own: each sample's README.md,
+# which guide_test holds to the guide's rules, copied as the guide is.
+KIT_EXAMPLES = [
+    (
+        "typescript",
+        "samples/hello-typescript",
+        "A tool written with the TypeScript kit: plain JavaScript that Node "
+        "runs as it is, which says hello and counts with a preference.",
+    ),
+    (
+        "python-kit",
+        "samples/hello-python-kit",
+        "A tool written with the Python kit, installed into the tool's own "
+        "folder, which says hello and counts with a preference.",
+    ),
+]
+
 
 def example(base, language, title, folder, files, description, how):
     parts = [
@@ -263,6 +282,10 @@ def pages(base):
     }
     for language, *rest in EXAMPLES:
         found[f"tools/examples/{language}.md"] = example(base, language, *rest)
+    for language, folder, description in KIT_EXAMPLES:
+        found[f"tools/examples/{language}.md"], _ = from_markdown(
+            base, f"{folder}/README.md", f"/tools/examples/{language}/", description
+        )
     return found
 
 

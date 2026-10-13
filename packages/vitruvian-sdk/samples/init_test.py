@@ -22,18 +22,25 @@
     init_test.py <the vitruvian-tool program>
 
 The command is run as a person would run it. The tool it writes from the
-Python template must pass `validate`, pass the conformance script, and run
-under `run`. The Swift template is written and looked at here, not built:
+Python template, the Python kit template and the TypeScript template must pass
+`validate`, pass the conformance script, and run under `run`. The Swift
+template is written and looked at here, not built:
 `swift_template_test.py` builds it, against a checkout given with `--sdk`.
 Without `--sdk` it must depend on the published SDK at the version the
 command reports; that it resolves is checked after each release, in the
 mirror's release.yml, because it needs the network. Every program started
 here has thirty seconds at most.
+
+The TypeScript tool is started by its own bin/tool, which looks for `node` on
+the PATH: the folder of VITRUVIAN_NODE is put at its front. Its kit is the one
+Bazel built, VITRUVIAN_TOOL_KIT_TYPESCRIPT, copied where `npm install` would
+put it.
 """
 
 import contextlib
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -53,6 +60,11 @@ def main(arguments):
     environment["PATH"] = (
         os.path.dirname(sys.executable) + os.pathsep + environment.get("PATH", "")
     )
+    if os.environ.get("VITRUVIAN_NODE"):
+        node = os.path.dirname(os.path.abspath(os.environ["VITRUVIAN_NODE"]))
+        environment["PATH"] = node + os.pathsep + environment["PATH"]
+        # The conformance script starts the tool from this process.
+        os.environ["PATH"] = node + os.pathsep + os.environ.get("PATH", "")
 
     def tool(*words):
         done = subprocess.run(
@@ -148,6 +160,53 @@ def main(arguments):
             problems.append(
                 f"init without --sdk does not depend on the published SDK {version}:\n{printed}\n{text}"
             )
+
+        # The kit templates. The Python kit one from this checkout, with
+        # --sdk, which puts the kit in lib/ as pip would; the TypeScript one
+        # as from npm, with the kit Bazel built put where `npm install` puts
+        # it. Neither needs the network.
+        kits = [
+            ("python-kit", ["--sdk", PACKAGE], None, ["--via", sys.executable]),
+            ("typescript", [], os.environ.get("VITRUVIAN_TOOL_KIT_TYPESCRIPT"), []),
+        ]
+        for template, extra, kit, via in kits:
+            folder = os.path.join(root, template)
+            status, printed = tool(
+                "init", folder, *named, "--template", template, *extra
+            )
+            if status != 0:
+                problems.append(
+                    f"init did not write the {template} template:\n{printed}"
+                )
+                continue
+            if kit:
+                shutil.copytree(
+                    kit,
+                    os.path.join(
+                        folder, "node_modules", "@vitruviansoftware", "tool-kit"
+                    ),
+                )
+            status, printed = tool("validate", folder)
+            if status != 0:
+                problems.append(
+                    f"validate does not pass the {template} template:\n{printed}"
+                )
+            said = io.StringIO()
+            with contextlib.redirect_stdout(said):
+                status = conformance.main([folder, *via, "--expect-refusal"])
+            if status != 0:
+                problems.append(
+                    f"the {template} template does not pass conformance:\n{said.getvalue()}"
+                )
+            status, printed = tool(
+                "run", folder, "--command", "hello", "--command", "count"
+            )
+            if (
+                status != 0
+                or "ran      count" not in printed
+                or "run: OK" not in printed
+            ):
+                problems.append(f"the {template} template does not run:\n{printed}")
 
     for problem in problems:
         print(problem, file=sys.stderr)

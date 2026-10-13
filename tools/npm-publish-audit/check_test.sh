@@ -110,6 +110,23 @@ else
 fi
 mk "pulumi/library/ts/packages/b" "@v/b" "0.3.0" false "https://github.com/o/r.git" "ts/packages/b"
 
+echo "--- the SDK's TypeScript kit is audited, with its folder in the mirror ---"
+mk "vitruvian-sdk/kits/typescript" "@v/kit" "0.10.0" false "https://github.com/o/r.git" "kits/typescript"
+r="$(run '@v/a=1.2.0,@v/b=0.3.0,@v/mcp=1.9.0,@v/kit=0.10.0')"
+if [ "${r%%|*}" = "0" ] && printf '%s' "${r#*|}" | grep -q 'all 4 published'; then
+    pass "the kit is found and counted"
+else
+    fail "expected rc=0 and 4 packages; got rc=${r%%|*} out=${r#*|}"
+fi
+mk "vitruvian-sdk/kits/typescript" "@v/kit" "0.10.0" false "https://github.com/o/r.git" "packages/vitruvian-sdk/kits/typescript"
+r="$(run '@v/a=1.2.0,@v/b=0.3.0,@v/mcp=1.9.0,@v/kit=0.10.0')"
+if [ "${r%%|*}" = "1" ] && printf '%s' "${r#*|}" | grep -q 'want=kits/typescript'; then
+    pass "a kit whose repository.directory is the monorepo's path is caught"
+else
+    fail "expected rc=1 and want=kits/typescript; got rc=${r%%|*}"
+fi
+rm -rf "$work/repo/vitruvian-sdk"
+
 echo
 if [ "$fail_n" -gt 0 ]; then
     echo "FAILED: $fail_n"

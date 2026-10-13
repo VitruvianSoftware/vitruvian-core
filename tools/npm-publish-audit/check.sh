@@ -53,6 +53,9 @@ search_dirs=()
 [ -d pulumi/library/ts/packages ] && search_dirs+=(pulumi/library/ts/packages)
 [ -d apps/mcp/slack ] && search_dirs+=(apps/mcp/slack)
 [ -d mcp-slack ] && search_dirs+=(mcp-slack)
+# The Vitruvian SDK's TypeScript kit, published from the vitruvian-sdk mirror.
+[ -d packages/vitruvian-sdk/kits/typescript ] && search_dirs+=(packages/vitruvian-sdk/kits/typescript)
+[ -d vitruvian-sdk/kits/typescript ] && search_dirs+=(vitruvian-sdk/kits/typescript)
 manifests=""
 if [ ${#search_dirs[@]} -gt 0 ]; then
     manifests="$(find "${search_dirs[@]}" -maxdepth 2 -name package.json \
@@ -127,6 +130,8 @@ EOF2
     checked=$((checked + 1))
     case "$mf" in
         packages/pulumi/library/ts/packages/*|pulumi/library/ts/packages/*) check_provenance "$mf" "ts/packages/$(basename "$(dirname "$mf")")" ;;
+        # The mirror's root is packages/vitruvian-sdk, so the kit is kits/typescript there.
+        packages/vitruvian-sdk/kits/typescript/*|vitruvian-sdk/kits/typescript/*) check_provenance "$mf" "kits/typescript" ;;
         *) check_provenance "$mf" "" ;;
     esac
     live="$("$NPM" view "$name" dist-tags.latest 2>/dev/null || true)"

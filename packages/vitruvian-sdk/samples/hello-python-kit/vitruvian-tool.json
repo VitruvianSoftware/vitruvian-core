@@ -1,0 +1,37 @@
+{
+  "id": "dev.vitruvian.samples.hello-python-kit",
+  "name": { "en": "Hello, in Python, with the kit" },
+  "description": { "en": "Says hello, and counts one more each time." },
+  "version": "0.1.0",
+  "protocol": "1",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "terminal",
+  "uses": ["notify", "storage"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "hello",
+        "title": { "en": "Say hello from Python" },
+        "icon": "hand.wave",
+        "surfaces": ["commandBar", "radial", "quickPanel", "shortcut"]
+      },
+      {
+        "id": "count",
+        "title": { "en": "Count one more" },
+        "icon": "number",
+        "surfaces": ["commandBar"]
+      }
+    ]
+  },
+  "preferences": [
+    {
+      "id": "count",
+      "title": { "en": "Counted so far" },
+      "type": "integer",
+      "default": 0
+    }
+  ],
+  "activation": ["onCommand"],
+  "runtime": { "kind": "external", "exec": "bin/tool.py" }
+}

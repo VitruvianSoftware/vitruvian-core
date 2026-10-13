@@ -31,7 +31,8 @@ once for each kind of manifest. It runs the release notes step the same way,
 with and without a CHANGELOG.md, since a first release can come before the
 file does. It also holds what limits the damage of a
 mistake: the workflow may only read; only the release job may write, and
-only contents; no checkout keeps its credentials; every action is pinned to
+only contents, and only the two jobs that publish a kit may ask for an
+identity token; no checkout keeps its credentials; every action is pinned to
 a commit.
 """
 
@@ -243,7 +244,13 @@ def limit_problems(name, workflow):
         writes = sorted(
             k for k, v in (job.get("permissions") or {}).items() if v == "write"
         )
-        allowed = ["contents"] if (name, job_name) == ("release.yml", "release") else []
+        allowed = {
+            ("release.yml", "release"): ["contents"],
+            # The kits publish by trusted publishing: the registry takes the
+            # job's identity token in place of a secret, and nothing else.
+            ("release.yml", "publish-npm-kit"): ["id-token"],
+            ("release.yml", "publish-pypi-kit"): ["id-token"],
+        }.get((name, job_name), [])
         if writes != allowed:
             problems.append(f"{name}: job {job_name} may write {writes}, not {allowed}")
         for step in job["steps"]:

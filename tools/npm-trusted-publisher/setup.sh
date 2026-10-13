@@ -276,6 +276,7 @@ mirror_for() {
     case "$1" in
         packages/pulumi/library/ts/packages/*|pulumi/library/ts/packages/*) echo "VitruvianSoftware/pulumi-library" ;;
         apps/mcp/slack/*|mcp-slack/*) echo "VitruvianSoftware/mcp-slack" ;;
+        packages/vitruvian-sdk/kits/typescript/*|vitruvian-sdk/kits/typescript/*) echo "VitruvianSoftware/vitruvian-sdk" ;;
         *) echo "" ;;
     esac
 }
@@ -285,6 +286,8 @@ search_dirs=()
 [ -d pulumi/library/ts/packages ] && search_dirs+=(pulumi/library/ts/packages)
 [ -d apps/mcp/slack ] && search_dirs+=(apps/mcp/slack)
 [ -d mcp-slack ] && search_dirs+=(mcp-slack)
+[ -d packages/vitruvian-sdk/kits/typescript ] && search_dirs+=(packages/vitruvian-sdk/kits/typescript)
+[ -d vitruvian-sdk/kits/typescript ] && search_dirs+=(vitruvian-sdk/kits/typescript)
 manifests=""
 if [ ${#search_dirs[@]} -gt 0 ]; then
     manifests="$(find "${search_dirs[@]}" -maxdepth 2 -name package.json \
