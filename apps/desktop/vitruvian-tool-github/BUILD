@@ -122,11 +122,31 @@ py_test(
     size = "small",
     srcs = ["version_test.py"],
     data = [
+        ".release-please-manifest.json",
         "Package.swift",
         "Sources/GitHubToolCore/Version.swift",
+        "release-please-config.json",
         "vitruvian-tool.json",
     ],
     main = "version_test.py",
+)
+
+# The mirror's own workflows (.github/workflows/, which run only in
+# VitruvianSoftware/vitruvian-tool-github): release.yml's `detect` and notes
+# steps, run as written with bash and git, and what each workflow may write.
+# Not tied to macOS. It runs bash and git on the machine, and the remote
+# execution image has no jq.
+py_test(
+    name = "mirror_workflows_test",
+    size = "small",
+    srcs = ["mirror_workflows_test.py"],
+    data = [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+    ],
+    main = "mirror_workflows_test.py",
+    tags = ["no-remote-exec"],
+    deps = ["@pip//pyyaml"],
 )
 
 pipeline_unit(
@@ -137,6 +157,7 @@ pipeline_unit(
         ":GitHubToolCoreTests",
         ":conformance_test",
         ":github-tool",
+        ":mirror_workflows_test",
         ":version_test",
     ],
     tier = "L1",

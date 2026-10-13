@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 VitruvianSoftware
+
+# The GitHub tool's own CI in its mirror, VitruvianSoftware/vitruvian-tool-github.
+# This file is written in vitruvian-core at
+# apps/desktop/vitruvian-tool-github/.github/workflows/ci.yml and reaches the
+# mirror's root with every Copybara export; it runs only there. It builds
+# against the published kit (Package.swift), as a person cloning the mirror
+# would, so a kit the mirror cannot resolve is a red run here before a
+# release.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  swift:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Which Swift
+        run: swift --version
+
+      - name: Build the tool and its tests, against the published kit
+        run: swift build --build-tests
+
+      - name: swift test
+        run: swift test --skip-build
+
+      - name: The version is one number
+        run: python3 version_test.py
+
+      # The tool as a folder, through the SDK's conformance script, taken
+      # from the kit SwiftPM resolved: the same script the monorepo runs.
+      - name: The built tool against the conformance script
+        run: |
+          bin="$(swift build --show-bin-path)"
+          folder="$RUNNER_TEMP/built/github"
+          mkdir -p "$folder/bin"
+          cp vitruvian-tool.json "$folder/"
+          cp "$bin/github-tool" "$folder/bin/tool"
+          sdk="$(find .build/checkouts -maxdepth 1 -name 'vitruvian-sdk*' -type d | head -1)"
+          test -n "$sdk"
+          HOME="$RUNNER_TEMP/home" python3 "$sdk/conformance/conformance.py" "$folder"

@@ -1,0 +1,222 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 VitruvianSoftware
+
+# Publish-on-version-bump for the vitruvian-tool-github mirror. This file is
+# written in vitruvian-core at
+# apps/desktop/vitruvian-tool-github/.github/workflows/release.yml and reaches
+# the mirror's root with every Copybara export; it runs only there.
+#
+# vitruvian-core's release-please writes the tool's version into
+# .release-please-manifest.json (and CHANGELOG.md, vitruvian-tool.json and
+# Version.swift); the export brings it here. When that version has no tag yet
+# this workflow:
+#   1. tags the exported commit vX.Y.Z;
+#   2. builds the tool for Apple silicon and Intel in one binary, checks it
+#      is the version, zips the tool's folder (vitruvian-tool.json at the top,
+#      bin/tool, LICENSE, README.md) as github-tool-X.Y.Z.zip, and attaches it
+#      with its .sha256 and the source to a GitHub release whose notes carry
+#      the size and checksum a catalog entry pins;
+#   3. downloads the asset as the app would, checks it against its checksum,
+#      unpacks it and runs vitruvian-tool validate on it.
+# A manifest of 0.0.0 means no release yet. Every other run is a no-op of a few
+# seconds. It never writes to main, and it holds no key to anything but this
+# repository's releases.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: detect
+        name: A version in the manifest with no tag yet
+        run: |
+          if [ ! -f .release-please-manifest.json ]; then
+            echo "No manifest: nothing has been released."
+            exit 0
+          fi
+          V="$(jq -r 'to_entries[0].value' .release-please-manifest.json)"
+          case "$V" in
+            "" | null | 0.0.0)
+              echo "The manifest says '${V}': no release yet."
+              exit 0
+              ;;
+          esac
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The manifest's version '$V' is not X.Y.Z."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "v$V is already released."
+            exit 0
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "New release: v$V."
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.version
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      V: ${{ needs.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Which Swift
+        run: swift --version
+
+      - name: The manifest and Version.swift say this version
+        run: |
+          python3 version_test.py
+          manifest="$(python3 -c 'import json; print(json.load(open("vitruvian-tool.json"))["version"])')"
+          if [ "$manifest" != "$V" ]; then
+            echo "::error::vitruvian-tool.json says $manifest, the release manifest says $V."
+            exit 1
+          fi
+
+      # The SwiftPM way to one binary for both architectures. The binary is
+      # signed ad hoc by the linker; nothing here signs it with an identity.
+      - name: Build the tool for Apple silicon and Intel
+        run: |
+          swift build -c release --arch arm64 --arch x86_64 --product github-tool
+          bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/github-tool"
+          archs="$(lipo -archs "$bin")"
+          for arch in arm64 x86_64; do
+            case " $archs " in
+              *" $arch "*) ;;
+              *) echo "::error::$bin is '$archs', missing $arch"; exit 1 ;;
+            esac
+          done
+          echo "BIN=$bin" >> "$GITHUB_ENV"
+
+      # The zip is the tool's folder with the manifest at its top, as the
+      # catalog's README asks: no folder of its own, no links.
+      - name: Zip the tool's folder and the source
+        run: |
+          dist="$RUNNER_TEMP/dist"
+          mkdir -p "$dist/github/bin"
+          cp vitruvian-tool.json LICENSE README.md "$dist/github/"
+          cp "$BIN" "$dist/github/bin/tool"
+          chmod 755 "$dist/github/bin/tool"
+          asset="github-tool-$V.zip"
+          (cd "$dist/github" && zip -r -X "../$asset" .)
+          source="vitruvian-tool-github-$V.tar.gz"
+          git archive --format=tar.gz --prefix="vitruvian-tool-github-$V/" -o "$dist/$source" "$GITHUB_SHA"
+          (cd "$dist" && shasum -a 256 "$asset" > "$asset.sha256" && shasum -a 256 "$source" > "$source.sha256")
+          {
+            echo "ASSET=$asset"
+            echo "ASSET_SHA256=$(cut -d' ' -f1 "$dist/$asset.sha256")"
+            echo "ASSET_SIZE=$(stat -f %z "$dist/$asset")"
+            echo "DIST=$dist"
+          } >> "$GITHUB_ENV"
+          cat "$dist"/*.sha256
+
+      - name: Write the release notes
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            echo "The GitHub tool for the Vitruvian app, version $V."
+            echo
+            echo "## Install it"
+            echo
+            echo "In Vitruvian: Settings, Features, Tools from outside, Browse Tools…, GitHub. The app checks the download against the catalog's pinned checksum and shows its agreement sheet."
+            echo
+            echo "By hand: download \`$ASSET\` below, check it, unpack it and add the folder with Add a Tool…:"
+            echo
+            echo '```sh'
+            echo "shasum -a 256 -c $ASSET.sha256"
+            echo "unzip $ASSET -d github"
+            echo '```'
+            echo
+            echo "## For the catalog entry"
+            echo
+            echo "\`size\`: $ASSET_SIZE, \`sha256\`: $ASSET_SHA256"
+            echo
+            # This version's section of CHANGELOG.md, without its heading.
+            # release-please heads a first release "## 1.0.0 (date)" and a
+            # later one "## [1.0.1](compare link) (date)". A first release can
+            # come before the file does, so a missing file or section is said
+            # plainly instead of failing the step.
+            changes=""
+            if [ -f CHANGELOG.md ]; then
+              changes=$(awk -v v="$V" '
+                /^## / {
+                  if (inside) exit
+                  h = $2; sub(/^\[/, "", h); sub(/\].*$/, "", h)
+                  if (h == v) { inside = 1; next }
+                }
+                inside { print }
+              ' CHANGELOG.md | sed 's/^###/##/')
+            fi
+            if [ -n "$(printf '%s' "$changes" | tr -d '[:space:]')" ]; then
+              printf '%s\n' "$changes"
+            else
+              echo "This release has no list of changes: CHANGELOG.md has no section for $V."
+            fi
+          } > "$notes"
+          cat "$notes"
+
+      # Made through the API with the job's token, so nothing is pushed from
+      # the checkout. Creating a tag that exists fails, which refuses a release
+      # that raced another.
+      - name: Tag v${{ env.V }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$V" -f sha="$GITHUB_SHA" >/dev/null
+          echo "tagged v$V at $GITHUB_SHA"
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$V" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "GitHub tool $V" --notes-file "$RUNNER_TEMP/notes.md" \
+            "$DIST/$ASSET" "$DIST/$ASSET.sha256" \
+            "$DIST/vitruvian-tool-github-$V.tar.gz" "$DIST/vitruvian-tool-github-$V.tar.gz.sha256"
+
+  # What the app does with the release: fetch the zip, check it, unpack it,
+  # and judge the folder, on a Mac with nothing of ours on it.
+  verify:
+    needs: [detect, release]
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      V: ${{ needs.detect.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: The download matches its checksum and validates
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release download "v$V" --repo "$GITHUB_REPOSITORY" --pattern "github-tool-$V.zip*"
+          shasum -a 256 -c "github-tool-$V.zip.sha256"
+          unzip -q "github-tool-$V.zip" -d github
+          test -f github/vitruvian-tool.json
+          test -x github/bin/tool
+          lipo -archs github/bin/tool
+          brew install VitruvianSoftware/tap/vitruvian-tool
+          vitruvian-tool validate github
