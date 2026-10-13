@@ -29,8 +29,33 @@ command or any service. That is why there is no store of tools.
 
 ## Your first tool, in ten minutes
 
-You need this repository and a Mac. Every command below is run from the
-repository's root. `vitruvian-tool` stands for:
+You need a Mac. Install the `vitruvian-tool` command with Homebrew, which
+builds it from source on your Mac:
+
+```sh
+brew install VitruvianSoftware/tap/vitruvian-tool
+vitruvian-tool --version
+```
+
+Without Homebrew, download `vitruvian-tool-<version>-macos.tar.gz` and the
+`.sha256` file beside it from the
+[releases](https://github.com/VitruvianSoftware/vitruvian-sdk/releases), and
+unpack it in the same folder:
+
+```sh
+shasum -a 256 -c vitruvian-tool-*-macos.tar.gz.sha256
+tar -xzf vitruvian-tool-*-macos.tar.gz
+xattr -d com.apple.quarantine vitruvian-tool
+```
+
+The last line is there because the program is signed ad hoc, not with an
+Apple Developer ID. macOS marks a file a browser downloaded, and will not
+open a program with that mark unless a Developer ID signed it. The line takes
+the mark off that one file. Run it only when the checksum matched. Homebrew
+needs none of this: what it builds on your Mac carries no mark.
+
+In a checkout of the vitruvian-core repository, from its root, the same
+command is:
 
 ```sh
 bazel run --config=macos-app //packages/vitruvian-sdk:vitruvian-tool --
@@ -98,7 +123,7 @@ add the service to `uses`.
 ### In Swift, with the kit
 
 ```sh
-vitruvian-tool init ~/my-swift-tool --id com.you.my-swift-tool --name "My Swift tool" --publisher "You" --template swift --sdk packages/vitruvian-sdk
+vitruvian-tool init ~/my-swift-tool --id com.you.my-swift-tool --name "My Swift tool" --publisher "You" --template swift
 ~/my-swift-tool/build.sh
 vitruvian-tool validate ~/my-swift-tool/tool
 vitruvian-tool run ~/my-swift-tool/tool
@@ -106,8 +131,10 @@ vitruvian-tool run ~/my-swift-tool/tool
 
 This writes a Swift package and, beside it, `tool/`: the folder you add to the
 app. `build.sh` builds the package and copies the program into `tool/bin/`.
-The package names the kit by the path you gave in `--sdk`, because the kit is
-published nowhere yet.
+The package depends on the published SDK,
+`https://github.com/VitruvianSoftware/vitruvian-sdk`, from the version that
+`vitruvian-tool --version` prints, and its first build fetches it. To build
+against a checkout of the SDK instead, add `--sdk` and the checkout's folder.
 
 The whole tool is one file:
 
