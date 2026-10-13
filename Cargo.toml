@@ -20,4 +20,8 @@
 
 [workspace]
 resolver = "2"
-members = []
+# The Rust in this repository: the Vitruvian SDK's Rust kit.
+# The crate universe in MODULE.bazel (@crates) is read from this workspace.
+members = [
+    "packages/vitruvian-sdk/kits/rust",
+]

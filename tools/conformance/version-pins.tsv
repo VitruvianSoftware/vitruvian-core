@@ -29,4 +29,4 @@
 #   reason        free text justification (may contain spaces; MUST be the last column)
 #
 # file                    tool  pinned_value  review_by   owner   reason
-# (no active pins — every file currently matches its canonical version)
+packages/vitruvian-sdk/go/go.mod                 go  1.22  2027-01-12  @james  the Vitruvian SDK's published Go kit: the oldest Go an author may use, held by //packages/vitruvian-sdk:go_kit_vet_test. Re-justify while the kit supports Go 1.22.

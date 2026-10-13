@@ -19,7 +19,12 @@ a pin past its `review_by`; and a registry pin that is **not documented in this 
 
 ## Current exceptions
 
-_None._ Every consumer currently matches its canonical version — there are **no active pins** in [`tools/conformance/version-pins.tsv`](../../tools/conformance/version-pins.tsv), and `bazel run //tools/conformance:check` is green with zero pins.
+### The Vitruvian SDK's Go kit: Go 1.22, not 1.26.6
+
+- **File:** `packages/vitruvian-sdk/go/go.mod`.
+- **Why:** the Go kit is published (module `github.com/VitruvianSoftware/vitruvian-sdk/go`) for other people's tools. Its `go` line is the oldest Go they may build it with, not the Go this repository builds with: on 1.26.6 every author would need 1.26.6. Bazel builds both with the canonical SDK either way.
+- **Risk:** the kit using something of Go's standard library newer than 1.22. `//packages/vitruvian-sdk:go_kit_vet_test` runs `go vet` on the kit as its own module, which refuses exactly that; Bazel's build does not see it.
+- **Removal:** when the kit raises its floor to the canonical Go, or the repository decides a published module's floor is not a pin. Re-justify at each `review_by` while the kit supports Go 1.22.
 
 > **Retired — `apps/suites/tabula/api/Dockerfile` (Node 20), removed 2026-06-25.** This was the seed exception. On review it turned out to be **vestigial**: tabula's API image is built by Bazel (`//apps/suites/tabula/api:image`, a `node_image`) whose Node version is bound to `.nvmrc` through the toolchain (`node_version_from_nvmrc`), so the standalone `node:20` Dockerfile was a pre-Bazel leftover that nothing built. It was **deleted** rather than bumped — the real build was already on canonical Node. The general lesson is below.
 

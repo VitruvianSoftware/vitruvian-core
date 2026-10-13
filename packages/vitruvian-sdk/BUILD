@@ -35,6 +35,9 @@
 # gazelle:exclude protocol
 # gazelle:exclude samples
 #
+# The Go kit, go/, is the one folder Gazelle writes: go/BUILD names its
+# module. The Rust kit, kits/rust, has a hand-written BUILD of its own.
+#
 # MUST MIRROR Package.swift target for target (packages/peripherals/BUILD says
 # why). The Swift targets are constrained to macOS so a Linux
 # `bazel build //...` skips them.
