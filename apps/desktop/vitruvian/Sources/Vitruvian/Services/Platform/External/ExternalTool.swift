@@ -40,13 +40,23 @@ package final class ExternalTool: HostedTool {
         package var onStoppedWorking: @MainActor () -> Void
         /// A command was asked for and did not run.
         package var onCommandFailed: @MainActor () -> Void
+        /// The tool sent a page for one of its panels: the panel's id, and
+        /// the page as the tool wrote it.
+        package var onRender: @MainActor (String, JSONValue) -> Void
+        /// A run of the tool's program ended, however it ended: every panel
+        /// it had open ends with it.
+        package var onRunEnded: @MainActor () -> Void
 
         package init(onChange: @escaping @MainActor () -> Void = {},
                      onStoppedWorking: @escaping @MainActor () -> Void = {},
-                     onCommandFailed: @escaping @MainActor () -> Void = {}) {
+                     onCommandFailed: @escaping @MainActor () -> Void = {},
+                     onRender: @escaping @MainActor (String, JSONValue) -> Void = { _, _ in },
+                     onRunEnded: @escaping @MainActor () -> Void = {}) {
             self.onChange = onChange
             self.onStoppedWorking = onStoppedWorking
             self.onCommandFailed = onCommandFailed
+            self.onRender = onRender
+            self.onRunEnded = onRunEnded
         }
     }
 
@@ -72,6 +82,12 @@ package final class ExternalTool: HostedTool {
     private var runnable: Set<String>?
     /// Commands asked for while the program was starting.
     private var held: [String] = []
+    /// Panels opened while the program was starting, with who waits for
+    /// each first page.
+    private var heldOpens: [(panel: String, then: @MainActor (Result<JSONValue, ToolLink.Failure>) -> Void)] = []
+    /// The panels the person has open. While one is, the tool is not
+    /// stopped for being idle.
+    private var openPanels: Set<String> = []
     /// When each recent crash happened.
     private var crashes: [TimeInterval] = []
     private var nextWait: TimeInterval
@@ -160,6 +176,47 @@ package final class ExternalTool: HostedTool {
 
     package var hasEnded: Bool { link?.hasEnded ?? true }
 
+    // MARK: - Panels
+
+    /// Asks for a panel's first page, starting the program first when none
+    /// runs, as a command does. `then` hears the answer as the tool wrote
+    /// it, or why there is none, once. While the panel is open the tool is
+    /// not stopped for being idle.
+    package func open(panel: String, then: @escaping @MainActor (Result<JSONValue, ToolLink.Failure>) -> Void) {
+        guard allowed, !gaveUp, waitTimer == nil, link?.fault == nil else { return then(.failure(.notReady)) }
+        openPanels.insert(panel)
+        idleTimer?.cancel()
+        idleTimer = nil
+        if let link, link.state == .ready {
+            link.open(panel: panel, then: then)
+        } else if heldOpens.count < limits.commandsHeld {
+            heldOpens.append((panel, then))
+            settle()
+        } else {
+            then(.failure(.notReady))
+        }
+    }
+
+    /// Tells the tool what the person did in an open panel. Nothing is
+    /// started for it: a panel is open only while the program runs.
+    package func event(_ event: UIEventParams, then: @escaping @MainActor (Result<JSONValue, ToolLink.Failure>) -> Void) {
+        guard openPanels.contains(event.panel), let link, link.state == .ready else { return then(.failure(.notReady)) }
+        link.event(event, then: then)
+    }
+
+    /// Tells the tool a panel went away. Once none is open the tool may be
+    /// stopped for being idle again.
+    package func close(panel: String) {
+        guard openPanels.remove(panel) != nil else { return }
+        link?.close(panel: panel)
+        restartIdleTimer()
+    }
+
+    /// True while the panel is open.
+    package func isOpen(panel: String) -> Bool {
+        openPanels.contains(panel)
+    }
+
     package func escalate() {
         link?.escalate()
     }
@@ -195,7 +252,7 @@ package final class ExternalTool: HostedTool {
             dropHeld()
             return
         }
-        guard link == nil, startsAtLaunch || !held.isEmpty else { return }
+        guard link == nil, startsAtLaunch || !held.isEmpty || !heldOpens.isEmpty else { return }
         runnable = nil
         readySince = nil
         let link = makeLink(ToolLink.Events(
@@ -206,6 +263,7 @@ package final class ExternalTool: HostedTool {
             },
             onLog: { [weak self] text, source in self?.log.add(text, from: source) },
             onAsked: { [weak self] in self?.restartIdleTimer() },
+            onRender: { [weak self] panel, tree in self?.events.onRender(panel, tree) },
             onEnd: { [weak self] end in self?.linkEnded(end) }))
         self.link = link
         log.add("starting", from: .runtime)
@@ -220,6 +278,9 @@ package final class ExternalTool: HostedTool {
             let waiting = held
             held = []
             for command in waiting { send(command, on: link) }
+            let opening = heldOpens
+            heldOpens = []
+            for (panel, then) in opening { link.open(panel: panel, then: then) }
         }
         events.onChange()
     }
@@ -236,6 +297,9 @@ package final class ExternalTool: HostedTool {
         runnable = nil
         idleTimer?.cancel()
         idleTimer = nil
+        // A panel ends with its tool's program.
+        openPanels = []
+        events.onRunEnded()
         switch end {
         case .stopped:
             log.add("stopped", from: .runtime)
@@ -282,7 +346,7 @@ package final class ExternalTool: HostedTool {
     /// asked of it, or by it, for a while. One that starts with the app
     /// keeps running.
     private func restartIdleTimer() {
-        guard !startsAtLaunch else { return }
+        guard !startsAtLaunch, openPanels.isEmpty else { return }
         idleTimer?.cancel()
         idleTimer = clock.after(limits.idleStop) { [weak self] in
             guard let self else { return }
@@ -292,6 +356,12 @@ package final class ExternalTool: HostedTool {
     }
 
     private func dropHeld() {
+        let opening = heldOpens
+        heldOpens = []
+        for (panel, then) in opening {
+            openPanels.remove(panel)
+            then(.failure(.notReady))
+        }
         guard !held.isEmpty else { return }
         held = []
         events.onCommandFailed()

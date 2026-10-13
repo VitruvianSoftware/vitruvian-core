@@ -19,6 +19,7 @@ enum ExternalToolCallsTests {
         storage(suite)
         refusals(suite)
         overTheLimit(suite)
+        badges(suite)
     }
 
     /// A tool that lists every service a manifest may, with a preference of
@@ -64,6 +65,7 @@ enum ExternalToolCallsTests {
         var canEnd = true
         var protected: Set<pid_t> = []
         var ended: [String] = []
+        var badges: [UIBadgeParams] = []
         private(set) var broker: CapabilityBroker!
 
         init() {
@@ -111,7 +113,8 @@ enum ExternalToolCallsTests {
                  as tool: ToolManifest = everything) -> Result<JSONValue, RPCErrorObject>? {
             var answers: [Result<JSONValue, RPCErrorObject>] = []
             let json = params.flatMap { try? JSONDecoder().decode(JSONValue.self, from: Data($0.utf8)) }
-            ExternalToolCalls(manifest: tool, broker: broker).serve(method, json) { answers.append($0) }
+            ExternalToolCalls(manifest: tool, broker: broker, badge: { [unowned self] in badges.append($0) })
+                .serve(method, json) { answers.append($0) }
             rig.settle()
             return answers.count == 1 ? answers[0] : nil
         }
@@ -367,5 +370,29 @@ enum ExternalToolCallsTests {
                      "200 requests in a second are done; each one past that is refused as not available, "
                          + "and the broker is not asked")
         link.shutdown()
+    }
+}
+
+extension ExternalToolCallsTests {
+    /// `ui/badge`: behind `notify`, handed to whoever draws the island's
+    /// Tools area, and answered at once.
+    static func badges(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        suite.expect(result(bench.ask(.uiBadge, #"{"count": 2}"#)) == done
+                         && result(bench.ask(.uiBadge, #"{"dot": true}"#)) == done
+                         && result(bench.ask(.uiBadge, "{}")) == done
+                         && bench.badges == [UIBadgeParams(count: 2), UIBadgeParams(dot: true), UIBadgeParams()],
+                     "a badge is handed on as the tool sent it, a count, a dot or none, and answered with {}")
+        let refused = error(bench.ask(.uiBadge, #"{"count": 2}"#, as: nothing))
+        suite.expect(refused?.code == -32001 && refused?.data == .object(["service": .string("notify")])
+                         && bench.badges.count == 3,
+                     "a tool that does not list notify is refused a badge, and none is shown")
+        suite.expect(code(bench.ask(.uiBadge, #"{"count": -1}"#)) == -32602 && code(bench.ask(.uiBadge, #"{"count": "2"}"#)) == -32602
+                         && bench.badges.count == 3,
+                     "a count below nothing, or one that is not a number, is invalid params")
+        bench.world.installed = false
+        suite.expect(code(bench.ask(.uiBadge, #"{"count": 2}"#)) == -32002 && bench.badges.count == 3,
+                     "a tool that is switched off shows no badge")
     }
 }

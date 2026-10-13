@@ -22,6 +22,7 @@ enum ExternalToolTests {
         heldCommands(suite)
         stopping(suite)
         quitting(suite)
+        panels(suite)
     }
 
     static let id = ToolID("com.acme.deploys")!
@@ -37,6 +38,8 @@ enum ExternalToolTests {
         var changes = 0
         var stoppedWorking = 0
         var failed = 0
+        var rendered: [String] = []
+        var runsEnded = 0
         private(set) var tool: ExternalTool!
 
         init(activation: String = "onCommand", limits: ToolLimits = .standard) {
@@ -54,7 +57,9 @@ enum ExternalToolTests {
                 },
                 events: .init(onChange: { [unowned self] in changes += 1 },
                               onStoppedWorking: { [unowned self] in stoppedWorking += 1 },
-                              onCommandFailed: { [unowned self] in failed += 1 }))
+                              onCommandFailed: { [unowned self] in failed += 1 },
+                              onRender: { [unowned self] panel, _ in rendered.append(panel) },
+                              onRunEnded: { [unowned self] in runsEnded += 1 }))
         }
 
         var current: FakeTool { runs[runs.count - 1] }
@@ -331,5 +336,70 @@ enum ExternalToolTests {
         bench.tool.escalate()
         suite.expect(bench.current.signals == ["terminate", "kill"] && bench.tool.hasEnded,
                      "at quit the host ends it a step harder each time, until it has")
+    }
+}
+
+extension ExternalToolTests {
+    /// A panel of an outside tool: opening one starts the program as a
+    /// command does; while one is open the tool is not stopped for being
+    /// idle; and every panel ends with the program.
+    static func panels(_ suite: TestSuite) {
+        let bench = Bench()
+        bench.tool.start()
+        var first: Result<JSONValue, ToolLink.Failure>?
+        bench.tool.open(panel: "deploys") { first = $0 }
+        suite.expect(bench.runs.count == 1 && bench.tool.standing == .starting && bench.tool.isOpen(panel: "deploys"),
+                     "opening a panel of a tool that rests starts its program")
+        bench.current.greets()
+        suite.expect(bench.current.sent.last == .request(id: .number(2), method: "ui/open",
+                                                         params: .object(["panel": .string("deploys")])),
+                     "once it has answered initialize it is asked for the panel")
+        bench.current.answers(2, #"{"tree":{"blocks":[]}}"#)
+        suite.expect(first == .success(.object(["tree": .object(["blocks": .array([])])])),
+                     "the first page is handed back")
+
+        bench.current.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[]}}}"#)
+        suite.expect(bench.rendered == ["deploys"], "a page the tool sends is handed on with its panel")
+
+        bench.clock.advance(by: ToolLimits.standard.idleStop * 3)
+        suite.expect(bench.tool.standing == .running && bench.current.signals.isEmpty,
+                     "while a panel is open the tool is not stopped for being idle")
+
+        var answer: Result<JSONValue, ToolLink.Failure>?
+        bench.tool.event(UIEventParams(panel: "settings", event: .tap)) { answer = $0 }
+        suite.expect(answer == .failure(.notReady) && bench.current.sent.count == 2,
+                     "an event for a panel that is not open is not sent")
+        bench.tool.event(UIEventParams(panel: "deploys", block: "again", event: .tap)) { answer = $0 }
+        bench.current.answers(3, #"{"keep":true}"#)
+        suite.expect(answer == .success(.object(["keep": .bool(true)])), "an event for an open panel is sent and answered")
+
+        bench.tool.close(panel: "deploys")
+        suite.expect(!bench.tool.isOpen(panel: "deploys")
+                         && bench.current.sent.last == .notice(method: "ui/close", params: .object(["panel": .string("deploys")])),
+                     "closing it tells the tool")
+        bench.current.exitsOnClose = 0
+        bench.clock.advance(by: ToolLimits.standard.idleStop)
+        suite.expect(bench.tool.standing == .resting && bench.runsEnded == 1,
+                     "once no panel is open the idle stop applies again, and the run's end is said")
+
+        let crash = Bench()
+        crash.tool.start()
+        crash.tool.open(panel: "deploys") { _ in }
+        crash.current.greets()
+        crash.current.ends(1)
+        suite.expect(!crash.tool.isOpen(panel: "deploys") && crash.runsEnded == 1,
+                     "a panel ends with its tool's program")
+
+        let stopped = Bench()
+        stopped.tool.start()
+        var held: Result<JSONValue, ToolLink.Failure>?
+        stopped.tool.open(panel: "deploys") { held = $0 }
+        stopped.tool.stop()
+        suite.expect(held == .failure(.notReady) && !stopped.tool.isOpen(panel: "deploys"),
+                     "a panel that waited for a program that was then stopped is told so")
+        var off: Result<JSONValue, ToolLink.Failure>?
+        stopped.tool.open(panel: "deploys") { off = $0 }
+        suite.expect(off == .failure(.notReady) && stopped.runs.count == 1,
+                     "a tool the host has stopped opens no panel and starts nothing")
     }
 }

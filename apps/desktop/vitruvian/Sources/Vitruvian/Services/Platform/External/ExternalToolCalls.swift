@@ -21,10 +21,14 @@ import VitruvianToolProtocol
 package struct ExternalToolCalls {
     private let tool: ToolID
     private let services: ToolServices
+    /// Puts the tool's badge in the island's Tools area.
+    private let badge: @MainActor (UIBadgeParams) -> Void
 
-    package init(manifest: ToolManifest, broker: CapabilityBroker) {
+    package init(manifest: ToolManifest, broker: CapabilityBroker,
+                 badge: @escaping @MainActor (UIBadgeParams) -> Void = { _ in }) {
         tool = manifest.id
         services = broker.services(for: manifest)
+        self.badge = badge
     }
 
     /// Does what one request asks and answers it, once: at once, or when
@@ -39,11 +43,11 @@ package struct ExternalToolCalls {
             reply(.failure(RPCErrorObject(code: RPCErrorCode.methodNotFound, message: "unknown method")))
 
         case .uiBadge:
-            // Behind `notify`, as the protocol says. Nothing draws a badge
-            // yet: the island's Tools area comes with the panels.
-            guard Self.read(UIBadgeParams.self, params) != nil else { return reply(Self.badParams) }
+            // Behind `notify`, as the protocol says.
+            guard let asked = Self.read(UIBadgeParams.self, params) else { return reply(Self.badParams) }
             if let refusal = services.gate(.notify)() { return reply(.failure(Self.error(for: refusal))) }
-            reply(.failure(RefusalCode.unavailable.error()))
+            badge(asked)
+            reply(.success(Self.nothing))
 
         case .notifyHUD:
             guard let asked = Self.read(NotifyHUDParams.self, params) else { return reply(Self.badParams) }

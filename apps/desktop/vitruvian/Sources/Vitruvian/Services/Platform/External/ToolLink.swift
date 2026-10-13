@@ -73,6 +73,9 @@ package final class ToolLink {
         package var onLog: @MainActor (String, ToolLog.Source) -> Void
         /// The tool asked something of the app.
         package var onAsked: @MainActor () -> Void
+        /// The tool sent a page for one of its panels, by the panel's id.
+        /// The page is as the tool wrote it: reading it is for whoever draws.
+        package var onRender: @MainActor (String, JSONValue) -> Void
         /// The link is over. Called once, last.
         package var onEnd: @MainActor (End) -> Void
 
@@ -80,11 +83,13 @@ package final class ToolLink {
                      onRunnable: @escaping @MainActor ([String]) -> Void = { _ in },
                      onLog: @escaping @MainActor (String, ToolLog.Source) -> Void = { _, _ in },
                      onAsked: @escaping @MainActor () -> Void = {},
+                     onRender: @escaping @MainActor (String, JSONValue) -> Void = { _, _ in },
                      onEnd: @escaping @MainActor (End) -> Void = { _ in }) {
             self.onChange = onChange
             self.onRunnable = onRunnable
             self.onLog = onLog
             self.onAsked = onAsked
+            self.onRender = onRender
             self.onEnd = onEnd
         }
     }
@@ -134,6 +139,9 @@ package final class ToolLink {
     private var busySeconds = 0
     /// When each recent line that was not a message arrived.
     private var junk: [TimeInterval] = []
+    /// For each panel, the second its pages are being counted in and how
+    /// many it has had.
+    private var renders: [String: (second: TimeInterval, count: Int)] = [:]
 
     package init(transport: any ToolTransport, clock: any ToolClock, limits: ToolLimits = .standard,
                  hello: InitializeParams, serve: @escaping Serve, events: Events) {
@@ -218,6 +226,42 @@ package final class ToolLink {
         guard language != self.language else { return }
         self.language = language
         tell(.languageChanged, LanguageChangedParams(language: language))
+    }
+
+    // MARK: - Panels
+
+    /// Asks the tool for a panel's first page. `then` hears the answer as
+    /// the tool wrote it, or why there is none, once.
+    package func open(panel: String, then: @escaping @MainActor (Result<JSONValue, Failure>) -> Void) {
+        guard state == .ready else { return then(.failure(.notReady)) }
+        ask(.uiOpen, UIOpenParams(panel: panel), within: limits.answer, then: then)
+    }
+
+    /// Tells the tool what the person did in an open panel. `then` hears
+    /// the answer as the tool wrote it, or why there is none, once.
+    package func event(_ event: UIEventParams, then: @escaping @MainActor (Result<JSONValue, Failure>) -> Void) {
+        guard state == .ready else { return then(.failure(.notReady)) }
+        ask(.uiEvent, event, within: limits.answer, then: then)
+    }
+
+    /// Tells the tool a panel went away.
+    package func close(panel: String) {
+        tell(.uiClose, UICloseParams(panel: panel))
+    }
+
+    /// A page the tool sent unprompted. Its panel is named and the page is
+    /// handed on as written, to be read away from the main thread. More
+    /// than `UILimits.floodRendersPerSecond` for one panel in one second is
+    /// a flood: the tool is stopped, as for any other.
+    private func rendered(_ params: JSONValue?) {
+        guard let panel = params?["panel"]?.stringValue, let tree = params?["tree"] else { return drop() }
+        let now = clock.now
+        var counted = renders[panel] ?? (second: now, count: 0)
+        if now - counted.second >= 1 { counted = (second: now, count: 0) }
+        counted.count += 1
+        renders[panel] = counted
+        guard counted.count <= UILimits.floodRendersPerSecond else { return fail(.flood) }
+        events.onRender(panel, tree)
     }
 
     private func tell<Params: Encodable>(_ method: ToolMethod, _ params: Params) {
@@ -333,6 +377,8 @@ package final class ToolLink {
         case .log?:
             guard let line = try? params?.decode(LogParams.self) else { return drop() }
             events.onLog(line.message, .message)
+        case .uiRender?:
+            rendered(params)
         default:
             // A notice the app does not know is ignored: a later protocol
             // may add one.

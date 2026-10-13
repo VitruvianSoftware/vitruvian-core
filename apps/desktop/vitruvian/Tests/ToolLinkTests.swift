@@ -19,6 +19,8 @@ enum ToolLinkTests {
         goodbye(suite)
         endings(suite)
         limits(suite)
+        panels(suite)
+        pagesUnprompted(suite)
     }
 
     /// A link, its tool and its clock, and everything the link reported.
@@ -30,6 +32,8 @@ enum ToolLinkTests {
         var runnable: [[String]] = []
         var logged: [ToolLog.Entry] = []
         var asked = 0
+        /// Each page the tool sent unprompted, with its panel's id.
+        var rendered: [(panel: String, tree: JSONValue)] = []
         /// What the tool asked of the app, and the way to answer each.
         var served: [(method: ToolMethod, params: JSONValue?, reply: ToolLink.Reply)] = []
         private(set) var link: ToolLink!
@@ -43,6 +47,7 @@ enum ToolLinkTests {
                               onRunnable: { [unowned self] in runnable.append($0) },
                               onLog: { [unowned self] in logged.append(.init(source: $1, text: $0)) },
                               onAsked: { [unowned self] in asked += 1 },
+                              onRender: { [unowned self] in rendered.append(($0, $1)) },
                               onEnd: { [unowned self] in ends.append($0) }))
         }
 
@@ -446,5 +451,74 @@ enum ToolLinkTests {
         greedy.clock.advance(by: 1)
         greedy.tool.says(#"{"jsonrpc":"2.0","id":15,"method":"notify/beep"}"#)
         suite.expect(greedy.served.count == 11, "the next second starts afresh")
+    }
+}
+
+extension ToolLinkTests {
+    /// The app's three panel messages: asked, answered, timed out, refused
+    /// before the greeting.
+    static func panels(_ suite: TestSuite) {
+        let early = Bench()
+        early.link.start()
+        var before: Result<JSONValue, ToolLink.Failure>?
+        early.link.open(panel: "deploys") { before = $0 }
+        suite.expect(before == .failure(.notReady) && early.tool.sent.count == 1,
+                     "a panel is not asked for before the tool has answered initialize")
+
+        let bench = Bench.ready()
+        var first: Result<JSONValue, ToolLink.Failure>?
+        bench.link.open(panel: "deploys") { first = $0 }
+        suite.expect(bench.tool.sent.last == .request(id: .number(2), method: "ui/open",
+                                                      params: .object(["panel": .string("deploys")])),
+                     "opening a panel is the request ui/open, naming it")
+        bench.tool.answers(2, #"{"tree":{"blocks":[{"type":"divider"}]}}"#)
+        suite.expect(first == .success(.object(["tree": .object(["blocks": .array([.object(["type": .string("divider")])])])])),
+                     "its answer is handed back as the tool wrote it, to be read away from the main thread")
+
+        var next: Result<JSONValue, ToolLink.Failure>?
+        bench.link.event(UIEventParams(panel: "deploys", block: "again", event: .tap)) { next = $0 }
+        suite.expect(bench.tool.sent.last == .request(id: .number(3), method: "ui/event",
+                                                      params: .object(["panel": .string("deploys"),
+                                                                       "block": .string("again"),
+                                                                       "event": .string("tap")])),
+                     "what the person did is the request ui/event: the panel, the block and the event")
+        bench.clock.advance(by: 2)
+        suite.expect(next == .failure(.noAnswer) && bench.link.state == .ready,
+                     "an event the tool does not answer in two seconds fails, and the tool runs on")
+
+        bench.link.close(panel: "deploys")
+        suite.expect(bench.tool.sent.last == .notice(method: "ui/close", params: .object(["panel": .string("deploys")])),
+                     "closing a panel is the notice ui/close")
+    }
+
+    /// `ui/render`: handed on with its panel, dropped when it names none,
+    /// and a flood past forty a second for one panel.
+    static func pagesUnprompted(_ suite: TestSuite) {
+        let page = #"{"blocks":[{"type":"text","text":"Nothing deployed today."}]}"#
+        func render(_ bench: Bench, _ panel: String) {
+            bench.tool.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"\#(panel)","tree":\#(page)}}"#)
+        }
+        let bench = Bench.ready()
+        render(bench, "deploys")
+        suite.expect(bench.rendered.count == 1 && bench.rendered[0].panel == "deploys"
+                         && bench.rendered[0].tree["blocks"]?.arrayValue?.count == 1,
+                     "a page the tool sends unprompted is handed on with its panel's id")
+        bench.tool.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"tree":{"blocks":[]}}}"#)
+        suite.expect(bench.rendered.count == 1 && bench.link.dropped == 1,
+                     "a page that names no panel is dropped and counted")
+
+        let flood = Bench.ready()
+        flood.tool.exitsOnTerminate = 15
+        for _ in 0..<UILimits.floodRendersPerSecond { render(flood, "deploys") }
+        render(flood, "settings")
+        suite.expect(UILimits.floodRendersPerSecond == 40 && flood.rendered.count == 41 && flood.link.state == .ready,
+                     "forty pages for one panel in a second are handed on, and another panel counts apart")
+        flood.clock.advance(by: 1)
+        for _ in 0..<UILimits.floodRendersPerSecond { render(flood, "deploys") }
+        suite.expect(flood.rendered.count == 81 && flood.link.state == .ready,
+                     "the count starts again each second")
+        render(flood, "deploys")
+        suite.expect(flood.rendered.count == 81 && flood.link.fault == .flood && flood.link.state != .ready,
+                     "the forty-first page for one panel in one second is a flood: not handed on, and the tool is stopped")
     }
 }
