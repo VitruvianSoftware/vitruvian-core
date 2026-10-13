@@ -27,23 +27,36 @@
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 
+# The files the catalog's part is written from, and the file it writes.
+SITE_FILES = [
+    "//apps/web/vitruviansoftware-dev:_data/tools.yml",
+    "//catalog:catalog.schema.json",
+    "//catalog:public-key.txt",
+    "//catalog:tools.json",
+]
+
 py_binary(
     name = "sync",
-    srcs = ["sync.py"],
+    srcs = [
+        "catalogue.py",
+        "sync.py",
+    ],
+    imports = ["."],
     main = "sync.py",
 )
 
 # The committed copies are what sync.py writes from the SDK's files now. Not
 # `manual` and not tied to macOS: plain Python, so the Linux lane runs it,
-# whenever the guide, the protocol's README, a hello sample or a copy changes.
+# whenever the guide, the protocol's README, a hello sample, the catalog or
+# a copy changes.
 py_test(
     name = "in_sync_test",
     size = "small",
-    srcs = ["sync.py"],
-    args = ["--check"],
-    data = [
+    srcs = ["sync_test.py"],
+    data = SITE_FILES + [
         "//apps/web/vitruviansoftware-dev:tools_pages",
         "//packages/vitruvian-sdk:site_sources",
     ],
-    main = "sync.py",
+    main = "sync_test.py",
+    deps = [":sync"],
 )

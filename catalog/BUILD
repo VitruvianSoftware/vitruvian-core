@@ -29,6 +29,7 @@
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 
 exports_files([
+    "catalog.schema.json",
     "public-key.txt",
     "tools.json",
 ])

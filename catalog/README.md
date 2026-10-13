@@ -70,7 +70,7 @@ of `download.url` in `catalog.schema.json` and to `DOWNLOAD_PREFIXES` in
 - [ ] `size` is `stat -f %z the-tool.zip` and `sha256` is
       `shasum -a 256 the-tool.zip`, of the file attached to the release.
 - [ ] `bazel test //catalog/...` passes: the schema and the rules.
-- [ ] `bazel run //tools/sync-site-tools -- --write` has updated the website's
+- [ ] `bazel run //tools/sync-site-tools:sync` has updated the website's
       page, and the pull request holds that change too.
 - [ ] The check **catalog-check** passed. It downloads each new or changed
       entry, compares its size and checksum, unpacks it the way the app

@@ -1,0 +1,5 @@
+# Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
+#   bazel run //tools/sync-site-tools:sync
+generated: "2026-10-12T00:00:00Z"
+public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
+tools: []

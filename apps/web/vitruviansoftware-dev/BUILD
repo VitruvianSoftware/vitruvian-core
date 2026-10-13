@@ -35,3 +35,10 @@ filegroup(
     ),
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
+
+# The catalog's data file: written by //tools/sync-site-tools, whose drift
+# test reads it.
+exports_files(
+    ["_data/tools.yml"],
+    visibility = ["//tools/sync-site-tools:__pkg__"],
+)
