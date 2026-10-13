@@ -40,6 +40,12 @@
 // the export deploy key keeps its admin-context push bypass), codifying the
 // read-only-mirror lockdown as code instead of click-ops.
 //
+// For a mirror that publishes to the Homebrew tap (HomebrewTapKey:true) it
+// gives the mirror's own release workflow a key that writes the tap and
+// nothing else: a second ED25519 pair, its public half a WRITE deploy key on
+// VitruvianSoftware/homebrew-tap, its private half the Actions secret
+// HOMEBREW_TAP_DEPLOY_KEY in the standalone repo.
+//
 // The GitHub App itself is created MANUALLY by the operator; Pulumi only places
 // its credentials, which are supplied as Pulumi config secrets (see below).
 package copybara_sync
@@ -59,6 +65,10 @@ import (
 // monorepoRepoName is the GitHub repository name of the monorepo. The export
 // workflow lives here and consumes the <PROJECT>_SYNC_SSH_KEY secret.
 const monorepoRepoName = "vitruvian-core"
+
+// homebrewTapRepo is the organisation's one Homebrew tap. A mirror with
+// HomebrewTapKey writes its formula there.
+const homebrewTapRepo = "homebrew-tap"
 
 // syncedProject describes one component that is bidirectionally synced between
 // the monorepo and a standalone repository.
@@ -88,6 +98,12 @@ type syncedProject struct {
 
 	// Description is the repository description used when CreateRepo is true.
 	Description string
+
+	// HomebrewTapKey gives the standalone repo a key that writes the Homebrew
+	// tap and nothing else (see the package comment), for a release workflow
+	// that writes a formula. A one-way mirror only: its workflows reach it
+	// through the monorepo's export, so nothing outside review can use the key.
+	HomebrewTapKey bool
 
 	// UnprotectedMirror marks an EXISTING one-way mirror whose main branch had no
 	// branch protection when it was onboarded. The read-only protection is then
@@ -176,6 +192,20 @@ var syncedProjects = []syncedProject{
 		StandaloneRepo:    "site-vitruviansoftware-dev",
 		OneWay:            true,
 		UnprotectedMirror: true,
+	},
+	{
+		// The public home of the Vitruvian tool SDK (packages/vitruvian-sdk).
+		// Export-only: developed here, released from the mirror, whose own
+		// release.yml tags vX.Y.Z and go/vX.Y.Z, attaches the vitruvian-tool
+		// binary and writes its formula to the tap with HOMEBREW_TAP_DEPLOY_KEY.
+		// Name uppercase-snakes to VITRUVIAN_SDK_SYNC_SSH_KEY, consumed by
+		// copybara-export-vitruvian-sdk.yaml.
+		Name:           "vitruvian-sdk",
+		StandaloneRepo: "vitruvian-sdk",
+		OneWay:         true,
+		CreateRepo:     true,
+		HomebrewTapKey: true,
+		Description:    "Build tools for the Vitruvian Mac app: the protocol, the Swift kit and the vitruvian-tool command",
 	},
 }
 
@@ -266,6 +296,12 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		})
 		if err != nil {
 			return err
+		}
+
+		if project.HomebrewTapKey {
+			if err := tapKey(ctx, project, repo); err != nil {
+				return err
+			}
 		}
 
 		if project.OneWay {
@@ -395,4 +431,39 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 	}
 
 	return nil
+}
+
+// tapKey gives a mirror's release workflow a key that writes the Homebrew tap
+// and nothing else: a fresh ED25519 pair, the public half a WRITE deploy key
+// on the tap (whose main has no branch protection, so a deploy key pushes),
+// the private half HOMEBREW_TAP_DEPLOY_KEY in the standalone repo. Rotating it
+// is replacing the tls resource, as for the export key (docs/admin/copybara-sync.md).
+func tapKey(ctx *pulumi.Context, project syncedProject, repo *github.Repository) error {
+	key, err := tls.NewPrivateKey(ctx, fmt.Sprintf("%s-homebrew-tap-key", project.Name), &tls.PrivateKeyArgs{
+		Algorithm: pulumi.String("ED25519"),
+	})
+	if err != nil {
+		return err
+	}
+	_, err = github.NewRepositoryDeployKey(ctx, fmt.Sprintf("%s-homebrew-tap-deploy-key", project.Name), &github.RepositoryDeployKeyArgs{
+		Title:      pulumi.String(project.StandaloneRepo + " release (write)"),
+		Repository: pulumi.String(homebrewTapRepo),
+		Key:        key.PublicKeyOpenssh,
+		ReadOnly:   pulumi.Bool(false),
+	})
+	if err != nil {
+		return err
+	}
+	secretArgs := &github.ActionsSecretArgs{
+		Repository:     pulumi.String(project.StandaloneRepo),
+		SecretName:     pulumi.String("HOMEBREW_TAP_DEPLOY_KEY"),
+		PlaintextValue: key.PrivateKeyOpenssh,
+	}
+	var opts []pulumi.ResourceOption
+	if repo != nil {
+		secretArgs.Repository = repo.Name
+		opts = append(opts, pulumi.DependsOn([]pulumi.Resource{repo}))
+	}
+	_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-homebrew-tap-key-secret", project.Name), secretArgs, opts...)
+	return err
 }
