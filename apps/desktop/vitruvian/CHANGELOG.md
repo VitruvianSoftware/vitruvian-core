@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.47.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.47.0...vitruvian-v3.47.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **desktop:** a failed disk image attempt no longer kills the release ([#3232](https://github.com/VitruvianSoftware/vitruvian-core/issues/3232)) ([c427880](https://github.com/VitruvianSoftware/vitruvian-core/commit/c427880c03b7a1ea2dfe7112da0e45641b4e7c38))
+
 ## [3.47.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.46.1...vitruvian-v3.47.0) (2026-10-13)
 
 
