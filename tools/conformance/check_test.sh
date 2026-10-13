@@ -887,7 +887,7 @@ write_oci_pull() {
 # The fixed state: the image comes from a registry named in the reference.
 case_oci_base_off_docker_hub() {
   root="$(new_root)"
-  write_oci_pull "$root" 'public.ecr.aws/docker/library/ubuntu'
+  write_oci_pull "$root" 'mirror.gcr.io/library/ubuntu'
   out="$(run_check "$root")"
   expect "a base image from a named registry passes" \
     "$(ocibase_line "$out")" "✓"
