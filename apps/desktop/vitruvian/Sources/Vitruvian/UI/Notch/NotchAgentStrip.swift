@@ -140,7 +140,9 @@ package struct NotchAgentRestingWing: View {
             if gitHub.summary.aggregate == .red || gitHub.summary.aggregate == .amber {
                 NotchService.shared.select(.github)
             } else {
-                NotchService.shared.agentTab = .chat
+                // The chat tab is the feature's; with the Nexus Agent tool in
+                // its place the page has only its telemetry.
+                NotchService.shared.agentTab = AppFeature.nexusAgent.isReplaced() ? .telemetry : .chat
                 NotchService.shared.select(.agents)
             }
         }

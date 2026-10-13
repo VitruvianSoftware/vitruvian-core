@@ -29,6 +29,13 @@ ROOT = WORKSPACE / "apps/desktop/vitruvian"
 UNIT_TESTS = "//apps/desktop/vitruvian:unit_tests"
 
 MUTATIONS = [
+    ("the Nexus Agent hand-off forgets the shortcut", "platform", "Sources/Vitruvian/Services/NexusAgent/NexusAgentHandoff.swift",
+     "        if let shortcut { parts.saveShortcut(shortcut) }\n", "",
+     "the Quick Prompt's shortcut is given to the tool's command"),
+    ("a feature a tool replaced stays listed", "platform", "Sources/Vitruvian/Core/FeatureCatalog.swift",
+     "        defaults.bool(forKey: availabilityKey) && !isReplaced(in: defaults)",
+     "        defaults.bool(forKey: availabilityKey)",
+     "after: the feature is hidden, though still installed; nothing else is"),
     ("the GitHub hand-off forgets the token", "platform", "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
      "        if let token, !token.isEmpty { values[Key.migratedToken] = .string(token) }\n", "",
      "under the tool's keys, as the tool reads them"),

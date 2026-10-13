@@ -42,19 +42,27 @@ package struct NotchAgentsView: View {
         return NotchAgentSupport.pageRows(providers: providers, width: size.width)
     }
 
+    /// The chat tab is the Nexus Agent feature's. While the Nexus Agent
+    /// tool from the catalog has taken its place the page is its telemetry
+    /// alone, whatever tab was chosen.
+    private var chatAvailable: Bool { !AppFeature.nexusAgent.isReplaced() }
+    private var tab: NotchAgentTab { chatAvailable ? notchService.agentTab : .telemetry }
+
     package var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 Spacer()
-                Picker("Mode", selection: $notchService.agentTab) {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right.fill").tag(NotchAgentTab.chat)
-                    Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
+                if chatAvailable {
+                    Picker("Mode", selection: $notchService.agentTab) {
+                        Label("Chat", systemImage: "bubble.left.and.bubble.right.fill").tag(NotchAgentTab.chat)
+                        Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 220)
 
-                if notchService.agentTab == .chat {
+                if tab == .chat {
                     Button {
                         notchService.popOutToQuickPrompt()
                     } label: {
@@ -74,7 +82,7 @@ package struct NotchAgentsView: View {
             .padding(.top, 4)
             .padding(.horizontal, 16)
 
-            if notchService.agentTab == .chat {
+            if tab == .chat {
                 NexusAgentQuickPromptView(embeddedInNotch: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

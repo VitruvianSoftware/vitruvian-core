@@ -198,8 +198,15 @@ package final class ExternalToolStore {
             forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
             watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
             panels: { .shared },
-            added: { installed, origin in GitHubHandoff.perform(installed, from: origin, parts: .live) },
-            removed: { GitHubHandoff.toolRemoved($0, defaults: .standard) })
+            added: { installed, origin in
+                GitHubHandoff.perform(installed, from: origin, parts: .live)
+                NexusAgentHandoff.perform(installed, from: origin, parts: .live)
+            },
+            removed: { id in
+                GitHubHandoff.toolRemoved(id, defaults: .standard)
+                NexusAgentHandoff.toolRemoved(id, defaults: .standard,
+                                              featureBack: { NexusAgentService.shared.syncWithPreferences() })
+            })
     }
 
     /// Hears each language the app changes to, as its tag, on the main

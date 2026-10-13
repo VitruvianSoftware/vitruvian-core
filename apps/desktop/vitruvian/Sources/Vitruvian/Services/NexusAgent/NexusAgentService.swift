@@ -70,9 +70,17 @@ package final class NexusAgentService: NexusAgentEngine, NSWindowDelegate {
         shortcutRegistrationFailed = !hotkey.sync(enabled: enabled, shortcut: shortcut,
                                                   storageKey: DefaultsKey.nexusAgentShortcut)
         guard available else {
-            // Uninstalled in the hub: nothing stays resident, the bot included.
             hideQuickPrompt()
-            stopAfterUninstall()
+            if AppFeature.nexusAgent.isReplaced(in: defaults) {
+                // The Nexus Agent tool has taken over: the window and the
+                // chat go, and the bot stays for the tool to adopt through
+                // the PID file both share (`NexusAgentHandoff`).
+                stopForQuit()
+                NotchService.shared.agentTab = .telemetry
+            } else {
+                // Uninstalled in the hub: nothing stays resident, the bot included.
+                stopAfterUninstall()
+            }
             panel = nil
             return
         }

@@ -230,12 +230,19 @@ extension AppFeature {
     }
 
     /// A feature a tool from the catalog has taken over: it is hidden, its
-    /// island page and Settings page with it, for as long as the tool is
+    /// island page, its Settings page, its Features row and its places in
+    /// the menu panel and the island with it, for as long as the tool is
     /// installed, and comes back, switched off, when the tool is removed.
     /// GitHub, until the release after the tool's first: the feature's
     /// sign-in and settings were handed to the tool (`GitHubHandoff`).
+    /// Nexus Agent, until the release after the tool's first: the feature's
+    /// settings were handed to the tool (`NexusAgentHandoff`).
     package func isReplaced(in defaults: UserDefaults = .standard) -> Bool {
-        self == .notchGitHub && defaults[Preferences.githubReplacedByTool]
+        switch self {
+        case .notchGitHub: return defaults[Preferences.githubReplacedByTool]
+        case .nexusAgent: return defaults[Preferences.nexusAgentReplacedByTool]
+        default: return false
+        }
     }
 
     /// The feature's own enable keys; any one being true means the feature is
