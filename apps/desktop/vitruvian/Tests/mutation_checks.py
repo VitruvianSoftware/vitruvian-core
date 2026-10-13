@@ -1065,6 +1065,21 @@ MUTATIONS = [
      "        catalogue = offer.catalogue == nil ? nil : strings.agreeCatalog\n",
      "        catalogue = nil\n",
      "a tool from the catalog is asked about on the same sheet, with one more line"),
+    ("launch waits for the Bluetooth prompt again", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchAccessoryService.swift",
+     "        bluetoothQueue.async { [weak self] in\n"
+     "            let baseline = readBaseline()\n"
+     "            DispatchQueue.main.async { [weak self] in\n"
+     "                self?.establish(baseline, for: currentGeneration)\n"
+     "            }\n"
+     "        }\n",
+     "        establish(readBaseline(), for: currentGeneration)\n",
+     "the first Bluetooth read runs, and never on the main thread"),
+    ("a Bluetooth answer from before a restart becomes the baseline", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchAccessoryService.swift",
+     "        guard active, generation == readGeneration else { return }\n",
+     "        guard active else { return }\n",
+     "the read from before a restart does not become the new baseline"),
 ]
 
 
