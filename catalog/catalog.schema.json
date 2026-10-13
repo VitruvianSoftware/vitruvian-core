@@ -72,8 +72,8 @@
           "$ref": "#/$defs/version"
         },
         "protocol": {
-          "description": "The manifest's protocol, copied.",
-          "enum": ["1"]
+          "description": "The manifest's protocol, copied. An app that does not speak it does not show the entry.",
+          "enum": ["1", "2"]
         },
         "minimumAppVersion": {
           "description": "The oldest Vitruvian that may install it. An older one does not show it.",
