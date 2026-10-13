@@ -475,6 +475,12 @@ package final class ToolLink {
         stepTimer = clock.after(limits.endWait) { [self] in escalate() }
     }
 
+    /// Stops the tool for something it did that the link itself cannot
+    /// see: a flood of calls from one of its web panels.
+    package func misbehaved(_ fault: Fault) {
+        fail(fault)
+    }
+
     /// True when nothing of the program is left running.
     package var hasEnded: Bool {
         state == .idle || state == .ended || !transport.isRunning

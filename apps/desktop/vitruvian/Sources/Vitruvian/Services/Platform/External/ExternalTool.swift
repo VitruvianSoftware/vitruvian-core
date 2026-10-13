@@ -212,6 +212,11 @@ package final class ExternalTool: HostedTool {
         restartIdleTimer()
     }
 
+    /// Stops the program for something it did through one of its panels.
+    package func misbehaved(_ fault: ToolLink.Fault) {
+        link?.misbehaved(fault)
+    }
+
     /// True while the panel is open.
     package func isOpen(panel: String) -> Bool {
         openPanels.contains(panel)

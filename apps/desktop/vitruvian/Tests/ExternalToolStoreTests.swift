@@ -39,6 +39,7 @@ enum ExternalToolStoreTests {
         aRealTool(suite)
         aRealToolRemoved(suite)
         aRealToolWithAHelper(suite)
+        panels(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -72,6 +73,9 @@ enum ExternalToolStoreTests {
         private(set) lazy var keys = ToolPlatformTests.RegistrarBench(registry: registry)
         private(set) var host: ToolHost!
         private(set) var store: ExternalToolStore!
+        /// What draws the tools' panels, over this store, reading each page
+        /// at once.
+        private(set) var panels: ToolPanelHost!
 
         /// A bench over the folders of another, as the app is at its next
         /// launch: a new store, host and registry, and the same files.
@@ -116,7 +120,14 @@ enum ExternalToolStoreTests {
                 watchLanguage: { [unowned self] in
                     languageWatcher = $0
                     return nil
-                }))
+                },
+                panels: { [unowned self] in panels }))
+            panels = ToolPanelHost(parts: .init(
+                clock: clock, limits: limits,
+                tool: { [unowned self] in store.tool($0) },
+                described: { [unowned self] in store.installed[$0]?.tool },
+                folder: { [unowned self] in store.installed[$0]?.files },
+                read: { value, then in then(ToolPanelTree.read(value)) }))
         }
 
         /// The app's support folder, as the store sees it.
@@ -1600,5 +1611,37 @@ enum ExternalToolStoreTests {
         quitting.host.stopAll()
         suite.expect(processes.allSatisfy { !$0.isRunning } && deaf.isGone,
                      "at quit the host stops a real tool and waits for it, and no helper of it is left")
+    }
+}
+
+extension ExternalToolStoreTests {
+    /// The store hands each tool's pages, badge and end to the panel host,
+    /// and takes a tool's panels away when it is switched off.
+    static func panels(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let manifest = ExternalToolManifestTests.file(#"""
+            {"protocol": "2", "uses": ["notify"], "contributes": {"panels": [
+              {"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"}]}}
+            """#)
+        bench.add(bench.folder(manifest: manifest))
+        let island = ToolPanelHost.Key(tool: id, panel: "deploys")
+        suite.expect(bench.store.installed[id]?.tool.panel(in: .island)?.id == "deploys" && bench.runs.isEmpty,
+                     "a tool of protocol 2 is added with its panels, and nothing is started")
+        bench.panels.open(island, in: .island)
+        bench.current.greets()
+        bench.current.answers(2, #"{"tree":{"blocks":[{"type":"heading","text":"Today"}]}}"#)
+        suite.expect(bench.panels.shown[island].map { if case .page = $0 { return true } else { return false } } == true,
+                     "opening its island panel starts its program and draws the page it answers with")
+        bench.current.says(#"{"jsonrpc":"2.0","id":"b","method":"ui/badge","params":{"count":4}}"#)
+        suite.expect(bench.panels.badges[id] == .count(4)
+                         && bench.current.sent.last == .result(id: .string("b"), value: .object([:])),
+                     "its badge reaches the host, and the tool is answered")
+        bench.current.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[]}}}"#)
+        suite.expect(bench.panels.shown[island] == .page(UITree(blocks: [])),
+                     "a page it sends unprompted reaches the host")
+        bench.store.setOn(id, false)
+        suite.expect(bench.panels.shown.isEmpty && bench.panels.badges[id] == nil,
+                     "switched off, its panels close and its badge goes")
     }
 }
