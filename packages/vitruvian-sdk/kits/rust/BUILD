@@ -25,7 +25,7 @@
 # is the hermetic one MODULE.bazel registers, which is also the oldest Rust
 # the crate says it builds with (`rust-version` in Cargo.toml).
 
-load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//packages/vitruvian-sdk:__subpackages__"])
 
@@ -38,6 +38,33 @@ rust_library(
     edition = "2021",
     deps = [
         "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+# The Swift kit's ToolTests, ported, against a link of two buffers. It
+# starts no process.
+rust_test(
+    name = "tool_test",
+    size = "small",
+    srcs = ["tests/tool.rs"],
+    edition = "2021",
+    deps = [
+        ":vitruvian_tool_kit",
+        "@crates//:serde_json",
+    ],
+)
+
+# The generated types against the protocol's files, which the test reads in
+# at compile time.
+rust_test(
+    name = "protocol_test",
+    size = "small",
+    srcs = ["tests/protocol.rs"],
+    compile_data = ["//packages/vitruvian-sdk:protocol_files"],
+    edition = "2021",
+    deps = [
+        ":vitruvian_tool_kit",
         "@crates//:serde_json",
     ],
 )

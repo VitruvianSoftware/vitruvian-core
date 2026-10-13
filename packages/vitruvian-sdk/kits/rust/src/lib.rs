@@ -20,6 +20,39 @@
 
 //! Write a Vitruvian tool in Rust: declare commands, handle them, call the
 //! app.
+//!
+//! ```no_run
+//! use vitruvian_tool_kit::Tool;
+//!
+//! let mut tool = Tool::new("0.1.0");
+//! tool.command("hello", |app| app.notify().hud("Hello", "hand.wave"));
+//! tool.run();
+//! ```
+//!
+//! A tool is a program the Vitruvian app starts and talks to in JSON, one
+//! message per line, over the program's standard input and output. The kit
+//! is that conversation: it answers the app's greeting, runs a command's
+//! handler when the app asks, and turns each call on [`App`] into a request
+//! and its answer.
+//!
+//! Handlers run one at a time, on the thread that called [`Tool::run`]. A
+//! call to the app inside a handler waits there for its answer, so from the
+//! handler's side every call is an ordinary function call. One more thread
+//! reads standard input, because the standard library cannot wait on it
+//! with a deadline; what the app sends while a handler waits is kept and
+//! handled after the handler returns.
+//!
+//! Never print to standard output yourself: it is the link. Write to
+//! standard error, or call [`App::log`].
 
 pub mod generated;
 pub use generated::*;
+
+mod app;
+mod error;
+mod link;
+mod tool;
+
+pub use app::{App, Clipboard, Keystrokes, Notify, Open, Processes, Storage};
+pub use error::{codes, RefusalCode, ToolError};
+pub use tool::Tool;

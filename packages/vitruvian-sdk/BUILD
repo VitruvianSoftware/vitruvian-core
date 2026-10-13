@@ -635,6 +635,8 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         "//packages/vitruvian-sdk/go/toolkit:toolkit_test",
+        "//packages/vitruvian-sdk/kits/rust:protocol_test",
+        "//packages/vitruvian-sdk/kits/rust:tool_test",
         "//packages/vitruvian-sdk/kits/typescript:kit_test",
         "//tools/sdk-codegen:in_sync_test",
         "//tools/sdk-codegen:sdk_codegen_test",
