@@ -75,6 +75,44 @@ filegroup(
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
 )
 
+# The Nexus Agent tool for the Vitruvian app (docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md):
+# what it knows, apart from the link to the app. The settings host over
+# settings.json, the two pages, the words in fifteen languages, and the
+# state machine behind a link protocol, so the tests drive it without a
+# process. Swift 6 mode, as the core. It links the MIT kit and protocol
+# (packages/vitruvian-sdk) and the shared libraries, and nothing of the
+# Vitruvian app.
+swift_library(
+    name = "NexusAgentToolCore",
+    srcs = glob(["Sources/NexusAgentToolCore/**/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "NexusAgentToolCore",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":NexusAgentCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+# Against an engine over files held in memory, a link that records and a
+# window that records. Nothing here starts a process or reaches the home
+# folder.
+swift_test(
+    name = "NexusAgentToolTests",
+    size = "small",
+    srcs = glob(["Tests/NexusAgentToolTests/**/*.swift"]),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":NexusAgentCore",
+        ":NexusAgentToolCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
 # NexusAgent is a dependency-free SwiftUI/AppKit menu-bar agent (LSUIElement).
 # Swift has no Gazelle, so this BUILD file is hand-written. The library is
 # constrained to macOS so a Linux `bazel build //...` skips it instead of
@@ -102,7 +140,12 @@ alias(
 # explicit label (#807).
 swift_test(
     name = "NexusAgentTests",
-    srcs = glob(["Tests/**/*.swift"]),
+    # The tool's tests are a target of their own, below: they link the
+    # tool's core, which this target does not.
+    srcs = glob(
+        ["Tests/**/*.swift"],
+        exclude = ["Tests/NexusAgentToolTests/**"],
+    ),
     # EngineHostTests reads the shared sources to prove they name no app's
     # saved-settings key and only run tools that exist. SharedCasesTests reads
     # the examples it shares with the bot's tests. ChatSymbolsTests reads the

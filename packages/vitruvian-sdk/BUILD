@@ -108,6 +108,7 @@ swift_library(
     module_name = "VitruvianToolProtocol",
     target_compatible_with = ["@platforms//os:macos"],
     visibility = [
+        "//apps/desktop/nexus-agent/macos:__pkg__",
         "//apps/desktop/vitruvian:__pkg__",
         "//apps/desktop/vitruvian-tool-github:__pkg__",
     ],
@@ -122,7 +123,10 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolKit",
     target_compatible_with = ["@platforms//os:macos"],
-    visibility = ["//apps/desktop/vitruvian-tool-github:__pkg__"],
+    visibility = [
+        "//apps/desktop/nexus-agent/macos:__pkg__",
+        "//apps/desktop/vitruvian-tool-github:__pkg__",
+    ],
     deps = [":VitruvianToolProtocol"],
 )
 

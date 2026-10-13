@@ -24,6 +24,12 @@ import PackageDescription
 let package = Package(
     name: "NexusAgent",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // The Vitruvian tool kit, for the tool target below. The kit's
+        // `ToolWaker` came with 1.1.0 (`tool/version_test.py` holds this
+        // line to it).
+        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.1.0"),
+    ],
     targets: [
         // MUST MIRROR nexus-agent/macos/BUILD. These sources have TWO build
         // definitions -- Bazel for the monorepo, SwiftPM for the exported
@@ -52,6 +58,17 @@ let package = Package(
                 .copy("Resources/mermaid-LICENSE.txt"),
             ]
         ),
+        // The Nexus Agent tool for the Vitruvian app: its core, on the two
+        // shared libraries and the kit. Swift 6 mode, as the core.
+        .target(
+            name: "NexusAgentToolCore",
+            dependencies: [
+                "NexusAgentCore",
+                .product(name: "VitruvianToolKit", package: "vitruvian-sdk"),
+                .product(name: "VitruvianToolProtocol", package: "vitruvian-sdk"),
+            ],
+            path: "Sources/NexusAgentToolCore"
+        ),
         .executableTarget(
             name: "NexusAgent",
             dependencies: ["NexusAgentCore", "NexusAgentUI"],
@@ -64,10 +81,18 @@ let package = Package(
         // because that is how Bazel compiles them. They find the shared
         // sources and `../testdata` from their own file's path, so nothing is
         // copied; `swift build` does not compile this target.
+        // The tool's tests, Swift 6 mode as the core they test.
+        .testTarget(
+            name: "NexusAgentToolTests",
+            dependencies: ["NexusAgentCore", "NexusAgentToolCore"],
+            path: "Tests/NexusAgentToolTests"
+        ),
         .testTarget(
             name: "NexusAgentTests",
             dependencies: ["NexusAgentCore", "NexusAgentUI"],
             path: "Tests",
+            // The tool's tests are the target above, on the tool's core.
+            exclude: ["NexusAgentToolTests"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
