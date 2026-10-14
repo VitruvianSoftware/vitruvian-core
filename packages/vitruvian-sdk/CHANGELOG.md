@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.2.0...vitruvian-sdk-v1.3.0) (2026-10-14)
+
+
+### Features
+
+* **vitruvian-sdk:** a tool can show a status on the closed island and offer a choice ([#3245](https://github.com/VitruvianSoftware/vitruvian-core/issues/3245)) ([d23592a](https://github.com/VitruvianSoftware/vitruvian-core/commit/d23592a0a8115f63347b00cbd87769a2443dadc0))
+
 ## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.1.0...vitruvian-sdk-v1.2.0) (2026-10-13)
 
 

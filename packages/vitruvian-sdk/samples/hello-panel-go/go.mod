@@ -2,7 +2,7 @@ module example.com/hello-panel-go
 
 go 1.22
 
-require github.com/VitruvianSoftware/vitruvian-sdk/go v1.2.0 // x-release-please-version
+require github.com/VitruvianSoftware/vitruvian-sdk/go v1.3.0 // x-release-please-version
 
 // The kit beside it, in this repository and in the published mirror. A
 // tool of your own requires a released version instead:
