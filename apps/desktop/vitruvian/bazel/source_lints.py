@@ -961,7 +961,10 @@ def tool_screen_controls_have_names(repo):
         if path.endswith("ExternalToolsSection.swift"):
             helper = code_without_comments(lines)
             start = helper.find("private func field(")
-            if start < 0 or ".controlNamed(setting.title)" not in helper[start : start + 400]:
+            if (
+                start < 0
+                or ".controlNamed(setting.title)" not in helper[start : start + 400]
+            ):
                 found.append(f"{path}: a setting's field is named with its title")
         for index, line in enumerate(lines):
             if is_comment(line):
@@ -976,15 +979,24 @@ def tool_screen_controls_have_names(repo):
             for later in lines[index + 1 : index + 30]:
                 text = later.strip()
                 depth = len(later) - len(later.lstrip())
-                if text and depth <= indent and not (depth == indent and text[0] in ".}"):
+                if (
+                    text
+                    and depth <= indent
+                    and not (depth == indent and text[0] in ".}")
+                ):
                     break
                 if depth in (indent, indent + 4) and text.startswith(".controlNamed("):
                     named = True
                     break
             if not named:
-                found.append(f"{path}:{index + 1}: {control[:-1]} has no name for VoiceOver")
+                found.append(
+                    f"{path}:{index + 1}: {control[:-1]} has no name for VoiceOver"
+                )
     if found:
-        return ["every switch and pop-up a tool's screens draw is named with its row's title: " + "; ".join(found)]
+        return [
+            "every switch and pop-up a tool's screens draw is named with its row's title: "
+            + "; ".join(found)
+        ]
     return []
 
 
