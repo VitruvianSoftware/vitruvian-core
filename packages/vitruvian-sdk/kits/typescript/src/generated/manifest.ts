@@ -25,9 +25,7 @@
 import {
   expectArray,
   expectBoolean,
-  expectInteger,
   expectJSON,
-  expectMap,
   expectObject,
   expectOneOf,
   expectString,

@@ -31,6 +31,8 @@ send a request or a notice into one call per message, grouped by the first
 part of its name: `app.notify.hud({ icon, message })`.
 """
 
+import re
+
 from model import Definition, Model, Type, camel_to_snake, licence
 
 NAME = "typescript"
@@ -369,30 +371,27 @@ def messages_file(model: Model) -> str:
 
 
 def manifest_file(model: Model) -> str:
-    names = [
+    body = [
+        "\n".join(definition_lines(definition, model)) + "\n"
+        for definition in model.manifest
+    ]
+    # The shared readers of messages.ts, each imported only when the
+    # manifest's definitions call it: an import nothing uses is an error to
+    # the linter, and one that is missing is an error to the compiler.
+    readers = (
         "expectArray",
+        "expectBoolean",
         "expectInteger",
         "expectJSON",
         "expectMap",
+        "expectNumber",
         "expectObject",
         "expectOneOf",
         "expectString",
-    ]
-    # A reader the other kinds of field need, only when the manifest has
-    # such a field: an import nothing uses is an error to the compiler too.
-    kinds = {
-        kind.kind
-        for definition in model.manifest
-        for field in definition.fields
-        for kind in (field.type, field.type.item)
-        if kind is not None
-    }
-    names += [
-        name
-        for kind, name in (("boolean", "expectBoolean"), ("number", "expectNumber"))
-        if kind in kinds
-    ]
-    names = sorted(names) + ["type JSONValue"]
+    )
+    text = "\n".join(body)
+    names = [name for name in readers if re.search(rf"\b{name}\(", text)]
+    names += ["type JSONValue"]
     for enum in enums_used(model.manifest, model):
         names += [constant(enum.name), f"type {enum.name}"]
     for title in shared_titles(model):
@@ -400,8 +399,7 @@ def manifest_file(model: Model) -> str:
     parts = [header("protocol/manifest.schema.json"), "import {"]
     parts += [f"  {name}," for name in names]
     parts += ['} from "./messages.js";', ""]
-    for definition in model.manifest:
-        parts.append("\n".join(definition_lines(definition, model)) + "\n")
+    parts += body
     return "\n".join(parts)
 
 

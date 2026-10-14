@@ -308,6 +308,10 @@ class OutputTests(unittest.TestCase):
             "expectBoolean", called, "contributes.status.activity is a boolean"
         )
         self.assertEqual(sorted(called - imported - defined), [])
+        # And nothing is imported that the file never calls: the linter
+        # fails an unused import.
+        readers = {name for name in imported if re.match(r"(expect|read)\w*$", name)}
+        self.assertEqual(sorted(readers - called), [])
 
     def test_every_name_a_python_call_uses_is_imported(self):
         """A call's arguments name their types, a closed list of names
