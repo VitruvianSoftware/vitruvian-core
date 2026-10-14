@@ -8,7 +8,9 @@ adds commands to the app: to the command bar, the radial menu, the Quick
 panel, and as shortcuts. A tool of protocol 2 can also show a page of its
 own: in the Dynamic Island, in its detail in Settings, and in a window. It
 describes the page in blocks and the app draws it, or it brings a web page
-from its own folder.
+from its own folder. It can show a small status mark on the closed island,
+and offer a choice among fixed options as a pop-up menu: as a setting, or
+on a page.
 
 **A tool is trusted like an app.** It runs as you, with every permission
 Vitruvian has. The app does not limit or check what it does.
@@ -26,7 +28,7 @@ not work.
 |---|---|
 | [`docs/`](docs/writing-a-tool.md) | The guide for a tool's author. Its examples are tested. |
 | [`protocol/`](protocol/README.md) | The protocol, versions 1 and 2: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
-| `samples/` | Ten tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript` and `hello-panel-python`, a counter in the island drawn from blocks; `front-window`, which reads the title of the window in front by asking macOS itself. |
+| `samples/` | Twelve tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript`, `hello-panel-python`, `hello-panel-go` and `hello-panel-rust`, a counter in the island drawn from blocks, with a status on the closed island and a pop-up menu to pick it; `front-window`, which reads the title of the window in front by asking macOS itself. |
 | `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands and panels, handle them, call the app, write a page as its blocks. |
 | `kits/` | The same, for TypeScript (`@vitruviansoftware/tool-kit`, npm) and Python (`vitruvian-tool-kit`, PyPI). Their types are written from the schemas by `//tools/sdk-codegen`, and a test fails when they are not what it writes. |
 | `go/` | The same kit in Go, module `github.com/VitruvianSoftware/vitruvian-sdk/go`, package `toolkit`. Go 1.22 or later, standard library only. |
@@ -109,12 +111,18 @@ and `bin/tool`. Those are the folders to add.
 Tools page has a tile "Counter" after the quick tools: it opens a page with a
 count, a button that adds to it and a field. Each press puts the count on the
 tile, as a badge. Its detail in Settings has the switch "Count by two",
-drawn by the app from the tool's own page.
+drawn by the app from the tool's own page. The page also has a pop-up menu,
+"Status on the closed island": the tool starts at OK, a green tick beside
+the agent mark on the closed island, and the menu picks among none, OK,
+busy, needs attention and failed. The tool starts with the app, so its mark
+lasts; the detail has a switch that hides it.
 
-`hello-swift` declares one preference with a title, its count. Once the tool
-is added, its detail in Settings lists "Counted so far" with a number field;
+`hello-swift` declares two preferences with a title. Once the tool is
+added, its detail in Settings lists "Counted so far" with a number field;
 change it, run "Count one more", and the tool counts on from the new number
-without being started again.
+without being started again. "Count by" is a pop-up menu of One, Two and
+Five: a text preference with `options`. On Vitruvian 3.46 and 3.47 it is a
+text field holding the same text.
 
 `front-window` needs the Accessibility permission of whoever starts it.
 Started by Vitruvian, it has Vitruvian's. Nothing in this package asks for a

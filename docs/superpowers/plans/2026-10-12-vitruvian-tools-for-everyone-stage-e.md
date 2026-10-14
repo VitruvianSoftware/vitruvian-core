@@ -81,10 +81,10 @@ Nothing in this plan changes the protocol. Where the tool wanted something the p
 
 | # | Gap | Done without | Smallest additive change |
 |---|---|---|---|
-| 1 | No choice among fixed words: a preference is text, a number or a switch, and a page has no picker block. | The mouse lights are text in the mouse command's words (decision 10). | A preference `"type": "choice"` with `"options"`, drawn as a pop-up; or a `choice` block with `options` and an event `change`. |
+| 1 | No choice among fixed words: a preference is text, a number or a switch, and a page has no picker block. | The mouse lights are text in the mouse command's words (decision 10). | **Closed 2026-10-13**, by `docs/superpowers/plans/2026-10-13-vitruvian-tool-resting-status-and-choice.md`: `options` on a `string` preference, drawn as a pop-up, and a `choice` block whose pick is the event `change`. Not the `"type": "choice"` this row proposed: every released app refuses a manifest with a preference type it does not know. The GitHub tool adopts them in that plan's Task 8. |
 | 2 | A tool cannot keep a secret with the app: `storage` is UserDefaults, and a value a tool is handed sits there until the tool clears it. | The tool keeps the token in a 0600 file; the hand-off's copy lives in defaults until the tool's first run, which is the next launch at most. | A preference `"type": "secret"`, kept by the app outside the defaults plist and never shown. |
 | 3 | A tool cannot send the person to its own settings: the island page can only say where they are. | The signed-out island page says, in words, where to sign in. | A request `app/openSettings` with `{ "panel": "settings" }`, behind no `uses`, that opens the tool's detail. |
-| 4 | A badge is a count or a dot: it cannot say "waiting for approval". | The page says it in a caption; the mouse says it in its light. | Nothing yet; a dot of another colour would be a style the app does not give tools. |
+| 4 | A badge is a count or a dot: it cannot say "waiting for approval". | The page says it in a caption; the mouse says it in its light. | **Closed 2026-10-13**, by the same plan: the request `ui/status`, a small mark on the closed island in the app's own style, whose state `attention` says it. The badge is as it was. |
 
 ## Global Constraints
 

@@ -476,6 +476,16 @@ Step 5, each planted and seen to fail:
 - [ ] **Step 3:** `bazel test //packages/vitruvian-sdk:guide_test //tools/sync-site-tools:in_sync_test` passes.
 - [ ] **Step 4: Commit.**
 
+**As built (2026-10-13).**
+
+- **Written by `wren`, not `compass`**: one worker built Tasks 1 to 7.
+- **Parts of this task landed earlier, where a test needed them.** `guide_test` fails a message the guide never shows, so the reference rows and `protocol/README.md`'s section came with Task 1; the samples' excerpts moved with the samples in Task 3, with the two panel READMEs and `README.md`'s account of the conformance script.
+- **The guide's three sections are at the end of "Drawing"**, after "A web page": "A status on the closed island", "A choice among fixed options", "What an older app does". Each of the first two has a snippet from every `hello-panel-*` sample, held by `guide_test`.
+- **The tables of the kits' calls gained rows** for the status call and `supports`, and the paragraph on the TypeScript and Python kits says which of their two status calls is the kit's.
+- **`CONTRIBUTING.md` gained more than the one sentence**: a row for the conformance script and the desk, which also hold the protocol and are not generated, and a paragraph, "Say what the app has".
+- **`README.md` said ten samples; there are twelve.** Corrected.
+- **The design's Status line** is changed in the commit that follows the pull request being opened, since it names the pull request's number.
+
 ---
 
 ### Task 7: Run everything, and open pull request 1
