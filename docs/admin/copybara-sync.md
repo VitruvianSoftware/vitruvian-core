@@ -277,7 +277,7 @@ export.
 ## 8. Routine maintenance (step by step)
 
 ### 8a. Re-run a sync manually
-Every caller workflow exposes `workflow_dispatch` with a `copybara_options` input. Use the
+Every caller workflow exposes `workflow_dispatch` with a `copybara-options` input. Use the
 **per-component** file name:
 
 ```bash
@@ -307,7 +307,7 @@ COMP=devx   # the component
 #    echo seed > $COMP/.copybara-seed ; git commit -m "seed [skip ci]" ; git push
 # 2. Seed the export — a SQUASH "Project import" commit on the mirror anchors MONOREPO_REV_ID:
 gh workflow run copybara-export-$COMP.yaml --ref main \
-  -f copybara_options="--force --squash --init-history --ignore-noop"
+  -f copybara-options="--force --squash --init-history --ignore-noop"
 # 3. Remove the marker in the MONOREPO and let the normal export fan the removal out.
 ```
 After the seed, a **normal** `--ignore-noop` export finds the baseline and no-ops. A `--force` run
