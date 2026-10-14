@@ -1289,6 +1289,16 @@ MUTATIONS = [
      "        guard active, generation == readGeneration else { return }\n",
      "        guard active else { return }\n",
      "the read from before a restart does not become the new baseline"),
+    ("a companion staying to react is sent away by the strip", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "        if mascotRestedInView, compactActivity != nil, !mascotLingers,\n",
+     "        if mascotRestedInView, compactActivity != nil,\n",
+     "a companion staying to react is not told to fade out ahead of the strip"),
+    ("the companion's stand-in stays over what took its place", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "        if mascotBridging, !mascotBridgeTargetShows { endMascotBridgeNow(fading: true) }\n",
+     "",
+     "a stand-in still headed for its place stays, and one whose place went to something else fades out once"),
 ]
 
 
