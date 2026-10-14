@@ -40,10 +40,12 @@ swift_library(
 
 # Against a transport that answers itself, a mouse that records what it was
 # told, and files in the temporary folder. Nothing here reaches the network.
+# The manifest is read to hold the mouse settings' options to the mouse.
 swift_test(
     name = "GitHubToolCoreTests",
     size = "small",
     srcs = glob(["Tests/GitHubToolCoreTests/*.swift"]),
+    data = ["vitruvian-tool.json"],
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     deps = [

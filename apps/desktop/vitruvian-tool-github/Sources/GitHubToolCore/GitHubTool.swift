@@ -18,8 +18,28 @@ public protocol ToolHost: AnyObject {
     func open(_ url: String) -> Bool
     func log(_ message: String)
     func badge(count: Int?, dot: Bool)
+    /// The tool's status on the closed island (`ui/status`). An app without
+    /// it (before 3.48) is sent nothing.
+    func status(_ status: IslandStatus)
     /// A new page for a panel, when it is open; nothing otherwise.
     func render(panel: String, _ tree: UITree)
+}
+
+/// What the tool's mark on the closed island says: a state, the tool's
+/// words for it, and a glyph in place of the state's own.
+public struct IslandStatus: Equatable, Sendable {
+    public let state: StatusState
+    public let text: UIText?
+    public let icon: String?
+
+    public init(state: StatusState, text: UIText? = nil, icon: String? = nil) {
+        self.state = state
+        self.text = text
+        self.icon = icon
+    }
+
+    /// No mark: what a program shows when it starts.
+    public static let noMark = IslandStatus(state: .none)
 }
 
 /// The tool: what it knows and what it does. One instance, used from the
@@ -102,6 +122,8 @@ public final class GitHubTool {
     private var cliDeclined = false
     /// The last token GitHub answered 401 to; never tried again by itself.
     private var rejectedToken: String?
+    /// The status last sent. The app shows none until one is sent.
+    private var lastStatus = IslandStatus.noMark
 
     public init(parts: Parts) {
         self.parts = parts
@@ -229,6 +251,7 @@ public final class GitHubTool {
         summary = GitHubSummary(states: [:], watched: watched)
         nextPollAt = nil
         host.badge(count: nil, dot: false)
+        showStatus()
         if bool(Preference.mouseIndicator, true) {
             locateMouse(mouseCommand())
             mouse.restore()
@@ -309,12 +332,45 @@ public final class GitHubTool {
         let seconds = max(5, active ? int(Preference.pollActiveInterval, 10) : int(Preference.pollInterval, 30))
         nextPollAt = parts.now().addingTimeInterval(TimeInterval(seconds))
         host.badge(count: summary.badgeCount == 0 ? nil : summary.badgeCount, dot: false)
+        showStatus()
         if bool(Preference.mouseIndicator, true) {
             locateMouse(mouseCommand())
             mouse.update(summary: summary, settings: mouseSettings, force: firstSnapshot)
         }
         firstSnapshot = false
         renderIsland()
+    }
+
+    // MARK: The status on the closed island
+
+    /// The mark for a summary. The rule is the mouse's, so the island and
+    /// the mouse agree: a check waiting for approval outranks every colour.
+    public static func status(for summary: GitHubSummary, signedIn: Bool) -> IslandStatus {
+        status(verdict: summary.aggregate, awaitingApproval: summary.awaitingApproval, signedIn: signedIn)
+    }
+
+    /// Signed out, or grey (nothing read yet, or nothing watched), is no
+    /// mark; then approval, red, amber and green, as the app's own GitHub
+    /// mark draws them.
+    public static func status(verdict: Verdict, awaitingApproval: Bool, signedIn: Bool) -> IslandStatus {
+        guard signedIn else { return .noMark }
+        if awaitingApproval {
+            return IslandStatus(state: .attention, text: Words.text("statusAttention"), icon: "hand.raised.fill")
+        }
+        switch verdict {
+        case .red: return IslandStatus(state: .failure, text: Words.text("statusFailure"))
+        case .amber: return IslandStatus(state: .busy, text: Words.text("statusBusy"), icon: "arrow.triangle.branch")
+        case .green: return IslandStatus(state: .ok, text: Words.text("statusOK"))
+        case .grey: return .noMark
+        }
+    }
+
+    /// Sends the status the tool is in now, when it is not the one sent last.
+    private func showStatus() {
+        let next = Self.status(for: summary, signedIn: auth.isSignedIn)
+        guard next != lastStatus else { return }
+        lastStatus = next
+        host.status(next)
     }
 
     /// The person changed a preference in the tool's detail.

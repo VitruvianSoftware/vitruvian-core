@@ -14,9 +14,9 @@ version is the config's initial-version. The catalog's CI refuses a zip
 whose manifest's version is not the entry's; this finds the same mistake
 before it merges.
 
-Package.swift names the kit the mirror builds against; `Tool.every`, which
-the tool needs, came with the kit the line below names, so an older one
-fails here.
+Package.swift names the kit the mirror builds against; `App.status` and the
+manifest's `options` and `contributes.status`, which the tool needs, came
+with the kit the line below names, so an older one fails here.
 """
 
 import json
@@ -25,8 +25,9 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# The SDK release that carries Tool.every(seconds:).
-KIT_WITH_TIMERS = (1, 0, 0)
+# The SDK release that carries App.status (ui/status) and a preference's
+# options.
+KIT_WITH_STATUS = (1, 3, 0)
 
 
 def read(name):
@@ -95,16 +96,16 @@ def main():
         problems.append(
             "Package.swift does not depend on VitruvianSoftware/vitruvian-sdk with `from:`"
         )
-    elif (semver(kit.group(1)) or (0, 0, 0)) < KIT_WITH_TIMERS:
+    elif (semver(kit.group(1)) or (0, 0, 0)) < KIT_WITH_STATUS:
         problems.append(
-            f"Package.swift builds against kit {kit.group(1)}, before Tool.every came ({'.'.join(map(str, KIT_WITH_TIMERS))})"
+            f"Package.swift builds against kit {kit.group(1)}, before App.status came ({'.'.join(map(str, KIT_WITH_STATUS))})"
         )
     for problem in problems:
         print(problem)
     if problems:
         return 1
     print(
-        f"the tool is {manifest_version}, in every file that says so, against a kit with timers"
+        f"the tool is {manifest_version}, in every file that says so, against a kit with the status"
     )
     return 0
 
