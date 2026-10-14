@@ -31,9 +31,10 @@
 # an unrelated stalled deploy block everyone.
 #
 # THE VERDICT IS A CHECK RUN, not this job's colour. A job can only pass or
-# fail, and a run that skipped every unit (each app's workflow still busy with
-# the last push) passed just like one that found everything delivered. So the
-# job publishes "delivery-drift verdict" on the commit it checked:
+# fail, and a run that skipped every unit (no app's workflow had a finished
+# run to judge against) would pass just like one that found everything
+# delivered. So the job publishes "delivery-drift verdict" on the commit it
+# checked:
 #   success  units were checked and none is behind (skipped ones are named);
 #   neutral  NOTHING was checked -- not a pass; the summary says why;
 #   failure  drift or UNKNOWN, or the check never reached a verdict.
@@ -65,9 +66,10 @@ concurrency:
 jobs:
   drift:
     runs-on: ubuntu-26.04
-    # Up to 15 minutes of waiting for in-flight delivery runs, plus the check
-    # itself (about 2 minutes) and setup.
-    timeout-minutes: 35
+    # Nothing waits: each unit is judged at its app's newest finished delivery
+    # run. A full check of all 12 units took 2m46s plus about 1 minute of
+    # setup (run 38623200337); 15 leaves room for a slow API or cold cache.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

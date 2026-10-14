@@ -127,11 +127,16 @@ it checked, not from the run's colour:
 | Check run | Means | What to do |
 |---|---|---|
 | success | At least one unit was checked and none is behind. Units it skipped are named in the summary. | Nothing. |
-| **neutral** | **Nothing was checked.** Every unit was skipped, usually because each app's workflow was still busy with the latest push. Not a pass. | Nothing for one. Several in a row means the check is blind: look at why in the summary. |
+| **neutral** | **Nothing was checked.** Every unit was skipped: no app's workflow had a finished run to judge against, or each was parked on an approval. Not a pass. | Nothing for one. Several in a row means the check is blind: look at why in the summary. |
 | failure | A unit is behind `main` (DRIFT), its state is UNKNOWN (a failed API read is never a pass), or the check did not finish. | Read the summary and the job log. |
 
-Before judging, it waits up to 15 minutes (polling once a minute) for
-in-flight delivery runs to finish, so a check that lands just after a push
-still checks something. A run parked on an approval is not waited for. In the
-runs list a neutral verdict still shows as a green run, because Actions has no
-neutral run; the run page carries a "nothing checked" notice.
+It never waits for deliveries to finish. Each app's delivery workflow starts
+on every push, so on a busy day one is nearly always running. Instead, each
+unit is judged up to the newest commit its app's workflow has **finished** a
+run for; newer commits are still being delivered, and a later check judges
+them. A run cancelled by a newer push is passed over (the newer run carries
+its commits). A run that finished with a failure still counts, so a failed
+delivery is reported. A run parked on an approval leaves its units not
+checked. In the runs list a neutral verdict still shows as a green run,
+because Actions has no neutral run; the run page carries a "nothing checked"
+notice.
