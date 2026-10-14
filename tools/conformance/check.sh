@@ -2763,12 +2763,13 @@ check_copybara_component_lists() {
 # export. Fixing the config and seeing nothing happen is the symptom; it is how
 # the resync in this rule's sibling check would have sat undelivered.
 check_copybara_export_triggers() {
+  cb_callers=0; cb_forced=0
   for wf in "$ROOT"/.github/workflows/copybara-export-*.yaml; do
     [ -f "$wf" ] || continue
     rel="${wf#"$ROOT"/}"
     paths_line="$(grep -m1 '^ *paths: \[' "$wf" || true)"
-    [ -n "$paths_line" ] || continue
     case "$paths_line" in
+      "") ;;
       *tools/copybara/copy.bara.sky*) ;;
       *)
         emit "copybara" "$GLYPH_FAIL" "$C_RED" "$rel" \
@@ -2785,20 +2786,65 @@ check_copybara_export_triggers() {
     # `--force` makes it evaluate at HEAD anyway; verified idempotent on
     # pulumi_ts-example-foundation (a forced re-export with nothing to change
     # pushed no commit).
-    opts_line="$(grep -m1 'copybara_options: ' "$wf" || true)"
-    case "$opts_line" in
-      *--force*) ;;
-      "") ;;
+    #
+    # WHAT IS READ: the `copybara-options:` input this caller really passes to
+    # the reusable workflow -- the line under the `with:` of the job whose
+    # `uses:` is _copybara-export.yaml. NOT the `workflow_dispatch` input of the
+    # same name higher up: its `default: "--ignore-noop"` is deliberate (a
+    # by-hand run chooses its own flags) and says nothing about a push.
+    #
+    # This rule used to grep for `copybara_options: ` (underscore). Every caller
+    # spells the input `copybara-options:` (hyphen), so it matched no line in any
+    # file, took its "nothing found" branch, and passed all of them -- a caller
+    # with no --force included. So "found nothing to inspect" is a FAILURE here:
+    # a guard that read nothing has not checked anything.
+    cb_callers=$((cb_callers + 1))
+    opts_line="$(awk '
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*$/ { next }
+      {
+        indent = match($0, /[^ ]/) - 1
+        if (in_job && indent < job_indent) { in_job = 0; in_with = 0 }
+        if (in_with && indent <= job_indent) in_with = 0
+      }
+      /^ *uses: .*\/_copybara-export\.yaml/ { in_job = 1; job_indent = indent; next }
+      in_job && indent == job_indent && /^ *with:[[:space:]]*$/ { in_with = 1; next }
+      in_with && /^ *copybara-options:/ { print; exit }
+    ' "$wf")"
+    if [ -z "$opts_line" ]; then
+      emit "copybara" "$GLYPH_FAIL" "$C_RED" "$rel" \
+        "no copybara-options input found" \
+        "a copybara-options: line under the with: of the job that uses _copybara-export.yaml" \
+        "nothing to inspect, so this caller's push default is unverified: the rule cannot say whether a config-only change would reach the mirror" \
+        "pass copybara-options under with: in $rel, falling back to '--force --ignore-noop' (copy a sibling copybara-export-*.yaml)"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      continue
+    fi
+    # The push default is what the expression falls back to when no input was
+    # given: its last `|| '...'` literal. A plain value with no expression is its
+    # own default. An expression with no literal fallback is empty on a push.
+    opts_value="$(printf '%s\n' "$opts_line" | sed 's/^ *copybara-options:[[:space:]]*//')"
+    case "$opts_value" in
+      *'${{'*) opts_default="$(printf '%s\n' "$opts_value" | sed -n "s/.*|| *'\([^']*\)' *}}.*/\1/p")" ;;
+      *) opts_default="$(printf '%s\n' "$opts_value" | sed "s/^[\"']//; s/[\"']\$//")" ;;
+    esac
+    case " $opts_default " in
+      *" --force "*) cb_forced=$((cb_forced + 1)) ;;
       *)
         emit "copybara" "$GLYPH_FAIL" "$C_RED" "$rel" \
-          "$(printf '%s' "$opts_line" | sed 's/^ *//')" \
-          "default copybara_options includes --force" \
+          "push default: '${opts_default}'" \
+          "push default includes --force" \
           "without --force a config-only change migrates NOTHING: copybara sees no source-revision change, logs 'No changes match any origin_files', and the run goes green while the mirror stays stale" \
-          "set the push default to '--force --ignore-noop' in $rel"
+          "set the fallback of copybara-options under with: to '--force --ignore-noop' in $rel"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
         ;;
     esac
   done
+  if [ "$cb_callers" -gt 0 ] && [ "$cb_forced" -eq "$cb_callers" ]; then
+    emit "copybara" "$GLYPH_OK" "$C_GREEN" ".github/workflows/copybara-export-*.yaml" \
+      "$cb_callers export callers" "push default includes --force" \
+      "read from the copybara-options input each caller passes to _copybara-export.yaml" ""
+  fi
 }
 
 # ---------------------------------------------------------------------------

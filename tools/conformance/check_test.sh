@@ -1131,6 +1131,97 @@ case_copybara_lists_prefix_is_not_a_match() {
   rm -rf "$root"
 }
 
+# --- Copybara export callers: the push default carries --force --------------
+# The rule read `copybara_options: ` (underscore) while every caller spells the
+# input `copybara-options:` (hyphen). It matched nothing, took its "nothing
+# found" branch and passed every caller, so case_copybara_force_missing below
+# PASSED the old rule. These cases make the rule prove it can fail.
+#
+# A caller shaped like the real ones. $2 = component, $3 = the default of the
+# workflow_dispatch input DECLARATION (which the rule must not read), $4 = the
+# line(s) under `with:` after `component:`, spliced in verbatim.
+write_copybara_caller() {
+  root="$1"; comp="$2"; dispatch_default="$3"; with_extra="$4"
+  {
+    printf 'name: Copybara Export (%s)\n' "$comp"
+    printf 'on:\n    push:\n        branches: [main]\n'
+    printf '        paths: ["apps/cli/%s/**", "tools/copybara/copy.bara.sky"]\n' "$comp"
+    printf '    workflow_dispatch:\n        inputs:\n            copybara-options:\n'
+    printf '                default: "%s"\n                required: false\n' "$dispatch_default"
+    printf 'jobs:\n    export:\n        uses: ./.github/workflows/_copybara-export.yaml\n'
+    printf '        with:\n            component: %s\n' "$comp"
+    printf '%b' "$with_extra"
+    printf '        secrets:\n            sync_ssh_key: ${{ secrets.KEY }}\n'
+  } > "$root/.github/workflows/copybara-export-$comp.yaml"
+}
+
+CB_OPTS_EXPR="            copybara-options: \${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '%s' }}\n"
+
+cb_force_line() { printf '%s\n' "$1" | grep -F "$2" | head -1; }
+
+# The bug's own shape: a caller whose push default has no --force.
+case_copybara_force_missing() {
+  root="$(new_root)"
+  # shellcheck disable=SC2059
+  write_copybara_caller "$root" alpha "--ignore-noop" "$(printf "$CB_OPTS_EXPR" '--ignore-noop')\n"
+  out="$(run_check "$root")"
+  line="$(cb_force_line "$out" "copybara-export-alpha.yaml")"
+  expect "a caller whose push default lacks --force is reported" \
+    "$line" "push default: '--ignore-noop'"
+  # The exit code proves nothing here (a bare fixture root already exits 1 on
+  # other sections), so assert the row is a failure row; that a failure row
+  # fails the run is case_every_fail_emit_sets_overall_fail's job.
+  expect "and it is reported as a failure" "$line" "✗"
+  rm -rf "$root"
+}
+
+case_copybara_force_present() {
+  root="$(new_root)"
+  # shellcheck disable=SC2059
+  write_copybara_caller "$root" alpha "--ignore-noop" "$(printf "$CB_OPTS_EXPR" '--force --ignore-noop')\n"
+  out="$(run_check "$root")"
+  expect "a caller whose push default has --force is counted as covered" \
+    "$(cb_force_line "$out" "1 export callers")" "push default includes --force"
+  # Wrapped in <> so an EMPTY line (nothing reported) is the only match for "<>".
+  expect "and nothing is reported against it" \
+    "<$(cb_force_line "$out" "copybara-export-alpha.yaml")>" "<>"
+  rm -rf "$root"
+}
+
+# Nothing to inspect is a failure, not a pass: the caller passes no
+# copybara-options at all (the declaration higher up does not count).
+case_copybara_force_nothing_to_inspect() {
+  root="$(new_root)"
+  write_copybara_caller "$root" alpha "--force --ignore-noop" ""
+  out="$(run_check "$root")"
+  line="$(cb_force_line "$out" "copybara-export-alpha.yaml")"
+  expect "a caller that passes no copybara-options is reported" \
+    "$line" "no copybara-options input found"
+  expect "and it is reported as a failure, not passed over" "$line" "✗"
+  rm -rf "$root"
+}
+
+# One bad caller among good ones: the bad one is named, and the "all covered"
+# line is not printed over it. The bad one also carries the trap in the other
+# direction: --force in the workflow_dispatch DECLARATION is not the push
+# default, and reading that line would pass a caller that exports nothing on a
+# config-only push.
+case_copybara_force_one_of_two_missing() {
+  root="$(new_root)"
+  # shellcheck disable=SC2059
+  write_copybara_caller "$root" alpha "--ignore-noop" "$(printf "$CB_OPTS_EXPR" '--force --ignore-noop')\n"
+  # shellcheck disable=SC2059
+  write_copybara_caller "$root" beta "--force --ignore-noop" "$(printf "$CB_OPTS_EXPR" '--ignore-noop')\n"
+  out="$(run_check "$root")"
+  expect "the caller without --force is reported, whatever its dispatch default says" \
+    "$(cb_force_line "$out" "copybara-export-beta.yaml")" "push default: '--ignore-noop'"
+  expect "the covered caller is not reported" \
+    "<$(cb_force_line "$out" "copybara-export-alpha.yaml")>" "<>"
+  expect "no all-covered line is printed" \
+    "<$(cb_force_line "$out" "export callers")>" "<>"
+  rm -rf "$root"
+}
+
 case_branches_filter
 case_push_only_branches
 case_paths_filter_unchanged
@@ -1175,6 +1266,10 @@ case_copybara_lists_complete
 case_copybara_lists_missing_from_both
 case_copybara_lists_watched_not_smoke_tested
 case_copybara_lists_prefix_is_not_a_match
+case_copybara_force_missing
+case_copybara_force_present
+case_copybara_force_nothing_to_inspect
+case_copybara_force_one_of_two_missing
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1
