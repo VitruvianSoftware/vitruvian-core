@@ -722,11 +722,39 @@ public struct UIStatusParams: Codable, Equatable, Sendable {
     public let text: UIText?
     /// An SF Symbol name, drawn in place of the state's own glyph.
     public let icon: String?
+    /// A few words for the closed island, beside the mark, in place of the
+    /// allowance percent. Drawn only when the manifest's status says
+    /// `activity: true`, and by an app that names
+    /// `ProtocolFeature.statusActivity`; an older app ignores it.
+    public let activity: UIText?
+    /// A start time, in Unix seconds: the app counts the seconds since then
+    /// itself, when there is no `activity`. Never below 0.
+    public let since: Double?
 
-    public init(state: StatusState, text: UIText? = nil, icon: String? = nil) {
+    public init(state: StatusState, text: UIText? = nil, icon: String? = nil, activity: UIText? = nil,
+                since: Double? = nil) {
         self.state = state
         self.text = text
         self.icon = icon
+        self.activity = activity
+        self.since = since
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state, text, icon, activity, since
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(StatusState.self, forKey: .state)
+        text = try container.decodeIfPresent(UIText.self, forKey: .text)
+        icon = try container.decodeIfPresent(String.self, forKey: .icon)
+        activity = try container.decodeIfPresent(UIText.self, forKey: .activity)
+        since = try container.decodeIfPresent(Double.self, forKey: .since)
+        if let since, !(since >= 0) {
+            throw DecodingError.dataCorruptedError(forKey: .since, in: container,
+                                                   debugDescription: "a start time before 1970")
+        }
     }
 }
 

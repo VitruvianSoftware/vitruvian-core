@@ -202,7 +202,7 @@ export interface InitializeParams {
   language: string;
   /** The folder the tool may keep its own files in. It is also the folder the tool is started in. */
   dataFolder: string;
-  /** What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them. */
+  /** What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three. */
   features?: string[];
 }
 
@@ -655,7 +655,7 @@ export function readUIBadgeParams(value: unknown, where = "uiBadgeParams"): UIBa
   return read;
 }
 
-/** The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. An app before 3.48 answers failure -32601. */
+/** The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. activity and since are drawn only when the manifest's status says activity: true; otherwise they are left out and the mark is drawn. An app before 3.48 answers failure -32601. */
 export interface UIStatusParams {
   /** none: no mark. ok: all is well. busy: something is under way. attention: something waits for the person. failure: something failed. */
   state: StatusState;
@@ -663,6 +663,10 @@ export interface UIStatusParams {
   text?: UIText;
   /** An SF Symbol name, drawn in place of the state's own glyph. The colour, the size and the motion stay the app's. A name this Mac does not have, or a blank one, draws the state's own glyph. */
   icon?: string;
+  /** A few words for the closed island, drawn beside the mark while it is the one shown, in place of the allowance percent. Cut to one line of 12 characters and drawn in about 30 points: six characters or fewer, and a number is best. Blank counts as absent. Ignored for none. An app before 3.50 ignores it. */
+  activity?: UIText;
+  /** Unix time in seconds, a fraction allowed. The app shows the seconds since then when there is no activity, and counts them itself. A time in the future shows 0. An app before 3.50 ignores it. */
+  since?: number;
 }
 
 export function readUIStatusParams(value: unknown, where = "uiStatusParams"): UIStatusParams {
@@ -675,6 +679,12 @@ export function readUIStatusParams(value: unknown, where = "uiStatusParams"): UI
   }
   if (object["icon"] !== undefined) {
     read.icon = expectString(object["icon"], `${where}.icon`);
+  }
+  if (object["activity"] !== undefined) {
+    read.activity = readUIText(object["activity"], `${where}.activity`);
+  }
+  if (object["since"] !== undefined) {
+    read.since = expectNumber(object["since"], `${where}.since`);
   }
   return read;
 }

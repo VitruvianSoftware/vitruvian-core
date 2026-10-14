@@ -413,6 +413,10 @@ def manifest_file(model: Model) -> str:
                     used.add(model.title(kind.ref))
                 if kind is not None and kind.kind == "text":
                     used.update(["_text", "Union"])
+                if kind is not None and kind.kind == "boolean":
+                    used.add("_boolean")
+                if kind is not None and kind.kind == "number":
+                    used.add("_number")
     names = sorted(
         used
         | {"Any", "Dict", "List", "Literal", "Optional", "dataclass"}

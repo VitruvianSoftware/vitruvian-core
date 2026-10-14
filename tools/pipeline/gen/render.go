@@ -138,6 +138,20 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("          persist-credentials: false\n")
 	// The diff needs real history; a shallow clone cannot see the base.
 	b.WriteString("          fetch-depth: 0\n\n")
+	// A release-bot PR plans NO units on the pull request. It only bumps
+	// versions and the changelog of code main already tested, and the merge
+	// queue plans and runs this workflow in full on the exact commit that
+	// lands, so the PR-side run was the same work done twice (~11 min median
+	// on release PRs, 2026-09-14..10-14). Only the bot's own same-repo
+	// release-please branches qualify; merge_group and push are untouched.
+	// Every step below that only feeds the planner is skipped with it, and so
+	// is the fast-pass tree, so no "this code passed" record is written for a
+	// run that tested nothing.
+	b.WriteString("      - name: Is this a release-bot pull request?\n")
+	b.WriteString("        id: release\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.type == 'Bot' && github.event.pull_request.head.repo.full_name == github.repository }}\n")
+	b.WriteString("        run: echo \"skip=$RELEASE_PR\" | tee -a \"$GITHUB_OUTPUT\"\n\n")
 	// LOG ONLY (#2841). In the merge queue, ask whether a pull-request run
 	// already passed this workflow on these exact files, and say so in the
 	// job summary. Nothing reads the verdict yet: every unit still runs. On a
@@ -146,6 +160,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// never cost a plan.
 	b.WriteString("      - name: Has this exact code already passed? (log only)\n")
 	b.WriteString("        id: fastpass\n")
+	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
 	b.WriteString("        continue-on-error: true\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          GH_TOKEN: ${{ github.token }}\n")
@@ -164,8 +179,10 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("            echo \"- why: $(sed -n 's/^reason=//p' \"$RUNNER_TEMP/fastpass.out\")\"\n")
 	b.WriteString("          } >> \"$GITHUB_STEP_SUMMARY\"\n\n")
 	b.WriteString("      - name: Free up runner disk space\n")
+	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
 	b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
 	b.WriteString("      - name: Set up Bazel\n")
+	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
 	b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
 	// The dependency map for the diff base, saved by the rdeps-map job when
 	// that commit landed on main (#2465). A miss is normal (base not on main
@@ -175,6 +192,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// stdlib-only, so `go build` takes seconds. cache: false -- there are no
 	// module downloads to cache, and the Actions cache budget is shared.
 	b.WriteString("      - name: Set up Go\n")
+	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
 	fmt.Fprintf(&b, "        uses: %s\n", pin("actions/setup-go"))
 	b.WriteString("        with:\n")
 	b.WriteString("          go-version-file: go.mod\n")
@@ -191,6 +209,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// stay as the fallback, so nothing is lost if the ref is not there.
 	b.WriteString("      - name: Fetch the dependency map kept under a git ref\n")
 	b.WriteString("        id: mapref\n")
+	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
 	b.WriteString("        continue-on-error: true\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n")
@@ -198,6 +217,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("        run: bash tools/ci/rdeps-map-ref.sh fetch \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$BASE_SHA\"\n\n")
 	b.WriteString("      - name: List recent ancestors of the diff base\n")
 	b.WriteString("        id: mapkeys\n")
+	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n")
 	b.WriteString("        run: |\n")
@@ -213,7 +233,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// continue-on-error: the map is only ever a speed-up, so a cache problem
 	// must not fail the plan; the planner copes with having no map.
 	b.WriteString("      - name: Restore the dependency map for the diff base\n")
-	b.WriteString("        if: steps.mapref.outputs.commit == ''\n")
+	b.WriteString("        if: steps.release.outputs.skip != 'true' && steps.mapref.outputs.commit == ''\n")
 	b.WriteString("        continue-on-error: true\n")
 	fmt.Fprintf(&b, "        uses: %s\n", pin("actions/cache/restore"))
 	b.WriteString("        with:\n")
@@ -229,6 +249,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}\n")
 	b.WriteString("          MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}\n")
 	b.WriteString("          PUSH_BEFORE: ${{ github.event.before }}\n")
+	b.WriteString("          RELEASE_SKIP: ${{ steps.release.outputs.skip }}\n")
 	fmt.Fprintf(&b, "          ALL_UNITS: '%s'\n", allNamesJSON)
 	b.WriteString("        run: |\n")
 	// `set +e` is load-bearing and easy to lose. GitHub runs `run:` steps as
@@ -238,6 +259,13 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// exit with none of its warnings printed. That is exactly what happened on
 	// the first run of this job (3m18s of silence, then exit 1).
 	b.WriteString("          set +e -u -o pipefail\n")
+	b.WriteString("          if [ \"$RELEASE_SKIP\" = \"true\" ]; then\n")
+	b.WriteString("            echo \"Release-bot PR: no units run here; the merge queue runs them on the commit that lands.\"\n")
+	b.WriteString("            echo \"units=[]\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("            echo \"degraded=false\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("            printf '### Affected units\\n\\nRelease-bot PR: none on the pull request. The merge queue tests the exact commit that lands.\\n' >> \"$GITHUB_STEP_SUMMARY\"\n")
+	b.WriteString("            exit 0\n")
+	b.WriteString("          fi\n")
 	b.WriteString("          case \"$EVENT_NAME\" in\n")
 	b.WriteString("            pull_request) base=\"$PR_BASE_SHA\" ;;\n")
 	b.WriteString("            merge_group)  base=\"$MQ_BASE_SHA\" ;;\n")

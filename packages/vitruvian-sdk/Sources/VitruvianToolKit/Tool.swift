@@ -396,13 +396,24 @@ public struct App {
     /// `contributes.status`: without it the app refuses, and the refusal is
     /// thrown. It needs nothing in `uses`.
     ///
+    /// `activity`, a few words, and `since`, a start time the app counts
+    /// the seconds from, are drawn beside the mark while it is the one the
+    /// closed island shows; the words win over the start time. Six
+    /// characters or fewer, and a number is best. They show only on an app
+    /// that has `ui.status.activity` (3.50 and later): to an app without it
+    /// the status is sent **without them**. The manifest's status must say
+    /// `"activity": true`, or the app leaves them out.
+    ///
     /// False, and **nothing is sent**, when the app did not say it has
     /// `ui.status`: an app before 3.48 shows no status. True when it was
     /// sent and answered; the person may still have switched the mark off.
     @discardableResult
-    public func status(_ state: StatusState, text: UIText? = nil, icon: String? = nil) throws -> Bool {
+    public func status(_ state: StatusState, text: UIText? = nil, icon: String? = nil, activity: UIText? = nil,
+                       since: Date? = nil) throws -> Bool {
         guard supports(.status) else { return false }
-        try send(UIStatusParams(state: state, text: text, icon: icon))
+        let words = supports(.statusActivity)
+        try send(UIStatusParams(state: state, text: text, icon: icon, activity: words ? activity : nil,
+                                since: words ? since?.timeIntervalSince1970 : nil))
         return true
     }
 

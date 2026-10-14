@@ -76,7 +76,7 @@ NEEDS_ID = ("button", "toggle", "field", "list", "choice")
 VERSIONS = ["1", "2"]
 # What this app says it has beyond the first release of the protocol version,
 # in the hello. An app before 3.48 says nothing.
-FEATURES = ["ui.status", "ui.choice", "preferences.options"]
+FEATURES = ["ui.status", "ui.choice", "preferences.options", "ui.status.activity"]
 STATES = ("none", "ok", "busy", "attention", "failure")
 MAX_CHOICE_OPTIONS = 64
 MAX_CHOICE_VALUE = 128
@@ -162,6 +162,11 @@ def is_state(value):
     return value in STATES
 
 
+def is_since(value):
+    """A start time: Unix seconds, never before 1970."""
+    return is_number(value) and value >= 0
+
+
 def is_choice(value):
     """A choice's own fields: what is selected, and from 1 to 64 options,
     each a value and a title, no two with one value."""
@@ -226,7 +231,12 @@ PARAMS = {
 # The params a message may carry, and must carry rightly when it does.
 OPTIONAL_PARAMS = {
     "ui/badge": {"count": is_count, "dot": is_flag},
-    "ui/status": {"text": is_ui_text, "icon": is_text},
+    "ui/status": {
+        "text": is_ui_text,
+        "icon": is_text,
+        "activity": is_ui_text,
+        "since": is_since,
+    },
 }
 
 
@@ -363,6 +373,10 @@ class Run:
         self.data_folder = data_folder
         self.features = features
         self.shows_status = "status" in manifest.get("contributes", {})
+        # Whether that status may carry a few words: `"activity": true`.
+        self.shows_activity = (
+            manifest.get("contributes", {}).get("status", {}).get("activity") is True
+        )
         # Each status the tool set, in order, and how many an older app
         # refused.
         self.statuses = []
@@ -445,7 +459,17 @@ class Run:
             self.refused += 1
             return self.fail(request, UNAVAILABLE, "not available right now")
         self.statuses.append(request["params"]["state"])
-        return self.link.send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        self.link.send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        words = any(name in request["params"] for name in ("activity", "since"))
+        if words and not self.shows_activity:
+            # The app answers it with {} and draws the mark: the words are
+            # what is lost, so it is the author's to fix.
+            raise Failure(
+                "ui/status with words from a tool whose manifest does not declare them. "
+                "The app draws the mark and leaves the words out: add "
+                '"activity": true to contributes.status'
+            )
+        return None
 
     def answer(self, request_id, seconds, refuse_all=False):
         """Plays the app until the tool answers request `request_id`."""

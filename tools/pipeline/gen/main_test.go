@@ -832,3 +832,60 @@ func TestPlannerIsBuiltWithGoNotBazel(t *testing.T) {
 		t.Error("a failed planner build must fail open, with a warning")
 	}
 }
+
+// A release-bot PR plans no units on the pull request: the merge queue runs
+// them on the commit that lands. The skip must be narrow (only the bot's own
+// same-repo release-please branch, only on pull_request), must not write a
+// "this code passed" record for a run that tested nothing, and must leave the
+// fail-open paths for every other event untouched.
+func TestReleasePRsPlanNoUnitsOnThePR(t *testing.T) {
+	units := []Unit{{
+		Schema: SchemaVersion, Name: "alpha", Package: "a",
+		TestTargets: []string{"//a:t"}, Tier: "L1",
+		Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10,
+	}}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+	planJob := got[strings.Index(got, "  plan:"):strings.Index(got, "  unit-alpha:")]
+
+	for _, cond := range []string{
+		"github.event_name == 'pull_request'",
+		"startsWith(github.head_ref, 'release-please--')",
+		"github.event.pull_request.user.type == 'Bot'",
+		"github.event.pull_request.head.repo.full_name == github.repository",
+	} {
+		if !strings.Contains(planJob, cond) {
+			t.Errorf("release-PR detection is missing the narrowing condition %q", cond)
+		}
+	}
+
+	// Every step that only feeds the planner is skipped on a release PR,
+	// including the fast-pass tree: an empty tree is what keeps the gate from
+	// recording "this exact code passed".
+	for _, id := range []string{"id: fastpass", "id: mapref", "id: mapkeys"} {
+		i := strings.Index(planJob, id)
+		if i < 0 || !strings.Contains(planJob[i:i+120], "steps.release.outputs.skip != 'true'") {
+			t.Errorf("step %q must be skipped on a release-bot PR", id)
+		}
+	}
+	for _, name := range []string{"Free up runner disk space", "Set up Bazel", "Set up Go"} {
+		i := strings.Index(planJob, "- name: "+name)
+		if i < 0 || !strings.Contains(planJob[i:i+120], "steps.release.outputs.skip != 'true'") {
+			t.Errorf("step %q must be skipped on a release-bot PR", name)
+		}
+	}
+
+	// The plan step answers "no units" BEFORE any planner work, and only when
+	// told to; with any other value it falls through to the normal fail-open
+	// path.
+	i := strings.Index(planJob, "set +e -u -o pipefail")
+	if i < 0 {
+		t.Fatal("plan step script not found")
+	}
+	head := planJob[i : i+400]
+	if !strings.Contains(head, `if [ "$RELEASE_SKIP" = "true" ]; then`) || !strings.Contains(head, `echo "units=[]"`) {
+		t.Errorf("plan step must emit an empty unit list first on a release-bot PR:\n%s", head)
+	}
+}

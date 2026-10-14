@@ -157,8 +157,18 @@ package struct NotchAgentRestingWing: View {
                                                         statuses: panels.statuses))
     }
 
+    /// What the right-hand wing draws when no Nexus session runs: the shown
+    /// mark's words, the seconds since its start time, or the allowance
+    /// percent.
+    private var restingWing: RestingStatus.RightWing? {
+        RestingStatus.rightWing(tools: RestingStatus.shown(of: ExternalToolStore.shared.statusTools(),
+                                                           statuses: panels.statuses),
+                                nexusRunning: false, language: l10n.language)
+    }
+
     package var body: some View {
-        TimelineView(.periodic(from: .now, by: nexusSession.isRunning ? 1 : 6)) { context in
+        TimelineView(.periodic(from: .now,
+                               by: nexusSession.isRunning || RestingStatus.ticksEverySecond(restingWing) ? 1 : 6)) { context in
             content(now: context.date)
         }
         .contentShape(Rectangle())
@@ -233,14 +243,34 @@ package struct NotchAgentRestingWing: View {
                     NotchRestingStatusMark(mark: statusMark, language: l10n.language)
                 }
             } else {
-                Text(AgentFormat.percent(remaining))
-                    .font(.system(size: 9, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(tint == provider.tint ? .white : tint)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                switch restingWing {
+                case .words(let words)?:
+                    // A tool's own words, drawn as Nexus Agent's text is.
+                    restingText(words)
+                case .seconds(let since)?:
+                    restingText(RestingStatus.seconds(since: since, now: now, language: l10n.language))
+                case .allowance?, nil:
+                    Text(AgentFormat.percent(remaining))
+                        .font(.system(size: 9, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(tint == provider.tint ? .white : tint)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
             }
         }
+    }
+}
+
+extension NotchAgentRestingWing {
+    /// The right-hand wing's text for a tool's words or seconds: the look of
+    /// Nexus Agent's text, drawn as written, with no markup.
+    fileprivate func restingText(_ words: String) -> some View {
+        Text(verbatim: words)
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
     }
 }
 

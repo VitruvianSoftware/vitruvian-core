@@ -78,6 +78,7 @@ func (c *counter) page(app *toolkit.App) toolkit.UITree {
 		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
 		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
 		c.statusPicker(app),
+		ui.If(app.Supports(toolkit.FeatureStatusActivity), c.wordsPicker()),
 	)
 }
 ```

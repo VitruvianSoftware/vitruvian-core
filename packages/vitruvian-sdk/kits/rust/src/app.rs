@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -43,6 +44,25 @@ pub mod features {
     pub const CHOICE: &str = "ui.choice";
     /// `options` on a text preference, drawn as a pop-up menu.
     pub const PREFERENCE_OPTIONS: &str = "preferences.options";
+    /// `activity` and `since` on `ui/status`: a few words, or a count of
+    /// seconds, beside the mark. From 3.50.
+    pub const STATUS_ACTIVITY: &str = "ui.status.activity";
+}
+
+/// What [`Ui::status_with`] takes beside the state. Every field may be left
+/// out: `StatusOptions { activity: Some("3".into()), ..Default::default() }`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct StatusOptions {
+    /// What it means, in one short line, for VoiceOver and the tooltip.
+    pub text: Option<UiText>,
+    /// An SF Symbol name, drawn in place of the state's own glyph.
+    pub icon: Option<String>,
+    /// A few words for the closed island, beside the mark. Sent only to an
+    /// app that has [`features::STATUS_ACTIVITY`].
+    pub activity: Option<UiText>,
+    /// A start time the app counts the seconds from, when there are no
+    /// words. Written as Unix seconds; a time before 1970 is written as 0.
+    pub since: Option<SystemTime>,
 }
 
 /// What a status says, for [`Ui::status`]. The app draws each in its own
@@ -228,13 +248,48 @@ impl Ui<'_> {
         text: Option<UiText>,
         icon: Option<&str>,
     ) -> Result<bool, ToolError> {
+        self.status_with(
+            state,
+            StatusOptions {
+                text,
+                icon: icon.map(str::to_string),
+                ..StatusOptions::default()
+            },
+        )
+    }
+
+    /// [`Ui::status`], with everything a status may carry. `activity`, a
+    /// few words, and `since`, a start time the app counts the seconds from,
+    /// are drawn beside the mark while it is the one the closed island
+    /// shows; the words win over the start time. Six characters or fewer,
+    /// and a number is best. They show only on an app that has
+    /// [`features::STATUS_ACTIVITY`] (3.50 and later): to an app without it
+    /// the status is sent without them. The manifest's status must say
+    /// `"activity": true`, or the app leaves them out.
+    ///
+    /// `Ok(false)`, and nothing is sent, when the app did not say it has
+    /// `ui.status`, as for [`Ui::status`].
+    pub fn status_with(self, state: &str, options: StatusOptions) -> Result<bool, ToolError> {
         if !self.state.features.contains(features::STATUS) {
             return Ok(false);
         }
+        // An app from before 3.50 is sent the status without its words.
+        let words = self.state.features.contains(features::STATUS_ACTIVITY);
         let params = UiStatusParams {
             state: state.to_string(),
-            text,
-            icon: icon.map(str::to_string),
+            text: options.text,
+            icon: options.icon,
+            activity: if words { options.activity } else { None },
+            since: if words {
+                options.since.map(|since| {
+                    since
+                        .duration_since(UNIX_EPOCH)
+                        .map(|elapsed| elapsed.as_secs_f64())
+                        .unwrap_or(0.0)
+                })
+            } else {
+                None
+            },
         };
         self.state.call::<Empty>(methods::UI_STATUS, &params)?;
         Ok(true)

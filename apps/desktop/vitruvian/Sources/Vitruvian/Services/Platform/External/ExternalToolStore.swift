@@ -17,6 +17,13 @@ import VitruvianToolProtocol
 /// (`restore`).
 @MainActor
 package final class ExternalToolStore {
+    /// What this app has beyond the first release of the protocol version,
+    /// as its hello names it. The app's own list, not every name the
+    /// protocol has: a name added to the protocol is claimed only once the
+    /// app draws it.
+    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions,
+                                                                  .statusActivity]
+
     /// Why a folder was not added.
     package enum Refusal: Error, Equatable, Sendable {
         /// The folder is not a tool the app can add.
@@ -818,7 +825,7 @@ package final class ExternalToolStore {
                     transport: parts.makeTransport(program, data), clock: parts.clock, limits: parts.limits,
                     hello: InitializeParams(protocolVersions: ProtocolVersion.supported, language: parts.language(),
                                             dataFolder: data.path,
-                                            features: ProtocolFeature.allCases.map(\.rawValue)),
+                                            features: Self.features.map(\.rawValue)),
                     serve: { method, params, reply in calls.serve(method, params, reply) },
                     events: events)
             },

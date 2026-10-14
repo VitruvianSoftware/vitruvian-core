@@ -185,6 +185,13 @@ for line in sys.stdin:
             status("failure", text={"fr": "main est rouge"})
         elif how == "names a glyph that is no name":
             status("busy", icon=7)
+        elif how == "counts from before 1970":
+            status("busy", since=-1)
+        elif how == "says its few words with a number":
+            status("busy", activity=3)
+        elif how == "says a few words" and "ui.status.activity" in features:
+            status("busy", text="Checks are running", activity="3")
+            status("busy", since=1760450400.5)
         elif "ui.status" in features:
             status("busy", icon="arrow.triangle.branch", text={"en": "Working", "fr": "En cours"})
             status("none")
@@ -210,6 +217,8 @@ BROKEN_STATUS = {
     "names a state there is not": "NOT OK   a command: ui/status with params that are not its own",
     "says it in French alone": "NOT OK   a command: ui/status with params that are not its own",
     "names a glyph that is no name": "NOT OK   a command: ui/status with params that are not its own",
+    "counts from before 1970": "NOT OK   a command: ui/status with params that are not its own",
+    "says its few words with a number": "NOT OK   a command: ui/status with params that are not its own",
     "draws two options alike": "NOT OK   a panel: ui/open was not answered with a page",
     "draws a choice of nothing": "NOT OK   a panel: ui/open was not answered with a page",
     "dies when refused": "NOT OK   an older app: the tool did not carry on after an app that has no "
@@ -479,6 +488,36 @@ def statuses(manifest):
             problems.append(
                 f"a tool that sets a status its manifest does not declare is not told:\n{printed}"
             )
+
+        # A few words with the status: drawn for a tool that declares them,
+        # left out, and failed here, for one that does not.
+        write(manifest)
+        os.environ["BROKEN_HOW"] = "says a few words"
+        status, printed = check(folder)
+        failed = [text for text in printed.splitlines() if text.startswith("NOT OK")]
+        wanted = (
+            "NOT OK   a command: ui/status with words from a tool whose manifest does not "
+            "declare them. The app draws the mark and leaves the words out: add "
+            '"activity": true to contributes.status'
+        )
+        if status != 1 or failed != [wanted]:
+            problems.append(
+                f"a tool that sends words its manifest does not declare is not told:\n{printed}"
+            )
+        declared = dict(manifest)
+        declared["contributes"] = dict(manifest["contributes"])
+        declared["contributes"]["status"] = {"placement": "island", "activity": True}
+        write(declared)
+        status, printed = check(folder)
+        wanted = [
+            "ok       a command: hello: ran, and set the status: busy, busy",
+            "ok       an older app: answered the hello, ran hello, drew lights and left with 0; "
+            "it sent no ui/status",
+        ]
+        if status != 0 or not all(piece in printed for piece in wanted):
+            problems.append(
+                f"a tool that declares its words and sends them does not pass:\n{printed}"
+            )
     return problems
 
 
@@ -502,7 +541,10 @@ def the_hello(manifest):
             }
 
     for features, wanted in (
-        (conformance.FEATURES, ["ui.status", "ui.choice", "preferences.options"]),
+        (
+            conformance.FEATURES,
+            ["ui.status", "ui.choice", "preferences.options", "ui.status.activity"],
+        ),
         (None, None),
     ):
         link = Kept()

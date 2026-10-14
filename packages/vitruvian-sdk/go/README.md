@@ -25,6 +25,10 @@ pop-up menu on a page. Those two are newer than protocol 2 itself:
 `app.Supports(toolkit.FeatureChoice)` says whether this app has one. On an
 app from before them `Status` sends nothing and gives false, and a choice is
 drawn as its fallback text, so send a `ui.Field` there instead.
+`toolkit.StatusOptions{Activity: "3"}` puts a few words beside the mark, and
+`Since: time.Now()` a count of seconds the app keeps, when the manifest's
+status says `"activity": true`. An app before 3.50 does not have
+`toolkit.FeatureStatusActivity`; the status is sent to it without them.
 
 Go 1.22 or later, and nothing outside Go's standard library. MIT licence.
 `toolkit/protocol_gen.go` is written by the SDK's generator from the

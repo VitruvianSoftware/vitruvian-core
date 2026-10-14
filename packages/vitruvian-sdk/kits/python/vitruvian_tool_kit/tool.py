@@ -27,6 +27,7 @@ import os
 import signal
 import sys
 import time
+from datetime import datetime
 from typing import Any, Callable, Dict, FrozenSet, List, Optional
 
 from .generated.messages import (
@@ -83,6 +84,9 @@ class Feature:
     """The `choice` block."""
     PREFERENCE_OPTIONS = "preferences.options"
     """`options` on a text preference, drawn as a pop-up menu."""
+    STATUS_ACTIVITY = "ui.status.activity"
+    """`activity` and `since` on `ui/status`: a few words, or a count of
+    seconds, beside the mark. From 3.50."""
 
 
 class CommandRefused(Exception):
@@ -156,6 +160,8 @@ class App(AppCalls):
         state: StatusState,
         text: Optional[UIText] = None,
         icon: Optional[str] = None,
+        activity: Optional[UIText] = None,
+        since: Optional[datetime] = None,
     ) -> bool:
         """Sets the tool's status, a small mark the app draws on the closed
         island: ui/status. `state` is none, ok, busy, attention or failure.
@@ -166,6 +172,15 @@ class App(AppCalls):
         The manifest must declare contributes.status: without it the app
         refuses, and this raises the Refusal. It needs nothing in uses.
 
+        `activity`, a few words, and `since`, a start time the app counts the
+        seconds from, are drawn beside the mark while it is the one the closed
+        island shows; the words win over the start time. Six characters or
+        fewer, and a number is best. They show only on an app that has
+        ui.status.activity (3.50 and later): to an app without it the status
+        is sent without them. The manifest's status must say
+        "activity": true, or the app leaves them out. A naive `since` is read
+        as local time.
+
         False, and nothing is sent, when the app did not say it has
         ui.status: an app before 3.48 shows no status. True when it was sent
         and answered; the person may still have switched the mark off.
@@ -174,7 +189,16 @@ class App(AppCalls):
         said, and an older app answers it with a Refusal, -32601."""
         if not self.supports(Feature.STATUS):
             return False
-        self.ui.status(state=state, text=text, icon=icon)
+        if not self.supports(Feature.STATUS_ACTIVITY):
+            # An app from before 3.50 is sent the status without its words.
+            activity, since = None, None
+        self.ui.status(
+            state=state,
+            text=text,
+            icon=icon,
+            activity=activity,
+            since=None if since is None else since.timestamp(),
+        )
         return True
 
 

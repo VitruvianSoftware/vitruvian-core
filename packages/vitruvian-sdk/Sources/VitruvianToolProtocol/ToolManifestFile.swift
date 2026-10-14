@@ -117,6 +117,10 @@ public struct ToolManifestFile: Codable, Equatable, Sendable {
     /// the file has, so that a name nobody knows can be reported by name.
     public struct Status: Codable, Equatable, Sendable {
         public let placement: String
+        /// True: the tool's status may carry a few words for the closed
+        /// island, and the agreement sheet says so. An app before 3.50
+        /// ignores it.
+        public let activity: Bool?
     }
 
     /// One value a preference with options may be set to, and what the

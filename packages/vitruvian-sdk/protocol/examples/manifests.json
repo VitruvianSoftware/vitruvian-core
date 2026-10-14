@@ -859,6 +859,32 @@
       }
     },
     {
+      "about": "a status that may carry a few words for the closed island",
+      "valid": true,
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "status": { "placement": "island", "activity": true }
+        }
+      }
+    },
+    {
+      "about": "a status that says it carries no words",
+      "valid": true,
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "status": { "placement": "island", "activity": false }
+        }
+      }
+    },
+    {
       "about": "a text preference with options, each title in two languages",
       "valid": true,
       "change": {
@@ -1021,6 +1047,21 @@
             { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
           ],
           "status": {}
+        }
+      }
+    },
+    {
+      "about": "a status whose words are not said with true or false",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["status", "activity"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "status": { "placement": "island", "activity": "yes" }
         }
       }
     },

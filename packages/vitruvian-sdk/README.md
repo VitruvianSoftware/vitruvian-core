@@ -9,8 +9,8 @@ panel, and as shortcuts. A tool of protocol 2 can also show a page of its
 own: in the Dynamic Island, in its detail in Settings, and in a window. It
 describes the page in blocks and the app draws it, or it brings a web page
 from its own folder. It can show a small status mark on the closed island,
-and offer a choice among fixed options as a pop-up menu: as a setting, or
-on a page.
+with a few words or a running count of seconds beside it, and offer a choice
+among fixed options as a pop-up menu: as a setting, or on a page.
 
 **A tool is trusted like an app.** It runs as you, with every permission
 Vitruvian has. The app does not limit or check what it does.
@@ -28,7 +28,7 @@ not work.
 |---|---|
 | [`docs/`](docs/writing-a-tool.md) | The guide for a tool's author. Its examples are tested. |
 | [`protocol/`](protocol/README.md) | The protocol, versions 1 and 2: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
-| `samples/` | Twelve tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript`, `hello-panel-python`, `hello-panel-go` and `hello-panel-rust`, a counter in the island drawn from blocks, with a status on the closed island and a pop-up menu to pick it; `front-window`, which reads the title of the window in front by asking macOS itself. |
+| `samples/` | Twelve tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript`, `hello-panel-python`, `hello-panel-go` and `hello-panel-rust`, a counter in the island drawn from blocks, with a status on the closed island and a pop-up menu to pick it, and on Vitruvian 3.50 a second menu for a few words beside the mark; `front-window`, which reads the title of the window in front by asking macOS itself. |
 | `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands and panels, handle them, call the app, write a page as its blocks. |
 | `kits/` | The same, for TypeScript (`@vitruviansoftware/tool-kit`, npm) and Python (`vitruvian-tool-kit`, PyPI). Their types are written from the schemas by `//tools/sdk-codegen`, and a test fails when they are not what it writes. |
 | `go/` | The same kit in Go, module `github.com/VitruvianSoftware/vitruvian-sdk/go`, package `toolkit`. Go 1.22 or later, standard library only. |
@@ -162,11 +162,13 @@ ok       an older app: answered the hello, ran hello and left with 0; it sent no
 
 While a command runs, the script answers your requests as the app would. A
 service your manifest's `uses` does not list is refused with -32001. Its
-hello names what Vitruvian 3.48 has, `ui.status`, `ui.choice` and
-`preferences.options`, so a tool that asks first shows its status and draws
-its `choice` here. A `ui/status` from a tool whose manifest declares no
-status fails the run, and so does a `choice` block that breaks its rules:
-an id, a value, and from 1 to 64 options with no two values alike.
+hello names what Vitruvian 3.50 has, `ui.status`, `ui.choice`,
+`preferences.options` and `ui.status.activity`, so a tool that asks first
+shows its status, its words and its `choice` here. A `ui/status` from a tool
+whose manifest declares no status fails the run, and so does one with words
+from a tool whose status does not say `"activity": true`: the app would draw
+the mark and leave the words out. So does a `choice` block that breaks its
+rules: an id, a value, and from 1 to 64 options with no two values alike.
 
 Every line your tool writes must be one JSON-RPC 2.0 message of at most 1 MB.
 The fifteen messages a tool may send must each carry their own params, of

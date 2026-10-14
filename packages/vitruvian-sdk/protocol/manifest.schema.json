@@ -148,6 +148,10 @@
         "placement": {
           "description": "Where it is shown. island: on the closed island, beside the agent mark.",
           "enum": ["island"]
+        },
+        "activity": {
+          "description": "true: the tool's status may carry words for the closed island, and the agreement sheet says so. An app before 3.50 ignores it.",
+          "type": "boolean"
         }
       }
     },

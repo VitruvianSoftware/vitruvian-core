@@ -75,6 +75,7 @@ function page(app) {
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
     statusPicker(app),
+    app.supports(Feature.statusActivity) && wordsPicker(),
   ]);
 }
 ```

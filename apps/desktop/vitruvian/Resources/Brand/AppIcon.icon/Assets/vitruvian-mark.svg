@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- Copyright (C) 2026 VitruvianSoftware. Placeholder mark; see make_placeholder_brand.py. -->
+<!-- Copyright (C) 2026 VitruvianSoftware. Golden-Datum V mark; see make_placeholder_brand.py. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="664" height="664" viewBox="180 120 664 664">
   <g fill="none" stroke="#000" stroke-width="64">
     <circle cx="512" cy="452" r="300"/>
     <rect x="257" y="242" width="510" height="510"/>
+    <line x1="257" y1="368" x2="767" y2="368" stroke-width="44"/>
+    <path d="M294 260L512 752L730 260" stroke-linecap="square" stroke-linejoin="miter"/>
+    <circle cx="512" cy="452" r="42" fill="#d47657" stroke="none"/>
   </g>
 </svg>

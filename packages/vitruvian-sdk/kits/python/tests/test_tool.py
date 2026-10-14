@@ -35,6 +35,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -811,6 +812,89 @@ class PanelTests(unittest.TestCase):
             },
         )
 
+    def test_a_status_sends_its_words_to_an_app_that_draws_them(self):
+        shown = []
+        start = datetime.fromtimestamp(1760450400.5, tz=timezone.utc)
+
+        def check(app):
+            shown.append(
+                app.status("busy", text="Checks are running", activity="3", since=start)
+            )
+
+        tool = (
+            self.bench.hello('["2"]', features='["ui.status","ui.status.activity"]')
+            .run("check", 2)
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .goodbye()
+            .tool(lambda t: t.command("check", check))
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(shown, [True])
+        self.assertEqual(
+            self.bench.written()[1],
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "ui/status",
+                "params": {
+                    "state": "busy",
+                    "text": "Checks are running",
+                    "activity": "3",
+                    "since": 1760450400.5,
+                },
+            },
+            "the words, and the start time in Unix seconds",
+        )
+
+    def test_a_status_sends_no_words_to_an_app_from_3_48(self):
+        # 3.48 and 3.49 name `ui.status` and not its words: the status goes,
+        # without them.
+        shown = []
+
+        def check(app):
+            shown.append(
+                app.status(
+                    "busy",
+                    text="Checks are running",
+                    activity="3",
+                    since=datetime.now(timezone.utc),
+                )
+            )
+
+        tool = (
+            self.bench.hello(
+                '["2"]', features='["ui.status","ui.choice","preferences.options"]'
+            )
+            .run("check", 2)
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .goodbye()
+            .tool(lambda t: t.command("check", check))
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(shown, [True])
+        self.assertEqual(
+            self.bench.written()[1]["params"],
+            {"state": "busy", "text": "Checks are running"},
+            "sends no words to an app from 3.48",
+        )
+
+    def test_a_status_with_words_writes_nothing_for_an_app_without_a_status(self):
+        shown = []
+
+        def build(tool):
+            tool.answer_seconds = 0.2
+            tool.command(
+                "check",
+                lambda app: shown.append(
+                    app.status("busy", activity="3", since=datetime.now(timezone.utc))
+                ),
+            )
+
+        tool = self.bench.hello('["1","2"]').run("check", 2).goodbye().tool(build)
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(shown, [False])
+        self.assertEqual(len(self.bench.written()), 2)
+
     def test_a_status_writes_nothing_for_an_older_app(self):
         # An app before 3.48: its hello has no `features`. No answer is
         # scripted, so a request sent here would wait and then fail.
@@ -873,8 +957,13 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(tool.serve(), 0)
         self.assertEqual(has, [True, True, False, True, False])
         self.assertEqual(
-            (Feature.STATUS, Feature.CHOICE, Feature.PREFERENCE_OPTIONS),
-            ("ui.status", "ui.choice", "preferences.options"),
+            (
+                Feature.STATUS,
+                Feature.CHOICE,
+                Feature.PREFERENCE_OPTIONS,
+                Feature.STATUS_ACTIVITY,
+            ),
+            ("ui.status", "ui.choice", "preferences.options", "ui.status.activity"),
         )
 
     def test_an_app_that_says_nothing_has_none_of_them(self):
@@ -892,13 +981,14 @@ class PanelTests(unittest.TestCase):
                             Feature.STATUS,
                             Feature.CHOICE,
                             Feature.PREFERENCE_OPTIONS,
+                            Feature.STATUS_ACTIVITY,
                         )
                     ),
                 )
             )
         )
         self.assertEqual(tool.serve(), 0)
-        self.assertEqual(has, [False, False, False])
+        self.assertEqual(has, [False, False, False, False])
 
     def test_a_choice_is_built_as_the_protocols_example(self):
         options = [

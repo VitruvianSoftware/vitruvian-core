@@ -157,6 +157,18 @@ The GitHub tool has no new words: its words are digits.
 - [ ] **Step 8: Watch everything pass.** The package's three lines of tests, then the app's suites and source tests. Record `platform` and `tool-runtime` counts before and after.
 - [ ] **Step 9: Commit**, with `git status --short` first.
 
+**As built (2026-10-14).** Where the code proved the plan wrong:
+
+- **Three existing tests changed on purpose, because they list `ProtocolFeature.allCases`.** The desk's hello (`Session.swift`) already names every case, so it names `ui.status.activity` from this task, not Task 3: `RunTests.testTheHelloSaysWhatTheAppHasAndAStatusIsSaid` matches the four names. `ProtocolExamplesTests.testTheHelloMaySayWhatTheAppHas` and the kit's `testSupportsIsTrueOnlyForWhatTheHelloListed` hold four names too. `Session.swift` itself needed no change.
+- **`tools/sdk-codegen` had a bug this change was the first to reach.** The TypeScript and Python manifest readers import a fixed list of the shared readers, and the manifest had no boolean field before `contributes.status.activity`: `manifest.ts` called `expectBoolean` and `manifest.py` called `_boolean`, neither imported, so the TypeScript kit did not compile. Both emitters now import the reader of each kind of field the manifest has. The test `test_every_reader_the_manifest_files_call_is_imported` was seen to fail (`['_boolean', 'cls'] != []`, before `cls` was excluded as an argument) without the fix.
+- **The Rust kit's `Ui::status` builds `UiStatusParams` field by field**, so it gained `activity: None, since: None` here to compile. Task 2 rewrites it.
+- **`guide_test` did not fail without the reference rows**: it holds every top-level manifest field and every example, not each message field. The rows were added all the same, and `protocol/README.md`'s section on what 3.50 added came with them.
+- **The desk's sentence keeps `, saying "<text>"` first**, then `, with the words "<activity>"` or `, counting seconds from <since>`. For undeclared words it says the state and then `; it would leave the words out: the manifest does not declare them`, without repeating the words.
+- **The app's hello test was renamed**, `theHelloSaysWhatTheAppHas` to `theHelloNamesOnlyWhatTheAppHas`. It keeps its message, which the entry "the app says it has nothing" quotes, and gains one expectation, "the hello does not name a status's words, which this app does not draw yet", for the new entry.
+- **`ExternalToolStore.features` is `nonisolated`**: the store is on the main actor and the hello is built in a closure.
+- Counts: `platform` 916 (unchanged), `tool-runtime` 962 (was 958).
+- Planted, each DETECTED with the driver of the 2026-10-13 plan: "the app says it has nothing" (moved), "a start time before 1970 is read", "the app claims words it does not draw".
+
 ---
 
 ### Task 2: Every kit sends a status's words to an app that draws them
@@ -192,6 +204,25 @@ The GitHub tool has no new words: its words are digits.
 - [ ] **Step 5: Plant one regression per kit by hand:** send `activity` whatever the hello said. The test "sends no words to an app from 3.48" must fail. Undo by hand.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-14).** The calls are the plan's, with these details:
+
+- **Rust's `StatusOptions.icon` is an `Option<String>`**, not `Option<&str>`, so the struct needs no lifetime and has `Default`. `StatusOptions` is exported beside `Ui`. A `since` before 1970 is written as 0, since `SystemTime` cannot say a negative Unix time.
+- **The other kits pass a `since` before 1970 through**, and the app refuses it with -32602, which the call then raises or returns as its error. Python reads a naive `datetime` as local time, as `datetime.timestamp` does; its doc comment says so.
+- **Go writes `since` as `Unix()` plus the nanoseconds over 1e9**, so a half second is exactly `.5` on the wire; the zero `time.Time` is no start time.
+- **Two existing expectations changed on purpose**, beyond Task 1's: the TypeScript and Python tests that list every `Feature` name now list four.
+- **Each kit's README gained a short paragraph**, "A few words with the status". The Swift kit has no README of its own; the guide covers it (Task 6).
+- RED: every kit failed (Swift, Go and Rust did not compile: `extra arguments at positions #3, #4`, `unknown field Activity`; Python `AttributeError: type object 'Feature' has no attribute 'STATUS_ACTIVITY'`; TypeScript failed on the new tests).
+
+Step 5, planted in each kit (the words sent whatever the hello said), and the test that failed:
+
+| Kit | Failed |
+|---|---|
+| Swift | `testAStatusSendsNoWordsToAnAppFrom348` |
+| TypeScript | `a status sends no words to an app from 3.48` |
+| Python | `test_a_status_sends_no_words_to_an_app_from_3_48` |
+| Go | `TestAStatusSendsNoWordsToAnAppFrom348` |
+| Rust | `a_status_sends_no_words_to_an_app_from_3_48` |
+
 ---
 
 ### Task 3: The conformance script, the desk's hello, and the samples
@@ -219,6 +250,17 @@ The GitHub tool has no new words: its words are digits.
 - [ ] **Step 4: Watch them pass:** `conformance_test`, `samples_test`, `kit_samples_test`, `swift_samples_test`, `templates_in_sync_test`, `init_test`, `VitruvianToolCLITests`, `guide_test`.
 - [ ] **Step 5: Plant by hand:** in `conformance.py`, set `shows_activity` true for every tool. The test of the undeclared words must fail. Undo.
 - [ ] **Step 6: Commit.**
+
+**As built (2026-10-14).**
+
+- **The desk's hello and `RunTests` moved in Task 1**: the desk names `ProtocolFeature.allCases`, so `Session.swift` needed no change, and its test changed there.
+- **The script answers undeclared words with `{}`, then fails the run**, as the plan says, after the state is recorded. A `ui/status` "carries" words when the key `activity` or `since` is present; a bad shape (`since` below 0, not a number, a boolean; `activity` that is not text) fails first, as params that are not the message's.
+- **More tests run the samples than the plan's line names**: `go_sample_test` and `rust_sample_test` run the Go and Rust panel samples through the script, and `go_template_test` and `python_kit_apple_python_test` exist too. All pass; each panel sample draws a page of six blocks against the script's hello and five against an older app's.
+- **Each sample sends the status again when the count changes**, while "The count" is picked, from the button and from the command `addOne`, so the words follow the counter.
+- **29 `file=` excerpts moved with the samples**, in the guide, the panel READMEs and the READMEs of `hello-go`, `hello-rust`, `hello-typescript` and `hello-python-kit`: each now shows the same code as it is now (a small script took each excerpt's first and last line to the file as it is; the Python `show_status` excerpt, whose last line changed, was moved by hand). The two panel READMEs gained a section, "A few words beside the mark", with an excerpt of the second menu. The package `README.md` says what the samples and the script now do.
+- **As for 1.3.0, between this merging and SDK 1.4.0 being published, the TypeScript and Python panel samples do not run from the registries**: they pin the kit release-please bumps, and use calls 1.4.0 adds. In this repository and in the mirror's CI they build against the kit beside them.
+
+Step 5, planted: `shows_activity` true for every tool. `conformance_test` failed with "a tool that sends words its manifest does not declare is not told". Reversed.
 
 ---
 
@@ -261,6 +303,19 @@ The GitHub tool has no new words: its words are digits.
   5. "the button reads the seconds aloud": append the seconds in `words`. Suite `platform`.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-14).**
+
+- **`RightWing` is `RestingStatus.RightWing`**, nested, as the tests name it; `RestingStatus.wordsLimit` is the 12.
+- **One more function, `RestingStatus.rightWing(tools:nexusRunning:language:)`**, which picks the winner and asks `rightWing` for it. With the plan's shape, `rightWing(_ mark:)` sees one mark, so regression 4 ("another tool's words sit beside the mark") had no line to change. The wing calls the new function (Task 5), so the rule "only the shown mark's words" lives in `Core` and has a test, `theWordsAreTheShownMarks`, and regression 4 is planted there.
+- **`RestingStatus.fewWords`** cuts the words, for the wing and for the button alike. `words` puts them after the mark's words with `buttonTitle`'s own rule, so the pause is ", " or "、" by one rule. The mark's tooltip is the same `words`, so it says them too.
+- **The seconds are `Locale(identifier: language.rawValue)`'s.** Foundation groups the digits above 999 ("1,000s" in English), where Nexus Agent writes "1000s". Below 1,000 they are the same.
+- **The host logs undeclared words when it receives the status**, before the once-a-second pacing, so two statuses in one second still log once. The flag is cleared where the status is (`forgetStatus`: the program's end, and the tool forgotten).
+- **`ExternalToolStoreTests.adding` changed on purpose**: it holds the hello's exact params, which now name four features.
+- **Task 1's two hello entries moved**: "the app says it has nothing" waits for the hello test's new message, and "the app claims words it does not draw", whose line is now the app's list as built, is "the app forgets words it draws" (the list without `.statusActivity`).
+- Counts: `platform` 938 (was 916), `tool-runtime` 970 (was 962).
+
+Step 5, each planted with the driver and DETECTED: "undeclared words are drawn" (`tool-runtime`), "seconds beat the tool's words", "a future start counts down", "another tool's words sit beside the mark", "the button reads the seconds aloud" (`platform`); and the two moved, "the app says it has nothing" and "the app forgets words it draws" (`tool-runtime`).
+
 ---
 
 ### Task 5: The closed island draws the words, and the agreement sheet says so
@@ -293,6 +348,18 @@ The GitHub tool has no new words: its words are digits.
   2. "the sheet says a status but not its words": make the words sentence `agreeShowsStatus`. Suite `tool-runtime`.
 - [ ] **Step 7: Commit.**
 
+**As built (2026-10-14).**
+
+- **`NotchAgentStrip.swift` gained two small helpers beside the three changes**: a computed `restingWing` (the wing's `RestingStatus.rightWing(tools:…)`, read by the clock and the right-hand branch) and `restingText(_:)`, the Nexus text's four modifiers on `Text(verbatim:)`, used for the words and the seconds. Nexus's own text, its sparkles, the left-hand wing and the percent's lines are untouched.
+- **No animation is added or taken away.** The words change through a published status, never inside an animation, so they are drawn without one. The wing adds no `.transaction` of its own: one would also stop the text following the island's own open and close.
+- **`ExternalToolStringsTests` holds the count by hand**: 67 became 68.
+- **The sheet's sentence reads `showsActivity` first**: a status that says `"activity": true` is a status, so `agreeShowsStatusAndWords` replaces `agreeShowsStatus` for it, and nothing else changes.
+- **The translations of `agreeShowsStatusAndWords` are each built on that language's existing `agreeShowsStatus` sentence**, not reviewed by a speaker.
+- **The click fix is not built (design decision 20).** It was built, tested and its regression detected, then taken out again before the pull request opened: the dispatch for this pull request put "the click following a hidden tool mark" among the two built-in Nexus defects that are out of scope, not to be touched, and only noted. So `RestingStatus.opens` and the wing's tap are as on `main`; the test `aClickWhileNexusRunsOpensAgents` and the entry "a click while Nexus runs follows a hidden mark" went with it. By-hand check 6 is not owed by this pull request. The defect is said in the pull request's description.
+- Counts: `platform` 942 (was 938), `tool-runtime` 971 (was 970). `bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:by-hand` succeeded.
+
+Steps 5 and 6, each planted with the driver and DETECTED: "the agreement sheet says nothing of a status" (moved, `tool-runtime`), "the sheet says a status but not its words" (`tool-runtime`).
+
 ---
 
 ### Task 6: The guide, the protocol's overview, and the records
@@ -314,6 +381,14 @@ The GitHub tool has no new words: its words are digits.
 - [ ] **Step 3:** `bazel test //packages/vitruvian-sdk:guide_test //tools/sync-site-tools:in_sync_test` passes.
 - [ ] **Step 4: Commit.**
 
+**As built (2026-10-14).**
+
+- **Written by `wren`, not `compass`**: one worker built Tasks 1 to 7, as for the 2026-10-13 plan.
+- **Parts of this task landed earlier, where a test or a sample needed them**: the reference rows and `protocol/README.md`'s section with Task 1; each kit's README with Task 2; the samples' excerpts, the panel READMEs and `README.md` with Task 3.
+- **"A few words with it" is a part of "A status on the closed island"**, after the samples' `onStart` snippet, with a manifest example (held to the schema by `guide_test`) and one snippet per kit: each sample's handler for the second menu.
+- **"What an older app does" gained a second table**, with a column for 3.48 and 3.49, since the first one has two columns of apps and these rows need three. Its last bullet says the script and `vitruvian-tool run` say hello as 3.50 does.
+- **A stale sentence fixed on the way**: the guide still said "the app's own GitHub mark" competes for the closed island and wins a tie. Pull request #3207 removed it; the guide now says every tool's status competes, and on a tie the tool added first wins.
+
 ---
 
 ### Task 7: Run everything, and open pull request 1
@@ -328,6 +403,15 @@ The GitHub tool has no new words: its words are digits.
   - Description: what a person sees, the table of design section 7, the by-hand checks not yet done, and on a line by itself `Releases: vitruvian-sdk, vitruvian`.
   - The required check `release-scope` must pass. If it names a third product, a task changed a folder it should not have: find the file, do not add the product to the line.
 - [ ] **Step 5:** All checks green before anyone is asked to review.
+
+**As built (2026-10-14).** By `wren`, with the label `do-not-automerge` and auto-merge not armed.
+
+- **Run on the tree merged with `main`** (`4d37c5375`, after #3264 merged): the app's whole unit test run (48 suites OK; `platform` 942, `tool-runtime` 971, `notch` 70,141, `agents` 668); the builds of `:Vitruvian`, `:VitruvianLibWithSampleTool` and `:by-hand`; the app's source, pin, upstream and mutation-fixture tests; all 24 tests of the SDK on the macOS lane; the 20 that need no Mac on the plain lane (18 of the SDK's, `//tools/sync-site-tools:in_sync_test` and `//tools/release-scope`'s test); the GitHub tool's 4 tests, the Nexus Agent tool's 6, and 5 of the HomeSpeaker tool's 6; `//tools/conformance:check` (431 ok, 0 fail); `//tools/license:check` and `:verify`; `//:gazelle` (no change); `//:tidy`, which left only the known `Cryptodome` line, reversed by hand; the presubmit generator's `--check`; and `release-scope`, locally, which asked for `Releases: vitruvian, vitruvian-sdk` and named no third product.
+- **The plan's test lines leave out four of the SDK's tests**: `go_sample_test`, `rust_sample_test`, `go_template_test` and `python_kit_apple_python_test`. All were run. `go_template_test` builds the Swift command-line tool, so it runs on the macOS lane only.
+- **`HomeSpeakerTests` fails on this Mac, not because of this change**: `gwsListsSpacesWhenInstalled` runs the `gws` command installed here against a real Google Chat account, and failed with a `mise` error inside the sandbox. CI has no `gws` and skips it. This branch changes nothing under `apps/desktop/home-speaker`. Its `sync_secrets_test` was not run.
+- **`aspect lint` takes the config as `--bazel-flag=--config=lint` in this CLI (2026.26.25)**, against `--base-ref=origin/main`. It found two ESLint errors in lines this change touched: the generated `manifest.ts` imported `expectInteger` and `expectMap` and never used them, an old leftover that the new `expectBoolean` import put inside the diff. Fixed in the emitter, which now imports exactly the readers the file calls, with the generator's test extended to fail an unused import (seen to fail first): `chore(vitruvian-sdk): the TypeScript manifest reader imports only the readers it calls`. After it, no findings.
+- **Step 3 used the 2026-10-13 plan's driver.** All ten entries Tasks 1, 4 and 5 added or moved, and kept, were DETECTED on the final tree, and each kit's and the conformance script's planted regression was planted again by hand and DETECTED. The tree was clean after each.
+- **Not run:** `:selftest` and `:fan_helper_selftest`, which start the built app, and `bazel run :mutation_checks`, which plants every entry in the file and takes hours; CI runs them. None of the checks by hand: they are owed.
 
 After it merges, release-please opens `chore(main): release vitruvian-sdk 1.4.0` and `chore(main): release vitruvian 3.50.0`. Merge the SDK's first; confirm the mirror tagged `v1.4.0` and `go/v1.4.0`. The app's release goes through its usual gate. **If either version comes out as another number, Tasks 8 and 9 use the number that was released.**
 
