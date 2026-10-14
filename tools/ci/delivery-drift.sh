@@ -113,19 +113,52 @@ in_flight() { # <workflow-file> -> count of queued/running/waiting runs
         --limit 20 --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting")] | length' 2>/dev/null || echo 0
 }
 
+# How many runs' job lists to fetch at once. One API call per run, walked one
+# at a time, took about 5 minutes for a unit that delivers rarely (it walks all
+# RUN_SCAN_LIMIT runs), and with a dozen units the scheduled job hit its
+# 20-minute limit. Batches keep the same number of calls but overlap them.
+DRIFT_JOBS_PARALLEL="${DRIFT_JOBS_PARALLEL:-8}"
+
+# run_has_job <run-id> <job-prefix> -> success if a job named <job-prefix>*
+# succeeded in that run.
+run_has_job() {
+    [ -n "$("$GH" api "repos/${REPO}/actions/runs/${1}/jobs?per_page=100" --paginate \
+        --jq ".jobs[] | select((.name | startswith(\"${2}\")) and .conclusion == \"success\") | .name" 2>/dev/null)" ]
+}
+
 # last_delivered <workflow-file> <job-prefix> -> head sha of the newest run in
-# which a job named <job-prefix>* succeeded, or nothing.
+# which a job named <job-prefix>* succeeded, or nothing. Runs are checked in
+# batches, but the answer is still the NEWEST match: a batch is only read once
+# all of it is back, in list order.
 last_delivered() {
-    "$GH" run list --repo "$REPO" --workflow "$1" --branch "$BRANCH" \
+    local runs rid rsha tmp hit="" i=0 j
+    local -a ids=() shas=()
+    runs="$("$GH" run list --repo "$REPO" --workflow "$1" --branch "$BRANCH" \
         --limit "$RUN_SCAN_LIMIT" --json databaseId,headSha,createdAt \
-        --jq '.[] | "\(.databaseId) \(.headSha)"' 2>/dev/null |
-        while read -r rid rsha; do
-            if "$GH" api "repos/${REPO}/actions/runs/${rid}/jobs?per_page=100" --paginate \
-                --jq ".jobs[] | select((.name | startswith(\"${2}\")) and .conclusion == \"success\") | .name" 2>/dev/null | grep -q .; then
-                echo "$rsha"
+        --jq '.[] | "\(.databaseId) \(.headSha)"' 2>/dev/null)" || true
+    while read -r rid rsha; do
+        [ -n "$rid" ] || continue
+        ids+=("$rid")
+        shas+=("$rsha")
+    done <<<"$runs"
+    tmp="$(mktemp -d)"
+    while [ "$i" -lt "${#ids[@]}" ] && [ -z "$hit" ]; do
+        j="$i"
+        while [ "$j" -lt "${#ids[@]}" ] && [ "$j" -lt $((i + DRIFT_JOBS_PARALLEL)) ]; do
+            (run_has_job "${ids[$j]}" "$2" && : >"$tmp/$j") &
+            j=$((j + 1))
+        done
+        wait
+        while [ "$i" -lt "$j" ]; do
+            if [ -e "$tmp/$i" ]; then
+                hit="${shas[$i]}"
                 break
             fi
-        done || true
+            i=$((i + 1))
+        done
+    done
+    rm -rf "$tmp"
+    [ -z "$hit" ] || echo "$hit"
 }
 
 # --- 3. per-unit check --------------------------------------------------------
