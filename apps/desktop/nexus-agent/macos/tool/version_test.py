@@ -30,9 +30,11 @@ and the tool's Version.swift, through the extra-files of
 release-please-config.json. The catalog's CI refuses a zip whose manifest's
 version is not the entry's; this finds the same mistake before it merges.
 
-Package.swift names the kit the mirror builds against; `ToolWaker`, which
-the tool needs, came with the kit the line below names, so an older one
-fails here.
+Package.swift names the kit the mirror builds against. The tool needs the
+kit the line below names: `ToolWaker` came with 1.1.0, and 1.2.0 answers
+what the app sends while handed work waits for an answer (before it, a
+command sent just after the Quick Prompt was shown could sit unanswered for
+seconds). An older one fails here.
 """
 
 import json
@@ -43,8 +45,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 MACOS = os.path.dirname(HERE)
 APP = os.path.dirname(MACOS)
-# The SDK release that carries ToolWaker.
-KIT_WITH_WAKER = (1, 1, 0)
+# The first SDK release with ToolWaker that also answers what came while
+# handed work waited.
+KIT_THE_TOOL_NEEDS = (1, 2, 0)
 
 
 def read(path):
@@ -104,16 +107,16 @@ def main():
         problems.append(
             "Package.swift does not depend on VitruvianSoftware/vitruvian-sdk with `from:`"
         )
-    elif (semver(kit.group(1)) or (0, 0, 0)) < KIT_WITH_WAKER:
+    elif (semver(kit.group(1)) or (0, 0, 0)) < KIT_THE_TOOL_NEEDS:
         problems.append(
-            f"Package.swift builds against kit {kit.group(1)}, before ToolWaker came ({'.'.join(map(str, KIT_WITH_WAKER))})"
+            f"Package.swift builds against kit {kit.group(1)}, older than the kit the tool needs ({'.'.join(map(str, KIT_THE_TOOL_NEEDS))}): its handed work can leave a command unanswered"
         )
     for problem in problems:
         print(problem)
     if problems:
         return 1
     print(
-        f"the tool is {manifest_version}, the app's version, in every file that says so, against a kit with a waker"
+        f"the tool is {manifest_version}, the app's version, in every file that says so, against kit {kit.group(1)} or later"
     )
     return 0
 
