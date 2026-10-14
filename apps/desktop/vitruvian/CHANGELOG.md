@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.47.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.47.1...vitruvian-v3.47.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **desktop:** add a tool whose folder is read-only ([#3249](https://github.com/VitruvianSoftware/vitruvian-core/issues/3249)) ([cbb6f66](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbb6f66e6036345d29e6abdb57f29d586ebe64cb))
+
 ## [3.47.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.47.0...vitruvian-v3.47.1) (2026-10-13)
 
 
