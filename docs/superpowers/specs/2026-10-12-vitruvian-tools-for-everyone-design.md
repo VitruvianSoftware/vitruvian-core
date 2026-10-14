@@ -1,6 +1,9 @@
 # Tools for everyone: publishing the SDK, kits in five languages, a catalogue, and a protocol that can draw
 
-**Status:** draft for James's approval, 2026-10-12. Nothing here is built.
+**Status:** built and shipped by 2026-10-14; issue #3130 closes with it.
+James moved one part to a separate effort of his own on 2026-10-14: Nexus
+Agent as a tool (stage F). Section 11 says what each stage built, with its
+pull requests and releases, and what is still open.
 **Tracks:** issue #3130. **Follows:** sub-projects 1 to 3 of
 `2026-10-08-vitruvian-tool-platform-design.md`, built and shipped by
 Vitruvian 3.42.2 (`2026-10-10-vitruvian-external-tools-design.md`, section 15).
@@ -562,7 +565,52 @@ the dependency order; James approves each plan before it is built.
 | **C. Catalogue** | **Built.** `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
 | **D. Protocol 2** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-d.md`), but for the four kits after Swift, which wait for B1 and B2. Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
 | **E. The GitHub tool** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-e.md`), the removal one release after the rest (3.49), and the hand-off after 3.50.1. The tool in its own folder, exported to its own repository; its catalogue entry; the migration; then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
-| **F. Nexus Agent and HomeSpeaker** | As E, one at a time. | Their users | Minor app releases |
+| **F. Nexus Agent and HomeSpeaker** | **Built for HomeSpeaker; Nexus Agent moved to James's separate effort** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md`). The kit's waker; the HomeSpeaker tool in HomeSpeaker's own folder and release, and its catalogue entry; the rest of the GitHub feature's removal (the hand-off, its keys, the Keychain store). | HomeSpeaker's users | HomeSpeaker 1.13.0 and 1.13.1; no app release of its own |
+
+**What shipped, stage by stage.** Every pull request below is merged; each
+release is published.
+
+| Stage | Pull requests | Released |
+|---|---|---|
+| A | plan #3155; #3156 (the mirror's repository), #3161 | SDK 0.9.0, 2026-10-13 |
+| B1 | plan #3158; #3166 | SDK 0.10.0, 2026-10-13: PyPI from this release, npm from 1.1.0 |
+| B2 | plan #3157; #3176 | SDK 1.0.0, 2026-10-13: the Go tag; crates.io from 1.1.0 |
+| C | plan #3159; #3164, #3169, #3177 | app 3.43.0 and 3.44.0, 2026-10-13 |
+| D | plan #3160; #3182, with the panels API in all five kits | SDK 1.0.0, app 3.45.0, 2026-10-13 |
+| E | plan #3183; #3192, #3191, #3193, #3202, #3207 | SDK 1.0.0 (the timer), GitHub tool 1.0.0, app 3.46.0 (the hand-off), 2026-10-13; app 3.49.0 (the feature gone), 2026-10-14 |
+| F | plan #3190; #3203, #3211, #3230, #3239, #3284 | SDK 1.1.0 (the waker), HomeSpeaker 1.13.0 and 1.13.1, 2026-10-13. #3284 merged after 3.50.2 and rides the app's next release |
+| A status on the closed island, and a choice | plan #3235; #3245, #3255, #3256 | SDK 1.3.0, app 3.48.0, GitHub tool 1.1.0, 2026-10-14 |
+| A few words with the status | plan #3264; #3271, #3277, #3283 | SDK 1.4.0, app 3.50.0, GitHub tool 1.2.0, 2026-10-14 |
+
+Fixes found on the way, each merged: a required check that a pull request
+releases only the products its title names (#3224); the app's launch no
+longer waits for the Bluetooth prompt (#3225) or freezes behind the
+Keychain's (#3227); a tool whose folder is read-only can be added (#3249);
+the website's tools page links the catalogue (#3266); Nexus Agent's
+sparkles on the closed island keep still under Reduce Motion (#3272); a
+click on the closed island goes where the wings point while Nexus runs
+(#3279).
+
+**Live on 2026-10-14.** Vitruvian 3.50.2. The SDK at 1.4.0: the Swift
+package and `vitruvian-tool` from the mirror
+[VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk)
+(tags `v1.4.0` and `go/v1.4.0`, with `vitruvian-tool` attached to the
+release), Homebrew as `VitruvianSoftware/tap/vitruvian-tool`, npm as
+`@vitruviansoftware/tool-kit`, PyPI and crates.io as `vitruvian-tool-kit`.
+The docs at https://vitruviansoftware.dev/tools/. The catalogue at
+https://vitruviansoftware.dev/tools/catalog/ lists the GitHub tool 1.2.0,
+the HomeSpeaker tool 1.13.1 and the reference tool 0.1.0.
+
+**Still open on 2026-10-14.** Checks by hand, in the two later plans'
+lists: a click on a red or amber mark (James); Reduce Motion on screen, a
+system setting (James); the island's heights on the laptop's built-in
+display; and switching the app's language while a tool's detail is open,
+which cannot be done because the open sheet blocks the language setting.
+Stage F's checks by hand for the HomeSpeaker tool (its plan's 13 to 17)
+have no record in a pull request or in the issue.
+The texts in fourteen languages have been read by no speaker of them. The
+weekly mutation run, `.github/workflows/vitruvian-mutation-checks.yaml`, is
+next due on Sunday 18 October 2026.
 
 **Stage A, as built.** The plan is
 `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-a.md`;
@@ -599,6 +647,10 @@ Xcode 27.0 and Swift 6.4, Bazel 9.3.0.
 | The guide's Go and Rust sections | Met: `guide_test`, green; the code is the samples' and the table of calls is the kits'. |
 | crates.io publishing | Not yet: the first publish is by hand (section 12), then `crates-publish` in the mirror's `release.yml` publishes the next release. |
 | `go get` and `cargo add` on a clean machine | Not yet: after the first release that carries the kits. |
+
+Since then (2026-10-14): crates.io has the Rust kit from SDK 1.1.0 to
+1.4.0, and the Go module is tagged up to `go/v1.4.0`. `go get` and
+`cargo add` on a clean machine were not recorded.
 
 Where B2 differs from the sections above, in one line each:
 
@@ -700,9 +752,51 @@ Where it differs from section 9, each a decision of its plan:
   behind them. The app keeps shipping the `gravastar-mouse` helper the tool
   finds.
 
-What can start before a stage is approved: nothing is built, but the
-mock-ups for C and D can be drawn while A and B are being built, as Stage
-C's were.
+**Stage F, as built (2026-10-14).** The plan is
+`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md`,
+its mock-ups `docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-stage-f-mockups.html`.
+Half of it was built here. On 2026-10-14 James moved the Nexus Agent part
+to a separate effort of his own, so its tasks are no longer this design's
+to finish. Task by task:
+
+- **Task 1, the kit's waker: shipped** (#3203, SDK 1.1.0).
+  `ToolWaker.later` lets a tool hand work to the kit's thread from a
+  thread of its own, which wakes the kit from its wait.
+- **Tasks 8 and 9, the HomeSpeaker tool and its release: shipped** (#3211,
+  HomeSpeaker 1.13.0; #3230, so a release ships its files or fails,
+  1.13.1). As the plan says: a third product of HomeSpeaker's own package,
+  MIT, attached to HomeSpeaker's own release in this repository as
+  `HomeSpeaker-X.Y.Z-tool.zip`. It drives HomeSpeaker's program and edits
+  the settings file both share. Its words are English, as HomeSpeaker's
+  are. HomeSpeaker was never a feature of the app, so nothing was hidden or
+  removed for it.
+- **Task 10, its catalogue entry: shipped** (#3239). The catalogue pins
+  1.13.1.
+- **Task 11, the GitHub part: shipped.** The GitHub feature itself went in
+  app 3.49.0 (#3207, stage E's last task). The hand-off it kept, its
+  preference keys and the Keychain store went in #3284: nothing in the app
+  touches the Keychain now, and the source lint `keychain_is_never_touched`
+  keeps it so. The `vitruvian` URL scheme, unused since the GitHub feature
+  went, is being removed in a separate pull request.
+- **Tasks 2 to 6, the Nexus Agent parts of Task 11, and Task 12: moved to
+  James's separate effort.** What reached `main` before the move: the
+  Nexus Agent tool, released from the standalone's mirror (#3210,
+  nexus-agent 1.22.0), and its catalogue entry (#3237), taken off again
+  while the app's own feature stays (#3263). The hand-over in the app
+  (Task 5), the feature's removal and the removal of its hand-off were not
+  merged here.
+- **Task 7** is this paragraph and the row above. The mock-ups stay beside
+  the plan.
+
+**After the stages.** Two smaller plans added to protocol 2 without a new
+version, each with the GitHub tool as its proof:
+`docs/superpowers/plans/2026-10-13-vitruvian-tool-resting-status-and-choice.md`
+(a tool's status mark on the closed island, and a choice among fixed
+options) and `docs/superpowers/plans/2026-10-14-vitruvian-tool-resting-activity.md`
+(a few words with the status). Each plan records its pull requests and the
+checks done by hand.
+
+The mock-ups for C and D were drawn while A and B were being built.
 
 ## 12. What James does once
 

@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status: built and shipped, 2026-10-14.** Pull request 1, Tasks 1 to 7: #3271 (SDK 1.4.0, Vitruvian 3.50.0). Pull request 2, Task 8: #3277 (GitHub tool 1.2.0). Pull request 3, Task 9: #3283, the catalogue pins 1.2.0, published signed by #3285. This plan and its design: #3264. The two built-in Nexus defects it left out were fixed on their own: the sparkles under Reduce Motion (#3272, Vitruvian 3.50.1) and the click while Nexus runs (#3279, Vitruvian 3.50.2). The checks by hand are under "By hand", with what is still open. Issue #3130; the design's section 11 (`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`).
+
 **Goal:** A tool's status can carry a few words, or a start time the app counts seconds from. While that tool's mark is the one on the closed island, the right-hand wing shows them in place of the allowance percent, where and as Nexus Agent's text is drawn today. It stays inside protocol 2. Vitruvian 3.48 and 3.49 draw the mark and ignore the words. The GitHub tool adopts it as the proof.
 
 **The design:** `docs/superpowers/specs/2026-10-14-vitruvian-tool-resting-activity-design.md`. Read its sections 1 to 4 before any task. Section numbers below are that document's.
@@ -484,6 +486,15 @@ The next turn reads the frames and uses the ones with no agent strip. How long t
 9. **VoiceOver.** The island's button reads "Open Dynamic Island, GitHub: Checks are running, 3". With "Seconds" on a sample, the seconds are not read.
 10. **An older app.** In Vitruvian 3.49.0 as released, add the GitHub tool's 1.2.0 folder: it is added without complaint, the agreement sheet says the 3.48 sentence, the mark shows while checks run and there are no words, and the tool's log has no refusal.
 11. **The agreement sheet.** In the build of pull request 1, adding the GitHub tool 1.2.0 says "It shows a small status mark and a few words on the closed Dynamic Island."
+
+**Done by hand, as recorded (2026-10-14).** On the released Vitruvian 3.50.2 with the GitHub tool 1.2.0: the closed island showed the orange running mark with the count 3, then 4 (check 1, with the GitHub tool), and VoiceOver read "GitHub: Checks are running, 3" (check 9). The other checks of the words were done on screen as well, except these, which are still open:
+
+- **Check 6, the click** on a red or amber mark while Nexus runs (the fix is #3279). James, by hand.
+- **Reduce Motion on screen** (check 4, and the Nexus sparkles of #3272). A system setting, so James.
+- **The island's heights on the laptop's built-in display** (check 2).
+- **The translations** of `agreeShowsStatusAndWords`: no speaker has read them.
+
+The weekly mutation run (`.github/workflows/vitruvian-mutation-checks.yaml`) next runs on Sunday 18 October 2026.
 
 ## Not verified
 
