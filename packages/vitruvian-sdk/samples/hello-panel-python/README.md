@@ -29,6 +29,7 @@ A page is `tree` of its blocks, one function for each kind; a block that is
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
             self.status_picker(app),
+            self.words_picker() if app.supports(Feature.STATUS_ACTIVITY) else None,
         )
 ```
 
@@ -43,6 +44,8 @@ def island_event(app, panel, event):
     if event.block == "add":
         counter.count += counter.step
         panel.badge(count=counter.count)
+        if counter.words == "count":
+            counter.show_status(app)
     elif event.block == "name":
         counter.name = event.text if event.text is not None else counter.name
     elif event.block == "status":
@@ -50,6 +53,13 @@ def island_event(app, panel, event):
         if event.text not in STATUSES:
             return PanelAnswer.keep()
         counter.status = event.text
+        counter.show_status(app)
+    elif event.block == "words":
+        if event.text not in WORDS:
+            return PanelAnswer.keep()
+        counter.words = event.text
+        if event.text == "seconds":
+            counter.since = datetime.now(timezone.utc)
         counter.show_status(app)
     else:
         return PanelAnswer.keep()
@@ -79,7 +89,13 @@ manifest declares it, `"status": { "placement": "island" }` under
     def show_status(self, app):
         """Sets the mark on the closed island. Nothing is sent to an app that
         has no status, and the call says so."""
-        return app.status(self.status, text=STATUSES[self.status][1])
+        # An app before 3.50 is sent the status without the words.
+        return app.status(
+            self.status,
+            text=STATUSES[self.status][1],
+            activity=str(self.count) if self.words == "count" else None,
+            since=self.since if self.words == "seconds" else None,
+        )
 
     def settings(self):
         """The Settings page."""
@@ -132,6 +148,28 @@ can change, so the tool asks first and sends a field in its place:
         return choice(
             "status", self.status, options, title="Status on the closed island"
         )
+```
+
+## A few words beside the mark
+
+On Vitruvian 3.50 and later the status may carry a few words, drawn beside
+the mark on the closed island, or a start time the app counts the seconds
+from. The manifest says so, `"status": { "placement": "island", "activity":
+true }`, and `app.status` takes `activity` and `since`. When the app has
+them, `app.supports(Feature.STATUS_ACTIVITY)`, the island page gains a second
+menu: None, the count, or seconds since it was picked. It starts at None, so
+the sample does not take the place of what you read there until you ask. An
+older app is sent the status without the words.
+
+```python file=samples/hello-panel-python/bin/tool.py
+    def words_picker(self):
+        """The words beside the mark, to pick. It starts at None, so the
+        sample does not take the place of what the person reads there until
+        they ask."""
+        options = [
+            UIChoiceOption(value=value, title=title) for value, title in WORDS.items()
+        ]
+        return choice("words", self.words, options, title="Words on the closed island")
 ```
 
 The manifest says `"protocol": "2"` and lists the two panels under

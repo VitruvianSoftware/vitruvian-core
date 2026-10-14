@@ -32,7 +32,7 @@
         "placement": "settings"
       }
     ],
-    "status": { "placement": "island" }
+    "status": { "placement": "island", "activity": true }
   },
   "activation": ["onLaunch"],
   "runtime": { "kind": "external", "exec": "bin/tool.py" }

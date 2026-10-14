@@ -25,12 +25,16 @@
 //
 // It also shows a status, the small mark the app draws on the closed
 // island, and its island page has a pop-up menu to pick it with. Both are
-// newer than protocol 2 itself, so the tool asks the app what it has.
+// newer than protocol 2 itself, so the tool asks the app what it has. An
+// app that draws a status's words (3.50 and later) gets a second menu: the
+// count, or a count of seconds, beside the mark.
 package main
 
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit"
 	"github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit/ui"
@@ -44,6 +48,10 @@ type counter struct {
 	byTwo bool
 	// status is what the tool shows on the closed island.
 	status string
+	// words is what it says beside the mark: none, the count, or seconds;
+	// since is when "Seconds" was picked, which the app counts from.
+	words string
+	since time.Time
 }
 
 // statuses is what each status is called in the menu, and what it says to
@@ -72,7 +80,32 @@ func (c *counter) page(app *toolkit.App) toolkit.UITree {
 		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
 		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
 		c.statusPicker(app),
+		ui.If(app.Supports(toolkit.FeatureStatusActivity), c.wordsPicker()),
 	)
+}
+
+// words is what may stand beside the mark, in the second menu.
+var words = []toolkit.UIChoiceOption{
+	{Value: "none", Title: "None"},
+	{Value: "count", Title: "The count"},
+	{Value: "seconds", Title: "Seconds"},
+}
+
+// wordsPicker is the words beside the mark, to pick. It starts at None, so
+// the sample does not take the place of what the person reads there until
+// they ask.
+func (c *counter) wordsPicker() toolkit.UIBlock {
+	return ui.Choice("words", c.words, words, ui.ChoiceOptions{Title: "Words on the closed island"})
+}
+
+// isWords is whether a word is one of the second menu's.
+func isWords(word string) bool {
+	for _, option := range words {
+		if option.Value == word {
+			return true
+		}
+	}
+	return false
 }
 
 // statusPicker is the status, to pick: a pop-up menu where the app has one.
@@ -92,12 +125,20 @@ func (c *counter) statusPicker(app *toolkit.App) toolkit.UIBlock {
 // showStatus sets the mark on the closed island. Nothing is sent to an app
 // that has no status, and the call says so.
 func (c *counter) showStatus(app *toolkit.App) (bool, error) {
+	options := toolkit.StatusOptions{}
 	for _, status := range statuses {
 		if status.state == c.status && status.says != "" {
-			return app.UI.Status(c.status, toolkit.StatusOptions{Text: status.says})
+			options.Text = status.says
 		}
 	}
-	return app.UI.Status(c.status)
+	// An app before 3.50 is sent the status without the words.
+	switch c.words {
+	case "count":
+		options.Activity = strconv.Itoa(c.count)
+	case "seconds":
+		options.Since = c.since
+	}
+	return app.UI.Status(c.status, options)
 }
 
 // isStatus is whether a word is one of the five a status may be.
@@ -120,7 +161,7 @@ func (c *counter) settings() toolkit.UITree {
 
 func main() {
 	tool := toolkit.New("0.1.0")
-	state := &counter{status: toolkit.StatusOK}
+	state := &counter{status: toolkit.StatusOK, words: "none"}
 
 	island := tool.Panel("counter",
 		func(app *toolkit.App, panel *toolkit.PanelHandle) (*toolkit.UITree, error) {
@@ -134,6 +175,11 @@ func main() {
 				if err := panel.Badge(state.count, false); err != nil {
 					return toolkit.Keep(), err
 				}
+				if state.words == "count" {
+					if _, err := state.showStatus(app); err != nil {
+						return toolkit.Keep(), err
+					}
+				}
 			case "name":
 				if text, ok := event.Text(); ok {
 					state.name = text
@@ -145,6 +191,18 @@ func main() {
 					return toolkit.Keep(), nil
 				}
 				state.status = picked
+				if _, err := state.showStatus(app); err != nil {
+					return toolkit.Keep(), err
+				}
+			case "words":
+				picked, ok := event.Text()
+				if !ok || !isWords(picked) {
+					return toolkit.Keep(), nil
+				}
+				state.words = picked
+				if picked == "seconds" {
+					state.since = time.Now()
+				}
 				if _, err := state.showStatus(app); err != nil {
 					return toolkit.Keep(), err
 				}
@@ -171,6 +229,10 @@ func main() {
 	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {
 		state.count += state.step()
 		island.Render(state.page(app))
+		if state.words == "count" {
+			_, err := state.showStatus(app)
+			return err
+		}
 		return nil
 	})
 

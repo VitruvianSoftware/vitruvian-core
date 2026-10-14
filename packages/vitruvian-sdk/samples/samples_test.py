@@ -68,29 +68,29 @@ WANTED = {
     "hello-python-kit": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-swift": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
         [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-panel-typescript": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
         [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-panel-python": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
         [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-go": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-go": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
         [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-rust": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-rust": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
         [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "front-window": [

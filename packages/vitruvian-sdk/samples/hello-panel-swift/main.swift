@@ -25,8 +25,11 @@
 //
 // It also shows a status, the small mark the app draws on the closed
 // island, and its island page has a pop-up menu to pick it with. Both are
-// newer than protocol 2 itself, so the tool asks the app what it has.
+// newer than protocol 2 itself, so the tool asks the app what it has. An
+// app that draws a status's words (3.50 and later) gets a second menu: the
+// count, or a count of seconds, beside the mark.
 
+import Foundation
 import VitruvianToolKit
 
 /// What the tool knows. One thread reads the link, so one object is enough.
@@ -36,6 +39,10 @@ final class Counter {
     var byTwo = false
     /// What the tool shows on the closed island.
     var status = StatusState.ok
+    /// What it says beside the mark: none, the count, or seconds.
+    var words = "none"
+    /// When "Seconds" was picked: the app counts from here.
+    var since = Date()
 
     var step: Int { byTwo ? 2 : 1 }
 
@@ -48,7 +55,21 @@ final class Counter {
             field("name", title: "Your name", value: name, placeholder: "Type it and press Return")
             if !name.isEmpty { text("Hello, \(name)", style: .secondary) }
             statusPicker(app)
+            if app.supports(.statusActivity) { wordsPicker() }
         }
+    }
+
+    /// What may stand beside the mark, in the second menu.
+    static let wordsOptions: [(value: String, title: String)] = [
+        ("none", "None"), ("count", "The count"), ("seconds", "Seconds"),
+    ]
+
+    /// The words beside the mark, to pick. It starts at None, so the
+    /// sample does not take the place of what the person reads there until
+    /// they ask.
+    func wordsPicker() -> UIBlock {
+        let options = Counter.wordsOptions.map { UIChoiceOption(value: $0.value, title: .plain($0.title)) }
+        return choice("words", title: "Words on the closed island", value: words, options: options)
     }
 
     /// What each status is called in the menu, and what it says to VoiceOver.
@@ -75,7 +96,10 @@ final class Counter {
     /// has no status, and the call says so.
     func showStatus(_ app: App) throws {
         let says = Counter.statuses.first { $0.state == status }?.says
-        try app.status(status, text: says.map(UIText.plain))
+        // An app before 3.50 is sent the status without the words.
+        try app.status(status, text: says.map(UIText.plain),
+                       activity: words == "count" ? .plain("\(count)") : nil,
+                       since: words == "seconds" ? since : nil)
     }
 
     /// The Settings page.
@@ -95,12 +119,20 @@ let island = tool.panel("counter", onOpen: { app, _ in counter.page(app) }, onEv
     case "add"?:
         counter.count += counter.step
         try panel.badge(count: counter.count)
+        if counter.words == "count" { try counter.showStatus(app) }
     case "name"?:
         counter.name = event.text ?? counter.name
     case "status"?:
         // A pick is the event `change`, as leaving a field changed is.
         guard let picked = event.text.flatMap(StatusState.init(rawValue:)) else { return .keep }
         counter.status = picked
+        try counter.showStatus(app)
+    case "words"?:
+        guard let picked = event.text, Counter.wordsOptions.contains(where: { $0.value == picked }) else {
+            return .keep
+        }
+        counter.words = picked
+        if picked == "seconds" { counter.since = Date() }
         try counter.showStatus(app)
     default:
         return .keep
@@ -117,6 +149,7 @@ tool.panel("settings", onOpen: { _, _ in counter.settings() }, onEvent: { _, _, 
 tool.command("addOne") { app in
     counter.count += counter.step
     island.render(counter.page(app))
+    if counter.words == "count" { try counter.showStatus(app) }
 }
 
 // The status goes when the program ends, so it is set each time the program

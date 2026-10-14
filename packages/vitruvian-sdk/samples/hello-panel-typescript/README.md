@@ -29,6 +29,7 @@ function page(app) {
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
     statusPicker(app),
+    app.supports(Feature.statusActivity) && wordsPicker(),
   ]);
 }
 ```
@@ -46,6 +47,7 @@ const island = tool.panel("counter", {
       case "add":
         counter.count += step();
         panel.badge({ count: counter.count });
+        if (counter.words === "count") showStatus(app);
         break;
       case "name":
         counter.name = event.text ?? counter.name;
@@ -55,6 +57,13 @@ const island = tool.panel("counter", {
         if (!STATUSES.some(({ state }) => state === event.text))
           return { keep: true };
         counter.status = event.text;
+        showStatus(app);
+        break;
+      case "words":
+        if (!WORDS.some(({ value }) => value === event.text))
+          return { keep: true };
+        counter.words = event.text;
+        if (event.text === "seconds") counter.since = new Date();
         showStatus(app);
         break;
       default:
@@ -69,6 +78,7 @@ const island = tool.panel("counter", {
 tool.command("addOne", (app) => {
   counter.count += step();
   island.render(page(app));
+  if (counter.words === "count") showStatus(app);
 });
 ```
 
@@ -82,7 +92,11 @@ manifest declares it, `"status": { "placement": "island" }` under
 ```javascript file=samples/hello-panel-typescript/bin/tool.mjs
 function showStatus(app) {
   const says = STATUSES.find(({ state }) => state === counter.status)?.says;
-  return app.status(counter.status, says === undefined ? {} : { text: says });
+  const options = says === undefined ? {} : { text: says };
+  // An app before 3.50 is sent the status without the words.
+  if (counter.words === "count") options.activity = String(counter.count);
+  if (counter.words === "seconds") options.since = counter.since;
+  return app.status(counter.status, options);
 }
 ```
 
@@ -118,6 +132,25 @@ function statusPicker(app) {
   const options = STATUSES.map(({ state, title }) => ({ value: state, title }));
   return choice("status", counter.status, options, {
     title: "Status on the closed island",
+  });
+}
+```
+
+## A few words beside the mark
+
+On Vitruvian 3.50 and later the status may carry a few words, drawn beside
+the mark on the closed island, or a start time the app counts the seconds
+from. The manifest says so, `"status": { "placement": "island", "activity":
+true }`, and `app.status` takes `activity` and `since`. When the app has
+them, `app.supports(Feature.statusActivity)`, the island page gains a second
+menu: None, the count, or seconds since it was picked. It starts at None, so
+the sample does not take the place of what you read there until you ask. An
+older app is sent the status without the words.
+
+```javascript file=samples/hello-panel-typescript/bin/tool.mjs
+function wordsPicker() {
+  return choice("words", counter.words, WORDS, {
+    title: "Words on the closed island",
   });
 }
 ```

@@ -860,6 +860,7 @@ holds, one function for each kind:
             field("name", title: "Your name", value: name, placeholder: "Type it and press Return")
             if !name.isEmpty { text("Hello, \(name)", style: .secondary) }
             statusPicker(app)
+            if app.supports(.statusActivity) { wordsPicker() }
         }
     }
 ```
@@ -874,12 +875,20 @@ let island = tool.panel("counter", onOpen: { app, _ in counter.page(app) }, onEv
     case "add"?:
         counter.count += counter.step
         try panel.badge(count: counter.count)
+        if counter.words == "count" { try counter.showStatus(app) }
     case "name"?:
         counter.name = event.text ?? counter.name
     case "status"?:
         // A pick is the event `change`, as leaving a field changed is.
         guard let picked = event.text.flatMap(StatusState.init(rawValue:)) else { return .keep }
         counter.status = picked
+        try counter.showStatus(app)
+    case "words"?:
+        guard let picked = event.text, Counter.wordsOptions.contains(where: { $0.value == picked }) else {
+            return .keep
+        }
+        counter.words = picked
+        if picked == "seconds" { counter.since = Date() }
         try counter.showStatus(app)
     default:
         return .keep
@@ -892,6 +901,7 @@ let island = tool.panel("counter", onOpen: { app, _ in counter.page(app) }, onEv
 tool.command("addOne") { app in
     counter.count += counter.step
     island.render(counter.page(app))
+    if counter.words == "count" { try counter.showStatus(app) }
 }
 ```
 
@@ -922,6 +932,7 @@ function page(app) {
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
     statusPicker(app),
+    app.supports(Feature.statusActivity) && wordsPicker(),
   ]);
 }
 ```
@@ -939,6 +950,7 @@ const island = tool.panel("counter", {
       case "add":
         counter.count += step();
         panel.badge({ count: counter.count });
+        if (counter.words === "count") showStatus(app);
         break;
       case "name":
         counter.name = event.text ?? counter.name;
@@ -948,6 +960,13 @@ const island = tool.panel("counter", {
         if (!STATUSES.some(({ state }) => state === event.text))
           return { keep: true };
         counter.status = event.text;
+        showStatus(app);
+        break;
+      case "words":
+        if (!WORDS.some(({ value }) => value === event.text))
+          return { keep: true };
+        counter.words = event.text;
+        if (event.text === "seconds") counter.since = new Date();
         showStatus(app);
         break;
       default:
@@ -983,6 +1002,7 @@ word:
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
             self.status_picker(app),
+            self.words_picker() if app.supports(Feature.STATUS_ACTIVITY) else None,
         )
 ```
 
@@ -997,6 +1017,8 @@ def island_event(app, panel, event):
     if event.block == "add":
         counter.count += counter.step
         panel.badge(count=counter.count)
+        if counter.words == "count":
+            counter.show_status(app)
     elif event.block == "name":
         counter.name = event.text if event.text is not None else counter.name
     elif event.block == "status":
@@ -1004,6 +1026,13 @@ def island_event(app, panel, event):
         if event.text not in STATUSES:
             return PanelAnswer.keep()
         counter.status = event.text
+        counter.show_status(app)
+    elif event.block == "words":
+        if event.text not in WORDS:
+            return PanelAnswer.keep()
+        counter.words = event.text
+        if event.text == "seconds":
+            counter.since = datetime.now(timezone.utc)
         counter.show_status(app)
     else:
         return PanelAnswer.keep()
@@ -1036,6 +1065,7 @@ func (c *counter) page(app *toolkit.App) toolkit.UITree {
 		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
 		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
 		c.statusPicker(app),
+		ui.If(app.Supports(toolkit.FeatureStatusActivity), c.wordsPicker()),
 	)
 }
 ```
@@ -1062,6 +1092,11 @@ unprompted, with `Render`, and sets the tool's badge in the island, with
 				if err := panel.Badge(state.count, false); err != nil {
 					return toolkit.Keep(), err
 				}
+				if state.words == "count" {
+					if _, err := state.showStatus(app); err != nil {
+						return toolkit.Keep(), err
+					}
+				}
 			case "name":
 				if text, ok := event.Text(); ok {
 					state.name = text
@@ -1076,6 +1111,18 @@ unprompted, with `Render`, and sets the tool's badge in the island, with
 				if _, err := state.showStatus(app); err != nil {
 					return toolkit.Keep(), err
 				}
+			case "words":
+				picked, ok := event.Text()
+				if !ok || !isWords(picked) {
+					return toolkit.Keep(), nil
+				}
+				state.words = picked
+				if picked == "seconds" {
+					state.since = time.Now()
+				}
+				if _, err := state.showStatus(app); err != nil {
+					return toolkit.Keep(), err
+				}
 			default:
 				return toolkit.Keep(), nil
 			}
@@ -1087,6 +1134,10 @@ unprompted, with `Render`, and sets the tool's badge in the island, with
 	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {
 		state.count += state.step()
 		island.Render(state.page(app))
+		if state.words == "count" {
+			_, err := state.showStatus(app)
+			return err
+		}
 		return nil
 	})
 ```
@@ -1118,6 +1169,8 @@ is `None` is left out:
             (!self.name.is_empty())
                 .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
             self.status_picker(app),
+            app.supports(features::STATUS_ACTIVITY)
+                .then(|| self.words_picker()),
         ]
     }
 ```
@@ -1145,6 +1198,9 @@ handler it is called from:
                     let step = counter.step();
                     counter.count += step;
                     panel.badge(app, Some(counter.count), false)?;
+                    if counter.words == "count" {
+                        counter.show_status(app)?;
+                    }
                 }
                 Some("name") => {
                     if let Some(name) = event.text() {
@@ -1163,6 +1219,19 @@ handler it is called from:
                     counter.status = picked.to_string();
                     counter.show_status(app)?;
                 }
+                Some("words") => {
+                    let picked = event
+                        .text()
+                        .filter(|word| WORDS.iter().any(|(value, _)| value == word));
+                    let Some(picked) = picked else {
+                        return Ok(PanelAnswer::Keep);
+                    };
+                    counter.words = picked.to_string();
+                    if picked == "seconds" {
+                        counter.since = SystemTime::now();
+                    }
+                    counter.show_status(app)?;
+                }
                 _ => return Ok(PanelAnswer::Keep),
             }
             Ok(PanelAnswer::Page(counter.page(app)))
@@ -1177,6 +1246,9 @@ handler it is called from:
         let step = counter.step();
         counter.count += step;
         island.render(app, &counter.page(app));
+        if counter.words == "count" {
+            counter.show_status(app)?;
+        }
         Ok(())
     });
 ```
@@ -1283,14 +1355,21 @@ does not have a status: "What an older app does", below.
     /// has no status, and the call says so.
     func showStatus(_ app: App) throws {
         let says = Counter.statuses.first { $0.state == status }?.says
-        try app.status(status, text: says.map(UIText.plain))
+        // An app before 3.50 is sent the status without the words.
+        try app.status(status, text: says.map(UIText.plain),
+                       activity: words == "count" ? .plain("\(count)") : nil,
+                       since: words == "seconds" ? since : nil)
     }
 ```
 
 ```javascript file=samples/hello-panel-typescript/bin/tool.mjs
 function showStatus(app) {
   const says = STATUSES.find(({ state }) => state === counter.status)?.says;
-  return app.status(counter.status, says === undefined ? {} : { text: says });
+  const options = says === undefined ? {} : { text: says };
+  // An app before 3.50 is sent the status without the words.
+  if (counter.words === "count") options.activity = String(counter.count);
+  if (counter.words === "seconds") options.since = counter.since;
+  return app.status(counter.status, options);
 }
 ```
 
@@ -1298,17 +1377,31 @@ function showStatus(app) {
     def show_status(self, app):
         """Sets the mark on the closed island. Nothing is sent to an app that
         has no status, and the call says so."""
-        return app.status(self.status, text=STATUSES[self.status][1])
+        # An app before 3.50 is sent the status without the words.
+        return app.status(
+            self.status,
+            text=STATUSES[self.status][1],
+            activity=str(self.count) if self.words == "count" else None,
+            since=self.since if self.words == "seconds" else None,
+        )
 ```
 
 ```go file=samples/hello-panel-go/main.go
 func (c *counter) showStatus(app *toolkit.App) (bool, error) {
+	options := toolkit.StatusOptions{}
 	for _, status := range statuses {
 		if status.state == c.status && status.says != "" {
-			return app.UI.Status(c.status, toolkit.StatusOptions{Text: status.says})
+			options.Text = status.says
 		}
 	}
-	return app.UI.Status(c.status)
+	// An app before 3.50 is sent the status without the words.
+	switch c.words {
+	case "count":
+		options.Activity = strconv.Itoa(c.count)
+	case "seconds":
+		options.Since = c.since
+	}
+	return app.UI.Status(c.status, options)
 }
 ```
 
@@ -1318,7 +1411,16 @@ func (c *counter) showStatus(app *toolkit.App) (bool, error) {
             .iter()
             .find(|(state, _, _)| *state == self.status)
             .and_then(|(_, _, says)| *says);
-        app.ui().status(&self.status, says.map(Into::into), None)
+        // An app before 3.50 is sent the status without the words.
+        app.ui().status_with(
+            &self.status,
+            StatusOptions {
+                text: says.map(Into::into),
+                activity: (self.words == "count").then(|| self.count.to_string().into()),
+                since: (self.words == "seconds").then_some(self.since),
+                ..StatusOptions::default()
+            },
+        )
     }
 ```
 

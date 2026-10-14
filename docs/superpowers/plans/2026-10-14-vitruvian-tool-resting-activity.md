@@ -251,6 +251,17 @@ Step 5, planted in each kit (the words sent whatever the hello said), and the te
 - [ ] **Step 5: Plant by hand:** in `conformance.py`, set `shows_activity` true for every tool. The test of the undeclared words must fail. Undo.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-14).**
+
+- **The desk's hello and `RunTests` moved in Task 1**: the desk names `ProtocolFeature.allCases`, so `Session.swift` needed no change, and its test changed there.
+- **The script answers undeclared words with `{}`, then fails the run**, as the plan says, after the state is recorded. A `ui/status` "carries" words when the key `activity` or `since` is present; a bad shape (`since` below 0, not a number, a boolean; `activity` that is not text) fails first, as params that are not the message's.
+- **More tests run the samples than the plan's line names**: `go_sample_test` and `rust_sample_test` run the Go and Rust panel samples through the script, and `go_template_test` and `python_kit_apple_python_test` exist too. All pass; each panel sample draws a page of six blocks against the script's hello and five against an older app's.
+- **Each sample sends the status again when the count changes**, while "The count" is picked, from the button and from the command `addOne`, so the words follow the counter.
+- **29 `file=` excerpts moved with the samples**, in the guide, the panel READMEs and the READMEs of `hello-go`, `hello-rust`, `hello-typescript` and `hello-python-kit`: each now shows the same code as it is now (a small script took each excerpt's first and last line to the file as it is; the Python `show_status` excerpt, whose last line changed, was moved by hand). The two panel READMEs gained a section, "A few words beside the mark", with an excerpt of the second menu. The package `README.md` says what the samples and the script now do.
+- **As for 1.3.0, between this merging and SDK 1.4.0 being published, the TypeScript and Python panel samples do not run from the registries**: they pin the kit release-please bumps, and use calls 1.4.0 adds. In this repository and in the mirror's CI they build against the kit beside them.
+
+Step 5, planted: `shows_activity` true for every tool. `conformance_test` failed with "a tool that sends words its manifest does not declare is not told". Reversed.
+
 ---
 
 ### Task 4: The app keeps a status's words and names what it draws
