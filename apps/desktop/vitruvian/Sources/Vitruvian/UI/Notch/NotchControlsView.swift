@@ -70,7 +70,8 @@ package struct NotchControlsView: View {
                         .frame(width: 160, height: height)
                         .modifier(NotchControlSurface(cornerRadius: 18))
                 } else if let single = levels.first {
-                    level(single, style: .card, showsDevice: height >= 88).frame(width: 160, height: height)
+                    level(single, style: .card, showsDevice: NotchLayout.levelCardsShowDetails(levels, height: height))
+                        .frame(width: 160, height: height)
                 }
             } else {
                 let details = NotchLayout.levelCardsShowDetails(levels, height: height)

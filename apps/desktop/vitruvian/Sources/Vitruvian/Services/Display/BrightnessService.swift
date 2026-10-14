@@ -57,6 +57,17 @@ package struct BrightnessDisplay: Identifiable, Equatable {
     }
 }
 
+extension NotchControlItem {
+    /// The launch step that points the island's keyboard light question at
+    /// this service, the only code that can ask the hardware. The light is
+    /// there or not for the life of the app, so it is asked once, here, and
+    /// the island's readers get the answer without touching the service.
+    @MainActor package static func wireKeyboardLight() {
+        let supported = BrightnessService.keyboardLightIsSupported
+        keyboardLightIsSupported = { supported }
+    }
+}
+
 /// Brightness sliders for every display, built-in and external. The built-in
 /// panel and Apple displays go through the system brightness pipeline; other
 /// external monitors are driven over DDC/CI, the same protocol their own

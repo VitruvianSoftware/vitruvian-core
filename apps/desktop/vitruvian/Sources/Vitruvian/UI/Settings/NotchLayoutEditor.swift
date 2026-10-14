@@ -333,7 +333,8 @@ package struct NotchLayoutEditor: View {
                         .frame(width: 160, height: height)
                         .modifier(NotchControlSurface(cornerRadius: 18, interactive: false))
                 } else if let single = levels.first {
-                    levelCard(single, height: height, details: height >= 88).frame(width: 160)
+                    levelCard(single, height: height, details: NotchLayout.levelCardsShowDetails(levels, height: height))
+                        .frame(width: 160)
                 }
             } else {
                 let details = NotchLayout.levelCardsShowDetails(levels, height: height)

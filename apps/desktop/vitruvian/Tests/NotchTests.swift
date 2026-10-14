@@ -1390,7 +1390,14 @@ enum NotchTests {
         NotchControlItem.keyboardLightIsSupported = { false }
         let lightNeedsHardware = !NotchSupport.controls(in: defaults).contains(.keyboardLight)
             && NotchSupport.controls(in: defaults).contains(.brightness)
+        // Start from the answer the hardware would not give, so the launch
+        // step has to change it whatever this Mac has.
+        let hardwareHasKeyboardLight = BrightnessService.keyboardLightIsSupported
+        NotchControlItem.keyboardLightIsSupported = { !hardwareHasKeyboardLight }
+        NotchControlItem.wireKeyboardLight()
+        let launchAsksTheService = NotchControlItem.keyboardLightIsSupported() == hardwareHasKeyboardLight
         NotchControlItem.keyboardLightIsSupported = supportsKeyboardLight
+        suite.expect(launchAsksTheService, "launch asks the brightness service whether this Mac has a keyboard light")
         defaults.set(false, forKey: AppFeature.brightness.availabilityKey)
         let lightGated = !NotchSupport.controls(in: defaults).contains(.keyboardLight)
         suite.expect(lightHiddenByDefault && lightShown && lightGated
@@ -1404,6 +1411,23 @@ enum NotchTests {
                      && !NotchLayout.levelCardsShowDetails([.brightness, .keyboardLight], height: 96)
                      && !NotchLayout.levelCardsShowDetails([.volume, .brightness, .keyboardLight], height: 96),
                      "level cards fold to their readouts beside the keyboard light and three across")
+        // The island and its Settings preview both split the controls with
+        // NotchControlGroups, size the card row with NotchLayout.controls,
+        // and ask levelCardsShowDetails for every level card, beside playback
+        // or not. These are the values they pass in.
+        let fullRow = NotchLayout.controls(hasCards: true, shortcutCount: 0, width: 600, height: 400).cardRow
+        let shortRow = NotchLayout.controls(hasCards: true, shortcutCount: 0, width: 600,
+                                            height: NotchLayout.minimumCardHeight).cardRow
+        let besidePlayback = NotchControlGroups([.music, .keyboardLight, .timer])
+        let pair = NotchControlGroups([.volume, .timer, .brightness])
+        suite.expect(fullRow == NotchLayout.cardHeight && shortRow == NotchLayout.minimumCardHeight
+                     && besidePlayback.music && besidePlayback.levels == [.keyboardLight]
+                     && NotchLayout.levelCardsShowDetails(besidePlayback.levels, height: fullRow)
+                     && !NotchLayout.levelCardsShowDetails(besidePlayback.levels, height: shortRow)
+                     && pair.levels == [.volume, .brightness]
+                     && NotchLayout.levelCardsShowDetails(pair.levels, height: fullRow)
+                     && !NotchLayout.levelCardsShowDetails(pair.levels, height: shortRow),
+                     "the island and its Settings preview fold level cards by the same rule at the heights they lay out")
         defaults.set(savedHiddenControls, forKey: DefaultsKey.notchHiddenControls)
         defaults.set(savedBrightness, forKey: AppFeature.brightness.availabilityKey)
         suite.expect(NotchControlItem.brightness.setupRequirement == .feature(.brightness)
