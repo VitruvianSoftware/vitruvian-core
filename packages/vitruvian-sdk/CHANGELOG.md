@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.3.0...vitruvian-sdk-v1.4.0) (2026-10-14)
+
+
+### Features
+
+* **vitruvian-sdk:** a tool's status can carry a few words for the closed island ([#3271](https://github.com/VitruvianSoftware/vitruvian-core/issues/3271)) ([717f483](https://github.com/VitruvianSoftware/vitruvian-core/commit/717f4836feb2b8514247bc72a4df879b1764ac6e))
+
 ## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.2.0...vitruvian-sdk-v1.3.0) (2026-10-14)
 
 
