@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.2...android-remote-v0.1.3) (2026-10-14)
+
+
+### Features
+
+* **remote:** update adaptive launcher icon and desktop Icon Composer mark to Golden-Datum V ([#3273](https://github.com/VitruvianSoftware/vitruvian-core/issues/3273)) ([331a4be](https://github.com/VitruvianSoftware/vitruvian-core/commit/331a4be33605f40791246ab2d082920535cc000d))
+
 ## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.1...android-remote-v0.1.2) (2026-10-10)
 
 
