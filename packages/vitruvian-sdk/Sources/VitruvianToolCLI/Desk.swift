@@ -40,6 +40,8 @@ public struct Desk {
     private let uses: Set<String>
     /// Whether the manifest declares a status, under `contributes.status`.
     private let showsStatus: Bool
+    /// Whether that status may carry words: `contributes.status.activity`.
+    private let showsActivity: Bool
     private let kinds: [String: PreferenceKind]
     public private(set) var values: [String: JSONValue]
     public private(set) var clipboard: String? = "text from vitruvian-tool run"
@@ -50,6 +52,7 @@ public struct Desk {
     public init(manifest: ToolManifestFile) {
         uses = Set(manifest.uses ?? [])
         showsStatus = manifest.contributes?.status != nil
+        showsActivity = manifest.contributes?.status?.activity == true
         var kinds: [String: PreferenceKind] = [:]
         var values: [String: JSONValue] = [:]
         for preference in manifest.preferences ?? [] {
@@ -99,7 +102,7 @@ public struct Desk {
             }
             let words = asked.text.map { ", saying \"\($0.text(for: "en"))\"" } ?? ""
             let shown = asked.state == .none ? "no status" : asked.state.rawValue
-            return (Self.done, "the app would show \(shown) on the closed island\(words)")
+            return (Self.done, "the app would show \(shown) on the closed island\(words)\(activity(of: asked))")
         case .uiBadge:
             guard let asked = read(UIBadgeParams.self) else { return wrong }
             let badge = asked.count.flatMap { $0 > 0 ? "the count \($0)" : nil }
@@ -167,5 +170,23 @@ public struct Desk {
 
     static func text(_ value: JSONValue) -> String {
         (try? JSONEncoder().encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? "?"
+    }
+}
+
+extension Desk {
+    /// What the app would do with a status's words or its start time, as
+    /// the end of the desk's sentence. The words win over the start time,
+    /// and a manifest that does not declare them has them left out. A
+    /// status of `none` has neither.
+    fileprivate func activity(of asked: UIStatusParams) -> String {
+        guard asked.state != .none else { return "" }
+        let words = asked.activity.map { $0.text(for: "en") }
+            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        guard words != nil || asked.since != nil else { return "" }
+        guard showsActivity else { return "; it would leave the words out: the manifest does not declare them" }
+        if let words { return ", with the words \"\(words)\"" }
+        let since = asked.since ?? 0
+        let written = since.rounded() == since && abs(since) < 1e15 ? String(Int64(since)) : String(since)
+        return ", counting seconds from \(written)"
     }
 }

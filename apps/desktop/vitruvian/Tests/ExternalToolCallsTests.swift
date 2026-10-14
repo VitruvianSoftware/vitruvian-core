@@ -415,6 +415,15 @@ extension ExternalToolCallsTests {
             suite.expect(code(bench.ask(.uiStatus, params)) == -32602 && bench.statuses.count == before,
                          "ui/status with \(params ?? "no params") is answered invalid params, and nothing is handed on")
         }
+        suite.expect(code(bench.ask(.uiStatus, #"{"state": "busy", "since": -1}"#)) == -32602
+                         && bench.statuses.count == before,
+                     "a status that counts from before 1970 is answered invalid params, and nothing is handed on")
+        suite.expect(code(bench.ask(.uiStatus, #"{"state": "busy", "since": "soon"}"#)) == -32602
+                         && bench.statuses.count == before,
+                     "a status whose start time is not a number is answered invalid params")
+        suite.expect(result(bench.ask(.uiStatus, #"{"state": "busy", "activity": "3", "since": 1760450400.5}"#)) == done
+                         && bench.statuses.last == UIStatusParams(state: .busy, activity: "3", since: 1_760_450_400.5),
+                     "a status's words and its start time are handed on as the tool sent them")
     }
 
     /// A text preference with options is still text to the tool: a value

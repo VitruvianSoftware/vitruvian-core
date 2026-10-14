@@ -25,11 +25,13 @@ import VitruvianToolProtocol
 
 /// What `run` answers a tool's requests with.
 final class DeskTests: XCTestCase {
-    private func desk(uses: [String] = AppService.allCases.map(\.rawValue), status: Bool = true) throws -> Desk {
+    private func desk(uses: [String] = AppService.allCases.map(\.rawValue), status: Bool = true,
+                      activity: Bool = false) throws -> Desk {
+        let declared = activity ? #""status":{"placement":"island","activity":true}"# : #""status":{"placement":"island"}"#
         let manifest = """
             {"id":"com.example.desk","name":{"en":"Desk"},"version":"1","protocol":"2","publisher":"Example",
              "uses":\(String(decoding: try JSONEncoder().encode(uses), as: UTF8.self)),
-             "contributes":{\(status ? #""status":{"placement":"island"}"# : "")},
+             "contributes":{\(status ? declared : "")},
              "preferences":[{"id":"project","type":"string","default":"web"},{"id":"count","type":"integer","default":0}],
              "runtime":{"kind":"external","exec":"bin/tool"}}
             """
@@ -93,6 +95,27 @@ final class DeskTests: XCTestCase {
         // Params that are not the message's are that first, declared or not.
         XCTAssertEqual(undeclared.serve("ui/status", try params(#"{"state":"broken"}"#)).said,
                        "params that are not this message's")
+    }
+
+    func testAStatusSaysItsWordsOrItsStartTime() throws {
+        var desk = try desk(uses: [], activity: true)
+        XCTAssertEqual(desk.serve("ui/status", try params(#"{"state":"busy","text":"Checks","activity":"3"}"#)).said,
+                       "the app would show busy on the closed island, saying \"Checks\", with the words \"3\"")
+        XCTAssertEqual(desk.serve("ui/status", try params(#"{"state":"busy","since":1760450400}"#)).said,
+                       "the app would show busy on the closed island, counting seconds from 1760450400")
+        XCTAssertEqual(desk.serve("ui/status", try params(#"{"state":"busy","activity":"go","since":0.5}"#)).said,
+                       "the app would show busy on the closed island, with the words \"go\"",
+                       "the words win over the start time, as the app draws them")
+        XCTAssertEqual(code(desk.serve("ui/status", try params(#"{"state":"busy","since":-1}"#)).answer), -32602)
+
+        var undeclared = try self.desk(uses: [])
+        let left = undeclared.serve("ui/status", try params(#"{"state":"busy","activity":"3"}"#))
+        XCTAssertEqual(try left.answer.get(), .object([:]), "the status is drawn all the same")
+        XCTAssertEqual(left.said, "the app would show busy on the closed island; "
+                       + "it would leave the words out: the manifest does not declare them")
+        XCTAssertEqual(undeclared.serve("ui/status", try params(#"{"state":"ok","since":5}"#)).said,
+                       "the app would show ok on the closed island; "
+                       + "it would leave the words out: the manifest does not declare them")
     }
 
     func testItRefusesWhatTheAppRefuses() throws {

@@ -235,6 +235,8 @@ impl Ui<'_> {
             state: state.to_string(),
             text,
             icon: icon.map(str::to_string),
+            activity: None,
+            since: None,
         };
         self.state.call::<Empty>(methods::UI_STATUS, &params)?;
         Ok(true)

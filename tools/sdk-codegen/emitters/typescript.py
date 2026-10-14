@@ -378,7 +378,21 @@ def manifest_file(model: Model) -> str:
         "expectOneOf",
         "expectString",
     ]
-    names += ["type JSONValue"]
+    # A reader the other kinds of field need, only when the manifest has
+    # such a field: an import nothing uses is an error to the compiler too.
+    kinds = {
+        kind.kind
+        for definition in model.manifest
+        for field in definition.fields
+        for kind in (field.type, field.type.item)
+        if kind is not None
+    }
+    names += [
+        name
+        for kind, name in (("boolean", "expectBoolean"), ("number", "expectNumber"))
+        if kind in kinds
+    ]
+    names = sorted(names) + ["type JSONValue"]
     for enum in enums_used(model.manifest, model):
         names += [constant(enum.name), f"type {enum.name}"]
     for title in shared_titles(model):

@@ -26,8 +26,10 @@ files and the kits' generated files. It writes only in a temporary folder.
 """
 
 import ast
+import builtins
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -262,6 +264,50 @@ class OutputTests(unittest.TestCase):
         for path, text in sdk_codegen.generate(self.package).items():
             if path.endswith(".py"):
                 ast.parse(text, filename=path, feature_version=(3, 9))
+
+    def test_every_reader_the_manifest_files_call_is_imported(self):
+        """The manifest's readers call the shared readers of messages.py and
+        messages.ts, one for each kind of field. A kind the manifest had no
+        field of before (a boolean, `contributes.status.activity`) must be
+        imported too, or the file does not compile or run."""
+        files = sdk_codegen.generate(self.package)
+        tree = ast.parse(files["kits/python/vitruvian_tool_kit/generated/manifest.py"])
+        imported = {
+            alias.name
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+        }
+        defined = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        }
+        called = {
+            node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        arguments = {
+            argument.arg
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            for argument in node.args.args
+        }
+        self.assertIn("_boolean", called, "contributes.status.activity is a boolean")
+        self.assertEqual(
+            sorted(called - imported - defined - arguments - set(dir(builtins))), []
+        )
+
+        text = files["kits/typescript/src/generated/manifest.ts"]
+        head, _, body = text.partition('} from "./messages.js";')
+        imported = set(re.findall(r"^  (?:type )?(\w+),$", head, re.MULTILINE))
+        defined = set(re.findall(r"function (\w+)\(", body))
+        called = set(re.findall(r"\b((?:expect|read)\w*)\(", body))
+        self.assertIn(
+            "expectBoolean", called, "contributes.status.activity is a boolean"
+        )
+        self.assertEqual(sorted(called - imported - defined), [])
 
     def test_every_name_a_python_call_uses_is_imported(self):
         """A call's arguments name their types, a closed list of names

@@ -86,7 +86,7 @@ final class RunTests: XCTestCase {
             *'"command":"status"'*)
               n=$((n + 1))
               case "$hello" in
-                *'"features":["ui.status","ui.choice","preferences.options"]'*)
+                *'"features":["ui.status","ui.choice","preferences.options","ui.status.activity"]'*)
                   say '{"jsonrpc":"2.0","method":"log","params":{"message":"the app has a status"}}' ;;
               esac
               ask ui/status '{"state":"busy","text":"Working"}' || say '{"jsonrpc":"2.0","method":"log","params":{"message":"no status"}}'
@@ -264,7 +264,7 @@ final class RunTests: XCTestCase {
             "log      the app has a status",
             "asked    ui/status: the app would show busy on the closed island, saying \"Working\"",
             "ran      status",
-        ], "run says hello as an app that has all three, and needs nothing in `uses` for a status")
+        ], "run says hello as an app that has all four, and needs nothing in `uses` for a status")
 
         manifest = Self.statusManifest(declared: false)
         let (refused, again) = try run(["status"])

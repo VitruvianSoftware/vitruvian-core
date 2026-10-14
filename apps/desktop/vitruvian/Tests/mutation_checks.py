@@ -987,9 +987,23 @@ MUTATIONS = [
     ("the app says it has nothing", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
      "                                            dataFolder: data.path,\n"
-     "                                            features: ProtocolFeature.allCases.map(\\.rawValue)),\n",
+     "                                            features: Self.features.map(\\.rawValue)),\n",
      "                                            dataFolder: data.path),\n",
      "the hello names what this app has: a status, a choice block and options on a preference"),
+    ("a start time before 1970 is read", "tool-runtime",
+     "../../../packages/vitruvian-sdk/Sources/VitruvianToolProtocol/Panels.swift",
+     "        if let since, !(since >= 0) {\n"
+     "            throw DecodingError.dataCorruptedError(forKey: .since, in: container,\n"
+     "                                                   debugDescription: \"a start time before 1970\")\n"
+     "        }\n",
+     "",
+     "a status that counts from before 1970 is answered invalid params, and nothing is handed on"),
+    ("the app claims words it does not draw", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions]\n",
+     "    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions,\n"
+     "                                                                  .statusActivity]\n",
+     "the hello does not name a status's words, which this app does not draw yet"),
     ("a stored value that is no option is dropped from the menu", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
      "            if !options.contains(where: { $0.value == selected }) {\n",

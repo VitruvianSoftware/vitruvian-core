@@ -41,7 +41,7 @@ enum ExternalToolStoreTests {
         aRealToolRemoved(suite)
         aRealToolWithAHelper(suite)
         panels(suite)
-        theHelloSaysWhatTheAppHas(suite)
+        theHelloNamesOnlyWhatTheAppHas(suite)
         theStatusSwitchIsYesUntilTurnedOff(suite)
         aRecordFromBeforeReadsAsItDid(suite)
         statusToolsLeavesOutASwitchedOffAndAnUndeclaredTool(suite)
@@ -1692,7 +1692,10 @@ extension ExternalToolStoreTests {
            {"id": "project", "title": {"en": "Project"}, "type": "string", "default": "web"}]}
         """#
 
-    static func theHelloSaysWhatTheAppHas(_ suite: TestSuite) {
+    /// The app names its features from a list of its own, not from every
+    /// name the protocol has: a name added to the protocol is not claimed
+    /// until the app draws it.
+    static func theHelloNamesOnlyWhatTheAppHas(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
         bench.add(bench.folder())
@@ -1702,8 +1705,10 @@ extension ExternalToolStoreTests {
             said = params?["features"]?.arrayValue?.compactMap(\.stringValue) ?? []
         }
         suite.expect(said == ["ui.status", "ui.choice", "preferences.options"]
-                         && said == ProtocolFeature.allCases.map(\.rawValue),
+                         && said == ExternalToolStore.features.map(\.rawValue),
                      "the hello names what this app has: a status, a choice block and options on a preference")
+        suite.expect(!said.contains(ProtocolFeature.statusActivity.rawValue),
+                     "the hello does not name a status's words, which this app does not draw yet")
         let example = ExternalToolSettingsTests.example(of: "initialize")
         suite.expect(example == nil || example?["params"]?.objectValue?.keys.sorted()
                          == ["dataFolder", "language", "protocolVersions"],

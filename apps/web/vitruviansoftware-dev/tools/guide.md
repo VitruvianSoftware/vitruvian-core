@@ -540,7 +540,7 @@ refuses its command and says why.
 | `license` | no | Text. Not shown yet. |
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
-| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. And `status`, `{ "placement": "island" }`: the tool shows a small status mark on the closed island, which it sets with `ui/status`. `island` is the only placement. Without it the app refuses `ui/status`. |
+| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. And `status`, `{ "placement": "island" }`: the tool shows a small status mark on the closed island, which it sets with `ui/status`. `island` is the only placement. Without it the app refuses `ui/status`. `status` may also say `"activity": true`: the status may carry a few words for the closed island, and the sheet that asks before the tool is added says so. Without it the app leaves the words out. |
 | `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. A `string` preference may carry `options`: from 1 to 64 of `{ value, title }`, and the app then draws a pop-up menu in place of the text field. A `value` is text of at most 128 characters, with no line break, and may be empty; no two options share one; the default is one of them. A `title` is a map of languages held to what the preference's own title is. The tool reads and writes any of them with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
@@ -579,15 +579,17 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options"]}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options","ui.status.activity"]}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
 
 `features` names what this app has beyond the first release of the protocol
 version: `ui.status` (the `ui/status` request), `ui.choice` (the `choice`
-block) and `preferences.options` (a preference's `options`, drawn as a
-menu). Vitruvian 3.48 and later send it. An older app sends no `features`
-at all, and has none of them. Ignore a name you do not know.
+block), `preferences.options` (a preference's `options`, drawn as a
+menu) and `ui.status.activity` (a status's `activity` and `since`, drawn
+beside the mark). Vitruvian 3.48 and later send it; 3.48 and 3.49 name the
+first three. An older app sends no `features` at all, and has none of them.
+Ignore a name you do not know.
 
 `command/run` runs a command, named by the id the manifest gives it. Answer
 `{}` when it ran, or failure -32010 when you will not run it.
@@ -743,9 +745,21 @@ the manifest declares it, under `contributes.status`, and without that the
 app answers failure -32602. Each one replaces the last, and the mark goes
 when your program ends. An app before 3.48 answers failure -32601.
 
+Two more fields put a few words beside the mark, when the manifest's
+status says `"activity": true` and the app names `ui.status.activity`.
+`activity`, a string or a map of languages, is the words: six characters or
+fewer, and a number is best. `since` is a start time in Unix seconds: with
+no `activity`, the app counts the seconds since then itself. Words from a
+tool that did not declare them are left out, and the mark is drawn. An app
+before 3.50 ignores both.
+
 ```json
 {"jsonrpc":"2.0","id":"m","method":"ui/status","params":{"state":"busy","icon":"arrow.triangle.branch","text":{"en":"Checks are running","fr":"Vérifications en cours"}}}
 {"jsonrpc":"2.0","id":"m","result":{}}
+{"jsonrpc":"2.0","id":"o","method":"ui/status","params":{"state":"busy","text":"Checks are running","activity":"3"}}
+{"jsonrpc":"2.0","id":"o","result":{}}
+{"jsonrpc":"2.0","id":"p","method":"ui/status","params":{"state":"busy","text":"Deploying","since":1760450400}}
+{"jsonrpc":"2.0","id":"p","result":{}}
 {"jsonrpc":"2.0","id":"n","method":"ui/status","params":{"state":"none"}}
 {"jsonrpc":"2.0","id":"n","result":{}}
 ```

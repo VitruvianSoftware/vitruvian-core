@@ -157,6 +157,18 @@ The GitHub tool has no new words: its words are digits.
 - [ ] **Step 8: Watch everything pass.** The package's three lines of tests, then the app's suites and source tests. Record `platform` and `tool-runtime` counts before and after.
 - [ ] **Step 9: Commit**, with `git status --short` first.
 
+**As built (2026-10-14).** Where the code proved the plan wrong:
+
+- **Three existing tests changed on purpose, because they list `ProtocolFeature.allCases`.** The desk's hello (`Session.swift`) already names every case, so it names `ui.status.activity` from this task, not Task 3: `RunTests.testTheHelloSaysWhatTheAppHasAndAStatusIsSaid` matches the four names. `ProtocolExamplesTests.testTheHelloMaySayWhatTheAppHas` and the kit's `testSupportsIsTrueOnlyForWhatTheHelloListed` hold four names too. `Session.swift` itself needed no change.
+- **`tools/sdk-codegen` had a bug this change was the first to reach.** The TypeScript and Python manifest readers import a fixed list of the shared readers, and the manifest had no boolean field before `contributes.status.activity`: `manifest.ts` called `expectBoolean` and `manifest.py` called `_boolean`, neither imported, so the TypeScript kit did not compile. Both emitters now import the reader of each kind of field the manifest has. The test `test_every_reader_the_manifest_files_call_is_imported` was seen to fail (`['_boolean', 'cls'] != []`, before `cls` was excluded as an argument) without the fix.
+- **The Rust kit's `Ui::status` builds `UiStatusParams` field by field**, so it gained `activity: None, since: None` here to compile. Task 2 rewrites it.
+- **`guide_test` did not fail without the reference rows**: it holds every top-level manifest field and every example, not each message field. The rows were added all the same, and `protocol/README.md`'s section on what 3.50 added came with them.
+- **The desk's sentence keeps `, saying "<text>"` first**, then `, with the words "<activity>"` or `, counting seconds from <since>`. For undeclared words it says the state and then `; it would leave the words out: the manifest does not declare them`, without repeating the words.
+- **The app's hello test was renamed**, `theHelloSaysWhatTheAppHas` to `theHelloNamesOnlyWhatTheAppHas`. It keeps its message, which the entry "the app says it has nothing" quotes, and gains one expectation, "the hello does not name a status's words, which this app does not draw yet", for the new entry.
+- **`ExternalToolStore.features` is `nonisolated`**: the store is on the main actor and the hello is built in a closure.
+- Counts: `platform` 916 (unchanged), `tool-runtime` 962 (was 958).
+- Planted, each DETECTED with the driver of the 2026-10-13 plan: "the app says it has nothing" (moved), "a start time before 1970 is read", "the app claims words it does not draw".
+
 ---
 
 ### Task 2: Every kit sends a status's words to an app that draws them

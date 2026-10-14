@@ -199,6 +199,21 @@ uses them still installs and runs there.
 A list of choices is never a new preference `type`: every app refuses a
 manifest with a type it does not know.
 
+Vitruvian 3.50 added a status's words, in the same way. 3.48 and 3.49 read
+each new field and key and ignore it, so the mark is still drawn there.
+
+- **`activity` and `since` on `ui/status`**: a few words for the closed
+  island (`activity`, text in one or more languages), or a start time in
+  Unix seconds the app counts the seconds from (`since`, a number of at
+  least 0). The words win over the start time. The app draws them beside
+  the mark, in place of the allowance percent, while it is the mark shown.
+  A `since` below 0 or not a number is answered with failure -32602.
+- **`activity` in `contributes.status`**: `true` says the status may carry
+  words. Words from a tool that did not say so are left out, the mark is
+  drawn, and the answer is `{}`.
+- **`ui.status.activity` in `features`**: the app draws them. Each kit sends
+  the two fields only to an app that names it.
+
 ## Changing the protocol
 
 A new message or field needs no new version when an old tool or an old app can

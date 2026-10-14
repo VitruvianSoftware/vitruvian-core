@@ -318,13 +318,45 @@ final class ProtocolExamplesTests: XCTestCase {
         let new = InitializeParams(protocolVersions: ["2"], language: "en", dataFolder: "/d",
                                    features: ProtocolFeature.allCases.map(\.rawValue) + ["ui.later"])
         let read = try JSONValue(encoding: new).decode(InitializeParams.self)
-        XCTAssertEqual(read.features, ["ui.status", "ui.choice", "preferences.options", "ui.later"],
+        XCTAssertEqual(read.features, ["ui.status", "ui.choice", "preferences.options", "ui.status.activity", "ui.later"],
                        "a name nobody knows is kept, not refused")
         let said = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["initializeParams"]?["properties"]?[
             "features"]?["description"]?.stringValue ?? ""
         for feature in ProtocolFeature.allCases {
             XCTAssertTrue(said.contains(feature.rawValue), "the schema names \(feature.rawValue): \(said)")
         }
+    }
+
+    func testAStatusMayCarryWordsAndAStartTime() throws {
+        func read(_ json: String) throws -> UIStatusParams {
+            try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)).decode(UIStatusParams.self)
+        }
+        let words = try read(#"{"state":"busy","text":"Checks are running","activity":"3"}"#)
+        XCTAssertEqual(words, UIStatusParams(state: .busy, text: "Checks are running", activity: "3"))
+        XCTAssertNil(words.since)
+        let two = try read(#"{"state":"busy","activity":{"en":"3 run","fr":"3 en cours"}}"#)
+        XCTAssertEqual(two.activity?.text(for: "fr"), "3 en cours")
+        let counting = try read(#"{"state":"busy","since":1760450400.5}"#)
+        XCTAssertEqual(counting.since, 1_760_450_400.5)
+        XCTAssertNil(counting.activity)
+        XCTAssertEqual(try read(#"{"state":"ok","since":0}"#).since, 0, "the start of 1970 is a start time")
+        XCTAssertThrowsError(try read(#"{"state":"busy","since":-1}"#), "a start before 1970 is refused")
+        XCTAssertThrowsError(try read(#"{"state":"busy","since":"not a number"}"#))
+        XCTAssertThrowsError(try read(#"{"state":"busy","activity":3}"#))
+        // A status with neither is written as it was before they existed.
+        XCTAssertEqual(try JSONValue(encoding: UIStatusParams(state: .ok)), .object(["state": .string("ok")]))
+        let both = UIStatusParams(state: .busy, text: "Deploying", icon: "bolt", activity: "push", since: 12.5)
+        XCTAssertEqual(try JSONValue(encoding: both).decode(UIStatusParams.self), both)
+        XCTAssertEqual(try JSONValue(encoding: both)["since"], .number(12.5))
+        let definition = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["uiStatusParams"]
+        XCTAssertEqual(definition?["properties"]?["since"]?["minimum"], .number(0))
+        XCTAssertEqual(definition?["properties"]?["activity"]?["$ref"]?.stringValue, "#/$defs/uiText")
+    }
+
+    func testTheAppMayHaveFourFeatures() {
+        XCTAssertEqual(ProtocolFeature.allCases.map(\.rawValue),
+                       ["ui.status", "ui.choice", "preferences.options", "ui.status.activity"])
+        XCTAssertEqual(ProtocolFeature.statusActivity.rawValue, "ui.status.activity")
     }
 
     func testAChoiceIsHeldToItsRules() throws {
