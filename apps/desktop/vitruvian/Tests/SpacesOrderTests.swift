@@ -131,18 +131,27 @@ enum SpacesOrderTests {
         }
     }
 
-    /// A hold run by a `ScriptedScheduler`, with what it touches.
-    nonisolated struct ContractHost: Sendable {
+    /// A hold run by a `ScriptedScheduler`, with what it touches. Touched
+    /// only from the test's thread, so it is `@unchecked Sendable`, which lets
+    /// the scheduler's hooks reach it.
+    nonisolated final class ContractHost: @unchecked Sendable {
         let hold: SpacesOrderHold
         let dock: FakeDock
         let defaults: ScriptedDefaults
         let scheduler: ScriptedScheduler
+
+        init(hold: SpacesOrderHold, dock: FakeDock, defaults: ScriptedDefaults, scheduler: ScriptedScheduler) {
+            self.hold = hold
+            self.dock = dock
+            self.defaults = defaults
+            self.scheduler = scheduler
+        }
     }
 
     /// Preferences whose save can fail, so what the hold reads back and what
     /// reached the disk can differ, with a moment just before and just after
     /// each write by object. Touched only from the test's thread.
-    nonisolated final class ScriptedDefaults: UserDefaults, @unchecked Sendable {
+    nonisolated final class ScriptedDefaults: UserDefaults {
         var synchronizeSucceeds = true
         /// The keys whose saved values `durable` keeps.
         var tracked: [String] = []
