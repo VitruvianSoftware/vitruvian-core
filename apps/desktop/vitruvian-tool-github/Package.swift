@@ -18,8 +18,9 @@ let package = Package(
     ],
     dependencies: [
         // The kit's `App.status` and a preference's `options` came with
-        // 1.3.0 (`version_test.py` holds this line to it).
-        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.3.0"),
+        // 1.3.0, and the status's words (`activity`) with 1.4.0
+        // (`version_test.py` holds this line to it).
+        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.4.0"),
     ],
     targets: [
         .target(

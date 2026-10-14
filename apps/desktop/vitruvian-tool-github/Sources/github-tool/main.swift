@@ -43,10 +43,11 @@ final class KitHost: ToolHost {
     }
 
     /// The kit sends nothing, and says false, to an app without `ui.status`:
-    /// that app shows no mark, and the false is ignored.
+    /// that app shows no mark, and the false is ignored. To an app without
+    /// `ui.status.activity` (before 3.50) it sends the mark without the words.
     func status(_ status: IslandStatus) {
         do {
-            try app?.status(status.state, text: status.text, icon: status.icon)
+            try app?.status(status.state, text: status.text, icon: status.icon, activity: status.activity)
         } catch {
             app?.log("the app did not take the status: \(error)")
         }

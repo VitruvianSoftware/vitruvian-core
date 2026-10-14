@@ -26,16 +26,21 @@ public protocol ToolHost: AnyObject {
 }
 
 /// What the tool's mark on the closed island says: a state, the tool's
-/// words for it, and a glyph in place of the state's own.
+/// words for it, a glyph in place of the state's own, and the few words
+/// drawn beside the mark (`activity`, from Vitruvian 3.50).
 public struct IslandStatus: Equatable, Sendable {
     public let state: StatusState
     public let text: UIText?
     public let icon: String?
+    /// Busy: how many checks run, as digits. Nil in every other state, so
+    /// the app shows its percent there.
+    public let activity: UIText?
 
-    public init(state: StatusState, text: UIText? = nil, icon: String? = nil) {
+    public init(state: StatusState, text: UIText? = nil, icon: String? = nil, activity: UIText? = nil) {
         self.state = state
         self.text = text
         self.icon = icon
+        self.activity = activity
     }
 
     /// No mark: what a program shows when it starts.
@@ -346,23 +351,36 @@ public final class GitHubTool {
     /// The mark for a summary. The rule is the mouse's, so the island and
     /// the mouse agree: a check waiting for approval outranks every colour.
     public static func status(for summary: GitHubSummary, signedIn: Bool) -> IslandStatus {
-        status(verdict: summary.aggregate, awaitingApproval: summary.awaitingApproval, signedIn: signedIn)
+        status(verdict: summary.aggregate, awaitingApproval: summary.awaitingApproval,
+               running: summary.repositories.reduce(0) { $0 + $1.running }, signedIn: signedIn)
     }
 
     /// Signed out, or grey (nothing read yet, or nothing watched), is no
     /// mark; then approval, red, amber and green, as the app's own GitHub
-    /// mark draws them.
-    public static func status(verdict: Verdict, awaitingApproval: Bool, signedIn: Bool) -> IslandStatus {
+    /// mark draws them. Busy carries `running`, the checks running across
+    /// the watched repositories, as its words: digits, "99+" over 99, none
+    /// at 0. No other state carries words.
+    public static func status(verdict: Verdict, awaitingApproval: Bool, running: Int = 0,
+                              signedIn: Bool) -> IslandStatus {
         guard signedIn else { return .noMark }
         if awaitingApproval {
             return IslandStatus(state: .attention, text: Words.text("statusAttention"), icon: "hand.raised.fill")
         }
         switch verdict {
         case .red: return IslandStatus(state: .failure, text: Words.text("statusFailure"))
-        case .amber: return IslandStatus(state: .busy, text: Words.text("statusBusy"), icon: "arrow.triangle.branch")
+        case .amber:
+            return IslandStatus(state: .busy, text: Words.text("statusBusy"), icon: "arrow.triangle.branch",
+                                activity: runningWords(running))
         case .green: return IslandStatus(state: .ok, text: Words.text("statusOK"))
         case .grey: return .noMark
         }
+    }
+
+    /// How many checks run, as the closed island shows it: digits, "99+"
+    /// over 99, nothing at 0. Digits need no translation.
+    static func runningWords(_ running: Int) -> UIText? {
+        guard running > 0 else { return nil }
+        return .plain(running > 99 ? "99+" : String(running))
     }
 
     /// Sends the status the tool is in now, when it is not the one sent last.

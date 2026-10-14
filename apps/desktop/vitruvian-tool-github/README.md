@@ -35,6 +35,10 @@ unpacked anywhere, then Add a Tool… in the same place.
   outranks every colour, as on the mouse. Nothing while you are signed out
   or nothing has been read yet. The app's switch in the tool's detail hides
   it; an older app shows no mark.
+  From Vitruvian 3.50, while checks run, the number running across your
+  watched repositories shows beside the mark, in place of the percent:
+  "3", or "99+" above 99. Every other state shows no number. Vitruvian
+  3.48 and 3.49 show the mark without it.
 - **In Settings**, in the tool's detail: the account (sign in with the
   GitHub CLI's login, a token, or a code; sign out), and below it the
   settings the app draws for the tool: the watched repositories, the two
