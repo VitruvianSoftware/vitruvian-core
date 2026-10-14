@@ -605,15 +605,16 @@ enum ExternalToolScreensTests {
         suite.expect(kept?.reveals == [data] && notice(.keptStillRunning(data: nil))?.reveals == [],
                      "the alert about kept data shows its one folder through the same button")
 
-        // Through the store, over a folder that is read-only.
+        // Through the store, over a folder macOS holds as it is, as
+        // Finder's Locked does: one that is only read-only is deleted.
         let bench = ExternalToolStoreTests.Bench()
         defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bench.data.path)
+            _ = chflags(bench.data.path, 0)
             bench.close()
         }
         bench.add(bench.folder())
         try? Data("kept".utf8).write(to: bench.data.appendingPathComponent("saved"))
-        try? FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: bench.data.path)
+        _ = chflags(bench.data.path, UInt32(UF_IMMUTABLE))
         let home = bench.root.resolvingSymlinksInPath().path
         let said = ToolRemovalNotice.removing(id, deletingData: true, name: "Deploys", store: bench.store,
                                               strings: english, home: home)

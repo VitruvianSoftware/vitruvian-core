@@ -18,6 +18,14 @@ import VitruvianCore
 /// The copy is for stability, not safety: the folder the person picked can
 /// move or be deleted. A tool is trusted like an app and can rewrite its
 /// copy.
+///
+/// The picked folder may be one nothing can be written in, as a folder
+/// copied out of a build or unpacked from a zip can be. In the app's copy
+/// the person may read, write and enter every folder and read and write
+/// every file; nothing else about who may do what is changed, so what
+/// could be run still can be and nothing more can. And whatever the app is
+/// to delete here, it can: a folder that may not be written in is opened
+/// up first.
 package struct ToolFolders: Equatable, Sendable {
     package enum Problem: Error, Equatable, Sendable {
         /// The id has no dot.
@@ -100,7 +108,9 @@ package struct ToolFolders: Equatable, Sendable {
     /// folder when it has none. What the tool saved before is kept.
     ///
     /// The copy is made beside its place and moved in when it is whole, so
-    /// a copy that fails leaves the old one as it was.
+    /// a copy that fails leaves the old one as it was. Whatever an earlier
+    /// copy left beside it is deleted first, and nothing is left there
+    /// after, whether this one fails or not.
     package func install(_ id: ToolID, from source: URL,
                          fileManager: FileManager = .default) -> Result<Place, Problem> {
         guard let place = place(for: id) else { return .failure(.notAnOutsideTool) }
@@ -118,11 +128,14 @@ package struct ToolFolders: Equatable, Sendable {
         let incoming = place.files.deletingLastPathComponent()
             .appendingPathComponent(".incoming", isDirectory: true)
         let copy = incoming.appendingPathComponent(id.rawValue, isDirectory: true)
-        try? fileManager.removeItem(at: copy)
-        defer { try? fileManager.removeItem(at: incoming) }
+        Self.remove(incoming, fileManager)
+        defer { Self.remove(incoming, fileManager) }
         guard PrivateFileStore.createDirectory(at: incoming, container: root),
               (try? fileManager.copyItem(at: source, to: copy)) != nil else { return .failure(.notCopied) }
-        try? fileManager.removeItem(at: place.files)
+        // A folder may only be moved, and later replaced or deleted, when
+        // it can be written in. The copy has the picked folder's modes.
+        Self.letOwnerChange(copy, files: true, fileManager)
+        Self.remove(place.files, fileManager)
         guard (try? fileManager.moveItem(at: copy, to: place.files)) != nil,
               PrivateFileStore.createDirectory(at: place.data, container: root) else { return .failure(.notCopied) }
         return .success(place)
@@ -146,7 +159,7 @@ package struct ToolFolders: Equatable, Sendable {
             // Asked of the entry itself, not of what a link points at.
             guard (try? fileManager.attributesOfItem(atPath: folder.path)) != nil else { continue }
             guard stays(folder.deletingLastPathComponent(), at: home + [parent], fileManager),
-                  (try? fileManager.removeItem(at: folder)) != nil else {
+                  Self.remove(folder, fileManager) else {
                 gone = false
                 continue
             }
@@ -200,6 +213,47 @@ package struct ToolFolders: Equatable, Sendable {
     /// is downloaded from the web. It will not start such a program.
     package static func isQuarantined(_ url: URL) -> Bool {
         getxattr(url.path, "com.apple.quarantine", nil, 0, 0, 0) >= 0
+    }
+
+    /// Deletes what is at `url`, a folder with all it holds or a single
+    /// file or link. False when it is still there. Nothing there is done.
+    ///
+    /// `removeItem` cannot empty a folder that may not be written in, and
+    /// stops there with part of the tree deleted. So when it fails, every
+    /// folder in the tree is opened to the person and it is tried again.
+    /// A link is deleted as a link: what it points at is never opened,
+    /// changed or deleted.
+    @discardableResult
+    private static func remove(_ url: URL, _ fileManager: FileManager) -> Bool {
+        var entry = stat()
+        guard lstat(url.path, &entry) == 0 else { return true }
+        if (try? fileManager.removeItem(at: url)) != nil { return true }
+        letOwnerChange(url, files: false, fileManager)
+        return (try? fileManager.removeItem(at: url)) != nil
+    }
+
+    /// Lets the person read, write and enter the folder at `url` and every
+    /// folder in it, and with `files` read and write every file in it. No
+    /// other bit of a mode is touched, so nothing becomes a program that
+    /// was not one, and nobody else gains anything.
+    ///
+    /// Each entry is asked about and changed as itself: a link is neither
+    /// followed nor changed, so nothing outside `url` is.
+    private static func letOwnerChange(_ url: URL, files: Bool, _ fileManager: FileManager) {
+        var entry = stat()
+        guard lstat(url.path, &entry) == 0 else { return }
+        let mode = entry.st_mode & 0o7777
+        switch entry.st_mode & S_IFMT {
+        case S_IFDIR:
+            if mode & 0o700 != 0o700 { _ = lchmod(url.path, mode | 0o700) }
+            for name in (try? fileManager.contentsOfDirectory(atPath: url.path)) ?? [] {
+                letOwnerChange(url.appendingPathComponent(name), files: files, fileManager)
+            }
+        case S_IFREG where files:
+            if mode & 0o600 != 0o600 { _ = lchmod(url.path, mode | 0o600) }
+        default:
+            break
+        }
     }
 
     /// False when something is at `url` and, with every link followed, it

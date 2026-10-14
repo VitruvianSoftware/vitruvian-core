@@ -15,6 +15,7 @@ enum ExternalToolStoreTests {
     static func run(_ suite: TestSuite) {
         folders(suite)
         links(suite)
+        readOnlyFolders(suite)
         offering(suite)
         tooBigOrQuarantined(suite)
         adding(suite)
@@ -764,6 +765,10 @@ enum ExternalToolStoreTests {
         let manager = FileManager.default
         func lock(_ folder: URL) { try? manager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path) }
         func unlock(_ folder: URL) { try? manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        // A folder that may not be written in is deleted all the same. One
+        // macOS holds as it is, as Finder's Locked does, is not.
+        func hold(_ folder: URL) { _ = chflags(folder.path, UInt32(UF_IMMUTABLE)) }
+        func release(_ folder: URL) { _ = chflags(folder.path, 0) }
         func added() -> Bench {
             let bench = Bench()
             bench.add(bench.folder())
@@ -779,10 +784,10 @@ enum ExternalToolStoreTests {
         // What the tool saved cannot be deleted; its copy can.
         let data = added()
         defer {
-            unlock(data.data)
+            release(data.data)
             data.close()
         }
-        lock(data.data)
+        hold(data.data)
         let said = data.store.remove(id, deletingData: true)
         suite.expect(said != .deleted && said.removed && paths(said) == [data.data.standardizedFileURL.path]
                          && paths(said)?.first?.hasSuffix("/support/ToolData/com.acme.deploys") == true,
@@ -797,7 +802,7 @@ enum ExternalToolStoreTests {
         suite.expect(after.store.listed.isEmpty && after.registry.tool(id) == nil && after.host.manifest(for: id) == nil
                          && after.started.isEmpty && !after.store.isInstalled(id),
                      "the next launch has no record of a tool that is half deleted, and starts nothing of it")
-        unlock(data.data)
+        release(data.data)
         if case .success = data.add(data.folder("again")) {
             suite.expect(data.exists(data.data.appendingPathComponent("saved"))
                              && data.box.values["com.acme.deploys/project"] as? String == "api"
@@ -832,11 +837,11 @@ enum ExternalToolStoreTests {
         let bothTools = both.support.appendingPathComponent("Tools", isDirectory: true)
         defer {
             unlock(bothTools)
-            unlock(both.data)
+            release(both.data)
             both.close()
         }
         lock(bothTools)
-        lock(both.data)
+        hold(both.data)
         suite.expect(paths(both.store.remove(id, deletingData: true))
                          == [both.files.standardizedFileURL.path, both.data.standardizedFileURL.path],
                      "when neither folder could be deleted both are named, the app's copy first")
