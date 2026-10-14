@@ -55,8 +55,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Is this a release-bot pull request?
+        id: release
+        env:
+          RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.type == 'Bot' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: echo "skip=$RELEASE_PR" | tee -a "$GITHUB_OUTPUT"
+
       - name: Has this exact code already passed? (log only)
         id: fastpass
+        if: steps.release.outputs.skip != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,12 +83,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Free up runner disk space
+        if: steps.release.outputs.skip != 'true'
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Bazel
+        if: steps.release.outputs.skip != 'true'
         uses: ./.github/actions/setup-bazel
 
       - name: Set up Go
+        if: steps.release.outputs.skip != 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -89,6 +99,7 @@ jobs:
 
       - name: Fetch the dependency map kept under a git ref
         id: mapref
+        if: steps.release.outputs.skip != 'true'
         continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
@@ -97,6 +108,7 @@ jobs:
 
       - name: List recent ancestors of the diff base
         id: mapkeys
+        if: steps.release.outputs.skip != 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
@@ -111,7 +123,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Restore the dependency map for the diff base
-        if: steps.mapref.outputs.commit == ''
+        if: steps.release.outputs.skip != 'true' && steps.mapref.outputs.commit == ''
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -126,9 +138,17 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
+          RELEASE_SKIP: ${{ steps.release.outputs.skip }}
           ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
           set +e -u -o pipefail
+          if [ "$RELEASE_SKIP" = "true" ]; then
+            echo "Release-bot PR: no units run here; the merge queue runs them on the commit that lands."
+            echo "units=[]" >> "$GITHUB_OUTPUT"
+            echo "degraded=false" >> "$GITHUB_OUTPUT"
+            printf '### Affected units\n\nRelease-bot PR: none on the pull request. The merge queue tests the exact commit that lands.\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           case "$EVENT_NAME" in
             pull_request) base="$PR_BASE_SHA" ;;
             merge_group)  base="$MQ_BASE_SHA" ;;
