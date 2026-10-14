@@ -33,7 +33,6 @@ enum ToolStatusTests {
         theWordsAreTheShownMarks(suite)
         onlySecondsTickEverySecond(suite)
         theButtonSaysTheWordsButNotTheSeconds(suite)
-        aClickWhileNexusRunsOpensAgents(suite)
         aMarkWithoutWordsLeavesThePercent(suite)
     }
 
@@ -315,22 +314,8 @@ extension ToolStatusTests {
     }
 }
 
-/// What the wing does with them: the click while Nexus Agent runs, and the
-/// percent beside a mark with no words.
+/// What the wing does with them: the percent beside a mark with no words.
 extension ToolStatusTests {
-    static func aClickWhileNexusRunsOpensAgents(_ suite: TestSuite) {
-        let page = ToolPanelHost.Key(tool: first, panel: "deploys")
-        for state in states {
-            suite.expect(RestingStatus.opens(.tool(first, status(state, activity: "3")), pages: [page],
-                                             wingShowsNexus: true) == nil,
-                         "while a Nexus session runs the wings show Nexus, so a click opens the Agents page, not "
-                             + "a tool's page its mark is hidden for (\(state))")
-        }
-        suite.expect(RestingStatus.opens(.tool(first, status(.failure)), pages: [page], wingShowsNexus: false) == page
-                         && RestingStatus.opens(.tool(first, status(.failure)), pages: [page]) == page,
-                     "with no Nexus session the click is as it was")
-    }
-
     static func aMarkWithoutWordsLeavesThePercent(_ suite: TestSuite) {
         for state in states {
             let wing = RestingStatus.rightWing(tools: [(first, status(state, text: "Deploying"))], nexusRunning: false,

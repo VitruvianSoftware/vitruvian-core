@@ -1063,12 +1063,6 @@ MUTATIONS = [
      "        showsStatus = tool.showsActivity ? strings.agreeShowsStatus\n",
      "a tool whose status says activity: true is said to show a mark and a few words, in the "
      "person's language"),
-    ("a click while Nexus runs follows a hidden mark", "platform",
-     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
-     "        guard !wingShowsNexus else { return nil }\n",
-     "",
-     "while a Nexus session runs the wings show Nexus, so a click opens the Agents page, not a tool's page "
-     "its mark is hidden for"),
     ("the island's button does not say a tool's mark", "notch",
      "Sources/Vitruvian/Services/Notch/NotchService.swift",
      "        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : closedTitle,\n",

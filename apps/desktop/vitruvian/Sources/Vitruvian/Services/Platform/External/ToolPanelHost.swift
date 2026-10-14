@@ -26,12 +26,8 @@ extension RestingStatus {
     /// is well, which asks for nothing. `pages` is the island pages the
     /// Tools area lists, so a tool with no island page, or one whose page
     /// the person hid, gives nil. Nil too for no mark: the click then does
-    /// what it always did. And nil while the wings show a Nexus session
-    /// (`wingShowsNexus`): the tool's mark is hidden then, so the click opens
-    /// the Agents page, as the wings show.
-    package static func opens(_ mark: RestingMark?, pages: [ToolPanelHost.Key],
-                              wingShowsNexus: Bool = false) -> ToolPanelHost.Key? {
-        guard !wingShowsNexus else { return nil }
+    /// what it always did.
+    package static func opens(_ mark: RestingMark?, pages: [ToolPanelHost.Key]) -> ToolPanelHost.Key? {
         guard case .tool(let tool, let status)? = mark, status.state != .ok else { return nil }
         return pages.first { $0.tool == tool }
     }
