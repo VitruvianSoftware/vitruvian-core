@@ -616,28 +616,22 @@ jobs:
           filters: |
             devx:
               - 'apps/cli/devx/**'
-              - '.github/workflows/ci.yaml'
             homelab:
               - 'apps/cli/homelab/**'
-              - '.github/workflows/ci.yaml'
             iac:
               - 'infrastructure/pulumi/**'
               - '*/infra/**'
-              - '.github/workflows/ci.yaml'
             go:
               - '**/*.go'
               - '**/go.mod'
               - '**/go.sum'
               - 'MODULE.bazel'
               - '.bazelrc'
-              - '.github/workflows/ci.yaml'
             ex:
               - 'packages/pulumi/examples/go-foundation/**'
               - 'packages/pulumi/library/**'
-              - '.github/workflows/ci.yaml'
             butane:
               - 'apps/cli/devx/dev-machine.template.bu'
-              - '.github/workflows/ci.yaml'
 
       - name: Decide which jobs run
         id: decide
