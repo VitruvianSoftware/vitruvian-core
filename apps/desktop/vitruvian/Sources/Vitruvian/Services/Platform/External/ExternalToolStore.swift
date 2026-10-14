@@ -75,11 +75,17 @@ package final class ExternalToolStore {
         package let title: LocalizedText
         /// The saved value, or the manifest's default when none is saved.
         package let value: PreferenceDeclaration.Value
+        /// The values the person chooses among, for a text setting whose
+        /// author gave some: it is then drawn as a pop-up menu. Empty for a
+        /// setting with none. The saved value may be none of them.
+        package let options: [PreferenceOption]
 
-        package init(id: String, title: LocalizedText, value: PreferenceDeclaration.Value) {
+        package init(id: String, title: LocalizedText, value: PreferenceDeclaration.Value,
+                     options: [PreferenceOption] = []) {
             self.id = id
             self.title = title
             self.value = value
+            self.options = options
         }
     }
 
@@ -616,6 +622,39 @@ package final class ExternalToolStore {
         parts.registry().noteAvailabilityChanged()
     }
 
+    // MARK: - A tool's status on the closed island
+
+    /// Whether the closed island shows the tool's status. Yes until the
+    /// person turns it off in the tool's detail.
+    package func showsStatus(_ id: ToolID) -> Bool {
+        records.first { $0.id == id.rawValue }?.showsStatus ?? true
+    }
+
+    /// The tools whose status the closed island may draw: each that is
+    /// switched on and is what the person agreed to, declares a status, and
+    /// has it switched on, in the order the tools were added. The status
+    /// itself is the panel host's (`ToolPanelHost.statuses`).
+    package func statusTools() -> [ToolID] {
+        records.compactMap { record in
+            guard let id = ToolID(record.id), record.showsStatus ?? true,
+                  installed[id]?.tool.showsStatus == true else { return nil }
+            return id
+        }
+    }
+
+    /// The switch in the tool's detail. The tool is not told: off, its
+    /// `ui/status` is still answered and kept, and nothing is drawn; on
+    /// again, the status it last set is drawn with no restart.
+    package func setShowsStatus(_ id: ToolID, _ shows: Bool) {
+        guard let known = records.firstIndex(where: { $0.id == id.rawValue }), showsStatus(id) != shows else { return }
+        var next = records
+        next[known].showsStatus = shows ? nil : false
+        guard save(next) else { return }
+        records = next
+        // Whoever draws the closed island looks again.
+        parts.registry().noteAvailabilityChanged()
+    }
+
     // MARK: - A tool's own settings
 
     /// The settings of an added tool that the person may see and change:
@@ -631,7 +670,7 @@ package final class ExternalToolStore {
             let name = String(declared.key.dropFirst(id.rawValue.count + 1))
             guard let title = tool.preferenceTitles[declared.key] else { return nil }
             guard case .success(let value) = storage.value(for: declared.key) else { return nil }
-            return Setting(id: name, title: title, value: value)
+            return Setting(id: name, title: title, value: value, options: tool.preferenceOptions[declared.key] ?? [])
         }
     }
 
@@ -776,11 +815,13 @@ package final class ExternalToolStore {
             manifest: manifest, clock: parts.clock, limits: parts.limits,
             makeLink: { events in
                 let calls = ExternalToolCalls(manifest: manifest, broker: parts.broker(),
-                                              badge: { parts.panels()?.badge(id, $0) })
+                                              badge: { parts.panels()?.badge(id, $0) },
+                                              status: { parts.panels()?.status(id, $0)?.error })
                 return ToolLink(
                     transport: parts.makeTransport(program, data), clock: parts.clock, limits: parts.limits,
                     hello: InitializeParams(protocolVersions: ProtocolVersion.supported, language: parts.language(),
-                                            dataFolder: data.path),
+                                            dataFolder: data.path,
+                                            features: ProtocolFeature.allCases.map(\.rawValue)),
                     serve: { method, params, reply in calls.serve(method, params, reply) },
                     events: events)
             },

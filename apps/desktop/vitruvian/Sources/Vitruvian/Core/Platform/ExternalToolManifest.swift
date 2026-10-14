@@ -22,6 +22,18 @@ package enum ManifestRefusal: Error, Equatable, Sendable {
     case programNotExecutable(String)
 }
 
+/// One value a preference with options may be set to, and what the person
+/// reads for it, in every language its author wrote.
+package struct PreferenceOption: Equatable, Sendable {
+    package let value: String
+    package let title: LocalizedText
+
+    package init(value: String, title: LocalizedText) {
+        self.value = value
+        self.title = title
+    }
+}
+
 /// A tool that runs as its own program, as its manifest file describes it:
 /// the manifest the platform already has for a built-in tool, and what only
 /// an outside tool carries.
@@ -41,6 +53,13 @@ package struct ExternalToolManifest: Equatable, Sendable {
     /// preference with no title is not here: it is the tool's alone, and
     /// the person is never shown it.
     package let preferenceTitles: [String: LocalizedText]
+    /// The options of each preference its author gave some, in the order
+    /// written, by the key the preference is saved under. They are how the
+    /// app draws the setting, as a pop-up menu, and no rule on its value.
+    package let preferenceOptions: [String: [PreferenceOption]]
+    /// Whether the manifest declares a status: the tool may set a small
+    /// mark on the closed island with `ui/status`.
+    package let showsStatus: Bool
     /// What the tool draws, and where: protocol 2's panels, in the order
     /// the manifest lists them. None for a tool of protocol 1.
     package let panels: [ToolPanelDescriptor]
@@ -139,6 +158,7 @@ package struct ExternalToolManifest: Equatable, Sendable {
 
         var preferences: [PreferenceDeclaration] = []
         var preferenceTitles: [String: LocalizedText] = [:]
+        var preferenceOptions: [String: [PreferenceOption]] = [:]
         for preference in file.preferences ?? [] {
             guard let value = value(preference.default, ofKind: preference.type) else {
                 return .failure(.notOfferedHere(preference.type))
@@ -146,6 +166,7 @@ package struct ExternalToolManifest: Equatable, Sendable {
             let key = storageKey(tool: id, preference: preference.id)
             preferences.append(PreferenceDeclaration(key: key, default: value))
             preferenceTitles[key] = preference.title
+            preferenceOptions[key] = preference.options?.map { PreferenceOption(value: $0.value, title: $0.title) }
         }
 
         var panels: [ToolPanelDescriptor] = []
@@ -177,6 +198,10 @@ package struct ExternalToolManifest: Equatable, Sendable {
 
         return .success(ExternalToolManifest(manifest: manifest, name: file.name, summary: file.description,
                                              commandTitles: titles, preferenceTitles: preferenceTitles,
+                                             preferenceOptions: preferenceOptions,
+                                             // The file's own rules have held the placement to the one
+                                             // there is, the island.
+                                             showsStatus: file.contributes?.status != nil,
                                              panels: panels, version: file.version,
                                              publisher: file.publisher, license: file.license,
                                              protocolVersion: file.`protocol`, program: file.runtime.exec))

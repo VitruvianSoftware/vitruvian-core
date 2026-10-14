@@ -18,6 +18,7 @@ enum ExternalToolManifestTests {
         languages(suite)
         folders(suite)
         panels(suite)
+        statusAndOptions(suite)
     }
 
     /// The manifest in the design, section 6, with a publisher.
@@ -396,5 +397,45 @@ extension ExternalToolManifestTests {
         suite.expect(refusal(#"{"protocol": "2", "contributes": {"panels": [{"id": "d", "title": {"en": "D"}, "placement": "window", "kind": "web", "entry": "../page.html"}]}}"#)
                          == .invalid(.panelEntryLeavesFolder(panel: "d", entry: "../page.html")),
                      "a web panel's page that leaves the folder by its text is refused, as the program is")
+    }
+}
+
+extension ExternalToolManifestTests {
+    /// A status the manifest declares, and a preference's options, reach
+    /// the app's own description of the tool; a manifest with neither is
+    /// read as it always was.
+    static func statusAndOptions(_ suite: TestSuite) {
+        let declared = tool(#"""
+            {"protocol": "2", "contributes": {"status": {"placement": "island"}},
+             "preferences": [
+               {"id": "light", "title": {"en": "Light"}, "type": "string", "default": "green",
+                "options": [{"value": "green", "title": {"en": "Green", "fr": "Vert"}},
+                            {"value": "", "title": {"en": "None"}}]},
+               {"id": "project", "title": {"en": "Project"}, "type": "string", "default": ""},
+               {"id": "hidden", "type": "string", "default": "a",
+                "options": [{"value": "a", "title": {"en": "A"}}]}]}
+            """#)
+        let light = storageKey("light")
+        suite.expect(declared?.showsStatus == true, "a manifest that declares a status is a tool that shows one")
+        suite.expect(declared?.preferenceOptions[light]
+                         == [PreferenceOption(value: "green", title: LocalizedText(["en": "Green", "fr": "Vert"])),
+                             PreferenceOption(value: "", title: LocalizedText(["en": "None"]))]
+                         && declared?.preferenceOptions[storageKey("project")] == nil
+                         && declared?.preferenceOptions[storageKey("hidden")]?.map(\.value) == ["a"],
+                     "a preference's options are kept in order, each title in every language written, under the "
+                         + "key the preference is saved by; a preference with none has none")
+        suite.expect(declared?.manifest.preferences
+                         == [PreferenceDeclaration(key: light, default: .string("green")),
+                             PreferenceDeclaration(key: storageKey("project"), default: .string("")),
+                             PreferenceDeclaration(key: storageKey("hidden"), default: .string("a"))],
+                     "what the tool reads and writes is text, with options or without: they are how the app draws")
+        let plain = tool()
+        suite.expect(plain?.showsStatus == false && plain?.preferenceOptions.isEmpty == true
+                         && tool(#"{"protocol": "2"}"#)?.showsStatus == false,
+                     "a manifest with neither is read as it always was: no status, and no options")
+    }
+
+    static func storageKey(_ preference: String) -> String {
+        ExternalToolManifest.storageKey(tool: ToolID("com.acme.deploys")!, preference: preference)
     }
 }

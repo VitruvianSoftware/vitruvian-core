@@ -21,6 +21,7 @@ enum ExternalToolCallsTests {
         overTheLimit(suite)
         badges(suite)
         statuses(suite)
+        optionsAreNoRuleOnTheValue(suite)
     }
 
     /// A tool that lists every service a manifest may, with a preference of
@@ -67,6 +68,10 @@ enum ExternalToolCallsTests {
         var protected: Set<pid_t> = []
         var ended: [String] = []
         var badges: [UIBadgeParams] = []
+        /// Each status handed on, and the failure it is to be answered
+        /// with, when a test has one.
+        var statuses: [UIStatusParams] = []
+        var statusRefusal: RPCErrorObject?
         private(set) var broker: CapabilityBroker!
 
         init() {
@@ -114,7 +119,11 @@ enum ExternalToolCallsTests {
                  as tool: ToolManifest = everything) -> Result<JSONValue, RPCErrorObject>? {
             var answers: [Result<JSONValue, RPCErrorObject>] = []
             let json = params.flatMap { try? JSONDecoder().decode(JSONValue.self, from: Data($0.utf8)) }
-            ExternalToolCalls(manifest: tool, broker: broker, badge: { [unowned self] in badges.append($0) })
+            ExternalToolCalls(manifest: tool, broker: broker, badge: { [unowned self] in badges.append($0) },
+                              status: { [unowned self] in
+                                  statuses.append($0)
+                                  return statusRefusal
+                              })
                 .serve(method, json) { answers.append($0) }
             rig.settle()
             return answers.count == 1 ? answers[0] : nil
@@ -378,14 +387,58 @@ enum ExternalToolCallsTests {
 }
 
 extension ExternalToolCallsTests {
-    /// `ui/status`: read by the protocol, and not kept by the app yet.
+    /// `ui/status`: behind nothing in `uses`, handed to whoever keeps the
+    /// tools' statuses, and answered with what that says.
     static func statuses(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }
-        let answer = error(bench.ask(.uiStatus, #"{"state": "busy"}"#))
-        suite.expect(answer == RPCErrorObject(code: -32601, message: "unknown method"),
-                     "until the app keeps a status, ui/status is answered as an app before 3.48 answers it: "
-                         + "unknown method")
+        suite.expect(result(bench.ask(.uiStatus, #"{"state": "busy", "icon": "arrow.triangle.branch", "text": {"en": "Working", "fr": "En cours"}}"#)) == done
+                         && result(bench.ask(.uiStatus, #"{"state": "failure", "text": "main is red"}"#)) == done
+                         && result(bench.ask(.uiStatus, #"{"state": "none"}"#)) == done
+                         && bench.statuses
+                         == [UIStatusParams(state: .busy, text: .languages(LocalizedText(["en": "Working", "fr": "En cours"])),
+                                            icon: "arrow.triangle.branch"),
+                             UIStatusParams(state: .failure, text: "main is red"), UIStatusParams(state: .none)],
+                     "a status is handed on as the tool sent it, its words and its glyph with it, and answered with {}")
+        suite.expect(result(bench.ask(.uiStatus, #"{"state": "ok"}"#, as: nothing)) == done && bench.statuses.count == 4
+                         && bench.world.undeclared.isEmpty,
+                     "it needs nothing in uses: a tool that lists no service is not refused for that")
+        bench.statusRefusal = ToolPanelHost.Refusal.noStatus.error
+        suite.expect(error(bench.ask(.uiStatus, #"{"state": "ok"}"#))
+                         == RPCErrorObject(code: -32602, message: "the manifest declares no status"),
+                     "what whoever keeps the statuses refuses goes back to the tool as it is: -32602 for a tool "
+                         + "whose manifest declares none")
+        bench.statusRefusal = nil
+        let before = bench.statuses.count
+        for params in [#"{"state": "broken"}"#, #"{"text": "no state"}"#, #"{"state": "busy", "icon": 7}"#,
+                       #"{"state": "busy", "text": {"fr": "En cours"}}"#, nil] {
+            suite.expect(code(bench.ask(.uiStatus, params)) == -32602 && bench.statuses.count == before,
+                         "ui/status with \(params ?? "no params") is answered invalid params, and nothing is handed on")
+        }
+    }
+
+    /// A text preference with options is still text to the tool: a value
+    /// that is no option's is saved, as it always was.
+    static func optionsAreNoRuleOnTheValue(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        let tool = ExternalToolManifestTests.tool(#"""
+            {"uses": ["storage"], "preferences": [
+              {"id": "light", "title": {"en": "Light"}, "type": "string", "default": "green",
+               "options": [{"value": "green", "title": {"en": "Green"}},
+                           {"value": "breathe green", "title": {"en": "Pulsing green"}}]}]}
+            """#)!.manifest
+        let light = ExternalToolManifest.storageKey(tool: tool.id, preference: "light")
+        suite.expect(result(bench.ask(.storageGet, #"{"key": "light"}"#, as: tool)) == .object(["value": .string("green")]),
+                     "a preference with options reads as its default, text")
+        suite.expect(result(bench.ask(.storageSet, #"{"key": "light", "value": "breathe blue 5"}"#, as: tool)) == done
+                         && bench.box.values[light] as? String == "breathe blue 5"
+                         && result(bench.ask(.storageGet, #"{"key": "light"}"#, as: tool))
+                         == .object(["value": .string("breathe blue 5")]),
+                     "storage/set of a value that is no option's is accepted and saved as written: the options are "
+                         + "how the app draws, not a rule on the value")
+        suite.expect(code(bench.ask(.storageSet, #"{"key": "light", "value": 5}"#, as: tool)) == -32602,
+                     "a value of another kind is still refused, as for any text preference")
     }
 
     /// `ui/badge`: behind `notify`, handed to whoever draws the island's

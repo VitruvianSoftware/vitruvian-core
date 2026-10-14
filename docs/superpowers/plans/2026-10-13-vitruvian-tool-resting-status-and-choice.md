@@ -198,7 +198,8 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
 - **A choice's duplicate values have no example in `messages.json`.** JSON Schema cannot say the rule and the file has no `schema: false` mark for messages, so the schema's description says it and the Swift tests hold it (`testAChoiceIsHeldToItsRules`, and the app's `ToolPanelTests.choices`).
 - **The app's `ExternalToolCallsTests.refusals` changed on purpose.** It held that every request a tool makes is refused with -32001 when its service is not in `uses`. `ui/status` needs no service, so the test now says so by name.
 - **More examples than the plan lists**, each naming its problem: a status with no placement, an option with no title, a blank option title, sixty-four options with a value of 128 characters, a choice with only what is required.
-- `platform` ran 879 checks after this task. The count before was not run separately: this task adds 15 expectations, so it was 864.
+- `platform` ran 879 checks after this task and `tool-runtime` 863. The counts before were not run separately: this task adds 14 expectations to the first and one to the second, so they were 865 and 862.
+- **The plan's test command leaves out the suite most of this lives in.** `ExternalToolCallsTests`, `ExternalToolStoreTests`, `ToolPanelHostTests`, the settings and the screens tests are in `tool-runtime`, not `platform`. Every task here ran `--suite=platform --suite=tool-runtime --suite=notch --suite=agents`.
 
 ---
 
@@ -356,6 +357,25 @@ Step 5, planted: the older app answers `ui/status` with `{}`. `conformance_test`
   4. "the mildest status wins": turn `winner`'s comparison round.
   5. "the app says it has nothing": send the hello without `features`.
 - [ ] **Step 6: Commit.**
+
+**As built (2026-10-13).**
+
+- **Four of the five regressions fail in `tool-runtime`, not `platform`**: that is the suite the host's, the store's and the calls' tests are in. Only "the mildest status wins" is `platform`'s. `mutation_checks.py` names the right suite for each.
+- **A switched-off status is kept.** The host keeps what the tool sends whether or not the person has the status switched on; `statusTools()` is what leaves the tool out. So switching it on again draws the last status at once, with no restart and without waiting for the tool's next one. By-hand check 6 says "back at the tool's next status": it is back sooner.
+- **`ToolStatus` cannot be built with `.none`**: both its initializers are failable and give nil for it.
+- **`ExternalToolStoreTests.adding` changed on purpose**: it held the hello's exact params, which now carry `features`.
+- **One more test than listed**, `aStatusReachesTheHostAndGoesWithTheProgram`, runs a status through the store's own wiring: the tool's line in, the answer out, the switch, and the end of the program. And `optionsAreNoRuleOnTheValue` holds that `storage/set` still takes a value that is no option's.
+- Counts: `platform` 913 (was 879), `tool-runtime` 918 (was 863).
+
+Step 5, each planted and seen to fail:
+
+| Regression | Suite | The check that failed |
+|---|---|---|
+| a status outlives its program | tool-runtime | "a status goes when the tool's program ends, at once: it never outlives its program" |
+| a tool that declared no status may show one | tool-runtime | "a status from a tool whose manifest declares none is refused, and none is kept" |
+| a switched-off status is listed | tool-runtime | "a tool whose status the person switched off is left out" |
+| the mildest status wins | platform | "of two tools the worse status wins, whichever was added first" |
+| the app says it has nothing | tool-runtime | "the hello names what this app has: a status, a choice block and options on a preference" |
 
 ---
 

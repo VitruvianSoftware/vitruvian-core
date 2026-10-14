@@ -40,6 +40,13 @@ enum ExternalToolStoreTests {
         aRealToolRemoved(suite)
         aRealToolWithAHelper(suite)
         panels(suite)
+        theHelloSaysWhatTheAppHas(suite)
+        theStatusSwitchIsYesUntilTurnedOff(suite)
+        aRecordFromBeforeReadsAsItDid(suite)
+        statusToolsLeavesOutASwitchedOffAndAnUndeclaredTool(suite)
+        aStatusReachesTheHostAndGoesWithTheProgram(suite)
+        aSettingCarriesItsOptions(suite)
+        aValueThatIsNoOptionIsStillSaved(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -413,9 +420,12 @@ enum ExternalToolStoreTests {
                          && bench.started[0].data == bench.data,
                      "running its command starts the program of the app's copy, in the tool's data folder")
         let hello = JSONValue.object(["protocolVersions": .array([.string("1"), .string("2")]), "language": .string("fr"),
-                                      "dataFolder": .string(bench.data.path)])
+                                      "dataFolder": .string(bench.data.path),
+                                      "features": .array([.string("ui.status"), .string("ui.choice"),
+                                                          .string("preferences.options")])])
         suite.expect(bench.current.sent == [.request(id: .number(1), method: "initialize", params: hello)],
-                     "it is greeted with the versions the app speaks, the app's language and its data folder")
+                     "it is greeted with the versions the app speaks, the app's language, its data folder, and "
+                         + "what the app has beyond the first release of the version")
         bench.current.greets()
         suite.expect(bench.current.sent.last == .request(id: .number(2), method: "command/run",
                                                          params: .object(["command": .string("copyLatest")])),
@@ -1660,5 +1670,187 @@ extension ExternalToolStoreTests {
         bench.store.setOn(id, false)
         suite.expect(bench.panels.shown.isEmpty && bench.panels.badges[id] == nil,
                      "switched off, its panels close and its badge goes")
+    }
+}
+
+extension ExternalToolStoreTests {
+    /// A tool of protocol 2 that declares a status, with an island page.
+    static let withStatus = #"""
+        {"protocol": "2", "uses": ["notify", "storage"], "contributes": {
+          "commands": [{"id": "copyLatest", "title": {"en": "Copy latest deploy"}, "surfaces": ["commandBar"]}],
+          "panels": [{"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"}],
+          "status": {"placement": "island"}},
+         "preferences": [
+           {"id": "light", "title": {"en": "Light", "fr": "Lumière"}, "type": "string", "default": "green",
+            "options": [{"value": "green", "title": {"en": "Green", "fr": "Vert"}},
+                        {"value": "breathe green", "title": {"en": "Pulsing green"}}]},
+           {"id": "project", "title": {"en": "Project"}, "type": "string", "default": "web"}]}
+        """#
+
+    static func theHelloSaysWhatTheAppHas(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder())
+        bench.registry.run(copy)
+        var said: [String] = []
+        if case .request(_, "initialize", let params)? = bench.current.sent.first {
+            said = params?["features"]?.arrayValue?.compactMap(\.stringValue) ?? []
+        }
+        suite.expect(said == ["ui.status", "ui.choice", "preferences.options"]
+                         && said == ProtocolFeature.allCases.map(\.rawValue),
+                     "the hello names what this app has: a status, a choice block and options on a preference")
+        let example = ExternalToolSettingsTests.example(of: "initialize")
+        suite.expect(example == nil || example?["params"]?.objectValue?.keys.sorted()
+                         == ["dataFolder", "language", "protocolVersions"],
+                     "the protocol's first example of the hello is an older app's: it names none")
+    }
+
+    static func theStatusSwitchIsYesUntilTurnedOff(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: ExternalToolManifestTests.file(withStatus)))
+        suite.expect(bench.store.showsStatus(id) && bench.store.statusTools() == [id]
+                         && bench.records.first?.showsStatus == nil,
+                     "a tool's status is shown until the person turns it off, and nothing is written down for that")
+        let revision = bench.registry.revision
+        bench.store.setShowsStatus(id, false)
+        suite.expect(!bench.store.showsStatus(id) && bench.store.statusTools().isEmpty
+                         && bench.records.first?.showsStatus == false && bench.registry.revision > revision,
+                     "turned off, it is written down, the tool is listed no more, and whoever draws is told to look")
+        let next = bench.relaunched()
+        next.store.restore()
+        suite.expect(!next.store.showsStatus(id) && next.store.statusTools().isEmpty,
+                     "and it stays off at the next launch")
+        next.store.setShowsStatus(id, true)
+        suite.expect(next.store.showsStatus(id) && next.store.statusTools() == [id] && next.records.first?.showsStatus == nil,
+                     "turned on again, the record is as it was before it was ever turned off")
+        next.store.setShowsStatus(ToolID("com.acme.other")!, false)
+        suite.expect(next.records.count == 1 && next.store.showsStatus(ToolID("com.acme.other")!),
+                     "a switch for a tool nobody added changes nothing")
+    }
+
+    static func aRecordFromBeforeReadsAsItDid(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: ExternalToolManifestTests.file(withStatus)))
+        let before = (try? String(contentsOf: bench.recordsFile, encoding: .utf8)) ?? ""
+        suite.expect(!before.isEmpty && !before.contains("showsStatus") && !before.contains("showsInIsland"),
+                     "a record is written with no word about the status, as a file from before it is")
+        // The next launch reads that file, and writing it again adds nothing.
+        let next = bench.relaunched()
+        next.store.restore()
+        next.store.setOn(id, false)
+        next.store.setOn(id, true)
+        let after = (try? String(contentsOf: bench.recordsFile, encoding: .utf8)) ?? ""
+        suite.expect(next.store.showsStatus(id) && after == before,
+                     "a file from before the switch loads with the status shown, and saving it writes no such key")
+        next.store.setShowsStatus(id, false)
+        let off = (try? String(contentsOf: bench.recordsFile, encoding: .utf8)) ?? ""
+        suite.expect(off.contains(#""showsStatus" : false"#) && !off.contains("showsInIsland"),
+                     "only turning it off writes the key")
+    }
+
+    static func statusToolsLeavesOutASwitchedOffAndAnUndeclaredTool(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        func manifest(_ id: String, status: Bool) -> Data {
+            ExternalToolManifestTests.file(#"""
+                {"id": "\#(id)", "protocol": "2",
+                 "contributes": {\#(status ? #""status": {"placement": "island"}"# : "")}}
+                """#)
+        }
+        let names = ["com.acme.first", "com.acme.plain", "com.acme.second", "com.acme.third"]
+        for (index, name) in names.enumerated() {
+            bench.add(bench.folder("picked-\(index)", manifest: manifest(name, status: name != "com.acme.plain")))
+        }
+        let ids = names.compactMap { ToolID($0) }
+        suite.expect(bench.store.statusTools() == [ids[0], ids[2], ids[3]],
+                     "the tools whose status may be drawn are the ones that declare one, in the order added")
+        bench.store.setShowsStatus(ids[2], false)
+        suite.expect(bench.store.statusTools() == [ids[0], ids[3]],
+                     "a tool whose status the person switched off is left out")
+        bench.store.setOn(ids[0], false)
+        suite.expect(bench.store.statusTools() == [ids[3]], "and so is a tool that is switched off")
+        bench.store.setOn(ids[0], true)
+        bench.store.setShowsStatus(ids[2], true)
+        suite.expect(bench.store.statusTools() == [ids[0], ids[2], ids[3]],
+                     "each comes back in its place, where it was added")
+        // A tool held back, whose copy is not what the person agreed to.
+        try? Data("{}".utf8).write(to: bench.support.appendingPathComponent("Tools/com.acme.third/vitruvian-tool.json"))
+        let next = bench.relaunched()
+        next.store.restore()
+        suite.expect(next.store.listed.first { $0.id == ids[3] }?.isHeld == true
+                         && next.store.statusTools() == [ids[0], ids[2]],
+                     "and a tool that is held back, which is never started, has no status to draw")
+    }
+
+    static func aStatusReachesTheHostAndGoesWithTheProgram(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: ExternalToolManifestTests.file(withStatus)))
+        bench.registry.run(copy)
+        bench.current.greets(protocolVersion: "2")
+        bench.current.says(#"{"jsonrpc":"2.0","id":"s","method":"ui/status","params":{"state":"failure","text":"main is red"}}"#)
+        suite.expect(bench.panels.statuses[id] == ToolStatus(state: .failure, text: "main is red", icon: nil)
+                         && bench.current.sent.last == .result(id: .string("s"), value: .object([:])),
+                     "a tool's status reaches the host, and the tool is answered with {}")
+        bench.store.setShowsStatus(id, false)
+        bench.clock.advance(by: 1)
+        bench.current.says(#"{"jsonrpc":"2.0","id":"t","method":"ui/status","params":{"state":"busy"}}"#)
+        suite.expect(bench.panels.statuses[id]?.state == .busy
+                         && bench.current.sent.last == .result(id: .string("t"), value: .object([:]))
+                         && bench.store.statusTools().isEmpty,
+                     "switched off by the person, a status is still answered with {} and still kept; "
+                         + "the tool is no longer among those whose status is drawn")
+        bench.store.setShowsStatus(id, true)
+        suite.expect(bench.store.statusTools() == [id] && bench.panels.statuses[id]?.state == .busy,
+                     "switched on again, the status it last sent is there to draw, with no restart")
+        bench.current.ends(0)
+        suite.expect(bench.panels.statuses[id] == nil, "and it goes when the tool's program ends")
+
+        // A tool that declares none is refused, through the same door.
+        let plain = Bench()
+        defer { plain.close() }
+        plain.add(plain.folder(manifest: ExternalToolManifestTests.file(#"{"protocol": "2"}"#)))
+        plain.registry.run(copy)
+        plain.current.greets(protocolVersion: "2")
+        plain.current.says(#"{"jsonrpc":"2.0","id":"s","method":"ui/status","params":{"state":"failure"}}"#)
+        suite.expect(plain.panels.statuses.isEmpty
+                         && plain.current.sent.last
+                         == .failure(id: .string("s"), error: RPCErrorObject(code: -32602,
+                                                                             message: "the manifest declares no status")),
+                     "a status from a tool whose manifest declares none is answered -32602, and none is kept")
+    }
+
+    static func aSettingCarriesItsOptions(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: ExternalToolManifestTests.file(withStatus)))
+        let settings = bench.store.settings(of: id)
+        suite.expect(settings.map(\.id) == ["light", "project"]
+                         && settings.first?.options
+                         == [PreferenceOption(value: "green", title: LocalizedText(["en": "Green", "fr": "Vert"])),
+                             PreferenceOption(value: "breathe green", title: LocalizedText(["en": "Pulsing green"]))]
+                         && settings.last?.options.isEmpty == true,
+                     "a setting carries its options, in order, each title in its languages; one with none has none")
+        suite.expect(settings.first?.value == .string("green"), "and its value is text, the default until one is saved")
+    }
+
+    static func aValueThatIsNoOptionIsStillSaved(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: ExternalToolManifestTests.file(withStatus)))
+        let key = ExternalToolManifest.storageKey(tool: id, preference: "light")
+        suite.expect(bench.store.setSetting(.string("breathe blue 5"), for: "light", of: id) == nil
+                         && bench.box.values[key] as? String == "breathe blue 5"
+                         && bench.store.settings(of: id).first?.value == .string("breathe blue 5")
+                         && bench.store.settings(of: id).first?.options.count == 2,
+                     "a value that is none of the options is saved as written and read back: the app never "
+                         + "refuses it and never changes it")
+        // One saved before the tool had options, by the tool or by a hand-off.
+        bench.box.values[key] = "typed by hand"
+        suite.expect(bench.store.settings(of: id).first?.value == .string("typed by hand")
+                         && bench.box.values[key] as? String == "typed by hand",
+                     "and one that was there already is read as it is, and left as it is")
     }
 }
