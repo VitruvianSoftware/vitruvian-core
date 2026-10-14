@@ -1327,14 +1327,14 @@ its own word for the state. `icon` is an SF Symbol name that replaces the
 state's glyph; the colour, the size and the breathing stay the app's.
 
 - **There is one mark, and the worst one wins**: `failure`, then
-  `attention`, then `busy`, then `ok`. Every tool's status and the app's own
-  GitHub mark compete for it. On a tie the app's mark wins, then the tool
-  that was added first. So a quiet `ok` may not be the mark the person sees.
+  `attention`, then `busy`, then `ok`. Every tool's status competes for it.
+  On a tie the tool that was added first wins. So a quiet `ok` may not be
+  the mark the person sees.
 - **It is shown where the island rests on its agent wings**: with "While
   inactive" set to Agents, and no activity such as music in their place.
   While an agent session is running, the closed island shows that agent's
-  activity in place of its resting wings, so neither the app's own mark nor
-  a tool's is visible until the session ends.
+  activity in place of its resting wings, so a tool's mark is not visible
+  until the session ends.
 - **A click on it opens your island page**, unless the mark is green or you
   have no island page the island lists. Then the click does what it always
   did.
@@ -1436,6 +1436,123 @@ tool.onStart = { app in
         app.log("no status: \(error)")
     }
 }
+```
+
+#### A few words with it
+
+From Vitruvian 3.50 a status can carry a few words, drawn beside the mark
+on the closed island, in place of the allowance percent: "3", "push",
+"754s". The mark keeps its place and its colour on the left, so the person
+still sees whose words they are. The manifest's status says so first:
+
+```json manifest
+{
+  "id": "com.acme.deploys",
+  "name": { "en": "Deploys" },
+  "version": "2.2.0",
+  "protocol": "2",
+  "publisher": "Acme",
+  "contributes": {
+    "status": { "placement": "island", "activity": true }
+  },
+  "activation": ["onLaunch"],
+  "runtime": { "kind": "external", "exec": "bin/deploys" }
+}
+```
+
+Then a status sends `activity`, the words, or `since`, a start time the app
+counts the seconds from itself: "1s", "2s", "3s", with no message from you
+each second. When both are sent the words win. The kits take your
+language's own time (a `Date`, a `datetime`, a `time.Time`, a
+`SystemTime`) and write Unix seconds.
+
+- **Six characters or fewer, and a number is best.** The words are drawn in
+  about 30 points, in the look of Nexus Agent's text: about six characters
+  at full size, eight once shrunk, and then cut with "…". The app keeps at
+  most 12. Digits need no translation; `activity` may be a map of languages
+  for words that do. Some scripts are wider: three or four characters there.
+- **Only the shown mark's words are drawn.** If the mark that wins has none,
+  the percent is drawn, never another tool's words.
+- **A Nexus Agent session outranks every tool**, as it does for the mark.
+  Your words come back when it ends.
+- **VoiceOver hears the words** after the status's own, as part of the
+  closed island's button: "GitHub: Checks are running, 3". It does not hear
+  the seconds, which would rename the button every second.
+- **They go with the status.** Each `ui/status` replaces all of the last, so
+  one without `activity` or `since` takes them away and keeps the mark.
+  They also go with `none` and when your program ends. The switch that
+  hides your mark in Settings hides them too.
+- **Undeclared words are left out.** A status with words from a tool whose
+  manifest does not say `"activity": true` still draws its mark and is
+  answered with `{}`; the words are dropped, and your tool's log says so.
+  The conformance script fails it, so you learn before you ship.
+- **Ask first.** `supports("ui.status.activity")` says whether the app
+  draws them. Each kit sends the status without them to an app that does
+  not, so the mark still shows there.
+
+The samples offer a second menu on their island page, when the app has the
+feature: None, the count, or seconds since it was picked. Picking "Seconds"
+keeps the moment, and the status is sent again:
+
+```swift file=samples/hello-panel-swift/main.swift
+    case "words"?:
+        guard let picked = event.text, Counter.wordsOptions.contains(where: { $0.value == picked }) else {
+            return .keep
+        }
+        counter.words = picked
+        if picked == "seconds" { counter.since = Date() }
+        try counter.showStatus(app)
+```
+
+```javascript file=samples/hello-panel-typescript/bin/tool.mjs
+      case "words":
+        if (!WORDS.some(({ value }) => value === event.text))
+          return { keep: true };
+        counter.words = event.text;
+        if (event.text === "seconds") counter.since = new Date();
+        showStatus(app);
+        break;
+```
+
+```python file=samples/hello-panel-python/bin/tool.py
+    elif event.block == "words":
+        if event.text not in WORDS:
+            return PanelAnswer.keep()
+        counter.words = event.text
+        if event.text == "seconds":
+            counter.since = datetime.now(timezone.utc)
+        counter.show_status(app)
+```
+
+```go file=samples/hello-panel-go/main.go
+			case "words":
+				picked, ok := event.Text()
+				if !ok || !isWords(picked) {
+					return toolkit.Keep(), nil
+				}
+				state.words = picked
+				if picked == "seconds" {
+					state.since = time.Now()
+				}
+				if _, err := state.showStatus(app); err != nil {
+					return toolkit.Keep(), err
+				}
+```
+
+```rust file=samples/hello-panel-rust/src/main.rs
+                Some("words") => {
+                    let picked = event
+                        .text()
+                        .filter(|word| WORDS.iter().any(|(value, _)| value == word));
+                    let Some(picked) = picked else {
+                        return Ok(PanelAnswer::Keep);
+                    };
+                    counter.words = picked.to_string();
+                    if picked == "seconds" {
+                        counter.since = SystemTime::now();
+                    }
+                    counter.show_status(app)?;
+                }
 ```
 
 ### A choice among fixed options
@@ -1606,6 +1723,17 @@ and an app before 3.48 sends none. Each kit keeps the list and answers
 | A page has a `choice` block | Its `fallback`, as plain words. So check `supports` and send a `field`. | A pop-up menu. |
 | A preference has a `type` the table of the manifest does not list | **The tool is refused.** | **The tool is refused.** |
 
+A status's words came later, in Vitruvian 3.50, the same way. 3.48 and 3.49
+read the new key and fields and ignore them, so the mark is drawn there:
+
+| What your tool does | Vitruvian 3.46 and 3.47 | Vitruvian 3.48 and 3.49 | Vitruvian 3.50 and later |
+|---|---|---|---|
+| Its status says `"activity": true` | The key is ignored. | The key is ignored. The sheet says the tool shows a status mark. | The sheet says the tool shows a status mark and a few words. |
+| It sends words with a kit | Nothing is sent. | The status is sent without them. The mark is drawn. | The mark and the words are drawn. |
+| It sends words with no kit | Failure -32601 for the whole request. | `{}`. The mark is drawn; the words are ignored. | The mark and the words are drawn. |
+| It sends a `since` below 0, or not a number, with no kit | Failure -32601. | `{}`. Ignored. | Failure -32602, and the status stays as it was. |
+| It asks `supports("ui.status.activity")` | false | false | true |
+
 - **Never write a preference `type` the manifest's table does not list**,
   such as `"type": "choice"`. Every app refuses the whole tool for a type it
   does not know, and tells the person the tool's author made a mistake. A
@@ -1614,7 +1742,7 @@ and an app before 3.48 sends none. Each kit keeps the list and answers
   activation**: a name the app does not know refuses the tool. A key it does
   not know is ignored. That is why a status is a key under `contributes` and
   not an entry of `uses`.
-- **`vitruvian-tool run` and the conformance script say hello as 3.48 does.**
+- **`vitruvian-tool run` and the conformance script say hello as 3.50 does.**
   The script then starts your tool once more as an older app would, with no
   `features`, and answers `ui/status` with -32601. A tool that stops there,
   or keeps asking, fails that step.

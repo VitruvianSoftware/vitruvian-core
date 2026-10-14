@@ -380,6 +380,14 @@ Steps 5 and 6, each planted with the driver and DETECTED: "the agreement sheet s
 - [ ] **Step 3:** `bazel test //packages/vitruvian-sdk:guide_test //tools/sync-site-tools:in_sync_test` passes.
 - [ ] **Step 4: Commit.**
 
+**As built (2026-10-14).**
+
+- **Written by `wren`, not `compass`**: one worker built Tasks 1 to 7, as for the 2026-10-13 plan.
+- **Parts of this task landed earlier, where a test or a sample needed them**: the reference rows and `protocol/README.md`'s section with Task 1; each kit's README with Task 2; the samples' excerpts, the panel READMEs and `README.md` with Task 3.
+- **"A few words with it" is a part of "A status on the closed island"**, after the samples' `onStart` snippet, with a manifest example (held to the schema by `guide_test`) and one snippet per kit: each sample's handler for the second menu.
+- **"What an older app does" gained a second table**, with a column for 3.48 and 3.49, since the first one has two columns of apps and these rows need three. Its last bullet says the script and `vitruvian-tool run` say hello as 3.50 does.
+- **A stale sentence fixed on the way**: the guide still said "the app's own GitHub mark" competes for the closed island and wins a tie. Pull request #3207 removed it; the guide now says every tool's status competes, and on a tie the tool added first wins.
+
 ---
 
 ### Task 7: Run everything, and open pull request 1
