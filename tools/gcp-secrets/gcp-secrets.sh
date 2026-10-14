@@ -142,7 +142,23 @@ gc_checked() {
   printf '%s\n' "$out"
 }
 _gc_err="$(mktemp)"
-trap 'rm -f "$_gc_err"' EXIT
+# Set only by the last line of this script. On bash 3.2 (macOS's /bin/bash) a
+# `set -u` abort runs the EXIT trap with $? = 0 and then exits with the trap's
+# own status, so a trap that only cleans up turns a script that died half way
+# into exit 0: "seeded" reported with nothing seeded. HomeSpeaker 1.12.0 and
+# 1.13.0 shipped with no files that way (tools/desktop-package). Anything short
+# of the last line is therefore a failure.
+_gc_complete=false
+_gc_cleanup() {
+  local status=$?
+  rm -f "$_gc_err"
+  if [ "$_gc_complete" != "true" ] && [ "$status" -eq 0 ]; then
+    echo "error: gcp-secrets.sh stopped before it finished; failing." >&2
+    status=1
+  fi
+  exit "$status"
+}
+trap _gc_cleanup EXIT
 
 # version_count <secret> — number of ENABLED versions (destroyed ones don't count
 # as seeded; a secret whose only version was destroyed needs a value again).
@@ -240,3 +256,4 @@ case "$SUBCOMMAND" in
     die "unknown subcommand '$SUBCOMMAND' (expected: status, seed)"
     ;;
 esac
+_gc_complete=true

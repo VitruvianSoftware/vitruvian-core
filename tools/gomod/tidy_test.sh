@@ -270,6 +270,40 @@ out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
 grep -q "1 module(s)" <<<"${out}"
 check "vendored go.mod is not swept" "$?"
 
+# --- A script that dies half way never reports green. ------------------------
+# On bash 3.2 a `set -u` abort runs the EXIT trap with $? = 0 and exits with the
+# trap's status; a trap that only cleans up made that exit 0. Plant an unbound
+# variable right after the trap is set, in a copy, and run the copy on a tidy
+# tree: it must exit non-zero. On bash 4.4+ the abort itself is non-zero, so
+# this case can only fail on bash 3.2; the static check below holds the rule on
+# every bash.
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+make_fake_go "${bin}" 0
+make_tree "${tmp}/src" 2
+mkdir -p "${tmp}/copy/tools/gomod" "${tmp}/copy/tools/ci"
+cp "$(dirname "${UNDER_TEST}")/../ci/transient-lib.sh" "${tmp}/copy/tools/ci/" 2>/dev/null ||
+  cp "${RUNFILES_DIR:-$0.runfiles}/_main/tools/ci/transient-lib.sh" "${tmp}/copy/tools/ci/"
+awk '{print} /^trap cleanup EXIT$/{print ": \"$__planted_unbound_variable\""}' \
+  "${UNDER_TEST}" > "${tmp}/copy/tools/gomod/tidy.sh"
+grep -q '__planted_unbound_variable' "${tmp}/copy/tools/gomod/tidy.sh"
+check "the planted abort is in the copy (the trap line is where the test expects)" "$?"
+for sh in bash /bin/bash; do
+  command -v "$sh" >/dev/null 2>&1 || continue
+  PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" RUNFILES_DIR="${tmp}/none" \
+    "$sh" "${tmp}/copy/tools/gomod/tidy.sh" --check src >/dev/null 2>&1
+  [ "$?" -ne 0 ]
+  check "a run that aborts half way exits non-zero under $sh ($("$sh" -c 'echo $BASH_VERSION'))" "$?"
+done
+
+# Every EXIT trap in the script goes through the function that fails an
+# unfinished run; a bare cleanup-only trap is the bug.
+! grep -nE "^[[:space:]]*trap '[^']*' EXIT" "${UNDER_TEST}" >/dev/null
+check "no EXIT trap that only cleans up" "$?"
+[ "$(tail -n 1 "${UNDER_TEST}")" = "TIDY_COMPLETE=true" ]
+check "the completion flag is set by the last line and nowhere earlier" "$?"
+[ "$(grep -c '^TIDY_COMPLETE=true$' "${UNDER_TEST}")" = "1" ]
+check "the completion flag is set exactly once" "$?"
+
 echo
 printf '  %d passed, %d failed\n' "${PASS}" "${FAIL}"
 [ "${FAIL}" -eq 0 ]
