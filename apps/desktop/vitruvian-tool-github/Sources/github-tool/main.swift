@@ -42,6 +42,16 @@ final class KitHost: ToolHost {
         try? panels[GitHubTool.islandPanel]?.badge(count: count, dot: dot)
     }
 
+    /// The kit sends nothing, and says false, to an app without `ui.status`:
+    /// that app shows no mark, and the false is ignored.
+    func status(_ status: IslandStatus) {
+        do {
+            try app?.status(status.state, text: status.text, icon: status.icon)
+        } catch {
+            app?.log("the app did not take the status: \(error)")
+        }
+    }
+
     func render(panel: String, _ tree: UITree) {
         panels[panel]?.render(tree)
     }

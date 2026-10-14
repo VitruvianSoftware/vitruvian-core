@@ -28,10 +28,22 @@ unpacked anywhere, then Add a Tool… in the same place.
   tap opens the pull request. "Refresh" asks GitHub now; "Re-run failed
   checks" re-runs the failed jobs of `main`'s workflow runs. The tile's
   badge counts what is red.
+- **On the closed island**, from Vitruvian 3.48: a small mark after the
+  agent mark, as the app's own GitHub feature drew it. A tick when
+  everything is green, the branch glyph while checks run, a red mark when
+  one failed, and a raised hand while a check waits for approval, which
+  outranks every colour, as on the mouse. Nothing while you are signed out
+  or nothing has been read yet. The app's switch in the tool's detail hides
+  it; an older app shows no mark.
 - **In Settings**, in the tool's detail: the account (sign in with the
   GitHub CLI's login, a token, or a code; sign out), and below it the
   settings the app draws for the tool: the watched repositories, the two
-  poll intervals, and the mouse's command, colours and styles.
+  poll intervals, and the mouse's command, colours and styles. From
+  Vitruvian 3.48 each of the five mouse lights is a menu: the ten colours,
+  solid or pulsing, and "Restore my lighting" or "Turn the light off" when
+  nothing is watched. A value you typed before, such as `breathe blue 5`,
+  is shown as written at the top of its menu and keeps working until you
+  pick another. An older app draws them as text fields, as before.
 - **The mouse**: with "Show status on the GravaStar mouse" on, the light
   follows the colour of everything together, and a check waiting for
   approval outranks it. The command is found as the app's feature found it:

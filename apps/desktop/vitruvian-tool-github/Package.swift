@@ -17,9 +17,9 @@ let package = Package(
         .executable(name: "github-tool", targets: ["github-tool"]),
     ],
     dependencies: [
-        // The kit's `Tool.every(seconds:)` came with 1.0.0 (`version_test.py`
-        // holds this line to it).
-        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.0.0"),
+        // The kit's `App.status` and a preference's `options` came with
+        // 1.3.0 (`version_test.py` holds this line to it).
+        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.3.0"),
     ],
     targets: [
         .target(

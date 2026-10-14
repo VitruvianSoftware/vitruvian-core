@@ -98,7 +98,10 @@
         },
         "placement": "settings"
       }
-    ]
+    ],
+    "status": {
+      "placement": "island"
+    }
   },
   "preferences": [
     {
@@ -231,7 +234,129 @@
         "zh-HK": "綠色時的滑鼠"
       },
       "type": "string",
-      "default": "green"
+      "default": "green",
+      "options": [
+        {
+          "value": "green",
+          "title": {
+            "en": "Green"
+          }
+        },
+        {
+          "value": "breathe green",
+          "title": {
+            "en": "Pulsing green"
+          }
+        },
+        {
+          "value": "cyan",
+          "title": {
+            "en": "Cyan"
+          }
+        },
+        {
+          "value": "breathe cyan",
+          "title": {
+            "en": "Pulsing cyan"
+          }
+        },
+        {
+          "value": "blue",
+          "title": {
+            "en": "Blue"
+          }
+        },
+        {
+          "value": "breathe blue",
+          "title": {
+            "en": "Pulsing blue"
+          }
+        },
+        {
+          "value": "purple",
+          "title": {
+            "en": "Purple"
+          }
+        },
+        {
+          "value": "breathe purple",
+          "title": {
+            "en": "Pulsing purple"
+          }
+        },
+        {
+          "value": "magenta",
+          "title": {
+            "en": "Magenta"
+          }
+        },
+        {
+          "value": "breathe magenta",
+          "title": {
+            "en": "Pulsing magenta"
+          }
+        },
+        {
+          "value": "yellow",
+          "title": {
+            "en": "Yellow"
+          }
+        },
+        {
+          "value": "breathe yellow",
+          "title": {
+            "en": "Pulsing yellow"
+          }
+        },
+        {
+          "value": "orange",
+          "title": {
+            "en": "Orange"
+          }
+        },
+        {
+          "value": "breathe orange",
+          "title": {
+            "en": "Pulsing orange"
+          }
+        },
+        {
+          "value": "red",
+          "title": {
+            "en": "Red"
+          }
+        },
+        {
+          "value": "breathe red",
+          "title": {
+            "en": "Pulsing red"
+          }
+        },
+        {
+          "value": "white",
+          "title": {
+            "en": "White"
+          }
+        },
+        {
+          "value": "breathe white",
+          "title": {
+            "en": "Pulsing white"
+          }
+        },
+        {
+          "value": "pink",
+          "title": {
+            "en": "Pink"
+          }
+        },
+        {
+          "value": "breathe pink",
+          "title": {
+            "en": "Pulsing pink"
+          }
+        }
+      ]
     },
     {
       "id": "mouseRunning",
@@ -253,7 +378,129 @@
         "zh-HK": "琥珀色時的滑鼠"
       },
       "type": "string",
-      "default": "breathe orange"
+      "default": "breathe orange",
+      "options": [
+        {
+          "value": "green",
+          "title": {
+            "en": "Green"
+          }
+        },
+        {
+          "value": "breathe green",
+          "title": {
+            "en": "Pulsing green"
+          }
+        },
+        {
+          "value": "cyan",
+          "title": {
+            "en": "Cyan"
+          }
+        },
+        {
+          "value": "breathe cyan",
+          "title": {
+            "en": "Pulsing cyan"
+          }
+        },
+        {
+          "value": "blue",
+          "title": {
+            "en": "Blue"
+          }
+        },
+        {
+          "value": "breathe blue",
+          "title": {
+            "en": "Pulsing blue"
+          }
+        },
+        {
+          "value": "purple",
+          "title": {
+            "en": "Purple"
+          }
+        },
+        {
+          "value": "breathe purple",
+          "title": {
+            "en": "Pulsing purple"
+          }
+        },
+        {
+          "value": "magenta",
+          "title": {
+            "en": "Magenta"
+          }
+        },
+        {
+          "value": "breathe magenta",
+          "title": {
+            "en": "Pulsing magenta"
+          }
+        },
+        {
+          "value": "yellow",
+          "title": {
+            "en": "Yellow"
+          }
+        },
+        {
+          "value": "breathe yellow",
+          "title": {
+            "en": "Pulsing yellow"
+          }
+        },
+        {
+          "value": "orange",
+          "title": {
+            "en": "Orange"
+          }
+        },
+        {
+          "value": "breathe orange",
+          "title": {
+            "en": "Pulsing orange"
+          }
+        },
+        {
+          "value": "red",
+          "title": {
+            "en": "Red"
+          }
+        },
+        {
+          "value": "breathe red",
+          "title": {
+            "en": "Pulsing red"
+          }
+        },
+        {
+          "value": "white",
+          "title": {
+            "en": "White"
+          }
+        },
+        {
+          "value": "breathe white",
+          "title": {
+            "en": "Pulsing white"
+          }
+        },
+        {
+          "value": "pink",
+          "title": {
+            "en": "Pink"
+          }
+        },
+        {
+          "value": "breathe pink",
+          "title": {
+            "en": "Pulsing pink"
+          }
+        }
+      ]
     },
     {
       "id": "mouseFailure",
@@ -275,7 +522,129 @@
         "zh-HK": "紅色時的滑鼠"
       },
       "type": "string",
-      "default": "breathe red"
+      "default": "breathe red",
+      "options": [
+        {
+          "value": "green",
+          "title": {
+            "en": "Green"
+          }
+        },
+        {
+          "value": "breathe green",
+          "title": {
+            "en": "Pulsing green"
+          }
+        },
+        {
+          "value": "cyan",
+          "title": {
+            "en": "Cyan"
+          }
+        },
+        {
+          "value": "breathe cyan",
+          "title": {
+            "en": "Pulsing cyan"
+          }
+        },
+        {
+          "value": "blue",
+          "title": {
+            "en": "Blue"
+          }
+        },
+        {
+          "value": "breathe blue",
+          "title": {
+            "en": "Pulsing blue"
+          }
+        },
+        {
+          "value": "purple",
+          "title": {
+            "en": "Purple"
+          }
+        },
+        {
+          "value": "breathe purple",
+          "title": {
+            "en": "Pulsing purple"
+          }
+        },
+        {
+          "value": "magenta",
+          "title": {
+            "en": "Magenta"
+          }
+        },
+        {
+          "value": "breathe magenta",
+          "title": {
+            "en": "Pulsing magenta"
+          }
+        },
+        {
+          "value": "yellow",
+          "title": {
+            "en": "Yellow"
+          }
+        },
+        {
+          "value": "breathe yellow",
+          "title": {
+            "en": "Pulsing yellow"
+          }
+        },
+        {
+          "value": "orange",
+          "title": {
+            "en": "Orange"
+          }
+        },
+        {
+          "value": "breathe orange",
+          "title": {
+            "en": "Pulsing orange"
+          }
+        },
+        {
+          "value": "red",
+          "title": {
+            "en": "Red"
+          }
+        },
+        {
+          "value": "breathe red",
+          "title": {
+            "en": "Pulsing red"
+          }
+        },
+        {
+          "value": "white",
+          "title": {
+            "en": "White"
+          }
+        },
+        {
+          "value": "breathe white",
+          "title": {
+            "en": "Pulsing white"
+          }
+        },
+        {
+          "value": "pink",
+          "title": {
+            "en": "Pink"
+          }
+        },
+        {
+          "value": "breathe pink",
+          "title": {
+            "en": "Pulsing pink"
+          }
+        }
+      ]
     },
     {
       "id": "mouseApproval",
@@ -297,29 +666,193 @@
         "zh-HK": "等待核准時的滑鼠"
       },
       "type": "string",
-      "default": "breathe blue 9"
+      "default": "breathe blue 9",
+      "options": [
+        {
+          "value": "green",
+          "title": {
+            "en": "Green"
+          }
+        },
+        {
+          "value": "breathe green 9",
+          "title": {
+            "en": "Pulsing green"
+          }
+        },
+        {
+          "value": "cyan",
+          "title": {
+            "en": "Cyan"
+          }
+        },
+        {
+          "value": "breathe cyan 9",
+          "title": {
+            "en": "Pulsing cyan"
+          }
+        },
+        {
+          "value": "blue",
+          "title": {
+            "en": "Blue"
+          }
+        },
+        {
+          "value": "breathe blue 9",
+          "title": {
+            "en": "Pulsing blue"
+          }
+        },
+        {
+          "value": "purple",
+          "title": {
+            "en": "Purple"
+          }
+        },
+        {
+          "value": "breathe purple 9",
+          "title": {
+            "en": "Pulsing purple"
+          }
+        },
+        {
+          "value": "magenta",
+          "title": {
+            "en": "Magenta"
+          }
+        },
+        {
+          "value": "breathe magenta 9",
+          "title": {
+            "en": "Pulsing magenta"
+          }
+        },
+        {
+          "value": "yellow",
+          "title": {
+            "en": "Yellow"
+          }
+        },
+        {
+          "value": "breathe yellow 9",
+          "title": {
+            "en": "Pulsing yellow"
+          }
+        },
+        {
+          "value": "orange",
+          "title": {
+            "en": "Orange"
+          }
+        },
+        {
+          "value": "breathe orange 9",
+          "title": {
+            "en": "Pulsing orange"
+          }
+        },
+        {
+          "value": "red",
+          "title": {
+            "en": "Red"
+          }
+        },
+        {
+          "value": "breathe red 9",
+          "title": {
+            "en": "Pulsing red"
+          }
+        },
+        {
+          "value": "white",
+          "title": {
+            "en": "White"
+          }
+        },
+        {
+          "value": "breathe white 9",
+          "title": {
+            "en": "Pulsing white"
+          }
+        },
+        {
+          "value": "pink",
+          "title": {
+            "en": "Pink"
+          }
+        },
+        {
+          "value": "breathe pink 9",
+          "title": {
+            "en": "Pulsing pink"
+          }
+        }
+      ]
     },
     {
       "id": "mouseIdle",
       "title": {
-        "en": "Mouse when nothing is watched (restore or off)",
-        "pt-BR": "Mouse quando nada é acompanhado (restore ou off)",
-        "tr": "Hiçbir şey izlenmezken fare (restore veya off)",
-        "ru": "Мышь, когда ничего не отслеживается (restore или off)",
-        "es": "Ratón cuando no se sigue nada (restore u off)",
-        "sk": "Myš, keď sa nič nesleduje (restore alebo off)",
-        "de": "Maus, wenn nichts beobachtet wird (restore oder off)",
-        "fr": "Souris quand rien n’est suivi (restore ou off)",
-        "it": "Mouse quando non si segue nulla (restore o off)",
-        "ja": "何も監視していないときのマウス（restore か off）",
-        "ko": "아무것도 보지 않을 때 마우스(restore 또는 off)",
-        "uk": "Миша, коли нічого не відстежується (restore або off)",
-        "zh-Hans": "未关注任何内容时的鼠标（restore 或 off）",
-        "zh-TW": "未關注任何內容時的滑鼠（restore 或 off）",
-        "zh-HK": "未關注任何內容時的滑鼠（restore 或 off）"
+        "en": "Mouse when nothing is watched",
+        "pt-BR": "Mouse quando nada é acompanhado",
+        "tr": "Hiçbir şey izlenmezken fare",
+        "ru": "Мышь, когда ничего не отслеживается",
+        "es": "Ratón cuando no se sigue nada",
+        "sk": "Myš, keď sa nič nesleduje",
+        "de": "Maus, wenn nichts beobachtet wird",
+        "fr": "Souris quand rien n’est suivi",
+        "it": "Mouse quando non si segue nulla",
+        "ja": "何も監視していないときのマウス",
+        "ko": "아무것도 보지 않을 때 마우스",
+        "uk": "Миша, коли нічого не відстежується",
+        "zh-Hans": "未关注任何内容时的鼠标",
+        "zh-TW": "未關注任何內容時的滑鼠",
+        "zh-HK": "未關注任何內容時的滑鼠"
       },
       "type": "string",
-      "default": "restore"
+      "default": "restore",
+      "options": [
+        {
+          "value": "restore",
+          "title": {
+            "en": "Restore my lighting",
+            "pt-BR": "Restaurar minha iluminação",
+            "tr": "Kendi aydınlatmamı geri yükle",
+            "ru": "Вернуть мою подсветку",
+            "es": "Restaurar mi iluminación",
+            "sk": "Obnoviť moje osvetlenie",
+            "de": "Meine Beleuchtung wiederherstellen",
+            "fr": "Rétablir mon éclairage",
+            "it": "Ripristina la mia illuminazione",
+            "ja": "自分のライティングに戻す",
+            "ko": "내 조명으로 되돌리기",
+            "uk": "Повернути моє підсвічування",
+            "zh-Hans": "恢复我的灯效",
+            "zh-TW": "恢復我的燈效",
+            "zh-HK": "恢復我的燈效"
+          }
+        },
+        {
+          "value": "off",
+          "title": {
+            "en": "Turn the light off",
+            "pt-BR": "Desligar a luz",
+            "tr": "Işığı kapat",
+            "ru": "Выключить подсветку",
+            "es": "Apagar la luz",
+            "sk": "Vypnúť svetlo",
+            "de": "Licht ausschalten",
+            "fr": "Éteindre la lumière",
+            "it": "Spegni la luce",
+            "ja": "ライトを消す",
+            "ko": "조명 끄기",
+            "uk": "Вимкнути підсвічування",
+            "zh-Hans": "关闭灯光",
+            "zh-TW": "關閉燈光",
+            "zh-HK": "關閉燈光"
+          }
+        }
+      ]
     },
     {
       "id": "clientID",

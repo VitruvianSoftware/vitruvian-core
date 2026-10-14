@@ -16,6 +16,7 @@ final class FakeHost: ToolHost {
     var opened: [String] = []
     var logs: [String] = []
     var badges: [Int?] = []
+    var statuses: [IslandStatus] = []
     var rendered: [(panel: String, tree: UITree)] = []
 
     func value(_ key: String) -> JSONValue? { values[key] }
@@ -24,6 +25,7 @@ final class FakeHost: ToolHost {
     func open(_ url: String) -> Bool { opened.append(url); return true }
     func log(_ message: String) { logs.append(message) }
     func badge(count: Int?, dot: Bool) { badges.append(count) }
+    func status(_ status: IslandStatus) { statuses.append(status) }
     func render(panel: String, _ tree: UITree) { rendered.append((panel, tree)) }
 }
 
@@ -220,6 +222,78 @@ final class GitHubToolTests: XCTestCase {
         host.values[GitHubTool.Preference.mouseIdle] = .string("off")
         tool.preferencesChanged([GitHubTool.Preference.mouseIdle])
         XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "off"])
+    }
+
+    // MARK: The status on the closed island
+
+    func testTheStatusFollowsTheMouse() {
+        func state(_ verdict: Verdict, approval: Bool = false, signedIn: Bool = true) -> StatusState {
+            GitHubTool.status(verdict: verdict, awaitingApproval: approval, signedIn: signedIn).state
+        }
+        XCTAssertEqual(state(.green), .ok)
+        XCTAssertEqual(state(.amber), .busy)
+        XCTAssertEqual(state(.red), .failure)
+        XCTAssertEqual(state(.grey), StatusState.none, "nothing read yet, or nothing watched")
+        XCTAssertEqual(state(.green, approval: true), .attention)
+        XCTAssertEqual(state(.amber, approval: true), .attention)
+        XCTAssertEqual(state(.red, approval: true), .attention, "a wait for approval outranks red, as on the mouse")
+        XCTAssertEqual(state(.grey, approval: true), .attention)
+        XCTAssertEqual(state(.red, approval: true, signedIn: false), StatusState.none, "signed out shows no mark")
+        XCTAssertEqual(GitHubTool.status(verdict: .amber, awaitingApproval: false, signedIn: true).icon,
+                       "arrow.triangle.branch", "busy keeps the branch glyph")
+        XCTAssertEqual(GitHubTool.status(verdict: .red, awaitingApproval: true, signedIn: true).icon, "hand.raised.fill")
+        XCTAssertNil(GitHubTool.status(verdict: .red, awaitingApproval: false, signedIn: true).icon)
+        XCTAssertNil(GitHubTool.status(verdict: .green, awaitingApproval: false, signedIn: true).icon)
+        XCTAssertEqual(GitHubTool.status(verdict: .red, awaitingApproval: false, signedIn: true).text?.text(for: "en"),
+                       "A check failed")
+        XCTAssertEqual(GitHubTool.status(verdict: .green, awaitingApproval: false, signedIn: true).text?.text(for: "de"),
+                       "Alle Prüfungen bestanden", "the words are the tool's, in the person's language")
+        XCTAssertEqual(GitHubTool.status(verdict: .grey, awaitingApproval: false, signedIn: true), .noMark)
+        var summary = GitHubSummary(states: [:], watched: [])
+        XCTAssertEqual(GitHubTool.status(for: summary, signedIn: true), .noMark, "nothing watched")
+        summary = GitHubSummary(states: [:], watched: [Watchlist.defaultRepository])
+        XCTAssertEqual(GitHubTool.status(for: summary, signedIn: true), .noMark, "a watched repository not read yet is grey")
+    }
+
+    func testTheStatusIsSentWithTheBadgeAndNotTwice() throws {
+        try secrets.save(token: "gho_saved")
+        answerGitHub(conclusion: "failure")
+        tool.start()
+        XCTAssertEqual(host.badges, [1])
+        XCTAssertEqual(host.statuses.map(\.state), [.failure], "set where the badge is")
+        XCTAssertEqual(host.statuses.last?.text?.text(for: "en"), "A check failed")
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(host.badges.count, 2, "the badge is set again")
+        XCTAssertEqual(host.statuses.count, 1, "but the same status is not sent twice")
+        answerGitHub(conclusion: "success")
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(host.statuses.map(\.state), [.failure, .ok])
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/actions/runs?branch=main&per_page=10&status=waiting"] =
+            (200, #"{"workflow_runs": [{"id": 10, "name": "deploy", "head_sha": "h1", "status": "waiting", "conclusion": null, "html_url": null}]}"#)
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertTrue(tool.summary.awaitingApproval)
+        XCTAssertEqual(host.statuses.last, GitHubTool.status(for: tool.summary, signedIn: true))
+        XCTAssertEqual(host.statuses.map(\.state), [.failure, .ok, .attention])
+        XCTAssertEqual(host.statuses.last?.icon, "hand.raised.fill")
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "breathe", "blue", "--speed", "9"],
+                       "the island and the mouse say the same")
+    }
+
+    func testSigningOutTakesTheStatusAway() throws {
+        tool.start()
+        XCTAssertEqual(host.statuses, [], "signed out from the start: nothing is shown, so nothing is sent")
+        try secrets.save(token: "gho_saved")
+        tool = make()
+        tool.start()
+        XCTAssertEqual(host.statuses.map(\.state), [.ok])
+        tool.signOut()
+        XCTAssertEqual(host.statuses.last, .noMark, "sign-out takes the mark away")
+        XCTAssertEqual(host.badges.last ?? 0, nil, "with the badge")
+        tool.signOut()
+        XCTAssertEqual(host.statuses.count, 2, "and does not send it twice")
     }
 
     // MARK: The island

@@ -3,6 +3,7 @@
 
 import XCTest
 
+import VitruvianToolProtocol
 @testable import GitHubToolCore
 
 final class MouseTests: XCTestCase {
@@ -70,5 +71,113 @@ final class MouseTests: XCTestCase {
         XCTAssertEqual(sent.last, ["restore"])
         driver.update(verdict: .amber, settings: settings)
         XCTAssertEqual(sent.count, 6, "after a restore the same verdict is written again")
+    }
+
+    // MARK: The mouse settings' menus
+
+    /// The colours the app's GitHub feature offered, in its order.
+    private static let colours = ["green", "cyan", "blue", "purple", "magenta", "yellow", "orange", "red", "white", "pink"]
+    private static let lights = [GitHubTool.Preference.mouseSuccess, GitHubTool.Preference.mouseRunning,
+                                 GitHubTool.Preference.mouseFailure, GitHubTool.Preference.mouseApproval]
+
+    private func preference(_ id: String, file: StaticString = #filePath, line: UInt = #line) -> ToolManifestFile.Preference? {
+        let found = ToolFiles.manifest()?.preferences?.first { $0.id == id }
+        XCTAssertNotNil(found, "the manifest has no preference \(id)", file: file, line: line)
+        return found
+    }
+
+    private func options(_ id: String, file: StaticString = #filePath, line: UInt = #line) -> [String] {
+        let values = preference(id, file: file, line: line)?.options?.map(\.value) ?? []
+        XCTAssertFalse(values.isEmpty, "\(id) offers no options", file: file, line: line)
+        return values
+    }
+
+    func testEveryOptionIsALightTheMouseCommandTakes() {
+        for id in Self.lights {
+            for value in options(id) {
+                let light = MouseLight.parse(value)
+                XCTAssertNotNil(light, "\(id): \(value)")
+                XCTAssertTrue(Self.colours.contains(light?.color ?? ""), "\(id): \(value) is one of the ten colours")
+                XCTAssertEqual(value, value.lowercased().trimmingCharacters(in: .whitespaces), "\(id): \(value) as it is written back")
+            }
+        }
+        XCTAssertEqual(options(GitHubTool.Preference.mouseIdle), ["restore", "off"])
+        var settings = MouseSettings()
+        for (value, command) in [("restore", ["restore"]), ("off", ["off"])] {
+            settings.idle = value
+            XCTAssertEqual(MouseDriver.arguments(verdict: .grey, awaitingApproval: false, settings: settings), command)
+        }
+    }
+
+    func testEveryDefaultIsAnOption() {
+        let defaults = MouseSettings.defaults
+        let expected = [GitHubTool.Preference.mouseSuccess: defaults.success, GitHubTool.Preference.mouseRunning: defaults.running,
+                        GitHubTool.Preference.mouseFailure: defaults.failure, GitHubTool.Preference.mouseApproval: defaults.approval,
+                        GitHubTool.Preference.mouseIdle: defaults.idle]
+        for (id, value) in expected {
+            XCTAssertEqual(preference(id)?.default, .string(value), "\(id)'s default is the tool's own")
+            XCTAssertEqual(preference(id)?.type, "string", "\(id) is still text, so an older app draws a field")
+            XCTAssertTrue(options(id).contains(value), "\(id)'s default \(value) is an option")
+        }
+        XCTAssertEqual(ToolFiles.manifest()?.problems(), [], "the manifest is valid with its options and its status")
+        XCTAssertEqual(ToolFiles.manifest()?.contributes?.status?.placement, "island")
+    }
+
+    func testWhatTheFeatureHandedOverIsAnOption() {
+        // `GitHubHandoff.light` in the app writes a colour alone, or
+        // `breathe <colour>`, and the approval light with its speed, 9 unless
+        // the person changed it.
+        for colour in Self.colours {
+            for id in [GitHubTool.Preference.mouseSuccess, GitHubTool.Preference.mouseRunning, GitHubTool.Preference.mouseFailure] {
+                XCTAssertTrue(options(id).contains(colour), "\(id): \(colour)")
+                XCTAssertTrue(options(id).contains("breathe \(colour)"), "\(id): breathe \(colour)")
+            }
+            XCTAssertTrue(options(GitHubTool.Preference.mouseApproval).contains(colour), "mouseApproval: \(colour)")
+            XCTAssertTrue(options(GitHubTool.Preference.mouseApproval).contains("breathe \(colour) 9"),
+                          "mouseApproval: breathe \(colour) 9")
+        }
+        for id in Self.lights {
+            XCTAssertEqual(options(id).count, 20, id)
+        }
+    }
+
+    func testTheManifestFitsWithRoom() {
+        let size = ToolFiles.data("vitruvian-tool.json").count
+        XCTAssertLessThan(size, ManifestLimits.maxBytes * 3 / 4,
+                          "the manifest is \(size) bytes; keep a quarter of the app's limit free")
+    }
+}
+
+/// The tool's own files, as the tests read them: Bazel puts them among the
+/// test's runfiles; SwiftPM finds them beside the sources.
+enum ToolFiles {
+    static func data(_ path: String, file: StaticString = #filePath, line: UInt = #line) -> Data {
+        var candidates: [String] = []
+        let environment = ProcessInfo.processInfo.environment
+        if let runfiles = environment["TEST_SRCDIR"] {
+            for workspace in [environment["TEST_WORKSPACE"], "_main"].compactMap({ $0 }) {
+                candidates.append("\(runfiles)/\(workspace)/apps/desktop/vitruvian-tool-github/\(path)")
+            }
+        }
+        // Outside Bazel: this file is three folders below the tool's.
+        var folder = URL(fileURLWithPath: "\(file)")
+        for _ in 0..<3 { folder.deleteLastPathComponent() }
+        candidates.append(folder.appendingPathComponent(path).path)
+        for candidate in candidates {
+            if let data = FileManager.default.contents(atPath: candidate) { return data }
+        }
+        XCTFail("\(path) is missing; looked in \(candidates)", file: file, line: line)
+        return Data()
+    }
+
+    /// The manifest as the app reads it; nil, and a failure, when it does
+    /// not read.
+    static func manifest(file: StaticString = #filePath, line: UInt = #line) -> ToolManifestFile? {
+        switch ToolManifestFile.read(data("vitruvian-tool.json", file: file, line: line)) {
+        case .success(let manifest): return manifest
+        case .failure(let problem):
+            XCTFail("vitruvian-tool.json does not read: \(problem)", file: file, line: line)
+            return nil
+        }
     }
 }
