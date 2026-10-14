@@ -307,8 +307,7 @@ export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
   return nodes
     .filter((pr) => pr && pr.number && pr.isDraft !== true)
     .map((pr) => {
-      const rollup =
-        pr.commits?.nodes?.[0]?.commit?.statusCheckRollup ?? null;
+      const rollup = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup ?? null;
       return {
         repo: pr.repository?.nameWithOwner ?? "",
         number: pr.number,
