@@ -65,6 +65,18 @@ permissions:
 
 jobs:
   build-test:
+    # Release-bot PRs skip this job on the PR (#3268 follow-up). A release PR
+    # only bumps versions and the changelog of code main already tested, and
+    # the merge queue runs this job in full on the exact commit that lands, so
+    # the PR-side run was the same ~5 min of work done twice. A skipped job
+    # still satisfies the required check. Only the bot's own same-repo
+    # release-please branches qualify; the merge_group and push lanes are
+    # untouched.
+    if: >-
+      ${{ !(github.event_name == 'pull_request' &&
+            startsWith(github.head_ref, 'release-please--') &&
+            github.event.pull_request.user.type == 'Bot' &&
+            github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     env:
@@ -354,11 +366,16 @@ jobs:
     # sure nothing macOS-relevant changed (filter uncertainty -> build, failing
     # safe); on a PR only when the filter matched. When it does not run it is
     # `skipped`, which build-macos treats as a pass. Not a required check itself.
+    # A release-bot PR never builds here: the merge queue builds the exact
+    # commit that lands (see build-test).
     needs: detect-macos
     if: >-
       (github.event_name == 'push' && needs.detect-macos.outputs.relevant != 'false') ||
       (github.event_name == 'merge_group' && needs.detect-macos.outputs.macos != 'false') ||
-      (github.event_name == 'pull_request' && needs.detect-macos.outputs.macos == 'true')
+      (github.event_name == 'pull_request' && needs.detect-macos.outputs.macos == 'true' &&
+       !(startsWith(github.head_ref, 'release-please--') &&
+         github.event.pull_request.user.type == 'Bot' &&
+         github.event.pull_request.head.repo.full_name == github.repository))
     # xcode-27: GitHub's image whose default Xcode is 27.0 (build 27A266a),
     # the version pinned in .xcode-version. macos-latest (macOS 26) only has
     # Xcode 26.x, whose Swift rejected code that 27.0 compiles (#2536).
