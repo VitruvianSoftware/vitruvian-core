@@ -1299,6 +1299,41 @@ MUTATIONS = [
      "        if mascotBridging, !mascotBridgeTargetShows { endMascotBridgeNow(fading: true) }\n",
      "",
      "a stand-in still headed for its place stays, and one whose place went to something else fades out once"),
+    ("the island stops asking the brightness service about the keyboard light", "notch",
+     "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+     "        keyboardLightIsSupported = { supported }\n",
+     "        _ = supported\n",
+     "launch asks the brightness service whether this Mac has a keyboard light"),
+    ("level cards keep their details on a shortened card row", "notch",
+     "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+     "        guard height >= 88 else { return false }\n",
+     "        guard height >= 60 else { return false }\n",
+     "the island and its Settings preview fold level cards by the same rule at the heights they lay out"),
+    ("the switched-off record is written after the disable transaction", "display-restoration",
+     "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+     "        if !enabled { rememberDisplaySwitchedOff(display.id, fingerprint: fingerprint) }\n"
+     "        let result = configureDisplay(display.id, enabled: enabled)\n",
+     "        let result = configureDisplay(display.id, enabled: enabled)\n"
+     "        if !enabled { rememberDisplaySwitchedOff(display.id, fingerprint: fingerprint) }\n",
+     "the original display identity reaches preferences before the disable transaction"),
+    ("an explicit toggle leaves a pending wake restoration queued", "display-restoration",
+     "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+     "        deferredRestoration.record(display.id, result: .success)\n"
+     "        syncLidObserver()\n"
+     "        if enabled { forgetDisplaySwitchedOff(display.id) }\n",
+     "        syncLidObserver()\n"
+     "        if enabled { forgetDisplaySwitchedOff(display.id) }\n",
+     "an explicit disable cancels a pending wake enable and keeps the monitor off"),
+    ("typing while the drop falls no longer hurries it", "command-bar",
+     "Sources/Vitruvian/Services/CommandBar/CommandBarDroplet.swift",
+     "        guard presentation == .droplet, keyCode != 53 else { return }\n        hurry()\n",
+     "        guard presentation == .droplet, keyCode != 53 else { return }\n",
+     "typing while the drop falls hurries it: the bar shows at once and fades in over the hurried reveal"),
+    ("closing a falling drop cancels it before it can rewind", "command-bar",
+     "Sources/Vitruvian/Services/CommandBar/CommandBarDroplet.swift",
+     "        if falling, !reducesMotion, rewind(homecoming: mood) { return }\n        let unseen = falling\n        cancel()\n",
+     "        let unseen = falling\n        cancel()\n        if unseen, !reducesMotion, rewind(homecoming: mood) { return }\n",
+     "closing a drop that still falls rewinds it before anything cancels it: it stays to rise, and the companion is not home yet"),
 ]
 
 
