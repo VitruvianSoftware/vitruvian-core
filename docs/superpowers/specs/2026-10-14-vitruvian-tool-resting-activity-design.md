@@ -1,6 +1,6 @@
 # A tool's words on the closed island
 
-**Status:** a design, not built. Written 2026-10-14 for James to approve.
+**Status:** approved by James on 2026-10-14 ("build it", every pick of section 10 as written). The protocol, the kits and the app are built in pull request #3271, without the click fix of decision 20 (out of scope for that pull request). The GitHub tool and the catalogue follow.
 **Tracks:** issue #3130. **Follows:** `2026-10-13-vitruvian-tool-resting-status-and-choice-design.md`
 (the status mark, shipped in SDK 1.3.0 and Vitruvian 3.48.0 by pull request #3245; the
 built-in GitHub mark left the arbitration in pull request #3207, Vitruvian 3.49.0).
