@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status: built and shipped, 2026-10-13.** Pull request #3182 built protocol 2, with the `panels` API in all five kits and a `hello-panel` sample in each (this plan: #3160). It released SDK 1.0.0 and Vitruvian 3.45.0. Issue #3130; the design's section 11 (`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`).
+
 **Goal:** Let a tool show the person a page of its own. A tool whose manifest says `"protocol": "2"` lists panels: a page in the Dynamic Island's Tools area, a part of its detail in Settings, and windows. It describes each page as a list of blocks and the app draws them with its own controls; or it brings a web page from its own folder. Every tool written to protocol 1 keeps working exactly as it does today.
 
 **Architecture:** The protocol gains five messages and a page made of twelve kinds of block, all in `packages/vitruvian-sdk`, where the Swift types, the schemas and the examples are held together by the drift tests that exist. In the app, the link to a tool carries the new messages; one new owner, `ToolPanelHost`, keeps the last page of every open panel, reads each page away from the main thread, draws at most four a second, and passes what the person did back to the tool. The views draw a page from a plain value the tests check. A web page is loaded only from the tool's folder and reaches the app only through the tool's own program. The Swift kit gains a panel API and a way to write a page; a fourth sample draws a counter; the conformance script opens a panel and taps it.

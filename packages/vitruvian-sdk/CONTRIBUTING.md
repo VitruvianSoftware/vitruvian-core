@@ -110,9 +110,12 @@ One version for the whole SDK. release-please keeps it, in vitruvian-core:
 
 ## Listing a tool
 
-There is no catalogue of tools yet. It is the third stage of the plan in
-vitruvian-core,
-[`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md),
-section 7. Listing will be a pull request that adds one entry, with a
-checklist on this page. Until then a person adds a tool from its folder, in
+The catalogue is curated. A tool is listed by a pull request to
+vitruvian-core that adds one entry to `catalog/tools.json`, and James merges
+it. The checklist for that pull request, and what a reviewer reads that CI
+cannot judge, is in
+[`catalog/README.md`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog/README.md#a-pull-request-that-lists-a-tool).
+The list is signed after the merge and served at
+[vitruviansoftware.dev/tools/catalog](https://vitruviansoftware.dev/tools/catalog/),
+where Vitruvian reads it. A tool can still be added from its folder, in
 Vitruvian's Settings, under Features, "Tools from outside".

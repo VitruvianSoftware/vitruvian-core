@@ -552,6 +552,13 @@ Each is its own plan and pull request.
 | C | **Built.** The tool store, the agreement sheet, the tools section of Settings, the privacy section. Mock-ups first. | Yes |
 | D | **Built.** The tool kit, the command-line tool, the three samples, the documentation. The by-hand checks: gathered into one list, below, and run in part on 2026-10-12. | Only to a tool's author |
 
+**What came after (2026-10-14).** Sub-project 4 of section 13 (publishing
+the SDK, a TypeScript kit) became issue #3130 and a design of its own,
+`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`.
+It was built by 2026-10-14, but for Nexus Agent as a tool, which James
+moved to a separate effort of his own. Its section 11 lists every stage
+with its pull requests and releases.
+
 **Stage A, as built (2026-10-10).** Each line is marked met only where a
 command that was run shows it. Run on macOS 27.0 with Xcode 27 and Swift 6.4.
 

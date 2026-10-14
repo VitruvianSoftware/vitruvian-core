@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status: built and shipped, 2026-10-13.** Pull requests #3164 (the app installs from the catalogue, Vitruvian 3.43.0), #3169 (the list, its signature, checks and website page, 3.44.0) and #3177 (the first entry, the reference tool); this plan: #3159. The signed list is live at https://vitruviansoftware.dev/tools/catalog/, with the GitHub tool 1.2.0, the HomeSpeaker tool 1.13.1 and the reference tool 0.1.0 on 2026-10-14. Issue #3130; the design's section 11 (`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`).
+
 **Goal:** Let a person install a tool from a curated list in two steps: pick it in Settings, then agree on the same sheet a folder gets. The list lives in this repository as `catalog/tools.json`, changes only by a pull request James merges, is signed in CI, and is served by the website beside a page that lists it. The app refuses a list that is not signed with VitruvianSoftware's key, and a download whose size or checksum is not the one the list pins. It says "Update available" when the list has a newer version of a tool installed from it.
 
 **Architecture:** Three parts, each with its own checks.

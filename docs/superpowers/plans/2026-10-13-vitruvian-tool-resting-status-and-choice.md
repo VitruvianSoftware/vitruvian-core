@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status: built and shipped, 2026-10-14.** Pull request 1, Tasks 1 to 7: #3245 (SDK 1.3.0, Vitruvian 3.48.0). Pull request 2, Task 8: #3255 (GitHub tool 1.1.0). Pull request 3, Task 9: #3256, the catalogue pins 1.1.0 (since replaced by 1.2.0, #3283). This plan and its design: #3235. The checks by hand are under "By hand", with what is still open. Issue #3130; the design's section 11 (`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`).
+
 **Goal:** A tool from outside can show a small status mark on the closed island, as the built-in GitHub feature does, and can offer a pop-up menu, both as a setting in its detail and as a block on a page. Both stay inside protocol 2. A tool that uses them still installs and runs on Vitruvian 3.46 and 3.47. The GitHub tool adopts both as the proof.
 
 **The design:** `docs/superpowers/specs/2026-10-13-vitruvian-tool-resting-status-and-choice-design.md`. Read its sections 1, 3 and 4 before any task. Section numbers below are that document's.
@@ -591,6 +593,16 @@ Only a person at the screen can confirm these. An agent can drive the app throug
 11. **Language.** Change the app's language to German with the detail open. The app's switch and the two `mouseIdle` titles follow at once; the colour titles stay English, as designed.
 12. **An older app.** In Vitruvian 3.47.0 as released, add the GitHub tool's 1.1.0 folder. It is added without complaint; the mouse settings are text fields with the same values; there is no mark; the tool's log has no repeated refusal.
 13. **A choice on a page.** In a `hello-panel` sample's page the menu opens, the keyboard reaches it, VoiceOver reads its title and its value, and picking redraws the page.
+
+**Done by hand, as recorded (to 2026-10-14).** Checks 1, 2 (the capsule on an external display), 3, 5, 6 and 13 were done on 2026-10-13, as above and in #3245. The rest of the status mark and choice checks were done on screen by 2026-10-14, except these, which are still open:
+
+- **Check 4, the click** on a red or amber mark. James, by hand.
+- **Reduce Motion** (the end of check 1). A system setting, so James.
+- **The island's heights on the laptop's built-in display** (the rest of check 2).
+- **Check 11, the language with the detail open.** It cannot be done: the open sheet blocks the app's language setting.
+- **The translations** of the six app texts and the tool's four: no speaker has read them.
+
+Check 7 no longer applies: the built-in GitHub feature it compares against went in Vitruvian 3.49.0 (#3207). The weekly mutation run (`.github/workflows/vitruvian-mutation-checks.yaml`) next runs on Sunday 18 October 2026.
 
 ## Not verified
 
