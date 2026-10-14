@@ -2,6 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
+import VitruvianToolProtocol
 
 /// The app's own words about tools that run as their own programs: their
 /// section of the Features hub, the sheet that asks before one is added, and
@@ -109,6 +110,18 @@ package struct ExternalToolStrings {
     package let downloadNotTheTool: String
     /// The title of the alert after an install from the catalog was refused. `%@` is the tool's name, as the catalog gives it.
     package let installRefusedFormat: String
+    /// The switch in a tool's detail that draws its status on the closed island.
+    package let showStatusInIsland: String
+    /// The one line the agreement sheet adds for a tool whose manifest declares a status.
+    package let agreeShowsStatus: String
+    /// What VoiceOver says for a tool's status mark when the tool gave no words: all is well.
+    package let markOK: String
+    /// The same, for something under way.
+    package let markBusy: String
+    /// The same, for something that waits for the person.
+    package let markAttention: String
+    /// The same, for something that failed.
+    package let markFailure: String
 
     package func agreeTitle(_ name: String) -> String {
         String(format: agreeTitleFormat, locale: Locale.current, name)
@@ -160,6 +173,18 @@ package struct ExternalToolStrings {
 
     package func refusalTooBig(size: String, items: String) -> String {
         String(format: refusalTooBigFormat, locale: Locale.current, size, items)
+    }
+
+    /// The app's own word for a state of a tool's status, for a tool that
+    /// gave none of its own. Nil for `none`, which is no status.
+    package func mark(_ state: StatusState) -> String? {
+        switch state {
+        case .ok: return markOK
+        case .busy: return markBusy
+        case .attention: return markAttention
+        case .failure: return markFailure
+        case .none: return nil
+        }
     }
 
     /// One of the app's services, in plain words, as a tool's manifest
@@ -242,6 +267,12 @@ package struct ExternalToolStrings {
             ("downloadMismatch", downloadMismatch),
             ("downloadNotTheTool", downloadNotTheTool),
             ("installRefusedFormat", installRefusedFormat),
+            ("showStatusInIsland", showStatusInIsland),
+            ("agreeShowsStatus", agreeShowsStatus),
+            ("markOK", markOK),
+            ("markBusy", markBusy),
+            ("markAttention", markAttention),
+            ("markFailure", markFailure),
         ]
     }
 }
@@ -308,7 +339,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "This list of tools is not signed by VitruvianSoftware, so Vitruvian will not use it.",
         downloadMismatch: "The download is not the one the catalog lists, so nothing was installed.",
         downloadNotTheTool: "The download is not the tool the catalog says it is, so nothing was installed.",
-        installRefusedFormat: "“%@” was not installed")
+        installRefusedFormat: "“%@” was not installed",
+        showStatusInIsland: "Show its status on the closed Dynamic Island",
+        agreeShowsStatus: "It shows a small status mark on the closed Dynamic Island.",
+        markOK: "OK",
+        markBusy: "Working",
+        markAttention: "Needs attention",
+        markFailure: "Failed")
 
     package static let ptBR = ExternalToolStrings(
         sectionTitle: "Ferramentas de fora",
@@ -371,7 +408,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Esta lista de ferramentas não foi assinada pela VitruvianSoftware, então o Vitruvian não vai usá-la.",
         downloadMismatch: "O download não é o que o catálogo lista, então nada foi instalado.",
         downloadNotTheTool: "O download não é a ferramenta que o catálogo diz que é, então nada foi instalado.",
-        installRefusedFormat: "A ferramenta “%@” não foi instalada")
+        installRefusedFormat: "A ferramenta “%@” não foi instalada",
+        showStatusInIsland: "Mostrar o status dela no Dynamic Island fechado",
+        agreeShowsStatus: "Ela mostra uma pequena marca de status no Dynamic Island fechado.",
+        markOK: "Tudo certo",
+        markBusy: "Trabalhando",
+        markAttention: "Precisa de atenção",
+        markFailure: "Falhou")
 
     package static let tr = ExternalToolStrings(
         sectionTitle: "Dışarıdan araçlar",
@@ -434,7 +477,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Bu araç listesi VitruvianSoftware tarafından imzalanmamış, bu yüzden Vitruvian onu kullanmayacak.",
         downloadMismatch: "İndirilen dosya katalogda listelenen dosya değil, bu yüzden hiçbir şey yüklenmedi.",
         downloadNotTheTool: "İndirilen dosya, kataloğun söylediği araç değil, bu yüzden hiçbir şey yüklenmedi.",
-        installRefusedFormat: "“%@” yüklenmedi")
+        installRefusedFormat: "“%@” yüklenmedi",
+        showStatusInIsland: "Durumunu kapalı Dynamic Island’da göster",
+        agreeShowsStatus: "Kapalı Dynamic Island’da küçük bir durum işareti gösterir.",
+        markOK: "Sorun yok",
+        markBusy: "İşlem sürüyor",
+        markAttention: "Dikkat gerekiyor",
+        markFailure: "Başarısız oldu")
 
     package static let ru = ExternalToolStrings(
         sectionTitle: "Сторонние инструменты",
@@ -497,7 +546,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Этот список инструментов не подписан VitruvianSoftware, поэтому Vitruvian не будет его использовать.",
         downloadMismatch: "Загруженный файл не совпадает с указанным в каталоге, поэтому ничего не установлено.",
         downloadNotTheTool: "Загруженный файл не является инструментом, указанным в каталоге, поэтому ничего не установлено.",
-        installRefusedFormat: "Инструмент «%@» не установлен")
+        installRefusedFormat: "Инструмент «%@» не установлен",
+        showStatusInIsland: "Показывать его статус на закрытом Dynamic Island",
+        agreeShowsStatus: "Он показывает небольшую отметку статуса на закрытом Dynamic Island.",
+        markOK: "Всё в порядке",
+        markBusy: "Выполняется",
+        markAttention: "Требует внимания",
+        markFailure: "Сбой")
 
     package static let es = ExternalToolStrings(
         sectionTitle: "Herramientas externas",
@@ -560,7 +615,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Esta lista de herramientas no está firmada por VitruvianSoftware, así que Vitruvian no la usará.",
         downloadMismatch: "La descarga no es la que indica el catálogo, así que no se instaló nada.",
         downloadNotTheTool: "La descarga no es la herramienta que el catálogo dice, así que no se instaló nada.",
-        installRefusedFormat: "No se instaló “%@”")
+        installRefusedFormat: "No se instaló “%@”",
+        showStatusInIsland: "Mostrar su estado en el Dynamic Island cerrado",
+        agreeShowsStatus: "Muestra una pequeña marca de estado en el Dynamic Island cerrado.",
+        markOK: "Todo bien",
+        markBusy: "Trabajando",
+        markAttention: "Requiere atención",
+        markFailure: "Falló")
 
     package static let sk = ExternalToolStrings(
         sectionTitle: "Nástroje zvonka",
@@ -623,7 +684,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Tento zoznam nástrojov nepodpísal VitruvianSoftware, preto ho Vitruvian nepoužije.",
         downloadMismatch: "Stiahnutý súbor nie je ten, ktorý uvádza katalóg, preto sa nič nenainštalovalo.",
         downloadNotTheTool: "Stiahnutý súbor nie je nástroj, za ktorý ho katalóg vydáva, preto sa nič nenainštalovalo.",
-        installRefusedFormat: "Nástroj „%@“ sa nenainštaloval")
+        installRefusedFormat: "Nástroj „%@“ sa nenainštaloval",
+        showStatusInIsland: "Zobraziť jeho stav na zatvorenom Dynamic Island",
+        agreeShowsStatus: "Zobrazuje malú značku stavu na zatvorenom Dynamic Island.",
+        markOK: "V poriadku",
+        markBusy: "Pracuje",
+        markAttention: "Vyžaduje pozornosť",
+        markFailure: "Zlyhalo")
 
     package static let de = ExternalToolStrings(
         sectionTitle: "Werkzeuge von außen",
@@ -686,7 +753,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Diese Werkzeugliste ist nicht von VitruvianSoftware signiert, darum verwendet Vitruvian sie nicht.",
         downloadMismatch: "Der Download ist nicht der, den der Katalog aufführt, darum wurde nichts installiert.",
         downloadNotTheTool: "Der Download ist nicht das Werkzeug, das der Katalog angibt, darum wurde nichts installiert.",
-        installRefusedFormat: "„%@“ wurde nicht installiert")
+        installRefusedFormat: "„%@“ wurde nicht installiert",
+        showStatusInIsland: "Seinen Status im geschlossenen Dynamic Island anzeigen",
+        agreeShowsStatus: "Es zeigt eine kleine Statusmarke im geschlossenen Dynamic Island.",
+        markOK: "In Ordnung",
+        markBusy: "Arbeitet",
+        markAttention: "Braucht Aufmerksamkeit",
+        markFailure: "Fehlgeschlagen")
 
     package static let fr = ExternalToolStrings(
         sectionTitle: "Outils externes",
@@ -749,7 +822,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Cette liste d’outils n’est pas signée par VitruvianSoftware, donc Vitruvian ne l’utilisera pas.",
         downloadMismatch: "Le téléchargement n’est pas celui que le catalogue indique, donc rien n’a été installé.",
         downloadNotTheTool: "Le téléchargement n’est pas l’outil que le catalogue annonce, donc rien n’a été installé.",
-        installRefusedFormat: "«\u{00A0}%@\u{00A0}» n’a pas été installé")
+        installRefusedFormat: "«\u{00A0}%@\u{00A0}» n’a pas été installé",
+        showStatusInIsland: "Afficher son état sur le Dynamic Island fermé",
+        agreeShowsStatus: "Il affiche une petite marque d’état sur le Dynamic Island fermé.",
+        markOK: "Tout va bien",
+        markBusy: "En cours",
+        markAttention: "Demande votre attention",
+        markFailure: "Échec")
 
     package static let it = ExternalToolStrings(
         sectionTitle: "Strumenti esterni",
@@ -812,7 +891,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Questo elenco di strumenti non è firmato da VitruvianSoftware, quindi Vitruvian non lo userà.",
         downloadMismatch: "Il download non è quello indicato nel catalogo, quindi non è stato installato nulla.",
         downloadNotTheTool: "Il download non è lo strumento che il catalogo dichiara, quindi non è stato installato nulla.",
-        installRefusedFormat: "“%@” non è stato installato")
+        installRefusedFormat: "“%@” non è stato installato",
+        showStatusInIsland: "Mostra il suo stato nel Dynamic Island chiuso",
+        agreeShowsStatus: "Mostra un piccolo indicatore di stato nel Dynamic Island chiuso.",
+        markOK: "Tutto a posto",
+        markBusy: "Al lavoro",
+        markAttention: "Richiede attenzione",
+        markFailure: "Non riuscito")
 
     package static let ja = ExternalToolStrings(
         sectionTitle: "外部ツール",
@@ -875,7 +960,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "このツールの一覧はVitruvianSoftwareによって署名されていないため、Vitruvianは使用しません。",
         downloadMismatch: "ダウンロードしたファイルがカタログに掲載されたものと一致しないため、何もインストールされていません。",
         downloadNotTheTool: "ダウンロードしたファイルがカタログに記載されたツールではないため、何もインストールされていません。",
-        installRefusedFormat: "「%@」はインストールされませんでした")
+        installRefusedFormat: "「%@」はインストールされませんでした",
+        showStatusInIsland: "閉じたDynamic Islandに状態を表示",
+        agreeShowsStatus: "閉じたDynamic Islandに小さな状態マークを表示します。",
+        markOK: "問題なし",
+        markBusy: "処理中",
+        markAttention: "確認が必要",
+        markFailure: "失敗")
 
     package static let ko = ExternalToolStrings(
         sectionTitle: "외부 도구",
@@ -938,7 +1029,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "이 도구 목록은 VitruvianSoftware가 서명하지 않았으므로 Vitruvian은 사용하지 않습니다.",
         downloadMismatch: "다운로드한 파일이 카탈로그에 등록된 파일과 달라 아무것도 설치되지 않았습니다.",
         downloadNotTheTool: "다운로드한 파일이 카탈로그에 적힌 도구가 아니어서 아무것도 설치되지 않았습니다.",
-        installRefusedFormat: "‘%@’이(가) 설치되지 않았습니다")
+        installRefusedFormat: "‘%@’이(가) 설치되지 않았습니다",
+        showStatusInIsland: "닫힌 Dynamic Island에 상태 표시",
+        agreeShowsStatus: "닫힌 Dynamic Island에 작은 상태 표시를 보여 줍니다.",
+        markOK: "정상",
+        markBusy: "작업 중",
+        markAttention: "확인 필요",
+        markFailure: "실패")
 
     package static let uk = ExternalToolStrings(
         sectionTitle: "Сторонні інструменти",
@@ -1001,7 +1098,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "Цей список інструментів не підписано VitruvianSoftware, тому Vitruvian не використовуватиме його.",
         downloadMismatch: "Завантажений файл не той, що вказаний у каталозі, тому нічого не встановлено.",
         downloadNotTheTool: "Завантажений файл не є інструментом, указаним у каталозі, тому нічого не встановлено.",
-        installRefusedFormat: "Інструмент «%@» не встановлено")
+        installRefusedFormat: "Інструмент «%@» не встановлено",
+        showStatusInIsland: "Показувати його стан на закритому Dynamic Island",
+        agreeShowsStatus: "Він показує невелику позначку стану на закритому Dynamic Island.",
+        markOK: "Усе гаразд",
+        markBusy: "Виконується",
+        markAttention: "Потребує уваги",
+        markFailure: "Збій")
 
     package static let zhHans = ExternalToolStrings(
         sectionTitle: "外部工具",
@@ -1064,7 +1167,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "此工具列表未经 VitruvianSoftware 签名，因此 Vitruvian 不会使用它。",
         downloadMismatch: "下载的文件与目录中列出的不一致，因此未安装任何内容。",
         downloadNotTheTool: "下载的文件不是目录所说的工具，因此未安装任何内容。",
-        installRefusedFormat: "未安装“%@”")
+        installRefusedFormat: "未安装“%@”",
+        showStatusInIsland: "在收起的 Dynamic Island 上显示其状态",
+        agreeShowsStatus: "它会在收起的 Dynamic Island 上显示一个小状态标记。",
+        markOK: "正常",
+        markBusy: "进行中",
+        markAttention: "需要留意",
+        markFailure: "失败")
 
     package static let zhTW = ExternalToolStrings(
         sectionTitle: "外部工具",
@@ -1127,7 +1236,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "此工具列表未經 VitruvianSoftware 簽署，因此 Vitruvian 不會使用它。",
         downloadMismatch: "下載的檔案與目錄中列出的不一致，因此未安裝任何內容。",
         downloadNotTheTool: "下載的檔案不是目錄所說的工具，因此未安裝任何內容。",
-        installRefusedFormat: "未安裝「%@」")
+        installRefusedFormat: "未安裝「%@」",
+        showStatusInIsland: "在收合的 Dynamic Island 上顯示其狀態",
+        agreeShowsStatus: "它會在收合的 Dynamic Island 上顯示一個小狀態標記。",
+        markOK: "正常",
+        markBusy: "進行中",
+        markAttention: "需要留意",
+        markFailure: "失敗")
 
     package static let zhHK = ExternalToolStrings(
         sectionTitle: "外部工具",
@@ -1190,7 +1305,13 @@ extension ExternalToolStrings {
         catalogNotOurs: "此工具列表未經 VitruvianSoftware 簽署，因此 Vitruvian 不會使用它。",
         downloadMismatch: "下載的檔案與目錄中列出的不相符，因此未安裝任何內容。",
         downloadNotTheTool: "下載的檔案不是目錄所指的工具，因此未安裝任何內容。",
-        installRefusedFormat: "未安裝「%@」")
+        installRefusedFormat: "未安裝「%@」",
+        showStatusInIsland: "在收合的 Dynamic Island 上顯示其狀態",
+        agreeShowsStatus: "它會在收合的 Dynamic Island 上顯示一個細小的狀態標記。",
+        markOK: "正常",
+        markBusy: "進行中",
+        markAttention: "需要留意",
+        markFailure: "失敗")
 }
 
 extension FeatureStrings {

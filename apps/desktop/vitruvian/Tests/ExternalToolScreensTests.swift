@@ -23,6 +23,7 @@ enum ExternalToolScreensTests {
         switchAndOwnWords(suite)
         ownWordsInAlerts(suite)
         keptAfterRemoval(suite)
+        aStatusIsSaidBeforeAgreeingAndSwitchedInTheDetail(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -679,5 +680,55 @@ enum ExternalToolScreensTests {
                      "removing a tool that will not stop, with its data to be deleted, takes its row away and tells "
                          + "the person once where what it saved is; a tool that leaves, or whose data was to be kept, "
                          + "is removed and nothing is said")
+    }
+}
+
+extension ExternalToolScreensTests {
+    static func aStatusIsSaidBeforeAgreeingAndSwitchedInTheDetail(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        let folder = bench.folder(manifest: ExternalToolManifestTests.file(ExternalToolStoreTests.withStatus))
+        guard case .success(let offer) = bench.store.offer(from: folder) else {
+            return suite.expect(false, "a tool that declares a status is offered")
+        }
+        let sheet = content(offer)
+        suite.expect(sheet.showsStatus == "It shows a small status mark on the closed Dynamic Island."
+                         && sheet.listRows == sheet.commands.count + sheet.uses.count,
+                     "the agreement sheet says, in the app's words, that the tool shows a status on the closed "
+                         + "island; the line is no row of its lists")
+        suite.expect(content(offer, .fr).showsStatus == FeatureStrings.externalTools(.fr).agreeShowsStatus
+                         && content(offer, .fr).showsStatus != sheet.showsStatus,
+                     "in the person's language")
+        let plain = ExternalToolStoreTests.Bench()
+        defer { plain.close() }
+        if case .success(let other) = plain.store.offer(from: plain.folder()) {
+            suite.expect(content(other).showsStatus == nil, "and says nothing of a status for a tool that declares none")
+        }
+
+        bench.add(folder)
+        func detail() -> ExternalToolDetail? {
+            bench.store.listed.first.map {
+                ExternalToolDetail($0, files: nil, language: .enUS, strings: english,
+                                   settings: bench.store.settings(of: $0.id), settingsTitle: "Settings",
+                                   showsInIsland: bench.store.showsInIsland($0.id),
+                                   showsStatus: bench.store.showsStatus($0.id))
+            }
+        }
+        let shown = detail()
+        suite.expect(shown?.showsStatus == true && shown?.showStatusTitle == "Show its status on the closed Dynamic Island"
+                         && shown?.showsInIsland == true,
+                     "a tool that declares a status has a switch for it in its detail, on until turned off")
+        suite.expect(shown?.listRows == 2 + 1 + 2 + 1 + 1,
+                     "the switch counts among the detail's rows: two settings, a command, two services and two switches")
+        bench.store.setShowsStatus(id, false)
+        suite.expect(detail()?.showsStatus == false, "turned off, the switch says so")
+        bench.store.setOn(id, false)
+        suite.expect(detail()?.showsStatus == false, "a tool that is switched off keeps its switch, as it stands")
+        plain.add(plain.folder())
+        if let listed = plain.store.listed.first {
+            let old = ExternalToolDetail(listed, files: nil, language: .enUS, strings: english)
+            suite.expect(old.showsStatus == nil && old.listRows == 1 + 3,
+                         "a tool that declares no status has no such switch, and its detail is as before")
+        }
     }
 }

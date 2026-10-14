@@ -65,6 +65,14 @@ package enum RestingStatus {
         }
     }
 
+    /// The statuses that compete for the mark: of the tools whose status
+    /// may be drawn, in their order, each that has set one. `statuses` is
+    /// every status kept, a switched-off tool's among them; `tools` is what
+    /// leaves that one out.
+    package static func shown(of tools: [ToolID], statuses: [ToolID: ToolStatus]) -> [(ToolID, ToolStatus)] {
+        tools.compactMap { tool in statuses[tool].map { (tool, $0) } }
+    }
+
     /// The mark to draw: the worst of the built-in one and the tools'. On
     /// a tie the built-in wins, then the tool that comes first in `tools`,
     /// which is the order they were added in. `gitHub` is nil when nothing

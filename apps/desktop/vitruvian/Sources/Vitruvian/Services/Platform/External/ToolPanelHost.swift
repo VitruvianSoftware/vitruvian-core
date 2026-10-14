@@ -20,6 +20,19 @@ package protocol ToolWebPage: AnyObject {
     func close()
 }
 
+extension RestingStatus {
+    /// The page a click on the closed island's wing opens, when the mark it
+    /// shows is a tool's: that tool's island page, unless the mark says all
+    /// is well, which asks for nothing. `pages` is the island pages the
+    /// Tools area lists, so a tool with no island page, or one whose page
+    /// the person hid, gives nil. Nil too for the built-in mark and for no
+    /// mark: the click then does what it always did.
+    package static func opens(_ mark: RestingMark?, pages: [ToolPanelHost.Key]) -> ToolPanelHost.Key? {
+        guard case .tool(let tool, let status)? = mark, status.state != .ok else { return nil }
+        return pages.first { $0.tool == tool }
+    }
+}
+
 /// What tools from outside draw: for every panel the person has open, the
 /// last page its tool sent, and the tool's badge. It asks a tool for a
 /// panel's page, draws at most four of the pages a tool sends unprompted in

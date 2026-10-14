@@ -422,6 +422,32 @@ Step 5, each planted and seen to fail:
   4. "the agreement sheet says nothing of a status": make `showsStatus` nil.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-13).**
+
+- **The label's colon follows the language in code, not in a seventh string.** The label joins the tool's name and its words. A format string for that (`%1$@: %2$@`) would be the same text in most languages, and `ExternalToolStringsTests` fails any text left as the English. So `ToolStatusMarkContent.colon(in:)` writes `: `, French's no-break space before it, and the full-width colon for Japanese and Chinese. The six strings of the plan are the only new ones.
+- **`markOK` is "OK" in English only.** The same test would call "OK" untranslated elsewhere, so each other language says "all is well" in its own words ("In Ordnung", "Tout va bien", "問題なし").
+- **`ToolStatusMarkContent` holds its own `Weight` and `Tint`**, two small enums, in place of SwiftUI's `Font.Weight` and `Color`, so the tests compare plain values.
+- **A busy mark is a view of its own inside `ToolStatusMark`.** The built-in mark keeps one `breathing` flag for its whole life, so an amber mark that goes and comes back would stand still. A tool's mark changes state far more often; its breathing starts again each time `busy` takes another state's place. The built-in mark is untouched.
+- **`RestingStatus.shown(of:statuses:)`** joins `statusTools()` with the host's statuses, in `Core`, so the rule "a switched-off status is kept and not drawn" has a test (`aSwitchedOffStatusIsKeptAndNotDrawn`).
+- **The built-in's verdict rule takes plain values:** `NotchGitHubRestingIndicator.verdict(watching:aggregate:)`, tested by `theBuiltInMarkIsWhatItWas`.
+- **The tap checks that the island has its Tools page** (`NotchService.modules.contains(.tools)`) before it takes the tool's case. Without the check, a click with the Tools page switched off would have done nothing at all; with it the click falls through to what it does today. It also closes a quick tool that is open on the Tools page (`QuickLauncherService.closeUtility()`), which would otherwise be drawn in place of the tool's page. Neither was run at a screen: by-hand check 4.
+- **`ExternalToolSetting.Choice` is the one type for a menu's rows**, in a setting and in a page's `choice` block, and `Choice.menu(selected:options:limit:)` builds both, the extra first row included. A setting's titles are cut to 60 characters, a block's to 120.
+- **Picking an option takes the stored row away** (`Control.picking`). The row stood for a value that is no option's; once the person has replaced that value the row has nothing to stand for. Picking the stored row itself keeps everything as it is.
+- **The agreement sheet draws its lists for a tool whose only "row" is the status line.** A tool with no command and no service that declares a status would otherwise have had its line left out.
+- **The detail says it with the switch alone.** "The strings" table puts `agreeShowsStatus` in the tool's detail too; there the switch's own words say the same, so the sentence is on the agreement sheet only.
+- **Regression 2 is in `ToolPanelHost.swift`**, where `opens` is, and fails in `platform`; regressions 1 and 4 fail in `tool-runtime`.
+- Counts: `platform` 942 (was 913), `tool-runtime` 942 (was 918). `bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:by-hand` succeeded.
+- **Nothing was drawn.** No view was run, and the app was not launched.
+
+Step 5, each planted and seen to fail:
+
+| Regression | Suite | The check that failed |
+|---|---|---|
+| a stored value that is no option is dropped from the menu | tool-runtime | "a stored value that is no option is shown as written, as the first row, and selected; the other rows are the options in order" |
+| a green mark opens the tool's page | platform | "a green mark asks for nothing: the click does what it does today" |
+| busy does not breathe | platform | "busy is the built-in's amber in size and motion: 9 points, medium, orange, breathing" |
+| the agreement sheet says nothing of a status | tool-runtime | "the agreement sheet says, in the app's words, that the tool shows a status on the closed island; the line is no row of its lists" |
+
 ---
 
 ### Task 6: The guide, the protocol's overview, and the records
