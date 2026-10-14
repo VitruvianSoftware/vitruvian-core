@@ -1,0 +1,70 @@
+# What each agent's GitHub App is MEANT to be allowed to do. NOT secret.
+#
+# GitHub has no API to change an App's permissions: it is done by hand in the
+# web UI (see README.md, "Changing an App's permissions"). This file is the
+# record of what that hand change is supposed to have produced, and
+# //tools/agent-app:permission-drift fails when GitHub says otherwise -- daily
+# in .github/workflows/agent-app-permissions.yaml, or by hand with
+# `bazel run //tools/agent-app:permission-drift`.
+#
+# One row per permission. An agent with no row for a permission must NOT have
+# it. Levels are GitHub's: read, write or admin. Names are the REST API's
+# (`pull_requests`, not "Pull requests"). metadata=read is granted to every App
+# by GitHub and cannot be removed; it is listed so the file matches what the
+# API returns.
+#
+# Recorded from GitHub 2026-10-14; wren's actions=write was added by hand that
+# day so it can start workflow runs.
+#
+# agent	permission	level
+beacon	checks	read
+beacon	contents	write
+beacon	metadata	read
+beacon	pull_requests	write
+beacon	workflows	write
+atlas	checks	read
+atlas	contents	write
+atlas	metadata	read
+atlas	pull_requests	write
+atlas	workflows	write
+ridge	checks	read
+ridge	contents	write
+ridge	metadata	read
+ridge	pull_requests	write
+ridge	workflows	write
+wren	actions	write
+wren	checks	read
+wren	contents	write
+wren	metadata	read
+wren	pull_requests	write
+wren	workflows	write
+scout	checks	read
+scout	contents	write
+scout	metadata	read
+scout	pull_requests	write
+scout	workflows	write
+quill	checks	read
+quill	contents	write
+quill	metadata	read
+quill	pull_requests	write
+quill	workflows	write
+compass	checks	read
+compass	contents	write
+compass	metadata	read
+compass	pull_requests	write
+compass	workflows	write
+pace	checks	read
+pace	contents	write
+pace	metadata	read
+pace	pull_requests	write
+pace	workflows	write
+aegis	checks	read
+aegis	contents	write
+aegis	metadata	read
+aegis	pull_requests	write
+aegis	workflows	write
+forge	checks	read
+forge	contents	write
+forge	metadata	read
+forge	pull_requests	write
+forge	workflows	write

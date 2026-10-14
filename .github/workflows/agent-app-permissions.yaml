@@ -1,0 +1,144 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+name: Agent App permissions
+
+# Does each agent's GitHub App have exactly the permissions
+# tools/agent-app/permissions.tsv declares? GitHub has no API to change an
+# App's permissions, so they are changed by hand in the web UI and this is the
+# guard that the result matches the record (tools/agent-app/README.md,
+# "Changing an App's permissions"). It reports, per App: ok, DRIFT, PENDING (the
+# org has not accepted a change yet), MISSING, UNLISTED, or NOT CHECKED.
+#
+# Its logic is tested offline in //tools/agent-app:permission_drift_test. This
+# is the live half: it needs GitHub, so it is a schedule, not a presubmit test.
+#
+# NOT a required check, and not run on pull requests: it describes GitHub's
+# state, not a change's correctness. Red means a permission drifted, a change
+# is waiting to be accepted, or GitHub could not be read -- never a silent green.
+#
+# CREDENTIAL: listing an org's App installations needs org Administration read.
+# The agents' own tokens and GITHUB_TOKEN cannot (both get a 403). The
+# vitruviansoftware-pulumi App already holds it and its key is already the
+# APP_PRIVATE_KEY secret (repo_config uses it), so no new secret: the token
+# minted here is narrowed to organization_administration=read, its only use.
+#
+# Who is told: a red scheduled run opens or refreshes ONE issue, as
+# registry-trust.yaml does, because a scheduled run notifies nobody. A red run
+# on a push to main is a failed push run, which notify-ci-issues.yaml sends on.
+
+on:
+  schedule:
+    # Daily, off the hour. Permissions change by hand a few times a month at
+    # most; a day is soon enough to notice, and hourly would spend 24 runner
+    # starts a day to learn nothing new.
+    - cron: "53 6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # The record, the checker, or this workflow changed: check it once now.
+    paths:
+      - "tools/agent-app/agents.tsv"
+      - "tools/agent-app/permissions.tsv"
+      - "tools/agent-app/permission_drift.py"
+      - ".github/actions/mint-pulumi-app-token/**"
+      - ".github/workflows/agent-app-permissions.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-app-permissions-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Agent Apps have the permissions the code declares
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mint a read-only org token (vitruviansoftware-pulumi App)
+        id: token
+        uses: ./.github/actions/mint-pulumi-app-token
+        with:
+          client-id: ${{ vars.PULUMI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-administration: read
+
+      # Plain python3, standard library only: no Bazel, so no cache and no
+      # BuildBuddy key. Exit 1 names each App and permission that drifted;
+      # exit 2 means GitHub could not be read, which is never a pass.
+      - name: Compare permissions.tsv with GitHub
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          set +e -u -o pipefail
+          python3 tools/agent-app/permission_drift.py | tee "$RUNNER_TEMP/report.txt"
+          rc=${PIPESTATUS[0]}
+          {
+            echo '```'
+            cat "$RUNNER_TEMP/report.txt"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+  # Separate job, so the check itself never holds issues: write. One issue,
+  # found by its exact title: later red days comment on it, and closing it
+  # re-arms creation.
+  alert:
+    name: Open or refresh the issue
+    needs: check
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or refresh the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="Agent App permissions differ from tools/agent-app/permissions.tsv"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="The scheduled \`agent-app-permissions\` check failed.
+
+          An agent App's permissions on GitHub differ from
+          tools/agent-app/permissions.tsv, a change is waiting for the org to
+          accept it, or GitHub could not be read. The run log names each App
+          and permission.
+
+          Failing run: ${run_url}
+
+          Reproduce: \`bazel run //tools/agent-app:permission-drift\` (uses your
+          gh login). How to fix: tools/agent-app/README.md, \"Changing an App's
+          permissions\"."
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still red: ${run_url}"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

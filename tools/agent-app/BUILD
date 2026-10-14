@@ -21,6 +21,11 @@ otherwise do by hand at 1am and mis-remember afterwards.
 The runbook these implement is docs/guides/creating-an-agent-github-app.md.
 """
 
+# Hand-written: gazelle's Python extension would otherwise generate its own
+# targets for permission_drift.py beside these.
+# gazelle:ignore
+
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -47,4 +52,35 @@ alias(
     name = "agent_app_test",
     actual = ":agent-app_test",
     deprecation = "Target :agent_app_test is deprecated. Use :agent-app_test instead. Will be removed in Phase 5.",
+)
+
+# Does each agent App have exactly the permissions permissions.tsv declares?
+# Reads GitHub as your gh login (GH_TOKEN wins if set). Needs the network, so it
+# is a command and a daily workflow (agent-app-permissions.yaml), not a test.
+py_binary(
+    name = "permission-drift",
+    srcs = ["permission_drift.py"],
+    data = [
+        "agents.tsv",
+        "permissions.tsv",
+    ],
+    imports = ["."],
+    main = "permission_drift.py",
+)
+
+# The judging, with a fake GitHub and a local HTTP server: no real network.
+py_test(
+    name = "permission_drift_test",
+    size = "small",
+    srcs = [
+        "permission_drift.py",
+        "permission_drift_test.py",
+    ],
+    data = [
+        "agents.tsv",
+        "permissions.tsv",
+    ],
+    # The folder name has a hyphen, so it cannot be a package: import by path.
+    imports = ["."],
+    main = "permission_drift_test.py",
 )
