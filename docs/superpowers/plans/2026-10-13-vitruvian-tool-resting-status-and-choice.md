@@ -502,6 +502,15 @@ Step 5, each planted and seen to fail:
   - The required check `release-scope` must pass. If it names a third product, a task changed a folder it should not have: find the file, do not add the product to the line.
 - [ ] **Step 5:** All checks green before anyone is asked to review.
 
+**As built (2026-10-13).** Pull request #3245, by `wren`, with the label `do-not-automerge` and auto-merge not armed.
+
+- **Run on the tree merged with `main`:** the app's whole unit test run (49 suites OK; `platform` 942, `tool-runtime` 945, `notch` 70,965, `agents` 668); the builds of `:Vitruvian`, `:VitruvianLibWithSampleTool` and `:by-hand`; the app's source, pin, upstream and mutation-fixture tests; all 26 tests of the SDK's pipeline unit on the macOS lane and the 19 that need no Mac on the plain lane; the GitHub, Nexus Agent and HomeSpeaker tools' tests; `//tools/license:check` and `:verify`; `//tools/conformance:check`; `//:tidy`, which left only the known `Cryptodome` line, reversed by hand; the presubmit generator's `--check`; and `release-scope`, locally, which asked for `Releases: vitruvian, vitruvian-sdk` and named no third product.
+- **The plain lane cannot be run with `//packages/vitruvian-sdk/...` on a Mac**: without `--config=macos-app` the Swift targets fail to build and the wildcard stops. Its tests were named one by one.
+- **Step 3 was run with a small driver, not `bazel run :mutation_checks`**, which plants every regression in the file (over a hundred, each a build). The driver reads `mutation_checks.py` itself and does to the named entries exactly what the script's loop does: plant, run `unit_tests` with the entry's suite, require Bazel's status 3, "TESTS FAILED" and the entry's message, and put the file back. All thirteen were DETECTED on the final tree. One was planted again after the fix below moved its line.
+- **Not run:** `:selftest` and `:fan_helper_selftest`, which start the built app. The worker was told not to launch the app on this Mac. CI runs both.
+- **One fix after Task 5's commit**, `fix(desktop): a setting's menu follows the language and what is selected while its detail is open`: see Task 5's notes.
+- **`aspect lint` needs `--config=lint` here.** Run that way on the Python and TypeScript targets this touched, it reports nothing in the lines this change wrote. It does report findings that were there before: `ty`'s in `tools/sdk-codegen`, and ESLint's report formatter fails to load `chalk`.
+
 After it merges, release-please opens `chore(main): release vitruvian-sdk 1.3.0` and `chore(main): release vitruvian 3.48.0`. Merge the SDK's first; confirm the mirror tagged `v1.3.0` and `go/v1.3.0`. The app's release goes through its usual gate. **If either version comes out as another number, Task 8 uses the number that was released.**
 
 ---

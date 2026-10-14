@@ -1,6 +1,6 @@
 # A tool's status on the closed island, and a choice among fixed options
 
-**Status:** draft for James's approval, 2026-10-13. Nothing here is built.
+**Status:** approved by James on 2026-10-13, with every pick of section 11 as written. Built the same day as pull request #3245: the protocol, the five kits, the conformance script, the samples, the app and the guide (the plan's Tasks 1 to 7). Not yet looked at on a screen: the plan's by-hand checks are owed. The GitHub tool and the catalog (Tasks 8 and 9) follow that pull request's two releases. Where the build differs from this document, the plan's "As built" notes say how.
 **Tracks:** issue #3130. **Follows:** `2026-10-12-vitruvian-tools-for-everyone-design.md`
 (protocol 2, section 8) and stage E's plan, whose table "What the protocol lacks"
 names these as gaps 1 and 4.
