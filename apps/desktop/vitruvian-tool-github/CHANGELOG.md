@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.0.1...vitruvian-tool-github-v1.1.0) (2026-10-14)
+
+
+### Features
+
+* **vitruvian-tool-github:** the status on the closed island, and pickers for the mouse lights ([#3255](https://github.com/VitruvianSoftware/vitruvian-core/issues/3255)) ([4c1668b](https://github.com/VitruvianSoftware/vitruvian-core/commit/4c1668bc528b75a6e64295a20203b98330445283))
+
+
+### Bug Fixes
+
+* **ci:** the HomeSpeaker tool's manifest keeps the layout release-please writes ([#3217](https://github.com/VitruvianSoftware/vitruvian-core/issues/3217)) ([bccd6e8](https://github.com/VitruvianSoftware/vitruvian-core/commit/bccd6e897b7ca1de1bd8d30998711201aafa6cd4))
+
 ## [1.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.0.0...vitruvian-tool-github-v1.0.1) (2026-10-13)
 
 
