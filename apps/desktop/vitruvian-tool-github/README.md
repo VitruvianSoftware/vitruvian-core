@@ -63,13 +63,15 @@ new program to the Keychain with every release.
 
 ## From the app's feature
 
-When the app installs this tool from the catalog while its GitHub feature is
-on, it hands over, once, through the tool's `storage`: the token, the
-watched repositories, the poll intervals, the mouse settings and the client
-ID, and turns the feature off. The tool moves the token into `secrets.json`
-on its first run and clears the handed copy. The feature's island page, its
-place in your island layout and its `h` key do not move: the tool's page is
-a tile on the island's Tools page.
+Vitruvian 3.46 to 3.50.1 hand this tool what the app's old GitHub feature
+kept, once, through the tool's `storage`, when the tool is added: the token,
+the watched repositories, the poll intervals, the mouse settings and the
+client ID. The tool moves the token into `secrets.json` on its first run and
+clears the handed copy. The feature itself went in 3.49; the hand-off went
+after 3.50.1. Added with a later app, the tool starts signed out, with its
+own defaults: sign in once. The feature's island page, its place in your
+island layout and its `h` key did not move: the tool's page is a tile on the
+island's Tools page.
 
 ## Build
 

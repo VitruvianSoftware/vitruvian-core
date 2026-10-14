@@ -36,29 +36,17 @@ ROOT = WORKSPACE / "apps/desktop/vitruvian"
 UNIT_TESTS = "//apps/desktop/vitruvian:unit_tests"
 
 MUTATIONS = [
-    ("the GitHub hand-off forgets the token", "platform", "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
-     "        if let token, !token.isEmpty { values[Key.migratedToken] = .string(token) }\n", "",
-     "under the tool's keys, as the tool reads them"),
-    ("Add Tool waits for the Keychain prompt again", "platform",
-     "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
-     "        keychainQueue.async { [weak self] in\n"
-     "            let read = try? store.load()\n"
-     "            DispatchQueue.main.async { [weak self] in\n"
-     "                MainActor.assumeIsolated { self?.wasRead(read) }\n"
-     "            }\n"
-     "        }\n",
-     "        wasRead(try? store.load())\n",
-     "the feature's token is read, and never on the main thread"),
-    ("the GitHub tool is added before the Keychain has answered", "platform",
-     "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
-     "        parts.readToken(ready)\n", "        ready()\n",
-     "while the Keychain is asked the tool is being added: nothing is handed or started yet"),
-    ("a tool removed while it is being added is added all the same", "platform",
+    ("a tool removed while it is being added is added all the same", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
      "        // nothing and hands nothing over.\n        waitingAdds[id] = nil\n",
      "        // nothing and hands nothing over.\n",
-     "the Keychain's late answer is dropped, and whoever asked is told so"),
-    ("agreeing to a tool twice adds it twice", "platform",
+     "an add whose wait ends after the tool was removed is dropped, and whoever asked is told so"),
+    ("an add that waits adds at once", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "        parts.beforeAdding(id) { [weak self] in\n",
+     "        done(add(consent))\n        parts.beforeAdding(id) { [weak self] in\n",
+     "Add Tool returns while the add waits, and nothing is added, handed or started yet"),
+    ("agreeing to a tool twice adds it twice", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
      "            guard let self, self.waitingAdds[id] == turn else { return done(nil) }\n",
      "            guard let self else { return done(nil) }\n",

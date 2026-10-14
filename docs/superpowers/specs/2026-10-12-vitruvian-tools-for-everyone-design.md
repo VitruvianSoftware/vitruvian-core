@@ -561,7 +561,7 @@ the dependency order; James approves each plan before it is built.
 | **B. Kits** | **Built.** Part one (B1, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b1.md`): the generator, the TypeScript and Python kits, their samples, `init` for both, publishing to npm and PyPI. Part two (B2, `docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-b2.md`): the Go and Rust kits, their samples, `init` for both, publishing to crates.io; the Go kit by the `go/vX.Y.Z` tag. `tools/sdk-codegen`; the TypeScript, Python, Go and Rust kits, samples, conformance in CI, registry publishing; `init` templates for each; the examples pages. Two plans if it reads better: B1 TypeScript and Python (registries exist), B2 Go and Rust. | A tool's author | SDK 0.10.0 |
 | **C. Catalogue** | **Built.** `catalog/`, its schema and CI checks, signing, the website page, `CatalogueInstaller`, `CatalogueWatch`, "Browse Tools…", updates, the twelve strings, the privacy page. Mock-ups first. | Everyone | A minor app release |
 | **D. Protocol 2** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-d.md`), but for the four kits after Swift, which wait for B1 and B2. Mock-ups; the manifest and messages; the renderer, the web panel and the bridge; island, Settings and window placements; the kits' `panels` API and the `hello-panel` samples; the conformance check; the docs. | Everyone with a protocol 2 tool | SDK 1.0.0; a minor app release |
-| **E. The GitHub tool** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-e.md`), the removal one release after the rest. The tool in its own folder, exported to its own repository; its catalogue entry; the migration; then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
+| **E. The GitHub tool** | **Built** (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-e.md`), the removal one release after the rest (3.49), and the hand-off after 3.50.1. The tool in its own folder, exported to its own repository; its catalogue entry; the migration; then the removal a release later. | Everyone who used the GitHub feature | Two minor app releases |
 | **F. Nexus Agent and HomeSpeaker** | As E, one at a time. | Their users | Minor app releases |
 
 **Stage A, as built.** The plan is
@@ -691,10 +691,14 @@ Where it differs from section 9, each a decision of its plan:
   tile on the Tools page. The app's one new text says so.
 - The catalogue's schema admits `"protocol": "2"`; the app's one new text is
   `movesToTool`, in fifteen languages.
-- The removal keeps the hand-off one release more, reading the Keychain
-  item and the feature's old preference keys, for a person who skipped the
-  release that offered the tool; stage F removes it. The app keeps shipping
-  the `gravastar-mouse` helper the tool finds.
+- The removal (3.49) kept the hand-off one release more, reading the
+  Keychain item and the feature's old preference keys, for a person who
+  skipped the release that offered the tool. It went after 3.50.1, with the
+  keys and the Keychain store: nothing in the app touches the Keychain now,
+  and the old item stays where it was until the person deletes it. The
+  store's `beforeAdding`, `added` and `removed` hooks stay, with nothing
+  behind them. The app keeps shipping the `gravastar-mouse` helper the tool
+  finds.
 
 What can start before a stage is approved: nothing is built, but the
 mock-ups for C and D can be drawn while A and B are being built, as Stage

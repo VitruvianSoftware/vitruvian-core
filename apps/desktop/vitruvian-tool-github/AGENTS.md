@@ -51,7 +51,8 @@ bundles; this is a tool, and its one artifact is a zip (see "Releases").
   ignores the options and draws a text field. Never give a
   setting a new type, and never rewrite a stored value: `MouseTests` holds
   every option to what `MouseLight.parse` reads and to what the app's
-  feature handed over.
+  feature handed over (3.46 to 3.50.1): those values stay in people's
+  storage.
 - **The colour options' titles are English only.** Eighty options in
   fifteen languages would pass the 65,536 bytes every app allows a manifest;
   `MouseTests` keeps the file under three quarters of that.

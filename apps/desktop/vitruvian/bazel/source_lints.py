@@ -357,17 +357,22 @@ def keychain_is_never_touched(repo):
     """Query learning keeps its key and its digests in memory, and neither
     uninstall path removes a Keychain item: query learning and uninstall
     never access Keychain. The abandoned installation key is never asked
-    for, not even to delete it."""
+    for, not even to delete it. Since the GitHub hand-off went, nothing in
+    the app reads, writes or deletes a Keychain item at all: the app is
+    signed ad hoc, so macOS asks the person again after every update before
+    it may read an item an older build saved, and holds the read until they
+    answer. The uninstaller's `import Security` is for code signatures."""
     found = []
     for path in repo.swift_paths:
-        if not path.startswith(
+        if not path.startswith("Sources/"):
+            continue
+        command_bar = path.startswith(
             (
                 "Sources/Vitruvian/Core/CommandBar/",
                 "Sources/Vitruvian/Services/CommandBar/",
             )
-        ):
-            continue
-        for needle in ("SecItem", "import Security"):
+        )
+        for needle in ("SecItem", "import Security") if command_bar else ("SecItem",):
             if needle in repo.source(path):
                 found.append(f"{basename(path)}: {needle}")
     for path in repo.swift_paths:
@@ -378,7 +383,7 @@ def keychain_is_never_touched(repo):
     elif "delete-generic-password" in repo.uninstall_script:
         found.append("Tools/uninstall.sh: delete-generic-password")
     if found:
-        return [f"query learning and uninstall never access Keychain: {found}"]
+        return [f"the app, query learning and uninstall never access Keychain: {found}"]
     return []
 
 
@@ -2752,13 +2757,14 @@ def adds_that_wait(text):
 
 
 def the_tools_card_never_waits_to_add(repo):
-    """Adding the GitHub tool reads the GitHub feature's token from the
-    Keychain, which holds the read until the person answers its prompt. The
-    store's `add(_:then:)` has that read off the main thread and adds the
-    tool when it returns; its `add(_:)` adds at once with what is at hand.
-    The Add button must take the first, which no test can see: one that
-    takes the second freezes the app behind the prompt, or hands the tool no
-    token."""
+    """Before a tool is added, the app may have to fetch what it hands the
+    tool (`ExternalToolStore.Parts.beforeAdding`), as the GitHub hand-off
+    read the old feature's token from the Keychain, which held the read
+    until the person answered its prompt. The store's `add(_:then:)` waits
+    for that off the main thread and adds the tool when it is ready; its
+    `add(_:)` adds at once with what is at hand. The Add button must take
+    the first, which no test can see: one that takes the second freezes the
+    app behind whatever the fetch waits for, or hands the tool nothing."""
     problems = []
     sample = "\n".join(
         [

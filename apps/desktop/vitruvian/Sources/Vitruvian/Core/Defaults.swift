@@ -1009,23 +1009,6 @@ package enum Defaults {
         DefaultsKey.commandBarLinks: Preferences.commandBarLinks.defaultValue,
         DefaultsKey.commandBarRowShortcuts: Preferences.commandBarRowShortcuts.defaultValue,
         DefaultsKey.toolCommandShortcuts: Preferences.toolCommandShortcuts.defaultValue,
-        DefaultsKey.githubWatchedRepositories: Preferences.githubWatchedRepositories.defaultValue,
-        DefaultsKey.githubMouseIndicator: Preferences.githubMouseIndicator.defaultValue,
-        DefaultsKey.githubClientID: Preferences.githubClientID.defaultValue,
-        DefaultsKey.githubPollInterval: Preferences.githubPollInterval.defaultValue,
-        DefaultsKey.githubPollActiveInterval: Preferences.githubPollActiveInterval.defaultValue,
-        DefaultsKey.githubMouseSuccessColor: Preferences.githubMouseSuccessColor.defaultValue,
-        DefaultsKey.githubMouseSuccessMode: Preferences.githubMouseSuccessMode.defaultValue,
-        DefaultsKey.githubMouseRunningColor: Preferences.githubMouseRunningColor.defaultValue,
-        DefaultsKey.githubMouseRunningMode: Preferences.githubMouseRunningMode.defaultValue,
-        DefaultsKey.githubMouseFailureColor: Preferences.githubMouseFailureColor.defaultValue,
-        DefaultsKey.githubMouseFailureMode: Preferences.githubMouseFailureMode.defaultValue,
-        DefaultsKey.githubMouseIdleBehavior: Preferences.githubMouseIdleBehavior.defaultValue,
-        DefaultsKey.githubMouseApprovalColor: Preferences.githubMouseApprovalColor.defaultValue,
-        DefaultsKey.githubMouseApprovalMode: Preferences.githubMouseApprovalMode.defaultValue,
-        DefaultsKey.githubMouseApprovalSpeed: Preferences.githubMouseApprovalSpeed.defaultValue,
-        DefaultsKey.githubMouseBinaryPath: Preferences.githubMouseBinaryPath.defaultValue,
-        DefaultsKey.githubReplacedByTool: Preferences.githubReplacedByTool.defaultValue,
     ]
 
     package static func register() {

@@ -544,7 +544,7 @@ macos_application(
         "Resources/com.vitruviansoftware.vitruvian.fan-control.plist": "Library/LaunchDaemons",
         ":libVitruvianNowPlaying": "Frameworks",
         # The GravaStar mouse command (MIT, packages/peripherals), which the
-        # GitHub status light runs; GitHubMouseBinary.bundled finds it here.
+        # GitHub tool from the catalog finds here for its status light.
         "//packages/peripherals:gravastar-mouse": "Helpers",
     },
     bundle_id = BUNDLE_ID,

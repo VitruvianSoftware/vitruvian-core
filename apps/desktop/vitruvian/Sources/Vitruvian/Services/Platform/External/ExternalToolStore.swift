@@ -158,12 +158,13 @@ package final class ExternalToolStore {
         /// Asked before a tool is added, with its id: calls back on the
         /// main thread once what `added` hands the tool can be read without
         /// waiting. At once, unless a feature of the app's must first fetch
-        /// something that may take a while (`GitHubHandoff.prepare`, whose
-        /// token the Keychain may hold until the person answers its prompt).
+        /// something that may take a while, as the GitHub hand-off did while
+        /// the Keychain held the old feature's token behind its prompt.
         package var beforeAdding: @MainActor (ToolID, @escaping @MainActor () -> Void) -> Void
         /// Told of a tool just added, with the catalog entry it came from,
         /// before its program is started: a feature of the app's that the
-        /// tool takes over hands it what it kept here (`GitHubHandoff`).
+        /// tool takes over hands it what it kept here (as the GitHub
+        /// hand-off did, until the first release after 3.50.1).
         package var added: @MainActor (Installed, CatalogueOrigin?) -> Void
         /// Told of a tool just removed, after its program is gone.
         package var removed: @MainActor (ToolID) -> Void
@@ -221,9 +222,11 @@ package final class ExternalToolStore {
             forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
             watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
             panels: { .shared },
-            beforeAdding: { id, ready in GitHubHandoff.prepare(id, parts: .live, then: ready) },
-            added: { installed, origin in GitHubHandoff.perform(installed, from: origin, parts: .live) },
-            removed: { GitHubHandoff.toolRemoved($0, defaults: .standard) })
+            // No feature hands anything over now: the GitHub hand-off went
+            // one release after the feature. The hooks stay for the next.
+            beforeAdding: { _, ready in ready() },
+            added: { _, _ in },
+            removed: { _ in })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
@@ -391,8 +394,8 @@ package final class ExternalToolStore {
     /// hands the tool is ready to be handed (`Parts.beforeAdding`). It
     /// returns at once and never holds the main thread; `done` is called on
     /// it, once, with what `add` answered. Usually that is before this
-    /// returns. For the GitHub tool it may be much later: the Keychain holds
-    /// the feature's token until the person answers its prompt.
+    /// returns; it may be much later when `Parts.beforeAdding` has to fetch
+    /// something first.
     ///
     /// Nothing is copied, saved or started while it waits. `done` is given
     /// nil, and nothing is added, when the wait was overtaken: the tool was

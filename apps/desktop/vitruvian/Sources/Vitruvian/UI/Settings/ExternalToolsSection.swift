@@ -493,9 +493,9 @@ package struct ExternalToolsSection: View {
     @State private var browsing = false
     /// The tool from the catalog being fetched, and why one was not offered.
     @State private var installing: ToolID?
-    /// The tools the person agreed to that are not added yet. Adding the
-    /// GitHub tool waits for the Keychain, which may be asking the person
-    /// for their password (`ExternalToolStore.add(_:then:)`).
+    /// The tools the person agreed to that are not added yet: an add waits
+    /// for whatever the app hands the tool to be ready, never on the main
+    /// thread (`ExternalToolStore.add(_:then:)`).
     @State private var adding: Set<ToolID> = []
     @State private var catalogueRefusal: ToolRefusalMessage?
     @State private var refusal: ToolRefusalMessage?
