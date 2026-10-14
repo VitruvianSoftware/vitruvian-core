@@ -944,6 +944,91 @@ def menu_panel_switches_have_names(repo):
     return []
 
 
+def _modifier_chain(lines, index):
+    """The lines of the modifier chain that follows the control opened at
+    `index`: its closures, then each `.modifier` at its own indent or one
+    step in, until the next statement."""
+    line = lines[index]
+    indent = len(line) - len(line.lstrip())
+    chain = []
+    for later in lines[index + 1 : index + 30]:
+        text = later.strip()
+        depth = len(later) - len(later.lstrip())
+        if text and depth <= indent and not (depth == indent and text[0] in ".}"):
+            break
+        if depth in (indent, indent + 4) and text.startswith("."):
+            chain.append(text)
+    return chain
+
+
+def tool_screen_controls_have_names(repo):
+    """Every control on a tool's screens is named once for VoiceOver. A
+    switch drawn beside its title reaches it as a text and then a switch
+    with no name, and a text field's label never reaches it: both take
+    their row's title outright (`controlNamed`). A pop-up menu is named by
+    its own label, hidden or not; naming it again makes VoiceOver say the
+    name twice ("Status, Status"), so it takes no second name."""
+    found = []
+    for path in (
+        "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+    ):
+        lines = repo.lines_at(path)
+        if not lines:
+            return [f"{path} reads back"]
+        fields = 0
+        for index, line in enumerate(lines):
+            if is_comment(line):
+                continue
+            text = line.strip()
+            if "Toggle(" in line:
+                if not any(
+                    m.startswith(".controlNamed(")
+                    for m in _modifier_chain(lines, index)
+                ):
+                    found.append(
+                        f"{path}:{index + 1}: a switch has no name for VoiceOver"
+                    )
+            elif "Picker(" in line:
+                if 'Picker("",' in line or 'Picker("",' in line:
+                    found.append(
+                        f"{path}:{index + 1}: a pop-up menu has no title to be named by"
+                    )
+                if any(
+                    m.startswith(".controlNamed(")
+                    or m.startswith(".accessibilityLabel(")
+                    for m in _modifier_chain(lines, index)
+                ):
+                    found.append(f"{path}:{index + 1}: a pop-up menu is named twice")
+            elif text == "field":
+                fields += 1
+                if not any(
+                    m.startswith(".controlNamed(")
+                    for m in _modifier_chain(lines, index)
+                ):
+                    found.append(
+                        f"{path}:{index + 1}: a text field has no name for VoiceOver"
+                    )
+        if path.endswith("ExternalToolsSection.swift"):
+            helper = code_without_comments(lines)
+            start = helper.find("private func field(")
+            if (
+                start < 0
+                or ".controlNamed(setting.title)" not in helper[start : start + 400]
+            ):
+                found.append(f"{path}: a setting's field is named with its title")
+        elif fields == 0:
+            found.append(
+                f"{path}: the page's field block is where this check looks for it"
+            )
+    if found:
+        return [
+            "every control a tool's screens draw is named once with its row's title: "
+            + "; ".join(found)
+        ]
+    return []
+
+
 def path_identity_rule_is_spelled_once(repo):
     """The leading-slash test IS the rule that tells a stored path from a
     bundle identifier. A second spelling of it drifts the day the rule learns
@@ -2928,6 +3013,7 @@ RULES = [
     click_debounce_schedules_nothing,
     smooth_scroll_disabled_tap_rearms_only_when_wanted,
     menu_panel_switches_have_names,
+    tool_screen_controls_have_names,
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,
     build_signs_with_a_stable_identity,

@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 // Package ui writes a page for a tool that draws: one function for each of
-// the twelve kinds of block, and Tree of them. The Swift kit's page
+// the thirteen kinds of block, and Tree of them. The Swift kit's page
 // builders, in Go. What a block may carry beyond its words is an options
 // struct, left out when there is none:
 //
@@ -34,7 +34,11 @@
 // English under en: toolkit.UIText.
 package ui
 
-import "github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit"
+import (
+	"sort"
+
+	"github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit"
+)
 
 // The styles of words, for TextOptions.
 const (
@@ -260,6 +264,109 @@ func Spacer(size ...float64) toolkit.UIBlock {
 		block.Size = &size[0]
 	}
 	return toolkit.UIBlock{Type: "spacer", Spacer: &block}
+}
+
+// ChoiceOptions is what Choice may carry beyond its options.
+type ChoiceOptions struct {
+	// Title says what is being chosen, beside the menu.
+	Title toolkit.UIText
+	// Disabled draws it dimmed, and nothing can be picked.
+	Disabled bool
+	// Fallback is what an app that does not know the kind draws instead.
+	// Left out, Choice writes one.
+	Fallback toolkit.UIText
+}
+
+// Choice is a pop-up menu: one of a fixed list of options, at most 64, no
+// two with one value. value is the selected option's. Picking one is the
+// event change, read with PanelEvent.Text.
+//
+// An app before 3.48 does not know this kind and draws the fallback, which
+// nobody can change. So ask app.Supports(toolkit.FeatureChoice) first, and
+// send a Field to an app without it. With no Fallback given, one is
+// written: the title, a colon and the selected option's title.
+func Choice(id, value string, options []toolkit.UIChoiceOption, more ...ChoiceOptions) toolkit.UIBlock {
+	if options == nil {
+		options = []toolkit.UIChoiceOption{}
+	}
+	block := toolkit.ChoiceBlock{Value: value, Options: options}
+	var fallback toolkit.UIText
+	if len(more) > 0 {
+		block.Title = more[0].Title
+		block.Enabled = enabled(more[0].Disabled)
+		fallback = more[0].Fallback
+	}
+	if fallback == nil {
+		fallback = saidPlainly(block)
+	}
+	return toolkit.UIBlock{Type: "choice", ID: &id, Fallback: fallback, Choice: &block}
+}
+
+// saidPlainly is what a choice says, as words: the title, a colon and the
+// selected option's title, or that title alone, in every language either
+// has. A value that is no option's is written as it is.
+func saidPlainly(block toolkit.ChoiceBlock) toolkit.UIText {
+	var selected toolkit.UIText = block.Value
+	for _, option := range block.Options {
+		if option.Value == block.Value {
+			selected = option.Title
+			break
+		}
+	}
+	if block.Title == nil {
+		return selected
+	}
+	seen := map[string]bool{}
+	for _, text := range []toolkit.UIText{block.Title, selected} {
+		for language := range languagesOf(text) {
+			seen[language] = true
+		}
+	}
+	if len(seen) == 0 {
+		return wordsOf(block.Title, "en") + ": " + wordsOf(selected, "en")
+	}
+	languages := make([]string, 0, len(seen))
+	for language := range seen {
+		languages = append(languages, language)
+	}
+	sort.Strings(languages)
+	said := toolkit.LocalizedText{}
+	for _, language := range languages {
+		said[language] = wordsOf(block.Title, language) + ": " + wordsOf(selected, language)
+	}
+	return said
+}
+
+// languagesOf is a text's entries by language, and nothing for a string.
+func languagesOf(text toolkit.UIText) map[string]string {
+	switch text := text.(type) {
+	case toolkit.LocalizedText:
+		return text
+	case map[string]string:
+		return text
+	case map[string]any:
+		found := map[string]string{}
+		for language, words := range text {
+			if words, ok := words.(string); ok {
+				found[language] = words
+			}
+		}
+		return found
+	}
+	return nil
+}
+
+// wordsOf is a text in a language: its own entry, else English; a string
+// whatever the language.
+func wordsOf(text toolkit.UIText, language string) string {
+	if plain, ok := text.(string); ok {
+		return plain
+	}
+	entries := languagesOf(text)
+	if words, ok := entries[language]; ok {
+		return words
+	}
+	return entries["en"]
 }
 
 // some is a pointer to a string that is there, and nil for an empty one.

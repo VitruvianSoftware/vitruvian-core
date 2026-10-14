@@ -30,6 +30,17 @@
       "title": { "en": "Counted so far" },
       "type": "integer",
       "default": 0
+    },
+    {
+      "id": "step",
+      "title": { "en": "Count by" },
+      "type": "string",
+      "default": "1",
+      "options": [
+        { "value": "1", "title": { "en": "One" } },
+        { "value": "2", "title": { "en": "Two" } },
+        { "value": "5", "title": { "en": "Five" } }
+      ]
     }
   ],
   "activation": ["onCommand"],

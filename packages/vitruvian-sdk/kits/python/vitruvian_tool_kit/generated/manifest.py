@@ -41,8 +41,10 @@ from .messages import (
     PreferenceType,
     ProtocolVersion,
     SERVICES,
+    STATUS_PLACEMENTS,
     SURFACES,
     Service,
+    StatusPlacement,
     Surface,
     _any,
     _array,
@@ -55,7 +57,7 @@ from .messages import (
 
 @dataclass(frozen=True)
 class ToolManifest:
-    """The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Two rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; and the whole file is at most 65,536 bytes."""
+    """The file vitruvian-tool.json at the top of a tool's folder. It says what the tool is, which of the app's services it calls, what it adds, and which program to start. A field this schema does not name is ignored, which is how a later version adds one. Four rules are not written here because JSON Schema cannot say them: no two commands, no two panels and no two preferences share an id; the whole file is at most 65,536 bytes; no two options of one preference share a value; and a preference with options has a default that is one of them."""
 
     id: str
     """The tool's identity, in reverse-DNS form, for example com.acme.deploys. Letters, digits, hyphens and underscores in parts joined by single dots. It must have a dot: an id with none belongs to a feature built into the app. At most 128 characters. It never changes between versions of a tool."""
@@ -130,12 +132,14 @@ class ToolManifest:
 
 @dataclass(frozen=True)
 class Contributes:
-    """What the tool adds to the app: commands, and in protocol 2 panels."""
+    """What the tool adds to the app: commands, and in protocol 2 panels and a status."""
 
     commands: Optional[List[Command]] = None
     """The tool's commands. At most 32."""
     panels: Optional[List[Panel]] = None
     """What the tool draws, and where. At most 8; at most one in the island and one in Settings. Protocol 2 only."""
+    status: Optional[StatusContribution] = None
+    """The tool shows a status: a small mark the app draws, which the tool sets with ui/status. Without this, the app refuses ui/status. Protocol 2 only. An app before 3.48 ignores it, and shows no status."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "contributes") -> "Contributes":
@@ -143,6 +147,7 @@ class Contributes:
         return cls(
             commands=None if found.get("commands") is None else [Command.from_json(item, where + ".commands" + f"[{index}]") for index, item in enumerate(_array(found["commands"], where + ".commands"))],
             panels=None if found.get("panels") is None else [Panel.from_json(item, where + ".panels" + f"[{index}]") for index, item in enumerate(_array(found["panels"], where + ".panels"))],
+            status=None if found.get("status") is None else StatusContribution.from_json(found["status"], where + ".status"),
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -151,6 +156,28 @@ class Contributes:
             out["commands"] = [item.to_json() for item in self.commands]
         if self.panels is not None:
             out["panels"] = [item.to_json() for item in self.panels]
+        if self.status is not None:
+            out["status"] = self.status.to_json()
+        return out
+
+
+@dataclass(frozen=True)
+class StatusContribution:
+    """That the tool shows a status, and where."""
+
+    placement: StatusPlacement
+    """Where it is shown. island: on the closed island, beside the agent mark."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "statusContribution") -> "StatusContribution":
+        found = _object(value, where)
+        return cls(
+            placement=_one_of(_required(found, "placement", where), where + ".placement", STATUS_PLACEMENTS),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["placement"] = self.placement
         return out
 
 
@@ -243,6 +270,8 @@ class Preference:
     """The value before anything is saved. It is of the type named."""
     title: Optional[LocalizedText] = None
     """What the setting is called where the person changes it, shown as written. At most 60 characters in each language, with no line break and no other control character. Left out, the app does not show the setting: the tool alone reads and writes it. An app older than this field ignores it, and shows no setting."""
+    options: Optional[List[PreferenceOption]] = None
+    """The values the person chooses among: the app draws the setting as a pop-up menu, not a field. From 1 to 64, no two with one value, and the default is one of them. Only a string preference may have them. They are how the app draws, not a rule on the value: a saved value that is no option's is kept and shown as written. An app before 3.48 ignores them, and draws a text field."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "preference") -> "Preference":
@@ -252,6 +281,7 @@ class Preference:
             type=_one_of(_required(found, "type", where), where + ".type", PREFERENCE_TYPES),
             default=_any(_required(found, "default", where), where + ".default"),
             title=None if found.get("title") is None else {key: _string(item, where + ".title" + "." + key) for key, item in _object(found["title"], where + ".title").items()},
+            options=None if found.get("options") is None else [PreferenceOption.from_json(item, where + ".options" + f"[{index}]") for index, item in enumerate(_array(found["options"], where + ".options"))],
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -261,6 +291,32 @@ class Preference:
             out["title"] = dict(self.title)
         out["type"] = self.type
         out["default"] = self.default
+        if self.options is not None:
+            out["options"] = [item.to_json() for item in self.options]
+        return out
+
+
+@dataclass(frozen=True)
+class PreferenceOption:
+    """One value a preference with options may be set to, and what the person reads for it."""
+
+    value: str
+    """What is saved when the person picks it. At most 128 characters, with no line break and no other control character. It may be empty."""
+    title: LocalizedText
+    """What the menu shows for it, as written. Held to what a preference's title is: at most 60 characters in each language, with no line break and no other control character."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "preferenceOption") -> "PreferenceOption":
+        found = _object(value, where)
+        return cls(
+            value=_string(_required(found, "value", where), where + ".value"),
+            title={key: _string(item, where + ".title" + "." + key) for key, item in _object(_required(found, "title", where), where + ".title").items()},
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["value"] = self.value
+        out["title"] = dict(self.title)
         return out
 
 

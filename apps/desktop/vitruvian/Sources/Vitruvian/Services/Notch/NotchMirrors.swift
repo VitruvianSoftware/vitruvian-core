@@ -149,6 +149,8 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
     }
 
     package private(set) var copies: [CGDirectDisplayID: Copy] = [:]
+    /// The name each copy's button was last given.
+    private var said: [CGDirectDisplayID: String] = [:]
     /// Displays showing a full-screen Space, read as Spaces change.
     package private(set) var fullscreenDisplays: Set<CGDirectDisplayID> = []
 
@@ -222,12 +224,23 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
             if copy.host.panelSharingType != sharing { copy.host.panelSharingType = sharing }
             let revealing = !copy.model.shown
             let previous = copy.model.activity
-            guard copy.model.update(geometry: base, strip: strip, size: size, activity: activity) || revealing else { continue }
+            let title = environment.openTitle()
+            guard copy.model.update(geometry: base, strip: strip, size: size, activity: activity) || revealing else {
+                // What the island rests with has not moved, but what its
+                // status mark says may have: the copy's button says it too.
+                if said[id] != title {
+                    said[id] = title
+                    copy.host.setActivationArea(CGRect(origin: .zero, size: size), title: title,
+                                                willPress: {}, activate: { [weak self] in self?.activate(id) })
+                }
+                continue
+            }
+            said[id] = title
             copy.model.shown = true
             // Shown at once where the island just left, so the two trade places.
             copy.host.presentCopy(size: size, geometry: base, animated: !revealing,
                                   transitionContent: !revealing && previous != activity ? .replace : .none)
-            copy.host.setActivationArea(CGRect(origin: .zero, size: size), title: environment.openTitle(),
+            copy.host.setActivationArea(CGRect(origin: .zero, size: size), title: title,
                                         willPress: {}, activate: { [weak self] in self?.activate(id) })
             if !copy.host.panelIsVisible { copy.host.orderPanelFront() }
         }

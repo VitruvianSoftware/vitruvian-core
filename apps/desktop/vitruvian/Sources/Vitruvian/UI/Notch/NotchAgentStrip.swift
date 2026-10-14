@@ -128,8 +128,22 @@ package struct NotchAgentRestingWing: View {
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var nexusSession = NexusAgentService.shared.session
     @ObservedObject private var gitHub = GitHubService.shared
+    /// The tools' statuses, and the list of tools: a status set, a tool
+    /// switched off, or its status switched off, draws the wing again.
+    @ObservedObject private var panels = ToolPanelHost.shared
+    @ObservedObject private var registry = ToolRegistry.shared
+    @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
+
+    /// The one status mark the wing shows: the worst of the built-in
+    /// GitHub mark and every tool's status.
+    private var statusMark: RestingMark? {
+        RestingStatus.winner(
+            gitHub: NotchGitHubRestingIndicator.verdict(watching: gitHub.watchedRepositories.count,
+                                                        aggregate: gitHub.summary.aggregate),
+            tools: RestingStatus.shown(of: ExternalToolStore.shared.statusTools(), statuses: panels.statuses))
+    }
 
     package var body: some View {
         TimelineView(.periodic(from: .now, by: nexusSession.isRunning ? 1 : 6)) { context in
@@ -137,7 +151,14 @@ package struct NotchAgentRestingWing: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if gitHub.summary.aggregate == .red || gitHub.summary.aggregate == .amber {
+            // A tool's mark that is not green opens that tool's island
+            // page, when the island lists it. Anything else is as before.
+            if let page = RestingStatus.opens(statusMark, pages: ExternalToolStore.shared.islandPanels()),
+               NotchService.shared.modules.contains(.tools) {
+                NotchService.shared.select(.tools)
+                QuickLauncherService.shared.closeUtility()
+                panels.open(page, in: .island)
+            } else if gitHub.summary.aggregate == .red || gitHub.summary.aggregate == .amber {
                 NotchService.shared.select(.github)
             } else {
                 NotchService.shared.agentTab = .chat
@@ -198,7 +219,7 @@ package struct NotchAgentRestingWing: View {
             if leading {
                 HStack(spacing: 3) {
                     NotchAgentMark(provider: provider, size: 10, tint: tint)
-                    NotchGitHubRestingIndicator()
+                    NotchRestingStatusMark(mark: statusMark, language: l10n.language)
                 }
             } else {
                 Text(AgentFormat.percent(remaining))
@@ -214,6 +235,31 @@ package struct NotchAgentRestingWing: View {
 
 package typealias NotchRestingWing = NotchAgentRestingWing
 
+/// The one status mark of the resting wing: the built-in GitHub mark, a
+/// tool's, or nothing, as `RestingStatus.winner` picked.
+private struct NotchRestingStatusMark: View {
+    let mark: RestingMark?
+    let language: AppLanguage
+
+    var body: some View {
+        switch mark {
+        case .gitHub?:
+            NotchGitHubRestingIndicator()
+        case .tool(let id, let status)?:
+            ToolStatusMark(content: ToolStatusMarkContent(status, toolName: name(of: id), language: language,
+                                                          strings: FeatureStrings.externalTools(language)))
+        case nil:
+            EmptyView()
+        }
+    }
+
+    /// The tool's name in the person's language, as the tool wrote it.
+    private func name(of id: ToolID) -> String {
+        let tool = ExternalToolStore.shared.installed[id]?.tool
+        return tool?.name.text(for: language.rawValue) ?? tool?.manifest.tool.name ?? id.rawValue
+    }
+}
+
 /// Live activity indicator in the resting wing showing GitHub repository pipeline status:
 /// - Green checkmark when watched repo pipeline on `main` is clean.
 /// - Amber breathing spinner (`arrow.triangle.branch`) when presubmits are running.
@@ -225,9 +271,15 @@ package struct NotchGitHubRestingIndicator: View {
 
     package init() {}
 
+    /// The verdict the mark shows: none while no repository is watched,
+    /// whatever the last one was. The resting wing asks the same rule when
+    /// it picks between this mark and a tool's.
+    package static func verdict(watching repositories: Int, aggregate: Verdict) -> Verdict? {
+        RestingStatus.gitHub(watching: repositories, aggregate: aggregate)
+    }
+
     private var indicatorVerdict: Verdict? {
-        guard !gitHub.watchedRepositories.isEmpty else { return nil }
-        return gitHub.summary.aggregate
+        Self.verdict(watching: gitHub.watchedRepositories.count, aggregate: gitHub.summary.aggregate)
     }
 
     package var body: some View {

@@ -30,9 +30,35 @@ use crate::generated::{
     CommandsStateParams, Empty, KeyEquivalent, KeystrokesPasteParams,
     KeystrokesPressMenuItemParams, KeystrokesPressMenuItemResult, LogParams, NotifyHudParams,
     OpenUrlParams, OpenUrlResult, ProcessesTerminateParams, StorageGetParams, StorageGetResult,
-    StorageSetParams, UiBadgeParams,
+    StorageSetParams, UiBadgeParams, UiStatusParams, UiText,
 };
 use crate::tool::State;
+
+/// What an app may have beyond the first release of a protocol version, by
+/// the name it gives at hello. Ask with [`App::supports`].
+pub mod features {
+    /// `ui/status`: the tool's status on the closed island.
+    pub const STATUS: &str = "ui.status";
+    /// The `choice` block.
+    pub const CHOICE: &str = "ui.choice";
+    /// `options` on a text preference, drawn as a pop-up menu.
+    pub const PREFERENCE_OPTIONS: &str = "preferences.options";
+}
+
+/// What a status says, for [`Ui::status`]. The app draws each in its own
+/// style.
+pub mod status {
+    /// No mark.
+    pub const NONE: &str = "none";
+    /// All is well.
+    pub const OK: &str = "ok";
+    /// Something is under way.
+    pub const BUSY: &str = "busy";
+    /// Something waits for the person.
+    pub const ATTENTION: &str = "attention";
+    /// Something failed.
+    pub const FAILURE: &str = "failure";
+}
 
 /// The app, as a handler sees it. Each call is one request of the
 /// protocol, grouped by the service the tool's manifest must list in
@@ -69,6 +95,15 @@ impl<'a> App<'a> {
         &self.state.data_folder
     }
 
+    /// Whether this app has something a later release added to the
+    /// protocol version: it named it at hello. [`features`] holds the
+    /// names. False for an app that named nothing, as every app before 3.48
+    /// does. Ask before using a `choice` block, and send a `field` to an
+    /// app without it.
+    pub fn supports(&self, feature: &str) -> bool {
+        self.state.features.contains(feature)
+    }
+
     /// Sends any request of the protocol and reads its answer.
     pub fn send<R: DeserializeOwned>(
         &mut self,
@@ -103,8 +138,9 @@ impl<'a> App<'a> {
         Open { state: self.state }
     }
 
-    /// The tool's badge in the island, for a tool of protocol 2. Needs
-    /// `notify`.
+    /// The tool's badge and its status in the island, for a tool of
+    /// protocol 2. The badge needs `notify`; the status needs nothing in
+    /// `uses`.
     pub fn ui(&mut self) -> Ui<'_> {
         Ui { state: self.state }
     }
@@ -170,6 +206,38 @@ impl Ui<'_> {
         };
         self.state.call::<Empty>(methods::UI_BADGE, &params)?;
         Ok(())
+    }
+
+    /// Sets the tool's status, a small mark the app draws on the closed
+    /// island: `ui/status`. `state` is one of [`status`]'s. Each one
+    /// replaces the last; [`status::NONE`] takes it away; and it goes when
+    /// the tool's program ends, so a tool that wants it to last starts with
+    /// the app (`"activation": ["onLaunch"]`). `text` says what it means,
+    /// for VoiceOver. `icon`, an SF Symbol name, replaces the state's own
+    /// glyph. The manifest must declare `contributes.status`: without it
+    /// the app refuses, and the refusal is the error. It needs nothing in
+    /// `uses`.
+    ///
+    /// `Ok(false)`, and nothing is sent, when the app did not say it has
+    /// `ui.status`: an app before 3.48 shows no status, and that is no
+    /// error. `Ok(true)` when the request was sent and answered; the person
+    /// may still have switched the mark off.
+    pub fn status(
+        self,
+        state: &str,
+        text: Option<UiText>,
+        icon: Option<&str>,
+    ) -> Result<bool, ToolError> {
+        if !self.state.features.contains(features::STATUS) {
+            return Ok(false);
+        }
+        let params = UiStatusParams {
+            state: state.to_string(),
+            text,
+            icon: icon.map(str::to_string),
+        };
+        self.state.call::<Empty>(methods::UI_STATUS, &params)?;
+        Ok(true)
     }
 }
 

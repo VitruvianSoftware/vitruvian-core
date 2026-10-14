@@ -54,6 +54,9 @@ package struct BlockTreeContent: Equatable {
         /// A link the app may open; with no address it is drawn as text.
         case link(title: String, url: URL?)
         case spacer(Double)
+        /// A pop-up menu: its title, the selected value and its rows. A
+        /// value that is no option's is an extra first row, as written.
+        case choice(id: String, title: String?, selected: String, options: [ExternalToolSetting.Choice], enabled: Bool)
         /// A block of a kind the app does not know, drawn as its fallback.
         case fallback(String)
     }
@@ -128,6 +131,12 @@ package struct BlockTreeContent: Equatable {
                 kind = .spacer(spacer.size ?? Self.spacerSize)
             case .unknown:
                 kind = words(block.fallback).map(Kind.fallback)
+            case .choice(let choice):
+                let options = choice.options.map { (value: $0.value, title: $0.title.text(for: language)) }
+                kind = .choice(id: block.id ?? "", title: words(choice.title), selected: choice.value,
+                               options: ExternalToolSetting.Choice.menu(selected: choice.value, options: options,
+                                                                        limit: ToolOwnWords.limit),
+                               enabled: choice.enabled ?? true)
             }
             if let kind { items.append(Item(id: index, kind: kind)) }
         }
@@ -217,6 +226,7 @@ package struct BlockTreeView: View {
             Toggle(isOn: Binding(get: { isOn }, set: { act(id, .toggle, .bool($0)) })) {
                 Text(verbatim: title).font(metrics.body).lineLimit(BlockTreeContent.toggleLines)
             }
+            .controlNamed(title)
             .toggleStyle(.switch)
             .controlSize(.small)
             .disabled(!enabled)
@@ -261,6 +271,25 @@ package struct BlockTreeView: View {
             }
         case .spacer(let height):
             Color.clear.frame(height: height)
+        case .choice(let id, let title, let selected, let options, let enabled):
+            HStack(spacing: 10) {
+                if let title {
+                    Text(verbatim: title).font(metrics.body).lineLimit(BlockTreeContent.toggleLines)
+                }
+                Spacer(minLength: 8)
+                // A pick is the event a field's change is, with the
+                // option's value. The page is the tool's to send again.
+                Picker(title ?? "", selection: Binding(get: { selected }, set: { act(id, .change, .string($0)) })) {
+                    // The tool's own words: plain text, one line each.
+                    ForEach(options) { Text(verbatim: $0.title).tag($0.value) }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .disabled(!enabled)
+                .modifier(Focused(focus: focus, id: id))
+            }
         case .fallback(let text):
             Text(verbatim: text).font(metrics.caption).italic().foregroundStyle(metrics.secondary)
                 .lineLimit(BlockTreeContent.fallbackLines)
@@ -353,6 +382,7 @@ private struct BlockField: View {
             }
             field
                 .textFieldStyle(.roundedBorder)
+                .controlNamed(title)
                 .controlSize(.small)
                 .onSubmit {
                     sent = text
@@ -444,6 +474,24 @@ private struct BlockImage: View {
         case .file(let url)?: return NSImage(contentsOf: url)
         case .bytes(let data)?: return NSImage(data: data)
         case nil: return nil
+        }
+    }
+}
+
+extension View {
+    /// The control's name for assistive technology: its row's title, said
+    /// outright. A switch beside its title is otherwise a text and then a
+    /// switch with no name of its own, and a text field's label never
+    /// reaches assistive technology; with this each says what it switches
+    /// or takes. Not for a pop-up menu: its own label, even hidden, already
+    /// names it, and this would say the name twice. A control with no title
+    /// keeps what it had.
+    @ViewBuilder
+    func controlNamed(_ title: String?) -> some View {
+        if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            accessibilityLabel(Text(verbatim: title))
+        } else {
+            self
         }
     }
 }

@@ -139,6 +139,85 @@ BROKEN_PANEL = {
     "answers a tap with the same page": "NOT OK   a panel: a tap on add was answered with the same page",
 }
 
+# A tool of protocol 2 written with no kit, which shows a status and draws a
+# choice. It goes wrong in the way BROKEN_HOW names, or does well when it is
+# "shows a status well". It asks what the app has, as a tool must: an app
+# that names no ui.status is sent none, unless the way it goes wrong is to
+# send one all the same.
+STATUS_TOOL = """
+import json, os, sys
+how = os.environ["BROKEN_HOW"]
+features = []
+asked = 0
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\\n")
+    sys.stdout.flush()
+def status(state, **more):
+    global asked
+    asked += 1
+    send({"jsonrpc": "2.0", "id": "s%d" % asked, "method": "ui/status", "params": dict(more, state=state)})
+def page():
+    options = [{"value": "green", "title": "Green"},
+               {"value": "breathe green", "title": {"en": "Pulsing green", "de": "Pulsierendes Grün"}}]
+    if how == "draws two options alike":
+        options.append({"value": "green", "title": "Green again"})
+    if how == "draws a choice of nothing":
+        options = []
+    if "ui.choice" in features or how.startswith("draws"):
+        pick = {"type": "choice", "id": "light", "title": "Light", "value": "green", "options": options,
+                "fallback": "Light: Green"}
+    else:
+        pick = {"type": "field", "id": "light", "title": "Light", "value": "green"}
+    return {"blocks": [{"type": "text", "text": "Pressed %d times" % asked}, pick]}
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        features = message["params"].get("features", [])
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "2", "toolVersion": "0"}})
+    elif method == "command/run":
+        if message["params"]["command"] != "hello":
+            send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
+            continue
+        if how == "names a state there is not":
+            status("broken")
+        elif how == "says it in French alone":
+            status("failure", text={"fr": "main est rouge"})
+        elif how == "names a glyph that is no name":
+            status("busy", icon=7)
+        elif "ui.status" in features:
+            status("busy", icon="arrow.triangle.branch", text={"en": "Working", "fr": "En cours"})
+            status("none")
+        elif how in ("asks an older app", "dies when refused"):
+            status("busy")
+        elif how == "keeps asking an older app":
+            for _ in range(8):
+                status("busy")
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "ui/open":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"tree": page()}})
+    elif method == "ui/event":
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"keep": True}})
+    elif method == "shutdown":
+        sys.exit(0)
+    elif method is None and message.get("error", {}).get("code") == -32601 and how == "dies when refused":
+        sys.exit(1)
+"""
+
+# How a tool that shows a status or draws a choice goes wrong, and the line
+# the script must print.
+BROKEN_STATUS = {
+    "names a state there is not": "NOT OK   a command: ui/status with params that are not its own",
+    "says it in French alone": "NOT OK   a command: ui/status with params that are not its own",
+    "names a glyph that is no name": "NOT OK   a command: ui/status with params that are not its own",
+    "draws two options alike": "NOT OK   a panel: ui/open was not answered with a page",
+    "draws a choice of nothing": "NOT OK   a panel: ui/open was not answered with a page",
+    "dies when refused": "NOT OK   an older app: the tool did not carry on after an app that has no "
+    "ui/status refused it with -32601",
+    "keeps asking an older app": "NOT OK   an older app: the tool went on sending ui/status to an app that "
+    "answered it with -32601",
+}
+
 # What a tool that never stops writing leaves behind. It writes for longer
 # than the script reads a tool's last words, and no longer.
 LEFT_BEHIND = """
@@ -232,7 +311,9 @@ def never_stops_writing(folder):
     The script ends within its bound and names the check. Which of two things
     it says is a matter of timing: `still writing` when a line was waiting as
     the time ran out, and a count when, at that instant, none was. Both end
-    the read; `a_line_always_waiting` holds the rule without the timing.
+    the read; `a_line_always_waiting` holds the rule without the timing. When
+    it counted, the tool is started once more as an older app's, and the same
+    two things may be said of that run.
     """
     pid_file = os.path.join(folder, "left-behind.pid")
     os.environ["BROKEN_HOW"] = "never stops writing"
@@ -244,13 +325,21 @@ def never_stops_writing(folder):
     finally:
         end_left_behind(pid_file)
     took = time.monotonic() - started
-    last = printed.splitlines()[-1] if printed else ""
-    caught = status == 1 and last == (
-        f"NOT OK   shutdown: still writing {conformance.EXIT_SECONDS} seconds"
-        " after it exited"
-    )
-    counted = status == 0 and last.startswith(
+    # The line for the shutdown check, and the one for the older app, which
+    # starts the tool once more and so meets the same program left behind.
+    said = {
+        name: next(
+            (line for line in printed.splitlines() if line[9:].startswith(name)), ""
+        )
+        for name in ("shutdown", "an older app")
+    }
+    writing = f"still writing {conformance.EXIT_SECONDS} seconds after it exited"
+    caught = status == 1 and said["shutdown"] == f"NOT OK   shutdown: {writing}"
+    counted = said["shutdown"].startswith(
         "ok       shutdown: exited with 0, after "
+    ) and (
+        (status == 0 and said["an older app"].startswith("ok       an older app: "))
+        or (status == 1 and said["an older app"] == f"NOT OK   an older app: {writing}")
     )
     problems = []
     if not (caught or counted):
@@ -300,6 +389,131 @@ def panels(manifest):
     return problems
 
 
+def statuses(manifest):
+    """A tool that shows a status and draws a choice passes, against this
+    app and an older one; one that goes wrong in each way is caught by the
+    check meant for it; and one whose manifest declares no status is told."""
+    problems = []
+    manifest = dict(manifest)
+    manifest["protocol"] = "2"
+    manifest["uses"] = []
+    manifest["runtime"] = {"kind": "external", "exec": "status.py"}
+    manifest["contributes"] = dict(manifest["contributes"])
+    manifest["contributes"]["panels"] = [
+        {"id": "lights", "title": {"en": "Lights"}, "placement": "island"}
+    ]
+    manifest["contributes"]["status"] = {"placement": "island"}
+    with tempfile.TemporaryDirectory() as folder:
+
+        def write(declared):
+            with open(
+                os.path.join(folder, "vitruvian-tool.json"), "w", encoding="utf-8"
+            ) as handle:
+                json.dump(declared, handle)
+
+        write(manifest)
+        with open(os.path.join(folder, "status.py"), "w", encoding="utf-8") as handle:
+            handle.write(STATUS_TOOL)
+
+        os.environ["BROKEN_HOW"] = "shows a status well"
+        status, printed = check(folder)
+        wanted = [
+            "ok       a command: hello: ran, and set the status: busy, none",
+            "ok       a panel: lights: a page of 2 blocks",
+            "ok       refusals: 2 refused",
+            "ok       an older app: answered the hello, ran hello, drew lights and left with 0; "
+            "it sent no ui/status",
+        ]
+        if status != 0 or not all(piece in printed for piece in wanted):
+            problems.append(
+                f"a tool that shows a status well does not pass:\n{printed}"
+            )
+
+        os.environ["BROKEN_HOW"] = "asks an older app"
+        status, printed = check(folder)
+        wanted = (
+            "ok       an older app: answered the hello, ran hello, drew lights and left with 0; "
+            "1 ui/status refused with -32601, as an app before 3.48 does"
+        )
+        if status != 0 or wanted not in printed:
+            problems.append(
+                f"a tool that an older app refuses, and that carries on, does not pass:\n{printed}"
+            )
+
+        os.environ["BROKEN_HOW"] = "draws a choice whatever the app has"
+        status, printed = check(folder)
+        wanted = "its page holds a choice, which that app draws as its fallback text"
+        if status != 0 or wanted not in printed:
+            problems.append(
+                f"a tool that sends an older app a choice is not told so:\n{printed}"
+            )
+
+        for how, line in BROKEN_STATUS.items():
+            os.environ["BROKEN_HOW"] = how
+            started = time.monotonic()
+            status, printed = check(folder)
+            took = time.monotonic() - started
+            failed = [
+                text for text in printed.splitlines() if text.startswith("NOT OK")
+            ]
+            if status != 1 or len(failed) != 1 or not failed[0].startswith(line):
+                problems.append(f"a tool that {how} is not caught:\n{printed}")
+            if took > SLOWEST_SECONDS:
+                problems.append(f"a tool that {how} held the script {took:.1f} seconds")
+
+        undeclared = dict(manifest)
+        undeclared["contributes"] = {
+            key: value
+            for key, value in manifest["contributes"].items()
+            if key != "status"
+        }
+        write(undeclared)
+        os.environ["BROKEN_HOW"] = "shows a status well"
+        status, printed = check(folder)
+        failed = [text for text in printed.splitlines() if text.startswith("NOT OK")]
+        wanted = (
+            "NOT OK   a command: ui/status from a tool whose manifest declares no status. "
+            "The app answers it with -32602: add `contributes.status`"
+        )
+        if status != 1 or failed != [wanted]:
+            problems.append(
+                f"a tool that sets a status its manifest does not declare is not told:\n{printed}"
+            )
+    return problems
+
+
+def the_hello(manifest):
+    """What the script says at hello: what this app has, and to an older
+    app's tool nothing of it."""
+    problems = []
+
+    class Kept:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, message):
+            self.sent.append(message)
+
+        def receive(self, deadline, seconds, leaving=False):
+            return {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"protocolVersion": "1", "toolVersion": "0"},
+            }
+
+    for features, wanted in (
+        (conformance.FEATURES, ["ui.status", "ui.choice", "preferences.options"]),
+        (None, None),
+    ):
+        link = Kept()
+        conformance.Run(link, manifest, "/tmp/data", features=features).handshake()
+        if link.sent[0]["params"].get("features") != wanted:
+            problems.append(f"the hello says {link.sent[0]['params']!r}")
+    if "features" not in conformance.Run(Kept(), manifest, "").hello():
+        problems.append("the hello of this app names no features")
+    return problems
+
+
 def main():
     problems = []
 
@@ -310,6 +524,7 @@ def main():
         "ok       unknown",
         "1 refused",
         "exited with 0",
+        "ok       an older app: answered the hello, ran hello and left with 0; it sent no ui/status",
     ]
     if status != 0 or not all(piece in printed for piece in wanted):
         problems.append(f"the reference tool does not pass:\n{printed}")
@@ -357,6 +572,8 @@ def main():
             )
         problems += never_stops_writing(folder)
     problems += panels(manifest)
+    problems += statuses(manifest)
+    problems += the_hello(manifest)
     problems += a_line_always_waiting()
 
     for problem in problems:

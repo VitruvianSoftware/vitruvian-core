@@ -459,6 +459,10 @@ def methods_file(model: Model) -> str:
                         extra.add(model.title(kind.ref))
                     if kind is not None and kind.kind == "scalar":
                         extra.add("Scalar")
+                    # A closed list of names in a call's arguments is named
+                    # in its signature, so it is imported too.
+                    if kind is not None and kind.kind == "enum":
+                        extra.add(kind.name)
     lines = [header("protocol/methods.json")]
     lines.append("from __future__ import annotations")
     lines.append("")

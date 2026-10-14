@@ -20,6 +20,46 @@ package protocol ToolWebPage: AnyObject {
     func close()
 }
 
+extension RestingStatus {
+    /// The page a click on the closed island's wing opens, when the mark it
+    /// shows is a tool's: that tool's island page, unless the mark says all
+    /// is well, which asks for nothing. `pages` is the island pages the
+    /// Tools area lists, so a tool with no island page, or one whose page
+    /// the person hid, gives nil. Nil too for the built-in mark and for no
+    /// mark: the click then does what it always did.
+    package static func opens(_ mark: RestingMark?, pages: [ToolPanelHost.Key]) -> ToolPanelHost.Key? {
+        guard case .tool(let tool, let status)? = mark, status.state != .ok else { return nil }
+        return pages.first { $0.tool == tool }
+    }
+
+    /// What the closed island's status mark says now, for the island's one
+    /// button: the words of the tool's mark the wing shows. Nil when the
+    /// wing shows no tool's mark: none is set, the built-in mark wins, or
+    /// the Nexus session is running and the wing shows that instead.
+    @MainActor package static func saidNow(language: AppLanguage) -> String? {
+        guard !NexusAgentService.shared.session.isRunning else { return nil }
+        let gitHub = GitHubService.shared
+        let store = ExternalToolStore.shared
+        let mark = winner(gitHub: Self.gitHub(watching: gitHub.watchedRepositories.count,
+                                              aggregate: gitHub.summary.aggregate),
+                          tools: shown(of: store.statusTools(), statuses: ToolPanelHost.shared.statuses))
+        guard case .tool(let id, let status)? = mark else { return nil }
+        let tool = store.installed[id]?.tool
+        let name = tool?.name.text(for: language.rawValue) ?? tool?.manifest.tool.name ?? id.rawValue
+        return words(for: status, toolName: name, language: language, strings: FeatureStrings.externalTools(language))
+    }
+
+    /// Fires when what `saidNow` gives may have changed.
+    @MainActor package static var saidChanges: AnyPublisher<Void, Never> {
+        Publishers.Merge5(ToolPanelHost.shared.$statuses.map { _ in }.eraseToAnyPublisher(),
+                          ToolRegistry.shared.objectWillChange.eraseToAnyPublisher(),
+                          GitHubService.shared.objectWillChange.eraseToAnyPublisher(),
+                          NexusAgentService.shared.session.objectWillChange.eraseToAnyPublisher(),
+                          L10n.shared.objectWillChange.eraseToAnyPublisher())
+            .eraseToAnyPublisher()
+    }
+}
+
 /// What tools from outside draw: for every panel the person has open, the
 /// last page its tool sent, and the tool's badge. It asks a tool for a
 /// panel's page, draws at most four of the pages a tool sends unprompted in
@@ -69,9 +109,13 @@ package final class ToolPanelHost: ObservableObject {
         case wrongPlace(String)
         /// The panel is not open.
         case notOpen(String)
+        /// The tool's manifest declares no status, so it may set none.
+        case noStatus
 
         package var error: RPCErrorObject {
             switch self {
+            case .noStatus:
+                return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "the manifest declares no status")
             case .unknownPanel: return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "no such panel")
             case .wrongPlace: return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "not a panel of this place")
             case .notOpen: return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "the panel is not open")
@@ -161,6 +205,10 @@ package final class ToolPanelHost: ObservableObject {
     @Published package private(set) var windows: [Key] = []
     /// The island page that is open, when one is.
     @Published package private(set) var island: Key?
+    /// Each tool's status, the last it set, as shown: a change is published
+    /// at most once a second for each tool. A tool with none is not here.
+    /// Whether a tool's is drawn is the store's to say (`statusTools`).
+    @Published package private(set) var statuses: [ToolID: ToolStatus] = [:]
 
     private let parts: Parts
     /// For each open panel: when a page it was sent was last drawn, the page
@@ -172,6 +220,16 @@ package final class ToolPanelHost: ObservableObject {
     /// For each web panel, the second its calls are counted in, how many it
     /// has had, and how many seconds before it in a row had too many.
     private var calls: [Key: Calls] = [:]
+    /// For each tool: when its status was last shown, the one waiting to be
+    /// shown, and the timer that will show it.
+    private var statusPacing: [ToolID: StatusPacing] = [:]
+
+    private struct StatusPacing {
+        var last: TimeInterval?
+        /// The newest status not shown yet. The inner nil is "none".
+        var pending: ToolStatus??
+        var timer: (any ToolTimer)?
+    }
 
     private struct Drawing {
         var last: TimeInterval?
@@ -466,18 +524,78 @@ package final class ToolPanelHost: ObservableObject {
         }
     }
 
+    // MARK: - The status
+
+    /// The seconds between two changes of one tool's status that are shown.
+    package static let statusSeconds: TimeInterval = 1
+
+    /// A tool's status, from its `ui/status`: kept in place of the last
+    /// one, or taken away for `none`. Gives back why it was not: a tool
+    /// whose manifest declares no status may set none.
+    ///
+    /// The first change after a quiet second is shown at once. Later ones
+    /// within the second replace each other, and the newest is shown when
+    /// the second is up.
+    @discardableResult
+    package func status(_ tool: ToolID, _ asked: UIStatusParams) -> Refusal? {
+        guard parts.described(tool)?.showsStatus == true else { return .noStatus }
+        let next = ToolStatus(asked)
+        var pacing = statusPacing[tool] ?? StatusPacing()
+        let now = parts.clock.now
+        if pacing.timer == nil, pacing.last.map({ now - $0 >= Self.statusSeconds }) ?? true {
+            pacing.last = now
+            statusPacing[tool] = pacing
+            show(next, for: tool)
+        } else {
+            pacing.pending = .some(next)
+            if pacing.timer == nil {
+                let wait = max(0, (pacing.last ?? now) + Self.statusSeconds - now)
+                pacing.timer = parts.clock.after(wait) { [weak self] in self?.showWaitingStatus(of: tool) }
+            }
+            statusPacing[tool] = pacing
+        }
+        return nil
+    }
+
+    private func showWaitingStatus(of tool: ToolID) {
+        guard var pacing = statusPacing[tool] else { return }
+        pacing.timer = nil
+        guard let next = pacing.pending else {
+            statusPacing[tool] = pacing
+            return
+        }
+        pacing.pending = nil
+        pacing.last = parts.clock.now
+        statusPacing[tool] = pacing
+        show(next, for: tool)
+    }
+
+    /// Publishes a tool's status, when it is another than the one shown.
+    private func show(_ status: ToolStatus?, for tool: ToolID) {
+        if statuses[tool] != status { statuses[tool] = status }
+    }
+
+    /// A tool's status goes, and any waiting to be shown with it.
+    private func forgetStatus(of tool: ToolID) {
+        statusPacing.removeValue(forKey: tool)?.timer?.cancel()
+        if statuses[tool] != nil { statuses[tool] = nil }
+    }
+
     // MARK: - A tool that ends
 
     /// A run of the tool's program ended: every panel it had open ends with
-    /// it. Its badge stays until the tool is switched off or removed.
+    /// it, and so does its status, which never outlives its program. Its
+    /// badge stays until the tool is switched off or removed.
     package func toolEnded(_ tool: ToolID) {
         for key in shown.keys where key.tool == tool { forgetPanel(key) }
+        forgetStatus(of: tool)
     }
 
-    /// The tool was switched off, updated or removed: its panels and its
-    /// badge go.
+    /// The tool was switched off, updated or removed: its panels, its
+    /// status and its badge go.
     package func forget(_ tool: ToolID) {
         toolEnded(tool)
+        forgetStatus(of: tool)
         badges[tool] = nil
     }
 

@@ -30,9 +30,10 @@ use serde_json::Value;
 use crate::app::App;
 use crate::error::{codes, ToolError};
 use crate::generated::{
-    methods, ButtonBlock, DividerBlock, Error, FieldBlock, HeadingBlock, ImageBlock, LinkBlock,
-    ListBlock, ProgressBlock, RowBlock, SpacerBlock, TextBlock, ToggleBlock, UiBlock,
-    UiBlockContent, UiEventResult, UiListRow, UiRenderParams, UiText, UiTree,
+    methods, ButtonBlock, ChoiceBlock, DividerBlock, Error, FieldBlock, HeadingBlock, ImageBlock,
+    LinkBlock, ListBlock, LocalizedText, ProgressBlock, RowBlock, SpacerBlock, TextBlock,
+    ToggleBlock, UiBlock, UiBlockContent, UiChoiceOption, UiEventResult, UiListRow, UiRenderParams,
+    UiText, UiTree,
 };
 
 /// What the person did in one of the tool's panels, as a handler sees it.
@@ -56,7 +57,8 @@ impl PanelEvent {
         }
     }
 
-    /// For `submit` and `change`: the field's text.
+    /// For `submit` and `change`: the field's text. For the `change` of a
+    /// `choice`: the picked option's value.
     pub fn text(&self) -> Option<&str> {
         match self.kind.as_str() {
             "submit" | "change" => self.value.as_ref().and_then(Value::as_str),
@@ -482,6 +484,128 @@ impl Image {
         self.own().height = Some(height);
         self
     }
+}
+
+/// A pop-up menu being written, from [`choice`]. Unlike the other blocks
+/// being written, it writes its own fallback when it joins a page, unless
+/// one was given.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Choice(UiBlock);
+
+impl Choice {
+    fn own(&mut self) -> &mut ChoiceBlock {
+        match &mut self.0.content {
+            UiBlockContent::Choice(block) => block,
+            _ => unreachable!("a Choice block is a Choice"),
+        }
+    }
+
+    /// What is being chosen, beside the menu.
+    pub fn title(mut self, title: impl Into<UiText>) -> Choice {
+        self.own().title = Some(title.into());
+        self
+    }
+
+    /// False draws it dimmed, and nothing can be picked.
+    pub fn enabled(mut self, enabled: bool) -> Choice {
+        self.own().enabled = Some(enabled);
+        self
+    }
+
+    /// What an app that does not know this kind draws instead, as plain
+    /// text. Left out, one is written: the title, a colon and the selected
+    /// option's title.
+    pub fn fallback(self, text: impl Into<UiText>) -> Choice {
+        Choice(self.0.fallback(text))
+    }
+
+    /// The block, with the fallback written when none was given.
+    fn finished(mut self) -> UiBlock {
+        if self.0.fallback.is_none() {
+            let said = said_plainly(self.own());
+            self.0.fallback = Some(said);
+        }
+        self.0
+    }
+}
+
+impl From<Choice> for UiBlock {
+    fn from(writing: Choice) -> UiBlock {
+        writing.finished()
+    }
+}
+
+impl IntoBlocks for Choice {
+    fn into_blocks(self, into: &mut Vec<UiBlock>) {
+        into.push(self.finished());
+    }
+}
+
+/// What a choice says, as words: the title, a colon and the selected
+/// option's title, or that title alone, in every language either has. A
+/// value that is no option's is written as it is.
+fn said_plainly(block: &ChoiceBlock) -> UiText {
+    let selected = block
+        .options
+        .iter()
+        .find(|option| option.value == block.value)
+        .map(|option| option.title.clone())
+        .unwrap_or_else(|| UiText::Plain(block.value.clone()));
+    let Some(title) = &block.title else {
+        return selected;
+    };
+    fn words<'a>(text: &'a UiText, language: &str) -> &'a str {
+        match text {
+            UiText::Plain(plain) => plain,
+            UiText::Languages(entries) => entries
+                .get(language)
+                .or_else(|| entries.get("en"))
+                .map(String::as_str)
+                .unwrap_or(""),
+        }
+    }
+    let mut said = LocalizedText::new();
+    for text in [title, &selected] {
+        if let UiText::Languages(entries) = text {
+            for language in entries.keys() {
+                said.insert(language.clone(), String::new());
+            }
+        }
+    }
+    if said.is_empty() {
+        return UiText::Plain(format!(
+            "{}: {}",
+            words(title, "en"),
+            words(&selected, "en")
+        ));
+    }
+    for (language, line) in said.iter_mut() {
+        *line = format!("{}: {}", words(title, language), words(&selected, language));
+    }
+    UiText::Languages(said)
+}
+
+/// A pop-up menu: one of a fixed list of options, at most 64, no two with
+/// one value. `value` is the selected option's. Picking one is the event
+/// `change`, read with [`PanelEvent::text`]. [`Choice::title`] says what is
+/// being chosen.
+///
+/// An app before 3.48 does not know this kind and draws the fallback, which
+/// nobody can change. So ask `app.supports(features::CHOICE)` first, and
+/// send a [`field`] to an app without it.
+pub fn choice(
+    id: impl Into<String>,
+    value: impl Into<String>,
+    options: Vec<UiChoiceOption>,
+) -> Choice {
+    Choice(
+        UiBlock::of(UiBlockContent::Choice(ChoiceBlock {
+            value: value.into(),
+            options,
+            ..ChoiceBlock::default()
+        }))
+        .id(id),
+    )
 }
 
 /// Words. [`Text::style`] and [`Text::lines`] say how they are drawn.

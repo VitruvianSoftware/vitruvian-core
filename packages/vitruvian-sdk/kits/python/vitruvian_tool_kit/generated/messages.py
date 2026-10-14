@@ -150,6 +150,16 @@ Service = Literal["notify", "open", "clipboard.read", "clipboard.write", "keystr
 SERVICES: Tuple[str, ...] = ("notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage",)
 
 
+StatusPlacement = Literal["island"]
+"""Where it is shown. island: on the closed island, beside the agent mark."""
+STATUS_PLACEMENTS: Tuple[str, ...] = ("island",)
+
+
+StatusState = Literal["none", "ok", "busy", "attention", "failure"]
+"""none: no mark. ok: all is well. busy: something is under way. attention: something waits for the person. failure: something failed."""
+STATUS_STATES: Tuple[str, ...] = ("none", "ok", "busy", "attention", "failure",)
+
+
 Surface = Literal["commandBar", "radial", "quickPanel", "shortcut"]
 SURFACES: Tuple[str, ...] = ("commandBar", "radial", "quickPanel", "shortcut",)
 
@@ -160,7 +170,7 @@ TEXT_STYLES: Tuple[str, ...] = ("body", "secondary", "caption", "monospaced",)
 
 
 UIEventKind = Literal["tap", "toggle", "submit", "change", "bridge"]
-"""What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call."""
+"""What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call."""
 UI_EVENT_KINDS: Tuple[str, ...] = ("tap", "toggle", "submit", "change", "bridge",)
 
 
@@ -243,6 +253,8 @@ class InitializeParams:
     """The language the app is in, as a tag such as en-US, fr or pt-BR."""
     data_folder: str
     """The folder the tool may keep its own files in. It is also the folder the tool is started in."""
+    features: Optional[List[str]] = None
+    """What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "initializeParams") -> "InitializeParams":
@@ -251,6 +263,7 @@ class InitializeParams:
             protocol_versions=[_string(item, where + ".protocolVersions" + f"[{index}]") for index, item in enumerate(_array(_required(found, "protocolVersions", where), where + ".protocolVersions"))],
             language=_string(_required(found, "language", where), where + ".language"),
             data_folder=_string(_required(found, "dataFolder", where), where + ".dataFolder"),
+            features=None if found.get("features") is None else [_string(item, where + ".features" + f"[{index}]") for index, item in enumerate(_array(found["features"], where + ".features"))],
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -258,6 +271,8 @@ class InitializeParams:
         out["protocolVersions"] = self.protocol_versions
         out["language"] = self.language
         out["dataFolder"] = self.data_folder
+        if self.features is not None:
+            out["features"] = self.features
         return out
 
 
@@ -734,11 +749,11 @@ class UIEventParams:
     panel: str
     """The panel's id."""
     event: UIEventKind
-    """What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it. bridge: a web panel's page called window.vitruvian.call."""
+    """What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call."""
     block: Optional[str] = None
     """The id of the block the person acted on. Left out for bridge."""
     value: Optional[Any] = None
-    """For toggle, the switch's new state. For submit and change, the field's text. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own."""
+    """For toggle, the switch's new state. For submit and change, the field's text; for the change of a choice, the picked option's value. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "uiEventParams") -> "UIEventParams":
@@ -868,6 +883,36 @@ class UIBadgeParams:
 
 
 @dataclass(frozen=True)
+class UIStatusParams:
+    """The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. An app before 3.48 answers failure -32601."""
+
+    state: StatusState
+    """none: no mark. ok: all is well. busy: something is under way. attention: something waits for the person. failure: something failed."""
+    text: Optional[UIText] = None
+    """What it means, in one short line, for VoiceOver and the tooltip. Shown as one line of at most 120 characters. Left out, the app says its own word for the state."""
+    icon: Optional[str] = None
+    """An SF Symbol name, drawn in place of the state's own glyph. The colour, the size and the motion stay the app's. A name this Mac does not have, or a blank one, draws the state's own glyph."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiStatusParams") -> "UIStatusParams":
+        found = _object(value, where)
+        return cls(
+            state=_one_of(_required(found, "state", where), where + ".state", STATUS_STATES),
+            text=None if found.get("text") is None else _text(found["text"], where + ".text"),
+            icon=None if found.get("icon") is None else _string(found["icon"], where + ".icon"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["state"] = self.state
+        if self.text is not None:
+            out["text"] = self.text
+        if self.icon is not None:
+            out["icon"] = self.icon
+        return out
+
+
+@dataclass(frozen=True)
 class UITree:
     """A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an image written into it included: the app does not draw a larger one, and the tool's log says so."""
 
@@ -889,14 +934,14 @@ class UITree:
 
 @dataclass(frozen=True)
 class UIBlock:
-    """One block. type says which of the twelve kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one."""
+    """One block. type says which of the thirteen kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one."""
 
     type: str
-    """The kind: text, heading, row, button, toggle, field, list, progress, image, divider, link or spacer."""
-    content: Union[TextBlock, HeadingBlock, RowBlock, ButtonBlock, ToggleBlock, FieldBlock, ListBlock, ProgressBlock, ImageBlock, DividerBlock, LinkBlock, SpacerBlock, Dict[str, Any]]
+    """The kind: text, heading, row, button, toggle, field, list, progress, image, divider, link, spacer or choice."""
+    content: Union[TextBlock, HeadingBlock, RowBlock, ButtonBlock, ToggleBlock, FieldBlock, ListBlock, ProgressBlock, ImageBlock, DividerBlock, LinkBlock, SpacerBlock, ChoiceBlock, Dict[str, Any]]
     """The kind's own fields: the one `type` names, or, for a kind these types do not have, its fields as they came."""
     id: Optional[str] = None
-    """The block's name within the page, as the events it causes name it. Required for button, toggle, field and list; a row with one can be tapped. The same characters as a command id."""
+    """The block's name within the page, as the events it causes name it. Required for button, toggle, field, list and choice; a row with one can be tapped. The same characters as a command id."""
     fallback: Optional[UIText] = None
     """What an app that does not know this kind draws instead, as plain text."""
 
@@ -929,6 +974,8 @@ class UIBlock:
             content = LinkBlock.from_json(value, where)
         elif kind == "spacer":
             content = SpacerBlock.from_json(value, where)
+        elif kind == "choice":
+            content = ChoiceBlock.from_json(value, where)
         else:
             content = {key: item for key, item in found.items() if key not in ("type", "id", "fallback",)}
         return cls(
@@ -1307,4 +1354,62 @@ class SpacerBlock:
         out: Dict[str, Any] = {}
         if self.size is not None:
             out["size"] = self.size
+        return out
+
+
+@dataclass(frozen=True)
+class UIChoiceOption:
+    """One option of a choice."""
+
+    value: str
+    """What the event carries when the person picks it. At most 128 characters. It may be empty."""
+    title: UIText
+    """What the menu shows for it, as one line."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiChoiceOption") -> "UIChoiceOption":
+        found = _object(value, where)
+        return cls(
+            value=_string(_required(found, "value", where), where + ".value"),
+            title=_text(_required(found, "title", where), where + ".title"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["value"] = self.value
+        out["title"] = self.title
+        return out
+
+
+@dataclass(frozen=True)
+class ChoiceBlock:
+    """A pop-up menu: one of a fixed list of options. Picking one is the event change, with the option's value. No two options share a value: JSON Schema cannot say that, and the app refuses a page that breaks it. An app before 3.48 does not know this kind and draws its fallback, which nobody can change: ask the app for ui.choice first, and send a field to an app without it."""
+
+    value: str
+    """The selected option's value. One that is no option's is drawn as an extra first row, as written."""
+    options: List[UIChoiceOption]
+    """The options, from 1 to 64."""
+    title: Optional[UIText] = None
+    """What is being chosen, beside the menu."""
+    enabled: Optional[bool] = None
+    """False draws it dimmed, and nothing can be picked."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "choiceBlock") -> "ChoiceBlock":
+        found = _object(value, where)
+        return cls(
+            value=_string(_required(found, "value", where), where + ".value"),
+            options=[UIChoiceOption.from_json(item, where + ".options" + f"[{index}]") for index, item in enumerate(_array(_required(found, "options", where), where + ".options"))],
+            title=None if found.get("title") is None else _text(found["title"], where + ".title"),
+            enabled=None if found.get("enabled") is None else _boolean(found["enabled"], where + ".enabled"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.title is not None:
+            out["title"] = self.title
+        out["value"] = self.value
+        out["options"] = [item.to_json() for item in self.options]
+        if self.enabled is not None:
+            out["enabled"] = self.enabled
         return out

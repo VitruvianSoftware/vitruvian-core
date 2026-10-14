@@ -14,6 +14,7 @@ enum ToolPanelTests {
         pages(suite)
         theLimit(suite)
         laterKinds(suite)
+        choices(suite)
         webPages(suite)
         pictures(suite)
     }
@@ -81,6 +82,52 @@ enum ToolPanelTests {
         suite.expect(read?.blocks[0].content == .unknown("chart") && read?.blocks[0].fallback == .plain("Five deploys this week")
                          && read?.blocks[1].fallback == nil,
                      "it carries its fallback when it has one, to be drawn in its place")
+    }
+
+    /// A `choice`: one of a fixed list of options, read by its kind, and a
+    /// page that breaks one of its rules refused with the place named.
+    static func choices(_ suite: TestSuite) {
+        func page(_ block: String) -> Result<UITree, ToolPanelProblem> {
+            ToolPanelTree.read(json(#"{"blocks": [\#(block)]}"#))
+        }
+        func options(_ count: Int) -> String {
+            ExternalToolManifestTests.list(count) { #"{"value": "v\#($0)", "title": "Option \#($0)"}"# }
+        }
+        let read = try? page(#"""
+            {"type": "choice", "id": "light", "title": "Mouse when green", "value": "green", "enabled": false,
+             "fallback": "Mouse when green: Green",
+             "options": [{"value": "green", "title": "Green"},
+                         {"value": "breathe green", "title": {"en": "Pulsing green", "de": "Pulsierendes Grün"}}]}
+            """#).get()
+        let block = read?.blocks.first
+        var choice: ChoiceBlock?
+        if case .choice(let found)? = block?.content { choice = found }
+        suite.expect(block?.type == "choice" && block?.id == "light" && choice?.value == "green"
+                         && choice?.options.map(\.value) == ["green", "breathe green"]
+                         && choice?.options.last?.title.text(for: "de") == "Pulsierendes Grün"
+                         && choice?.options.last?.title.text(for: "fr") == "Pulsing green"
+                         && choice?.title == .plain("Mouse when green") && choice?.enabled == false,
+                     "a choice is read by its kind, with its options in order, each title in its languages")
+        suite.expect((try? page(#"{"type": "choice", "id": "p", "value": "typed", "options": \#(options(1))}"#).get()) != nil,
+                     "a choice whose value is no option's is read: the value is the tool's to give")
+        suite.expect((try? page(#"{"type": "choice", "id": "p", "value": "v0", "options": \#(options(64))}"#).get()) != nil
+                         && page(#"{"type": "choice", "id": "p", "value": "v0", "options": \#(options(65))}"#)
+                         == .failure(.notWellFormed("blocks[0].options")),
+                     "a choice holds 64 options, and one more refuses the page, and says where")
+        suite.expect(page(#"{"type": "choice", "id": "p", "value": "v0", "options": []}"#)
+                         == .failure(.notWellFormed("blocks[0].options")),
+                     "a choice with no option refuses the page")
+        suite.expect(page(#"""
+            {"type": "choice", "id": "p", "value": "a",
+             "options": [{"value": "a", "title": "A"}, {"value": "a", "title": "A again"}]}
+            """#) == .failure(.notWellFormed("blocks[0].options")),
+                     "two options with one value refuse the page, and the reason names the options")
+        suite.expect(page(#"{"type": "choice", "value": "v0", "options": \#(options(2))}"#)
+                         == .failure(.notWellFormed("blocks[0].id")),
+                     "a choice with no id refuses the page, and says where")
+        suite.expect(page(#"{"type": "choice", "id": "p", "options": \#(options(2))}"#)
+                         == .failure(.notWellFormed("blocks[0].value")),
+                     "a choice that does not say what is selected refuses the page")
     }
 
     /// A folder for one test, under the temporary folder, removed after.

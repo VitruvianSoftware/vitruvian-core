@@ -49,6 +49,12 @@
 //! and a page is [`tree!`] of its blocks, one function a kind. [`Panel`]
 //! here is that handle; the manifest's own panel type is
 //! [`generated::Panel`].
+//!
+//! Two things are newer than protocol 2 itself, and an app says at hello
+//! whether it has them ([`App::supports`], [`features`]): the tool's status
+//! on the closed island ([`Ui::status`]), and a pop-up menu on a page
+//! ([`choice`]). On an app from before them a status sends nothing, and a
+//! choice is drawn as its fallback text.
 
 pub mod generated;
 pub use generated::*;
@@ -59,10 +65,11 @@ mod link;
 mod panels;
 mod tool;
 
-pub use app::{App, Clipboard, Keystrokes, Notify, Open, Processes, Storage, Ui};
+pub use app::{features, status, App, Clipboard, Keystrokes, Notify, Open, Processes, Storage, Ui};
 pub use error::{codes, RefusalCode, ToolError};
 pub use panels::{
-    button, divider, field, heading, image, link, list, progress, row, spacer, text, toggle,
-    Button, Field, Image, IntoBlocks, Panel, PanelAnswer, PanelEvent, Progress, Row, Text, Toggle,
+    button, choice, divider, field, heading, image, link, list, progress, row, spacer, text,
+    toggle, Button, Choice, Field, Image, IntoBlocks, Panel, PanelAnswer, PanelEvent, Progress,
+    Row, Text, Toggle,
 };
 pub use tool::Tool;

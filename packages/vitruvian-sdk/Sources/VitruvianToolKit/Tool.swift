@@ -71,6 +71,10 @@ public final class Tool {
 
     /// The language the app is in, as a tag such as `en-US`.
     public private(set) var language = "en"
+    /// What the app said it has beyond the first release of the protocol
+    /// version, by name: the hello's `features`. Empty for an app that said
+    /// nothing, which is every app before 3.48. Ask with `App.supports`.
+    public private(set) var features: Set<String> = []
     /// The folder the tool may keep its own files in. It is also the folder
     /// the app starts the tool in.
     public private(set) var dataFolder = URL(fileURLWithPath: FileManager.default.currentDirectoryPath,
@@ -236,6 +240,7 @@ public final class Tool {
         }
         language = hello.language
         dataFolder = URL(fileURLWithPath: hello.dataFolder, isDirectory: true)
+        features = Set(hello.features ?? [])
         greeted = true
         answer(id, InitializeResult(protocolVersion: picked, toolVersion: version))
         // The timers count from the hello, so a handler may call the app.
@@ -368,6 +373,38 @@ public struct App {
 
     public var language: String { tool.language }
     public var dataFolder: URL { tool.dataFolder }
+
+    /// Whether this app has something a later release added to the
+    /// protocol version: it named it at hello. False for an app that named
+    /// nothing, as every app before 3.48 does. Ask before using a `choice`
+    /// block, and send a `field` to an app without it.
+    public func supports(_ feature: ProtocolFeature) -> Bool {
+        tool.features.contains(feature.rawValue)
+    }
+
+    /// The same, for a name this kit has no case for yet.
+    public func supports(_ feature: String) -> Bool {
+        tool.features.contains(feature)
+    }
+
+    /// Sets the tool's status, a small mark the app draws on the closed
+    /// island: `ui/status`. Each one replaces the last; `.none` takes it
+    /// away; and it goes when the tool's program ends, so a tool that wants
+    /// it to last starts with the app (`"activation": ["onLaunch"]`).
+    /// `text` says what it means, for VoiceOver. `icon`, an SF Symbol
+    /// name, replaces the state's own glyph. The manifest must declare
+    /// `contributes.status`: without it the app refuses, and the refusal is
+    /// thrown. It needs nothing in `uses`.
+    ///
+    /// False, and **nothing is sent**, when the app did not say it has
+    /// `ui.status`: an app before 3.48 shows no status. True when it was
+    /// sent and answered; the person may still have switched the mark off.
+    @discardableResult
+    public func status(_ state: StatusState, text: UIText? = nil, icon: String? = nil) throws -> Bool {
+        guard supports(.status) else { return false }
+        try send(UIStatusParams(state: state, text: text, icon: icon))
+        return true
+    }
 
     /// Sends any request of the protocol and reads its answer.
     @discardableResult

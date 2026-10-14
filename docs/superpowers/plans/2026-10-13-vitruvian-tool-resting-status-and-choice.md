@@ -189,6 +189,18 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
 
 - [ ] **Step 8: Commit**, with `git status --short` first.
 
+**As built (2026-10-13).** Where the code proved the plan wrong:
+
+- **This commit alone leaves four kit tests red; Task 2's commit makes them green.** Every kit holds a test that each request a tool may send has a call (`every_request_a_tool_may_send_has_a_call` in Rust, `TestEveryRequestAToolMaySendHasACall` in Go, and the count of calls in Python and TypeScript). So `ui/status` in `methods.json` fails them until the kit has the call. Tasks 1 and 2 were built together and committed apart, by file. Decision 3 ("each task must build and pass by itself") does not hold between these two.
+- **`Desk.swift` answers `ui/status` for real already**, not in Task 3. `DeskTests.testEveryRequestATooMaySendIsAnswered` holds that the desk answers every request a tool may send, so an arm that refused it would have needed that test bent. The desk says "the app would show <state> on the closed island", and refuses a tool whose manifest declares none with -32602.
+- **`Sources/VitruvianToolCLI/Words.swift` gained eight sentences.** Its `switch` over `ManifestProblem` is exhaustive; the plan's list of files did not name it.
+- **`tools/sdk-codegen/emitters/python.py` had a bug this change was the first to reach.** A call whose argument is a closed list of names (`state: StatusState`) named a type the file never imported. Fixed, with a test (`test_every_name_a_python_call_uses_is_imported`) that was seen to fail without the fix.
+- **A choice's duplicate values have no example in `messages.json`.** JSON Schema cannot say the rule and the file has no `schema: false` mark for messages, so the schema's description says it and the Swift tests hold it (`testAChoiceIsHeldToItsRules`, and the app's `ToolPanelTests.choices`).
+- **The app's `ExternalToolCallsTests.refusals` changed on purpose.** It held that every request a tool makes is refused with -32001 when its service is not in `uses`. `ui/status` needs no service, so the test now says so by name.
+- **More examples than the plan lists**, each naming its problem: a status with no placement, an option with no title, a blank option title, sixty-four options with a value of 128 characters, a choice with only what is required.
+- `platform` ran 879 checks after this task and `tool-runtime` 863. The counts before were not run separately: this task adds 14 expectations to the first and one to the second, so they were 865 and 862.
+- **The plan's test command leaves out the suite most of this lives in.** `ExternalToolCallsTests`, `ExternalToolStoreTests`, `ToolPanelHostTests`, the settings and the screens tests are in `tool-runtime`, not `platform`. Every task here ran `--suite=platform --suite=tool-runtime --suite=notch --suite=agents`.
+
 ---
 
 ### Task 2: Every kit sets a status, builds a choice, and asks what the app has
@@ -224,6 +236,35 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
 - [ ] **Step 5: Plant one regression per kit by hand:** make the status call send whatever the hello said. The test "writes nothing for an older app" must fail. Undo by hand.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-13).** The names, where a kit's idiom or its generated types asked for another:
+
+| Kit | What the app has | Set the status | Build a choice |
+|---|---|---|---|
+| Swift | `App.supports(_: ProtocolFeature)`, and `supports(_: String)` for a name the kit has no case for | `App.status(_:text:icon:) throws -> Bool`, as proposed | `choice(_:title:value:options:enabled:fallback:)`, and `UIBlock.choice` |
+| TypeScript | `app.supports(feature)`; the names are `Feature.status`, `.choice`, `.preferenceOptions` | `app.status(state, { text, icon })` | `choice(id, value, options, { title, enabled, fallback })` |
+| Python | `app.supports(feature)`; the names are `Feature.STATUS`, `.CHOICE`, `.PREFERENCE_OPTIONS` | `app.status(state, text=None, icon=None)` | `choice(id, value, options, title=None, enabled=None, fallback=None)` |
+| Go | `(*App).Supports(feature string)`; `FeatureStatus`, `FeatureChoice`, `FeaturePreferenceOptions` | `UI.Status(state string, options ...StatusOptions) (shown bool, err error)` | `ui.Choice(id, value, options, more ...ChoiceOptions)` |
+| Rust | `App::supports(&self, feature: &str)`; `features::STATUS`, `CHOICE`, `PREFERENCE_OPTIONS` | `Ui::status(self, state: &str, text: Option<UiText>, icon: Option<&str>) -> Result<bool, ToolError>` | `choice(id, value, options) -> Choice`, with `.title()`, `.enabled()`, `.fallback()` |
+
+- **Go and Rust take the state as text**, with constants (`toolkit.StatusBusy`, `status::BUSY`). The generator gives those two kits no type for a closed list of names: `state` is a `string` and a `String` in the generated params, as a button's style is.
+- **TypeScript and Python have two calls, and only one is the kit's.** Their calls on `app` are generated, one for each message, so `app.ui.status(...)` exists and is the bare request: it is sent whatever the app said, and an older app refuses it with -32601. `app.status(...)` is the kit's call, which sends nothing to an app without `ui.status`. Each one's doc comment says so. It is what Swift's `App.send` and Go's `App.Send` already are.
+- **In TypeScript `supports` and `status` are not enumerable on `app`.** The kit's test of the calls lists `Object.keys(app)` and holds it to the protocol's messages; the two are the kit's own and not messages.
+- **Go's `ChoiceOptions` has `Disabled`, not `Enabled`**, as its `ButtonOptions` and `ToggleOptions` do.
+- **Rust's `Choice` is written by hand**, not with the `writing!` macro the other blocks use: it writes its fallback when it joins a page, after its title is known.
+- **Rust's `every_request_a_tool_may_send_has_a_call` changed on purpose**: its hello now says `ui.status`, since the kit sends no status to an app that does not.
+- **The written fallback is in every language either text has.** A title in two languages with a plain option title gives a fallback in those two languages.
+- **Each kit's README** gained a short paragraph; only the TypeScript and Python ones listed calls before.
+
+Step 5, the planted regression in each kit (the status call sends whatever the hello said), and the test that failed:
+
+| Kit | Failed |
+|---|---|
+| Swift | `testAStatusWritesNothingForAnOlderApp` |
+| TypeScript | "a status writes nothing for an older app", and "… for an app that has other things" |
+| Python | `test_a_status_writes_nothing_for_an_older_app`, and `…_for_an_app_that_has_other_things` |
+| Go | `TestAStatusWritesNothingForAnOlderApp` |
+| Rust | `a_status_writes_nothing_for_an_older_app` |
+
 ---
 
 ### Task 3: The conformance script, `vitruvian-tool run`, and the samples
@@ -253,6 +294,22 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
 - [ ] **Step 4: Watch them pass:** `conformance_test`, `samples_test`, `kit_samples_test`, `swift_samples_test`, `templates_in_sync_test`, `init_test`, `VitruvianToolCLITests`, `guide_test` (the sample `README.md` files are held to the guide's rules).
 - [ ] **Step 5: Plant by hand:** in `conformance.py`, answer the "older app" `ui/status` with `{}`. The test that a refused tool survives must no longer prove anything: confirm the test that checks the answer was -32601 fails. Undo.
 - [ ] **Step 6: Commit.**
+
+**As built (2026-10-13).**
+
+- **The panel samples let the person pick the status; they do not set `busy` "while the counter runs".** The counter does nothing that takes time, so that status would have shown for an instant. And by-hand check 1 needs a sample that can show each of the five states. So each `hello-panel-*` sample starts at `ok`, sets it when its program starts (`onStart`), and its island page has a `choice` block, "Status on the closed island", that picks among the five. On an app without `ui.choice` the block is a `field` to type the word in. The status is exercised by the conformance script because it is set at start: `a command: addOne: ran, and set the status: ok`.
+- **The panel samples now start with the app** (`"activation": ["onLaunch"]`, was `onCommand`). A status goes when the program ends, and a tool that rests after two idle minutes would lose its mark while the person looked at it. This is what the guide tells an author to do.
+- **`hello-swift` and `hello-python-kit` gained a preference; none could "gain options".** Their one preference, `count`, is an integer, and only a `string` preference may have options. They have a new one, `step` ("Count by": One, Two, Five), and their `count` command reads it. It reads the text defensively, since an older app draws a text field and anything may be saved.
+- **The desk's part of this task was done in Task 1** (see there). What was left for `vitruvian-tool run` is its hello, which now names all three features.
+- **The script fails a `ui/status` from a tool whose manifest declares none**, after answering it with -32602 as the app does. The plan said such a tool "is told so"; a request the app will always refuse is the author's mistake, as a `ui/render` for an undeclared panel already is.
+- **"A handful" is five.** More than five `ui/status` to an app that answers each with -32601 fails the older-app step.
+- **The older-app step also opens the panel**, and says so when the page holds a `choice` (that app draws its fallback). That is a remark, not a failure.
+- **One existing test changed on purpose:** `never_stops_writing` read the script's last line, which is now the older app's. It reads the `shutdown` line by name, and allows the second run to end either of the two ways the first may.
+- **`samples_test.WANTED`** holds each panel sample to three lines: its status, its page of five blocks, and that it carried on with an older app and sent it no `ui/status`.
+- **The docs' excerpts moved with the samples.** Twenty-six `file=` excerpts in the guide and the samples' READMEs quote the lines that changed; each was moved to the same code as it is now. The two panel READMEs gained a section on the status and the choice. `README.md`'s account of the script says seven checks; the guide said "five" where there were six, and now says seven.
+- **Between this merging and SDK 1.3.0 being published, the TypeScript and Python panel samples do not run from the registries.** They pin the kit (`1.2.0` until release-please bumps it) and use calls 1.3.0 adds. In this repository and in the mirror's CI they build against the kit beside them, so every test passes. It is the same window protocol 2's samples had.
+
+Step 5, planted: the older app answers `ui/status` with `{}`. `conformance_test` failed with "a tool that dies when refused is not caught". Reversed.
 
 ---
 
@@ -301,6 +358,25 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
   5. "the app says it has nothing": send the hello without `features`.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-13).**
+
+- **Four of the five regressions fail in `tool-runtime`, not `platform`**: that is the suite the host's, the store's and the calls' tests are in. Only "the mildest status wins" is `platform`'s. `mutation_checks.py` names the right suite for each.
+- **A switched-off status is kept.** The host keeps what the tool sends whether or not the person has the status switched on; `statusTools()` is what leaves the tool out. So switching it on again draws the last status at once, with no restart and without waiting for the tool's next one. By-hand check 6 says "back at the tool's next status": it is back sooner.
+- **`ToolStatus` cannot be built with `.none`**: both its initializers are failable and give nil for it.
+- **`ExternalToolStoreTests.adding` changed on purpose**: it held the hello's exact params, which now carry `features`.
+- **One more test than listed**, `aStatusReachesTheHostAndGoesWithTheProgram`, runs a status through the store's own wiring: the tool's line in, the answer out, the switch, and the end of the program. And `optionsAreNoRuleOnTheValue` holds that `storage/set` still takes a value that is no option's.
+- Counts: `platform` 913 (was 879), `tool-runtime` 918 (was 863).
+
+Step 5, each planted and seen to fail:
+
+| Regression | Suite | The check that failed |
+|---|---|---|
+| a status outlives its program | tool-runtime | "a status goes when the tool's program ends, at once: it never outlives its program" |
+| a tool that declared no status may show one | tool-runtime | "a status from a tool whose manifest declares none is refused, and none is kept" |
+| a switched-off status is listed | tool-runtime | "a tool whose status the person switched off is left out" |
+| the mildest status wins | platform | "of two tools the worse status wins, whichever was added first" |
+| the app says it has nothing | tool-runtime | "the hello names what this app has: a status, a choice block and options on a preference" |
+
 ---
 
 ### Task 5: The closed island draws it, and a setting can be a pop-up
@@ -346,6 +422,33 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
   4. "the agreement sheet says nothing of a status": make `showsStatus` nil.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-13).**
+
+- **The label's colon follows the language in code, not in a seventh string.** The label joins the tool's name and its words. A format string for that (`%1$@: %2$@`) would be the same text in most languages, and `ExternalToolStringsTests` fails any text left as the English. So `ToolStatusMarkContent.colon(in:)` writes `: `, French's no-break space before it, and the full-width colon for Japanese and Chinese. The six strings of the plan are the only new ones.
+- **`markOK` is "OK" in English only.** The same test would call "OK" untranslated elsewhere, so each other language says "all is well" in its own words ("In Ordnung", "Tout va bien", "問題なし").
+- **`ToolStatusMarkContent` holds its own `Weight` and `Tint`**, two small enums, in place of SwiftUI's `Font.Weight` and `Color`, so the tests compare plain values.
+- **A busy mark is a view of its own inside `ToolStatusMark`.** The built-in mark keeps one `breathing` flag for its whole life, so an amber mark that goes and comes back would stand still. A tool's mark changes state far more often; its breathing starts again each time `busy` takes another state's place. The built-in mark is untouched.
+- **`RestingStatus.shown(of:statuses:)`** joins `statusTools()` with the host's statuses, in `Core`, so the rule "a switched-off status is kept and not drawn" has a test (`aSwitchedOffStatusIsKeptAndNotDrawn`).
+- **The built-in's verdict rule takes plain values:** `NotchGitHubRestingIndicator.verdict(watching:aggregate:)`, tested by `theBuiltInMarkIsWhatItWas`.
+- **The tap checks that the island has its Tools page** (`NotchService.modules.contains(.tools)`) before it takes the tool's case. Without the check, a click with the Tools page switched off would have done nothing at all; with it the click falls through to what it does today. It also closes a quick tool that is open on the Tools page (`QuickLauncherService.closeUtility()`), which would otherwise be drawn in place of the tool's page. Neither was run at a screen: by-hand check 4.
+- **`ExternalToolSetting.Choice` is the one type for a menu's rows**, in a setting and in a page's `choice` block, and `Choice.menu(selected:options:limit:)` builds both, the extra first row included. A setting's titles are cut to 60 characters, a block's to 120.
+- **Picking an option takes the stored row away** (`Control.picking`). The row stood for a value that is no option's; once the person has replaced that value the row has nothing to stand for. Picking the stored row itself keeps everything as it is.
+- **The menu's rows are worked out each time the detail is drawn** (`Choice.rows(selected:among:)`), from the setting as it is then and the value the row holds. A row in the detail keeps its control in view state, as a text field's row does, so rows kept there would have stayed in the language the detail was opened in: by-hand check 11 would have failed. Found on reading the code back, after Task 5's commit, and fixed in a commit of its own with a test (`theMenuIsDrawnFromTheSettingAsItIsNow`). What is selected is always one of the rows, also when the tool writes another value while the detail is open.
+- **The agreement sheet draws its lists for a tool whose only "row" is the status line.** A tool with no command and no service that declares a status would otherwise have had its line left out.
+- **The detail says it with the switch alone.** "The strings" table puts `agreeShowsStatus` in the tool's detail too; there the switch's own words say the same, so the sentence is on the agreement sheet only.
+- **Regression 2 is in `ToolPanelHost.swift`**, where `opens` is, and fails in `platform`; regressions 1 and 4 fail in `tool-runtime`.
+- Counts: `platform` 942 (was 913), `tool-runtime` 942 (was 918). `bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:by-hand` succeeded.
+- **Nothing was drawn.** No view was run, and the app was not launched.
+
+Step 5, each planted and seen to fail:
+
+| Regression | Suite | The check that failed |
+|---|---|---|
+| a stored value that is no option is dropped from the menu | tool-runtime | "a stored value that is no option is shown as written, as the first row, and selected; the other rows are the options in order" |
+| a green mark opens the tool's page | platform | "a green mark asks for nothing: the click does what it does today" |
+| busy does not breathe | platform | "busy is the built-in's amber in size and motion: 9 points, medium, orange, breathing" |
+| the agreement sheet says nothing of a status | tool-runtime | "the agreement sheet says, in the app's words, that the tool shows a status on the closed island; the line is no row of its lists" |
+
 ---
 
 ### Task 6: The guide, the protocol's overview, and the records
@@ -374,6 +477,16 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
 - [ ] **Step 3:** `bazel test //packages/vitruvian-sdk:guide_test //tools/sync-site-tools:in_sync_test` passes.
 - [ ] **Step 4: Commit.**
 
+**As built (2026-10-13).**
+
+- **Written by `wren`, not `compass`**: one worker built Tasks 1 to 7.
+- **Parts of this task landed earlier, where a test needed them.** `guide_test` fails a message the guide never shows, so the reference rows and `protocol/README.md`'s section came with Task 1; the samples' excerpts moved with the samples in Task 3, with the two panel READMEs and `README.md`'s account of the conformance script.
+- **The guide's three sections are at the end of "Drawing"**, after "A web page": "A status on the closed island", "A choice among fixed options", "What an older app does". Each of the first two has a snippet from every `hello-panel-*` sample, held by `guide_test`.
+- **The tables of the kits' calls gained rows** for the status call and `supports`, and the paragraph on the TypeScript and Python kits says which of their two status calls is the kit's.
+- **`CONTRIBUTING.md` gained more than the one sentence**: a row for the conformance script and the desk, which also hold the protocol and are not generated, and a paragraph, "Say what the app has".
+- **`README.md` said ten samples; there are twelve.** Corrected.
+- **The design's Status line** is changed in the commit that follows the pull request being opened, since it names the pull request's number.
+
 ---
 
 ### Task 7: Run everything, and open pull request 1
@@ -388,6 +501,15 @@ The examples carry the proof. `protocol_examples_test` and `ProtocolExamplesTest
   - Description: what a person sees, the table of section 8 of the design, the by-hand checks not yet done, and on a line by itself `Releases: vitruvian-sdk, vitruvian`.
   - The required check `release-scope` must pass. If it names a third product, a task changed a folder it should not have: find the file, do not add the product to the line.
 - [ ] **Step 5:** All checks green before anyone is asked to review.
+
+**As built (2026-10-13).** Pull request #3245, by `wren`, with the label `do-not-automerge` and auto-merge not armed.
+
+- **Run on the tree merged with `main`:** the app's whole unit test run (49 suites OK; `platform` 942, `tool-runtime` 945, `notch` 70,965, `agents` 668); the builds of `:Vitruvian`, `:VitruvianLibWithSampleTool` and `:by-hand`; the app's source, pin, upstream and mutation-fixture tests; all 26 tests of the SDK's pipeline unit on the macOS lane and the 19 that need no Mac on the plain lane; the GitHub, Nexus Agent and HomeSpeaker tools' tests; `//tools/license:check` and `:verify`; `//tools/conformance:check`; `//:tidy`, which left only the known `Cryptodome` line, reversed by hand; the presubmit generator's `--check`; and `release-scope`, locally, which asked for `Releases: vitruvian, vitruvian-sdk` and named no third product.
+- **The plain lane cannot be run with `//packages/vitruvian-sdk/...` on a Mac**: without `--config=macos-app` the Swift targets fail to build and the wildcard stops. Its tests were named one by one.
+- **Step 3 was run with a small driver, not `bazel run :mutation_checks`**, which plants every regression in the file (over a hundred, each a build). The driver reads `mutation_checks.py` itself and does to the named entries exactly what the script's loop does: plant, run `unit_tests` with the entry's suite, require Bazel's status 3, "TESTS FAILED" and the entry's message, and put the file back. All thirteen were DETECTED on the final tree. One was planted again after the fix below moved its line.
+- **Not run:** `:selftest` and `:fan_helper_selftest`, which start the built app. The worker was told not to launch the app on this Mac. CI runs both.
+- **One fix after Task 5's commit**, `fix(desktop): a setting's menu follows the language and what is selected while its detail is open`: see Task 5's notes.
+- **`aspect lint` needs `--config=lint` here.** Run that way on the Python and TypeScript targets this touched, it reports nothing in the lines this change wrote. It does report findings that were there before: `ty`'s in `tools/sdk-codegen`, and ESLint's report formatter fails to load `chalk`.
 
 After it merges, release-please opens `chore(main): release vitruvian-sdk 1.3.0` and `chore(main): release vitruvian 3.48.0`. Merge the SDK's first; confirm the mirror tagged `v1.3.0` and `go/v1.3.0`. The app's release goes through its usual gate. **If either version comes out as another number, Task 8 uses the number that was released.**
 
@@ -441,6 +563,16 @@ After it merges, release-please opens `chore(main): release vitruvian-sdk 1.3.0`
 - [ ] **Step 3:** The check `catalog-check` passes: it downloads the asset, compares, unpacks, validates and compares the manifest with the entry. Say in the pull request which run proved it.
 
 ---
+
+**After the first checks at a screen (2026-10-13).** Checks 1, 2 (external display), 3, 5 and 13 passed on macOS 27.0, dark appearance, on the head `4a20ff626`. Two accessibility defects were found and fixed on the same pull request.
+
+- **The mark had no words for VoiceOver.** The plan put the label on the mark's view. But the closed island hides everything it draws at rest from assistive technology and offers one AppKit button over it ("Open Dynamic Island"), so a label on the mark is never reached. The button now carries it: "Open Dynamic Island, Deploys: Failed". It says it only while the wings draw a tool's mark (not while an activity's strip is there, the island rests with something else, the built-in mark wins, or the Nexus session runs), and the copies on other displays say the same. The mark's own label and tooltip stay, for the day the strip is no longer hidden.
+- **The switches in a tool's detail had no names.** A switch drawn beside its title reached Accessibility as a text and then an unnamed switch. Every switch, pop-up and field in a tool's detail and on a tool's page is now named with its row's title, and a source lint keeps it so.
+- **How it was checked without the app.** The island under test (`NotchIslandFixture`) records the name it gives its button; the shipped window class, never shown, is asked for its button's label. A hosted SwiftUI view builds no accessibility tree in the test process, so the switches are held by a source lint, the way the menu panel's already are. A probe (not kept) that forced the tree showed a switch with a visible title go from no label to the given one; it could not see a control whose label is hidden.
+- **Second pass at a screen (`2efdda5db`).** The detail's three switches read their titles; the status switch, pressed by name, hid the mark and took the status out of the island button's name, and brought both back (check 6). Two more defects, fixed: the page's `choice` block said its name twice, since a pop-up menu's own hidden label already names it (the settings pop-up had the same second name, removed too); and the page's `field` block had no name. The lint now fails a pop-up named twice and a field with no name.
+- **A fact for check 1:** while an agent session is running the closed island shows that agent's activity in place of its resting wings, so no mark is visible then, the app's or a tool's. The guide says so.
+- **Light appearance: skipped by decision** (James, 2026-10-13): the island is black in both appearances.
+- **Still owed at a screen:** check 4 (the click); the built-in display's island heights; check 7 (two marks); Reduce Motion; checks 9 to 12.
 
 ## By hand
 

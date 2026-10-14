@@ -59,6 +59,14 @@ func (b *bench) helloOffering(versions string) *bench {
 		`,"language":"de-DE","dataFolder":"/tmp/kit-data"}}`)
 }
 
+// helloWith is the hello of an app that says what it has: features is the
+// list, as JSON. hello and helloOffering are an app from before the field,
+// which says nothing.
+func (b *bench) helloWith(versions, features string) *bench {
+	return b.app(`{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{"protocolVersions":` + versions +
+		`,"language":"de-DE","dataFolder":"/tmp/kit-data","features":` + features + `}}`)
+}
+
 func (b *bench) run(command string, id int) *bench {
 	return b.app(`{"jsonrpc":"2.0","id":` + strconv.Itoa(id) + `,"method":"command/run","params":{"command":"` + command + `"}}`)
 }
@@ -112,6 +120,7 @@ func TestEveryRequestAToolMaySendHasACall(t *testing.T) {
 		toolkit.MethodStorageGet:              "Storage.Get",
 		toolkit.MethodStorageSet:              "Storage.Set",
 		toolkit.MethodUIBadge:                 "UI.Badge",
+		toolkit.MethodUIStatus:                "UI.Status",
 	}
 	wanted := 0
 	for _, method := range toolkit.Methods {
@@ -134,7 +143,7 @@ func TestEveryRequestAToolMaySendHasACall(t *testing.T) {
 			t.Errorf("App.%s has no %s, for %s", group, name, method.Name)
 		}
 	}
-	if wanted != len(calls) || wanted != 11 {
+	if wanted != len(calls) || wanted != 12 {
 		t.Errorf("%d requests a tool may send, %d calls; each request once", wanted, len(calls))
 	}
 }

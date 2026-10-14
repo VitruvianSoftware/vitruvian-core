@@ -20,7 +20,8 @@
 # SOFTWARE.
 """A tool written with the Python kit. It has two commands: `hello` asks the
 app to show a short message, and `count` keeps a number in a preference its
-manifest declares. `vitruvian-tool init --template python-kit` starts a new
+manifest declares, counting by what another preference says. That one has
+`options`, so the app draws it as a pop-up menu in the tool's detail. `vitruvian-tool init --template python-kit` starts a new
 tool from this folder.
 
 The app starts a tool with Apple's python3, which has none of your packages,
@@ -47,7 +48,11 @@ def hello(app):
 
 @tool.command("count")
 def count(app):
-    counted = app.storage.get(key="count").value + 1
+    # The step is saved as text. The options are how the app draws the
+    # setting, not a rule on what is saved: an app before 3.48 draws a text
+    # field, so anything may be there. What is no number counts as one.
+    step = str(app.storage.get(key="step").value)
+    counted = app.storage.get(key="count").value + (int(step) if step.isdigit() else 1)
     app.storage.set(key="count", value=counted)
     app.notify.hud(icon="number", message=f"Counted to {counted}")
 

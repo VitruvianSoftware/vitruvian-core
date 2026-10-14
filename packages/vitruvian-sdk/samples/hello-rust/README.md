@@ -46,7 +46,7 @@ blocks, one function for each kind, and an item that is `None` is left out:
 
 ```rust file=samples/hello-panel-rust/src/main.rs
     /// The island page: what it says now.
-    fn page(&self) -> UiTree {
+    fn page(&self, app: &App<'_>) -> UiTree {
         tree![
             heading("Counter"),
             text(format!("Pressed {} times", self.count)),
@@ -57,6 +57,7 @@ blocks, one function for each kind, and an item that is `None` is left out:
                 .placeholder("Type it and press Return"),
             (!self.name.is_empty())
                 .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
+            self.status_picker(app),
         ]
     }
 ```

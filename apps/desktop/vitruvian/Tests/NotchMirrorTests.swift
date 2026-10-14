@@ -23,6 +23,8 @@ enum NotchMirrorContract {
         var hides = 0, closes = 0
         var outline: (enabled: Bool, color: NSColor)?
         var activationRect = CGRect.zero
+        /// Each name the copy's button was given, in order.
+        var titles: [String] = []
         var activate: (() -> Void)?
         func orderPanelFront() { panelIsVisible = true; orders += 1 }
         func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool, transitionContent: NotchContentTransition) {
@@ -33,6 +35,7 @@ enum NotchMirrorContract {
         func setOutline(enabled: Bool, color: NSColor) { outline = (enabled, color) }
         func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void, activate: @escaping () -> Void) {
             activationRect = rect
+            titles.append(title)
             self.activate = activate
         }
     }
@@ -59,6 +62,8 @@ enum NotchMirrorContract {
         var displayID: CGDirectDisplayID? = 1
         var activity: NotchCompactActivity?
         var idleContent = NotchIdleContent.none
+        /// The name of the island's button, which each copy's button takes.
+        var openTitle = "Open"
         var made: [Host] = []
         var activated: [CGDirectDisplayID] = []
         /// The companion rests or visits in the closed island.
@@ -98,7 +103,7 @@ enum NotchMirrorContract {
                     showsInCaptures: { [unowned self] in self.showsInCaptures },
                     outlineEnabled: { [unowned self] in self.outlineEnabled },
                     hidesInFullscreen: { [unowned self] in self.hidesInFullscreen },
-                    openTitle: { "Open" }),
+                    openTitle: { [unowned self] in self.openTitle }),
                 island: { [unowned self] in
                     guard self.showsOnAllDisplays, self.running, !self.suspended, self.hasWindow else { return nil }
                     return NotchMirrors.Island(displayID: self.displayID, activity: self.activity,
@@ -170,6 +175,18 @@ enum NotchMirrorContract {
         mirrors.sync()
         suite.expect(capsule?.host.presented.count == 1 && world.made.count == 1,
                      "an island that changes nothing a copy shows leaves the copy as it is")
+        // A tool's status mark is drawn in the copy as in the island, and is
+        // as hidden from assistive technology there: the copy's button says it.
+        suite.expect(capsule?.host.titles == ["Open"], "a copy's button takes the island's button's name")
+        world.openTitle = "Open, Deploys: Failed"
+        mirrors.sync()
+        suite.expect(capsule?.host.titles == ["Open", "Open, Deploys: Failed"] && capsule?.host.presented.count == 1,
+                     "a status mark that changes is said by the copy's button, with the copy left as it is")
+        mirrors.sync()
+        suite.expect(capsule?.host.titles.count == 2, "and is said once, not at every sync")
+        world.openTitle = "Open"
+        mirrors.sync()
+        suite.expect(capsule?.host.titles.last == "Open", "a mark that goes is no longer said")
 
         world.outlineEnabled = true
         world.activity = .timer

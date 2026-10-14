@@ -26,6 +26,12 @@ enum ToolPanelHostTests {
         badges(suite)
         readAway(suite)
         links(suite)
+        aStatusIsKeptAndReplaced(suite)
+        noneTakesItAway(suite)
+        anUndeclaredStatusIsRefused(suite)
+        aStatusGoesWhenTheProgramEnds(suite)
+        aStatusGoesWhenTheToolIsForgotten(suite)
+        changesArePublishedOnceASecond(suite)
     }
 
     static let id = ToolID("com.acme.deploys")!
@@ -81,7 +87,8 @@ enum ToolPanelHostTests {
         private(set) var tool: ExternalTool!
         private(set) var host: ToolPanelHost!
 
-        init(limits: ToolLimits = .standard) {
+        /// `declaresStatus` is whether the tool's manifest declares a status.
+        init(limits: ToolLimits = .standard, declaresStatus: Bool = true) {
             folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("vitruvian-panels-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder.appendingPathComponent("ui"),
@@ -95,7 +102,7 @@ enum ToolPanelHostTests {
                   {"id": "log", "title": {"en": "Deploy log"}, "placement": "window"},
                   {"id": "dashboard", "title": {"en": "Dashboard"}, "placement": "window", "kind": "web", "entry": "ui/dashboard.html"},
                   {"id": "broken", "title": {"en": "Broken"}, "placement": "window", "kind": "web", "entry": "ui/missing.html"}
-                ]}}
+                ]\#(declaresStatus ? #", "status": {"placement": "island"}"# : "")}}
                 """#)!
             tool = ExternalTool(
                 manifest: described.manifest, clock: clock, limits: limits,
@@ -484,5 +491,111 @@ enum ToolPanelHostTests {
                      "a link that is no web or mail address is never handed to the service")
         bench.host.follow(key("log"), page)
         suite.expect(bench.opened.count == 2, "a link of a panel that is not open does nothing")
+    }
+}
+
+extension ToolPanelHostTests {
+    static func status(_ state: StatusState, _ text: UIText? = nil, icon: String? = nil) -> UIStatusParams {
+        UIStatusParams(state: state, text: text, icon: icon)
+    }
+
+    static func aStatusIsKeptAndReplaced(_ suite: TestSuite) {
+        let bench = Bench()
+        suite.expect(bench.host.statuses.isEmpty, "a tool that has said nothing has no status")
+        suite.expect(bench.host.status(id, status(.busy, "Checks are running", icon: "arrow.triangle.branch")) == nil
+                         && bench.host.statuses[id]
+                         == ToolStatus(state: .busy, text: "Checks are running", icon: "arrow.triangle.branch"),
+                     "a status is kept as the tool sent it: its state, its words and its glyph")
+        bench.clock.advance(by: 1)
+        suite.expect(bench.host.status(id, status(.failure, "main is red")) == nil
+                         && bench.host.statuses[id] == ToolStatus(state: .failure, text: "main is red", icon: nil),
+                     "each one replaces the last, glyph and all")
+        suite.expect(bench.runs.isEmpty, "keeping a status starts nothing")
+    }
+
+    static func noneTakesItAway(_ suite: TestSuite) {
+        let bench = Bench()
+        bench.host.status(id, status(.ok))
+        bench.clock.advance(by: 1)
+        suite.expect(bench.host.status(id, status(.none, "gone", icon: "xmark")) == nil && bench.host.statuses[id] == nil,
+                     "none takes the status away, whatever came with it")
+        bench.clock.advance(by: 1)
+        suite.expect(bench.host.status(id, status(.none)) == nil && bench.host.statuses.isEmpty,
+                     "and none for a tool with no status changes nothing")
+    }
+
+    static func anUndeclaredStatusIsRefused(_ suite: TestSuite) {
+        let bench = Bench(declaresStatus: false)
+        suite.expect(bench.host.status(id, status(.failure, "main is red")) == .noStatus && bench.host.statuses.isEmpty,
+                     "a status from a tool whose manifest declares none is refused, and none is kept")
+        suite.expect(bench.host.status(id, status(.none)) == .noStatus,
+                     "taking one away is refused the same: the tool has none to take")
+        suite.expect(ToolPanelHost.Refusal.noStatus.error
+                         == RPCErrorObject(code: -32602, message: "the manifest declares no status"),
+                     "the refusal is the protocol's invalid params, -32602, and says why")
+        let stranger = ToolID("com.acme.nobody")!
+        suite.expect(bench.host.status(stranger, status(.ok)) == .noStatus && bench.host.statuses.isEmpty,
+                     "and so is one from a tool the app does not have")
+    }
+
+    static func aStatusGoesWhenTheProgramEnds(_ suite: TestSuite) {
+        let bench = Bench.open()
+        bench.host.status(id, status(.failure, "main is red"))
+        bench.host.badge(id, UIBadgeParams(count: 2))
+        bench.current.ends(1)
+        suite.expect(bench.host.statuses[id] == nil,
+                     "a status goes when the tool's program ends, at once: it never outlives its program")
+        suite.expect(bench.host.badges[id] == .count(2), "the badge stays, as it always did")
+
+        // One that was waiting for its second to be up goes too, and does
+        // not come back when the second is.
+        let waiting = Bench.open()
+        waiting.host.status(id, status(.ok))
+        waiting.host.status(id, status(.failure))
+        waiting.current.ends(0)
+        waiting.clock.advance(by: 2)
+        suite.expect(waiting.host.statuses[id] == nil && waiting.clock.waiting == 0,
+                     "a status that was waiting to be shown is dropped with the program, and no timer is left")
+    }
+
+    static func aStatusGoesWhenTheToolIsForgotten(_ suite: TestSuite) {
+        let bench = Bench()
+        bench.host.status(id, status(.attention, "A check is waiting for approval"))
+        bench.host.forget(id)
+        suite.expect(bench.host.statuses[id] == nil,
+                     "a tool that is switched off, updated or removed takes its status with it")
+    }
+
+    static func changesArePublishedOnceASecond(_ suite: TestSuite) {
+        let bench = Bench()
+        var published: [StatusState?] = []
+        let watching = bench.host.$statuses.dropFirst().sink { published.append($0[id]?.state) }
+        defer { watching.cancel() }
+        bench.host.status(id, status(.busy))
+        suite.expect(published == [.busy], "the first status after a quiet while is shown at once")
+        bench.clock.advance(by: 0.2)
+        bench.host.status(id, status(.ok))
+        bench.clock.advance(by: 0.2)
+        bench.host.status(id, status(.attention))
+        bench.host.status(id, status(.busy))
+        bench.clock.advance(by: 0.2)
+        bench.host.status(id, status(.failure, "main is red"))
+        suite.expect(published == [.busy] && bench.host.statuses[id]?.state == .busy && bench.clock.waiting == 1,
+                     "four more within the second are not shown yet, and one timer waits for all of them")
+        bench.clock.advance(by: 0.39)
+        suite.expect(published == [.busy], "not before the second is up")
+        bench.clock.advance(by: 0.02)
+        suite.expect(published == [.busy, .failure]
+                         && bench.host.statuses[id] == ToolStatus(state: .failure, text: "main is red", icon: nil)
+                         && bench.clock.waiting == 0,
+                     "when the second is up the newest is shown, once: of five, the first and the last")
+        bench.clock.advance(by: 0.5)
+        bench.host.status(id, status(.none))
+        suite.expect(published == [.busy, .failure], "taking a status away within the second waits its turn too")
+        bench.clock.advance(by: 0.5)
+        suite.expect(published == [.busy, .failure, nil] && bench.host.statuses[id] == nil, "and is then done")
+        bench.clock.advance(by: 5)
+        bench.host.status(id, status(.ok))
+        suite.expect(published.last == .ok && published.count == 4, "after a quiet while the next is shown at once again")
     }
 }

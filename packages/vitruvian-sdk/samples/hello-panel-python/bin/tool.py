@@ -23,6 +23,10 @@ counter with a button and a field; its page in Settings is one switch. The app
 draws both, from the blocks this program sends. The command `addOne` counts
 too, and sends the open page again.
 
+It also shows a status, the small mark the app draws on the closed island, and
+its island page has a pop-up menu to pick it with. Both are newer than
+protocol 2 itself, so the tool asks the app what it has.
+
 The app starts a tool with Apple's python3, which has none of your packages,
 so the kit is installed into lib/ inside the tool's folder:
 
@@ -36,9 +40,13 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 
 from vitruvian_tool_kit import (  # noqa: E402
+    Feature,
     PanelAnswer,
+    Refusal,
     Tool,
+    UIChoiceOption,
     button,
+    choice,
     field,
     heading,
     text,
@@ -48,6 +56,15 @@ from vitruvian_tool_kit import (  # noqa: E402
 
 tool = Tool(version="0.1.0")
 
+# What each status is called in the menu, and what it says to VoiceOver.
+STATUSES = {
+    "none": ("None", None),
+    "ok": ("OK", "The counter is fine"),
+    "busy": ("Busy", "The counter is counting"),
+    "attention": ("Needs attention", "The counter wants a look"),
+    "failure": ("Failed", "The counter failed"),
+}
+
 
 class Counter:
     """What the tool knows. One thread reads the link, so one object is enough."""
@@ -56,12 +73,14 @@ class Counter:
         self.count = 0
         self.name = ""
         self.by_two = False
+        # What the tool shows on the closed island.
+        self.status = "ok"
 
     @property
     def step(self):
         return 2 if self.by_two else 1
 
-    def page(self):
+    def page(self, app):
         """The island page: what it says now."""
         return tree(
             heading("Counter"),
@@ -74,7 +93,31 @@ class Counter:
                 placeholder="Type it and press Return",
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
+            self.status_picker(app),
         )
+
+    def status_picker(self, app):
+        """The status, to pick: a pop-up menu where the app has one. An app
+        before 3.48 draws a `choice` as plain words nobody can change, so
+        there it is a field to type the word in."""
+        if not app.supports(Feature.CHOICE):
+            return field(
+                "status",
+                title="Status: none, ok, busy, attention or failure",
+                value=self.status,
+            )
+        options = [
+            UIChoiceOption(value=state, title=title)
+            for state, (title, _) in STATUSES.items()
+        ]
+        return choice(
+            "status", self.status, options, title="Status on the closed island"
+        )
+
+    def show_status(self, app):
+        """Sets the mark on the closed island. Nothing is sent to an app that
+        has no status, and the call says so."""
+        return app.status(self.status, text=STATUSES[self.status][1])
 
     def settings(self):
         """The Settings page."""
@@ -93,13 +136,19 @@ def island_event(app, panel, event):
         panel.badge(count=counter.count)
     elif event.block == "name":
         counter.name = event.text if event.text is not None else counter.name
+    elif event.block == "status":
+        # A pick is the event change, as leaving a field changed is.
+        if event.text not in STATUSES:
+            return PanelAnswer.keep()
+        counter.status = event.text
+        counter.show_status(app)
     else:
         return PanelAnswer.keep()
-    return PanelAnswer.page(counter.page())
+    return PanelAnswer.page(counter.page(app))
 
 
 island = tool.panel(
-    "counter", on_open=lambda app, panel: counter.page(), on_event=island_event
+    "counter", on_open=lambda app, panel: counter.page(app), on_event=island_event
 )
 
 
@@ -118,7 +167,20 @@ tool.panel(
 @tool.command("addOne")
 def add_one(app):
     counter.count += counter.step
-    island.render(counter.page())
+    island.render(counter.page(app))
+
+
+def start(app):
+    """The status goes when the program ends, so it is set each time the
+    program starts. The app may refuse any request: the tool carries on
+    without."""
+    try:
+        counter.show_status(app)
+    except Refusal as refusal:
+        app.log(message=f"no status: {refusal}")
+
+
+tool.on_start = start
 
 
 tool.run()

@@ -28,6 +28,7 @@ import {
   type JSONValue,
   type TextStyle,
   type UIBlock,
+  type UIChoiceOption,
   type UIEventKind,
   type UIEventResult,
   type UIListRow,
@@ -56,7 +57,10 @@ export class PanelEvent {
       : undefined;
   }
 
-  /** For `submit` and `change`: the field's text. */
+  /**
+   * For `submit` and `change`: the field's text. For the `change` of a
+   * `choice`: the picked option's value.
+   */
   get text(): string | undefined {
     return (this.kind === "submit" || this.kind === "change") &&
       typeof this.value === "string"
@@ -351,6 +355,63 @@ export function link(title: UIText, url: string): UIBlock {
 /** Room between blocks, in points; 8 when left out. */
 export function spacer(size?: number): UIBlock {
   return without({ type: "spacer", size });
+}
+
+/**
+ * A pop-up menu: one of a fixed list of options, each `{ value, title }`.
+ * `value` is the selected option's. Picking one is the event `change`, read
+ * with `event.text`.
+ *
+ * An app before 3.48 does not know this kind and draws `fallback`, which
+ * nobody can change. So ask `app.supports(Feature.choice)` first, and send
+ * a `field` to an app without it. With no `fallback` given, one is written:
+ * the title, a colon and the selected option's title.
+ */
+export function choice(
+  id: string,
+  value: string,
+  options: UIChoiceOption[],
+  more: { title?: UIText; enabled?: boolean; fallback?: UIText } = {},
+): UIBlock {
+  return without({
+    type: "choice" as const,
+    id,
+    title: more.title,
+    value,
+    options,
+    enabled: more.enabled,
+    fallback: more.fallback ?? saidPlainly(more.title, value, options),
+  });
+}
+
+/**
+ * What a choice says, as words: the title, a colon and the selected
+ * option's title, or that title alone, in every language either has. A
+ * value that is no option's is written as it is.
+ */
+function saidPlainly(
+  title: UIText | undefined,
+  value: string,
+  options: UIChoiceOption[],
+): UIText {
+  const selected: UIText =
+    options.find((option) => option.value === value)?.title ?? value;
+  if (title === undefined) return selected;
+  const words = (text: UIText, language: string): string =>
+    typeof text === "string" ? text : (text[language] ?? text["en"] ?? "");
+  const languages = [
+    ...new Set(
+      [title, selected].flatMap((text) =>
+        typeof text === "string" ? [] : Object.keys(text),
+      ),
+    ),
+  ].sort();
+  if (languages.length === 0)
+    return `${words(title, "en")}: ${words(selected, "en")}`;
+  const said: { [language: string]: string } = {};
+  for (const language of languages)
+    said[language] = `${words(title, language)}: ${words(selected, language)}`;
+  return said;
 }
 
 /**

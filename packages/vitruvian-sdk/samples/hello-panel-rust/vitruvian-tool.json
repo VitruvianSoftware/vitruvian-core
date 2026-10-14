@@ -2,7 +2,7 @@
   "id": "dev.vitruvian.samples.hello-panel-rust",
   "name": { "en": "Hello panel, in Rust" },
   "description": {
-    "en": "A counter in the island, drawn by the app from blocks."
+    "en": "A counter in the island, drawn by the app from blocks, and a status on the closed island."
   },
   "version": "0.1.0",
   "protocol": "2",
@@ -31,8 +31,9 @@
         "title": { "en": "Counter" },
         "placement": "settings"
       }
-    ]
+    ],
+    "status": { "placement": "island" }
   },
-  "activation": ["onCommand"],
+  "activation": ["onLaunch"],
   "runtime": { "kind": "external", "exec": "bin/tool" }
 }

@@ -20,6 +20,7 @@ enum ToolPanelScreensTests {
         detail(suite)
         islandSwitch(suite)
         islandTiles(suite)
+        aChoiceIsAMenu(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -232,5 +233,45 @@ enum ToolPanelScreensTests {
         bench.store.setShowsInIsland(id, true)
         bench.store.setOn(id, false)
         suite.expect(tiles().isEmpty, "a tool that is switched off has no tile")
+    }
+}
+
+extension ToolPanelScreensTests {
+    static func aChoiceIsAMenu(_ suite: TestSuite) {
+        typealias Choice = ExternalToolSetting.Choice
+        let page = #"""
+            {"blocks": [
+              {"type": "choice", "id": "light", "title": {"en": "Mouse when green", "de": "Maus bei Grün"},
+               "value": "breathe green", "fallback": "Mouse when green: Pulsing green",
+               "options": [{"value": "green", "title": "Green"},
+                           {"value": "breathe green", "title": {"en": "Pulsing green", "de": "Pulsierendes Grün"}}]},
+              {"type": "choice", "id": "idle", "value": "typed by hand", "enabled": false,
+               "options": [{"value": "restore", "title": "Restore my lighting"}, {"value": "off", "title": "Turn the light off"}]}
+            ]}
+            """#
+        let kinds = content(page, language: "de")?.items.map(\.kind) ?? []
+        suite.expect(kinds.first == .choice(id: "light", title: "Maus bei Grün", selected: "breathe green",
+                                            options: [Choice(value: "green", title: "Green", isStored: false),
+                                                      Choice(value: "breathe green", title: "Pulsierendes Grün", isStored: false)],
+                                            enabled: true),
+                     "a choice block is a menu with its options in order, in the person's language, its selected "
+                         + "value, and never its fallback")
+        suite.expect(kinds.last == .choice(id: "idle", title: nil, selected: "typed by hand",
+                                           options: [Choice(value: "typed by hand", title: "typed by hand", isStored: true),
+                                                     Choice(value: "restore", title: "Restore my lighting", isStored: false),
+                                                     Choice(value: "off", title: "Turn the light off", isStored: false)],
+                                           enabled: false),
+                     "a value that is no option's is an extra first row, as written; a choice that is not enabled "
+                         + "is drawn dimmed; one with no title has none")
+        let long = content(#"""
+            {"blocks": [{"type": "choice", "id": "p", "value": "a",
+                         "options": [{"value": "a", "title": "\#(String(repeating: "x", count: 500))"}]}]}
+            """#)?.items.first?.kind
+        if case .choice(_, _, _, let options, _)? = long {
+            suite.expect(options.first?.title.count == ToolOwnWords.limit && options.first?.title.hasSuffix("…") == true,
+                         "an option's title is drawn as one line, cut where it is too long")
+        } else {
+            suite.expect(false, "a choice with a long title is still a menu")
+        }
     }
 }

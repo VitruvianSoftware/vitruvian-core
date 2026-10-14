@@ -42,8 +42,10 @@ import { pathToFileURL } from "node:url";
 import {
   AppUnreachable,
   button,
+  choice,
   CommandRefused,
   divider,
+  Feature,
   field,
   heading,
   image,
@@ -75,9 +77,14 @@ class Bench {
     return this;
   }
 
-  hello(versions = '["1"]'): this {
+  /**
+   * `features` is what the app says it has, as JSON; left out, it is an app
+   * from before the field, which says nothing.
+   */
+  hello(versions = '["1"]', features?: string): this {
+    const said = features === undefined ? "" : `,"features":${features}`;
     return this.app(
-      `{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{"protocolVersions":${versions},"language":"de-DE","dataFolder":"/tmp/kit-data"}}`,
+      `{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{"protocolVersions":${versions},"language":"de-DE","dataFolder":"/tmp/kit-data"${said}}}`,
     );
   }
 
@@ -157,7 +164,7 @@ test("every request a tool may send is a call on the app", () => {
     (m) => m.method,
   );
   expect(calls.sort()).toEqual([...wanted].sort());
-  expect(wanted).toHaveLength(14);
+  expect(wanted).toHaveLength(15);
 });
 
 test("hello, a command, and goodbye", () => {
@@ -706,6 +713,186 @@ test("a web panel's calls are the tool's own or passed to the app", () => {
     failure(5, -32601, "method not found"),
     failure(6, -32601, "method not found"),
   ]);
+});
+
+test("a status is sent to an app that has it", () => {
+  const shown: boolean[] = [];
+  const tool = bench
+    .hello('["1","2"]', '["ui.status","ui.later"]')
+    .run("check", 2)
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .app('{"jsonrpc":"2.0","id":2,"result":{}}')
+    .goodbye()
+    .tool((tool) =>
+      tool.command("check", (app) => {
+        shown.push(
+          app.status("busy", {
+            text: "Checks are running",
+            icon: "arrow.triangle.branch",
+          }),
+        );
+        shown.push(app.status("none"));
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(shown).toEqual([true, true]);
+  const written = bench.written();
+  expect(written).toHaveLength(4);
+  expect(written[1]).toEqual({
+    kind: "request",
+    id: 1,
+    method: "ui/status",
+    params: {
+      state: "busy",
+      text: "Checks are running",
+      icon: "arrow.triangle.branch",
+    },
+  });
+  expect(written[2]).toEqual({
+    kind: "request",
+    id: 2,
+    method: "ui/status",
+    params: { state: "none" },
+  });
+});
+
+test("a status writes nothing for an older app", () => {
+  // An app before 3.48: its hello has no `features`. No answer is scripted,
+  // so a request sent here would wait and then fail.
+  const shown: boolean[] = [];
+  const tool = bench
+    .hello('["1","2"]')
+    .run("check", 2)
+    .goodbye()
+    .tool((tool) => {
+      tool.answerSeconds = 0.2;
+      tool.command("check", (app) => {
+        shown.push(app.status("failure", { text: "main is red" }));
+      });
+    });
+  expect(tool.serve()).toBe(0);
+  // The call says the status is not shown,
+  expect(shown).toEqual([false]);
+  // and nothing was sent for it: only the two answers are on the link.
+  expect(bench.written()).toEqual([
+    result("hello", { protocolVersion: "2", toolVersion: "9.9.9" }),
+    result(2, {}),
+  ]);
+});
+
+test("a status writes nothing for an app that has other things", () => {
+  const shown: boolean[] = [];
+  const tool = bench
+    .hello('["2"]', '["ui.choice"]')
+    .run("check", 2)
+    .goodbye()
+    .tool((tool) =>
+      tool.command("check", (app) => {
+        shown.push(app.status("ok"));
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(shown).toEqual([false]);
+  expect(bench.written()).toHaveLength(2);
+});
+
+test("supports is true only for what the hello listed", () => {
+  let has: boolean[] = [];
+  const tool = bench
+    .hello('["1"]', '["ui.choice","preferences.options","ui.later"]')
+    .run("ask", 2)
+    .goodbye()
+    .tool((tool) =>
+      tool.command("ask", (app) => {
+        has = [
+          Feature.choice,
+          Feature.preferenceOptions,
+          Feature.status,
+          "ui.later",
+          "ui.never",
+        ].map((name) => app.supports(name));
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(has).toEqual([true, true, false, true, false]);
+  expect(Feature).toEqual({
+    status: "ui.status",
+    choice: "ui.choice",
+    preferenceOptions: "preferences.options",
+  });
+});
+
+test("an app that says nothing has none of them", () => {
+  let has: boolean[] = [];
+  const tool = bench
+    .hello()
+    .run("ask", 2)
+    .goodbye()
+    .tool((tool) =>
+      tool.command("ask", (app) => {
+        has = Object.values(Feature).map((name) => app.supports(name));
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(has).toEqual([false, false, false]);
+});
+
+test("a choice is built as the protocol's example", () => {
+  const options = [
+    { value: "green", title: "Green" },
+    {
+      value: "breathe green",
+      title: { en: "Pulsing green", de: "Pulsierendes Grün" },
+    },
+  ];
+  const examples = JSON.parse(
+    readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "protocol",
+        "examples",
+        "messages.json",
+      ),
+      "utf8",
+    ),
+  ).examples as { about: string; message: { params: { tree: UITree } } }[];
+  const example = examples.find(
+    (e) => e.about === "a page with a choice among fixed options",
+  )!.message.params.tree.blocks[0];
+  expect(
+    choice("light", "green", options, {
+      title: "Mouse when green",
+      enabled: true,
+      fallback: "Mouse when green: Green",
+    }),
+  ).toEqual(example);
+
+  // With no fallback given, the builder writes one: an app before 3.48
+  // draws it in the menu's place.
+  expect(
+    choice("light", "green", options, { title: "Mouse when green" }).fallback,
+  ).toBe("Mouse when green: Green");
+  // With no title, the selected option's title alone.
+  expect(choice("light", "green", options).fallback).toBe("Green");
+  // In every language either text has.
+  expect(
+    choice("light", "breathe green", options, { title: "Mouse when green" })
+      .fallback,
+  ).toEqual({
+    en: "Mouse when green: Pulsing green",
+    de: "Mouse when green: Pulsierendes Grün",
+  });
+  // A value that is no option's is written as it is.
+  expect(
+    choice("light", "typed by hand", options, { title: "Light" }).fallback,
+  ).toBe("Light: typed by hand");
+  // A pick arrives as the event a field's change is, with the option's value.
+  expect(new PanelEvent("light", "change", "breathe green").text).toBe(
+    "breathe green",
+  );
 });
 
 test("a page is written as the blocks it holds", () => {

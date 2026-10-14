@@ -8,7 +8,9 @@ adds commands to the app: to the command bar, the radial menu, the Quick
 panel, and as shortcuts. A tool of protocol 2 can also show a page of its
 own: in the Dynamic Island, in its detail in Settings, and in a window. It
 describes the page in blocks and the app draws it, or it brings a web page
-from its own folder.
+from its own folder. It can show a small status mark on the closed island,
+and offer a choice among fixed options as a pop-up menu: as a setting, or
+on a page.
 
 **A tool is trusted like an app.** It runs as you, with every permission
 Vitruvian has. The app does not limit or check what it does.
@@ -26,14 +28,14 @@ not work.
 |---|---|
 | [`docs/`](docs/writing-a-tool.md) | The guide for a tool's author. Its examples are tested. |
 | [`protocol/`](protocol/README.md) | The protocol, versions 1 and 2: the manifest and every message as JSON Schema, a table of the messages (`methods.json`), and examples. The source of truth. |
-| `samples/` | Ten tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript` and `hello-panel-python`, a counter in the island drawn from blocks; `front-window`, which reads the title of the window in front by asking macOS itself. |
+| `samples/` | Twelve tools: `hello-python`, in plain Python with nothing else; `hello-swift`, `hello-typescript`, `hello-python-kit`, `hello-go` and `hello-rust`, each written with its kit; `hello-panel-swift`, `hello-panel-typescript`, `hello-panel-python`, `hello-panel-go` and `hello-panel-rust`, a counter in the island drawn from blocks, with a status on the closed island and a pop-up menu to pick it; `front-window`, which reads the title of the window in front by asking macOS itself. |
 | `Sources/VitruvianToolKit` | A Swift library to write a tool with: declare commands and panels, handle them, call the app, write a page as its blocks. |
 | `kits/` | The same, for TypeScript (`@vitruviansoftware/tool-kit`, npm) and Python (`vitruvian-tool-kit`, PyPI). Their types are written from the schemas by `//tools/sdk-codegen`, and a test fails when they are not what it writes. |
 | `go/` | The same kit in Go, module `github.com/VitruvianSoftware/vitruvian-sdk/go`, package `toolkit`. Go 1.22 or later, standard library only. |
 | `kits/rust` | The same kit in Rust, crate `vitruvian-tool-kit`. Rust 1.75 or later; `serde` and `serde_json`. |
 | `Sources/vitruvian-tool` | A command: `init` starts a new tool from a sample, `validate` reads a folder the way the app will, `run` plays the app's side in a terminal. `Sources/VitruvianToolCLI` is what it is made of. |
 | `Sources/VitruvianToolProtocol` | The protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
-| `conformance/` | A script that plays the app's side to your tool in six scripted checks, and the smallest tool that passes it. |
+| `conformance/` | A script that plays the app's side to your tool in seven scripted checks, and the smallest tool that passes it. |
 | `.github/workflows/` | The CI and the release of [VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk). They run only there. |
 
 ## Getting it
@@ -109,12 +111,18 @@ and `bin/tool`. Those are the folders to add.
 Tools page has a tile "Counter" after the quick tools: it opens a page with a
 count, a button that adds to it and a field. Each press puts the count on the
 tile, as a badge. Its detail in Settings has the switch "Count by two",
-drawn by the app from the tool's own page.
+drawn by the app from the tool's own page. The page also has a pop-up menu,
+"Status on the closed island": the tool starts at OK, a green tick beside
+the agent mark on the closed island, and the menu picks among none, OK,
+busy, needs attention and failed. The tool starts with the app, so its mark
+lasts; the detail has a switch that hides it.
 
-`hello-swift` declares one preference with a title, its count. Once the tool
-is added, its detail in Settings lists "Counted so far" with a number field;
+`hello-swift` declares two preferences with a title. Once the tool is
+added, its detail in Settings lists "Counted so far" with a number field;
 change it, run "Count one more", and the tool counts on from the new number
-without being started again.
+without being started again. "Count by" is a pop-up menu of One, Two and
+Five: a text preference with `options`. On Vitruvian 3.46 and 3.47 it is a
+text field holding the same text.
 
 `front-window` needs the Accessibility permission of whoever starts it.
 Started by Vitruvian, it has Vitruvian's. Nothing in this package asks for a
@@ -127,7 +135,7 @@ python3 conformance/conformance.py path/to/your-tool
 ```
 
 It needs Python 3 and nothing else, and it does not need the app. It starts
-your tool's program in a folder of its own and checks six things, in order.
+your tool's program in a folder of its own and checks seven things, in order.
 The first failure stops the run.
 
 | Check | What must happen |
@@ -138,8 +146,9 @@ The first failure stops the run.
 | a panel | For a tool of protocol 2: its first panel the app draws is opened and answered with a page; the page's first button is tapped and answered with another page; the panel is closed. A page sent with `ui/render` for a panel the manifest does not declare fails the run. |
 | refusals | The command is run again with every request you make refused, and is still answered. |
 | shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. What it wrote on the way out is read to the end, and each line must be a message. |
+| an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panel and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails. |
 
-It exits with 0 when all six pass. Against the reference tool it prints:
+It exits with 0 when all seven pass. Against the reference tool it prints:
 
 ```
 ok       handshake: version 1, tool 0.1.0
@@ -148,13 +157,19 @@ ok       unknown: failure -32602
 ok       a panel: the manifest declares no panel the app draws
 ok       refusals: 1 refused
 ok       shutdown: exited with 0
+ok       an older app: answered the hello, ran hello and left with 0; it sent no ui/status
 ```
 
 While a command runs, the script answers your requests as the app would. A
-service your manifest's `uses` does not list is refused with -32001.
+service your manifest's `uses` does not list is refused with -32001. Its
+hello names what Vitruvian 3.48 has, `ui.status`, `ui.choice` and
+`preferences.options`, so a tool that asks first shows its status and draws
+its `choice` here. A `ui/status` from a tool whose manifest declares no
+status fails the run, and so does a `choice` block that breaks its rules:
+an id, a value, and from 1 to 64 options with no two values alike.
 
 Every line your tool writes must be one JSON-RPC 2.0 message of at most 1 MB.
-The fourteen messages a tool may send must each carry their own params, of
+The fifteen messages a tool may send must each carry their own params, of
 the right kind: a `notify/hud` with no `message` fails the run.
 
 - `--via PROGRAM` starts your program through another one, for example
@@ -178,9 +193,10 @@ Passing is not proof that the app will accept everything your tool does.
   floods the app or hangs outside an answer.
 - **It opens one panel and taps one button.** It does not check a web
   panel, a page's every block, or how often a tool sends pages.
-- **It has been proven against** the reference tool, the six samples,
-  twelve broken copies of the reference tool and three broken tools that
-  draw, each caught by the check meant for it.
+- **It has been proven against** the reference tool, the samples, twelve
+  broken copies of the reference tool, three broken tools that draw and
+  seven that set a status or draw a choice badly, each caught by the check
+  meant for it.
 
 ## Working on the package
 

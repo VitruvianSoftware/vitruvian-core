@@ -25,9 +25,15 @@
 // the blocks this program sends. The command `addOne` counts too, and sends
 // the open page again. bin/tool starts it: see the note there about Node and
 // the PATH.
+//
+// It also shows a status, the small mark the app draws on the closed island,
+// and its island page has a pop-up menu to pick it with. Both are newer than
+// protocol 2 itself, so the tool asks the app what it has.
 
 import {
   button,
+  choice,
+  Feature,
   field,
   heading,
   text,
@@ -39,11 +45,11 @@ import {
 const tool = new Tool({ version: "0.1.0" });
 
 /** What the tool knows. One thread reads the link, so one object is enough. */
-const counter = { count: 0, name: "", byTwo: false };
+const counter = { count: 0, name: "", byTwo: false, status: "ok" };
 const step = () => (counter.byTwo ? 2 : 1);
 
 /** The island page: what it says now. */
-function page() {
+function page(app) {
   return tree([
     heading("Counter"),
     text(`Pressed ${counter.count} times`),
@@ -55,7 +61,48 @@ function page() {
     }),
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
+    statusPicker(app),
   ]);
+}
+
+/** What each status is called in the menu, and what it says to VoiceOver. */
+const STATUSES = [
+  { state: "none", title: "None" },
+  { state: "ok", title: "OK", says: "The counter is fine" },
+  { state: "busy", title: "Busy", says: "The counter is counting" },
+  {
+    state: "attention",
+    title: "Needs attention",
+    says: "The counter wants a look",
+  },
+  { state: "failure", title: "Failed", says: "The counter failed" },
+];
+
+/**
+ * The status, to pick: a pop-up menu where the app has one. An app before
+ * 3.48 draws a `choice` as plain words nobody can change, so there it is a
+ * field to type the word in.
+ */
+function statusPicker(app) {
+  if (!app.supports(Feature.choice)) {
+    return field("status", {
+      title: "Status: none, ok, busy, attention or failure",
+      value: counter.status,
+    });
+  }
+  const options = STATUSES.map(({ state, title }) => ({ value: state, title }));
+  return choice("status", counter.status, options, {
+    title: "Status on the closed island",
+  });
+}
+
+/**
+ * Sets the mark on the closed island. Nothing is sent to an app that has no
+ * status, and the call says so.
+ */
+function showStatus(app) {
+  const says = STATUSES.find(({ state }) => state === counter.status)?.says;
+  return app.status(counter.status, says === undefined ? {} : { text: says });
 }
 
 /** The Settings page. */
@@ -69,8 +116,8 @@ function settings() {
 }
 
 const island = tool.panel("counter", {
-  onOpen: () => page(),
-  onEvent: (_app, panel, event) => {
+  onOpen: (app) => page(app),
+  onEvent: (app, panel, event) => {
     switch (event.block) {
       case "add":
         counter.count += step();
@@ -79,10 +126,17 @@ const island = tool.panel("counter", {
       case "name":
         counter.name = event.text ?? counter.name;
         break;
+      case "status":
+        // A pick is the event `change`, as leaving a field changed is.
+        if (!STATUSES.some(({ state }) => state === event.text))
+          return { keep: true };
+        counter.status = event.text;
+        showStatus(app);
+        break;
       default:
         return { keep: true };
     }
-    return { page: page() };
+    return { page: page(app) };
   },
 });
 
@@ -96,9 +150,19 @@ tool.panel("settings", {
   },
 });
 
-tool.command("addOne", () => {
+tool.command("addOne", (app) => {
   counter.count += step();
-  island.render(page());
+  island.render(page(app));
 });
+
+// The status goes when the program ends, so it is set each time the program
+// starts. The app may refuse any request: the tool carries on without.
+tool.onStart = (app) => {
+  try {
+    showStatus(app);
+  } catch (error) {
+    app.log({ message: `no status: ${error}` });
+  }
+};
 
 tool.run();

@@ -159,7 +159,11 @@ tool.command("hello") { app in
 }
 
 tool.command("count") { app in
-    let next = (try app.value("count").numberValue ?? 0) + 1
+    // The step is saved as text. The options are how the app draws the
+    // setting, not a rule on what is saved: an app before 3.48 draws a text
+    // field, so anything may be there. What is no number counts as one.
+    let step = Double(try app.value("step").stringValue ?? "") ?? 1
+    let next = (try app.value("count").numberValue ?? 0) + step
     try app.setValue(.number(next), for: "count")
     try app.showMessage("Counted to \(Int(next))", icon: "number")
 }
@@ -185,6 +189,8 @@ What the kit gives a handler:
 | `language`, `dataFolder` | what `initialize` said | |
 | `render(_:)`, on a panel | `ui/render` | |
 | `badge(count:dot:)`, on a panel | `ui/badge` | `notify` |
+| `status(_:text:icon:)` | `ui/status` | |
+| `supports(_:)` | what `initialize` said the app has | |
 
 Three rules of the kit:
 
@@ -294,7 +300,11 @@ def hello(app):
 
 @tool.command("count")
 def count(app):
-    counted = app.storage.get(key="count").value + 1
+    # The step is saved as text. The options are how the app draws the
+    # setting, not a rule on what is saved: an app before 3.48 draws a text
+    # field, so anything may be there. What is no number counts as one.
+    step = str(app.storage.get(key="step").value)
+    counted = app.storage.get(key="count").value + (int(step) if step.isdigit() else 1)
     app.storage.set(key="count", value=counted)
     app.notify.hud(icon="number", message=f"Counted to {counted}")
 
@@ -324,6 +334,12 @@ list of calls is the list of messages a tool may send, above.
   `async`: the kit refuses a command whose handler is.
 - **Never write to standard output.** No `console.log`, no `print`. Write to
   standard error, or call `app.log`.
+- **Two calls are the kit's own**, beside the ones named after messages:
+  `app.supports(name)` says whether the app named a feature at hello, and
+  `app.status(state, ...)` sets the tool's status on the closed island, and
+  sends nothing to an app that does not have one. `app.ui.status(...)` is
+  the bare message, sent whatever the app said. "A status on the closed
+  island", below, has both in use.
 - `app.language` and `app.dataFolder` (`app.data_folder` in Python) are what
   the app said at hello; `tool.onStart`, `tool.onPreferencesChanged` and
   `tool.onLanguageChanged` (`on_start`, and so on, in Python) are called as in
@@ -434,6 +450,8 @@ The calls are the Swift kit's, grouped by the service they need:
 | `app.SetRunnable` | `app.set_runnable` | `commands/state` | |
 | `app.Log` | `app.log` | `log` | |
 | `app.UI.Badge` | `app.ui().badge` | `ui/badge` | `notify` |
+| `app.UI.Status` | `app.ui().status` | `ui/status` | |
+| `app.Supports` | `app.supports` | what `initialize` said the app has | |
 
 The three rules of the Swift kit hold for both. **A call can be refused**:
 it returns the app's failure, a `*toolkit.Error` in Go and
@@ -522,8 +540,8 @@ refuses its command and says why.
 | `license` | no | Text. Not shown yet. |
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
-| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. |
-| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. The tool reads and writes any of them with `storage/get` and `storage/set`. |
+| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. In protocol 2 it may hold `panels` too: "Drawing", below. And `status`, `{ "placement": "island" }`: the tool shows a small status mark on the closed island, which it sets with `ui/status`. `island` is the only placement. Without it the app refuses `ui/status`. |
+| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. A `string` preference may carry `options`: from 1 to 64 of `{ value, title }`, and the app then draws a pop-up menu in place of the text field. A `value` is text of at most 128 characters, with no line break, and may be empty; no two options share one; the default is one of them. A `title` is a map of languages held to what the preference's own title is. The tool reads and writes any of them with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
 
@@ -538,6 +556,14 @@ refuses its command and says why.
   know: the tool is added and runs there as before, and the person is shown
   no setting. The manifest has no field for the oldest app a tool needs, and
   a title needs none.
+- **`options` and `status` are newer still**, from Vitruvian 3.48. An app
+  from before them ignores both fields: a preference with options is a text
+  field there, holding the same text, and the tool shows no status. So the
+  options are how the app draws, never a rule on the value: the app keeps a
+  saved value that is no option's and shows it as written.
+- **Never write a preference `type` the table above does not list.** A list
+  of choices is `"type": "string"` with `options`. A type an app does not
+  know refuses the whole tool, on every app released so far.
 - **The file is at most 65,536 bytes.**
 
 ## Every message
@@ -553,9 +579,15 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys"}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options"]}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
+
+`features` names what this app has beyond the first release of the protocol
+version: `ui.status` (the `ui/status` request), `ui.choice` (the `choice`
+block) and `preferences.options` (a preference's `options`, drawn as a
+menu). Vitruvian 3.48 and later send it. An older app sends no `features`
+at all, and has none of them. Ignore a name you do not know.
 
 `command/run` runs a command, named by the id the manifest gives it. Answer
 `{}` when it ran, or failure -32010 when you will not run it.
@@ -676,7 +708,7 @@ is saved.
 
 ### What version 2 adds
 
-Protocol 2 adds five messages, for a tool that draws: its manifest says
+Protocol 2 adds six messages, for a tool that draws: its manifest says
 `"protocol": "2"` and lists `panels`. Nothing of version 1 changes, and a
 tool that draws nothing never sees them. "Drawing", below, says how a tool
 uses them.
@@ -701,6 +733,21 @@ news. `ui/badge` puts a count or a dot beside the tool in the island; it needs
 {"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"text","text":"Nothing deployed today."}]}}}
 {"jsonrpc":"2.0","id":"l","method":"ui/badge","params":{"count":2}}
 {"jsonrpc":"2.0","id":"l","result":{}}
+```
+
+`ui/status` sets the tool's status: a small mark the app draws on the closed
+island. `state` is `none`, `ok`, `busy`, `attention` or `failure`. `text`, a
+string or a map of languages, says what it means, for VoiceOver. `icon`, an
+SF Symbol name, replaces the state's own glyph. It needs nothing in `uses`:
+the manifest declares it, under `contributes.status`, and without that the
+app answers failure -32602. Each one replaces the last, and the mark goes
+when your program ends. An app before 3.48 answers failure -32601.
+
+```json
+{"jsonrpc":"2.0","id":"m","method":"ui/status","params":{"state":"busy","icon":"arrow.triangle.branch","text":{"en":"Checks are running","fr":"Vérifications en cours"}}}
+{"jsonrpc":"2.0","id":"m","result":{}}
+{"jsonrpc":"2.0","id":"n","method":"ui/status","params":{"state":"none"}}
+{"jsonrpc":"2.0","id":"n","result":{}}
 ```
 
 ### Being refused
@@ -769,7 +816,7 @@ a `ui/event`, answered with the next page; `ui/close` says the panel went
 away. To change an open page by yourself, send `ui/render`. "What version 2
 adds", above, shows each message.
 
-### The twelve kinds of block
+### The thirteen kinds of block
 
 | Kind | Fields | What the person does |
 |---|---|---|
@@ -785,11 +832,14 @@ adds", above, shows each message.
 | `divider` | none | |
 | `link` | `title`, `url`: a web or mail address, opened through the app, so it needs `open` in `uses` | clicks it |
 | `spacer` | `size`, up to 40 points | |
+| `choice` | `title`, `value`, `options`, each `{ value, title }`, from 1 to 64, no two with one `value`; `enabled`; needs an `id` | picks an option: `change`, with the option's `value` |
 
 Any text is a string or a map of languages, and it is drawn as you wrote it:
 never as markdown, never as a link, and cut to its lines. A block of a kind
 this app does not know, from a later protocol, is drawn as its `fallback`
-text, or left out. A page is at most 262,144 bytes and 200 blocks; one over
+text, or left out. `choice` is such a kind to an app before 3.48: it is in
+the hello's `features` as `ui.choice`, and a tool sends a `field` to an app
+that does not name it. A page is at most 262,144 bytes and 200 blocks; one over
 either is not drawn, the panel keeps the page it had, and your log says why.
 
 ### In Swift, with the kit
@@ -799,13 +849,14 @@ in the island and a switch in Settings. A page is written as the blocks it
 holds, one function for each kind:
 
 ```swift
-    func page() -> UITree {
+    func page(_ app: App) -> UITree {
         UITree {
             heading("Counter")
             text("Pressed \(count) times")
             button("add", "Add \(step)", style: .prominent)
             field("name", title: "Your name", value: name, placeholder: "Type it and press Return")
             if !name.isEmpty { text("Hello, \(name)", style: .secondary) }
+            statusPicker(app)
         }
     }
 ```
@@ -815,24 +866,29 @@ person does gives. The handle it returns sends a page unprompted, with
 `render`, and sets the tool's badge in the island, with `badge`:
 
 ```swift
-let island = tool.panel("counter", onOpen: { _, _ in counter.page() }, onEvent: { _, panel, event in
+let island = tool.panel("counter", onOpen: { app, _ in counter.page(app) }, onEvent: { app, panel, event in
     switch event.block {
     case "add"?:
         counter.count += counter.step
         try panel.badge(count: counter.count)
     case "name"?:
         counter.name = event.text ?? counter.name
+    case "status"?:
+        // A pick is the event `change`, as leaving a field changed is.
+        guard let picked = event.text.flatMap(StatusState.init(rawValue:)) else { return .keep }
+        counter.status = picked
+        try counter.showStatus(app)
     default:
         return .keep
     }
-    return .page(counter.page())
+    return .page(counter.page(app))
 })
 ```
 
 ```swift
-tool.command("addOne") { _ in
+tool.command("addOne") { app in
     counter.count += counter.step
-    island.render(counter.page())
+    island.render(counter.page(app))
 }
 ```
 
@@ -850,7 +906,7 @@ out:
 
 ```javascript
 /** The island page: what it says now. */
-function page() {
+function page(app) {
   return tree([
     heading("Counter"),
     text(`Pressed ${counter.count} times`),
@@ -862,6 +918,7 @@ function page() {
     }),
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
+    statusPicker(app),
   ]);
 }
 ```
@@ -873,8 +930,8 @@ switch carry, and `event.row` the row of a list that was tapped:
 
 ```javascript
 const island = tool.panel("counter", {
-  onOpen: () => page(),
-  onEvent: (_app, panel, event) => {
+  onOpen: (app) => page(app),
+  onEvent: (app, panel, event) => {
     switch (event.block) {
       case "add":
         counter.count += step();
@@ -883,10 +940,17 @@ const island = tool.panel("counter", {
       case "name":
         counter.name = event.text ?? counter.name;
         break;
+      case "status":
+        // A pick is the event `change`, as leaving a field changed is.
+        if (!STATUSES.some(({ state }) => state === event.text))
+          return { keep: true };
+        counter.status = event.text;
+        showStatus(app);
+        break;
       default:
         return { keep: true };
     }
-    return { page: page() };
+    return { page: page(app) };
   },
 });
 ```
@@ -902,7 +966,7 @@ and a block that is `None` is left out; `list` is `list_`, as Python has the
 word:
 
 ```python
-    def page(self):
+    def page(self, app):
         """The island page: what it says now."""
         return tree(
             heading("Counter"),
@@ -915,6 +979,7 @@ word:
                 placeholder="Type it and press Return",
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
+            self.status_picker(app),
         )
 ```
 
@@ -931,13 +996,19 @@ def island_event(app, panel, event):
         panel.badge(count=counter.count)
     elif event.block == "name":
         counter.name = event.text if event.text is not None else counter.name
+    elif event.block == "status":
+        # A pick is the event change, as leaving a field changed is.
+        if event.text not in STATUSES:
+            return PanelAnswer.keep()
+        counter.status = event.text
+        counter.show_status(app)
     else:
         return PanelAnswer.keep()
-    return PanelAnswer.page(counter.page())
+    return PanelAnswer.page(counter.page(app))
 
 
 island = tool.panel(
-    "counter", on_open=lambda app, panel: counter.page(), on_event=island_event
+    "counter", on_open=lambda app, panel: counter.page(app), on_event=island_event
 )
 ```
 
@@ -954,13 +1025,14 @@ out:
 
 ```go
 // page is the island page: what it says now.
-func (c *counter) page() toolkit.UITree {
+func (c *counter) page(app *toolkit.App) toolkit.UITree {
 	return ui.Tree(
 		ui.Heading("Counter"),
 		ui.Text(fmt.Sprintf("Pressed %d times", c.count)),
 		ui.Button("add", fmt.Sprintf("Add %d", c.step()), ui.ButtonOptions{Style: ui.Prominent}),
 		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
 		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
+		c.statusPicker(app),
 	)
 }
 ```
@@ -977,7 +1049,7 @@ unprompted, with `Render`, and sets the tool's badge in the island, with
 ```go
 	island := tool.Panel("counter",
 		func(app *toolkit.App, panel *toolkit.PanelHandle) (*toolkit.UITree, error) {
-			page := state.page()
+			page := state.page(app)
 			return &page, nil
 		},
 		func(app *toolkit.App, panel *toolkit.PanelHandle, event toolkit.PanelEvent) (toolkit.PanelAnswer, error) {
@@ -991,17 +1063,27 @@ unprompted, with `Render`, and sets the tool's badge in the island, with
 				if text, ok := event.Text(); ok {
 					state.name = text
 				}
+			case "status":
+				// A pick is the event change, as leaving a field changed is.
+				picked, ok := event.Text()
+				if !ok || !isStatus(picked) {
+					return toolkit.Keep(), nil
+				}
+				state.status = picked
+				if _, err := state.showStatus(app); err != nil {
+					return toolkit.Keep(), err
+				}
 			default:
 				return toolkit.Keep(), nil
 			}
-			return toolkit.Page(state.page()), nil
+			return toolkit.Page(state.page(app)), nil
 		})
 ```
 
 ```go
 	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {
 		state.count += state.step()
-		island.Render(state.page())
+		island.Render(state.page(app))
 		return nil
 	})
 ```
@@ -1021,7 +1103,7 @@ is `None` is left out:
 
 ```rust
     /// The island page: what it says now.
-    fn page(&self) -> UiTree {
+    fn page(&self, app: &App<'_>) -> UiTree {
         tree![
             heading("Counter"),
             text(format!("Pressed {} times", self.count)),
@@ -1032,6 +1114,7 @@ is `None` is left out:
                 .placeholder("Type it and press Return"),
             (!self.name.is_empty())
                 .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
+            self.status_picker(app),
         ]
     }
 ```
@@ -1051,7 +1134,7 @@ handler it is called from:
     let acted = counter.clone();
     let island = tool.panel(
         "counter",
-        move |_app, _panel| Ok(Some(opened.borrow().page())),
+        move |app, _panel| Ok(Some(opened.borrow().page(app))),
         move |app, panel, event| {
             let mut counter = acted.borrow_mut();
             match event.block.as_deref() {
@@ -1065,9 +1148,21 @@ handler it is called from:
                         counter.name = name.to_string();
                     }
                 }
+                Some("status") => {
+                    // A pick is the event `change`, as leaving a field
+                    // changed is.
+                    let picked = event
+                        .text()
+                        .filter(|word| STATUSES.iter().any(|(state, _, _)| state == word));
+                    let Some(picked) = picked else {
+                        return Ok(PanelAnswer::Keep);
+                    };
+                    counter.status = picked.to_string();
+                    counter.show_status(app)?;
+                }
                 _ => return Ok(PanelAnswer::Keep),
             }
-            Ok(PanelAnswer::Page(counter.page()))
+            Ok(PanelAnswer::Page(counter.page(app)))
         },
     );
 ```
@@ -1078,7 +1173,7 @@ handler it is called from:
         let mut counter = counted.borrow_mut();
         let step = counter.step();
         counter.count += step;
-        island.render(app, &counter.page());
+        island.render(app, &counter.page(app));
         Ok(())
     });
 ```
@@ -1110,6 +1205,314 @@ yours, and the kit hands it to the panel's `onCall`. Anything else is
 refused, and a refusal rejects the page's promise with its code and words.
 `on` hears `preferences/changed` and `language/changed`, with the params
 your program is sent.
+
+### A status on the closed island
+
+A tool can show a small mark on the closed island, beside the agent mark: a
+green tick, an orange mark that breathes, a yellow one, a red warning. It is
+how a tool says "all is well" or "look at this" without the person opening
+anything. The app draws the mark, in its own style. The tool only says which.
+
+First the manifest says the tool has a status, under `contributes`. It is
+protocol 2's, and it needs nothing in `uses`:
+
+```json
+{
+  "id": "com.acme.deploys",
+  "name": { "en": "Deploys" },
+  "version": "2.1.0",
+  "protocol": "2",
+  "publisher": "Acme",
+  "contributes": {
+    "panels": [
+      { "id": "deploys", "title": { "en": "Deploys" }, "placement": "island" }
+    ],
+    "status": { "placement": "island" }
+  },
+  "activation": ["onLaunch"],
+  "runtime": { "kind": "external", "exec": "bin/deploys" }
+}
+```
+
+Then the tool sets it with `ui/status`, whenever it changes. Each one
+replaces the last.
+
+| `state` | What the person sees | Say it when |
+|---|---|---|
+| `none` | no mark | there is nothing to say |
+| `ok` | a green tick, still | all is well |
+| `busy` | an orange mark that breathes; still with Reduce Motion on | something is under way |
+| `attention` | a yellow mark in a circle, still | something waits for the person |
+| `failure` | a red warning triangle, still | something failed |
+
+`text` is one short line that says what the status means. VoiceOver reads it
+after the tool's name, as part of the closed island's button, and it is the
+tooltip. Leave it out and the app says
+its own word for the state. `icon` is an SF Symbol name that replaces the
+state's glyph; the colour, the size and the breathing stay the app's.
+
+- **There is one mark, and the worst one wins**: `failure`, then
+  `attention`, then `busy`, then `ok`. Every tool's status and the app's own
+  GitHub mark compete for it. On a tie the app's mark wins, then the tool
+  that was added first. So a quiet `ok` may not be the mark the person sees.
+- **It is shown where the island rests on its agent wings**: with "While
+  inactive" set to Agents, and no activity such as music in their place.
+  While an agent session is running, the closed island shows that agent's
+  activity in place of its resting wings, so neither the app's own mark nor
+  a tool's is visible until the session ends.
+- **A click on it opens your island page**, unless the mark is green or you
+  have no island page the island lists. Then the click does what it always
+  did.
+- **It goes when your program ends**, for any reason: it crashed, was
+  stopped, switched off, updated or removed, or it rested after two idle
+  minutes. A tool that wants its status to last starts with the app,
+  `"activation": ["onLaunch"]`, and sets its status each time it starts.
+- **The person can switch it off**, in the tool's detail in Settings. You are
+  not told: your `ui/status` is answered with `{}` all the same.
+- **The app shows at most one change a second** for each tool, the newest
+  one. Send a status when it changes, not on a timer.
+
+Each kit has one call for it. It sends nothing, and says so, to an app that
+does not have a status: "What an older app does", below.
+
+```swift
+    /// Sets the mark on the closed island. Nothing is sent to an app that
+    /// has no status, and the call says so.
+    func showStatus(_ app: App) throws {
+        let says = Counter.statuses.first { $0.state == status }?.says
+        try app.status(status, text: says.map(UIText.plain))
+    }
+```
+
+```javascript
+function showStatus(app) {
+  const says = STATUSES.find(({ state }) => state === counter.status)?.says;
+  return app.status(counter.status, says === undefined ? {} : { text: says });
+}
+```
+
+```python
+    def show_status(self, app):
+        """Sets the mark on the closed island. Nothing is sent to an app that
+        has no status, and the call says so."""
+        return app.status(self.status, text=STATUSES[self.status][1])
+```
+
+```go
+func (c *counter) showStatus(app *toolkit.App) (bool, error) {
+	for _, status := range statuses {
+		if status.state == c.status && status.says != "" {
+			return app.UI.Status(c.status, toolkit.StatusOptions{Text: status.says})
+		}
+	}
+	return app.UI.Status(c.status)
+}
+```
+
+```rust
+    fn show_status(&self, app: &mut App<'_>) -> Result<bool, ToolError> {
+        let says = STATUSES
+            .iter()
+            .find(|(state, _, _)| *state == self.status)
+            .and_then(|(_, _, says)| *says);
+        app.ui().status(&self.status, says.map(Into::into), None)
+    }
+```
+
+The samples set it when the program starts, since that is when it is gone:
+
+```swift
+// The status goes when the program ends, so it is set each time the program
+// starts. The app may refuse any request: the tool carries on without.
+tool.onStart = { app in
+    do {
+        try counter.showStatus(app)
+    } catch {
+        app.log("no status: \(error)")
+    }
+}
+```
+
+### A choice among fixed options
+
+Where the person picks one of a few fixed values, the app draws a pop-up
+menu. There are two places for one.
+
+**A setting.** A `string` preference with `options` is drawn as a menu in the
+tool's detail in Settings, in place of a text field:
+
+```json
+{
+  "id": "com.acme.deploys",
+  "name": { "en": "Deploys" },
+  "version": "2.1.0",
+  "protocol": "2",
+  "publisher": "Acme",
+  "uses": ["storage"],
+  "preferences": [
+    {
+      "id": "light",
+      "title": { "en": "Mouse when green" },
+      "type": "string",
+      "default": "green",
+      "options": [
+        { "value": "green", "title": { "en": "Green", "fr": "Vert" } },
+        { "value": "breathe green", "title": { "en": "Pulsing green", "fr": "Vert pulsé" } }
+      ]
+    }
+  ],
+  "runtime": { "kind": "external", "exec": "bin/deploys" }
+}
+```
+
+A pick is saved at once, and a running tool is sent `preferences/changed`,
+as for any setting. The value is text: the tool reads and writes it with
+`storage/get` and `storage/set` exactly as before.
+
+- **The options are how the app draws the setting. They are no rule on the
+  value.** The app never refuses a value that is none of them, and never
+  changes one. A value saved before the tool had options, or one the tool
+  wrote itself, is shown as the menu's first row, as written, until the
+  person picks another.
+- **So read the value as text that may be anything**, and fall back when it
+  is none you know. `hello-swift` and `hello-python-kit` do, for their
+  setting "Count by".
+- **From 1 to 64 options**, no two with one `value`, and the default is one
+  of them. A `value` is at most 128 characters and may be empty. A `title`
+  is a map of languages, at most 60 characters each.
+
+**A block on a page.** `choice` is a menu among a page's blocks:
+
+```json
+{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"choice","id":"light","title":"Mouse when green","value":"green","options":[{"value":"green","title":"Green"},{"value":"breathe green","title":{"en":"Pulsing green","de":"Pulsierendes Grün"}}],"fallback":"Mouse when green: Green"}]}}}
+{"jsonrpc":"2.0","id":31,"method":"ui/event","params":{"panel":"deploys","block":"light","event":"change","value":"breathe green"}}
+{"jsonrpc":"2.0","id":31,"result":{"keep":true}}
+```
+
+Picking an option is the event `change`, with the option's `value`: the event
+a field sends when it is left with other text, so a tool that reads a
+field's events reads a choice's. `value` is what is selected; one that is no
+option's is drawn as an extra first row, as for a setting.
+
+A `choice` is a kind of block an app before 3.48 does not know. There it is
+drawn as its `fallback`, plain words nobody can change. So a tool asks first
+and sends a `field` in its place. Each kit's builder writes a fallback when
+you give none: the title, a colon and the selected option's title.
+
+```swift
+    /// The status, to pick: a pop-up menu where the app has one. An app
+    /// before 3.48 draws a `choice` as plain words nobody can change, so
+    /// there it is a field to type the word in.
+    func statusPicker(_ app: App) -> UIBlock {
+        guard app.supports(.choice) else {
+            return field("status", title: "Status: none, ok, busy, attention or failure", value: status.rawValue)
+        }
+        let options = Counter.statuses.map { UIChoiceOption(value: $0.state.rawValue, title: .plain($0.title)) }
+        return choice("status", title: "Status on the closed island", value: status.rawValue, options: options)
+    }
+```
+
+```javascript
+function statusPicker(app) {
+  if (!app.supports(Feature.choice)) {
+    return field("status", {
+      title: "Status: none, ok, busy, attention or failure",
+      value: counter.status,
+    });
+  }
+  const options = STATUSES.map(({ state, title }) => ({ value: state, title }));
+  return choice("status", counter.status, options, {
+    title: "Status on the closed island",
+  });
+}
+```
+
+```python
+    def status_picker(self, app):
+        """The status, to pick: a pop-up menu where the app has one. An app
+        before 3.48 draws a `choice` as plain words nobody can change, so
+        there it is a field to type the word in."""
+        if not app.supports(Feature.CHOICE):
+            return field(
+                "status",
+                title="Status: none, ok, busy, attention or failure",
+                value=self.status,
+            )
+        options = [
+            UIChoiceOption(value=state, title=title)
+            for state, (title, _) in STATUSES.items()
+        ]
+        return choice(
+            "status", self.status, options, title="Status on the closed island"
+        )
+```
+
+```go
+func (c *counter) statusPicker(app *toolkit.App) toolkit.UIBlock {
+	if !app.Supports(toolkit.FeatureChoice) {
+		return ui.Field("status", ui.FieldOptions{Title: "Status: none, ok, busy, attention or failure", Value: c.status})
+	}
+	options := make([]toolkit.UIChoiceOption, 0, len(statuses))
+	for _, status := range statuses {
+		options = append(options, toolkit.UIChoiceOption{Value: status.state, Title: status.title})
+	}
+	return ui.Choice("status", c.status, options, ui.ChoiceOptions{Title: "Status on the closed island"})
+}
+```
+
+```rust
+    fn status_picker(&self, app: &App<'_>) -> UiBlock {
+        if !app.supports(features::CHOICE) {
+            return field("status")
+                .title("Status: none, ok, busy, attention or failure")
+                .value(&self.status)
+                .into();
+        }
+        let options = STATUSES
+            .iter()
+            .map(|(state, title, _)| UiChoiceOption {
+                value: state.to_string(),
+                title: (*title).into(),
+            })
+            .collect();
+        choice("status", &self.status, options)
+            .title("Status on the closed island")
+            .into()
+    }
+```
+
+### What an older app does
+
+The status, the `choice` block and a preference's `options` were added to
+protocol 2 in Vitruvian 3.48, with no new version. A tool that uses them
+still installs and runs on 3.46 and 3.47. There it shows less, and nothing
+breaks.
+
+The app says what it has. `initialize` carries `features`, a list of names,
+and an app before 3.48 sends none. Each kit keeps the list and answers
+`supports`:
+
+| What your tool does | Vitruvian 3.46 and 3.47 | Vitruvian 3.48 and later |
+|---|---|---|
+| Its manifest has `contributes.status` | The key is ignored. The tool is added and runs. | The sheet that asks before the tool is added says so, and the tool's detail has a switch for it. |
+| It sets a status with a kit | The kit sends nothing, and the call says the status is not shown. | The mark is drawn. |
+| It sends `ui/status` with no kit | Answered with failure -32601, "unknown method". Harmless. Stop asking. | The mark is drawn. |
+| A preference has `options` | A text field, holding the same text. | A pop-up menu. |
+| A page has a `choice` block | Its `fallback`, as plain words. So check `supports` and send a `field`. | A pop-up menu. |
+| A preference has a `type` the table of the manifest does not list | **The tool is refused.** | **The tool is refused.** |
+
+- **Never write a preference `type` the manifest's table does not list**,
+  such as `"type": "choice"`. Every app refuses the whole tool for a type it
+  does not know, and tells the person the tool's author made a mistake. A
+  list of choices is `"type": "string"` with `options`.
+- **The same goes for a `uses` entry, a surface, a panel's placement and an
+  activation**: a name the app does not know refuses the tool. A key it does
+  not know is ignored. That is why a status is a key under `contributes` and
+  not an entry of `uses`.
+- **`vitruvian-tool run` and the conformance script say hello as 3.48 does.**
+  The script then starts your tool once more as an older app would, with no
+  `features`, and answers `ui/status` with -32601. A tool that stops there,
+  or keeps asking, fails that step.
 
 ## Limits, and what happens when a tool crosses them
 
@@ -1219,7 +1622,7 @@ vitruvian-tool run ~/my-tool --command hello --app-path
 - `--app-path` starts the tool with the short `PATH` the app has. Use it when
   the tool works in a terminal and not in the app.
 - `python3 conformance/conformance.py <folder>`, in `packages/vitruvian-sdk`,
-  runs five scripted checks and exits with 0 when they pass. It needs Python
+  runs seven scripted checks and exits with 0 when they pass. It needs Python
   and nothing else.
 
 In the app, open the tool's row in Settings. The detail view shows the tool's

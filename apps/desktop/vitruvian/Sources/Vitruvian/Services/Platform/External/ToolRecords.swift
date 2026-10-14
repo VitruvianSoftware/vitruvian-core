@@ -66,14 +66,19 @@ package struct ToolRecord: Codable, Equatable, Sendable {
     /// that has one. Nil is yes: it is written only once the person has
     /// turned it off, so a file from before it reads as it did.
     package var showsInIsland: Bool?
+    /// Whether the closed island shows the tool's status, for a tool that
+    /// declares one. Nil is yes, and it is written only once the person has
+    /// turned it off, as `showsInIsland` is.
+    package var showsStatus: Bool?
 
     package init(id: String, isOn: Bool, agreement: ToolAgreement, catalogue: CatalogueOrigin? = nil,
-                 showsInIsland: Bool? = nil) {
+                 showsInIsland: Bool? = nil, showsStatus: Bool? = nil) {
         self.id = id
         self.isOn = isOn
         self.agreement = agreement
         self.catalogue = catalogue
         self.showsInIsland = showsInIsland
+        self.showsStatus = showsStatus
     }
 }
 

@@ -43,14 +43,17 @@ from vitruvian_tool_kit import (  # noqa: E402
     METHODS,
     AppUnreachable,
     CommandRefused,
+    Feature,
     PanelAnswer,
     PanelEvent,
     Refusal,
     RefusalCode,
     RPCErrorObject,
     Tool,
+    UIChoiceOption,
     UIListRow,
     button,
+    choice,
     divider,
     field,
     heading,
@@ -76,10 +79,13 @@ class Bench:
         self.sent += line + "\n"
         return self
 
-    def hello(self, versions='["1"]'):
+    def hello(self, versions='["1"]', features=None):
+        """`features` is what the app says it has, as JSON; None is an app
+        from before the field, which says nothing."""
+        said = "" if features is None else ',"features":%s' % features
         return self.app(
             '{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{"protocolVersions":%s,'
-            '"language":"de-DE","dataFolder":"/tmp/kit-data"}}' % versions
+            '"language":"de-DE","dataFolder":"/tmp/kit-data"%s}}' % (versions, said)
         )
 
     def run(self, command, id):
@@ -155,7 +161,7 @@ class ToolTests(unittest.TestCase):
             for method in wanted
         ]
         self.assertEqual(sorted(calls), sorted(python))
-        self.assertEqual(len(wanted), 14, "each message once")
+        self.assertEqual(len(wanted), 15, "each message once")
 
     def test_hello_a_command_and_goodbye(self):
         seen = []
@@ -757,6 +763,206 @@ class PanelTests(unittest.TestCase):
                 failure(6, -32601, "method not found"),
             ],
             "a request of the app's is asked of the app as the tool's own; a method of the tool's goes to on_call",
+        )
+
+    def test_a_status_is_sent_to_an_app_that_has_it(self):
+        shown = []
+
+        def check(app):
+            shown.append(
+                app.status(
+                    "busy", text="Checks are running", icon="arrow.triangle.branch"
+                )
+            )
+            shown.append(app.status("none"))
+
+        tool = (
+            self.bench.hello('["1","2"]', features='["ui.status","ui.later"]')
+            .run("check", 2)
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .app('{"jsonrpc":"2.0","id":2,"result":{}}')
+            .goodbye()
+            .tool(lambda t: t.command("check", check))
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(shown, [True, True])
+        written = self.bench.written()
+        self.assertEqual(len(written), 4)
+        self.assertEqual(
+            written[1],
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "ui/status",
+                "params": {
+                    "state": "busy",
+                    "text": "Checks are running",
+                    "icon": "arrow.triangle.branch",
+                },
+            },
+        )
+        self.assertEqual(
+            written[2],
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "ui/status",
+                "params": {"state": "none"},
+            },
+        )
+
+    def test_a_status_writes_nothing_for_an_older_app(self):
+        # An app before 3.48: its hello has no `features`. No answer is
+        # scripted, so a request sent here would wait and then fail.
+        shown = []
+
+        def check(app):
+            shown.append(app.status("failure", text="main is red"))
+
+        def build(tool):
+            tool.answer_seconds = 0.2
+            tool.command("check", check)
+
+        tool = self.bench.hello('["1","2"]').run("check", 2).goodbye().tool(build)
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(shown, [False], "the call says the status is not shown")
+        self.assertEqual(
+            self.bench.written(),
+            [
+                result("hello", {"protocolVersion": "2", "toolVersion": "9.9.9"}),
+                result(2, {}),
+            ],
+            "and nothing was sent for it: only the two answers are on the link",
+        )
+
+    def test_a_status_writes_nothing_for_an_app_that_has_other_things(self):
+        shown = []
+        tool = (
+            self.bench.hello('["2"]', features='["ui.choice"]')
+            .run("check", 2)
+            .goodbye()
+            .tool(
+                lambda t: t.command("check", lambda app: shown.append(app.status("ok")))
+            )
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(shown, [False])
+        self.assertEqual(len(self.bench.written()), 2)
+
+    def test_supports_is_true_only_for_what_the_hello_listed(self):
+        has = []
+
+        def ask(app):
+            has.extend(
+                app.supports(name)
+                for name in (
+                    Feature.CHOICE,
+                    Feature.PREFERENCE_OPTIONS,
+                    Feature.STATUS,
+                    "ui.later",
+                    "ui.never",
+                )
+            )
+
+        tool = (
+            self.bench.hello(features='["ui.choice","preferences.options","ui.later"]')
+            .run("ask", 2)
+            .goodbye()
+            .tool(lambda t: t.command("ask", ask))
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(has, [True, True, False, True, False])
+        self.assertEqual(
+            (Feature.STATUS, Feature.CHOICE, Feature.PREFERENCE_OPTIONS),
+            ("ui.status", "ui.choice", "preferences.options"),
+        )
+
+    def test_an_app_that_says_nothing_has_none_of_them(self):
+        has = []
+        tool = (
+            self.bench.hello()
+            .run("ask", 2)
+            .goodbye()
+            .tool(
+                lambda t: t.command(
+                    "ask",
+                    lambda app: has.extend(
+                        app.supports(name)
+                        for name in (
+                            Feature.STATUS,
+                            Feature.CHOICE,
+                            Feature.PREFERENCE_OPTIONS,
+                        )
+                    ),
+                )
+            )
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(has, [False, False, False])
+
+    def test_a_choice_is_built_as_the_protocols_example(self):
+        options = [
+            UIChoiceOption(value="green", title="Green"),
+            UIChoiceOption(
+                value="breathe green",
+                title={"en": "Pulsing green", "de": "Pulsierendes Grün"},
+            ),
+        ]
+        built = choice(
+            "light",
+            "green",
+            options,
+            title="Mouse when green",
+            enabled=True,
+            fallback="Mouse when green: Green",
+        )
+        with open(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
+                "protocol",
+                "examples",
+                "messages.json",
+            ),
+            encoding="utf-8",
+        ) as handle:
+            examples = json.load(handle)["examples"]
+        example = next(
+            e
+            for e in examples
+            if e["about"] == "a page with a choice among fixed options"
+        )["message"]["params"]["tree"]["blocks"][0]
+        self.assertEqual(built.to_json(), example)
+
+        # With no fallback given, the builder writes one: an app before
+        # 3.48 draws it in the menu's place.
+        self.assertEqual(
+            choice("light", "green", options, title="Mouse when green").fallback,
+            "Mouse when green: Green",
+        )
+        self.assertEqual(
+            choice("light", "green", options).fallback,
+            "Green",
+            "with no title, the selected option's title alone",
+        )
+        self.assertEqual(
+            choice(
+                "light", "breathe green", options, title="Mouse when green"
+            ).fallback,
+            {
+                "en": "Mouse when green: Pulsing green",
+                "de": "Mouse when green: Pulsierendes Grün",
+            },
+            "in every language either text has",
+        )
+        self.assertEqual(
+            choice("light", "typed by hand", options, title="Light").fallback,
+            "Light: typed by hand",
+            "a value that is no option's is written as it is",
+        )
+        self.assertEqual(
+            PanelEvent("light", "change", "breathe green").text,
+            "breathe green",
+            "a pick arrives as the event a field's change is, with the option's value",
         )
 
     def test_a_page_is_written_as_the_blocks_it_holds(self):

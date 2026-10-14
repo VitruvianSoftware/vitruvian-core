@@ -22,6 +22,10 @@
 // counter with a button and a field; its page in Settings is one switch.
 // The app draws both, from the blocks this program sends. The command
 // `addOne` counts too, and sends the open page again.
+//
+// It also shows a status, the small mark the app draws on the closed
+// island, and its island page has a pop-up menu to pick it with. Both are
+// newer than protocol 2 itself, so the tool asks the app what it has.
 package main
 
 import (
@@ -38,6 +42,18 @@ type counter struct {
 	count int
 	name  string
 	byTwo bool
+	// status is what the tool shows on the closed island.
+	status string
+}
+
+// statuses is what each status is called in the menu, and what it says to
+// VoiceOver.
+var statuses = []struct{ state, title, says string }{
+	{toolkit.StatusNone, "None", ""},
+	{toolkit.StatusOK, "OK", "The counter is fine"},
+	{toolkit.StatusBusy, "Busy", "The counter is counting"},
+	{toolkit.StatusAttention, "Needs attention", "The counter wants a look"},
+	{toolkit.StatusFailure, "Failed", "The counter failed"},
 }
 
 func (c *counter) step() int {
@@ -48,14 +64,50 @@ func (c *counter) step() int {
 }
 
 // page is the island page: what it says now.
-func (c *counter) page() toolkit.UITree {
+func (c *counter) page(app *toolkit.App) toolkit.UITree {
 	return ui.Tree(
 		ui.Heading("Counter"),
 		ui.Text(fmt.Sprintf("Pressed %d times", c.count)),
 		ui.Button("add", fmt.Sprintf("Add %d", c.step()), ui.ButtonOptions{Style: ui.Prominent}),
 		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
 		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
+		c.statusPicker(app),
 	)
+}
+
+// statusPicker is the status, to pick: a pop-up menu where the app has one.
+// An app before 3.48 draws a choice as plain words nobody can change, so
+// there it is a field to type the word in.
+func (c *counter) statusPicker(app *toolkit.App) toolkit.UIBlock {
+	if !app.Supports(toolkit.FeatureChoice) {
+		return ui.Field("status", ui.FieldOptions{Title: "Status: none, ok, busy, attention or failure", Value: c.status})
+	}
+	options := make([]toolkit.UIChoiceOption, 0, len(statuses))
+	for _, status := range statuses {
+		options = append(options, toolkit.UIChoiceOption{Value: status.state, Title: status.title})
+	}
+	return ui.Choice("status", c.status, options, ui.ChoiceOptions{Title: "Status on the closed island"})
+}
+
+// showStatus sets the mark on the closed island. Nothing is sent to an app
+// that has no status, and the call says so.
+func (c *counter) showStatus(app *toolkit.App) (bool, error) {
+	for _, status := range statuses {
+		if status.state == c.status && status.says != "" {
+			return app.UI.Status(c.status, toolkit.StatusOptions{Text: status.says})
+		}
+	}
+	return app.UI.Status(c.status)
+}
+
+// isStatus is whether a word is one of the five a status may be.
+func isStatus(word string) bool {
+	for _, status := range statuses {
+		if status.state == word {
+			return true
+		}
+	}
+	return false
 }
 
 // settings is the Settings page.
@@ -68,11 +120,11 @@ func (c *counter) settings() toolkit.UITree {
 
 func main() {
 	tool := toolkit.New("0.1.0")
-	state := &counter{}
+	state := &counter{status: toolkit.StatusOK}
 
 	island := tool.Panel("counter",
 		func(app *toolkit.App, panel *toolkit.PanelHandle) (*toolkit.UITree, error) {
-			page := state.page()
+			page := state.page(app)
 			return &page, nil
 		},
 		func(app *toolkit.App, panel *toolkit.PanelHandle, event toolkit.PanelEvent) (toolkit.PanelAnswer, error) {
@@ -86,10 +138,20 @@ func main() {
 				if text, ok := event.Text(); ok {
 					state.name = text
 				}
+			case "status":
+				// A pick is the event change, as leaving a field changed is.
+				picked, ok := event.Text()
+				if !ok || !isStatus(picked) {
+					return toolkit.Keep(), nil
+				}
+				state.status = picked
+				if _, err := state.showStatus(app); err != nil {
+					return toolkit.Keep(), err
+				}
 			default:
 				return toolkit.Keep(), nil
 			}
-			return toolkit.Page(state.page()), nil
+			return toolkit.Page(state.page(app)), nil
 		})
 
 	tool.Panel("settings",
@@ -108,9 +170,18 @@ func main() {
 
 	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {
 		state.count += state.step()
-		island.Render(state.page())
+		island.Render(state.page(app))
 		return nil
 	})
+
+	// The status goes when the program ends, so it is set each time the
+	// program starts. The app may refuse any request: the tool carries on
+	// without.
+	tool.OnStart = func(app *toolkit.App) {
+		if _, err := state.showStatus(app); err != nil {
+			app.Log("no status: " + err.Error())
+		}
+	}
 
 	tool.Run()
 }

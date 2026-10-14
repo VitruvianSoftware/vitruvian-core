@@ -49,6 +49,10 @@ public enum UILimits {
     /// More `ui/render` notices than this for one panel in one second is a
     /// flood, and the app stops the tool as it does for any other flood.
     public static let floodRendersPerSecond = 40
+    /// The most options a `choice` block may hold, and the longest value
+    /// one may have, in characters as JSON Schema counts them.
+    public static let maxChoiceOptions = 64
+    public static let maxChoiceValueLength = 128
 }
 
 /// Where a panel is shown.
@@ -153,6 +157,7 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case divider(DividerBlock)
         case link(LinkBlock)
         case spacer(SpacerBlock)
+        case choice(ChoiceBlock)
         /// A kind this version does not have, by its name.
         case unknown(String)
     }
@@ -182,17 +187,18 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case .divider: return "divider"
         case .link: return "link"
         case .spacer: return "spacer"
+        case .choice: return "choice"
         case .unknown(let name): return name
         }
     }
 
-    /// The twelve kinds, by name, in the order the protocol lists them.
+    /// The thirteen kinds, by name, in the order the protocol lists them.
     public static let kinds = ["text", "heading", "row", "button", "toggle", "field", "list", "progress", "image",
-                               "divider", "link", "spacer"]
+                               "divider", "link", "spacer", "choice"]
 
     /// The kinds a block must have an `id` for: the ones whose events
     /// name it.
-    public static let kindsWithID: Set<String> = ["button", "toggle", "field", "list"]
+    public static let kindsWithID: Set<String> = ["button", "toggle", "field", "list", "choice"]
 
     private enum CodingKeys: String, CodingKey {
         case type, id, fallback
@@ -223,6 +229,7 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case "divider": content = .divider(DividerBlock())
         case "link": content = .link(try LinkBlock(from: decoder))
         case "spacer": content = .spacer(try SpacerBlock(from: decoder))
+        case "choice": content = .choice(try ChoiceBlock(from: decoder))
         // A later protocol's kind: kept by its name, drawn as its fallback.
         default: content = .unknown(type)
         }
@@ -242,6 +249,7 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case .divider, .unknown: break
         case .link(let block): try block.encode(to: encoder)
         case .spacer(let block): try block.encode(to: encoder)
+        case .choice(let block): try block.encode(to: encoder)
         }
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
@@ -510,6 +518,67 @@ public struct SpacerBlock: Codable, Equatable, Sendable {
     }
 }
 
+/// One option of a `choice`: what the event carries when it is picked, and
+/// what the menu shows for it.
+public struct UIChoiceOption: Codable, Equatable, Sendable {
+    public let value: String
+    public let title: UIText
+
+    public init(value: String, title: UIText) {
+        self.value = value
+        self.title = title
+    }
+}
+
+/// A pop-up menu: one of a fixed list of options. Picking one is the event
+/// `change`, whose value is the option's. A `value` that is no option's is
+/// drawn as an extra first row, as written.
+public struct ChoiceBlock: Codable, Equatable, Sendable {
+    /// What is being chosen, beside the menu.
+    public let title: UIText?
+    /// The selected option's value.
+    public let value: String
+    /// From 1 to `UILimits.maxChoiceOptions`, no two with one value.
+    public let options: [UIChoiceOption]
+    /// False draws it dimmed, and nothing can be picked. True when left out.
+    public let enabled: Bool?
+
+    public init(title: UIText? = nil, value: String, options: [UIChoiceOption], enabled: Bool? = nil) {
+        self.title = title
+        self.value = value
+        self.options = options
+        self.enabled = enabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title, value, options, enabled
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(UIText.self, forKey: .title)
+        value = try container.decode(String.self, forKey: .value)
+        options = try container.decode([UIChoiceOption].self, forKey: .options)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        func refuse(_ key: CodingKeys, _ why: String) -> DecodingError {
+            DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: why)
+        }
+        guard (1...UILimits.maxChoiceOptions).contains(options.count) else {
+            throw refuse(.options, "not from 1 to \(UILimits.maxChoiceOptions) options")
+        }
+        let tooLong = { (text: String) in text.unicodeScalars.count > UILimits.maxChoiceValueLength }
+        guard !tooLong(value) else {
+            throw refuse(.value, "a value of more than \(UILimits.maxChoiceValueLength) characters")
+        }
+        guard !options.contains(where: { tooLong($0.value) }) else {
+            throw refuse(.options, "an option's value of more than \(UILimits.maxChoiceValueLength) characters")
+        }
+        guard Set(options.map(\.value)).count == options.count else {
+            throw refuse(.options, "two options with one value")
+        }
+    }
+}
+
 // MARK: - The messages
 
 /// `ui/open`: the person opened one of the tool's panels.
@@ -620,6 +689,44 @@ public struct UIBadgeParams: Codable, Equatable, Sendable {
         count = try container.decodeIfPresent(Int.self, forKey: .count)
         dot = try container.decodeIfPresent(Bool.self, forKey: .dot)
         try Bounded.check(count.map(Double.init), 0...Double(Int.max), CodingKeys.count, container)
+    }
+}
+
+/// What a status says. The app draws each in its own style; the tool never
+/// draws.
+public enum StatusState: String, Codable, CaseIterable, Sendable {
+    /// No mark.
+    case none
+    /// All is well.
+    case ok
+    /// Something is under way.
+    case busy
+    /// Something waits for the person.
+    case attention
+    /// Something failed.
+    case failure
+}
+
+/// Where a tool's status is shown.
+public enum StatusPlacement: String, CaseIterable, Sendable {
+    /// On the closed island, beside the agent mark.
+    case island
+}
+
+/// `ui/status`: the tool's status, a small mark the app draws on the closed
+/// island. Each one replaces the last, and it goes when the tool's program
+/// ends. The manifest must declare it, under `contributes.status`.
+public struct UIStatusParams: Codable, Equatable, Sendable {
+    public let state: StatusState
+    /// What it means, in one short line, for VoiceOver and the tooltip.
+    public let text: UIText?
+    /// An SF Symbol name, drawn in place of the state's own glyph.
+    public let icon: String?
+
+    public init(state: StatusState, text: UIText? = nil, icon: String? = nil) {
+        self.state = state
+        self.text = text
+        self.icon = icon
     }
 }
 

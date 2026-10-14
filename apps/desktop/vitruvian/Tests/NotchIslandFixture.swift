@@ -46,6 +46,10 @@ final class NotchIslandFixture {
     /// nil when they cover the center.
     var menuRoom: CGFloat?
     var hasBattery = true
+    /// What a tool's status mark on the closed island says, when one shows.
+    var restingStatus: String?
+    /// Sent when a test changes `restingStatus`, as the app's services do.
+    let restingStatusChanges = PassthroughSubject<Void, Never>()
     var reducesMotion = false
     var currentSession = NotchSessionState()
     /// Each window the island built, the current one last.
@@ -179,6 +183,8 @@ final class NotchIslandFixture {
             separateSpaces: { true },
             statusBarThickness: { 24 },
             hasBattery: { [unowned self] in self.hasBattery },
+            restingStatus: { [unowned self] in self.restingStatus },
+            restingStatusChanges: restingStatusChanges.eraseToAnyPublisher(),
             parts: parts)
     }
 
@@ -304,6 +310,9 @@ final class RecordingIslandHost: NotchIslandHost {
     private(set) var outlineEnabled = false
     private(set) var outlineColor = NSColor.white
     private(set) var activationRect = CGRect.zero
+    /// The name the island gave its one button, which is all VoiceOver
+    /// reaches of the closed island.
+    private(set) var activationTitle = ""
     private(set) var closed = false
     private(set) var hoverHandler: ((Bool) -> Void)?
     /// A press on the activation area, before it activates.
@@ -403,6 +412,7 @@ final class RecordingIslandHost: NotchIslandHost {
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
                            activate: @escaping () -> Void) {
         activationRect = rect
+        activationTitle = title
         self.willPress = willPress
         self.activate = activate
     }
@@ -431,9 +441,13 @@ nonisolated final class RecordingMirrorHost: NotchMirrorHost {
         closed = true
         panelIsVisible = false
     }
+    /// Each name the island gave the copy's button, in order.
+    private(set) var activationTitles: [String] = []
     func setOutline(enabled: Bool, color: NSColor) {}
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void,
-                           activate: @escaping () -> Void) {}
+                           activate: @escaping () -> Void) {
+        activationTitles.append(title)
+    }
 }
 
 /// The island's services as readings a test sets, and a log of what the

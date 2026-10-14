@@ -20,7 +20,8 @@
 
 // A tool written with the kit. It has two commands: `hello` asks the app to
 // show a short message, and `count` keeps a number in a preference its
-// manifest declares. `vitruvian-tool init --template swift` starts a new
+// manifest declares, counting by what another preference says. That one
+// has `options`, so the app draws it as a pop-up menu in the tool's detail. `vitruvian-tool init --template swift` starts a new
 // tool from this file.
 
 import VitruvianToolKit
@@ -32,7 +33,11 @@ tool.command("hello") { app in
 }
 
 tool.command("count") { app in
-    let next = (try app.value("count").numberValue ?? 0) + 1
+    // The step is saved as text. The options are how the app draws the
+    // setting, not a rule on what is saved: an app before 3.48 draws a text
+    // field, so anything may be there. What is no number counts as one.
+    let step = Double(try app.value("step").stringValue ?? "") ?? 1
+    let next = (try app.value("count").numberValue ?? 0) + step
     try app.setValue(.number(next), for: "count")
     try app.showMessage("Counted to \(Int(next))", icon: "number")
 }

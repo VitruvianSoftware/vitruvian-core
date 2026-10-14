@@ -38,7 +38,8 @@ public struct PanelEvent: Equatable, Sendable {
 
     /// For a tap on a row of a list: the row's id.
     public var row: String? { kind == .tap ? value?.stringValue : nil }
-    /// For `submit` and `change`: the field's text.
+    /// For `submit` and `change`: the field's text. For the `change` of a
+    /// `choice`: the picked option's value.
     public var text: String? { kind == .submit || kind == .change ? value?.stringValue : nil }
     /// For `toggle`: the switch's new state.
     public var isOn: Bool? { kind == .toggle ? value?.boolValue : nil }
@@ -234,9 +235,38 @@ extension UIBlock {
     public static func spacer(_ size: Double? = nil) -> UIBlock {
         UIBlock(.spacer(SpacerBlock(size: size)))
     }
+
+    /// A pop-up menu: one of a fixed list of options. `value` is the
+    /// selected option's. Picking one is the event `change`, read with
+    /// `PanelEvent.text`.
+    ///
+    /// An app before 3.48 does not know this kind and draws `fallback`,
+    /// which nobody can change. So ask `app.supports(.choice)` first, and
+    /// send a `field` to an app without it. With no `fallback` given, one is
+    /// written: the title, a colon and the selected option's title.
+    public static func choice(_ id: String, title: UIText? = nil, value: String, options: [UIChoiceOption],
+                              enabled: Bool? = nil, fallback: UIText? = nil) -> UIBlock {
+        let block = ChoiceBlock(title: title, value: value, options: options, enabled: enabled)
+        return UIBlock(id: id, fallback: fallback ?? block.saidPlainly, .choice(block))
+    }
 }
 
-// The same twelve, as functions, for a page written in `UITree { }`. A line
+extension ChoiceBlock {
+    /// What the menu says, as words: the title, a colon and the selected
+    /// option's title, or that title alone, in every language either has. A
+    /// value that is no option's is written as it is.
+    var saidPlainly: UIText {
+        let selected = options.first { $0.value == value }?.title ?? .plain(value)
+        guard let title else { return selected }
+        var languages = Set<String>()
+        for case .languages(let text) in [title, selected] { languages.formUnion(text.byLanguage.keys) }
+        func said(_ language: String) -> String { "\(title.text(for: language)): \(selected.text(for: language))" }
+        if languages.isEmpty { return .plain(said("en")) }
+        return .languages(LocalizedText(Dictionary(uniqueKeysWithValues: languages.map { ($0, said($0)) })))
+    }
+}
+
+// The same thirteen, as functions, for a page written in `UITree { }`. A line
 // that starts with a dot would join the line above it, so a page is written
 // with these, one block a line.
 
@@ -277,6 +307,11 @@ public func divider() -> UIBlock { .divider }
 public func link(_ title: UIText, url: String) -> UIBlock { .link(title, url: url) }
 
 public func spacer(_ size: Double? = nil) -> UIBlock { .spacer(size) }
+
+public func choice(_ id: String, title: UIText? = nil, value: String, options: [UIChoiceOption],
+                   enabled: Bool? = nil, fallback: UIText? = nil) -> UIBlock {
+    .choice(id, title: title, value: value, options: options, enabled: enabled, fallback: fallback)
+}
 
 /// Writes a page as the blocks it holds, one under the other:
 ///

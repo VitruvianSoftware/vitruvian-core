@@ -31,8 +31,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use vitruvian_tool_kit::{
-    button, divider, field, heading, image, link, list, progress, row, spacer, text, toggle, tree,
-    Error, PanelAnswer, PanelEvent, RefusalCode, Tool, ToolError, UiListRow, METHODS,
+    button, choice, divider, features, field, heading, image, link, list, progress, row, spacer,
+    status, text, toggle, tree, Error, LocalizedText, PanelAnswer, PanelEvent, RefusalCode, Tool,
+    ToolError, UiBlock, UiChoiceOption, UiListRow, UiText, METHODS,
 };
 
 /// What the tool writes, kept where the test can read it.
@@ -71,6 +72,15 @@ impl Bench {
     fn hello_offering(self, versions: &str) -> Bench {
         self.app(&format!(
             r#"{{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{{"protocolVersions":{versions},"language":"de-DE","dataFolder":"/tmp/kit-data"}}}}"#
+        ))
+    }
+
+    /// The hello of an app that says what it has: `features` is the list,
+    /// as JSON. `hello` and `hello_offering` are an app from before the
+    /// field, which says nothing.
+    fn hello_with(self, versions: &str, features: &str) -> Bench {
+        self.app(&format!(
+            r#"{{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{{"protocolVersions":{versions},"language":"de-DE","dataFolder":"/tmp/kit-data","features":{features}}}}}"#
         ))
     }
 
@@ -134,8 +144,12 @@ fn every_request_a_tool_may_send_has_a_call() {
     // One command makes every call, and the app refuses each: what the
     // tool wrote names each request a tool may send, once, in order. A
     // request added to the protocol fails this until the kit has its call.
-    let mut bench = Bench::default().hello().run("all", 100);
-    for id in 1..=11 {
+    // The app says it has a status: the kit sends none to an app that does
+    // not.
+    let mut bench = Bench::default()
+        .hello_with(r#"["1"]"#, r#"["ui.status"]"#)
+        .run("all", 100);
+    for id in 1..=12 {
         bench = bench.app(&format!(
             r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32004,"message":"not available right now"}}}}"#
         ));
@@ -154,6 +168,7 @@ fn every_request_a_tool_may_send_has_a_call() {
         let _ = app.storage().get("count");
         let _ = app.storage().set("count", 1);
         let _ = app.ui().badge(Some(2), false);
+        let _ = app.ui().status(status::BUSY, None, None);
         Ok(())
     });
     assert_eq!(tool.serve(), 0);
@@ -168,7 +183,7 @@ fn every_request_a_tool_may_send_has_a_call() {
         .map(|row| row.name)
         .collect();
     assert_eq!(asked, wanted, "each request once, in the protocol's order");
-    assert_eq!(wanted.len(), 11);
+    assert_eq!(wanted.len(), 12);
 }
 
 #[test]
@@ -805,4 +820,238 @@ fn a_page_is_written_as_the_blocks_it_holds() {
         json!({"type": "divider"}),
         "the twelfth kind"
     );
+}
+
+#[test]
+fn a_status_is_sent_to_an_app_that_has_it() {
+    let bench = Bench::default()
+        .hello_with(r#"["1","2"]"#, r#"["ui.status","ui.later"]"#)
+        .run("check", 2)
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .app(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#)
+        .goodbye();
+    let shown = Rc::new(RefCell::new(Vec::new()));
+    let seen = shown.clone();
+    let mut tool = bench.tool();
+    tool.command("check", move |app| {
+        let first = app.ui().status(
+            status::BUSY,
+            Some("Checks are running".into()),
+            Some("arrow.triangle.branch"),
+        )?;
+        let second = app.ui().status(status::NONE, None, None)?;
+        seen.borrow_mut().extend([first, second]);
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(*shown.borrow(), vec![true, true]);
+    assert_eq!(
+        bench.lines()[1..],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"ui/status","params":{"state":"busy","text":"Checks are running","icon":"arrow.triangle.branch"}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"method":"ui/status","params":{"state":"none"}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"result":{}}"#,
+        ])
+    );
+}
+
+#[test]
+fn a_status_writes_nothing_for_an_older_app() {
+    // An app before 3.48: its hello has no `features`. No answer is
+    // scripted, so a request sent here would end with the link.
+    let bench = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .run("check", 2)
+        .goodbye();
+    let shown = Rc::new(RefCell::new(None));
+    let seen = shown.clone();
+    let mut tool = bench.tool();
+    tool.command("check", move |app| {
+        let answer = app
+            .ui()
+            .status(status::FAILURE, Some("main is red".into()), None);
+        *seen.borrow_mut() = Some(matches!(answer, Ok(false)));
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        *shown.borrow(),
+        Some(true),
+        "the call says the status is not shown, and that is no error"
+    );
+    assert_eq!(
+        bench.lines(),
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":"hello","result":{"protocolVersion":"2","toolVersion":"9.9.9"}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"result":{}}"#,
+        ]),
+        "and nothing was sent for it: only the two answers are on the link"
+    );
+
+    // The same for an app that says what it has, and does not have this.
+    let other = Bench::default()
+        .hello_with(r#"["2"]"#, r#"["ui.choice"]"#)
+        .run("check", 2)
+        .goodbye();
+    let again = Rc::new(Cell::new(true));
+    let seen = again.clone();
+    let mut second = other.tool();
+    second.command("check", move |app| {
+        seen.set(app.ui().status(status::OK, None, None)?);
+        Ok(())
+    });
+    assert_eq!(second.serve(), 0);
+    assert!(!again.get());
+    assert_eq!(other.lines().len(), 2);
+}
+
+#[test]
+fn supports_is_true_only_for_what_the_hello_listed() {
+    let bench = Bench::default()
+        .hello_with(
+            r#"["1"]"#,
+            r#"["ui.choice","preferences.options","ui.later"]"#,
+        )
+        .run("ask", 2)
+        .goodbye();
+    let has = Rc::new(RefCell::new(Vec::new()));
+    let seen = has.clone();
+    let mut tool = bench.tool();
+    tool.command("ask", move |app| {
+        for name in [
+            features::CHOICE,
+            features::PREFERENCE_OPTIONS,
+            features::STATUS,
+            "ui.later",
+            "ui.never",
+        ] {
+            seen.borrow_mut().push(app.supports(name));
+        }
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(*has.borrow(), vec![true, true, false, true, false]);
+    assert_eq!(
+        [
+            features::STATUS,
+            features::CHOICE,
+            features::PREFERENCE_OPTIONS
+        ],
+        ["ui.status", "ui.choice", "preferences.options"]
+    );
+    assert_eq!(
+        [
+            status::NONE,
+            status::OK,
+            status::BUSY,
+            status::ATTENTION,
+            status::FAILURE
+        ],
+        ["none", "ok", "busy", "attention", "failure"]
+    );
+
+    // An app that says nothing has none of them.
+    let old = Bench::default().hello().run("ask", 2).goodbye();
+    let none = Rc::new(RefCell::new(Vec::new()));
+    let seen = none.clone();
+    let mut before = old.tool();
+    before.command("ask", move |app| {
+        for name in [
+            features::STATUS,
+            features::CHOICE,
+            features::PREFERENCE_OPTIONS,
+        ] {
+            seen.borrow_mut().push(app.supports(name));
+        }
+        Ok(())
+    });
+    assert_eq!(before.serve(), 0);
+    assert_eq!(*none.borrow(), vec![false, false, false]);
+}
+
+fn light_options() -> Vec<UiChoiceOption> {
+    let mut pulsing = LocalizedText::new();
+    pulsing.insert("en".to_string(), "Pulsing green".to_string());
+    pulsing.insert("de".to_string(), "Pulsierendes Grün".to_string());
+    vec![
+        UiChoiceOption {
+            value: "green".to_string(),
+            title: "Green".into(),
+        },
+        UiChoiceOption {
+            value: "breathe green".to_string(),
+            title: UiText::Languages(pulsing),
+        },
+    ]
+}
+
+#[test]
+fn a_choice_is_built_as_the_protocols_example() {
+    // The example of protocol/examples/messages.json, which
+    // tests/protocol.rs reads from the file itself.
+    let example: Value = serde_json::from_str(
+        r#"{"type":"choice","id":"light","title":"Mouse when green","value":"green",
+            "options":[{"value":"green","title":"Green"},
+                       {"value":"breathe green","title":{"en":"Pulsing green","de":"Pulsierendes Grün"}}],
+            "enabled":true,"fallback":"Mouse when green: Green"}"#,
+    )
+    .unwrap();
+    let built: UiBlock = choice("light", "green", light_options())
+        .title("Mouse when green")
+        .enabled(true)
+        .fallback("Mouse when green: Green")
+        .into();
+    assert_eq!(serde_json::to_value(&built).unwrap(), example);
+
+    // With no fallback given, the builder writes one: an app before 3.48
+    // draws it in the menu's place.
+    let fallback = |block: UiBlock| serde_json::to_value(&block).unwrap()["fallback"].clone();
+    assert_eq!(
+        fallback(
+            choice("light", "green", light_options())
+                .title("Mouse when green")
+                .into()
+        ),
+        json!("Mouse when green: Green")
+    );
+    assert_eq!(
+        fallback(choice("light", "green", light_options()).into()),
+        json!("Green"),
+        "with no title, the selected option's title alone"
+    );
+    assert_eq!(
+        fallback(
+            choice("light", "breathe green", light_options())
+                .title("Mouse when green")
+                .into()
+        ),
+        json!({"en": "Mouse when green: Pulsing green", "de": "Mouse when green: Pulsierendes Grün"}),
+        "in every language either text has"
+    );
+    assert_eq!(
+        fallback(
+            choice("light", "typed by hand", light_options())
+                .title("Light")
+                .into()
+        ),
+        json!("Light: typed by hand"),
+        "a value that is no option's is written as it is"
+    );
+    // In a page, as any block being written is.
+    let page = tree![heading("Lights"), choice("light", "green", light_options())];
+    assert_eq!(page.blocks.len(), 2);
+    assert_eq!(page.blocks[1].id.as_deref(), Some("light"));
+    assert_eq!(
+        serde_json::to_value(&page.blocks[1]).unwrap()["fallback"],
+        json!("Green"),
+        "the fallback is written when the block joins a page too"
+    );
+    // A pick arrives as the event a field's change is, with the option's
+    // value.
+    let picked = PanelEvent {
+        block: Some("light".to_string()),
+        kind: "change".to_string(),
+        value: Some(json!("breathe green")),
+    };
+    assert_eq!(picked.text(), Some("breathe green"));
 }

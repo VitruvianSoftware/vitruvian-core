@@ -46,8 +46,11 @@ private final class Bench {
         return self
     }
 
-    func hello(versions: String = #"["1"]"#) -> Bench {
-        app(#"{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{"protocolVersions":\#(versions),"language":"de-DE","dataFolder":"/tmp/kit-data"}}"#)
+    /// `features` is what the app says it has, as JSON; nil is an app from
+    /// before the field, which says nothing.
+    func hello(versions: String = #"["1"]"#, features: String? = nil) -> Bench {
+        let said = features.map { #","features":\#($0)"# } ?? ""
+        return app(#"{"jsonrpc":"2.0","id":"hello","method":"initialize","params":{"protocolVersions":\#(versions),"language":"de-DE","dataFolder":"/tmp/kit-data"\#(said)}}"#)
     }
 
     func run(_ command: String, id: Int) -> Bench {
@@ -83,7 +86,7 @@ final class ToolTests: XCTestCase {
     func testEveryRequestAToolMaySendHasAType() {
         let wanted = ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }
         XCTAssertEqual(Set(AppRequests.methods), Set(wanted))
-        XCTAssertEqual(AppRequests.methods.count, 11, "each request once")
+        XCTAssertEqual(AppRequests.methods.count, 12, "each request once")
     }
 
     func testHelloACommandAndGoodbye() throws {
@@ -471,6 +474,112 @@ final class PanelTests: XCTestCase {
         ], "a request of the app's is asked of the app as the tool's own; a method of the tool's goes to onCall")
     }
 
+    func testAStatusIsSentToAnAppThatHasIt() throws {
+        let bench = Bench().hello(versions: #"["1","2"]"#, features: #"["ui.status","ui.later"]"#).run("check", id: 2)
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .app(#"{"jsonrpc":"2.0","id":2,"result":{}}"#)
+            .goodbye()
+        var shown: [Bool] = []
+        let tool = try bench.tool { tool in
+            tool.command("check") { app in
+                shown.append(try app.status(.busy, text: "Checks are running", icon: "arrow.triangle.branch"))
+                shown.append(try app.status(.none))
+            }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(shown, [true, true])
+        let written = try bench.written()
+        XCTAssertEqual(written.count, 4, "the hello's answer, two requests, and the command's answer")
+        XCTAssertEqual(written[1], .request(id: .number(1), method: "ui/status",
+                                            params: .object(["state": .string("busy"),
+                                                             "text": .string("Checks are running"),
+                                                             "icon": .string("arrow.triangle.branch")])))
+        XCTAssertEqual(written[2], .request(id: .number(2), method: "ui/status",
+                                            params: .object(["state": .string("none")])))
+    }
+
+    func testAStatusWritesNothingForAnOlderApp() throws {
+        // An app before 3.48: its hello has no `features`. No answer is
+        // scripted, so a request sent here would wait and then fail.
+        let bench = Bench().hello(versions: #"["1","2"]"#).run("check", id: 2).goodbye()
+        var shown: Bool?
+        let tool = try bench.tool { tool in
+            tool.answerSeconds = 0.2
+            tool.command("check") { app in shown = try app.status(.failure, text: "main is red") }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(shown, false, "the call says the status is not shown")
+        XCTAssertEqual(try bench.written(), [
+            .result(id: .string("hello"), value: .object(["protocolVersion": .string("2"),
+                                                           "toolVersion": .string("9.9.9")])),
+            .result(id: .number(2), value: done),
+        ], "and nothing was sent for it: only the two answers are on the link")
+
+        // The same for an app that says what it has, and does not have this.
+        let other = Bench().hello(versions: #"["2"]"#, features: #"["ui.choice"]"#).run("check", id: 2).goodbye()
+        var again: Bool?
+        let second = try other.tool { $0.command("check") { again = try $0.status(.ok) } }
+        XCTAssertEqual(second.serve(), 0)
+        XCTAssertEqual(again, false)
+        XCTAssertEqual(try other.written().count, 2)
+    }
+
+    func testSupportsIsTrueOnlyForWhatTheHelloListed() throws {
+        let bench = Bench().hello(features: #"["ui.choice","preferences.options","ui.later"]"#).run("ask", id: 2)
+            .goodbye()
+        var has: [Bool] = []
+        let tool = try bench.tool { tool in
+            tool.command("ask") { app in
+                has = [app.supports(.choice), app.supports(.preferenceOptions), app.supports(.status),
+                       app.supports("ui.later"), app.supports("ui.never")]
+            }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(has, [true, true, false, true, false])
+
+        let old = Bench().hello().run("ask", id: 2).goodbye()
+        var none: [Bool] = []
+        let before = try old.tool { tool in
+            tool.command("ask") { app in none = ProtocolFeature.allCases.map(app.supports) }
+        }
+        XCTAssertEqual(before.serve(), 0)
+        XCTAssertEqual(none, [false, false, false], "an app that says nothing has none of them")
+    }
+
+    func testAChoiceIsBuiltAsTheProtocolsExample() throws {
+        let options = [UIChoiceOption(value: "green", title: "Green"),
+                       UIChoiceOption(value: "breathe green",
+                                      title: .languages(LocalizedText(["en": "Pulsing green",
+                                                                       "de": "Pulsierendes Grün"])))]
+        let built = choice("light", title: "Mouse when green", value: "green", options: options, enabled: true,
+                           fallback: "Mouse when green: Green")
+        let example = #"""
+            {"type":"choice","id":"light","title":"Mouse when green","value":"green",
+             "options":[{"value":"green","title":"Green"},
+                        {"value":"breathe green","title":{"en":"Pulsing green","de":"Pulsierendes Grün"}}],
+             "enabled":true,"fallback":"Mouse when green: Green"}
+            """#
+        XCTAssertEqual(try JSONValue(encoding: built), try JSONDecoder().decode(JSONValue.self, from: Data(example.utf8)),
+                       "the example of protocol/examples/messages.json")
+
+        // With no fallback given, the builder writes one: an app before
+        // 3.48 draws it in the menu's place.
+        XCTAssertEqual(choice("light", title: "Mouse when green", value: "green", options: options).fallback,
+                       "Mouse when green: Green")
+        XCTAssertEqual(choice("light", value: "green", options: options).fallback, "Green",
+                       "with no title, the selected option's title alone")
+        XCTAssertEqual(choice("light", title: "Mouse when green", value: "breathe green", options: options).fallback,
+                       .languages(LocalizedText(["en": "Mouse when green: Pulsing green",
+                                                 "de": "Mouse when green: Pulsierendes Grün"])),
+                       "in every language either text has")
+        XCTAssertEqual(choice("light", title: "Light", value: "typed by hand", options: options).fallback,
+                       "Light: typed by hand", "a value that is no option's is written as it is")
+        XCTAssertEqual(UIBlock.choice("light", value: "green", options: options),
+                       choice("light", value: "green", options: options))
+        XCTAssertEqual(PanelEvent(block: "light", kind: .change, value: .string("breathe green")).text, "breathe green",
+                       "a pick arrives as the event a field's change is, with the option's value")
+    }
+
     func testAPageIsWrittenAsTheBlocksItHolds() {
         let count = 12
         let rows = ["web", "api"]
@@ -492,7 +601,7 @@ final class PanelTests: XCTestCase {
                                                  "toggle", "field", "progress", "image", "link"])
         XCTAssertEqual(page.blocks[2].id, "add")
         XCTAssertEqual(page.blocks.compactMap { $0.id }, ["add", "web", "api", "deploys", "notify", "name"])
-        XCTAssertEqual(UIBlock.kinds.count, 12)
+        XCTAssertEqual(UIBlock.kinds.count, 13)
     }
 }
 
