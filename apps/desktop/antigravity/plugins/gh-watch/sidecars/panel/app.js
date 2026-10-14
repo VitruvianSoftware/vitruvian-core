@@ -448,19 +448,27 @@ function renderReviews(reviews) {
     ),
   );
   $("reviews-none").hidden = !(items.length === 0 && total > 0);
+  const singleRepo =
+    reviews.singleRepo ?? repos.filter((row) => row.shown).length === 1;
   $("reviews-list").replaceChildren(
-    ...items.map((pr) =>
-      el(
+    ...items.map((pr) => {
+      const label = singleRepo
+        ? `#${pr.number} ${pr.title}`
+        : `${pr.repo}#${pr.number} ${pr.title}`;
+      return el(
         "li",
-        {},
+        { class: "review-row" },
         el(
-          "a",
-          { href: pr.url, target: "_blank", rel: "noreferrer" },
-          `${pr.repo}#${pr.number} ${pr.title}`,
+          "div",
+          { class: "review-main" },
+          el("a", { href: pr.url, target: "_blank", rel: "noreferrer" }, label),
+          el("span", { class: "muted small" }, ` · ${pr.author}`),
         ),
-        el("span", { class: "muted small" }, ` · ${pr.author}`),
-      ),
-    ),
+        pr.status
+          ? el("span", { class: `badge ${pr.status.tone}` }, pr.status.text)
+          : null,
+      );
+    }),
   );
 }
 

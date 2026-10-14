@@ -2,6 +2,15 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.4.0
+
+- Compact single-repo review list: when a single repository is selected in
+  "Waiting on your review", the `org/repo` prefix is omitted from each row
+  (showing `#123 Title` instead of `org/repo#123 Title`).
+- Pipeline and merge-queue badges on review requests: each pull request in
+  "Waiting on your review" displays its live CI status (`Passing`, `N running`,
+  `N failing`) or merge queue position (`In merge queue #N`).
+
 ## 0.3.0
 
 - Review status badge: shows whether a pull request is Approved, Changes requested,

@@ -26,6 +26,8 @@ import { test } from "node:test";
 import {
   MAX_HIDDEN_REPOS,
   cleanRepoList,
+  formatReviewTitle,
+  reviewCheckStatus,
   reviewStatus,
   summariseReviews,
 } from "./reviews.mjs";
@@ -38,6 +40,7 @@ test("with nothing switched off, every request is listed", () => {
   assert.equal(out.items.length, 3);
   assert.equal(out.total, 3);
   assert.equal(out.capped, false);
+  assert.equal(out.singleRepo, false);
   assert.deepEqual(out.repos, [
     { repo: "acme/api", count: 2, shown: true },
     { repo: "acme/web", count: 1, shown: true },
@@ -51,6 +54,7 @@ test("a switched-off repository is left out but still offered", () => {
     [2],
   );
   assert.equal(out.total, 3);
+  assert.equal(out.singleRepo, true);
   assert.deepEqual(out.repos, [
     { repo: "acme/api", count: 2, shown: false },
     { repo: "acme/web", count: 1, shown: true },
@@ -92,6 +96,87 @@ test("a repository seen for the first time is shown", () => {
 test("reaching the read limit is reported", () => {
   assert.equal(summariseReviews(ALL, [], 3).capped, true);
   assert.equal(summariseReviews(ALL, [], 4).capped, false);
+});
+
+test("formatReviewTitle omits org/repo when only a single repo is selected", () => {
+  const item = { repo: "acme/api", number: 42, title: "Fix race condition" };
+  assert.equal(
+    formatReviewTitle(item, false),
+    "acme/api#42 Fix race condition",
+  );
+  assert.equal(formatReviewTitle(item, true), "#42 Fix race condition");
+  assert.equal(formatReviewTitle(null, true), "");
+});
+
+test("reviewCheckStatus computes workflow and merge queue status accurately", () => {
+  assert.deepEqual(
+    reviewCheckStatus({
+      queued: false,
+      rollup: {
+        state: "FAILURE",
+        contexts: {
+          checkRunCountsByState: [
+            { state: "CANCELLED", count: 1 },
+            { state: "SUCCESS", count: 14 },
+          ],
+          statusContextCountsByState: [],
+        },
+      },
+    }),
+    { text: "Passing", tone: "good" },
+  );
+  assert.deepEqual(
+    reviewCheckStatus({
+      queued: false,
+      rollup: {
+        state: "FAILURE",
+        contexts: {
+          checkRunCountsByState: [
+            { state: "FAILURE", count: 2 },
+            { state: "SUCCESS", count: 10 },
+          ],
+          statusContextCountsByState: [],
+        },
+      },
+    }),
+    { text: "2 failing", tone: "bad" },
+  );
+  assert.deepEqual(
+    reviewCheckStatus({
+      queued: true,
+      queuePosition: 3,
+      rollup: {
+        state: "PENDING",
+        contexts: {
+          checkRunCountsByState: [{ state: "IN_PROGRESS", count: 4 }],
+          statusContextCountsByState: [],
+        },
+      },
+    }),
+    { text: "In merge queue #3", tone: "run" },
+  );
+  assert.deepEqual(
+    reviewCheckStatus({
+      queued: false,
+      rollup: {
+        state: "PENDING",
+        contexts: {
+          checkRunCountsByState: [{ state: "IN_PROGRESS", count: 3 }],
+          statusContextCountsByState: [{ state: "PENDING", count: 1 }],
+        },
+      },
+    }),
+    { text: "4 running", tone: "run" },
+  );
+  assert.deepEqual(
+    reviewCheckStatus({
+      queued: false,
+      rollup: { state: "SUCCESS" },
+    }),
+    { text: "Passing", tone: "good" },
+  );
+  assert.equal(reviewCheckStatus({}), null);
+  assert.equal(reviewCheckStatus(null), null);
 });
 
 test("cleanRepoList keeps only owner/name strings, once each", () => {

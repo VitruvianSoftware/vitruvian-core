@@ -79,7 +79,79 @@ export function summariseReviews(all, hidden = [], limit = REVIEW_LIMIT) {
     repos,
     total: all.length,
     capped: all.length >= limit,
+    singleRepo: repos.filter((row) => row.shown).length === 1,
   };
+}
+
+// Formats the pull request link text for the "Waiting on your review" list.
+// When only a single repository is shown, omits the org/repo prefix so the
+// line stays compact alongside the workflow status badge.
+export function formatReviewTitle(pr, singleRepo = false) {
+  if (!pr) return "";
+  return singleRepo
+    ? `#${pr.number} ${pr.title}`
+    : `${pr.repo}#${pr.number} ${pr.title}`;
+}
+
+const FAIL_STATES = new Set([
+  "FAILURE",
+  "ERROR",
+  "TIMED_OUT",
+  "ACTION_REQUIRED",
+  "STARTUP_FAILURE",
+]);
+const PENDING_STATES = new Set([
+  "IN_PROGRESS",
+  "QUEUED",
+  "WAITING",
+  "REQUESTED",
+  "PENDING",
+  "EXPECTED",
+]);
+const SKIP_STATES = new Set(["SKIPPED", "NEUTRAL", "STALE"]);
+
+function rollupCounts(rollup) {
+  const ctx = rollup?.contexts;
+  const checkCounts = ctx?.checkRunCountsByState;
+  const statusCounts = ctx?.statusContextCountsByState;
+  if (!Array.isArray(checkCounts) && !Array.isArray(statusCounts)) return null;
+  const counts = { pass: 0, fail: 0, pending: 0, skip: 0, cancel: 0 };
+  for (const row of [...(checkCounts ?? []), ...(statusCounts ?? [])]) {
+    const state = (row?.state ?? "").toUpperCase();
+    const n = Number(row?.count ?? 0);
+    if (!n) continue;
+    if (state === "SUCCESS") counts.pass += n;
+    else if (FAIL_STATES.has(state)) counts.fail += n;
+    else if (PENDING_STATES.has(state)) counts.pending += n;
+    else if (SKIP_STATES.has(state)) counts.skip += n;
+    else if (state === "CANCELLED") counts.cancel += n;
+  }
+  return counts;
+}
+
+// Determines the CI / merge-queue status badge for a review-requested PR.
+// Uses exact check/status counts when present so a cancelled old run does not
+// masquerade as a failure.
+export function reviewCheckStatus(pr) {
+  if (!pr) return null;
+  const place = pr.queuePosition ? ` #${pr.queuePosition}` : "";
+  const counts = rollupCounts(pr.rollup);
+  if (counts) {
+    if (counts.fail > 0) return { text: `${counts.fail} failing`, tone: "bad" };
+    if (pr.queued) return { text: `In merge queue${place}`, tone: "run" };
+    if (counts.pending > 0)
+      return { text: `${counts.pending} running`, tone: "run" };
+    if (counts.pass > 0) return { text: "Passing", tone: "good" };
+    return null;
+  }
+  const state = (pr.rollup?.state ?? "").toUpperCase();
+  if (state === "FAILURE" || state === "ERROR")
+    return { text: "Failing", tone: "bad" };
+  if (pr.queued) return { text: `In merge queue${place}`, tone: "run" };
+  if (state === "PENDING" || state === "EXPECTED")
+    return { text: "Running", tone: "run" };
+  if (state === "SUCCESS") return { text: "Passing", tone: "good" };
+  return null;
 }
 
 // Determines the review status badge for a pull request snapshot.
