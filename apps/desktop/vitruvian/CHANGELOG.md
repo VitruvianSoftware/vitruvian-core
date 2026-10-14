@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.50.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.50.1...vitruvian-v3.50.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **desktop:** a click on the closed island goes where the wings point while Nexus runs ([#3279](https://github.com/VitruvianSoftware/vitruvian-core/issues/3279)) ([aace199](https://github.com/VitruvianSoftware/vitruvian-core/commit/aace199aee7828600d788648aa85de9e8ba4b303))
+
 ## [3.50.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.50.0...vitruvian-v3.50.1) (2026-10-14)
 
 
