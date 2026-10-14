@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.50.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.49.0...vitruvian-v3.50.0) (2026-10-14)
+
+
+### Features
+
+* **remote:** update adaptive launcher icon and desktop Icon Composer mark to Golden-Datum V ([#3273](https://github.com/VitruvianSoftware/vitruvian-core/issues/3273)) ([331a4be](https://github.com/VitruvianSoftware/vitruvian-core/commit/331a4be33605f40791246ab2d082920535cc000d))
+* **vitruvian-sdk:** a tool's status can carry a few words for the closed island ([#3271](https://github.com/VitruvianSoftware/vitruvian-core/issues/3271)) ([717f483](https://github.com/VitruvianSoftware/vitruvian-core/commit/717f4836feb2b8514247bc72a4df879b1764ac6e))
+
 ## [3.49.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.48.0...vitruvian-v3.49.0) (2026-10-14)
 
 
