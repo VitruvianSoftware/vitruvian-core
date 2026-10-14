@@ -120,11 +120,26 @@ package struct NotchAgentReadoutTimeline<Content: View>: View {
     }
 }
 
+/// The Nexus session's sparkles on the closed island: they swing between 85 %
+/// and 115 % of their size each second, eased over 0.8 seconds. Under Reduce
+/// Motion they keep still at their own size, as the tools' breathing marks do.
+package enum NexusSparkleMotion {
+    package static func scale(elapsedSeconds: Int, reduceMotion: Bool) -> CGFloat {
+        if reduceMotion { return 1 }
+        return elapsedSeconds % 2 == 0 ? 1.15 : 0.85
+    }
+
+    package static func animation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+    }
+}
+
 /// The resting island's wings: the chosen allowance, by default the one
 /// closest to running out, as a ring and a number, or today's API value when
 /// no allowance is known.
 package struct NotchAgentRestingWing: View {
     package let leading: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var nexusSession = NexusAgentService.shared.session
     /// The tools' statuses, and the list of tools: a status set, a tool
@@ -207,8 +222,9 @@ package struct NotchAgentRestingWing: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .scaleEffect(nexusSession.elapsedSeconds % 2 == 0 ? 1.15 : 0.85)
-                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: nexusSession.elapsedSeconds)
+                    .scaleEffect(NexusSparkleMotion.scale(elapsedSeconds: nexusSession.elapsedSeconds,
+                                                          reduceMotion: reduceMotion))
+                    .animation(NexusSparkleMotion.animation(reduceMotion: reduceMotion), value: nexusSession.elapsedSeconds)
             } else {
                 let badge = nexusSession.activity ?? "\(nexusSession.elapsedSeconds)s"
                 Text(badge)
