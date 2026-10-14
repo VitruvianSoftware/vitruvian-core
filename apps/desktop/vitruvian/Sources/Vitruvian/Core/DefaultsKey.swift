@@ -951,25 +951,6 @@ package enum DefaultsKey {
     package static let simulateUpdate = "simulateUpdate"
     package static let simulateBetaUI = "simulateBetaUI"
 
-    // GitHub in the notch
-    package static let githubWatchedRepositories = "githubWatchedRepositories"
-    package static let githubMouseIndicator = "githubMouseIndicator"
-    package static let githubClientID = "githubClientID"
-    package static let githubPollInterval = "githubPollInterval"
-    package static let githubPollActiveInterval = "githubPollActiveInterval"
-    package static let githubMouseSuccessColor = "githubMouseSuccessColor"
-    package static let githubMouseSuccessMode = "githubMouseSuccessMode"
-    package static let githubMouseRunningColor = "githubMouseRunningColor"
-    package static let githubMouseRunningMode = "githubMouseRunningMode"
-    package static let githubMouseFailureColor = "githubMouseFailureColor"
-    package static let githubMouseFailureMode = "githubMouseFailureMode"
-    package static let githubMouseIdleBehavior = "githubMouseIdleBehavior"
-    package static let githubMouseApprovalColor = "githubMouseApprovalColor"
-    package static let githubMouseApprovalMode = "githubMouseApprovalMode"
-    package static let githubMouseApprovalSpeed = "githubMouseApprovalSpeed"
-    package static let githubMouseBinaryPath = "githubMouseBinaryPath"
-    package static let githubReplacedByTool = "githubReplacedByTool"
-
     /// Features hub availability layer, one key per AppFeature raw value.
     /// Registered true: unavailable features vanish from every surface and
     /// hold no resources, without ever touching their own enable keys.

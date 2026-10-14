@@ -19,6 +19,10 @@ enum ExternalToolStoreTests {
         offering(suite)
         tooBigOrQuarantined(suite)
         adding(suite)
+        theStoreTellsBeforeTheProgramStarts(suite)
+        addingThatWaitsNeverHolds(suite)
+        removalWhileWaitingDropsTheAdd(suite)
+        agreeingTwiceAddsOnce(suite)
         throughTheBroker(suite)
         refusals(suite)
         deleting(suite)
@@ -82,8 +86,6 @@ enum ExternalToolStoreTests {
         /// What the store waits for before it adds a tool, when a test
         /// stands in for it; nothing otherwise.
         var beforeAdding: ((ToolID, @escaping @MainActor () -> Void) -> Void)?
-        /// What is handed to a tool just added, when a test hands something.
-        var handOver: ((ExternalToolStore.Installed, CatalogueOrigin?) -> Void)?
         /// What the store asked to be told of a change of language with.
         var languageWatcher: (@MainActor (String) -> Void)?
         /// The shortcuts people gave to tool commands, over this bench's
@@ -143,9 +145,8 @@ enum ExternalToolStoreTests {
                 beforeAdding: { [unowned self] id, ready in
                     if let beforeAdding { beforeAdding(id, ready) } else { ready() }
                 },
-                added: { [unowned self] installed, origin in
+                added: { [unowned self] installed, _ in
                     added.append((installed.tool.manifest.id, !started.isEmpty))
-                    handOver?(installed, origin)
                 },
                 removed: { [unowned self] in removed.append($0) }))
             panels = ToolPanelHost(parts: .init(
@@ -399,6 +400,82 @@ enum ExternalToolStoreTests {
         suite.expect(removexattr(program.path, "com.apple.quarantine", 0) == 0 && !ToolFolders.isQuarantined(program)
                          && refusal(downloaded.store.offer(from: folder)) == nil,
                      "once the person has cleared the quarantine themselves, the folder is offered")
+    }
+
+    static func theStoreTellsBeforeTheProgramStarts(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        guard case .success = bench.add(bench.folder()) else { return suite.expect(false, "the tool is added") }
+        suite.expect(bench.added.map(\.id) == [id] && bench.added.first?.programStarted == false,
+                     "the store tells of the added tool before its program starts, so what it is handed is there for its first run")
+        _ = bench.store.remove(id, deletingData: true)
+        suite.expect(bench.removed == [id], "and of its removal")
+    }
+
+    /// A bench whose store waits, before each add, until the test says
+    /// what it waits for is ready (`Parts.beforeAdding`), and what each add
+    /// answered, in the order they answered; nil for one that was dropped.
+    final class WaitingBench {
+        let bench = Bench()
+        var waiting: [@MainActor () -> Void] = []
+        var answers: [Result<ExternalToolStore.Installed, ExternalToolStore.Refusal>?] = []
+
+        init() {
+            bench.beforeAdding = { [unowned self] _, ready in waiting.append(ready) }
+        }
+
+        /// The person presses Add Tool on the sheet.
+        func agree(_ folder: String = "picked") {
+            guard case .success(let offer) = bench.store.offer(from: bench.folder(folder)) else { return }
+            bench.store.add(ToolConsent(to: offer)) { [unowned self] in answers.append($0) }
+        }
+
+        /// What the store waits for is ready, for every add that waits.
+        func ready() {
+            let now = waiting
+            waiting = []
+            for ready in now { ready() }
+        }
+
+        func close() { bench.close() }
+    }
+
+    static func addingThatWaitsNeverHolds(_ suite: TestSuite) {
+        let rig = WaitingBench()
+        defer { rig.close() }
+        rig.agree()
+        suite.expect(rig.waiting.count == 1 && rig.answers.isEmpty && rig.bench.store.isAdding(id)
+                         && !rig.bench.store.isInstalled(id) && rig.bench.added.isEmpty && rig.bench.started.isEmpty,
+                     "Add Tool returns while the add waits, and nothing is added, handed or started yet")
+        rig.ready()
+        suite.expect(rig.answers.count == 1 && (try? rig.answers[0]?.get()) != nil && rig.bench.store.isInstalled(id)
+                         && !rig.bench.store.isAdding(id) && rig.bench.added.map(\.programStarted) == [false],
+                     "once the wait ends the tool is added, once, before its program starts: \(rig.answers)")
+    }
+
+    static func removalWhileWaitingDropsTheAdd(_ suite: TestSuite) {
+        let rig = WaitingBench()
+        defer { rig.close() }
+        rig.agree()
+        suite.expect(rig.bench.store.remove(id, deletingData: true) == .notAdded && !rig.bench.store.isAdding(id),
+                     "removing a tool that is still being added stops the add")
+        rig.ready()
+        suite.expect(rig.answers.count == 1 && rig.answers[0] == nil,
+                     "an add whose wait ends after the tool was removed is dropped, and whoever asked is told so: \(rig.answers)")
+        suite.expect(!rig.bench.store.isInstalled(id) && rig.bench.records.isEmpty && rig.bench.added.isEmpty,
+                     "nothing is added and nothing handed over")
+    }
+
+    static func agreeingTwiceAddsOnce(_ suite: TestSuite) {
+        let rig = WaitingBench()
+        defer { rig.close() }
+        rig.agree("first")
+        rig.agree("second")
+        rig.ready()
+        suite.expect(rig.answers.count == 2 && rig.answers[0] == nil && (try? rig.answers[1]?.get()) != nil,
+                     "the later agreement is the one that adds; the earlier is dropped: \(rig.answers)")
+        suite.expect(rig.bench.added.count == 1 && rig.bench.records.count == 1,
+                     "so the tool is added once and told of once: \(rig.bench.added.count)")
     }
 
     static func adding(_ suite: TestSuite) {

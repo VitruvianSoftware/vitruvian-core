@@ -124,9 +124,9 @@ final class MouseTests: XCTestCase {
     }
 
     func testWhatTheFeatureHandedOverIsAnOption() {
-        // `GitHubHandoff.light` in the app writes a colour alone, or
-        // `breathe <colour>`, and the approval light with its speed, 9 unless
-        // the person changed it.
+        // The app's hand-off (`GitHubHandoff.light`, 3.46 to 3.50.1) wrote a
+        // colour alone, or `breathe <colour>`, and the approval light with its
+        // speed, 9 unless the person changed it. Those values stay stored.
         for colour in Self.colours {
             for id in [GitHubTool.Preference.mouseSuccess, GitHubTool.Preference.mouseRunning, GitHubTool.Preference.mouseFailure] {
                 XCTAssertTrue(options(id).contains(colour), "\(id): \(colour)")

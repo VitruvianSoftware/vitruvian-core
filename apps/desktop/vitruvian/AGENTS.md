@@ -609,6 +609,14 @@ of it but the protocol.
 - The card redraws because it observes `ToolRegistry.shared`. The store
   bumps the registry's `revision` whenever a tool is added, removed,
   switched or stands differently. Nothing polls a tool.
+- A feature of the app's that becomes a tool may hand the tool what it
+  kept, once, when the tool is added: `ExternalToolStore.Parts` has
+  `beforeAdding`, `added` and `removed` for it, and the Add button waits
+  through `add(_:then:)`, never on the main thread. Nothing uses them now:
+  the GitHub hand-off went after 3.50.1. Nothing in the app touches the
+  Keychain either (`keychain_is_never_touched`): the app is signed ad hoc,
+  so macOS asks the person again after every update before it lets a new
+  build read an item an older one saved.
 - The catalog (`docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-c.md`)
   is in `Services/Platform/External/Catalogue/`. Nothing of it goes
   through the broker: it is the app's own code, not a tool.
