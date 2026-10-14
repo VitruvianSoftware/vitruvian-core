@@ -294,7 +294,7 @@ The authoritative list lives in `infrastructure/pulumi/platform/repo_config/main
 | **go-test (devx\|homelab)** | `ci.yaml` | `go test -race` per Go module (Bazel doesn't run `-race`), step-gated likewise |
 | **validate-butane** | `ci.yaml` | devx's Fedora CoreOS template renders to valid Ignition, step-gated on the template |
 | **tidy-check** | `tidy-check.yaml` | `bazel run //:tidy` produced no diff |
-| **conformance-check** | `conformance-check.yaml` | `//tools/conformance:check` — version pins, JS catalog, merge-queue check names, app visibility firewall, app metadata ↔ CODEOWNERS, the nightly-sweep pairing, and the zitadel import guard |
+| **conformance-check** | `conformance-check.yaml` | `//tools/conformance:check` — version pins, JS catalog, merge-queue check names, app visibility firewall, app metadata ↔ CODEOWNERS, CODEOWNERS ↔ what the per-directory `OWNERS` files compile to, the nightly-sweep pairing, and the zitadel import guard |
 | **gitops-validate** | `gitops-validate.yaml` | `gitops/**` renders + passes kubeconform *before* ArgoCD reconciles it live |
 | **actionlint** | `actionlint.yaml` | the whole hand-tuned workflow tree is linted (workflow syntax, expressions, shellcheck on `run:` blocks) |
 | *(dependabot PRs)* **reconcile** | `dependabot-bazel-reconcile.yaml` | Bazel lockfile/dep reconciliation |

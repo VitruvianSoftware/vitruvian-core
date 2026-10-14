@@ -27,7 +27,7 @@ import { execFile } from "node:child_process";
 
 import { normaliseChecks } from "./decide.mjs";
 import { collectFeedback } from "./notices.mjs";
-import { REVIEW_LIMIT } from "./reviews.mjs";
+import { REVIEW_LIMIT, reviewCheckStatus } from "./reviews.mjs";
 
 const FIELDS =
   "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup,reviewDecision,latestReviews,reviewRequests";
@@ -252,29 +252,76 @@ export async function fetchCommitChecks(repo, sha, run = gh) {
   );
 }
 
+const REVIEWS_QUERY = `
+query($limit: Int!) {
+  search(query: "is:pr is:open review-requested:@me", type: ISSUE, first: $limit) {
+    nodes {
+      ... on PullRequest {
+        number
+        title
+        url
+        isDraft
+        updatedAt
+        repository { nameWithOwner }
+        author { __typename login }
+        isInMergeQueue
+        mergeQueueEntry { position }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+                contexts(first: 1) {
+                  checkRunCountsByState { state count }
+                  statusContextCountsByState { state count }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+function formatAuthor(author) {
+  const login = author?.login ?? "";
+  if (!login) return "";
+  return author?.__typename === "Bot" && !login.endsWith("[bot]")
+    ? `${login}[bot]`
+    : login;
+}
+
 // Open pull requests, anywhere on GitHub, where a review has been asked of
 // the signed-in account.
 export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
   const out = await run([
-    "search",
-    "prs",
-    "--review-requested=@me",
-    "--state=open",
-    "--json",
-    "number,title,url,repository,author,updatedAt,isDraft",
-    "--limit",
-    String(limit),
+    "api",
+    "graphql",
+    "-f",
+    `query=${REVIEWS_QUERY}`,
+    "-F",
+    `limit=${limit}`,
   ]);
-  return (JSON.parse(out) ?? [])
-    .filter((pr) => pr.isDraft !== true)
-    .map((pr) => ({
-      repo: pr.repository?.nameWithOwner ?? "",
-      number: pr.number,
-      title: pr.title ?? "",
-      url: pr.url,
-      author: pr.author?.login ?? "",
-      updatedAt: pr.updatedAt ?? null,
-    }));
+  const nodes = JSON.parse(out)?.data?.search?.nodes ?? [];
+  return nodes
+    .filter((pr) => pr && pr.number && pr.isDraft !== true)
+    .map((pr) => {
+      const rollup = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup ?? null;
+      return {
+        repo: pr.repository?.nameWithOwner ?? "",
+        number: pr.number,
+        title: pr.title ?? "",
+        url: pr.url,
+        author: formatAuthor(pr.author),
+        updatedAt: pr.updatedAt ?? null,
+        status: reviewCheckStatus({
+          queued: pr.isInMergeQueue === true,
+          queuePosition: pr.mergeQueueEntry?.position ?? null,
+          rollup,
+        }),
+      };
+    });
 }
 
 // Fetches the failed log for a workflow run.
