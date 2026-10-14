@@ -28,6 +28,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit"
 	"github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit/ui"
@@ -258,6 +259,65 @@ func TestAStatusIsSentToAnAppThatHasIt(t *testing.T) {
 		`{"jsonrpc":"2.0","id":2,"result":{}}`)
 }
 
+func TestAStatusSendsItsWordsToAnAppThatDrawsThem(t *testing.T) {
+	b := (&bench{}).helloWith(`["2"]`, `["ui.status","ui.status.activity"]`).run("check", 2).
+		app(`{"jsonrpc":"2.0","id":1,"result":{}}`).goodbye()
+	tool := b.tool()
+	shown := false
+	tool.Command("check", func(ctx context.Context, app *toolkit.App) error {
+		var err error
+		shown, err = app.UI.Status(toolkit.StatusBusy, toolkit.StatusOptions{
+			Text: "Checks are running", Activity: "3", Since: time.Unix(1760450400, 500_000_000),
+		})
+		return err
+	})
+	tool.Serve()
+	if !shown {
+		t.Errorf("not shown")
+	}
+	// The words, and the start time in Unix seconds.
+	same(t, b.lines(t)[1:],
+		`{"jsonrpc":"2.0","id":1,"method":"ui/status","params":{"state":"busy","text":"Checks are running","activity":"3","since":1760450400.5}}`,
+		`{"jsonrpc":"2.0","id":2,"result":{}}`)
+}
+
+func TestAStatusSendsNoWordsToAnAppFrom348(t *testing.T) {
+	// 3.48 and 3.49 name ui.status and not its words: the status goes,
+	// without them.
+	b := (&bench{}).helloWith(`["2"]`, `["ui.status","ui.choice","preferences.options"]`).run("check", 2).
+		app(`{"jsonrpc":"2.0","id":1,"result":{}}`).goodbye()
+	tool := b.tool()
+	shown := false
+	tool.Command("check", func(ctx context.Context, app *toolkit.App) error {
+		var err error
+		shown, err = app.UI.Status(toolkit.StatusBusy, toolkit.StatusOptions{
+			Text: "Checks are running", Activity: "3", Since: time.Now(),
+		})
+		return err
+	})
+	tool.Serve()
+	if !shown {
+		t.Errorf("the mark is shown")
+	}
+	same(t, b.lines(t)[1:],
+		`{"jsonrpc":"2.0","id":1,"method":"ui/status","params":{"state":"busy","text":"Checks are running"}}`,
+		`{"jsonrpc":"2.0","id":2,"result":{}}`)
+}
+
+func TestAStatusWithWordsWritesNothingForAnAppWithoutAStatus(t *testing.T) {
+	b := (&bench{}).helloOffering(`["1","2"]`).run("check", 2).goodbye()
+	tool := b.tool()
+	shown := true
+	tool.Command("check", func(ctx context.Context, app *toolkit.App) error {
+		shown, _ = app.UI.Status(toolkit.StatusBusy, toolkit.StatusOptions{Activity: "3", Since: time.Now()})
+		return nil
+	})
+	tool.Serve()
+	if shown || len(b.lines(t)) != 2 {
+		t.Errorf("shown %v, written %v", shown, b.lines(t))
+	}
+}
+
 func TestAStatusWritesNothingForAnOlderApp(t *testing.T) {
 	// An app before 3.48: its hello has no features. No answer is scripted,
 	// so a request sent here would end with the link.
@@ -309,8 +369,11 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 	if !reflect.DeepEqual(has, []bool{true, true, false, true, false}) {
 		t.Errorf("has %v", has)
 	}
-	names := []string{toolkit.FeatureStatus, toolkit.FeatureChoice, toolkit.FeaturePreferenceOptions}
-	if !reflect.DeepEqual(names, []string{"ui.status", "ui.choice", "preferences.options"}) {
+	names := []string{
+		toolkit.FeatureStatus, toolkit.FeatureChoice, toolkit.FeaturePreferenceOptions,
+		toolkit.FeatureStatusActivity,
+	}
+	if !reflect.DeepEqual(names, []string{"ui.status", "ui.choice", "preferences.options", "ui.status.activity"}) {
 		t.Errorf("names %v", names)
 	}
 
@@ -325,7 +388,7 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 		return nil
 	})
 	before.Serve()
-	if !reflect.DeepEqual(none, []bool{false, false, false}) {
+	if !reflect.DeepEqual(none, []bool{false, false, false, false}) {
 		t.Errorf("none %v", none)
 	}
 }

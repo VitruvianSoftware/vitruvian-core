@@ -202,9 +202,9 @@ class _Ui:
         """`ui/badge`. A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses. Needs `notify` in the manifest's `uses`."""
         return EmptyObject.from_json(self._request("ui/badge", UIBadgeParams(count=count, dot=dot).to_json()), "the answer to ui/badge")
 
-    def status(self, state: StatusState, text: Optional[UIText] = None, icon: Optional[str] = None) -> EmptyObject:
-        """`ui/status`. The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. An app before 3.48 answers failure -32601."""
-        return EmptyObject.from_json(self._request("ui/status", UIStatusParams(state=state, text=text, icon=icon).to_json()), "the answer to ui/status")
+    def status(self, state: StatusState, text: Optional[UIText] = None, icon: Optional[str] = None, activity: Optional[UIText] = None, since: Optional[float] = None) -> EmptyObject:
+        """`ui/status`. The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. activity and since are drawn only when the manifest's status says activity: true; otherwise they are left out and the mark is drawn. An app before 3.48 answers failure -32601."""
+        return EmptyObject.from_json(self._request("ui/status", UIStatusParams(state=state, text=text, icon=icon, activity=activity, since=since).to_json()), "the answer to ui/status")
 
     def render(self, panel: str, tree: UITree) -> None:
         """`ui/render`. A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped. A notice: the app does not answer it."""

@@ -25,7 +25,9 @@ too, and sends the open page again.
 
 It also shows a status, the small mark the app draws on the closed island, and
 its island page has a pop-up menu to pick it with. Both are newer than
-protocol 2 itself, so the tool asks the app what it has.
+protocol 2 itself, so the tool asks the app what it has. An app that draws a
+status's words (3.50 and later) gets a second menu: the count, or a count of
+seconds, beside the mark.
 
 The app starts a tool with Apple's python3, which has none of your packages,
 so the kit is installed into lib/ inside the tool's folder:
@@ -35,6 +37,7 @@ so the kit is installed into lib/ inside the tool's folder:
 
 import os
 import sys
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
@@ -65,6 +68,9 @@ STATUSES = {
     "failure": ("Failed", "The counter failed"),
 }
 
+# What may stand beside the mark, in the second menu.
+WORDS = {"none": "None", "count": "The count", "seconds": "Seconds"}
+
 
 class Counter:
     """What the tool knows. One thread reads the link, so one object is enough."""
@@ -75,6 +81,10 @@ class Counter:
         self.by_two = False
         # What the tool shows on the closed island.
         self.status = "ok"
+        # What it says beside the mark: none, the count, or seconds; and
+        # when "Seconds" was picked, which the app counts from.
+        self.words = "none"
+        self.since = datetime.now(timezone.utc)
 
     @property
     def step(self):
@@ -94,6 +104,7 @@ class Counter:
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
             self.status_picker(app),
+            self.words_picker() if app.supports(Feature.STATUS_ACTIVITY) else None,
         )
 
     def status_picker(self, app):
@@ -114,10 +125,25 @@ class Counter:
             "status", self.status, options, title="Status on the closed island"
         )
 
+    def words_picker(self):
+        """The words beside the mark, to pick. It starts at None, so the
+        sample does not take the place of what the person reads there until
+        they ask."""
+        options = [
+            UIChoiceOption(value=value, title=title) for value, title in WORDS.items()
+        ]
+        return choice("words", self.words, options, title="Words on the closed island")
+
     def show_status(self, app):
         """Sets the mark on the closed island. Nothing is sent to an app that
         has no status, and the call says so."""
-        return app.status(self.status, text=STATUSES[self.status][1])
+        # An app before 3.50 is sent the status without the words.
+        return app.status(
+            self.status,
+            text=STATUSES[self.status][1],
+            activity=str(self.count) if self.words == "count" else None,
+            since=self.since if self.words == "seconds" else None,
+        )
 
     def settings(self):
         """The Settings page."""
@@ -134,6 +160,8 @@ def island_event(app, panel, event):
     if event.block == "add":
         counter.count += counter.step
         panel.badge(count=counter.count)
+        if counter.words == "count":
+            counter.show_status(app)
     elif event.block == "name":
         counter.name = event.text if event.text is not None else counter.name
     elif event.block == "status":
@@ -141,6 +169,13 @@ def island_event(app, panel, event):
         if event.text not in STATUSES:
             return PanelAnswer.keep()
         counter.status = event.text
+        counter.show_status(app)
+    elif event.block == "words":
+        if event.text not in WORDS:
+            return PanelAnswer.keep()
+        counter.words = event.text
+        if event.text == "seconds":
+            counter.since = datetime.now(timezone.utc)
         counter.show_status(app)
     else:
         return PanelAnswer.keep()
@@ -168,6 +203,8 @@ tool.panel(
 def add_one(app):
     counter.count += counter.step
     island.render(counter.page(app))
+    if counter.words == "count":
+        counter.show_status(app)
 
 
 def start(app):

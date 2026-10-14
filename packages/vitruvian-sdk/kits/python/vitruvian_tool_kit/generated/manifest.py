@@ -48,6 +48,7 @@ from .messages import (
     Surface,
     _any,
     _array,
+    _boolean,
     _integer,
     _object,
     _one_of,
@@ -167,17 +168,22 @@ class StatusContribution:
 
     placement: StatusPlacement
     """Where it is shown. island: on the closed island, beside the agent mark."""
+    activity: Optional[bool] = None
+    """true: the tool's status may carry words for the closed island, and the agreement sheet says so. An app before 3.50 ignores it."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "statusContribution") -> "StatusContribution":
         found = _object(value, where)
         return cls(
             placement=_one_of(_required(found, "placement", where), where + ".placement", STATUS_PLACEMENTS),
+            activity=None if found.get("activity") is None else _boolean(found["activity"], where + ".activity"),
         )
 
     def to_json(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         out["placement"] = self.placement
+        if self.activity is not None:
+            out["activity"] = self.activity
         return out
 
 

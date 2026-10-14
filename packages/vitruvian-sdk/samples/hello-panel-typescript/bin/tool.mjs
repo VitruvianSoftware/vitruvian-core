@@ -28,7 +28,9 @@
 //
 // It also shows a status, the small mark the app draws on the closed island,
 // and its island page has a pop-up menu to pick it with. Both are newer than
-// protocol 2 itself, so the tool asks the app what it has.
+// protocol 2 itself, so the tool asks the app what it has. An app that draws
+// a status's words (3.50 and later) gets a second menu: the count, or a count
+// of seconds, beside the mark.
 
 import {
   button,
@@ -45,7 +47,16 @@ import {
 const tool = new Tool({ version: "0.1.0" });
 
 /** What the tool knows. One thread reads the link, so one object is enough. */
-const counter = { count: 0, name: "", byTwo: false, status: "ok" };
+const counter = {
+  count: 0,
+  name: "",
+  byTwo: false,
+  status: "ok",
+  // What it says beside the mark: none, the count, or seconds; and when
+  // "Seconds" was picked, which the app counts from.
+  words: "none",
+  since: new Date(),
+};
 const step = () => (counter.byTwo ? 2 : 1);
 
 /** The island page: what it says now. */
@@ -62,7 +73,25 @@ function page(app) {
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
     statusPicker(app),
+    app.supports(Feature.statusActivity) && wordsPicker(),
   ]);
+}
+
+/** What may stand beside the mark, in the second menu. */
+const WORDS = [
+  { value: "none", title: "None" },
+  { value: "count", title: "The count" },
+  { value: "seconds", title: "Seconds" },
+];
+
+/**
+ * The words beside the mark, to pick. It starts at None, so the sample does
+ * not take the place of what the person reads there until they ask.
+ */
+function wordsPicker() {
+  return choice("words", counter.words, WORDS, {
+    title: "Words on the closed island",
+  });
 }
 
 /** What each status is called in the menu, and what it says to VoiceOver. */
@@ -102,7 +131,11 @@ function statusPicker(app) {
  */
 function showStatus(app) {
   const says = STATUSES.find(({ state }) => state === counter.status)?.says;
-  return app.status(counter.status, says === undefined ? {} : { text: says });
+  const options = says === undefined ? {} : { text: says };
+  // An app before 3.50 is sent the status without the words.
+  if (counter.words === "count") options.activity = String(counter.count);
+  if (counter.words === "seconds") options.since = counter.since;
+  return app.status(counter.status, options);
 }
 
 /** The Settings page. */
@@ -122,6 +155,7 @@ const island = tool.panel("counter", {
       case "add":
         counter.count += step();
         panel.badge({ count: counter.count });
+        if (counter.words === "count") showStatus(app);
         break;
       case "name":
         counter.name = event.text ?? counter.name;
@@ -131,6 +165,13 @@ const island = tool.panel("counter", {
         if (!STATUSES.some(({ state }) => state === event.text))
           return { keep: true };
         counter.status = event.text;
+        showStatus(app);
+        break;
+      case "words":
+        if (!WORDS.some(({ value }) => value === event.text))
+          return { keep: true };
+        counter.words = event.text;
+        if (event.text === "seconds") counter.since = new Date();
         showStatus(app);
         break;
       default:
@@ -153,6 +194,7 @@ tool.panel("settings", {
 tool.command("addOne", (app) => {
   counter.count += step();
   island.render(page(app));
+  if (counter.words === "count") showStatus(app);
 });
 
 // The status goes when the program ends, so it is set each time the program

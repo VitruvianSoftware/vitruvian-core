@@ -51,6 +51,9 @@ public enum ProtocolFeature: String, CaseIterable, Sendable {
     case choice = "ui.choice"
     /// `options` on a text preference, drawn as a pop-up menu.
     case preferenceOptions = "preferences.options"
+    /// `activity` and `since` on `ui/status`: a few words, or a count of
+    /// seconds, beside the tool's mark on the closed island. From 3.50.
+    case statusActivity = "ui.status.activity"
 }
 
 /// Every message of the protocol, by its name on the link. The last six

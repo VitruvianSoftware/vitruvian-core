@@ -433,6 +433,13 @@ extension ExternalToolManifestTests {
         suite.expect(plain?.showsStatus == false && plain?.preferenceOptions.isEmpty == true
                          && tool(#"{"protocol": "2"}"#)?.showsStatus == false,
                      "a manifest with neither is read as it always was: no status, and no options")
+        let words = tool(#"{"protocol": "2", "contributes": {"status": {"placement": "island", "activity": true}}}"#)
+        suite.expect(words?.showsStatus == true && words?.showsActivity == true,
+                     "a status that says activity: true may carry a few words for the closed island")
+        suite.expect(declared?.showsActivity == false && plain?.showsActivity == false
+                         && tool(#"{"protocol": "2", "contributes": {"status": {"placement": "island", "activity": false}}}"#)?
+                         .showsActivity == false,
+                     "a status that says nothing of words, or says false, carries none")
     }
 
     static func storageKey(_ preference: String) -> String {

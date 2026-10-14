@@ -65,7 +65,10 @@ mod link;
 mod panels;
 mod tool;
 
-pub use app::{features, status, App, Clipboard, Keystrokes, Notify, Open, Processes, Storage, Ui};
+pub use app::{
+    features, status, App, Clipboard, Keystrokes, Notify, Open, Processes, StatusOptions, Storage,
+    Ui,
+};
 pub use error::{codes, RefusalCode, ToolError};
 pub use panels::{
     button, choice, divider, field, heading, image, link, list, progress, row, spacer, text,

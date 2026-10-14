@@ -60,6 +60,9 @@ package struct ExternalToolManifest: Equatable, Sendable {
     /// Whether the manifest declares a status: the tool may set a small
     /// mark on the closed island with `ui/status`.
     package let showsStatus: Bool
+    /// Whether that status may carry a few words for the closed island:
+    /// `contributes.status.activity` is true.
+    package let showsActivity: Bool
     /// What the tool draws, and where: protocol 2's panels, in the order
     /// the manifest lists them. None for a tool of protocol 1.
     package let panels: [ToolPanelDescriptor]
@@ -202,6 +205,7 @@ package struct ExternalToolManifest: Equatable, Sendable {
                                              // The file's own rules have held the placement to the one
                                              // there is, the island.
                                              showsStatus: file.contributes?.status != nil,
+                                             showsActivity: file.contributes?.status?.activity == true,
                                              panels: panels, version: file.version,
                                              publisher: file.publisher, license: file.license,
                                              protocolVersion: file.`protocol`, program: file.runtime.exec))

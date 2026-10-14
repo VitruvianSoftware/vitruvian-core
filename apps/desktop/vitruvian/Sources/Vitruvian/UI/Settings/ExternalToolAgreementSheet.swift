@@ -68,8 +68,9 @@ package struct ToolAgreementContent: Equatable {
     /// Each command the tool adds, by its title in the person's language.
     package let commands: [String]
     /// For a tool whose manifest declares a status: that it shows a small
-    /// mark on the closed island. One line under the commands, and no row
-    /// of the lists. Nil for a tool that declares none.
+    /// mark on the closed island, and a few words too when its status says
+    /// `"activity": true`. One line under the commands, and no row of the
+    /// lists. Nil for a tool that declares none.
     package let showsStatus: String?
     package let usesTitle: String
     /// Each of the app's services the tool says it uses, in plain words.
@@ -122,7 +123,8 @@ package struct ToolAgreementContent: Equatable {
         detail = strings.agreeDetail
         commandsTitle = strings.commandsTitle
         commands = tool.manifest.tool.commands.map { tool.commandTitles[$0.id]?.text(for: tag) ?? $0.title }
-        showsStatus = tool.showsStatus ? strings.agreeShowsStatus : nil
+        showsStatus = tool.showsActivity ? strings.agreeShowsStatusAndWords
+            : tool.showsStatus ? strings.agreeShowsStatus : nil
         usesTitle = strings.usesTitle
         uses = tool.manifest.capabilities.compactMap { strings.use($0.capability) }
         usesNote = strings.usesNote

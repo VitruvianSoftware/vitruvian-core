@@ -705,6 +705,21 @@ extension ExternalToolScreensTests {
         if case .success(let other) = plain.store.offer(from: plain.folder()) {
             suite.expect(content(other).showsStatus == nil, "and says nothing of a status for a tool that declares none")
         }
+        let worded = ExternalToolStoreTests.Bench()
+        defer { worded.close() }
+        let wordedFolder = worded.folder(manifest: ExternalToolManifestTests.file(ExternalToolStoreTests.withStatus
+            .replacingOccurrences(of: #""status": {"placement": "island"}"#,
+                                  with: #""status": {"placement": "island", "activity": true}"#)))
+        if case .success(let words) = worded.store.offer(from: wordedFolder) {
+            suite.expect(content(words).showsStatus
+                             == "It shows a small status mark and a few words on the closed Dynamic Island."
+                             && content(words, .fr).showsStatus
+                             == FeatureStrings.externalTools(.fr).agreeShowsStatusAndWords,
+                         "a tool whose status says activity: true is said to show a mark and a few words, in the "
+                             + "person's language")
+        } else {
+            suite.expect(false, "a tool whose status carries words is offered")
+        }
 
         bench.add(folder)
         func detail() -> ExternalToolDetail? {

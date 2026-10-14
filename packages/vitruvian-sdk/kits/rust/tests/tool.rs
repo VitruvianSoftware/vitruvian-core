@@ -27,13 +27,13 @@ use std::cell::{Cell, RefCell};
 use std::io::{self, Cursor, Read, Write};
 use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 use vitruvian_tool_kit::{
     button, choice, divider, features, field, heading, image, link, list, progress, row, spacer,
-    status, text, toggle, tree, Error, LocalizedText, PanelAnswer, PanelEvent, RefusalCode, Tool,
-    ToolError, UiBlock, UiChoiceOption, UiListRow, UiText, METHODS,
+    status, text, toggle, tree, Error, LocalizedText, PanelAnswer, PanelEvent, RefusalCode,
+    StatusOptions, Tool, ToolError, UiBlock, UiChoiceOption, UiListRow, UiText, METHODS,
 };
 
 /// What the tool writes, kept where the test can read it.
@@ -856,6 +856,108 @@ fn a_status_is_sent_to_an_app_that_has_it() {
 }
 
 #[test]
+fn a_status_sends_its_words_to_an_app_that_draws_them() {
+    let bench = Bench::default()
+        .hello_with(r#"["2"]"#, r#"["ui.status","ui.status.activity"]"#)
+        .run("check", 2)
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .goodbye();
+    let shown = Rc::new(Cell::new(false));
+    let seen = shown.clone();
+    let mut tool = bench.tool();
+    tool.command("check", move |app| {
+        seen.set(app.ui().status_with(
+            status::BUSY,
+            StatusOptions {
+                text: Some("Checks are running".into()),
+                activity: Some("3".into()),
+                since: Some(UNIX_EPOCH + Duration::from_millis(1_760_450_400_500)),
+                ..StatusOptions::default()
+            },
+        )?);
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert!(shown.get());
+    assert_eq!(
+        bench.lines()[1..],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"ui/status","params":{"state":"busy","text":"Checks are running","activity":"3","since":1760450400.5}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"result":{}}"#,
+        ]),
+        "the words, and the start time in Unix seconds"
+    );
+}
+
+#[test]
+fn a_status_sends_no_words_to_an_app_from_3_48() {
+    // 3.48 and 3.49 name `ui.status` and not its words: the status goes,
+    // without them.
+    let bench = Bench::default()
+        .hello_with(
+            r#"["2"]"#,
+            r#"["ui.status","ui.choice","preferences.options"]"#,
+        )
+        .run("check", 2)
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .goodbye();
+    let shown = Rc::new(Cell::new(false));
+    let seen = shown.clone();
+    let mut tool = bench.tool();
+    tool.command("check", move |app| {
+        seen.set(app.ui().status_with(
+            status::BUSY,
+            StatusOptions {
+                text: Some("Checks are running".into()),
+                activity: Some("3".into()),
+                since: Some(SystemTime::now()),
+                ..StatusOptions::default()
+            },
+        )?);
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert!(shown.get(), "the mark is shown");
+    assert_eq!(
+        bench.lines()[1..],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"ui/status","params":{"state":"busy","text":"Checks are running"}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"result":{}}"#,
+        ]),
+        "sends no words to an app from 3.48"
+    );
+}
+
+#[test]
+fn a_status_with_words_writes_nothing_for_an_app_without_a_status() {
+    let bench = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .run("check", 2)
+        .goodbye();
+    let shown = Rc::new(Cell::new(true));
+    let seen = shown.clone();
+    let mut tool = bench.tool();
+    tool.command("check", move |app| {
+        seen.set(app.ui().status_with(
+            status::BUSY,
+            StatusOptions {
+                activity: Some("3".into()),
+                since: Some(SystemTime::now()),
+                ..StatusOptions::default()
+            },
+        )?);
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert!(!shown.get());
+    assert_eq!(
+        bench.lines().len(),
+        2,
+        "only the two answers are on the link"
+    );
+}
+
+#[test]
 fn a_status_writes_nothing_for_an_older_app() {
     // An app before 3.48: its hello has no `features`. No answer is
     // scripted, so a request sent here would end with the link.
@@ -935,9 +1037,15 @@ fn supports_is_true_only_for_what_the_hello_listed() {
         [
             features::STATUS,
             features::CHOICE,
-            features::PREFERENCE_OPTIONS
+            features::PREFERENCE_OPTIONS,
+            features::STATUS_ACTIVITY
         ],
-        ["ui.status", "ui.choice", "preferences.options"]
+        [
+            "ui.status",
+            "ui.choice",
+            "preferences.options",
+            "ui.status.activity"
+        ]
     );
     assert_eq!(
         [

@@ -1062,6 +1062,26 @@
       }
     },
     {
+      "about": "the app starts, and says it draws a status's few words",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersions": ["1", "2"],
+          "language": "en-US",
+          "dataFolder": "/Users/example/Library/Application Support/Vitruvian/ToolData/com.acme.deploys",
+          "features": [
+            "ui.status",
+            "ui.choice",
+            "preferences.options",
+            "ui.status.activity"
+          ]
+        }
+      }
+    },
+    {
       "about": "a status on the closed island: something failed",
       "valid": true,
       "message": {
@@ -1125,6 +1145,68 @@
         "id": 28,
         "method": "ui/status",
         "params": { "state": "none" }
+      }
+    },
+    {
+      "about": "a status with a few words for the closed island",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 29,
+        "method": "ui/status",
+        "params": {
+          "state": "busy",
+          "icon": "arrow.triangle.branch",
+          "text": "Checks are running",
+          "activity": "3"
+        }
+      }
+    },
+    {
+      "about": "a status whose few words are in two languages",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 30,
+        "method": "ui/status",
+        "params": {
+          "state": "busy",
+          "text": {
+            "en": "Checks are running",
+            "fr": "Vérifications en cours"
+          },
+          "activity": { "en": "3 run", "fr": "3 en cours" }
+        }
+      }
+    },
+    {
+      "about": "a status that counts seconds from a start time",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 31,
+        "method": "ui/status",
+        "params": { "state": "busy", "text": "Deploying", "since": 1760450400 }
+      }
+    },
+    {
+      "about": "a status with words and a start time, which has a fraction: the words are drawn",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 32,
+        "method": "ui/status",
+        "params": { "state": "busy", "activity": "push", "since": 1760450400.5 }
+      }
+    },
+    {
+      "about": "a status that counts seconds from the start of 1970",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 33,
+        "method": "ui/status",
+        "params": { "state": "ok", "since": 0 }
       }
     },
     {
@@ -1237,6 +1319,36 @@
         "id": 24,
         "method": "ui/status",
         "params": { "state": "failure", "text": { "fr": "main est rouge" } }
+      }
+    },
+    {
+      "about": "a status that counts from before 1970",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": { "state": "busy", "since": -1 }
+      }
+    },
+    {
+      "about": "a status whose start time is not a number",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": { "state": "busy", "since": "not a number" }
+      }
+    },
+    {
+      "about": "a status whose few words are a number",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 24,
+        "method": "ui/status",
+        "params": { "state": "busy", "activity": 3 }
       }
     },
     {

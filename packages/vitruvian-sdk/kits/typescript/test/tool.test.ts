@@ -756,6 +756,87 @@ test("a status is sent to an app that has it", () => {
   });
 });
 
+test("a status sends its words to an app that draws them", () => {
+  const shown: boolean[] = [];
+  const tool = bench
+    .hello('["2"]', '["ui.status","ui.status.activity"]')
+    .run("check", 2)
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .goodbye()
+    .tool((tool) =>
+      tool.command("check", (app) => {
+        shown.push(
+          app.status("busy", {
+            text: "Checks are running",
+            activity: "3",
+            since: new Date(1760450400500),
+          }),
+        );
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(shown).toEqual([true]);
+  // The words, and the start time in Unix seconds, not milliseconds.
+  expect(bench.written()[1]).toEqual({
+    kind: "request",
+    id: 1,
+    method: "ui/status",
+    params: {
+      state: "busy",
+      text: "Checks are running",
+      activity: "3",
+      since: 1760450400.5,
+    },
+  });
+});
+
+test("a status sends no words to an app from 3.48", () => {
+  // 3.48 and 3.49 name `ui.status` and not its words: the status goes,
+  // without them.
+  const shown: boolean[] = [];
+  const tool = bench
+    .hello('["2"]', '["ui.status","ui.choice","preferences.options"]')
+    .run("check", 2)
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .goodbye()
+    .tool((tool) =>
+      tool.command("check", (app) => {
+        shown.push(
+          app.status("busy", {
+            text: "Checks are running",
+            activity: "3",
+            since: new Date(),
+          }),
+        );
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(shown).toEqual([true]);
+  expect(bench.written()[1]).toEqual({
+    kind: "request",
+    id: 1,
+    method: "ui/status",
+    params: { state: "busy", text: "Checks are running" },
+  });
+});
+
+test("a status with words writes nothing for an app without a status", () => {
+  const shown: boolean[] = [];
+  const tool = bench
+    .hello('["1","2"]')
+    .run("check", 2)
+    .goodbye()
+    .tool((tool) => {
+      tool.answerSeconds = 0.2;
+      tool.command("check", (app) => {
+        shown.push(app.status("busy", { activity: "3", since: new Date() }));
+      });
+    });
+  expect(tool.serve()).toBe(0);
+  expect(shown).toEqual([false]);
+  expect(bench.written()).toHaveLength(2);
+});
+
 test("a status writes nothing for an older app", () => {
   // An app before 3.48: its hello has no `features`. No answer is scripted,
   // so a request sent here would wait and then fail.
@@ -819,6 +900,7 @@ test("supports is true only for what the hello listed", () => {
     status: "ui.status",
     choice: "ui.choice",
     preferenceOptions: "preferences.options",
+    statusActivity: "ui.status.activity",
   });
 });
 
@@ -834,7 +916,7 @@ test("an app that says nothing has none of them", () => {
       }),
     );
   expect(tool.serve()).toBe(0);
-  expect(has).toEqual([false, false, false]);
+  expect(has).toEqual([false, false, false, false]);
 });
 
 test("a choice is built as the protocol's example", () => {

@@ -428,6 +428,16 @@ final class ManifestFileTests: XCTestCase {
         let read = try ToolManifestFile.read(manifest(changing: ["protocol": .string("2"),
                                                                  "contributes": status(.string("island"))])).get()
         XCTAssertEqual(read.contributes?.status?.placement, "island")
+        XCTAssertNil(read.contributes?.status?.activity, "a status that says nothing of words has none")
+        let words = try ToolManifestFile.read(manifest(changing: [
+            "protocol": .string("2"),
+            "contributes": .object(["status": .object(["placement": .string("island"), "activity": .bool(true)])]),
+        ])).get()
+        XCTAssertEqual(words.contributes?.status?.activity, true)
+        XCTAssertEqual(problem(["protocol": .string("2"),
+                                "contributes": .object(["status": .object(["placement": .string("island"),
+                                                                           "activity": .string("yes")])])]),
+                       .malformed(field: "contributes.status.activity"))
         XCTAssertNil(try ToolManifestFile.read(manifest(changing: ["protocol": .string("2")])).get().contributes?.status,
                      "a manifest that declares none has none")
         XCTAssertEqual(problem(["contributes": status(.string("island"))]), .statusNeedsProtocol2("1"))

@@ -58,6 +58,8 @@ blocks, one function for each kind, and an item that is `None` is left out:
             (!self.name.is_empty())
                 .then(|| text(format!("Hello, {}", self.name)).style("secondary")),
             self.status_picker(app),
+            app.supports(features::STATUS_ACTIVITY)
+                .then(|| self.words_picker()),
         ]
     }
 ```

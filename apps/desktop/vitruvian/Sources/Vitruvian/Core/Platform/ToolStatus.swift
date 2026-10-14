@@ -15,18 +15,35 @@ package struct ToolStatus: Equatable, Sendable {
     package let text: UIText?
     /// An SF Symbol name the tool gave in place of the state's own glyph.
     package let icon: String?
+    /// A few words for the closed island, beside the mark. Never blank.
+    package let activity: UIText?
+    /// A start time the app counts the seconds from, when there are no
+    /// words.
+    package let since: Date?
 
-    /// Nil for `.none`, which is no status.
-    package init?(state: StatusState, text: UIText?, icon: String?) {
+    /// Nil for `.none`, which is no status. Blank words are kept as none.
+    package init?(state: StatusState, text: UIText?, icon: String?, activity: UIText? = nil, since: Date? = nil) {
         guard state != .none else { return nil }
         self.state = state
         self.text = text
         self.icon = icon
+        self.activity = activity.flatMap { Self.isBlank($0) ? nil : $0 }
+        self.since = since
     }
 
     /// What a tool asked for, as a status; nil when it asked for none.
     package init?(_ asked: UIStatusParams) {
-        self.init(state: asked.state, text: asked.text, icon: asked.icon)
+        self.init(state: asked.state, text: asked.text, icon: asked.icon, activity: asked.activity,
+                  since: asked.since.map(Date.init(timeIntervalSince1970:)))
+    }
+
+    /// Words that are only spaces in every language they are written in.
+    private static func isBlank(_ text: UIText) -> Bool {
+        let blank = { (words: String) in words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        switch text {
+        case .plain(let words): return blank(words)
+        case .languages(let words): return words.byLanguage.values.allSatisfy(blank)
+        }
     }
 }
 
@@ -41,6 +58,20 @@ package enum RestingMark: Equatable, Sendable {
 /// Which mark the closed island shows. Its wing holds one beside the agent
 /// mark, so of every tool's status the worst wins.
 package enum RestingStatus {
+    /// What the closed island's right-hand wing draws while it rests.
+    package enum RightWing: Equatable, Sendable {
+        /// The allowance percent, as it always did.
+        case allowance
+        /// The shown mark's few words, cut to one line.
+        case words(String)
+        /// The seconds since the shown mark's start time, counting.
+        case seconds(since: Date)
+    }
+
+    /// The most characters of a tool's few words the wing draws, or the
+    /// island's button says. The width of the wing cuts further.
+    package static let wordsLimit = 12
+
     /// How bad a state is: failure 3, attention 2, busy 1, ok 0. `none` is
     /// no mark and is below all of them.
     package static func severity(_ state: StatusState) -> Int {
@@ -81,7 +112,54 @@ package enum RestingStatus {
                               strings: ExternalToolStrings) -> String {
         let said = status.text?.text(for: language.rawValue).trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let words = said.isEmpty ? strings.mark(status.state) ?? "" : ToolOwnWords.oneLine(said)
-        return ToolOwnWords.oneLine(toolName) + colon(in: language) + words
+        // The tool's few words follow, as the button's own pause writes
+        // them; its seconds never do: they would rename the button every
+        // second.
+        let few = fewWords(status.activity, language: language) ?? ""
+        return buttonTitle(ToolOwnWords.oneLine(toolName) + colon(in: language) + words, saying: few, language: language)
+    }
+
+    /// A tool's few words in the person's language, as one line of at most
+    /// `wordsLimit` characters; nil when there are none.
+    package static func fewWords(_ activity: UIText?, language: AppLanguage) -> String? {
+        let said = activity?.text(for: language.rawValue).trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return said.isEmpty ? nil : ToolOwnWords.oneLine(said, limit: wordsLimit)
+    }
+
+    /// What the right-hand wing draws for the mark the left-hand wing
+    /// shows: its words, else the seconds since its start time, else the
+    /// allowance percent, as always. Nil while a Nexus session runs: the
+    /// wing draws Nexus then, whatever a tool says.
+    package static func rightWing(_ mark: RestingMark?, nexusRunning: Bool, language: AppLanguage) -> RightWing? {
+        guard !nexusRunning else { return nil }
+        guard case .tool(_, let status)? = mark else { return .allowance }
+        if let words = fewWords(status.activity, language: language) { return .words(words) }
+        if let since = status.since { return .seconds(since: since) }
+        return .allowance
+    }
+
+    /// The same, for the statuses that compete for the mark: only the mark
+    /// that wins has its words drawn, never another tool's beside it.
+    package static func rightWing(tools: [(ToolID, ToolStatus)], nexusRunning: Bool,
+                                  language: AppLanguage) -> RightWing? {
+        rightWing(winner(tools: tools), nexusRunning: nexusRunning, language: language)
+    }
+
+    /// The whole seconds from `since` to `now`, as the person's language
+    /// writes a count of seconds in short: "754s" in English, "754秒" in
+    /// Japanese. A start time in the future counts from 0.
+    package static func seconds(since: Date, now: Date, language: AppLanguage) -> String {
+        let elapsed = max(0, Int64(now.timeIntervalSince(since).rounded(.down)))
+        let style = Duration.UnitsFormatStyle(allowedUnits: [.seconds], width: .narrow)
+            .locale(Locale(identifier: language.rawValue))
+        return Duration.seconds(elapsed).formatted(style)
+    }
+
+    /// Whether the wing's clock must tick every second for this: only for a
+    /// count of seconds. Anything else keeps its six.
+    package static func ticksEverySecond(_ wing: RightWing?) -> Bool {
+        guard case .seconds? = wing else { return false }
+        return true
     }
 
     /// What stands between the tool's name and its words. The app's

@@ -76,6 +76,7 @@ the tool sends. The guide's "Drawing" says how. Its page:
             ),
             text(f"Hello, {self.name}", style="secondary") if self.name else None,
             self.status_picker(app),
+            self.words_picker() if app.supports(Feature.STATUS_ACTIVITY) else None,
         )
 ```
 {% endraw %}

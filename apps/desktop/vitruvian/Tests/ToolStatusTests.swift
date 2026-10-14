@@ -22,13 +22,26 @@ enum ToolStatusTests {
         theLabelIsTheToolsNameAndItsWords(suite)
         aClickOpensTheToolsPageUnlessItIsOK(suite)
         theIslandsButtonSaysTheMark(suite)
+        aStatusKeepsItsWords(suite)
+        blankWordsAreNoWords(suite)
+        theRightWingIsTheAllowanceWithNoWords(suite)
+        wordsBeatSeconds(suite)
+        secondsCountFromSince(suite)
+        aFutureSinceCountsFromZero(suite)
+        longWordsAreOneLineOfTwelve(suite)
+        nexusOutranksATool(suite)
+        theWordsAreTheShownMarks(suite)
+        onlySecondsTickEverySecond(suite)
+        theButtonSaysTheWordsButNotTheSeconds(suite)
+        aMarkWithoutWordsLeavesThePercent(suite)
     }
 
     static let first = ToolID("com.acme.deploys")!
     static let second = ToolID("com.acme.checks")!
 
-    static func status(_ state: StatusState, text: UIText? = nil, icon: String? = nil) -> ToolStatus {
-        ToolStatus(state: state, text: text, icon: icon)!
+    static func status(_ state: StatusState, text: UIText? = nil, icon: String? = nil, activity: UIText? = nil,
+                       since: Date? = nil) -> ToolStatus {
+        ToolStatus(state: state, text: text, icon: icon, activity: activity, since: since)!
     }
 
     /// The states that are a mark, mildest first.
@@ -190,5 +203,125 @@ extension ToolStatusTests {
                      "with no mark the button keeps its own name, with nothing after it")
         suite.expect(RestingStatus.buttonTitle("開く", saying: "Deploys：失敗", language: .ja) == "開く、Deploys：失敗",
                      "the pause between the two is written the way the language writes it")
+    }
+}
+
+/// A tool's words on the closed island: what the right-hand wing draws in
+/// place of the allowance percent, and what the island's button says.
+extension ToolStatusTests {
+    static let start = Date(timeIntervalSince1970: 1_760_450_400)
+
+    static func wing(_ status: ToolStatus?, nexusRunning: Bool = false,
+                     language: AppLanguage = .enUS) -> RestingStatus.RightWing? {
+        RestingStatus.rightWing(status.map { .tool(first, $0) }, nexusRunning: nexusRunning, language: language)
+    }
+
+    static func aStatusKeepsItsWords(_ suite: TestSuite) {
+        let kept = ToolStatus(UIStatusParams(state: .busy, text: "Checks are running", activity: "3",
+                                             since: 1_760_450_400.5))
+        suite.expect(kept?.activity == "3" && kept?.since == Date(timeIntervalSince1970: 1_760_450_400.5)
+                         && kept?.text == "Checks are running",
+                     "a status keeps its words and its start time beside its own words")
+        suite.expect(ToolStatus(UIStatusParams(state: .ok))?.activity == nil
+                         && ToolStatus(UIStatusParams(state: .ok))?.since == nil,
+                     "a status that sends neither has neither")
+    }
+
+    static func blankWordsAreNoWords(_ suite: TestSuite) {
+        suite.expect(status(.busy, activity: "  ").activity == nil && status(.busy, activity: "\n").activity == nil
+                         && ToolStatus(UIStatusParams(state: .busy, activity: " "))?.activity == nil,
+                     "words that are only spaces are no words")
+    }
+
+    static func theRightWingIsTheAllowanceWithNoWords(_ suite: TestSuite) {
+        suite.expect(wing(nil) == .allowance, "with no tool's mark the wing draws the allowance percent, as today")
+        suite.expect(wing(status(.failure)) == .allowance
+                         && wing(status(.busy, text: "Checks are running", icon: "arrow.triangle.branch")) == .allowance,
+                     "a mark without words leaves the percent, whatever its state, its text or its glyph")
+    }
+
+    static func wordsBeatSeconds(_ suite: TestSuite) {
+        suite.expect(wing(status(.busy, activity: "push", since: start)) == .words("push"),
+                     "a status with words and a start time draws the words")
+        suite.expect(wing(status(.busy, since: start)) == .seconds(since: start),
+                     "a status with only a start time counts the seconds from it")
+    }
+
+    static func secondsCountFromSince(_ suite: TestSuite) {
+        let now = start.addingTimeInterval(754.6)
+        suite.expect(RestingStatus.seconds(since: start, now: now, language: .enUS) == "754s",
+                     "the seconds since the start, whole, written as Nexus Agent writes them in English")
+        suite.expect(RestingStatus.seconds(since: start, now: now, language: .ja) == "754秒",
+                     "and as the person's language writes them")
+    }
+
+    static func aFutureSinceCountsFromZero(_ suite: TestSuite) {
+        suite.expect(RestingStatus.seconds(since: start.addingTimeInterval(30), now: start, language: .enUS) == "0s",
+                     "a start time in the future counts from 0, never down")
+    }
+
+    static func longWordsAreOneLineOfTwelve(_ suite: TestSuite) {
+        let long = "line one\nline two \u{202E}" + String(repeating: "x", count: 500)
+        guard case .words(let drawn)? = wing(status(.busy, activity: .plain(long))) else {
+            return suite.expect(false, "a status's long words are drawn, cut")
+        }
+        suite.expect(drawn.count == 12 && drawn == "line one li…" && !drawn.contains("\n")
+                         && !drawn.unicodeScalars.contains("\u{202E}"),
+                     "a text of 500 characters with a line break becomes one line of 12, the last an ellipsis")
+        let words = UIText.languages(LocalizedText(["en": "3 run", "fr": "3 en cours"]))
+        suite.expect(wing(status(.busy, activity: words), language: .fr) == .words("3 en cours")
+                         && wing(status(.busy, activity: words), language: .de) == .words("3 run"),
+                     "the words follow the person's language, English where there are none in it")
+    }
+
+    static func nexusOutranksATool(_ suite: TestSuite) {
+        suite.expect(wing(status(.failure, activity: "3"), nexusRunning: true) == nil
+                         && wing(nil, nexusRunning: true) == nil,
+                     "while a Nexus session runs the wing draws Nexus, whatever a tool says")
+    }
+
+    static func theWordsAreTheShownMarks(_ suite: TestSuite) {
+        let tools = [(first, status(.busy, activity: "3")), (second, status(.failure))]
+        suite.expect(RestingStatus.rightWing(tools: tools, nexusRunning: false, language: .enUS) == .allowance,
+                     "the worse mark has no words, so the percent is drawn, never another tool's words")
+        let worded = [(first, status(.ok)), (second, status(.failure, activity: "2"))]
+        suite.expect(RestingStatus.rightWing(tools: worded, nexusRunning: false, language: .enUS) == .words("2"),
+                     "the shown mark's words are drawn")
+        suite.expect(RestingStatus.rightWing(tools: [], nexusRunning: false, language: .enUS) == .allowance,
+                     "no tool, the percent")
+    }
+
+    static func onlySecondsTickEverySecond(_ suite: TestSuite) {
+        suite.expect(RestingStatus.ticksEverySecond(.seconds(since: start))
+                         && !RestingStatus.ticksEverySecond(.words("3"))
+                         && !RestingStatus.ticksEverySecond(.allowance) && !RestingStatus.ticksEverySecond(nil),
+                     "only a count of seconds needs the wing's clock every second; the rest keep its six")
+    }
+
+    static func theButtonSaysTheWordsButNotTheSeconds(_ suite: TestSuite) {
+        let said = RestingStatus.words(for: status(.busy, text: "Checks are running", activity: "3"), toolName: "GitHub",
+                                       language: .enUS, strings: english)
+        suite.expect(said == "GitHub: Checks are running, 3"
+                         && RestingStatus.buttonTitle("Open Dynamic Island", saying: said, language: .enUS)
+                         == "Open Dynamic Island, GitHub: Checks are running, 3",
+                     "the button says the mark's words, then the tool's few words after a comma")
+        suite.expect(RestingStatus.words(for: status(.busy, text: "Deploying", since: start), toolName: "Deploys",
+                                         language: .enUS, strings: english) == "Deploys: Deploying",
+                     "the seconds are not said: they would rename the button every second")
+        let japanese = RestingStatus.words(for: status(.busy, text: "実行中", activity: "3"), toolName: "GitHub",
+                                           language: .ja, strings: FeatureStrings.externalTools(.ja))
+        suite.expect(japanese == "GitHub：実行中、3", "the pause before the words is written the way the language writes it")
+    }
+}
+
+/// What the wing does with them: the percent beside a mark with no words.
+extension ToolStatusTests {
+    static func aMarkWithoutWordsLeavesThePercent(_ suite: TestSuite) {
+        for state in states {
+            let wing = RestingStatus.rightWing(tools: [(first, status(state, text: "Deploying"))], nexusRunning: false,
+                                               language: .enUS)
+            suite.expect(wing == .allowance && !RestingStatus.ticksEverySecond(wing),
+                         "a mark without words leaves the percent, and the wing's clock its six seconds (\(state))")
+        }
     }
 }

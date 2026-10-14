@@ -24,9 +24,8 @@
 
 import {
   expectArray,
-  expectInteger,
+  expectBoolean,
   expectJSON,
-  expectMap,
   expectObject,
   expectOneOf,
   expectString,
@@ -144,6 +143,8 @@ export function readContributes(value: unknown, where = "contributes"): Contribu
 export interface StatusContribution {
   /** Where it is shown. island: on the closed island, beside the agent mark. */
   placement: StatusPlacement;
+  /** true: the tool's status may carry words for the closed island, and the agreement sheet says so. An app before 3.50 ignores it. */
+  activity?: boolean;
 }
 
 export function readStatusContribution(value: unknown, where = "statusContribution"): StatusContribution {
@@ -151,6 +152,9 @@ export function readStatusContribution(value: unknown, where = "statusContributi
   const read: StatusContribution = {
     placement: expectOneOf(object["placement"], `${where}.placement`, STATUS_PLACEMENTS),
   };
+  if (object["activity"] !== undefined) {
+    read.activity = expectBoolean(object["activity"], `${where}.activity`);
+  }
   return read;
 }
 

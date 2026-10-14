@@ -322,9 +322,9 @@ pub struct InitializeParams {
     #[serde(rename = "dataFolder")]
     pub data_folder: String,
     /// What this app has beyond the first release of the protocol version, by
-    /// name: ui.status, ui.choice, preferences.options. A name the tool does
-    /// not know is ignored. An app before 3.48 sends none, and has none of
-    /// them.
+    /// name: ui.status, ui.choice, preferences.options, ui.status.activity. A
+    /// name the tool does not know is ignored. An app before 3.48 sends none,
+    /// and has none of them; 3.48 and 3.49 send the first three.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub features: Option<Vec<String>>,
 }
@@ -590,8 +590,9 @@ pub struct UiBadgeParams {
 /// replaces the last, and it goes when the tool's program ends. The manifest
 /// must declare it, under contributes.status: without that the app answers
 /// failure -32602. The person can switch it off for the tool; it is then still
-/// answered with {} and nothing is drawn. An app before 3.48 answers failure
-/// -32601.
+/// answered with {} and nothing is drawn. activity and since are drawn only
+/// when the manifest's status says activity: true; otherwise they are left out
+/// and the mark is drawn. An app before 3.48 answers failure -32601.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UiStatusParams {
     /// none: no mark. ok: all is well. busy: something is under way. attention:
@@ -608,6 +609,18 @@ pub struct UiStatusParams {
     /// or a blank one, draws the state's own glyph.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// A few words for the closed island, drawn beside the mark while it is the
+    /// one shown, in place of the allowance percent. Cut to one line of 12
+    /// characters and drawn in about 30 points: six characters or fewer, and a
+    /// number is best. Blank counts as absent. Ignored for none. An app before
+    /// 3.50 ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<UiText>,
+    /// Unix time in seconds, a fraction allowed. The app shows the seconds
+    /// since then when there is no activity, and counts them itself. A time in
+    /// the future shows 0. An app before 3.50 ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<f64>,
 }
 
 /// A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an
@@ -975,6 +988,10 @@ pub struct StatusContribution {
     /// Where it is shown. island: on the closed island, beside the agent mark.
     /// One of: island.
     pub placement: String,
+    /// true: the tool's status may carry words for the closed island, and the
+    /// agreement sheet says so. An app before 3.50 ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<bool>,
 }
 
 /// One thing the tool can be asked to do.

@@ -498,6 +498,61 @@ final class PanelTests: XCTestCase {
                                             params: .object(["state": .string("none")])))
     }
 
+    func testAStatusSendsItsWordsToAnAppThatDrawsThem() throws {
+        let bench = Bench().hello(versions: #"["2"]"#, features: #"["ui.status","ui.status.activity"]"#)
+            .run("check", id: 2)
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .goodbye()
+        var shown: Bool?
+        let tool = try bench.tool { tool in
+            tool.command("check") { app in
+                shown = try app.status(.busy, text: "Checks are running", activity: "3",
+                                       since: Date(timeIntervalSince1970: 1_760_450_400.5))
+            }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(shown, true)
+        XCTAssertEqual(try bench.written()[1], .request(id: .number(1), method: "ui/status",
+                                                        params: .object(["state": .string("busy"),
+                                                                         "text": .string("Checks are running"),
+                                                                         "activity": .string("3"),
+                                                                         "since": .number(1_760_450_400.5)])),
+                       "the words, and the start time in Unix seconds")
+    }
+
+    func testAStatusSendsNoWordsToAnAppFrom348() throws {
+        // 3.48 and 3.49 name `ui.status` and not its words: the status goes,
+        // without them.
+        let bench = Bench().hello(versions: #"["2"]"#, features: #"["ui.status","ui.choice","preferences.options"]"#)
+            .run("check", id: 2)
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .goodbye()
+        var shown: Bool?
+        let tool = try bench.tool { tool in
+            tool.command("check") { app in
+                shown = try app.status(.busy, text: "Checks are running", activity: "3", since: Date())
+            }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(shown, true, "the mark is shown")
+        XCTAssertEqual(try bench.written()[1], .request(id: .number(1), method: "ui/status",
+                                                        params: .object(["state": .string("busy"),
+                                                                         "text": .string("Checks are running")])),
+                       "sends no words to an app from 3.48")
+    }
+
+    func testAStatusWithWordsWritesNothingForAnAppWithoutAStatus() throws {
+        let bench = Bench().hello(versions: #"["1","2"]"#).run("check", id: 2).goodbye()
+        var shown: Bool?
+        let tool = try bench.tool { tool in
+            tool.answerSeconds = 0.2
+            tool.command("check") { app in shown = try app.status(.busy, activity: "3", since: Date()) }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(shown, false)
+        XCTAssertEqual(try bench.written().count, 2, "only the two answers are on the link")
+    }
+
     func testAStatusWritesNothingForAnOlderApp() throws {
         // An app before 3.48: its hello has no `features`. No answer is
         // scripted, so a request sent here would wait and then fail.
@@ -543,7 +598,7 @@ final class PanelTests: XCTestCase {
             tool.command("ask") { app in none = ProtocolFeature.allCases.map(app.supports) }
         }
         XCTAssertEqual(before.serve(), 0)
-        XCTAssertEqual(none, [false, false, false], "an app that says nothing has none of them")
+        XCTAssertEqual(none, [false, false, false, false], "an app that says nothing has none of them")
     }
 
     func testAChoiceIsBuiltAsTheProtocolsExample() throws {

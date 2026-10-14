@@ -41,6 +41,11 @@ tool.run();
   `app.supports(Feature.choice)` says whether this app has one. On an app
   from before them `app.status` sends nothing and returns false, and a
   `choice` is drawn as its fallback text, so send a `field` there instead.
+- **A few words with the status.** `app.status("busy", { activity: "3" })`
+  puts a few words beside the mark, and `{ since: new Date() }` a count of
+  seconds the app keeps. The manifest's status says `"activity": true`. An
+  app before 3.50 does not have `Feature.statusActivity`; the status is sent
+  to it without them.
 
 ## Shipping it
 
