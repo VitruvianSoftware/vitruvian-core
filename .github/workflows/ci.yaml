@@ -549,92 +549,191 @@ jobs:
       - name: Bazel test naming linter harness
         run: bazel test //tools/lint-naming:lint-naming_test
 
-  go-lint:
-    # Authoritative golangci-lint for the Go apps exported to standalone mirrors.
-    # aspect_rules_lint has no golangci-lint aspect, and the per-app mirror CI is
-    # being retired (the monorepo is the single CI authority), so Go lint runs
-    # here as a matrix over each module -- standalone (GOWORK=off), exactly as it
-    # lints in its mirror today.
+  changes:
+    # Decides ONCE, on one runner, whether each small path-gated job below has
+    # any work to do. Those jobs then skip at the JOB level when they do not,
+    # so they never take a runner at all.
     #
-    # Each matrix leg is path-gated on presubmit lanes (same run-then-noop-green
-    # pattern as build-macos): a required check must ALWAYS report a result, so
-    # the JOB always runs and only the work inside is skipped when the diff
-    # can't affect this module. GOWORK=off makes the module fully standalone,
-    # so <module>/** (plus this workflow) is the complete input set. Push to
-    # main stays unconditional (the postsubmit floor).
+    # Why: every one of them used to start its own runner, check out the whole
+    # history, run a path filter and, on most changes, do nothing. On release
+    # PRs those jobs did 0.3 min of work after waiting a median 2.3 min (p90
+    # 7.6 min) for a free runner: the account's concurrent-job cap is shared by
+    # every PR, the merge queue and main, so idle checks queued ahead of real
+    # work. Measured over 60 release PRs, 2026-09-14..10-14.
+    #
+    # A job skipped by its `if:` still satisfies a required check: GitHub
+    # reports it as passing. The wedge that leaves a required check "pending"
+    # is a workflow-level `paths:`/`branches:` filter (the workflow never
+    # starts) or a skipped MATRIX job (its name is never expanded, so
+    # "go-lint (devx)" is never reported). Neither applies here: this
+    # workflow always starts, and go-lint is two literal jobs, not a matrix.
+    #
+    # Fails SAFE, two ways:
+    #   - each decision below keeps the exact rule its job used inline before
+    #     (a PR runs on a positive match, the merge queue runs unless the
+    #     filter is CERTAIN nothing relevant changed, push runs unless the
+    #     change is docs/gitops-only);
+    #   - every dependent job runs in full when this job did not succeed
+    #     (`needs.changes.result != 'success'`), so a broken decision costs
+    #     runner time, never coverage.
+    #
+    # The postsubmit gate (changed-paths-gate) FAILS SAFE too: any missing or
+    # uncomputable diff base yields relevant=true. The whole-graph floor is
+    # unchanged -- periodic-full-sweep.yaml still runs `bazel build //...` +
+    # `bazel test //...` nightly.
     runs-on: ubuntu-26.04
-    name: go-lint (${{ matrix.module }})
-    timeout-minutes: 20
-    env:
-      GOWORK: "off"
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - module: devx
-            path: apps/cli/devx
-          - module: homelab
-            path: apps/cli/homelab
+    timeout-minutes: 10
+    outputs:
+      go-lint-devx: ${{ steps.decide.outputs.go-lint-devx }}
+      go-lint-homelab: ${{ steps.decide.outputs.go-lint-homelab }}
+      go-test-infra: ${{ steps.decide.outputs.go-test-infra }}
+      go-race: ${{ steps.decide.outputs.go-race }}
+      example-build: ${{ steps.decide.outputs.example-build }}
+      validate-butane: ${{ steps.decide.outputs.validate-butane }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # merge_group diffs need the base_sha reachable locally.
+          # merge_group diffs need the base_sha reachable locally, and the push
+          # gate diffs against github.event.before.
           fetch-depth: 0
-      # Cheap name-only diff; never fails the job on its own. Fail-safe
-      # asymmetry mirrors build-macos: a PR runs the work only when the filter
-      # POSITIVELY matched, the merge queue runs it unless the filter is
-      # CERTAIN nothing relevant changed (uncertainty -> run).
-      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
-      # `github.event_name == 'push'` clause below bypasses the path filter
-      # entirely, so a one-line gitops digest bump ran the full heavy step on
-      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
-      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
-      # min of runner time that the diff provably cannot affect. 83 of the last
-      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
-      # month.
-      #
-      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
-      # relevant=true, and the only way to get false is a fully-computed diff in
-      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
-      # floor is unchanged -- periodic-full-sweep.yaml still runs
-      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
+      # Postsubmit docs/gitops-only skip (mirrors build-test). Measured on
+      # 69436a56 (ONE line of gitops/argocd/platform/buzz/values.yaml):
+      # example-build 452s + macos-build 156s + go-race 144s = 12.5 min of
+      # runner time that the diff provably cannot affect.
       - name: Gate on changed paths
         id: gate
         if: github.event_name == 'push'
         uses: ./.github/actions/changed-paths-gate
 
-      - name: Detect ${{ matrix.module }}-relevant changes
-        id: changes
+      # One filter per job. Each keeps the job's own list, plus this workflow.
+      - name: Detect what each job needs
+        id: filter
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
-            module:
-              - '${{ matrix.path }}/**'
+            devx:
+              - 'apps/cli/devx/**'
               - '.github/workflows/ci.yaml'
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
+            homelab:
+              - 'apps/cli/homelab/**'
+              - '.github/workflows/ci.yaml'
+            iac:
+              - 'infrastructure/pulumi/**'
+              - '*/infra/**'
+              - '.github/workflows/ci.yaml'
+            go:
+              - '**/*.go'
+              - '**/go.mod'
+              - '**/go.sum'
+              - 'MODULE.bazel'
+              - '.bazelrc'
+              - '.github/workflows/ci.yaml'
+            ex:
+              - 'packages/pulumi/examples/go-foundation/**'
+              - 'packages/pulumi/library/**'
+              - '.github/workflows/ci.yaml'
+            butane:
+              - 'apps/cli/devx/dev-machine.template.bu'
+              - '.github/workflows/ci.yaml'
+
+      - name: Decide which jobs run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEVANT: ${{ steps.gate.outputs.relevant }}
+          DEVX: ${{ steps.filter.outputs.devx }}
+          HOMELAB: ${{ steps.filter.outputs.homelab }}
+          IAC: ${{ steps.filter.outputs.iac }}
+          GO: ${{ steps.filter.outputs.go }}
+          EX: ${{ steps.filter.outputs.ex }}
+          BUTANE: ${{ steps.filter.outputs.butane }}
+        run: |
+          set -u
+          # The rule each job used inline before this job existed. Anything
+          # unexpected (an unknown event, an empty filter output in the queue)
+          # answers "run".
+          want() {
+            case "$EVENT_NAME" in
+              push)         [ "$RELEVANT" != "false" ] ;;
+              merge_group)  [ "$1" != "false" ] ;;
+              pull_request) [ "$1" = "true" ] ;;
+              *)            true ;;
+            esac
+          }
+          say() { if want "$2"; then v=true; else v=false; fi; echo "$1=$v" | tee -a "$GITHUB_OUTPUT"; }
+          say go-lint-devx "$DEVX"
+          say go-lint-homelab "$HOMELAB"
+          say go-test-infra "$IAC"
+          say example-build "$EX"
+          say validate-butane "$BUTANE"
+          # go-race keeps its own rule: push (unless docs/gitops-only), or any
+          # Go change on a PR or in the queue.
+          race=false
+          if [ "$EVENT_NAME" = "push" ] && [ "$RELEVANT" != "false" ]; then race=true; fi
+          if [ "$GO" = "true" ]; then race=true; fi
+          case "$EVENT_NAME" in push|pull_request|merge_group) ;; *) race=true ;; esac
+          echo "go-race=$race" | tee -a "$GITHUB_OUTPUT"
+
+  # Authoritative golangci-lint for the Go apps exported to standalone mirrors.
+  # aspect_rules_lint has no golangci-lint aspect, and the per-app mirror CI is
+  # being retired (the monorepo is the single CI authority), so Go lint runs
+  # here per module -- standalone (GOWORK=off), exactly as it lints in its
+  # mirror today.
+  #
+  # Two literal jobs, not a matrix: a matrix job skipped by its `if:` reports
+  # the unexpanded name "go-lint (${{ matrix.module }})", so the required
+  # checks "go-lint (devx)" / "go-lint (homelab)" would never report and the
+  # queue would wedge. Keep the two jobs identical apart from the module.
+  go-lint-devx:
+    name: go-lint (devx)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-devx == 'true') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: ${{ matrix.path }}/go.mod
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/cli/devx/go.mod
           # setup-go keys its module/build cache on a dependency file, defaulting
           # to a go.sum at the REPO ROOT. With GOWORK=off these are standalone
           # modules whose go.sum lives under <module>/, so the default key missed
-          # and the cache never restored. Same wiring go-test already uses.
-          cache-dependency-path: ${{ matrix.path }}/go.sum
-      - name: golangci-lint (${{ matrix.module }})
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
+          # and the cache never restored.
+          cache-dependency-path: apps/cli/devx/go.sum
+      - name: golangci-lint (devx)
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.1
-          working-directory: ${{ matrix.path }}
+          working-directory: apps/cli/devx
+
+  go-lint-homelab:
+    name: go-lint (homelab)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/cli/homelab/go.mod
+          cache-dependency-path: apps/cli/homelab/go.sum
+      - name: golangci-lint (homelab)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.1
+          working-directory: apps/cli/homelab
 
   go-test-infra:
     # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
@@ -652,6 +751,8 @@ jobs:
     # the day it lands, and only modules that actually contain a _test.go are
     # run -- `go test ./...` in a module with no tests is a slow no-op. GOWORK
     # is off because these modules are deliberately not workspace members.
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -660,42 +761,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
-      # `github.event_name == 'push'` clause below bypasses the path filter
-      # entirely, so a one-line gitops digest bump ran the full heavy step on
-      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
-      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
-      # min of runner time that the diff provably cannot affect. 83 of the last
-      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
-      # month.
-      #
-      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
-      # relevant=true, and the only way to get false is a fully-computed diff in
-      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
-      # floor is unchanged -- periodic-full-sweep.yaml still runs
-      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
-      - name: Gate on changed paths
-        id: gate
-        if: github.event_name == 'push'
-        uses: ./.github/actions/changed-paths-gate
-
-      - name: Detect IaC-relevant changes
-        id: changes
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-          filters: |
-            iac:
-              - 'infrastructure/pulumi/**'
-              - '*/infra/**'
-              - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
         with:
           go-version-file: go.mod
           # Cache module downloads across runs, keyed on every IaC module's own
@@ -711,10 +777,6 @@ jobs:
             infrastructure/pulumi/**/go.sum
             */infra/**/go.sum
       - name: go test (IaC modules with tests)
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
         run: bash tools/ci/go-test-with-retry.sh
 
   go-race:
@@ -736,8 +798,10 @@ jobs:
     # accepted: a deliberately racy test PASSED without it and FAILED with
     # "WARNING: DATA RACE" with it. Measured 83s for all 72 targets.
     #
-    # Always reports (the steps are gated, never the job) so it is safe to
-    # require -- a skipped required check wedges the merge queue "pending".
+    # Skips at the job level when `changes` says there is no Go to race-test
+    # (a skipped job still satisfies the required check; see `changes`).
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-race == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
@@ -746,69 +810,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
-      # `github.event_name == 'push'` clause below bypasses the path filter
-      # entirely, so a one-line gitops digest bump ran the full heavy step on
-      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
-      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
-      # min of runner time that the diff provably cannot affect. 83 of the last
-      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
-      # month.
-      #
-      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
-      # relevant=true, and the only way to get false is a fully-computed diff in
-      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
-      # floor is unchanged -- periodic-full-sweep.yaml still runs
-      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
-      - name: Gate on changed paths
-        id: gate
-        if: github.event_name == 'push'
-        uses: ./.github/actions/changed-paths-gate
-
-      - name: Detect Go changes
-        id: changes
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-          filters: |
-            go:
-              - '**/*.go'
-              - '**/go.mod'
-              - '**/go.sum'
-              - 'MODULE.bazel'
-              - '.bazelrc'
-              - '.github/workflows/ci.yaml'
-      # ONE decision, made before any setup (#2841). Bazel and the 2.2 GiB LLVM
-      # toolchain used to be set up first and the change detection run after,
-      # so a change with no Go in it paid ~60s of setup and then skipped the
-      # test. Every step below is gated on this output -- the tripwire too,
-      # because it fails by design when the restore did not run.
-      - name: Decide whether to race-test
-        id: need
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          RELEVANT: ${{ steps.gate.outputs.relevant }}
-          GO_CHANGED: ${{ steps.changes.outputs.go }}
-        run: |
-          run=false
-          if [ "$EVENT_NAME" = "push" ] && [ "$RELEVANT" != "false" ]; then run=true; fi
-          if [ "$GO_CHANGED" = "true" ]; then run=true; fi
-          echo "race-test: $run (event=$EVENT_NAME relevant=${RELEVANT:-unset} go=${GO_CHANGED:-unset})"
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-
       - uses: ./.github/actions/setup-bazel
-        if: steps.need.outputs.run == 'true'
       # Restore the extracted LLVM toolchain (#1039) and pair it with the
       # tripwire below -- see the llvm-cache-restore composite for the
       # rationale and how the toolchain folder is found (never pinned; #2456).
       - name: Restore the extracted LLVM toolchain
         id: llvm-contents
-        if: steps.need.outputs.run == 'true'
         uses: ./.github/actions/llvm-cache-restore
       - name: Race-test all Go targets
-        if: steps.need.outputs.run == 'true'
         run: |
           set -euo pipefail
           # Only go_test targets: race instruments Go, and sweeping //... here
@@ -827,7 +836,7 @@ jobs:
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale
       # (hardened per review on #1304 after a placement-bug incident).
       - name: LLVM cache tripwire
-        if: always() && steps.need.outputs.run == 'true'
+        if: always()
         uses: ./.github/actions/llvm-cache-tripwire
         with:
           restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
@@ -843,8 +852,10 @@ jobs:
     # mirror re-ran. This compiles every example module IN THE SOURCE REPO.
     #
     # Own job (not folded into go-test-infra) + generous timeout because it is
-    # ~27 standalone modules each pulling the Pulumi SDK; path-gated so it only
-    # runs when the example — or a library it consumes — actually changes.
+    # ~27 standalone modules each pulling the Pulumi SDK; runs only when the
+    # example -- or a library it consumes -- actually changes (see `changes`).
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.example-build == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 40
     env:
@@ -853,47 +864,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The push-lane gate below diffs against github.event.before; the
-          # default depth-1 checkout has no such commit, so relevant-paths.sh
-          # fails safe to relevant=true and the 474s example build ran anyway on
-          # a one-line gitops digest bump (measured on d86305bc, #1762). Every
-          # other gated job already fetches full history for exactly this reason.
-          fetch-depth: 0
-      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
-      # `github.event_name == 'push'` clause below bypasses the path filter
-      # entirely, so a one-line gitops digest bump ran the full heavy step on
-      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
-      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
-      # min of runner time that the diff provably cannot affect. 83 of the last
-      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
-      # month.
-      #
-      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
-      # relevant=true, and the only way to get false is a fully-computed diff in
-      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
-      # floor is unchanged -- periodic-full-sweep.yaml still runs
-      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
-      - name: Gate on changed paths
-        id: gate
-        if: github.event_name == 'push'
-        uses: ./.github/actions/changed-paths-gate
-
-      - name: Detect example/library changes
-        id: changes
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-          filters: |
-            ex:
-              - 'packages/pulumi/examples/go-foundation/**'
-              - 'packages/pulumi/library/**'
-              - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
         with:
           go-version-file: go.mod
       # Runs BEFORE the build, because it is the same failure with a usable
@@ -906,17 +877,9 @@ jobs:
       # diff, and gives the command that fixes it. Read-only: `go mod tidy
       # -diff` never writes, so this cannot dirty the tree it is checking.
       - name: Assert example/library module pins are in sync
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
         run: bash tools/gomod/tidy.sh --check
 
       - name: go build (every example module)
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
         run: |
           set -euo pipefail
           n=0
@@ -932,53 +895,19 @@ jobs:
   validate-butane:
     # devx's Fedora CoreOS Butane template must render to valid Ignition. There
     # is no Bazel target for this -- it is a devx-specific check ported verbatim
-    # from the retired devx mirror CI so the coverage is not lost.
-    #
-    # Path-gated on presubmit lanes (run-then-noop-green, like go-lint/go-test
-    # above). The check's only in-tree input is the template itself -- the
-    # envsubst vars are dummies and butane comes from a container image -- so
-    # the filter is exactly that file (plus this workflow). Push unconditional.
+    # from the retired devx mirror CI so the coverage is not lost. Its only
+    # in-tree input is the template itself -- the envsubst vars are dummies and
+    # butane comes from a container image -- so `changes` gates it on exactly
+    # that file (plus this workflow).
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.validate-butane == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
-      # `github.event_name == 'push'` clause below bypasses the path filter
-      # entirely, so a one-line gitops digest bump ran the full heavy step on
-      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
-      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
-      # min of runner time that the diff provably cannot affect. 83 of the last
-      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
-      # month.
-      #
-      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
-      # relevant=true, and the only way to get false is a fully-computed diff in
-      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
-      # floor is unchanged -- periodic-full-sweep.yaml still runs
-      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
-      - name: Gate on changed paths
-        id: gate
-        if: github.event_name == 'push'
-        uses: ./.github/actions/changed-paths-gate
-
-      - name: Detect Butane-relevant changes
-        id: changes
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-          filters: |
-            butane:
-              - 'apps/cli/devx/dev-machine.template.bu'
-              - '.github/workflows/ci.yaml'
       - name: Validate Butane template
-        if: >-
-          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.butane != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.butane == 'true')
         working-directory: apps/cli/devx
         run: |
           CF_TUNNEL_TOKEN=dummy DEV_HOSTNAME=ci-test \
