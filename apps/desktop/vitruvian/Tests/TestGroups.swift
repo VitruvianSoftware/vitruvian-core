@@ -161,7 +161,10 @@ enum TestGroups {
                 NotchAccessoryLaunchTests.run(suite)
             }),
             ("switcher-model", { SwitcherModelFeatureTests.run(suite) }),
-            ("agents", { NotchAgentTests.run(suite) }),
+            ("agents", {
+                NotchAgentTests.run(suite)
+                NexusSparkleMotionTests.run(suite)
+            }),
             ("features", {
                 FeatureCatalogTests.run(suite)
                 FeatureRuntimeContract.run(suite)
