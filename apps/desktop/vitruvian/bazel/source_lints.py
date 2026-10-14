@@ -22,6 +22,7 @@ RepositoryFeatureTests checks each listed name on the Mac the tests run on.
 import argparse
 import collections
 import os
+import plistlib
 import re
 import sys
 from pathlib import Path
@@ -385,6 +386,74 @@ def keychain_is_never_touched(repo):
     if found:
         return [f"the app, query learning and uninstall never access Keychain: {found}"]
     return []
+
+
+URL_EVENT_HANDLERS = (
+    re.compile(r"\bkAEGetURL\b"),
+    re.compile(r"\.onOpenURL\b"),
+    re.compile(r"func application\(\s*_\s+\w+\s*:\s*NSApplication\s*,\s*open\s+urls\b"),
+)
+
+
+def registered_url_schemes(plist_bytes):
+    """The URL schemes an Info.plist registers with Launch Services."""
+    try:
+        info = plistlib.loads(plist_bytes)
+    except (plistlib.InvalidFileException, ValueError) as error:
+        return None, f"Info.plist does not parse: {error}"
+    schemes = []
+    for url_type in info.get("CFBundleURLTypes", []) or []:
+        schemes.extend(url_type.get("CFBundleURLSchemes", []) or [])
+    return schemes, None
+
+
+def handles_url_events(code):
+    return any(pattern.search(code) for pattern in URL_EVENT_HANDLERS)
+
+
+def url_schemes_have_a_handler(repo):
+    """A URL scheme the bundle registers has code behind it. The `vitruvian`
+    scheme outlived the GitHub sign-in it was added for (3.49 removed the
+    last code that used it) and stayed registered, so macOS kept sending
+    `vitruvian://` links to an app that ignored them. Register a scheme
+    again only with the code that opens its links."""
+    problems = []
+    sample = (
+        b'<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>'
+        b"<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key>"
+        b"<array><string>sample</string></array></dict></array></dict></plist>"
+    )
+    if (
+        registered_url_schemes(sample)[0] != ["sample"]
+        or registered_url_schemes(b"<plist><dict/></plist>")[0] != []
+        or handles_url_events("let x = 1")
+        or not handles_url_events(
+            "forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))"
+        )
+        or not handles_url_events(
+            "func application(_ application: NSApplication, open urls: [URL]) {"
+        )
+        or not handles_url_events("    .onOpenURL { url in }")
+    ):
+        problems.append(
+            "the self-check no longer finds a registered scheme or a handler"
+        )
+    path = repo.app_dir / "Resources/Info.plist"
+    if not path.exists():
+        return problems + ["Resources/Info.plist is missing"]
+    schemes, error = registered_url_schemes(path.read_bytes())
+    if error:
+        return problems + [error]
+    if schemes and not any(
+        handles_url_events(code_without_comments(repo.lines_at(source)))
+        for source in repo.app_sources()
+    ):
+        problems.append(
+            f"Info.plist registers the URL schemes {schemes}, but no app source "
+            "handles a URL event (kAEGetURL, application(_:open:) or onOpenURL); "
+            "remove CFBundleURLTypes or add the code that opens its links"
+        )
+    return problems
 
 
 # --- Localization -------------------------------------------------------------
@@ -3002,6 +3071,7 @@ RULES = [
     activation_is_yielded_through_the_handoff,
     tap_owners_invalidate_their_ports,
     keychain_is_never_touched,
+    url_schemes_have_a_handler,
     visible_text_curls_its_apostrophes,
     french_punctuation_stays_on_its_line,
     decimals_name_their_region,
