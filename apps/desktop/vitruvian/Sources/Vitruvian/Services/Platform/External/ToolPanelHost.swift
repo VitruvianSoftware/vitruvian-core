@@ -219,6 +219,9 @@ package final class ToolPanelHost: ObservableObject {
     /// For each tool: when its status was last shown, the one waiting to be
     /// shown, and the timer that will show it.
     private var statusPacing: [ToolID: StatusPacing] = [:]
+    /// The tools whose undeclared words were left out in this run of their
+    /// program, and logged: once for each run.
+    private var wordsLeftOut: Set<ToolID> = []
 
     private struct StatusPacing {
         var last: TimeInterval?
@@ -532,10 +535,21 @@ package final class ToolPanelHost: ObservableObject {
     /// The first change after a quiet second is shown at once. Later ones
     /// within the second replace each other, and the newest is shown when
     /// the second is up.
+    ///
+    /// Words and a start time from a tool whose manifest does not declare
+    /// them are left out: the mark is drawn all the same, and the tool's log
+    /// says so once for each run of its program.
     @discardableResult
     package func status(_ tool: ToolID, _ asked: UIStatusParams) -> Refusal? {
         guard parts.described(tool)?.showsStatus == true else { return .noStatus }
-        let next = ToolStatus(asked)
+        var kept = asked
+        if parts.described(tool)?.showsActivity != true, asked.activity != nil || asked.since != nil {
+            kept = UIStatusParams(state: asked.state, text: asked.text, icon: asked.icon)
+            if wordsLeftOut.insert(tool).inserted {
+                parts.log(tool, "the words of its status were left out: the manifest does not declare them")
+            }
+        }
+        let next = ToolStatus(kept)
         var pacing = statusPacing[tool] ?? StatusPacing()
         let now = parts.clock.now
         if pacing.timer == nil, pacing.last.map({ now - $0 >= Self.statusSeconds }) ?? true {
@@ -573,6 +587,7 @@ package final class ToolPanelHost: ObservableObject {
 
     /// A tool's status goes, and any waiting to be shown with it.
     private func forgetStatus(of tool: ToolID) {
+        wordsLeftOut.remove(tool)
         statusPacing.removeValue(forKey: tool)?.timer?.cancel()
         if statuses[tool] != nil { statuses[tool] = nil }
     }

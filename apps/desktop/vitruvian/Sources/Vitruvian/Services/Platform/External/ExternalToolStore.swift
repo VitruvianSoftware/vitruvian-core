@@ -21,7 +21,8 @@ package final class ExternalToolStore {
     /// as its hello names it. The app's own list, not every name the
     /// protocol has: a name added to the protocol is claimed only once the
     /// app draws it.
-    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions]
+    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions,
+                                                                  .statusActivity]
 
     /// Why a folder was not added.
     package enum Refusal: Error, Equatable, Sendable {

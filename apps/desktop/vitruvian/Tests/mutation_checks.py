@@ -989,7 +989,8 @@ MUTATIONS = [
      "                                            dataFolder: data.path,\n"
      "                                            features: Self.features.map(\\.rawValue)),\n",
      "                                            dataFolder: data.path),\n",
-     "the hello names what this app has: a status, a choice block and options on a preference"),
+     "the hello names what this app has: a status, a choice block, options on a preference and a "
+     "status's words"),
     ("a start time before 1970 is read", "tool-runtime",
      "../../../packages/vitruvian-sdk/Sources/VitruvianToolProtocol/Panels.swift",
      "        if let since, !(since >= 0) {\n"
@@ -998,12 +999,43 @@ MUTATIONS = [
      "        }\n",
      "",
      "a status that counts from before 1970 is answered invalid params, and nothing is handed on"),
-    ("the app claims words it does not draw", "tool-runtime",
+    ("the app forgets words it draws", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
-     "    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions]\n",
      "    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions,\n"
      "                                                                  .statusActivity]\n",
-     "the hello does not name a status's words, which this app does not draw yet"),
+     "    nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions]\n",
+     "the hello names what this app has: a status, a choice block, options on a preference and a "
+     "status's words"),
+    ("undeclared words are drawn", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+     "        if parts.described(tool)?.showsActivity != true, asked.activity != nil || asked.since != nil {\n",
+     "        if parts.described(tool)?.showsStatus != true, asked.activity != nil || asked.since != nil {\n",
+     "a status with words its tool did not declare is kept without them, and answered with no refusal: "
+     "the mark is drawn"),
+    ("seconds beat the tool's words", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "        if let words = fewWords(status.activity, language: language) { return .words(words) }\n"
+     "        if let since = status.since { return .seconds(since: since) }\n",
+     "        if let since = status.since { return .seconds(since: since) }\n"
+     "        if let words = fewWords(status.activity, language: language) { return .words(words) }\n",
+     "a status with words and a start time draws the words"),
+    ("a future start counts down", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "        let elapsed = max(0, Int64(now.timeIntervalSince(since).rounded(.down)))\n",
+     "        let elapsed = Int64(now.timeIntervalSince(since).rounded(.down))\n",
+     "a start time in the future counts from 0, never down"),
+    ("another tool's words sit beside the mark", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "        rightWing(winner(tools: tools), nexusRunning: nexusRunning, language: language)\n",
+     "        rightWing(tools.first(where: { $0.1.activity != nil }).map { .tool($0.0, $0.1) } ?? winner(tools: tools),\n"
+     "                  nexusRunning: nexusRunning, language: language)\n",
+     "the worse mark has no words, so the percent is drawn, never another tool's words"),
+    ("the button reads the seconds aloud", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "        let few = fewWords(status.activity, language: language) ?? \"\"\n",
+     "        let few = fewWords(status.activity, language: language)\n"
+     "            ?? status.since.map { seconds(since: $0, now: Date(), language: language) } ?? \"\"\n",
+     "the seconds are not said: they would rename the button every second"),
     ("a stored value that is no option is dropped from the menu", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
      "            if !options.contains(where: { $0.value == selected }) {\n",

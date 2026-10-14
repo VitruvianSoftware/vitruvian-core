@@ -303,6 +303,19 @@ Step 5, planted: `shows_activity` true for every tool. `conformance_test` failed
   5. "the button reads the seconds aloud": append the seconds in `words`. Suite `platform`.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-14).**
+
+- **`RightWing` is `RestingStatus.RightWing`**, nested, as the tests name it; `RestingStatus.wordsLimit` is the 12.
+- **One more function, `RestingStatus.rightWing(tools:nexusRunning:language:)`**, which picks the winner and asks `rightWing` for it. With the plan's shape, `rightWing(_ mark:)` sees one mark, so regression 4 ("another tool's words sit beside the mark") had no line to change. The wing calls the new function (Task 5), so the rule "only the shown mark's words" lives in `Core` and has a test, `theWordsAreTheShownMarks`, and regression 4 is planted there.
+- **`RestingStatus.fewWords`** cuts the words, for the wing and for the button alike. `words` puts them after the mark's words with `buttonTitle`'s own rule, so the pause is ", " or "、" by one rule. The mark's tooltip is the same `words`, so it says them too.
+- **The seconds are `Locale(identifier: language.rawValue)`'s.** Foundation groups the digits above 999 ("1,000s" in English), where Nexus Agent writes "1000s". Below 1,000 they are the same.
+- **The host logs undeclared words when it receives the status**, before the once-a-second pacing, so two statuses in one second still log once. The flag is cleared where the status is (`forgetStatus`: the program's end, and the tool forgotten).
+- **`ExternalToolStoreTests.adding` changed on purpose**: it holds the hello's exact params, which now name four features.
+- **Task 1's two hello entries moved**: "the app says it has nothing" waits for the hello test's new message, and "the app claims words it does not draw", whose line is now the app's list as built, is "the app forgets words it draws" (the list without `.statusActivity`).
+- Counts: `platform` 938 (was 916), `tool-runtime` 970 (was 962).
+
+Step 5, each planted with the driver and DETECTED: "undeclared words are drawn" (`tool-runtime`), "seconds beat the tool's words", "a future start counts down", "another tool's words sit beside the mark", "the button reads the seconds aloud" (`platform`); and the two moved, "the app says it has nothing" and "the app forgets words it draws" (`tool-runtime`).
+
 ---
 
 ### Task 5: The closed island draws the words, and the agreement sheet says so

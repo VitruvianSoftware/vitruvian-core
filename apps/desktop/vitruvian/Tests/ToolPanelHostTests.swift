@@ -32,6 +32,10 @@ enum ToolPanelHostTests {
         aStatusGoesWhenTheProgramEnds(suite)
         aStatusGoesWhenTheToolIsForgotten(suite)
         changesArePublishedOnceASecond(suite)
+        declaredWordsAreKept(suite)
+        undeclaredWordsAreLeftOutAndTheMarkStays(suite)
+        aStatusWithoutWordsTakesThemAway(suite)
+        theWordsGoWithTheProgram(suite)
     }
 
     static let id = ToolID("com.acme.deploys")!
@@ -87,8 +91,9 @@ enum ToolPanelHostTests {
         private(set) var tool: ExternalTool!
         private(set) var host: ToolPanelHost!
 
-        /// `declaresStatus` is whether the tool's manifest declares a status.
-        init(limits: ToolLimits = .standard, declaresStatus: Bool = true) {
+        /// `declaresStatus` is whether the tool's manifest declares a status;
+        /// `declaresActivity`, whether that status says `"activity": true`.
+        init(limits: ToolLimits = .standard, declaresStatus: Bool = true, declaresActivity: Bool = false) {
             folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("vitruvian-panels-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder.appendingPathComponent("ui"),
@@ -102,7 +107,7 @@ enum ToolPanelHostTests {
                   {"id": "log", "title": {"en": "Deploy log"}, "placement": "window"},
                   {"id": "dashboard", "title": {"en": "Dashboard"}, "placement": "window", "kind": "web", "entry": "ui/dashboard.html"},
                   {"id": "broken", "title": {"en": "Broken"}, "placement": "window", "kind": "web", "entry": "ui/missing.html"}
-                ]\#(declaresStatus ? #", "status": {"placement": "island"}"# : "")}}
+                ]\#(declaresStatus ? #", "status": {"placement": "island"\#(declaresActivity ? #", "activity": true"# : "")}"# : "")}}
                 """#)!
             tool = ExternalTool(
                 manifest: described.manifest, clock: clock, limits: limits,
@@ -597,5 +602,64 @@ extension ToolPanelHostTests {
         bench.clock.advance(by: 5)
         bench.host.status(id, status(.ok))
         suite.expect(published.last == .ok && published.count == 4, "after a quiet while the next is shown at once again")
+    }
+}
+
+/// A status's few words: kept for a tool that declares them, left out for
+/// one that does not, and gone with the status.
+extension ToolPanelHostTests {
+    static let start = Date(timeIntervalSince1970: 1_760_450_400.5)
+
+    static func worded(_ state: StatusState, activity: UIText? = "3", since: Double? = nil) -> UIStatusParams {
+        UIStatusParams(state: state, text: "Checks are running", activity: activity, since: since)
+    }
+
+    static func declaredWordsAreKept(_ suite: TestSuite) {
+        let bench = Bench(declaresActivity: true)
+        suite.expect(bench.host.status(id, worded(.busy, since: 1_760_450_400.5)) == nil
+                         && bench.host.statuses[id] == ToolStatus(state: .busy, text: "Checks are running", icon: nil,
+                                                                  activity: "3", since: start)
+                         && bench.logged.isEmpty,
+                     "a tool that declares its words has them kept with its status, its start time too")
+    }
+
+    static func undeclaredWordsAreLeftOutAndTheMarkStays(_ suite: TestSuite) {
+        let bench = Bench()
+        let leftOut = "the words of its status were left out: the manifest does not declare them"
+        suite.expect(bench.host.status(id, worded(.busy)) == nil
+                         && bench.host.statuses[id] == ToolStatus(state: .busy, text: "Checks are running", icon: nil),
+                     "a status with words its tool did not declare is kept without them, and answered with no "
+                         + "refusal: the mark is drawn")
+        bench.clock.advance(by: 1)
+        bench.host.status(id, worded(.failure, activity: nil, since: 12))
+        suite.expect(bench.host.statuses[id] == ToolStatus(state: .failure, text: "Checks are running", icon: nil)
+                         && bench.logged == [leftOut],
+                     "a start time is left out the same, and the tool's log says so once for the run")
+        bench.host.toolEnded(id)
+        bench.host.status(id, worded(.busy))
+        suite.expect(bench.logged == [leftOut, leftOut], "and once again for the program's next run")
+    }
+
+    static func aStatusWithoutWordsTakesThemAway(_ suite: TestSuite) {
+        let bench = Bench(declaresActivity: true)
+        bench.host.status(id, worded(.busy, since: 1_760_450_400.5))
+        bench.clock.advance(by: 1)
+        bench.host.status(id, status(.busy, "Checks are running"))
+        suite.expect(bench.host.statuses[id] == ToolStatus(state: .busy, text: "Checks are running", icon: nil),
+                     "each status replaces all of the last: one without words takes them away, and the mark stays")
+        bench.clock.advance(by: 1)
+        bench.host.status(id, worded(.none))
+        suite.expect(bench.host.statuses[id] == nil, "none takes the mark and any words with it")
+    }
+
+    static func theWordsGoWithTheProgram(_ suite: TestSuite) {
+        let bench = Bench(declaresActivity: true)
+        bench.host.status(id, worded(.busy))
+        bench.host.toolEnded(id)
+        suite.expect(bench.host.statuses[id] == nil, "a status's words go with its program, as the mark does")
+        let forgotten = Bench(declaresActivity: true)
+        forgotten.host.status(id, worded(.busy))
+        forgotten.host.forget(id)
+        suite.expect(forgotten.host.statuses[id] == nil, "and with a tool that is switched off, updated or removed")
     }
 }
