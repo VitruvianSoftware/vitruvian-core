@@ -215,7 +215,23 @@ drifted=()
 unreachable=()
 changed=0
 diff_file="$(mktemp)"
-trap 'rm -f "$diff_file"' EXIT
+# Set only by the last line of this script. On bash 3.2 (macOS's /bin/bash) a
+# `set -u` abort runs the EXIT trap with $? = 0 and then exits with the trap's
+# own status, so a trap that only cleans up turns a script that died half way
+# into exit 0: a gate that reports green having checked nothing. HomeSpeaker
+# 1.12.0 and 1.13.0 shipped with no files that way (tools/desktop-package).
+# Anything short of the last line is therefore a failure.
+TIDY_COMPLETE=false
+cleanup() {
+  local status=$?
+  rm -f "$diff_file"
+  if [ "$TIDY_COMPLETE" != "true" ] && [ "$status" -eq 0 ]; then
+    echo "gomod: tidy.sh stopped before it finished; failing." >&2
+    status=1
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
 for dir in "${mods[@]}"; do
   if [ "$MODE" = "check" ]; then
     # -diff writes the would-be patch to stdout and exits non-zero when the
@@ -288,3 +304,4 @@ else
   printf '%s%s gomod%s — tidied %d module(s), %d changed\n' \
     "$C_GREEN" "$GLYPH_OK" "$C_RESET" "${#mods[@]}" "$changed"
 fi
+TIDY_COMPLETE=true
