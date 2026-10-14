@@ -1289,6 +1289,17 @@ MUTATIONS = [
      "        guard active, generation == readGeneration else { return }\n",
      "        guard active else { return }\n",
      "the read from before a restart does not become the new baseline"),
+    ("a failed save of off lets the fixed Space order's recovery go", "spaces-order",
+     "Sources/Vitruvian/Services/SpacesOrder/SpacesOrderHold.swift",
+     "            guard persisted else { return }\n",
+     "",
+     "failed off persistence and a reentrant sync cannot discard recovery"),
+    ("a superseded Space order reconcile reads the Dock's setting", "spaces-order",
+     "Sources/Vitruvian/Services/SpacesOrder/SpacesOrderHold.swift",
+     "    private func reconcileOnQueue(wanted: Bool, generation: UInt64) -> Bool {\n"
+     "        guard generation == currentRequest() else { return false }\n",
+     "    private func reconcileOnQueue(wanted: Bool, generation: UInt64) -> Bool {\n",
+     "a reconcile superseded before admission returns false without system work"),
 ]
 
 
