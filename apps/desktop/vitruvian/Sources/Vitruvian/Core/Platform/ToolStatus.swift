@@ -30,17 +30,16 @@ package struct ToolStatus: Equatable, Sendable {
     }
 }
 
-/// The one status mark the closed island shows.
+/// The one status mark the closed island shows. Only a tool has one: the
+/// built-in GitHub feature that had its own is gone, the GitHub tool from
+/// the catalog having taken its place.
 package enum RestingMark: Equatable, Sendable {
-    /// The built-in GitHub feature's, for what it watches.
-    case gitHub(Verdict)
     /// A tool's.
     case tool(ToolID, ToolStatus)
 }
 
 /// Which mark the closed island shows. Its wing holds one beside the agent
-/// mark, so of the built-in GitHub mark and every tool's status the worst
-/// wins.
+/// mark, so of every tool's status the worst wins.
 package enum RestingStatus {
     /// How bad a state is: failure 3, attention 2, busy 1, ok 0. `none` is
     /// no mark and is below all of them.
@@ -54,17 +53,6 @@ package enum RestingStatus {
         }
     }
 
-    /// How bad the built-in mark is, on the same scale: red is a failure,
-    /// amber is busy, green is ok. Grey is no mark.
-    package static func severity(_ verdict: Verdict) -> Int? {
-        switch verdict {
-        case .red: return 3
-        case .amber: return 1
-        case .green: return 0
-        case .grey: return nil
-        }
-    }
-
     /// The statuses that compete for the mark: of the tools whose status
     /// may be drawn, in their order, each that has set one. `statuses` is
     /// every status kept, a switched-off tool's among them; `tools` is what
@@ -73,24 +61,16 @@ package enum RestingStatus {
         tools.compactMap { tool in statuses[tool].map { (tool, $0) } }
     }
 
-    /// The mark to draw: the worst of the built-in one and the tools'. On
-    /// a tie the built-in wins, then the tool that comes first in `tools`,
-    /// which is the order they were added in. `gitHub` is nil when nothing
-    /// is watched. Nil when there is nothing to draw.
-    package static func winner(gitHub: Verdict?, tools: [(ToolID, ToolStatus)]) -> RestingMark? {
+    /// The mark to draw: the worst of the tools'. On a tie the tool that
+    /// comes first in `tools` wins, which is the order they were added in.
+    /// Nil when there is nothing to draw.
+    package static func winner(tools: [(ToolID, ToolStatus)]) -> RestingMark? {
         var best: (mark: RestingMark, severity: Int)?
-        if let gitHub, let severity = severity(gitHub) { best = (.gitHub(gitHub), severity) }
         for (tool, status) in tools {
             let severity = severity(status.state)
             if severity > (best?.severity ?? -1) { best = (.tool(tool, status), severity) }
         }
         return best?.mark
-    }
-
-    /// The built-in mark's verdict: none while no repository is watched,
-    /// whatever the last one was.
-    package static func gitHub(watching repositories: Int, aggregate: Verdict) -> Verdict? {
-        repositories > 0 ? aggregate : nil
     }
 
     /// What a tool's mark says: the tool's name, a colon, and the tool's

@@ -216,10 +216,7 @@ package final class ExternalToolStore {
             panels: { .shared },
             beforeAdding: { id, ready in GitHubHandoff.prepare(id, parts: .live, then: ready) },
             added: { installed, origin in GitHubHandoff.perform(installed, from: origin, parts: .live) },
-            removed: {
-                GitHubHandoff.toolRemoved($0, defaults: .standard,
-                                          availabilityChanged: { FeatureRuntime.shared.availabilityChangedElsewhere() })
-            })
+            removed: { GitHubHandoff.toolRemoved($0, defaults: .standard) })
     }
 
     /// Hears each language the app changes to, as its tag, on the main

@@ -7,20 +7,17 @@ import VitruvianServices
 import VitruvianToolProtocol
 import VitruvianUI
 
-/// The one status mark the closed island shows: which of the built-in
-/// GitHub mark and every tool's status it is. Plain values; nothing is
-/// drawn.
+/// The one status mark the closed island shows: which of every tool's
+/// status it is. Plain values; nothing is drawn.
 enum ToolStatusTests {
     static func run(_ suite: TestSuite) {
-        noStatusAndNoGitHubIsNoMark(suite)
-        theBuiltInAloneIsTheBuiltIn(suite)
+        noStatusIsNoMark(suite)
         theWorstWins(suite)
-        aTieGoesToTheBuiltInThenTheEarlierTool(suite)
+        aTieGoesToTheEarlierTool(suite)
         okIsAMark(suite)
         noneIsNoStatus(suite)
         aSwitchedOffStatusIsKeptAndNotDrawn(suite)
-        theBuiltInMarkIsWhatItWas(suite)
-        eachStateHasTheBuiltInsLook(suite)
+        eachStateHasItsLook(suite)
         aToolsIconIsUsedWhenThisMacHasIt(suite)
         theLabelIsTheToolsNameAndItsWords(suite)
         aClickOpensTheToolsPageUnlessItIsOK(suite)
@@ -34,65 +31,37 @@ enum ToolStatusTests {
         ToolStatus(state: state, text: text, icon: icon)!
     }
 
-    /// The states that are a mark, mildest first, and the verdicts that
-    /// are, the same way.
+    /// The states that are a mark, mildest first.
     static let states: [StatusState] = [.ok, .busy, .attention, .failure]
-    static let verdicts: [Verdict] = [.green, .amber, .red]
 
-    static func noStatusAndNoGitHubIsNoMark(_ suite: TestSuite) {
-        suite.expect(RestingStatus.winner(gitHub: nil, tools: []) == nil,
-                     "with no tool's status and nothing watched on GitHub there is no mark")
-    }
-
-    static func theBuiltInAloneIsTheBuiltIn(_ suite: TestSuite) {
-        for verdict in verdicts {
-            suite.expect(RestingStatus.winner(gitHub: verdict, tools: []) == .gitHub(verdict),
-                         "with no tool's status the mark is the built-in one, as it is today (\(verdict))")
-        }
-        suite.expect(RestingStatus.winner(gitHub: .grey, tools: []) == nil && RestingStatus.severity(Verdict.grey) == nil,
-                     "a grey verdict is no mark, as it is today")
-        suite.expect(RestingStatus.winner(gitHub: .grey, tools: [(first, status(.ok))]) == .tool(first, status(.ok)),
-                     "and a tool's status shows beside a grey built-in, which shows nothing")
+    static func noStatusIsNoMark(_ suite: TestSuite) {
+        suite.expect(RestingStatus.winner(tools: []) == nil, "with no tool's status there is no mark")
     }
 
     static func theWorstWins(_ suite: TestSuite) {
-        suite.expect(states.map { RestingStatus.severity($0) } == [0, 1, 2, 3]
-                         && verdicts.map { RestingStatus.severity($0) } == [0, 1, 3],
-                     "failure and red are the worst, then attention, then busy and amber, then ok and green")
+        suite.expect(states.map { RestingStatus.severity($0) } == [0, 1, 2, 3] && RestingStatus.severity(.none) == -1,
+                     "failure is the worst, then attention, then busy, then ok; none is below them all")
         for (low, mild) in states.enumerated() {
             for harsh in states[(low + 1)...] {
                 let wanted = RestingMark.tool(second, status(harsh))
-                suite.expect(RestingStatus.winner(gitHub: nil, tools: [(first, status(mild)), (second, status(harsh))]) == wanted
-                                 && RestingStatus.winner(gitHub: nil,
-                                                         tools: [(second, status(harsh)), (first, status(mild))]) == wanted,
+                suite.expect(RestingStatus.winner(tools: [(first, status(mild)), (second, status(harsh))]) == wanted
+                                 && RestingStatus.winner(tools: [(second, status(harsh)), (first, status(mild))]) == wanted,
                              "of two tools the worse status wins, whichever was added first (\(mild), \(harsh))")
             }
         }
-        for verdict in verdicts {
-            for state in states {
-                let built = RestingStatus.severity(verdict) ?? -1
-                let tools = RestingStatus.severity(state)
-                let got = RestingStatus.winner(gitHub: verdict, tools: [(first, status(state))])
-                let wanted: RestingMark = tools > built ? .tool(first, status(state)) : .gitHub(verdict)
-                suite.expect(got == wanted,
-                             "of the built-in mark and a tool's the worse wins (\(verdict), \(state)): \(String(describing: got))")
-            }
+    }
+
+    static func aTieGoesToTheEarlierTool(_ suite: TestSuite) {
+        for state in states {
+            suite.expect(RestingStatus.winner(tools: [(first, status(state, text: "one")),
+                                                      (second, status(state, text: "two"))])
+                             == .tool(first, status(state, text: "one")),
+                         "of two tools that tie, the one added first (\(state))")
         }
     }
 
-    static func aTieGoesToTheBuiltInThenTheEarlierTool(_ suite: TestSuite) {
-        suite.expect(RestingStatus.winner(gitHub: .red, tools: [(first, status(.failure))]) == .gitHub(.red)
-                         && RestingStatus.winner(gitHub: .amber, tools: [(first, status(.busy))]) == .gitHub(.amber)
-                         && RestingStatus.winner(gitHub: .green, tools: [(first, status(.ok))]) == .gitHub(.green),
-                     "on a tie the built-in mark wins")
-        suite.expect(RestingStatus.winner(gitHub: nil, tools: [(first, status(.busy, text: "one")),
-                                                               (second, status(.busy, text: "two"))])
-                         == .tool(first, status(.busy, text: "one")),
-                     "and of two tools that tie, the one added first")
-    }
-
     static func okIsAMark(_ suite: TestSuite) {
-        suite.expect(RestingStatus.winner(gitHub: nil, tools: [(first, status(.ok))]) == .tool(first, status(.ok)),
+        suite.expect(RestingStatus.winner(tools: [(first, status(.ok))]) == .tool(first, status(.ok)),
                      "a tool that says all is well has a mark: the green tick")
     }
 
@@ -117,45 +86,36 @@ extension ToolStatusTests {
 
     static func aSwitchedOffStatusIsKeptAndNotDrawn(_ suite: TestSuite) {
         let kept: [ToolID: ToolStatus] = [first: status(.failure), second: status(.busy)]
-        suite.expect(RestingStatus.winner(gitHub: nil, tools: RestingStatus.shown(of: [first, second], statuses: kept))
+        suite.expect(RestingStatus.winner(tools: RestingStatus.shown(of: [first, second], statuses: kept))
                          == .tool(first, status(.failure)),
                      "the statuses that compete are those of the tools whose status is switched on, in their order")
-        suite.expect(RestingStatus.winner(gitHub: nil, tools: RestingStatus.shown(of: [second], statuses: kept))
+        suite.expect(RestingStatus.winner(tools: RestingStatus.shown(of: [second], statuses: kept))
                          == .tool(second, status(.busy))
-                         && RestingStatus.winner(gitHub: .green, tools: RestingStatus.shown(of: [], statuses: kept))
-                         == .gitHub(.green),
-                     "a status the person switched off is kept and not drawn: another tool's shows, or the built-in")
+                         && RestingStatus.winner(tools: RestingStatus.shown(of: [], statuses: kept)) == nil,
+                     "a status the person switched off is kept and not drawn: another tool's shows, or none")
         suite.expect(RestingStatus.shown(of: [first, second], statuses: [:]).isEmpty,
                      "and a tool that has set none has none to draw")
     }
 
-    static func theBuiltInMarkIsWhatItWas(_ suite: TestSuite) {
-        suite.expect(NotchGitHubRestingIndicator.verdict(watching: 0, aggregate: .red) == nil
-                         && NotchGitHubRestingIndicator.verdict(watching: 0, aggregate: .green) == nil,
-                     "with no repository watched the built-in has no verdict, whatever its last one was")
-        for verdict in Verdict.allCases {
-            suite.expect(NotchGitHubRestingIndicator.verdict(watching: 2, aggregate: verdict) == verdict,
-                         "with some watched it is their verdict (\(verdict))")
-        }
-    }
-
-    static func eachStateHasTheBuiltInsLook(_ suite: TestSuite) {
+    /// The look is the one the built-in GitHub feature's mark had, number
+    /// for number, and stays so now that the feature is gone.
+    static func eachStateHasItsLook(_ suite: TestSuite) {
         typealias Look = ToolStatusMarkContent
         let ok = mark(status(.ok)), busy = mark(status(.busy)), attention = mark(status(.attention))
         let failure = mark(status(.failure))
         suite.expect(ok.symbol == "checkmark" && ok.pointSize == 8 && ok.weight == .bold && ok.tint == .green && !ok.breathes,
-                     "ok is the built-in's green: a tick, 8 points, bold, still")
+                     "ok is green: a tick, 8 points, bold, still")
         suite.expect(busy.symbol == "arrow.triangle.2.circlepath" && busy.pointSize == 9 && busy.weight == .medium
                          && busy.tint == .orange && busy.breathes,
-                     "busy is the built-in's amber in size and motion: 9 points, medium, orange, breathing")
+                     "busy is amber: 9 points, medium, orange, breathing")
         suite.expect(attention.symbol == "exclamationmark.circle.fill" && attention.pointSize == 8
                          && attention.weight == .bold && attention.tint == .yellow && !attention.breathes,
                      "attention is yellow: a mark in a circle, 8 points, bold, still")
         suite.expect(failure.symbol == "exclamationmark.triangle.fill" && failure.pointSize == 8
                          && failure.weight == .bold && failure.tint == .red && !failure.breathes,
-                     "failure is the built-in's red: a warning triangle, 8 points, bold, still")
+                     "failure is red: a warning triangle, 8 points, bold, still")
         suite.expect(Look.breathingScale == 0.9...1.15 && Look.breathingOpacity == 0.65...1.0 && Look.breathingSeconds == 0.9,
-                     "the breathing is the built-in's: scale 0.9 to 1.15, opacity 0.65 to 1, 0.9 seconds each way")
+                     "the breathing is scale 0.9 to 1.15, opacity 0.65 to 1, 0.9 seconds each way")
         suite.expect([ok, busy, attention, failure].filter(\.breathes) == [busy], "only busy breathes")
     }
 
@@ -208,8 +168,8 @@ extension ToolStatusTests {
         }
         suite.expect(RestingStatus.opens(.tool(first, status(.ok)), pages: [page]) == nil,
                      "a green mark asks for nothing: the click does what it does today")
-        suite.expect(RestingStatus.opens(.gitHub(.red), pages: [page]) == nil && RestingStatus.opens(nil, pages: [page]) == nil,
-                     "the built-in mark, and no mark, leave the click as it is today")
+        suite.expect(RestingStatus.opens(nil, pages: [page]) == nil,
+                     "no mark leaves the click as it is today")
         suite.expect(RestingStatus.opens(.tool(first, status(.failure)), pages: [other]) == nil
                          && RestingStatus.opens(.tool(first, status(.failure)), pages: []) == nil,
                      "a tool with no island page, or whose page the person hid, leaves it as it is today too")
@@ -230,8 +190,5 @@ extension ToolStatusTests {
                      "with no mark the button keeps its own name, with nothing after it")
         suite.expect(RestingStatus.buttonTitle("開く", saying: "Deploys：失敗", language: .ja) == "開く、Deploys：失敗",
                      "the pause between the two is written the way the language writes it")
-        suite.expect(RestingStatus.gitHub(watching: 0, aggregate: .red) == nil
-                         && RestingStatus.gitHub(watching: 1, aggregate: .red) == .red,
-                     "the built-in mark's rule is one rule too: no repository watched is no mark")
     }
 }

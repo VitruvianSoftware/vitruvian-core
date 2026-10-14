@@ -25,8 +25,8 @@ extension RestingStatus {
     /// shows is a tool's: that tool's island page, unless the mark says all
     /// is well, which asks for nothing. `pages` is the island pages the
     /// Tools area lists, so a tool with no island page, or one whose page
-    /// the person hid, gives nil. Nil too for the built-in mark and for no
-    /// mark: the click then does what it always did.
+    /// the person hid, gives nil. Nil too for no mark: the click then does
+    /// what it always did.
     package static func opens(_ mark: RestingMark?, pages: [ToolPanelHost.Key]) -> ToolPanelHost.Key? {
         guard case .tool(let tool, let status)? = mark, status.state != .ok else { return nil }
         return pages.first { $0.tool == tool }
@@ -34,15 +34,12 @@ extension RestingStatus {
 
     /// What the closed island's status mark says now, for the island's one
     /// button: the words of the tool's mark the wing shows. Nil when the
-    /// wing shows no tool's mark: none is set, the built-in mark wins, or
-    /// the Nexus session is running and the wing shows that instead.
+    /// wing shows no tool's mark: none is set, or the Nexus session is
+    /// running and the wing shows that instead.
     @MainActor package static func saidNow(language: AppLanguage) -> String? {
         guard !NexusAgentService.shared.session.isRunning else { return nil }
-        let gitHub = GitHubService.shared
         let store = ExternalToolStore.shared
-        let mark = winner(gitHub: Self.gitHub(watching: gitHub.watchedRepositories.count,
-                                              aggregate: gitHub.summary.aggregate),
-                          tools: shown(of: store.statusTools(), statuses: ToolPanelHost.shared.statuses))
+        let mark = winner(tools: shown(of: store.statusTools(), statuses: ToolPanelHost.shared.statuses))
         guard case .tool(let id, let status)? = mark else { return nil }
         let tool = store.installed[id]?.tool
         let name = tool?.name.text(for: language.rawValue) ?? tool?.manifest.tool.name ?? id.rawValue
@@ -51,9 +48,8 @@ extension RestingStatus {
 
     /// Fires when what `saidNow` gives may have changed.
     @MainActor package static var saidChanges: AnyPublisher<Void, Never> {
-        Publishers.Merge5(ToolPanelHost.shared.$statuses.map { _ in }.eraseToAnyPublisher(),
+        Publishers.Merge4(ToolPanelHost.shared.$statuses.map { _ in }.eraseToAnyPublisher(),
                           ToolRegistry.shared.objectWillChange.eraseToAnyPublisher(),
-                          GitHubService.shared.objectWillChange.eraseToAnyPublisher(),
                           NexusAgentService.shared.session.objectWillChange.eraseToAnyPublisher(),
                           L10n.shared.objectWillChange.eraseToAnyPublisher())
             .eraseToAnyPublisher()

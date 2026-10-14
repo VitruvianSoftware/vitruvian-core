@@ -11,9 +11,9 @@ import VitruvianToolProtocol
 /// glyph, its size, weight, colour and motion, and what VoiceOver says.
 /// Plain values, so the tests check a mark without drawing it.
 ///
-/// The look is the built-in GitHub mark's (`NotchGitHubRestingIndicator`),
-/// number for number: the tool chooses the state and may choose the glyph,
-/// and everything else is the app's.
+/// The look is the one the built-in GitHub feature's mark had, number for
+/// number: the tool chooses the state and may choose the glyph, and
+/// everything else is the app's.
 package struct ToolStatusMarkContent: Equatable, Sendable {
     package enum Weight: Equatable, Sendable {
         case bold, medium
@@ -23,7 +23,7 @@ package struct ToolStatusMarkContent: Equatable, Sendable {
         case green, orange, yellow, red
     }
 
-    /// The breathing of a `busy` mark, as the built-in amber mark breathes:
+    /// The breathing of a `busy` mark, as the built-in amber mark breathed:
     /// between these scales and opacities, this many seconds each way.
     package static let breathingScale: ClosedRange<Double> = 0.9...1.15
     package static let breathingOpacity: ClosedRange<Double> = 0.65...1.0
@@ -67,7 +67,7 @@ package struct ToolStatusMarkContent: Equatable, Sendable {
 }
 
 /// A tool's status mark, drawn in the closed island's wing with exactly
-/// the modifiers the built-in GitHub mark has for the matching verdict.
+/// the modifiers the built-in GitHub mark had for the matching verdict.
 package struct ToolStatusMark: View {
     package let content: ToolStatusMarkContent
 

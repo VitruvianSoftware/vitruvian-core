@@ -123,7 +123,6 @@ extension AppFeature {
         case .notchWatch: return .idle
         // Signing in waits on the person; nothing runs at rest yet. The event
         // stream (package B) is one idle connection, not a timer.
-        case .notchGitHub: return .idle
         // A blink every few seconds and a visit every few minutes, both
         // drawn by Core Animation, with one timer waiting for the next visit.
         case .notchMascot: return .periodic

@@ -127,7 +127,6 @@ package struct NotchAgentRestingWing: View {
     package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var nexusSession = NexusAgentService.shared.session
-    @ObservedObject private var gitHub = GitHubService.shared
     /// The tools' statuses, and the list of tools: a status set, a tool
     /// switched off, or its status switched off, draws the wing again.
     @ObservedObject private var panels = ToolPanelHost.shared
@@ -136,13 +135,11 @@ package struct NotchAgentRestingWing: View {
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
 
-    /// The one status mark the wing shows: the worst of the built-in
-    /// GitHub mark and every tool's status.
+    /// The one status mark the wing shows: the worst of every tool's
+    /// status.
     private var statusMark: RestingMark? {
-        RestingStatus.winner(
-            gitHub: NotchGitHubRestingIndicator.verdict(watching: gitHub.watchedRepositories.count,
-                                                        aggregate: gitHub.summary.aggregate),
-            tools: RestingStatus.shown(of: ExternalToolStore.shared.statusTools(), statuses: panels.statuses))
+        RestingStatus.winner(tools: RestingStatus.shown(of: ExternalToolStore.shared.statusTools(),
+                                                        statuses: panels.statuses))
     }
 
     package var body: some View {
@@ -158,8 +155,6 @@ package struct NotchAgentRestingWing: View {
                 NotchService.shared.select(.tools)
                 QuickLauncherService.shared.closeUtility()
                 panels.open(page, in: .island)
-            } else if gitHub.summary.aggregate == .red || gitHub.summary.aggregate == .amber {
-                NotchService.shared.select(.github)
             } else {
                 NotchService.shared.agentTab = .chat
                 NotchService.shared.select(.agents)
@@ -235,16 +230,14 @@ package struct NotchAgentRestingWing: View {
 
 package typealias NotchRestingWing = NotchAgentRestingWing
 
-/// The one status mark of the resting wing: the built-in GitHub mark, a
-/// tool's, or nothing, as `RestingStatus.winner` picked.
+/// The one status mark of the resting wing: a tool's, or nothing, as
+/// `RestingStatus.winner` picked.
 private struct NotchRestingStatusMark: View {
     let mark: RestingMark?
     let language: AppLanguage
 
     var body: some View {
         switch mark {
-        case .gitHub?:
-            NotchGitHubRestingIndicator()
         case .tool(let id, let status)?:
             ToolStatusMark(content: ToolStatusMarkContent(status, toolName: name(of: id), language: language,
                                                           strings: FeatureStrings.externalTools(language)))
@@ -257,56 +250,5 @@ private struct NotchRestingStatusMark: View {
     private func name(of id: ToolID) -> String {
         let tool = ExternalToolStore.shared.installed[id]?.tool
         return tool?.name.text(for: language.rawValue) ?? tool?.manifest.tool.name ?? id.rawValue
-    }
-}
-
-/// Live activity indicator in the resting wing showing GitHub repository pipeline status:
-/// - Green checkmark when watched repo pipeline on `main` is clean.
-/// - Amber breathing spinner (`arrow.triangle.branch`) when presubmits are running.
-/// - Red alert glyph (`exclamationmark.triangle.fill`) when a check fails on watched branches.
-package struct NotchGitHubRestingIndicator: View {
-    @ObservedObject private var gitHub = GitHubService.shared
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathing = false
-
-    package init() {}
-
-    /// The verdict the mark shows: none while no repository is watched,
-    /// whatever the last one was. The resting wing asks the same rule when
-    /// it picks between this mark and a tool's.
-    package static func verdict(watching repositories: Int, aggregate: Verdict) -> Verdict? {
-        RestingStatus.gitHub(watching: repositories, aggregate: aggregate)
-    }
-
-    private var indicatorVerdict: Verdict? {
-        Self.verdict(watching: gitHub.watchedRepositories.count, aggregate: gitHub.summary.aggregate)
-    }
-
-    package var body: some View {
-        if let verdict = indicatorVerdict {
-            switch verdict {
-            case .green:
-                Image(systemName: "checkmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.green)
-            case .amber:
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.orange)
-                    .scaleEffect(breathing && !reduceMotion ? 1.15 : 0.9)
-                    .opacity(breathing && !reduceMotion ? 1.0 : 0.65)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                            breathing = true
-                        }
-                    }
-            case .red:
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.red)
-            case .grey:
-                EmptyView()
-            }
-        }
     }
 }

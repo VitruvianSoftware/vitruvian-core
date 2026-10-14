@@ -412,11 +412,6 @@ package final class FeatureRuntime: ObservableObject {
         case .notchCalendar: return islandExtension(stopping: .stopNotchCalendar)
         case .notchAgents: return islandExtension(stopping: .stopAgentUsage)
         case .notchWatch: return islandExtension(stopping: .stopNotchWatch)
-        // Only the sign-in exists so far, and it lives outside the island:
-        // installing checks a saved token, uninstalling stops a sign-in in
-        // progress. The strip and page (package C) add `.notch` here through
-        // `islandExtension`, and package B wires GitHubService here.
-        case .notchGitHub: return [.gitHubAuth]
         // Leaving folds the wings it rests in, and coming back greets.
         case .notchMascot: return islandExtension(stopping: nil)
         case .scratchpad: return [.scratchpad]
@@ -514,7 +509,6 @@ package final class FeatureRuntime: ObservableObject {
         case .stopNotchCalendar: NotchCalendarService.shared.stop()
         case .stopAgentUsage: AgentUsageService.shared.stop()
         case .stopNotchWatch: NotchWatchService.shared.stop()
-        case .gitHubAuth: GitHubAuthService.shared.syncWithPreferences()
         case .scratchpad: ScratchpadService.shared.syncWithPreferences()
         case .commandBar: CommandBarService.shared.syncWithPreferences()
         case .nexusAgent: NexusAgentService.shared.syncWithPreferences()
@@ -551,7 +545,6 @@ package enum FeatureBindingAction: Hashable {
     case cameraPreview, wallpaper, radialMenu
     case notch, stopNotchTimer, stopNotchAccessories, stopNotchLyrics, notchQueue, notchAudioLevel
     case stopNotchNotifications, stopNotchDownloads, stopNotchCalendar, stopAgentUsage, stopNotchWatch
-    case gitHubAuth
     case scratchpad, commandBar, nexusAgent
     case cleanerScheduler, whatsAppScheduler, whatsAppOrganizer, resetWhatsAppDownloads, stopWhatsAppOrganizer
     case appUpdates, monitorPlan, monitorAlerts, fanControl

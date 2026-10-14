@@ -7,15 +7,14 @@ import VitruvianCore
 import VitruvianServices
 import VitruvianToolProtocol
 
-/// The GitHub feature hands its sign-in and settings to the GitHub tool
-/// once, through the tool's storage, and is hidden while the tool is
-/// installed.
+/// What the GitHub feature kept goes to the GitHub tool once, through the
+/// tool's storage, when the tool is added.
 enum GitHubHandoffTests {
     static func run(_ suite: TestSuite) {
-        handsEverythingOnceAndHidesTheFeature(suite)
+        handsEverythingOnce(suite)
         whatIsHandedIsWhatTheToolReads(suite)
         otherToolsAndAnUpdateHandNothing(suite)
-        removalBringsTheFeatureBackOff(suite)
+        removalLetsItBeHandedAgain(suite)
         theStoreTellsBeforeTheProgramStarts(suite)
         addingNeverWaitsForTheKeychain(suite)
         aRefusedKeychainHandsOverWithoutAToken(suite)
@@ -68,9 +67,7 @@ enum GitHubHandoffTests {
         let domain = "com.vitruviansoftware.vitruvian.tests.github.handoff.\(name)"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
-        defaults.set(true, forKey: AppFeature.notchGitHub.availabilityKey)
         defaults.set(true, forKey: AppFeature.notch.availabilityKey)
-        defaults[Preferences.notchGitHubEnabled] = true
         defaults[Preferences.githubWatchedRepositories] = #"["acme/web", "Acme/API"]"#
         defaults[Preferences.githubPollInterval] = 45
         defaults[Preferences.githubMouseRunningMode] = "fixed"
@@ -89,11 +86,9 @@ enum GitHubHandoffTests {
         StorageAccess.Backing(read: { box.values[$0] }, write: { box.values[$0] = $1 })
     }
 
-    static func parts(_ defaults: UserDefaults, token: String?, box: Box, off: @escaping () -> Void = {},
-                      changed: @escaping () -> Void = {},
+    static func parts(_ defaults: UserDefaults, token: String?, box: Box,
                       log: @escaping (String) -> Void = { _ in }) -> GitHubHandoff.Parts {
-        GitHubHandoff.Parts(defaults: defaults, token: { token }, backing: backing(box), featureOff: off,
-                            availabilityChanged: changed, log: log)
+        GitHubHandoff.Parts(defaults: defaults, token: { token }, backing: backing(box), log: log)
     }
 
     static func scratch() -> URL {
@@ -103,27 +98,16 @@ enum GitHubHandoffTests {
         return root
     }
 
-    static func handsEverythingOnceAndHidesTheFeature(_ suite: TestSuite) {
+    static func handsEverythingOnce(_ suite: TestSuite) {
         let root = scratch()
         defer { try? FileManager.default.removeItem(at: root) }
         let defaults = defaults("hands")
         let box = Box()
-        var turnedOff = 0
-        var told = 0
-        /// Whether the feature was hidden already each time the runtime was told.
-        var hiddenWhenTold: [Bool] = []
         var logged: [String] = []
         guard let tool = installedTool(in: root) else { return suite.expect(false, "the GitHub tool's manifest reads") }
-        suite.expect(AppFeature.notchGitHub.isAvailable(in: defaults) && NotchModule.github.isAvailable(in: defaults),
-                     "before: the feature is installed and its island page is there")
         let origin = CatalogueOrigin(id: "dev.vitruvian.github", version: "1.0.0", source: "https://x", download: "https://x/z.zip")
-        let outcome = GitHubHandoff.perform(tool, from: origin, parts: parts(
-            defaults, token: "gho_feature", box: box, off: { turnedOff += 1 },
-            changed: {
-                told += 1
-                hiddenWhenTold.append(!AppFeature.notchGitHub.isAvailable(in: defaults))
-            },
-            log: { logged.append($0) }))
+        let outcome = GitHubHandoff.perform(tool, from: origin, parts: parts(defaults, token: "gho_feature", box: box,
+                                                                              log: { logged.append($0) }))
         suite.expect(outcome == .handed(["clientID", "migratedToken", "mouseApproval", "mouseCommand", "mouseFailure",
                                          "mouseIdle", "mouseIndicator", "mouseRunning", "mouseSuccess", "pollActiveInterval",
                                          "pollInterval", "watchlist"]),
@@ -137,15 +121,7 @@ enum GitHubHandoffTests {
                          && box.values[key("mouseCommand")] as? String == "~/bin/gm"
                          && box.values[key("clientID")] as? String == "Iv1.app",
                      "under the tool's keys, as the tool reads them: \(box.values)")
-        suite.expect(defaults[Preferences.githubReplacedByTool] && !defaults[Preferences.notchGitHubEnabled] && turnedOff == 1,
-                     "the feature is marked replaced, its switch off, and its sign-in stopped")
-        suite.expect(!AppFeature.notchGitHub.isAvailable(in: defaults) && !NotchModule.github.isAvailable(in: defaults)
-                         && AppFeature.notchGitHub.isReplaced(in: defaults) && defaults.bool(forKey: AppFeature.notchGitHub.availabilityKey)
-                         && AppFeature.notch.isAvailable(in: defaults) && !AppFeature.notch.isReplaced(in: defaults),
-                     "after: the feature and its island page are hidden, though still installed; nothing else is")
-        suite.expect(told == 1 && hiddenWhenTold == [true],
-                     "a hand-off that hides the feature tells the feature runtime once, after it is hidden, "
-                         + "so Settings stops listing it without a restart: told \(told), hidden then \(hiddenWhenTold)")
+        suite.expect(defaults[Preferences.githubReplacedByTool], "it is marked handed, so it is not handed twice")
         suite.expect(logged.contains { $0.contains("version 1.0.0 from the catalog") },
                      "the log says what was handed over, and from where: \(logged)")
     }
@@ -170,23 +146,18 @@ enum GitHubHandoffTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let defaults = defaults("others")
         let box = Box()
-        var told = 0
         let other = Data(String(decoding: manifest, as: UTF8.self)
             .replacingOccurrences(of: "dev.vitruvian.github", with: "com.acme.deploys").utf8)
         guard let deploys = installedTool(manifest: other, in: root) else { return suite.expect(false, "the other manifest reads") }
-        suite.expect(GitHubHandoff.perform(deploys, from: nil, parts: parts(defaults, token: "gho_x", box: box,
-                                                                            changed: { told += 1 })) == .notTheTool
+        suite.expect(GitHubHandoff.perform(deploys, from: nil, parts: parts(defaults, token: "gho_x", box: box)) == .notTheTool
                          && box.values.isEmpty && !defaults[Preferences.githubReplacedByTool],
-                     "another tool gets nothing, and the feature stays")
-        suite.expect(told == 0, "another tool hides nothing, so the feature runtime is told nothing: told \(told)")
+                     "another tool gets nothing")
         guard let github = installedTool(in: root) else { return suite.expect(false, "the GitHub tool's manifest reads") }
         _ = GitHubHandoff.perform(github, from: nil, parts: parts(defaults, token: "gho_x", box: box))
         box.values = [:]
-        suite.expect(GitHubHandoff.perform(github, from: nil, parts: parts(defaults, token: "gho_y", box: box,
-                                                                           changed: { told += 1 })) == .alreadyReplaced
+        suite.expect(GitHubHandoff.perform(github, from: nil, parts: parts(defaults, token: "gho_y", box: box)) == .alreadyHanded
                          && box.values.isEmpty,
                      "the tool updated, or added again: nothing is handed a second time")
-        suite.expect(told == 0, "a feature hidden already is hidden still, so the feature runtime is told nothing: told \(told)")
         // The manifest without its last preference, as an older tool's.
         let older = Data(String(decoding: manifest, as: UTF8.self)
             .replacingOccurrences(of: ",\n   {\"id\": \"migratedToken\", \"type\": \"string\", \"default\": \"\"}", with: "").utf8)
@@ -200,29 +171,13 @@ enum GitHubHandoffTests {
                      "a tool whose manifest lacks a preference is handed the rest, and the log names what it did not take: \(outcome)")
     }
 
-    static func removalBringsTheFeatureBackOff(_ suite: TestSuite) {
+    static func removalLetsItBeHandedAgain(_ suite: TestSuite) {
         let defaults = defaults("removal")
         defaults[Preferences.githubReplacedByTool] = true
-        defaults[Preferences.notchGitHubEnabled] = false
-        var told = 0
-        /// Whether the feature was back already each time the runtime was told.
-        var backWhenTold: [Bool] = []
-        let changed = {
-            told += 1
-            backWhenTold.append(AppFeature.notchGitHub.isAvailable(in: defaults))
-        }
-        GitHubHandoff.toolRemoved(ToolID("com.acme.deploys")!, defaults: defaults, availabilityChanged: changed)
+        GitHubHandoff.toolRemoved(ToolID("com.acme.deploys")!, defaults: defaults)
         suite.expect(defaults[Preferences.githubReplacedByTool], "another tool's removal changes nothing")
-        suite.expect(told == 0, "another tool's removal brings nothing back, so the feature runtime is told nothing: told \(told)")
-        GitHubHandoff.toolRemoved(GitHubHandoff.toolID, defaults: defaults, availabilityChanged: changed)
-        suite.expect(!defaults[Preferences.githubReplacedByTool] && AppFeature.notchGitHub.isAvailable(in: defaults)
-                         && !defaults[Preferences.notchGitHubEnabled],
-                     "the GitHub tool's removal brings the feature back, switched off")
-        suite.expect(told == 1 && backWhenTold == [true],
-                     "a removal that brings the feature back tells the feature runtime once, after it is back, "
-                         + "so Settings lists it again without a restart: told \(told), back then \(backWhenTold)")
-        GitHubHandoff.toolRemoved(GitHubHandoff.toolID, defaults: defaults, availabilityChanged: changed)
-        suite.expect(told == 1, "a removal with the feature there already tells the feature runtime nothing more: told \(told)")
+        GitHubHandoff.toolRemoved(GitHubHandoff.toolID, defaults: defaults)
+        suite.expect(!defaults[Preferences.githubReplacedByTool], "the GitHub tool's removal lets it be handed the settings again")
     }
 
     static func theStoreTellsBeforeTheProgramStarts(_ suite: TestSuite) {
@@ -238,15 +193,16 @@ enum GitHubHandoffTests {
 
     // MARK: - The Keychain may hold the token's read
 
-    /// The store, the hand-off and the feature's sign-in as the app wires
-    /// them (`ExternalToolStore.Parts.live`, `GitHubHandoff.Parts.live`),
+    /// The store, the hand-off and the reader of the feature's saved token
+    /// as the app wires them (`ExternalToolStore.Parts.live`,
+    /// `GitHubHandoff.Parts.live`, `GitHubSavedToken`),
     /// over a Keychain that holds its answer the way the real one does while
     /// "Vitruvian wants to use your confidential information" is on screen.
     private final class Rig {
         let bench = ExternalToolStoreTests.Bench()
         let held: HeldGitHubTokenStore
         let defaults: UserDefaults
-        let auth: GitHubAuthService
+        let saved: GitHubSavedToken
         /// What each add answered, in the order they answered; nil for one
         /// that was dropped.
         var answers: [Result<ExternalToolStore.Installed, ExternalToolStore.Refusal>?] = []
@@ -255,14 +211,12 @@ enum GitHubHandoffTests {
         init(_ name: String, keychain: Result<String?, GitHubTokenStoreError>) {
             held = HeldGitHubTokenStore(answer: keychain)
             defaults = GitHubHandoffTests.defaults(name)
-            auth = GitHubAuthService(store: held, transport: StubGitHubUserTransport(logins: [:]),
-                                     presenter: HeadlessWebAuthPresenter(), defaults: defaults)
+            saved = GitHubSavedToken(store: held)
             let parts = GitHubHandoff.Parts(
                 defaults: defaults,
-                readToken: { [auth] ready in auth.loadToken { _ in ready() } },
-                token: { [auth] in auth.currentToken() },
-                backing: GitHubHandoffTests.backing(bench.box),
-                featureOff: { [auth] in auth.cancel() }, availabilityChanged: {}, log: { _ in })
+                readToken: { [saved] ready in saved.load { _ in ready() } },
+                token: { [saved] in saved.current() },
+                backing: GitHubHandoffTests.backing(bench.box), log: { _ in })
             bench.beforeAdding = { id, ready in GitHubHandoff.prepare(id, parts: parts, then: ready) }
             bench.handOver = { [unowned self] installed, origin in
                 outcomes.append(GitHubHandoff.perform(installed, from: origin, parts: parts))
@@ -319,7 +273,7 @@ enum GitHubHandoffTests {
         suite.expect(rig.bench.store.isAdding(GitHubHandoff.toolID) && rig.answers.isEmpty && !rig.isAdded
                          && !rig.handedAnything && !rig.defaults[Preferences.githubReplacedByTool]
                          && rig.bench.started.isEmpty,
-                     "while the Keychain is asked the tool is being added: nothing is handed, hidden or started yet")
+                     "while the Keychain is asked the tool is being added: nothing is handed or started yet")
 
         rig.answerTheKeychain()
         suite.expect(rig.answers.count == 1 && (try? rig.answers[0]?.get()) != nil && rig.isAdded
@@ -341,12 +295,12 @@ enum GitHubHandoffTests {
             rig.agree()
             rig.pump { rig.held.started == 1 }
             rig.answerTheKeychain()
-            suite.expect(rig.isAdded && rig.answers.count == 1 && rig.defaults[Preferences.githubReplacedByTool]
-                             && !rig.defaults[Preferences.notchGitHubEnabled],
-                         "\(name): the tool is added and the feature handed over all the same")
+            suite.expect(rig.isAdded && rig.answers.count == 1 && rig.defaults[Preferences.githubReplacedByTool],
+                         "\(name): the tool is added and the feature's settings handed over all the same")
             suite.expect(rig.handedToken == nil && rig.handedAnything && rig.outcomes.count == 1,
                          "\(name): with the feature's settings and no token, so the tool starts signed out: \(rig.outcomes)")
-            suite.expect(rig.auth.state == .signedOut, "\(name): the feature's sign-in is left stopped: \(rig.auth.state)")
+            suite.expect(rig.saved.current() == nil && rig.held.started == 1,
+                         "\(name): no token is kept, and the Keychain was asked once")
         }
     }
 
@@ -363,8 +317,8 @@ enum GitHubHandoffTests {
         suite.expect(rig.answers.count == 1 && rig.answers[0] == nil,
                      "the Keychain's late answer is dropped, and whoever asked is told so: \(rig.answers)")
         suite.expect(!rig.isAdded && rig.bench.records.isEmpty && !rig.handedAnything && rig.outcomes.isEmpty
-                         && !rig.defaults[Preferences.githubReplacedByTool] && rig.defaults[Preferences.notchGitHubEnabled],
-                     "nothing is added, nothing handed over, and the feature stays as it was")
+                         && !rig.defaults[Preferences.githubReplacedByTool],
+                     "nothing is added and nothing handed over, so the tool added later is handed everything")
     }
 
     static func agreeingTwiceAddsAndHandsOverOnce(_ suite: TestSuite) {
@@ -387,7 +341,7 @@ enum GitHubHandoffTests {
         defer { rig.close() }
         rig.defaults[Preferences.githubReplacedByTool] = true
         rig.agree()
-        suite.expect(rig.answers.count == 1 && rig.isAdded && rig.outcomes == [.alreadyReplaced],
+        suite.expect(rig.answers.count == 1 && rig.isAdded && rig.outcomes == [.alreadyHanded],
                      "a tool whose feature is handed over already is added before Add Tool returns: \(rig.answers)")
         rig.pump { rig.held.started > 0 }
         suite.expect(rig.held.started == 0 && rig.handedToken == nil,
@@ -399,4 +353,47 @@ enum GitHubHandoffTests {
                               then: { ready += 1 })
         suite.expect(ready == 1, "another tool waits for nothing either")
     }
+}
+
+/// A Keychain that does not answer a read until the test lets it, the way
+/// the real one waits for the person to answer "Vitruvian wants to use your
+/// confidential information". It gives up after `patience`, so code that
+/// reads on the main thread fails its checks instead of hanging the run.
+nonisolated final class HeldGitHubTokenStore: GitHubTokenStore, @unchecked Sendable {
+    // Guarded by `lock`.
+    private let lock = NSLock()
+    private let gate = DispatchSemaphore(value: 0)
+    private var startedCount = 0
+    private var finishedCount = 0
+    private var mainThreadReads = 0
+    private var saved: String?
+    /// What a read answers once it is let go: the token, none, or the
+    /// Keychain's refusal when the person presses Deny.
+    private let answer: Result<String?, GitHubTokenStoreError>
+    let patience: TimeInterval
+
+    init(answer: Result<String?, GitHubTokenStoreError>, patience: TimeInterval = 3) {
+        self.answer = answer
+        self.patience = patience
+    }
+
+    var started: Int { lock.withLock { startedCount } }
+    var finished: Int { lock.withLock { finishedCount } }
+    var readsOnMainThread: Int { lock.withLock { mainThreadReads } }
+
+    func load() throws -> String? {
+        lock.withLock {
+            startedCount += 1
+            if Thread.isMainThread { mainThreadReads += 1 }
+        }
+        _ = gate.wait(timeout: .now() + patience)
+        lock.withLock { finishedCount += 1 }
+        return try answer.get()
+    }
+
+    func save(_ token: String) throws { lock.withLock { saved = token } }
+    func delete() throws { lock.withLock { saved = nil } }
+
+    /// The person answers the prompt: one waiting read returns.
+    func answerNow() { gate.signal() }
 }

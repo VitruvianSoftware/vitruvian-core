@@ -39,43 +39,20 @@ MUTATIONS = [
     ("the GitHub hand-off forgets the token", "platform", "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
      "        if let token, !token.isEmpty { values[Key.migratedToken] = .string(token) }\n", "",
      "under the tool's keys, as the tool reads them"),
-    ("a feature a tool replaced stays listed", "platform", "Sources/Vitruvian/Core/FeatureCatalog.swift",
-     "        defaults.bool(forKey: availabilityKey) && !isReplaced(in: defaults)",
-     "        defaults.bool(forKey: availabilityKey)",
-     "after: the feature and its island page are hidden, though still installed; nothing else is"),
-    ("a hand-off that hides the feature tells Settings nothing", "platform",
-     "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
-     "        parts.availabilityChanged()\n", "",
-     "a hand-off that hides the feature tells the feature runtime once, after it is hidden"),
-    ("launch waits for the Keychain prompt again", "github",
-     "Sources/Vitruvian/Services/GitHub/GitHubAuthService.swift",
-     "        keychainQueue.async { [weak self] in\n"
-     "            let read = Result { try store.load() }\n"
-     "            DispatchQueue.main.async { [weak self] in\n"
-     "                MainActor.assumeIsolated { self?.tokenWasRead(read) }\n"
-     "            }\n"
-     "        }\n",
-     "        tokenWasRead(Result { try store.load() })\n",
-     "the saved token is read, and never on the main thread"),
     ("Add Tool waits for the Keychain prompt again", "platform",
-     "Sources/Vitruvian/Services/GitHub/GitHubAuthService.swift",
+     "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
      "        keychainQueue.async { [weak self] in\n"
-     "            let read = Result { try store.load() }\n"
+     "            let read = try? store.load()\n"
      "            DispatchQueue.main.async { [weak self] in\n"
-     "                MainActor.assumeIsolated { self?.tokenWasRead(read) }\n"
+     "                MainActor.assumeIsolated { self?.wasRead(read) }\n"
      "            }\n"
      "        }\n",
-     "        tokenWasRead(Result { try store.load() })\n",
+     "        wasRead(try? store.load())\n",
      "the feature's token is read, and never on the main thread"),
-    ("a late Keychain answer replaces the token just signed in with", "github",
-     "Sources/Vitruvian/Services/GitHub/GitHubAuthService.swift",
-     "        if !tokenLoaded {\n            tokenLoaded = true\n            switch read {\n",
-     "        do {\n            tokenLoaded = true\n            switch read {\n",
-     "a sign-in made while the Keychain was asked stands; its late answer is dropped"),
     ("the GitHub tool is added before the Keychain has answered", "platform",
      "Sources/Vitruvian/Services/GitHub/GitHubHandoff.swift",
      "        parts.readToken(ready)\n", "        ready()\n",
-     "while the Keychain is asked the tool is being added: nothing is handed, hidden or started yet"),
+     "while the Keychain is asked the tool is being added: nothing is handed or started yet"),
     ("a tool removed while it is being added is added all the same", "platform",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
      "        // nothing and hands nothing over.\n        waitingAdds[id] = nil\n",
@@ -1027,7 +1004,7 @@ MUTATIONS = [
      "Sources/Vitruvian/UI/ToolPanels/ToolStatusMark.swift",
      "        breathes = status.state == .busy\n",
      "        breathes = false\n",
-     "busy is the built-in's amber in size and motion: 9 points, medium, orange, breathing"),
+     "busy is amber: 9 points, medium, orange, breathing"),
     ("the agreement sheet says nothing of a status", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
      "        showsStatus = tool.showsStatus ? strings.agreeShowsStatus : nil\n",
