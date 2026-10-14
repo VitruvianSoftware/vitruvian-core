@@ -51,14 +51,16 @@
 # WHICH HISTORY: each app delivers through its own generated workflow,
 # .github/workflows/delivery-<app>.yaml, named by the unit's `app`. Before the
 # per-app split every unit delivered through one delivery.yaml, so a unit with
-# no success in its own workflow yet is looked up there (LEGACY_WORKFLOW_FILE)
-# rather than reported UNKNOWN for a delivery that did happen.
+# no success in its own workflow is looked up there (LEGACY_WORKFLOW_FILE)
+# rather than reported UNKNOWN for a delivery that did happen -- but only once
+# its own workflow's WHOLE history has been read. Falling back earlier finds the
+# pre-split delivery and blames the commit that the new workflow did deliver.
 #
 # Exit codes: 0 = no drift (or only in-flight), 1 = drift found, 2 = usage/setup
 # error. Env: REPO (owner/name), WORKFLOW_FILE (overrides every unit's
 # delivery-<app>.yaml with one workflow), LEGACY_WORKFLOW_FILE (default
 # delivery.yaml; empty disables the fallback), BRANCH (default main),
-# RUN_SCAN_LIMIT (default 250), DRIFT_IGNORE_IN_FLIGHT (set to any value to
+# RUN_SCAN_LIMIT (default 5000 runs per workflow), DRIFT_IGNORE_IN_FLIGHT (set to any value to
 # print the per-unit verdicts even while a run is converging -- for an operator
 # investigating, never for the scheduled job, which would then report drift on
 # every normal deploy).
@@ -68,13 +70,21 @@ REPO="${REPO:-VitruvianSoftware/vitruvian-core}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-}"
 LEGACY_WORKFLOW_FILE="${LEGACY_WORKFLOW_FILE-delivery.yaml}"
 BRANCH="${BRANCH:-main}"
-# 60 was too small: three units (oauth-user-inspector-identity,
-# tabula-build-stack, tabula-identity) deploy rarely enough that their last real
-# delivery had aged out, so every run reported them UNKNOWN and the check was red
-# for reasons that were not drift. At 250 all three resolve -- they delivered at
-# b1757f82 and nothing since affects them. The window must outlive the LEAST
-# frequently delivered unit, not the average one.
-RUN_SCAN_LIMIT="${RUN_SCAN_LIMIT:-250}"
+# How far back to look for a unit's last delivery, in runs of one workflow.
+# A FIXED WINDOW IS THE BUG THIS USED TO HAVE, twice. Every per-app workflow runs
+# on every push to main (about 55 a day) and skips its delivery jobs on almost
+# all of them, so a unit that rarely changes ages out of any window. At 60,
+# three tabula/oauth units went UNKNOWN; at 250, charts and esp32-s3 (last
+# delivered 409 runs back, at e60ed8dc) fell through to the legacy history,
+# whose pre-split delivery made the checker blame e60ed8dc -- a commit that WAS
+# delivered -- every hour from 2026-10-11 to 10-14, and gravastar-mouse-publish
+# went UNKNOWN. So the whole history is read now, 100 runs per query; this is
+# only the backstop that keeps one run's cost bounded. At ~55 runs a day, 5000
+# runs is about three months: a unit with no delivery in that long reports
+# UNKNOWN (and says so), never a guessed base.
+RUN_SCAN_LIMIT="${RUN_SCAN_LIMIT:-5000}"
+# Runs per query. 100 is the API's maximum; the test makes it small.
+DRIFT_PAGE_SIZE="${DRIFT_PAGE_SIZE:-100}"
 BAZEL="${BAZEL:-bazel}"
 GH="${GH:-gh}"
 DELIVERY_QUERY='attr(tags, "\bdelivery\b", (//... except //apps/desktop/nexus-agent/macos/...))'
@@ -113,52 +123,114 @@ in_flight() { # <workflow-file> -> count of queued/running/waiting runs
         --limit 20 --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting")] | length' 2>/dev/null || echo 0
 }
 
-# How many runs' job lists to fetch at once. One API call per run, walked one
-# at a time, took about 5 minutes for a unit that delivers rarely (it walks all
-# RUN_SCAN_LIMIT runs), and with a dozen units the scheduled job hit its
-# 20-minute limit. Batches keep the same number of calls but overlap them.
-DRIFT_JOBS_PARALLEL="${DRIFT_JOBS_PARALLEL:-8}"
+# --- run history, a page at a time ------------------------------------------
+# One GraphQL query returns up to 100 runs of a workflow, newest first, each
+# with the names of its jobs that succeeded. The REST way is one call per run
+# for its jobs (plus the run list, which also stops at 1000 runs when filtered
+# by branch): reading 409 runs that way took minutes and, run on a schedule,
+# would grow without bound. This reads the same 409 in 5 queries.
+#
+# Pages are kept per workflow for the length of one check, so units that share
+# a workflow (five tabula units, three oauth-user-inspector ones) share the
+# reads, and the WORST CASE per check is bounded per workflow, not per unit:
+# ceil(RUN_SCAN_LIMIT / 100) queries + 1 id lookup for each delivery-<app>.yaml
+# and for delivery.yaml -- with today's 7 that is at most 7 x 51 = 357 calls,
+# against a typical ~20. Plus one in-flight `run list` per unit, as before.
+PAGE_DIR="$(mktemp -d)"
+trap 'rm -rf "$PAGE_DIR"' EXIT
+# shellcheck disable=SC2016 # GraphQL variables, not shell ones
+RUNS_QUERY='query($id: ID!, $n: Int!, $after: String) {
+  node(id: $id) { ... on Workflow { runs(first: $n, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    nodes { databaseId checkSuite { branch { name } commit { oid }
+      checkRuns(first: 100, filterBy: {conclusions: [SUCCESS]}) { nodes { name } } } } } } } }'
 
-# run_has_job <run-id> <job-prefix> -> success if a job named <job-prefix>*
-# succeeded in that run.
-run_has_job() {
-    [ -n "$("$GH" api "repos/${REPO}/actions/runs/${1}/jobs?per_page=100" --paginate \
-        --jq ".jobs[] | select((.name | startswith(\"${2}\")) and .conclusion == \"success\") | .name" 2>/dev/null)" ]
+# fetch_page <workflow-file> <page> -> writes $PAGE_DIR/<workflow-file>.<page>:
+#   run<TAB><run id><TAB><head sha><TAB><branch><TAB><job>\037<job>...
+#   next<TAB><cursor of the next page, empty on the last page>
+# Fails (non-zero, no file) on any API or parse error.
+fetch_page() {
+    local wf="$1" page="$2" f="$PAGE_DIR/$1.$2" after="" raw
+    [ ! -s "$f" ] || return 0
+    if [ ! -s "$PAGE_DIR/$wf.id" ]; then
+        "$GH" api "repos/${REPO}/actions/workflows/${wf}" --jq .node_id >"$PAGE_DIR/$wf.id" 2>/dev/null || return 1
+        [ -s "$PAGE_DIR/$wf.id" ] || return 1
+    fi
+    if [ "$page" -gt 1 ]; then
+        after="$(awk -F'\t' '$1 == "next" { print $2 }' "$PAGE_DIR/$wf.$((page - 1))")"
+    fi
+    local -a args=(api graphql -f query="$RUNS_QUERY" -f id="$(cat "$PAGE_DIR/$wf.id")" -F n="$DRIFT_PAGE_SIZE")
+    [ -z "$after" ] || args+=(-f after="$after")
+    raw="$("$GH" "${args[@]}" 2>/dev/null)" || return 1
+    printf '%s' "$raw" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+if d.get("errors"):
+    sys.exit(1)
+runs = d["data"]["node"]["runs"]
+for r in runs["nodes"]:
+    cs = r.get("checkSuite") or {}
+    jobs = [c["name"] for c in ((cs.get("checkRuns") or {}).get("nodes") or [])]
+    print("run\t%s\t%s\t%s\t%s" % (r["databaseId"], (cs.get("commit") or {}).get("oid") or "",
+                                   (cs.get("branch") or {}).get("name") or "", "\037".join(jobs)))
+print("next\t%s" % (runs["pageInfo"]["endCursor"] if runs["pageInfo"]["hasNextPage"] else ""))
+' >"$f.part" 2>/dev/null || {
+        rm -f "$f.part"
+        return 1
+    }
+    mv "$f.part" "$f"
 }
 
-# last_delivered <workflow-file> <job-prefix> -> head sha of the newest run in
-# which a job named <job-prefix>* succeeded, or nothing. Runs are checked in
-# batches, but the answer is still the NEWEST match: a batch is only read once
-# all of it is back, in list order.
+# last_delivered <workflow-file> <job-prefix> -> sets
+#   LD_SHA    head sha of the newest $BRANCH run in which a job named
+#             <job-prefix>* succeeded (Cloud Run units call a reusable
+#             workflow, so their job shows as "<unit>-<env> / <inner job>").
+#   LD_STATE  found | absent (the WHOLE history was read and has none) |
+#             capped (RUN_SCAN_LIMIT runs read, history goes on) | error.
+#   LD_RUNS   how many runs were read.
+# Only `absent` licenses looking anywhere else.
 last_delivered() {
-    local runs rid rsha tmp hit="" i=0 j
-    local -a ids=() shas=()
-    runs="$("$GH" run list --repo "$REPO" --workflow "$1" --branch "$BRANCH" \
-        --limit "$RUN_SCAN_LIMIT" --json databaseId,headSha,createdAt \
-        --jq '.[] | "\(.databaseId) \(.headSha)"' 2>/dev/null)" || true
-    while read -r rid rsha; do
-        [ -n "$rid" ] || continue
-        ids+=("$rid")
-        shas+=("$rsha")
-    done <<<"$runs"
-    tmp="$(mktemp -d)"
-    while [ "$i" -lt "${#ids[@]}" ] && [ -z "$hit" ]; do
-        j="$i"
-        while [ "$j" -lt "${#ids[@]}" ] && [ "$j" -lt $((i + DRIFT_JOBS_PARALLEL)) ]; do
-            (run_has_job "${ids[$j]}" "$2" && : >"$tmp/$j") &
-            j=$((j + 1))
-        done
-        wait
-        while [ "$i" -lt "$j" ]; do
-            if [ -e "$tmp/$i" ]; then
-                hit="${shas[$i]}"
-                break
-            fi
-            i=$((i + 1))
-        done
+    local wf="$1" prefix="$2" page=1 f hit
+    local max_pages=$(((RUN_SCAN_LIMIT + DRIFT_PAGE_SIZE - 1) / DRIFT_PAGE_SIZE))
+    LD_SHA=""
+    LD_STATE=""
+    LD_RUNS=0
+    while :; do
+        if ! fetch_page "$wf" "$page"; then
+            LD_STATE=error
+            return 0
+        fi
+        f="$PAGE_DIR/$wf.$page"
+        hit="$(awk -F'\t' -v b="$BRANCH" -v p="$prefix" '
+            $1 == "run" && $4 == b {
+                n = split($5, jobs, "\037")
+                for (i = 1; i <= n; i++) if (index(jobs[i], p) == 1) { print $3; exit }
+            }' "$f")"
+        LD_RUNS=$((LD_RUNS + $(awk -F'\t' '$1 == "run" { n++ } END { print n + 0 }' "$f")))
+        if [ -n "$hit" ]; then
+            LD_SHA="$hit"
+            LD_STATE=found
+            return 0
+        fi
+        if [ -z "$(awk -F'\t' '$1 == "next" { print $2 }' "$f")" ]; then
+            LD_STATE=absent
+            return 0
+        fi
+        if [ "$page" -ge "$max_pages" ]; then
+            LD_STATE=capped
+            return 0
+        fi
+        page=$((page + 1))
     done
-    rm -rf "$tmp"
-    [ -z "$hit" ] || echo "$hit"
+}
+
+# why_unknown <name> <env> <workflow-file> -> the log line for a non-`found` LD_STATE
+why_unknown() {
+    case "$LD_STATE" in
+    error) log "${1}: could not read the run history of ${3} -- UNKNOWN (nothing inferred from a failed read)" ;;
+    capped) log "${1}: no successful ${2} delivery in the newest ${LD_RUNS} runs of ${3}, and its history goes back further (RUN_SCAN_LIMIT=${RUN_SCAN_LIMIT}) -- UNKNOWN" ;;
+    *) log "${1}: no successful ${2} delivery in the whole history of ${3} (${LD_RUNS} runs) -- UNKNOWN" ;;
+    esac
 }
 
 # --- 3. per-unit check --------------------------------------------------------
@@ -205,20 +277,19 @@ for label in $LABELS; do
     # match on the prefix to cover both shapes.
     job_prefix="${name}-${first_env}"
 
-    last_sha="$(last_delivered "$wf" "$job_prefix")"
-    searched="$wf"
-    if [ -z "$last_sha" ] && [ -n "$LEGACY_WORKFLOW_FILE" ] && [ "$LEGACY_WORKFLOW_FILE" != "$wf" ]; then
-        last_sha="$(last_delivered "$LEGACY_WORKFLOW_FILE" "$job_prefix")"
-        searched="${wf} or ${LEGACY_WORKFLOW_FILE}"
-        [ -z "$last_sha" ] || log "${name}: no delivery in ${wf} yet; last delivered by ${LEGACY_WORKFLOW_FILE}"
-    fi
-
     checked=$((checked + 1))
-    if [ -z "$last_sha" ]; then
-        log "${name}: no successful ${first_env} delivery in the last ${RUN_SCAN_LIMIT} runs of ${searched} -- UNKNOWN"
+    last_delivered "$wf" "$job_prefix"
+    if [ "$LD_STATE" = absent ] && [ -n "$LEGACY_WORKFLOW_FILE" ] && [ "$LEGACY_WORKFLOW_FILE" != "$wf" ]; then
+        last_delivered "$LEGACY_WORKFLOW_FILE" "$job_prefix"
+        [ "$LD_STATE" != found ] || log "${name}: no delivery in the whole history of ${wf}; last delivered by ${LEGACY_WORKFLOW_FILE}"
+        [ "$LD_STATE" = found ] || wf="${wf} or ${LEGACY_WORKFLOW_FILE}"
+    fi
+    if [ "$LD_STATE" != found ]; then
+        why_unknown "$name" "$first_env" "$wf"
         drift_found=1
         continue
     fi
+    last_sha="$LD_SHA"
     if [ "$last_sha" = "$HEAD_SHA" ]; then
         log "${name}: up to date (delivered ${HEAD_SHA:0:8})"
         continue

@@ -39,6 +39,10 @@ on:
 
 permissions:
   actions: read
+  # The detector reads each run's successful jobs through GraphQL, where a
+  # workflow job is a check run: without this the query is refused and every
+  # unit reports UNKNOWN (red, never a silent green).
+  checks: read
   contents: read
 
 # One drift poll at a time; a slow run must not stack with the next tick.
