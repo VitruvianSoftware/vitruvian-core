@@ -100,7 +100,8 @@
       }
     ],
     "status": {
-      "placement": "island"
+      "placement": "island",
+      "activity": true
     }
   },
   "preferences": [

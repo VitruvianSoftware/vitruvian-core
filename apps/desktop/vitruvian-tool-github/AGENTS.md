@@ -45,8 +45,10 @@ bundles; this is a tool, and its one artifact is a zip (see "Releases").
   asks for Vitruvian 3.46.0, and keeps asking for it. The status
   on the closed island (`ui/status`, from 3.48) goes through the kit's
   `App.status`, which sends nothing to an app that did not name `ui.status`
-  at hello. The five mouse settings stay `"type": "string"` with `options`:
-  an older app ignores the options and draws a text field. Never give a
+  at hello; the busy count beside it (`activity`, from 3.50) the kit
+  leaves out for an app that did not name `ui.status.activity`. The five
+  mouse settings stay `"type": "string"` with `options`: an older app
+  ignores the options and draws a text field. Never give a
   setting a new type, and never rewrite a stored value: `MouseTests` holds
   every option to what `MouseLight.parse` reads and to what the app's
   feature handed over.

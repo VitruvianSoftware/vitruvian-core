@@ -255,6 +255,90 @@ final class GitHubToolTests: XCTestCase {
         XCTAssertEqual(GitHubTool.status(for: summary, signedIn: true), .noMark, "a watched repository not read yet is grey")
     }
 
+    /// Watched repositories with `running` checks each, as a snapshot reads
+    /// them; a repository with none is green.
+    private func summary(running counts: [Int]) -> GitHubSummary {
+        var states: [RepoKey: RepoState] = [:]
+        var watched: [RepoKey] = []
+        for (index, count) in counts.enumerated() {
+            let repo = RepoKey(owner: "acme", name: "r\(index)")
+            var checks = ["done": CheckRun(key: "done", name: "lint", headSHA: "h", status: .completed,
+                                           conclusion: .success, htmlURL: nil)]
+            for run in 0..<count {
+                checks["run\(run)"] = CheckRun(key: "run\(run)", name: "ci \(run)", headSHA: "h", status: .inProgress,
+                                               conclusion: nil, htmlURL: nil)
+            }
+            states[repo] = RepoState(repo: repo, defaultBranch: "main", headSHA: "h", checks: checks)
+            watched.append(repo)
+        }
+        return GitHubSummary(states: states, watched: watched)
+    }
+
+    func testBusyCarriesHowManyRun() {
+        func busy(_ running: Int) -> IslandStatus {
+            GitHubTool.status(verdict: .amber, awaitingApproval: false, running: running, signedIn: true)
+        }
+        XCTAssertEqual(busy(1).activity, .plain("1"))
+        XCTAssertEqual(busy(3).activity, .plain("3"), "the number, as digits")
+        XCTAssertEqual(busy(99).activity, .plain("99"))
+        XCTAssertEqual(busy(100).activity, .plain("99+"), "over 99 is 99+")
+        XCTAssertEqual(busy(4_321).activity, .plain("99+"))
+        XCTAssertNil(busy(0).activity, "busy with none counted has no words, so the percent shows")
+        XCTAssertEqual(busy(3).state, .busy)
+        XCTAssertEqual(busy(3).text?.text(for: "en"), "Checks are running", "the text stays what VoiceOver reads")
+        XCTAssertEqual(busy(3).icon, "arrow.triangle.branch")
+        XCTAssertEqual(GitHubTool.status(for: summary(running: [2, 0, 1]), signedIn: true).activity, .plain("3"),
+                       "the sum across the watched repositories")
+        XCTAssertEqual(GitHubTool.status(for: summary(running: [60, 41]), signedIn: true).activity, .plain("99+"))
+    }
+
+    func testNoOtherStateCarriesWords() {
+        for verdict in [Verdict.green, .red, .grey] {
+            XCTAssertNil(GitHubTool.status(verdict: verdict, awaitingApproval: false, running: 5, signedIn: true).activity,
+                         "\(verdict) carries no words")
+        }
+        for verdict in [Verdict.green, .amber, .red, .grey] {
+            XCTAssertNil(GitHubTool.status(verdict: verdict, awaitingApproval: true, running: 5, signedIn: true).activity,
+                         "waiting for approval with \(verdict) carries no words")
+        }
+        XCTAssertEqual(GitHubTool.status(verdict: .amber, awaitingApproval: false, running: 5, signedIn: false), .noMark,
+                       "signed out shows no mark and no words")
+        XCTAssertNil(IslandStatus.noMark.activity)
+    }
+
+    func testTheManifestSaysTheStatusCarriesWords() {
+        XCTAssertEqual(ToolFiles.manifest()?.contributes?.status?.activity, true,
+                       "busy sends a count, so contributes.status says \"activity\": true, or the app leaves it out")
+    }
+
+    func testAChangeOfCountIsSentAndTheSameCountIsNot() throws {
+        func runs(_ ids: [Int]) -> (Int, String) {
+            let items = ids.map {
+                #"{"id": \#($0), "name": "ci \#($0)", "head_sha": "h1", "status": "in_progress", "conclusion": null, "html_url": null}"#
+            }
+            return (200, #"{"workflow_runs": [\#(items.joined(separator: ", "))]}"#)
+        }
+        let path = "/repos/VitruvianSoftware/vitruvian-core/actions/runs?branch=main&per_page=10"
+        try secrets.save(token: "gho_saved")
+        transport.answers[path] = runs([9])
+        tool.start()
+        XCTAssertEqual(host.statuses.map(\.state), [.busy])
+        XCTAssertEqual(host.statuses.last?.activity, .plain("1"))
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(host.statuses.count, 1, "the same count is not sent again")
+        transport.answers[path] = runs([9, 10])
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(host.statuses.map(\.state), [.busy, .busy], "a new count is sent, in the same state")
+        XCTAssertEqual(host.statuses.last?.activity, .plain("2"))
+        answerGitHub(conclusion: "success")
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(host.statuses.map(\.state), [.busy, .busy, .ok])
+        XCTAssertNil(host.statuses.last?.activity, "green takes the words away")
+    }
+
     func testTheStatusIsSentWithTheBadgeAndNotTwice() throws {
         try secrets.save(token: "gho_saved")
         answerGitHub(conclusion: "failure")
