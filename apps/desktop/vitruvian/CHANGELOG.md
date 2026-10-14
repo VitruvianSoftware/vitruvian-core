@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.48.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.47.2...vitruvian-v3.48.0) (2026-10-14)
+
+
+### Features
+
+* **vitruvian-sdk:** a tool can show a status on the closed island and offer a choice ([#3245](https://github.com/VitruvianSoftware/vitruvian-core/issues/3245)) ([d23592a](https://github.com/VitruvianSoftware/vitruvian-core/commit/d23592a0a8115f63347b00cbd87769a2443dadc0))
+
 ## [3.47.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.47.1...vitruvian-v3.47.2) (2026-10-14)
 
 
