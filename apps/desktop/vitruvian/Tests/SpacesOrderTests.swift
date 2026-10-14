@@ -90,6 +90,80 @@ enum SpacesOrderTests {
         init(_ value: Value) { self.value = value }
     }
 
+    /// Runs the hold's work only when the test says so, all on the test's
+    /// thread. `beforeAsync` runs once a request has taken its generation and
+    /// before its work is queued; `beforeSync`, before waited-for work runs.
+    /// Each fires once. Touched only from the test's thread, so it is
+    /// `@unchecked Sendable`.
+    nonisolated final class ScriptedScheduler: SpacesOrderScheduler, @unchecked Sendable {
+        var queued: [@Sendable () -> Void] = []
+        var onMain: [@Sendable () -> Void] = []
+        var beforeAsync: (@Sendable () -> Void)?
+        var beforeSync: (@Sendable () -> Void)?
+
+        func async(_ work: @escaping @Sendable () -> Void) {
+            let interrupt = beforeAsync
+            beforeAsync = nil
+            interrupt?()
+            queued.append(work)
+        }
+
+        func sync<T>(_ work: () -> T) -> T {
+            let interrupt = beforeSync
+            beforeSync = nil
+            interrupt?()
+            return work()
+        }
+
+        func main(_ work: @escaping @Sendable () -> Void) {
+            onMain.append(work)
+        }
+
+        /// Runs the serial queue's work, including work it queues.
+        func flush() {
+            while !queued.isEmpty { queued.removeFirst()() }
+        }
+
+        /// Runs the oldest main-thread hand-off.
+        func flushMainOne() {
+            guard !onMain.isEmpty else { return }
+            onMain.removeFirst()()
+        }
+    }
+
+    /// A hold run by a `ScriptedScheduler`, with what it touches.
+    nonisolated struct ContractHost: Sendable {
+        let hold: SpacesOrderHold
+        let dock: FakeDock
+        let defaults: ScriptedDefaults
+        let scheduler: ScriptedScheduler
+    }
+
+    /// Preferences whose save can fail, so what the hold reads back and what
+    /// reached the disk can differ, with a moment just before and just after
+    /// each write by object. Touched only from the test's thread.
+    nonisolated final class ScriptedDefaults: UserDefaults, @unchecked Sendable {
+        var synchronizeSucceeds = true
+        /// The keys whose saved values `durable` keeps.
+        var tracked: [String] = []
+        /// The tracked keys' values at the last save that succeeded.
+        var durable: [String: Any] = [:]
+        var beforeSet: (@Sendable (String) -> Void)?
+        var onSet: (@Sendable (String) -> Void)?
+
+        override func set(_ value: Any?, forKey defaultName: String) {
+            beforeSet?(defaultName)
+            super.set(value, forKey: defaultName)
+            onSet?(defaultName)
+        }
+
+        override func synchronize() -> Bool {
+            guard synchronizeSucceeds else { return false }
+            durable = tracked.reduce(into: [:]) { saved, key in saved[key] = object(forKey: key) }
+            return true
+        }
+    }
+
     static func run(_ suite: TestSuite) {
         let name = "com.vitruviansoftware.vitruvian.tests.spaces-order.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
@@ -815,6 +889,8 @@ enum SpacesOrderTests {
         defaults.removeObject(forKey: available)
 
 
+        runRequestContract(suite)
+
         // MARK: Catalog
 
         let feature = AppFeature.spacesOrder
@@ -833,5 +909,130 @@ enum SpacesOrderTests {
         suite.expect(SettingsBackupSupport.machineStateKeys.isSuperset(of: [marker, restartPending])
                      && SettingsBackupSupport.exportKeys().isDisjoint(with: [marker, restartPending]),
                      "the restore marker and an owed restart belong to this Mac and never travel in a backup")
+    }
+
+    /// Request and publication order, with the hold's queue and the main
+    /// thread run step by step (upstream's `SpacesOrderRequestContract`,
+    /// 848b6042 and db5d9cae, on the real hold).
+    static func runRequestContract(_ suite: TestSuite) {
+        let enabled = DefaultsKey.spacesOrderEnabled
+        let marker = DefaultsKey.spacesOrderRestore
+        let on = SpacesOrderSupport.restoreOn
+        var suites: [String] = []
+        defer { suites.forEach { UserDefaults.standard.removePersistentDomain(forName: $0) } }
+
+        /// A hold whose feature is installed, its toggle and saved marker as
+        /// given, both already saved.
+        func host(enabled isEnabled: Bool = true, marker saved: String? = nil,
+                  value: SpacesRearrangeSetting = .on) -> ContractHost {
+            let name = "com.vitruviansoftware.vitruvian.tests.spaces-order-contract.\(UUID().uuidString)"
+            suites.append(name)
+            let defaults = ScriptedDefaults(suiteName: name)!
+            defaults.tracked = [enabled, marker]
+            defaults.set(true, forKey: AppFeature.spacesOrder.availabilityKey)
+            defaults.set(isEnabled, forKey: enabled)
+            if let saved { defaults.set(saved, forKey: marker) }
+            _ = defaults.synchronize()
+            let dock = FakeDock(value, defaults: defaults)
+            let scheduler = ScriptedScheduler()
+            return ContractHost(hold: SpacesOrderHold(defaults: defaults, system: dock.system, scheduler: scheduler),
+                                dock: dock, defaults: defaults, scheduler: scheduler)
+        }
+
+        // The sync has taken its generation but its work is not queued yet.
+        let lateSync = host(marker: on, value: .off)
+        let removed = Box(false)
+        lateSync.scheduler.beforeAsync = { removed.value = lateSync.hold.restoreForRemoval() }
+        lateSync.hold.syncWithPreferences()
+        let eventsAfterRemoval = lateSync.dock.events
+        let readsAfterRemoval = lateSync.dock.reads
+        lateSync.scheduler.flush()
+        suite.expect(removed.value && lateSync.dock.value == .on
+                     && lateSync.defaults.string(forKey: marker) == nil
+                     && lateSync.dock.events == eventsAfterRemoval
+                     && lateSync.dock.reads == readsAfterRemoval,
+                     "a sync enqueued after a newer removal stays silent and cannot recreate its hold")
+        lateSync.hold.syncWithPreferences()
+        lateSync.scheduler.flush()
+        suite.expect(lateSync.dock.value == .off && lateSync.defaults.string(forKey: marker) == on,
+                     "a new current sync still establishes a legitimate hold")
+
+        let oldRestore = host()
+        oldRestore.scheduler.beforeSync = { _ = oldRestore.hold.reconcile(wanted: true) }
+        suite.expect(!oldRestore.hold.restoreForRemoval() && oldRestore.dock.value == .off
+                     && oldRestore.defaults.string(forKey: marker) == on,
+                     "a removal superseded before admission returns false and leaves the new hold alone")
+        let oldReconcile = host()
+        oldReconcile.scheduler.beforeSync = { _ = oldReconcile.hold.restoreForRemoval() }
+        suite.expect(!oldReconcile.hold.reconcile(wanted: true) && oldReconcile.dock.events.isEmpty
+                     && oldReconcile.dock.reads == 0 && oldReconcile.defaults.string(forKey: marker) == nil,
+                     "a reconcile superseded before admission returns false without system work")
+
+        // Rearranging is on over a hold that found it on: the user chose it.
+        let publication = host(marker: on)
+        let markerKeptBeforeOff = Box(false)
+        publication.defaults.beforeSet = { key in
+            guard key == enabled else { return }
+            publication.defaults.beforeSet = nil
+            publication.scheduler.flush()
+            markerKeptBeforeOff.value = publication.defaults.durable[marker] as? String == on
+                && publication.defaults.durable[enabled] as? Bool == true
+        }
+        let requestedDuringPublication = Box(false)
+        publication.defaults.onSet = { key in
+            if key == enabled, !requestedDuringPublication.value {
+                requestedDuringPublication.value = true
+                publication.hold.syncWithPreferences()
+            }
+        }
+        publication.defaults.synchronizeSucceeds = false
+        suite.expect(publication.hold.letGoIfRearrangingReturned() && publication.scheduler.onMain.count == 1,
+                     "an external choice queues toggle publication")
+        publication.scheduler.flushMainOne()
+        publication.scheduler.flush()
+        suite.expect(markerKeptBeforeOff.value && requestedDuringPublication.value
+                     && publication.defaults.string(forKey: marker) == on
+                     && publication.defaults.durable[marker] as? String == on
+                     && publication.defaults.durable[enabled] as? Bool == true
+                     && publication.dock.events.isEmpty,
+                     "failed off persistence and a reentrant sync cannot discard recovery")
+
+        // The cached toggle is already off. The retry must still save that off
+        // before it grants cleanup, including after a crash here.
+        publication.defaults.synchronizeSucceeds = true
+        publication.scheduler.flushMainOne()
+        suite.expect(publication.defaults.durable[enabled] as? Bool == false
+                     && publication.defaults.durable[marker] as? String == on,
+                     "off is durable before cleanup can remove its marker")
+        let relaunchedEnabled = publication.defaults.durable[enabled] as? Bool ?? true
+        let relaunched = host(enabled: relaunchedEnabled,
+                              marker: publication.defaults.durable[marker] as? String)
+        suite.expect(relaunched.hold.reconcile(wanted: relaunchedEnabled)
+                     && relaunched.dock.value == .on && relaunched.dock.events.isEmpty,
+                     "a crash after off persistence never reapplies fixed order at the next launch")
+        publication.scheduler.flush()
+        suite.expect(!publication.defaults.bool(forKey: enabled)
+                     && publication.defaults.string(forKey: marker) == nil
+                     && publication.dock.events.isEmpty,
+                     "a successful retry finishes cleanup without changing the external choice")
+        publication.defaults.onSet = nil
+
+        let reenabled = host(marker: on)
+        reenabled.defaults.synchronizeSucceeds = false
+        _ = reenabled.hold.letGoIfRearrangingReturned()
+        reenabled.scheduler.flushMainOne()
+        reenabled.defaults.set(true, forKey: enabled)
+        reenabled.defaults.synchronizeSucceeds = true
+        reenabled.hold.syncWithPreferences()
+        reenabled.scheduler.flush()
+        while !reenabled.scheduler.onMain.isEmpty { reenabled.scheduler.flushMainOne() }
+        suite.expect(reenabled.defaults.bool(forKey: enabled)
+                     && reenabled.defaults.durable[enabled] as? Bool == true
+                     && reenabled.defaults.string(forKey: marker) == on
+                     && reenabled.dock.value == .off,
+                     "reenabling after failed off persistence starts a new hold without reversing the new choice")
+        suite.expect(reenabled.hold.restoreForRemoval() && reenabled.dock.value == .on
+                     && reenabled.defaults.string(forKey: marker) == nil,
+                     "the new hold still restores the setting it found")
     }
 }
