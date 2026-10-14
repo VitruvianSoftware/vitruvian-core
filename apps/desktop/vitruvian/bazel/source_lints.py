@@ -944,6 +944,50 @@ def menu_panel_switches_have_names(repo):
     return []
 
 
+def tool_screen_controls_have_names(repo):
+    """A switch drawn beside its title reaches VoiceOver as a text and then
+    a switch with no name, and so does a control whose label is hidden. A
+    tool's detail in Settings and a tool's page name every switch, pop-up
+    and field they draw with their row's title (`controlNamed`), within the
+    control's own chain of modifiers."""
+    found = []
+    for path in (
+        "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+    ):
+        lines = repo.lines_at(path)
+        if not lines:
+            return [f"{path} reads back"]
+        if path.endswith("ExternalToolsSection.swift"):
+            helper = code_without_comments(lines)
+            start = helper.find("private func field(")
+            if start < 0 or ".controlNamed(setting.title)" not in helper[start : start + 400]:
+                found.append(f"{path}: a setting's field is named with its title")
+        for index, line in enumerate(lines):
+            if is_comment(line):
+                continue
+            control = next(
+                (name for name in ("Toggle(", "Picker(") if name in line), None
+            )
+            if control is None:
+                continue
+            indent = len(line) - len(line.lstrip())
+            named = False
+            for later in lines[index + 1 : index + 30]:
+                text = later.strip()
+                depth = len(later) - len(later.lstrip())
+                if text and depth <= indent and not (depth == indent and text[0] in ".}"):
+                    break
+                if depth in (indent, indent + 4) and text.startswith(".controlNamed("):
+                    named = True
+                    break
+            if not named:
+                found.append(f"{path}:{index + 1}: {control[:-1]} has no name for VoiceOver")
+    if found:
+        return ["every switch and pop-up a tool's screens draw is named with its row's title: " + "; ".join(found)]
+    return []
+
+
 def path_identity_rule_is_spelled_once(repo):
     """The leading-slash test IS the rule that tells a stored path from a
     bundle identifier. A second spelling of it drifts the day the rule learns
@@ -2928,6 +2972,7 @@ RULES = [
     click_debounce_schedules_nothing,
     smooth_scroll_disabled_tap_rearms_only_when_wanted,
     menu_panel_switches_have_names,
+    tool_screen_controls_have_names,
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,
     build_signs_with_a_stable_identity,

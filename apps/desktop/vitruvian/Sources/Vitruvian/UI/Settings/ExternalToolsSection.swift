@@ -779,6 +779,7 @@ private struct ExternalToolRowView: View {
             }
             Toggle(row.name, isOn: Binding(get: { row.isOn }, set: setOn))
                 .labelsHidden()
+                .controlNamed(row.name)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .disabled(!row.canSwitch)
@@ -879,6 +880,7 @@ private struct ExternalToolSettingRow: View {
         case .toggle(let isOn):
             Toggle(setting.title, isOn: Binding(get: { isOn }, set: { commit(.toggle($0)) }))
                 .labelsHidden()
+                .controlNamed(setting.title)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .focused($focus, equals: .setting(setting.id))
@@ -905,6 +907,7 @@ private struct ExternalToolSettingRow: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
+            .controlNamed(setting.title)
             .controlSize(.small)
             .frame(width: 200)
             .focused($focus, equals: .setting(setting.id))
@@ -914,6 +917,7 @@ private struct ExternalToolSettingRow: View {
     private func field(_ field: some View, width: CGFloat) -> some View {
         field
             .labelsHidden()
+            .controlNamed(setting.title)
             .textFieldStyle(.roundedBorder)
             .controlSize(.small)
             .frame(width: width)
@@ -1083,6 +1087,7 @@ private struct ExternalToolDetailView: View {
                         Toggle(isOn: Binding(get: { shows }, set: { setShowsInIsland($0) })) {
                             Text(detail.showInIslandTitle).font(.callout)
                         }
+                        .controlNamed(detail.showInIslandTitle)
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .focused($focus, equals: .showsInIsland)
@@ -1091,6 +1096,7 @@ private struct ExternalToolDetailView: View {
                         Toggle(isOn: Binding(get: { shows }, set: { setShowsStatus($0) })) {
                             Text(detail.showStatusTitle).font(.callout)
                         }
+                        .controlNamed(detail.showStatusTitle)
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .focused($focus, equals: .showsStatus)

@@ -226,6 +226,7 @@ package struct BlockTreeView: View {
             Toggle(isOn: Binding(get: { isOn }, set: { act(id, .toggle, .bool($0)) })) {
                 Text(verbatim: title).font(metrics.body).lineLimit(BlockTreeContent.toggleLines)
             }
+            .controlNamed(title)
             .toggleStyle(.switch)
             .controlSize(.small)
             .disabled(!enabled)
@@ -284,6 +285,7 @@ package struct BlockTreeView: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
+                .controlNamed(title)
                 .controlSize(.small)
                 .fixedSize()
                 .disabled(!enabled)
@@ -472,6 +474,22 @@ private struct BlockImage: View {
         case .file(let url)?: return NSImage(contentsOf: url)
         case .bytes(let data)?: return NSImage(data: data)
         case nil: return nil
+        }
+    }
+}
+
+extension View {
+    /// The control's name for assistive technology: its row's title, said
+    /// outright. A switch beside its title is otherwise a text and then a
+    /// switch with no name of its own, and a control whose label is hidden
+    /// has none either; with this each says what it switches or chooses.
+    /// A control with no title keeps what it had.
+    @ViewBuilder
+    func controlNamed(_ title: String?) -> some View {
+        if let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            accessibilityLabel(Text(verbatim: title))
+        } else {
+            self
         }
     }
 }
