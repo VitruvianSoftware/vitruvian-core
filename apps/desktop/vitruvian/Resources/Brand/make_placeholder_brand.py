@@ -133,12 +133,15 @@ def mark_svg():
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<!-- SPDX-License-Identifier: GPL-3.0-or-later -->\n"
-        "<!-- Copyright (C) 2026 VitruvianSoftware. Placeholder mark; see make_placeholder_brand.py. -->\n"
+        "<!-- Copyright (C) 2026 VitruvianSoftware. Golden-Datum V mark; see make_placeholder_brand.py. -->\n"
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:g}" height="{h:g}" '
         f'viewBox="{left:g} {top:g} {w:g} {h:g}">\n'
         f'  <g fill="none" stroke="#000" stroke-width="{s:g}">\n'
         f'    <circle cx="{CENTER[0]:g}" cy="{CENTER[1]:g}" r="{RADIUS:g}"/>\n'
         f'    <rect x="{x0:g}" y="{y0:g}" width="{SIDE:g}" height="{SIDE:g}"/>\n'
+        '    <line x1="257" y1="368" x2="767" y2="368" stroke-width="44"/>\n'
+        f'    <path d="M294 260L{CENTER[0]:g} {BOTTOM:g}L730 260" stroke-linecap="square" stroke-linejoin="miter"/>\n'
+        f'    <circle cx="{CENTER[0]:g}" cy="{CENTER[1]:g}" r="42" fill="#d47657" stroke="none"/>\n'
         "  </g>\n"
         "</svg>\n"
     )
