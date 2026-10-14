@@ -1053,9 +1053,22 @@ MUTATIONS = [
      "busy is amber: 9 points, medium, orange, breathing"),
     ("the agreement sheet says nothing of a status", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
-     "        showsStatus = tool.showsStatus ? strings.agreeShowsStatus : nil\n",
+     "        showsStatus = tool.showsActivity ? strings.agreeShowsStatusAndWords\n"
+     "            : tool.showsStatus ? strings.agreeShowsStatus : nil\n",
      "        showsStatus = nil\n",
      "the agreement sheet says, in the app's words, that the tool shows a status on the closed"),
+    ("the sheet says a status but not its words", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+     "        showsStatus = tool.showsActivity ? strings.agreeShowsStatusAndWords\n",
+     "        showsStatus = tool.showsActivity ? strings.agreeShowsStatus\n",
+     "a tool whose status says activity: true is said to show a mark and a few words, in the "
+     "person's language"),
+    ("a click while Nexus runs follows a hidden mark", "platform",
+     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+     "        guard !wingShowsNexus else { return nil }\n",
+     "",
+     "while a Nexus session runs the wings show Nexus, so a click opens the Agents page, not a tool's page "
+     "its mark is hidden for"),
     ("the island's button does not say a tool's mark", "notch",
      "Sources/Vitruvian/Services/Notch/NotchService.swift",
      "        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : closedTitle,\n",

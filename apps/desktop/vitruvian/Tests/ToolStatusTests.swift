@@ -33,6 +33,8 @@ enum ToolStatusTests {
         theWordsAreTheShownMarks(suite)
         onlySecondsTickEverySecond(suite)
         theButtonSaysTheWordsButNotTheSeconds(suite)
+        aClickWhileNexusRunsOpensAgents(suite)
+        aMarkWithoutWordsLeavesThePercent(suite)
     }
 
     static let first = ToolID("com.acme.deploys")!
@@ -310,5 +312,31 @@ extension ToolStatusTests {
         let japanese = RestingStatus.words(for: status(.busy, text: "実行中", activity: "3"), toolName: "GitHub",
                                            language: .ja, strings: FeatureStrings.externalTools(.ja))
         suite.expect(japanese == "GitHub：実行中、3", "the pause before the words is written the way the language writes it")
+    }
+}
+
+/// What the wing does with them: the click while Nexus Agent runs, and the
+/// percent beside a mark with no words.
+extension ToolStatusTests {
+    static func aClickWhileNexusRunsOpensAgents(_ suite: TestSuite) {
+        let page = ToolPanelHost.Key(tool: first, panel: "deploys")
+        for state in states {
+            suite.expect(RestingStatus.opens(.tool(first, status(state, activity: "3")), pages: [page],
+                                             wingShowsNexus: true) == nil,
+                         "while a Nexus session runs the wings show Nexus, so a click opens the Agents page, not "
+                             + "a tool's page its mark is hidden for (\(state))")
+        }
+        suite.expect(RestingStatus.opens(.tool(first, status(.failure)), pages: [page], wingShowsNexus: false) == page
+                         && RestingStatus.opens(.tool(first, status(.failure)), pages: [page]) == page,
+                     "with no Nexus session the click is as it was")
+    }
+
+    static func aMarkWithoutWordsLeavesThePercent(_ suite: TestSuite) {
+        for state in states {
+            let wing = RestingStatus.rightWing(tools: [(first, status(state, text: "Deploying"))], nexusRunning: false,
+                                               language: .enUS)
+            suite.expect(wing == .allowance && !RestingStatus.ticksEverySecond(wing),
+                         "a mark without words leaves the percent, and the wing's clock its six seconds (\(state))")
+        }
     }
 }

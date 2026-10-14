@@ -348,6 +348,17 @@ Step 5, each planted with the driver and DETECTED: "undeclared words are drawn" 
   2. "the sheet says a status but not its words": make the words sentence `agreeShowsStatus`. Suite `tool-runtime`.
 - [ ] **Step 7: Commit.**
 
+**As built (2026-10-14).**
+
+- **`NotchAgentStrip.swift` gained two small helpers beside the three changes**: a computed `restingWing` (the wing's `RestingStatus.rightWing(tools:…)`, read by the clock and the right-hand branch) and `restingText(_:)`, the Nexus text's four modifiers on `Text(verbatim:)`, used for the words and the seconds. Nexus's own text, its sparkles, the left-hand wing and the percent's lines are untouched.
+- **No animation is added or taken away.** The words change through a published status, never inside an animation, so they are drawn without one. The wing adds no `.transaction` of its own: one would also stop the text following the island's own open and close.
+- **`ExternalToolStringsTests` holds the count by hand**: 67 became 68.
+- **The sheet's sentence reads `showsActivity` first**: a status that says `"activity": true` is a status, so `agreeShowsStatusAndWords` replaces `agreeShowsStatus` for it, and nothing else changes.
+- **The translations of `agreeShowsStatusAndWords` are each built on that language's existing `agreeShowsStatus` sentence**, not reviewed by a speaker.
+- Counts: `platform` 947 (was 938), `tool-runtime` 971 (was 970). `bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:by-hand` succeeded.
+
+Steps 5 and 6, each planted with the driver and DETECTED: "the agreement sheet says nothing of a status" (moved, `tool-runtime`), "the sheet says a status but not its words" (`tool-runtime`), "a click while Nexus runs follows a hidden mark" (`platform`).
+
 ---
 
 ### Task 6: The guide, the protocol's overview, and the records
