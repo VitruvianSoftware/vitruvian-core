@@ -49,6 +49,14 @@ inputs:
     description: Optional — narrow the grant to this owner instead of the App's full installation.
     required: false
     default: ""
+  permission-organization-administration:
+    description: >-
+      Optional — narrow the token to this one permission (read or write)
+      instead of everything the App holds. Empty (the default) keeps the
+      App's full set: the pinned action skips an empty permission-* input, so
+      existing callers are unchanged.
+    required: false
+    default: ""
 
 outputs:
   token:
@@ -64,3 +72,4 @@ runs:
         client-id: ${{ inputs.client-id || 'Iv23lijyULMNaNPFbaQZ' }} # vitruviansoftware-pulumi
         private-key: ${{ inputs.private-key }}
         owner: ${{ inputs.owner }}
+        permission-organization-administration: ${{ inputs.permission-organization-administration }}
