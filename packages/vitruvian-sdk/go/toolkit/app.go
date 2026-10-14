@@ -20,6 +20,8 @@
 
 package toolkit
 
+import "time"
+
 // App is the app, as a handler sees it. Each call is one request of the
 // protocol, grouped by the service the tool's manifest must list in `uses`
 // for it. Any call can be refused: it then returns the failure the app
@@ -82,6 +84,9 @@ const (
 	// FeaturePreferenceOptions is options on a text preference, drawn as a
 	// pop-up menu.
 	FeaturePreferenceOptions = "preferences.options"
+	// FeatureStatusActivity is activity and since on ui/status: a few
+	// words, or a count of seconds, beside the mark. From 3.50.
+	FeatureStatusActivity = "ui.status.activity"
 )
 
 // Supports is whether this app has something a later release added to the
@@ -218,6 +223,13 @@ type StatusOptions struct {
 	Text UIText
 	// Icon is an SF Symbol name, drawn in place of the state's own glyph.
 	Icon string
+	// Activity is a few words for the closed island, beside the mark: a
+	// string, or a map from a language tag to a string. Sent only to an app
+	// that has FeatureStatusActivity.
+	Activity UIText
+	// Since is a start time the app counts the seconds from, when there
+	// are no words. The zero time is none. Written as Unix seconds.
+	Since time.Time
 }
 
 // Status sets the tool's status, a small mark the app draws on the closed
@@ -227,6 +239,14 @@ type StatusOptions struct {
 // wants it to last starts with the app ("activation": ["onLaunch"]). The
 // manifest must declare contributes.status: without it the app refuses, and
 // the refusal is the error. It needs nothing in `uses`.
+//
+// Activity, a few words, and Since, a start time the app counts the seconds
+// from, are drawn beside the mark while it is the one the closed island
+// shows; the words win over the start time. Six characters or fewer, and a
+// number is best. They show only on an app that has FeatureStatusActivity
+// (3.50 and later): to an app without it the status is sent without them.
+// The manifest's status must say "activity": true, or the app leaves them
+// out.
 //
 // shown is false, and nothing is sent, when the app did not say it has
 // ui.status: an app before 3.48 shows no status, and that is no error. It
@@ -241,6 +261,14 @@ func (u UI) Status(state string, options ...StatusOptions) (shown bool, err erro
 		params.Text = options[0].Text
 		if options[0].Icon != "" {
 			params.Icon = &options[0].Icon
+		}
+		// An app from before 3.50 is sent the status without its words.
+		if u.tool.features[FeatureStatusActivity] {
+			params.Activity = options[0].Activity
+			if since := options[0].Since; !since.IsZero() {
+				seconds := float64(since.Unix()) + float64(since.Nanosecond())/1e9
+				params.Since = &seconds
+			}
 		}
 	}
 	if err := u.tool.call(MethodUIStatus, params, nil); err != nil {

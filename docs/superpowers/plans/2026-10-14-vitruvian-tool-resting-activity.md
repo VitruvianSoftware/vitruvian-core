@@ -204,6 +204,25 @@ The GitHub tool has no new words: its words are digits.
 - [ ] **Step 5: Plant one regression per kit by hand:** send `activity` whatever the hello said. The test "sends no words to an app from 3.48" must fail. Undo by hand.
 - [ ] **Step 6: Commit.**
 
+**As built (2026-10-14).** The calls are the plan's, with these details:
+
+- **Rust's `StatusOptions.icon` is an `Option<String>`**, not `Option<&str>`, so the struct needs no lifetime and has `Default`. `StatusOptions` is exported beside `Ui`. A `since` before 1970 is written as 0, since `SystemTime` cannot say a negative Unix time.
+- **The other kits pass a `since` before 1970 through**, and the app refuses it with -32602, which the call then raises or returns as its error. Python reads a naive `datetime` as local time, as `datetime.timestamp` does; its doc comment says so.
+- **Go writes `since` as `Unix()` plus the nanoseconds over 1e9**, so a half second is exactly `.5` on the wire; the zero `time.Time` is no start time.
+- **Two existing expectations changed on purpose**, beyond Task 1's: the TypeScript and Python tests that list every `Feature` name now list four.
+- **Each kit's README gained a short paragraph**, "A few words with the status". The Swift kit has no README of its own; the guide covers it (Task 6).
+- RED: every kit failed (Swift, Go and Rust did not compile: `extra arguments at positions #3, #4`, `unknown field Activity`; Python `AttributeError: type object 'Feature' has no attribute 'STATUS_ACTIVITY'`; TypeScript failed on the new tests).
+
+Step 5, planted in each kit (the words sent whatever the hello said), and the test that failed:
+
+| Kit | Failed |
+|---|---|
+| Swift | `testAStatusSendsNoWordsToAnAppFrom348` |
+| TypeScript | `a status sends no words to an app from 3.48` |
+| Python | `test_a_status_sends_no_words_to_an_app_from_3_48` |
+| Go | `TestAStatusSendsNoWordsToAnAppFrom348` |
+| Rust | `a_status_sends_no_words_to_an_app_from_3_48` |
+
 ---
 
 ### Task 3: The conformance script, the desk's hello, and the samples

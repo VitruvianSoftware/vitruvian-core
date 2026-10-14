@@ -26,6 +26,11 @@ options)` is a pop-up menu on a page. Those two are newer than protocol 2
 itself: `app.supports(features::CHOICE)` says whether this app has one. On an
 app from before them `status` sends nothing and gives `Ok(false)`, and a
 `choice` is drawn as its fallback text, so send a `field` there instead.
+`app.ui().status_with(status::BUSY, StatusOptions { activity: Some("3".into()),
+..Default::default() })` puts a few words beside the mark, and `since` a count
+of seconds the app keeps, when the manifest's status says `"activity": true`.
+An app before 3.50 does not have `features::STATUS_ACTIVITY`; the status is
+sent to it without them.
 
 Rust 1.75 or later. Two dependencies, `serde` and `serde_json`: Rust has no
 JSON in its standard library. MIT licence.

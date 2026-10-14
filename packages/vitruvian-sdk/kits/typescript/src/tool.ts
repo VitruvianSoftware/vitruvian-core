@@ -77,6 +77,8 @@ export const Feature = {
   choice: "ui.choice",
   /** `options` on a text preference, drawn as a pop-up menu. */
   preferenceOptions: "preferences.options",
+  /** `activity` and `since` on `ui/status`: a few words, or a count of seconds, beside the mark. From 3.50. */
+  statusActivity: "ui.status.activity",
 } as const;
 
 /** A command that will not run. Throw it from a handler; the app is answered with -32010 and `message`. */
@@ -152,6 +154,14 @@ export interface App extends AppCalls {
    * the app refuses, and this throws the `Refusal`. It needs nothing in
    * `uses`.
    *
+   * `activity`, a few words, and `since`, a start time the app counts the
+   * seconds from, are drawn beside the mark while it is the one the closed
+   * island shows; the words win over the start time. Six characters or
+   * fewer, and a number is best. They show only on an app that has
+   * `ui.status.activity` (3.50 and later): to an app without it the status
+   * is sent without them. The manifest's status must say
+   * `"activity": true`, or the app leaves them out.
+   *
    * False, and nothing is sent, when the app did not say it has
    * `ui.status`: an app before 3.48 shows no status. True when it was sent
    * and answered; the person may still have switched the mark off.
@@ -168,6 +178,10 @@ export interface StatusOptions {
   text?: UIText;
   /** An SF Symbol name, drawn in place of the state's own glyph. */
   icon?: string;
+  /** A few words for the closed island, beside the mark. Sent only to an app that has `ui.status.activity`. */
+  activity?: UIText;
+  /** A start time the app counts the seconds from, when there are no words. Written as Unix seconds. */
+  since?: Date;
 }
 
 export type Handler = (app: App) => void;
@@ -253,11 +267,22 @@ export class Tool {
       status: {
         value: (state: StatusState, options: StatusOptions = {}) => {
           if (!tool.featureNames.has(Feature.status)) return false;
-          const params: { state: StatusState; text?: UIText; icon?: string } = {
-            state,
-          };
+          const params: {
+            state: StatusState;
+            text?: UIText;
+            icon?: string;
+            activity?: UIText;
+            since?: number;
+          } = { state };
           if (options.text !== undefined) params.text = options.text;
           if (options.icon !== undefined) params.icon = options.icon;
+          // An app from before 3.50 is sent the status without its words.
+          if (tool.featureNames.has(Feature.statusActivity)) {
+            if (options.activity !== undefined)
+              params.activity = options.activity;
+            if (options.since !== undefined)
+              params.since = options.since.getTime() / 1000;
+          }
           calls.ui.status(params);
           return true;
         },
