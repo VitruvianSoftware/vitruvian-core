@@ -23,6 +23,7 @@ enum ExternalToolSettingsTests {
         aStoredValueThatIsNoOptionIsShownAsWritten(suite)
         aSettingWithNoOptionsIsAsBefore(suite)
         pickingSaves(suite)
+        theMenuIsDrawnFromTheSettingAsItIsNow(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -478,5 +479,41 @@ extension ExternalToolSettingsTests {
                          && notices(bench.current) == [["light": .string("breathe green")]]
                          && shown(bench).first?.control.value == .string("breathe green"),
                      "a pick is saved as the option's value, and the tool is sent preferences/changed, as for any setting")
+    }
+}
+
+extension ExternalToolSettingsTests {
+    /// The row keeps what the person picked while the detail is open, and
+    /// the setting it is handed is read again whenever the detail is drawn:
+    /// in another language, or after the value changed. The rows it draws
+    /// come from both.
+    static func theMenuIsDrawnFromTheSettingAsItIsNow(_ suite: TestSuite) {
+        let bench = bench(lights)
+        defer { bench.close() }
+        bench.box.values[key("light")] = "breathe blue 5"
+        let english = shown(bench).first?.control.choices ?? []
+        let german = shown(bench, .de).first?.control.choices ?? []
+        // The detail was opened in English, and the language changed.
+        suite.expect(Choice.rows(selected: "breathe blue 5", among: german).map(\.title)
+                         == ["breathe blue 5", "Grün", "Pulsierendes Grün", "Nothing"],
+                     "when the language changes with the detail open, the rows follow at once, and the value "
+                         + "that is no option's stays the first row")
+        // The person picked an option; the setting has not been read again.
+        suite.expect(Choice.rows(selected: "breathe green", among: english)
+                         == [Choice(value: "green", title: "Green", isStored: false),
+                             Choice(value: "breathe green", title: "Pulsing green", isStored: false),
+                             Choice(value: "", title: "Nothing", isStored: false)],
+                     "once an option is picked the row for the value it replaced is gone, whether or not the "
+                         + "setting was read again")
+        // The tool wrote another value while the detail was open, and the
+        // setting was read again: what the row still holds is drawn, never a
+        // menu with nothing selected.
+        bench.box.values[key("light")] = "green"
+        let fresh = shown(bench).first?.control.choices ?? []
+        suite.expect(Choice.rows(selected: "breathe blue 5", among: fresh).first
+                         == Choice(value: "breathe blue 5", title: "breathe blue 5", isStored: true)
+                         && Choice.rows(selected: "breathe blue 5", among: fresh).count == 4
+                         && Choice.rows(selected: "green", among: fresh) == fresh,
+                     "whatever is selected is always one of the rows")
     }
 }

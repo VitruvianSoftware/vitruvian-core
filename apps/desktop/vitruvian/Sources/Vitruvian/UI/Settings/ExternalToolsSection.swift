@@ -124,7 +124,7 @@ package struct ExternalToolSetting: Identifiable, Equatable {
         /// row has nothing to stand for. Any other control is as it was.
         package func picking(_ value: String) -> Control {
             guard case .choice(_, let choices) = self else { return self }
-            return .choice(value, choices.filter { !$0.isStored || $0.value == value })
+            return .choice(value, Choice.rows(selected: value, among: choices))
         }
     }
 
@@ -152,13 +152,25 @@ package struct ExternalToolSetting: Identifiable, Equatable {
         /// value and never rewrites it.
         package static func menu(selected: String, options: [(value: String, title: String)],
                                  limit: Int) -> [Choice] {
-            var rows = options.map { Choice(value: $0.value, title: ToolOwnWords.oneLine($0.title, limit: limit),
-                                            isStored: false) }
+            rows(selected: selected,
+                 among: options.map { Choice(value: $0.value, title: ToolOwnWords.oneLine($0.title, limit: limit),
+                                             isStored: false) },
+                 limit: limit)
+        }
+
+        /// The rows a menu draws while `selected` is selected: the rows of
+        /// `rows` that stand for options, and before them a row for
+        /// `selected` when it is none of them. So what is selected is
+        /// always one of the rows, and the row for a value that is no
+        /// option's is there exactly while that value is selected.
+        package static func rows(selected: String, among rows: [Choice],
+                                 limit: Int = ManifestLimits.maxPreferenceTitleLength) -> [Choice] {
+            let options = rows.filter { !$0.isStored }
             if !options.contains(where: { $0.value == selected }) {
-                rows.insert(Choice(value: selected, title: ToolOwnWords.oneLine(selected, limit: limit), isStored: true),
-                            at: 0)
+                return [Choice(value: selected, title: ToolOwnWords.oneLine(selected, limit: limit), isStored: true)]
+                    + options
             }
-            return rows
+            return options
         }
     }
 
@@ -881,12 +893,15 @@ private struct ExternalToolSettingRow: View {
             field(TextField(setting.title, value: Binding(get: { number }, set: { draft = .number($0) }), format: .number,
                             prompt: Text(verbatim: "")),
                   width: 100)
-        case .choice(let value, let choices):
+        case .choice(let value, _):
             // In the row a text field has, and as wide. A pick is saved at
-            // once, as a switch is.
+            // once, as a switch is. The rows are the setting's as the detail
+            // was last drawn, so they follow the language while it is open;
+            // what is selected is what this row holds.
+            let rows = ExternalToolSetting.Choice.rows(selected: value, among: setting.control.choices ?? [])
             Picker(setting.title, selection: Binding(get: { value }, set: { commit(draft.picking($0)) })) {
                 // The tool's own words: plain text, one line each.
-                ForEach(choices) { Text(verbatim: $0.title).tag($0.value) }
+                ForEach(rows) { Text(verbatim: $0.title).tag($0.value) }
             }
             .pickerStyle(.menu)
             .labelsHidden()
