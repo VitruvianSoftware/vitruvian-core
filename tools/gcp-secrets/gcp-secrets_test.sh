@@ -209,6 +209,37 @@ case "$out" in
   *) fail "expected the gcloud error to be surfaced — got: $out" ;;
 esac
 
+echo "test 10: a run that dies half way never reports success"
+# On bash 3.2 a `set -u` abort runs the EXIT trap with $? = 0 and exits with the
+# trap's status; a trap that only cleans up made that exit 0. Plant an unbound
+# variable right after the trap is set, in a copy, and run a `status`: it must
+# exit non-zero. On bash 4.4+ the abort itself is non-zero, so this case can
+# only fail on bash 3.2; the static checks hold the rule on every bash.
+awk '{print} /^trap _gc_cleanup EXIT$/{print ": \"$__planted_unbound_variable\""}' \
+  "$SCRIPT" >"$work/planted.sh"
+if grep -q '__planted_unbound_variable' "$work/planted.sh"; then
+  pass "the planted abort is in the copy"
+else
+  fail "the trap line is not where the test expects; nothing was planted"
+fi
+for sh in bash /bin/bash; do
+  command -v "$sh" >/dev/null 2>&1 || continue
+  if CALL_LOG="$work/calls" SEEDED="" GCLOUD_BIN="$work/fake-gcloud" \
+    GCP_IDENTITY_MAP="$work/identities.tsv" GCP_IDENTITY_RESOLVER="$RESOLVER" \
+    "$sh" "$work/planted.sh" status demo/infra/build >/dev/null 2>&1; then
+    fail "an aborted run exited 0 under $sh ($("$sh" -c 'echo $BASH_VERSION'))"
+  else
+    pass "an aborted run exits non-zero under $sh ($("$sh" -c 'echo $BASH_VERSION'))"
+  fi
+done
+if grep -nE "^[[:space:]]*trap '[^']*' EXIT" "$SCRIPT" >/dev/null; then
+  fail "an EXIT trap that only cleans up is back"
+else
+  pass "no EXIT trap that only cleans up"
+fi
+assert_eq "the completion flag is set by the last line" "_gc_complete=true" "$(tail -n 1 "$SCRIPT")"
+assert_eq "the completion flag is set exactly once" "1" "$(grep -c '^_gc_complete=true$' "$SCRIPT")"
+
 if [ "$fails" -gt 0 ]; then
   echo "FAILED: $fails assertion(s)" >&2
   exit 1
