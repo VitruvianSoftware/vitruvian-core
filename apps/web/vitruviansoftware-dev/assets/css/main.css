@@ -892,6 +892,142 @@ pre {
   margin: 0;
 }
 
+.principles-head-row {
+  align-items: center;
+  margin-bottom: var(--space-7);
+}
+
+.principles-seal {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  flex: none;
+}
+
+.principles-seal-marks {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.principles-medallion {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+}
+
+.principles-seal-divider {
+  width: 1px;
+  height: 44px;
+  background: var(--color-divider);
+}
+
+.principles-vector {
+  width: 56px;
+  height: 56px;
+  color: var(--color-accent-text);
+  flex: none;
+}
+
+.principles-seal-caption {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+/* ───────────────────────────── brand study (about) ──────────────────────── */
+.brand-origin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: var(--space-7);
+  align-items: center;
+}
+
+.brand-study {
+  margin: 0;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.brand-study-stage {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.brand-study-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  background-image:
+    linear-gradient(var(--color-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-grid) 1px, transparent 1px);
+  background-size: 21px 21px;
+}
+
+.brand-study-tag {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent-text);
+}
+
+.brand-study-frame {
+  width: 144px;
+  height: 144px;
+  display: grid;
+  place-items: center;
+  margin: var(--space-2) 0;
+}
+
+.brand-study-svg {
+  width: 132px;
+  height: 132px;
+  color: var(--color-accent-text);
+}
+
+.brand-study-medallion {
+  width: 136px;
+  height: 136px;
+  border-radius: 50%;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.42));
+}
+
+.brand-study-spec {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-text-dim);
+}
+
+.brand-study-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-sanguine-text);
+}
+
 /* ───────────────────────────── feature list ─────────────────────────────── */
 .feature h3 {
   display: flex;
@@ -1545,7 +1681,8 @@ pre {
     grid-column: 1 / -1;
   }
 
-  .band {
+  .band,
+  .brand-origin-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1753,7 +1890,8 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .team-founder {
+  .team-founder,
+  .brand-study-stage {
     grid-template-columns: minmax(0, 1fr);
   }
 

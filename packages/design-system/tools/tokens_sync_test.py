@@ -129,6 +129,9 @@ class DesignSystemIntegrityTest(unittest.TestCase):
             "Plate",
             "RegistrationMarks",
             "VMark",
+            "BrandMark",
+            "BrandLogo",
+            "BrandMedallion",
             "Rule",
             "Glass",
             "Button",
@@ -203,6 +206,14 @@ class DesignSystemIntegrityTest(unittest.TestCase):
                 rf"\b{re.escape(sym)}\b",
                 f"Missing export '{sym}' in packages/design-system/src/index.ts",
             )
+        self.assertTrue(
+            (self.src_dir / "brand" / "vitruvian-medallion.png").is_file(),
+            "Missing official brand medallion PNG in src/brand/vitruvian-medallion.png",
+        )
+        self.assertTrue(
+            (self.src_dir / "brand" / "vitruvian-mark.svg").is_file(),
+            "Missing official vector brand mark in src/brand/vitruvian-mark.svg",
+        )
 
 
 if __name__ == "__main__":

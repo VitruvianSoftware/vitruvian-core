@@ -153,24 +153,71 @@ public fun Rule(modifier: Modifier = Modifier, color: Color = Vitruvian.divider)
   Box(modifier = modifier.drawBehind { drawRect(color) })
 }
 
-/** The VMark: a 1 dp square with an inscribed circle. */
+/**
+ * The VMark: circle inscribed in a square with the Golden-Datum "V" — the Vitruvian figure's
+ * raised-arm and grounded-foot geometry (Option A official brand mark).
+ */
 @Composable
 public fun VMark(
     modifier: Modifier = Modifier,
     markSize: Dp = 17.dp,
     color: Color = Vitruvian.accentText,
+    pivotColor: Color = Vitruvian.sanguineText,
 ) {
   Box(
       modifier =
           modifier.size(markSize).drawBehind {
             val hairline = HAIRLINE.toPx()
-            drawRect(color = color, style = Stroke(width = hairline))
-            drawOval(
-                color = color,
-                topLeft = Offset(hairline / 2f, hairline / 2f),
-                size = Size(size.width - hairline, size.height - hairline),
+            val w = size.width
+            val h = size.height
+            val sqInsetX = w * 0.2f
+            val sqInsetY = h * 0.2f
+            val sqW = w - sqInsetX * 2f
+            val sqH = h - sqInsetY * 2f
+            // Inscribed square
+            drawRect(
+                color = color.copy(alpha = 0.55f),
+                topLeft = Offset(sqInsetX, sqInsetY),
+                size = Size(sqW, sqH),
                 style = Stroke(width = hairline),
             )
+            // Vitruvian circle
+            drawOval(
+                color = color,
+                topLeft = Offset(w * 0.1f, h * 0.1f),
+                size = Size(w * 0.8f, h * 0.8f),
+                style = Stroke(width = hairline * 1.2f),
+            )
+            // Horizontal golden-section shoulder datum
+            val datumY = h * 0.39f
+            drawLine(
+                color = color.copy(alpha = 0.55f),
+                start = Offset(sqInsetX, datumY),
+                end = Offset(w - sqInsetX, datumY),
+                strokeWidth = hairline,
+            )
+            // Golden-Datum V (upper intersections to bottom pole)
+            val vStroke = hairline * 1.5f
+            drawLine(
+                color = color,
+                start = Offset(w * 0.25f, h * 0.25f),
+                end = Offset(w * 0.5f, h * 0.83f),
+                strokeWidth = vStroke,
+            )
+            drawLine(
+                color = color,
+                start = Offset(w * 0.75f, h * 0.25f),
+                end = Offset(w * 0.5f, h * 0.83f),
+                strokeWidth = vStroke,
+            )
+            // Sanguine navel pivot dot
+            if (markSize >= 20.dp) {
+              drawCircle(
+                  color = pivotColor,
+                  radius = maxOf(hairline * 1.4f, w * 0.05f),
+                  center = Offset(w * 0.5f, h * 0.5f),
+              )
+            }
           },
   )
 }
