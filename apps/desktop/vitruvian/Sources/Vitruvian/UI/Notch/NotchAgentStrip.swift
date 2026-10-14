@@ -174,8 +174,10 @@ package struct NotchAgentRestingWing: View {
         .contentShape(Rectangle())
         .onTapGesture {
             // A tool's mark that is not green opens that tool's island
-            // page, when the island lists it. Anything else is as before.
-            if let page = RestingStatus.opens(statusMark, pages: ExternalToolStore.shared.islandPanels()),
+            // page, when the island lists it and the wings show the mark,
+            // not a running Nexus session. Anything else is as before.
+            if let page = RestingStatus.opens(statusMark, pages: ExternalToolStore.shared.islandPanels(),
+                                              nexusRunning: nexusSession.isRunning),
                NotchService.shared.modules.contains(.tools) {
                 NotchService.shared.select(.tools)
                 QuickLauncherService.shared.closeUtility()

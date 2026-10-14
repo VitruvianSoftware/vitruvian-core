@@ -176,16 +176,20 @@ extension ToolStatusTests {
         let page = ToolPanelHost.Key(tool: first, panel: "deploys")
         let other = ToolPanelHost.Key(tool: second, panel: "checks")
         for state in [StatusState.busy, .attention, .failure] {
-            suite.expect(RestingStatus.opens(.tool(first, status(state)), pages: [other, page]) == page,
+            suite.expect(RestingStatus.opens(.tool(first, status(state)), pages: [other, page], nexusRunning: false) == page,
                          "a click while a tool's mark says \(state) opens that tool's island page")
         }
-        suite.expect(RestingStatus.opens(.tool(first, status(.ok)), pages: [page]) == nil,
+        suite.expect(RestingStatus.opens(.tool(first, status(.ok)), pages: [page], nexusRunning: false) == nil,
                      "a green mark asks for nothing: the click does what it does today")
-        suite.expect(RestingStatus.opens(nil, pages: [page]) == nil,
+        suite.expect(RestingStatus.opens(nil, pages: [page], nexusRunning: false) == nil,
                      "no mark leaves the click as it is today")
-        suite.expect(RestingStatus.opens(.tool(first, status(.failure)), pages: [other]) == nil
-                         && RestingStatus.opens(.tool(first, status(.failure)), pages: []) == nil,
+        suite.expect(RestingStatus.opens(.tool(first, status(.failure)), pages: [other], nexusRunning: false) == nil
+                         && RestingStatus.opens(.tool(first, status(.failure)), pages: [], nexusRunning: false) == nil,
                      "a tool with no island page, or whose page the person hid, leaves it as it is today too")
+        for state in [StatusState.busy, .attention, .failure] {
+            suite.expect(RestingStatus.opens(.tool(first, status(state)), pages: [page], nexusRunning: true) == nil,
+                         "while a Nexus session runs the wings show it, so a click opens the Agents page even when a tool says \(state)")
+        }
     }
 
     /// The closed island is one element to assistive technology: a button
