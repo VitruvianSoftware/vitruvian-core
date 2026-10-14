@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-14T07:49:25Z",
+  "generated": "2026-10-14T16:10:28Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -102,122 +102,6 @@
             "zh-Hans": "打开我的拉取请求",
             "zh-TW": "打開我的拉取請求",
             "zh-HK": "打開我的拉取請求"
-          }
-        }
-      ]
-    },
-    {
-      "id": "dev.vitruvian.nexus-agent",
-      "name": {
-        "en": "Nexus Agent"
-      },
-      "publisher": "VitruvianSoftware",
-      "summary": {
-        "en": "Run your Telegram bot for the Antigravity agent and ask the agent from anywhere with a Quick Prompt",
-        "pt-BR": "Execute seu bot do Telegram para o agente Antigravity e pergunte ao agente de qualquer lugar com um Prompt rápido",
-        "tr": "Antigravity ajanı için Telegram botunuzu çalıştırın ve Hızlı İstem ile ajana her yerden sorun",
-        "ru": "Запускайте Telegram-бота для агента Antigravity и обращайтесь к агенту откуда угодно через быстрый запрос",
-        "es": "Ejecuta tu bot de Telegram para el agente Antigravity y pregunta al agente desde cualquier lugar con un Prompt rápido",
-        "sk": "Spúšťajte svojho Telegram bota pre agenta Antigravity a pýtajte sa agenta odkiaľkoľvek cez Rýchlu výzvu",
-        "de": "Betreibe deinen Telegram-Bot für den Antigravity-Agenten und frag den Agenten von überall mit einem Schnell-Prompt",
-        "fr": "Faites tourner votre bot Telegram pour l’agent Antigravity et interrogez l’agent depuis n’importe où avec un Prompt rapide",
-        "it": "Esegui il tuo bot Telegram per l’agente Antigravity e chiedi all’agente da qualsiasi punto con un Prompt rapido",
-        "ja": "Antigravity エージェント用の Telegram ボットを実行し、クイックプロンプトでどこからでもエージェントに質問します",
-        "ko": "Antigravity 에이전트용 Telegram 봇을 실행하고 빠른 프롬프트로 어디서나 에이전트에게 질문합니다",
-        "uk": "Запускайте Telegram-бота для агента Antigravity і звертайтеся до агента звідусіль через швидкий запит",
-        "zh-Hans": "为 Antigravity 智能体运行你的 Telegram 机器人，并通过快速提问随时随地向智能体提问",
-        "zh-TW": "為 Antigravity 代理程式執行你的 Telegram 機器人，並透過快速提問隨時隨地向代理程式提問",
-        "zh-HK": "為 Antigravity 代理程式執行你的 Telegram 機械人，並透過快速提問隨時隨地向代理程式提問"
-      },
-      "version": "1.22.0",
-      "protocol": "2",
-      "minimumAppVersion": "3.46.0",
-      "source": "https://github.com/VitruvianSoftware/nexus-agent",
-      "download": {
-        "url": "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.22.0/nexus-agent-tool-1.22.0.zip",
-        "sha256": "535211ff658ae0686ee05ef4b4194efd3aaa1c391615f087c6d0779a9bb3d6df",
-        "size": 3634426
-      },
-      "uses": ["notify", "storage"],
-      "commands": [
-        {
-          "id": "quickPrompt",
-          "title": {
-            "en": "Open the Quick Prompt",
-            "pt-BR": "Abrir o Quick Prompt",
-            "tr": "Quick Prompt’u aç",
-            "ru": "Открыть Quick Prompt",
-            "es": "Abrir el Quick Prompt",
-            "sk": "Otvoriť Quick Prompt",
-            "de": "Quick Prompt öffnen",
-            "fr": "Ouvrir le Quick Prompt",
-            "it": "Apri il Quick Prompt",
-            "ja": "Quick Prompt を開く",
-            "ko": "Quick Prompt 열기",
-            "uk": "Відкрити Quick Prompt",
-            "zh-Hans": "打开 Quick Prompt",
-            "zh-TW": "打開 Quick Prompt",
-            "zh-HK": "打開 Quick Prompt"
-          }
-        },
-        {
-          "id": "newChat",
-          "title": {
-            "en": "New chat with the agent",
-            "pt-BR": "Nova conversa com o agente",
-            "tr": "Ajanla yeni sohbet",
-            "ru": "Новый чат с агентом",
-            "es": "Nuevo chat con el agente",
-            "sk": "Nový chat s agentom",
-            "de": "Neuer Chat mit dem Agenten",
-            "fr": "Nouvelle conversation avec l’agent",
-            "it": "Nuova chat con l’agente",
-            "ja": "エージェントと新しいチャット",
-            "ko": "에이전트와 새 채팅",
-            "uk": "Новий чат з агентом",
-            "zh-Hans": "与智能体开始新对话",
-            "zh-TW": "與代理程式開始新對話",
-            "zh-HK": "與代理程式開始新對話"
-          }
-        },
-        {
-          "id": "startBot",
-          "title": {
-            "en": "Start the Telegram bot",
-            "pt-BR": "Iniciar o bot do Telegram",
-            "tr": "Telegram botunu başlat",
-            "ru": "Запустить бота Telegram",
-            "es": "Iniciar el bot de Telegram",
-            "sk": "Spustiť Telegram bota",
-            "de": "Den Telegram-Bot starten",
-            "fr": "Démarrer le bot Telegram",
-            "it": "Avvia il bot Telegram",
-            "ja": "Telegram ボットを起動",
-            "ko": "Telegram 봇 시작",
-            "uk": "Запустити бота Telegram",
-            "zh-Hans": "启动 Telegram 机器人",
-            "zh-TW": "啟動 Telegram 機器人",
-            "zh-HK": "啟動 Telegram 機器人"
-          }
-        },
-        {
-          "id": "stopBot",
-          "title": {
-            "en": "Stop the Telegram bot",
-            "pt-BR": "Parar o bot do Telegram",
-            "tr": "Telegram botunu durdur",
-            "ru": "Остановить бота Telegram",
-            "es": "Detener el bot de Telegram",
-            "sk": "Zastaviť Telegram bota",
-            "de": "Den Telegram-Bot anhalten",
-            "fr": "Arrêter le bot Telegram",
-            "it": "Ferma il bot Telegram",
-            "ja": "Telegram ボットを停止",
-            "ko": "Telegram 봇 중지",
-            "uk": "Зупинити бота Telegram",
-            "zh-Hans": "停止 Telegram 机器人",
-            "zh-TW": "停止 Telegram 機器人",
-            "zh-HK": "停止 Telegram 機器人"
           }
         }
       ]
