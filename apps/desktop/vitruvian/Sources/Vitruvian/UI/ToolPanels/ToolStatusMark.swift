@@ -62,20 +62,7 @@ package struct ToolStatusMarkContent: Equatable, Sendable {
         breathes = status.state == .busy
         let asked = status.icon?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         symbol = !asked.isEmpty && hasSymbol(asked) ? asked : own
-        let said = status.text?.text(for: language.rawValue).trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let words = said.isEmpty ? strings.mark(status.state) ?? "" : ToolOwnWords.oneLine(said)
-        label = ToolOwnWords.oneLine(toolName) + Self.colon(in: language) + words
-    }
-
-    /// What stands between the tool's name and its words. The app's
-    /// strings write a colon the way each language does; this is the same
-    /// rule, for a label made of two of the tool's own texts.
-    static func colon(in language: AppLanguage) -> String {
-        switch language {
-        case .fr: return "\u{00A0}: "
-        case .ja, .zhHans, .zhTW, .zhHK: return "："
-        default: return ": "
-        }
+        label = RestingStatus.words(for: status, toolName: toolName, language: language, strings: strings)
     }
 }
 

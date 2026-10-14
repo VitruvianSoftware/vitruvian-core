@@ -275,7 +275,7 @@ package struct NotchGitHubRestingIndicator: View {
     /// whatever the last one was. The resting wing asks the same rule when
     /// it picks between this mark and a tool's.
     package static func verdict(watching repositories: Int, aggregate: Verdict) -> Verdict? {
-        repositories > 0 ? aggregate : nil
+        RestingStatus.gitHub(watching: repositories, aggregate: aggregate)
     }
 
     private var indicatorVerdict: Verdict? {

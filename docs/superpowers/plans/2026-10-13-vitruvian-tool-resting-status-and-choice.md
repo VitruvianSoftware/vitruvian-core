@@ -564,6 +564,14 @@ After it merges, release-please opens `chore(main): release vitruvian-sdk 1.3.0`
 
 ---
 
+**After the first checks at a screen (2026-10-13).** Checks 1, 2 (external display), 3, 5 and 13 passed on macOS 27.0, dark appearance, on the head `4a20ff626`. Two accessibility defects were found and fixed on the same pull request.
+
+- **The mark had no words for VoiceOver.** The plan put the label on the mark's view. But the closed island hides everything it draws at rest from assistive technology and offers one AppKit button over it ("Open Dynamic Island"), so a label on the mark is never reached. The button now carries it: "Open Dynamic Island, Deploys: Failed". It says it only while the wings draw a tool's mark (not while an activity's strip is there, the island rests with something else, the built-in mark wins, or the Nexus session runs), and the copies on other displays say the same. The mark's own label and tooltip stay, for the day the strip is no longer hidden.
+- **The switches in a tool's detail had no names.** A switch drawn beside its title reached Accessibility as a text and then an unnamed switch. Every switch, pop-up and field in a tool's detail and on a tool's page is now named with its row's title, and a source lint keeps it so.
+- **How it was checked without the app.** The island under test (`NotchIslandFixture`) records the name it gives its button; the shipped window class, never shown, is asked for its button's label. A hosted SwiftUI view builds no accessibility tree in the test process, so the switches are held by a source lint, the way the menu panel's already are. A probe (not kept) that forced the tree showed a switch with a visible title go from no label to the given one; it could not see a control whose label is hidden.
+- **A fact for check 1:** while an agent session is running the closed island shows that agent's activity in place of its resting wings, so no mark is visible then, the app's or a tool's. The guide says so.
+- **Still owed at a screen:** that VoiceOver reads the button's new name and each switch's name; check 6 (the switch); check 4 (the click); light appearance; the built-in display's island heights; check 7 (two marks); Reduce Motion; checks 9 to 12.
+
 ## By hand
 
 Only a person at the screen can confirm these. An agent can drive the app through Accessibility, but **James is asked first**, each time. Do them in a build of pull request 1's branch, in light and dark appearance, on the built-in display and on an external one. Record each in the pull request with the Mac and the macOS version, or say it was not done. Checks 9 to 12 need Task 8's build of the tool: `bazel build --config=macos-app //apps/desktop/vitruvian-tool-github:tool-folder`.

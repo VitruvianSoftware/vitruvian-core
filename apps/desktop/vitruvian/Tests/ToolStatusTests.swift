@@ -24,6 +24,7 @@ enum ToolStatusTests {
         aToolsIconIsUsedWhenThisMacHasIt(suite)
         theLabelIsTheToolsNameAndItsWords(suite)
         aClickOpensTheToolsPageUnlessItIsOK(suite)
+        theIslandsButtonSaysTheMark(suite)
     }
 
     static let first = ToolID("com.acme.deploys")!
@@ -212,5 +213,25 @@ extension ToolStatusTests {
         suite.expect(RestingStatus.opens(.tool(first, status(.failure)), pages: [other]) == nil
                          && RestingStatus.opens(.tool(first, status(.failure)), pages: []) == nil,
                      "a tool with no island page, or whose page the person hid, leaves it as it is today too")
+    }
+
+    /// The closed island is one element to assistive technology: a button
+    /// over a drawing it cannot see. So the button's name carries what the
+    /// mark says.
+    static func theIslandsButtonSaysTheMark(_ suite: TestSuite) {
+        let failed = RestingStatus.words(for: status(.failure), toolName: "Deploys", language: .enUS, strings: english)
+        suite.expect(failed == "Deploys: Failed" && failed == mark(status(.failure)).label,
+                     "what the mark says is one rule, the same for the drawing and for the button")
+        suite.expect(RestingStatus.buttonTitle("Open Dynamic Island", saying: failed, language: .enUS)
+                         == "Open Dynamic Island, Deploys: Failed",
+                     "the closed island's button is named with the mark's words after its own name")
+        suite.expect(RestingStatus.buttonTitle("Open Dynamic Island", saying: nil, language: .enUS) == "Open Dynamic Island"
+                         && RestingStatus.buttonTitle("Open Dynamic Island", saying: "  ", language: .enUS) == "Open Dynamic Island",
+                     "with no mark the button keeps its own name, with nothing after it")
+        suite.expect(RestingStatus.buttonTitle("開く", saying: "Deploys：失敗", language: .ja) == "開く、Deploys：失敗",
+                     "the pause between the two is written the way the language writes it")
+        suite.expect(RestingStatus.gitHub(watching: 0, aggregate: .red) == nil
+                         && RestingStatus.gitHub(watching: 1, aggregate: .red) == .red,
+                     "the built-in mark's rule is one rule too: no repository watched is no mark")
     }
 }

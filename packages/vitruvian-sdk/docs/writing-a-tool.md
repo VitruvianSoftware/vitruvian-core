@@ -1235,7 +1235,8 @@ replaces the last.
 | `failure` | a red warning triangle, still | something failed |
 
 `text` is one short line that says what the status means. VoiceOver reads it
-after the tool's name, and it is the tooltip. Leave it out and the app says
+after the tool's name, as part of the closed island's button, and it is the
+tooltip. Leave it out and the app says
 its own word for the state. `icon` is an SF Symbol name that replaces the
 state's glyph; the colour, the size and the breathing stay the app's.
 
@@ -1244,8 +1245,10 @@ state's glyph; the colour, the size and the breathing stay the app's.
   GitHub mark compete for it. On a tie the app's mark wins, then the tool
   that was added first. So a quiet `ok` may not be the mark the person sees.
 - **It is shown where the island rests on its agent wings**: with "While
-  inactive" set to Agents, and no activity such as music or a running agent
-  in their place.
+  inactive" set to Agents, and no activity such as music in their place.
+  While an agent session is running, the closed island shows that agent's
+  activity in place of its resting wings, so neither the app's own mark nor
+  a tool's is visible until the session ends.
 - **A click on it opens your island page**, unless the mark is green or you
   have no island page the island lists. Then the click does what it always
   did.

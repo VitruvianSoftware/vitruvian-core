@@ -86,4 +86,46 @@ package enum RestingStatus {
         }
         return best?.mark
     }
+
+    /// The built-in mark's verdict: none while no repository is watched,
+    /// whatever the last one was.
+    package static func gitHub(watching repositories: Int, aggregate: Verdict) -> Verdict? {
+        repositories > 0 ? aggregate : nil
+    }
+
+    /// What a tool's mark says: the tool's name, a colon, and the tool's
+    /// words for its status as one short line, or the app's word for the
+    /// state when the tool gave none. For VoiceOver and the tooltip.
+    /// `toolName` is the tool's name in the person's language.
+    package static func words(for status: ToolStatus, toolName: String, language: AppLanguage,
+                              strings: ExternalToolStrings) -> String {
+        let said = status.text?.text(for: language.rawValue).trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let words = said.isEmpty ? strings.mark(status.state) ?? "" : ToolOwnWords.oneLine(said)
+        return ToolOwnWords.oneLine(toolName) + colon(in: language) + words
+    }
+
+    /// What stands between the tool's name and its words. The app's
+    /// strings write a colon the way each language does; this is the same
+    /// rule, for a label made of two of the tool's own texts.
+    package static func colon(in language: AppLanguage) -> String {
+        switch language {
+        case .fr: return "\u{00A0}: "
+        case .ja, .zhHans, .zhTW, .zhHK: return "："
+        default: return ": "
+        }
+    }
+
+    /// The name of the closed island's one button. The island is a single
+    /// element to assistive technology: what it draws at rest is hidden
+    /// from it, and the button over it is all VoiceOver reaches. So what a
+    /// status mark says is said here, after the button's own name. `status`
+    /// is nil, or blank, when the island shows no tool's mark.
+    package static func buttonTitle(_ title: String, saying status: String?, language: AppLanguage) -> String {
+        let said = status?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !said.isEmpty else { return title }
+        switch language {
+        case .ja, .zhHans, .zhTW, .zhHK: return title + "、" + said
+        default: return title + ", " + said
+        }
+    }
 }
