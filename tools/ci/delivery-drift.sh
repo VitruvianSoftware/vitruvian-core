@@ -56,14 +56,30 @@
 # its own workflow's WHOLE history has been read. Falling back earlier finds the
 # pre-split delivery and blames the commit that the new workflow did deliver.
 #
-# Exit codes: 0 = no drift (or only in-flight), 1 = drift found, 2 = usage/setup
-# error. Env: REPO (owner/name), WORKFLOW_FILE (overrides every unit's
-# delivery-<app>.yaml with one workflow), LEGACY_WORKFLOW_FILE (default
-# delivery.yaml; empty disables the fallback), BRANCH (default main),
-# RUN_SCAN_LIMIT (default 5000 runs per workflow), DRIFT_IGNORE_IN_FLIGHT (set to any value to
-# print the per-unit verdicts even while a run is converging -- for an operator
-# investigating, never for the scheduled job, which would then report drift on
-# every normal deploy).
+#
+# WHEN NOTHING WAS CHECKED. Every app's delivery workflow starts on every push
+# to main, and a unit whose workflow has a run in flight is skipped (see the
+# wait below). A check that lands just after a push used to skip every unit and
+# still exit 0, which read exactly like "everything delivered". So the verdict
+# has three values, and the workflow publishes it as a check run named
+# "delivery-drift verdict" on the commit it checked:
+#   OK              conclusion success: at least one unit was judged and none
+#                   is behind. Units that were skipped are named in the summary.
+#   NOTHING_CHECKED conclusion neutral: every unit was skipped. Not a pass.
+#   DRIFT           conclusion failure: a unit is behind main, or its state is
+#                   UNKNOWN (a failed read is never a pass).
+#
+# Exit codes: 0 = OK or NOTHING_CHECKED, 1 = DRIFT or UNKNOWN, 2 = usage/setup
+# error (no verdict written). Env: REPO (owner/name), WORKFLOW_FILE (overrides
+# every unit's delivery-<app>.yaml with one workflow), LEGACY_WORKFLOW_FILE
+# (default delivery.yaml; empty disables the fallback), BRANCH (default main),
+# RUN_SCAN_LIMIT (default 5000 runs per workflow), DRIFT_SETTLE_POLLS and
+# DRIFT_SETTLE_INTERVAL (the wait for in-flight runs, default 15 x 60s),
+# DRIFT_RESULT_FILE (appends conclusion=/title=/checked=/skipped= lines, e.g.
+# $GITHUB_OUTPUT), DRIFT_SUMMARY_FILE (writes a Markdown summary for the check
+# run), DRIFT_IGNORE_IN_FLIGHT (set to any value to judge every unit even while
+# a run is converging, without waiting -- for an operator investigating, never
+# for the scheduled job, which would then report drift on every normal deploy).
 set -euo pipefail
 
 REPO="${REPO:-VitruvianSoftware/vitruvian-core}"
@@ -89,6 +105,14 @@ BAZEL="${BAZEL:-bazel}"
 GH="${GH:-gh}"
 DELIVERY_QUERY='attr(tags, "\bdelivery\b", (//... except //apps/desktop/nexus-agent/macos/...))'
 
+# The wait for in-flight delivery runs. A typical run with nothing to deliver
+# takes 5 to 8 minutes and a delivering one up to about 20, so 15 polls a
+# minute apart lets most of them finish. Worst case: 15 minutes of waiting and
+# (1 + 15) run-list calls per busy workflow, 16 x 7 = 112 with today's seven.
+# A workflow is polled again only while it is busy, and not at all for a run
+# that is `waiting` (parked on an approval: a person, not a timer).
+DRIFT_SETTLE_POLLS="${DRIFT_SETTLE_POLLS:-15}"
+DRIFT_SETTLE_INTERVAL="${DRIFT_SETTLE_INTERVAL:-60}"
 log() { echo "delivery-drift: $*" >&2; }
 
 command -v "$GH" >/dev/null 2>&1 || {
@@ -110,18 +134,6 @@ fi
     exit 2
 }
 BIN_DIR="$("$BAZEL" info bazel-bin 2>/dev/null)"
-
-# --- 2. in-flight guard, per workflow -----------------------------------------
-# A queued/running/waiting run of a unit's workflow means that app is
-# legitimately mid-convergence; anything "behind" is behind on purpose.
-# Reporting drift then would train the reader to ignore this check, which is
-# worse than not having it. Note `waiting` counts: a run parked on an approval
-# gate WILL deliver. Per workflow, not global: apps deliver independently, and
-# one app parked on an approval for a day must not blind the check to the rest.
-in_flight() { # <workflow-file> -> count of queued/running/waiting runs
-    "$GH" run list --repo "$REPO" --workflow "$1" --branch "$BRANCH" \
-        --limit 20 --json status --jq '[.[] | select(.status == "in_progress" or .status == "queued" or .status == "waiting")] | length' 2>/dev/null || echo 0
-}
 
 # --- run history, a page at a time ------------------------------------------
 # One GraphQL query returns up to 100 runs of a workflow, newest first, each
@@ -233,13 +245,36 @@ why_unknown() {
     esac
 }
 
-# --- 3. per-unit check --------------------------------------------------------
+# --- 2. resolve each unit's workflow -------------------------------------------
 HEAD_SHA="$(git rev-parse HEAD)"
 drift_found=0
-unknown_units=""
+bad=0
 checked=0
-in_flight_units=""
+skipped=0
+nl=$'\n'
+CHECKED_MD=""
+SKIPPED_MD=""
+SKIPPED_NAMES=""
+# judged <unit> <verdict>: the unit was given a verdict.
+judged() {
+    checked=$((checked + 1))
+    CHECKED_MD="${CHECKED_MD}- \`${1}\`: ${2}${nl}"
+}
+# failed <unit> <verdict>: judged, and the verdict is DRIFT or UNKNOWN.
+failed() {
+    judged "$1" "**${2}**"
+    bad=$((bad + 1))
+    drift_found=1
+}
+# skip <unit> <why>: the unit was not judged at all.
+skip() {
+    skipped=$((skipped + 1))
+    SKIPPED_MD="${SKIPPED_MD}- \`${1}\`: ${2}${nl}"
+    SKIPPED_NAMES="${SKIPPED_NAMES}${SKIPPED_NAMES:+, }${1}"
+}
 
+UNITS="$PAGE_DIR/units.tsv"
+: >"$UNITS"
 for label in $LABELS; do
     # //pkg/sub:x.delivery_unit -> pkg/sub/x.delivery.json
     rel="${label#@@}"
@@ -250,7 +285,7 @@ for label in $LABELS; do
     meta="${BIN_DIR}/${pkg}/${tgt%.delivery_unit}.delivery.json"
     [ -f "$meta" ] || {
         log "metadata missing for ${label} -- cannot check, treating as UNKNOWN"
-        drift_found=1
+        failed "$label" "UNKNOWN: its metadata is missing"
         continue
     }
 
@@ -262,13 +297,73 @@ for label in $LABELS; do
     wf="${WORKFLOW_FILE:-${app:+delivery-${app}.yaml}}"
     if [ -z "$wf" ]; then
         log "${name}: declares no app, so no workflow delivers it -- UNKNOWN"
-        drift_found=1
+        failed "$name" "UNKNOWN: it declares no app, so no workflow delivers it"
         continue
     fi
-    n_in_flight="$(in_flight "$wf")"
-    if [ "${n_in_flight:-0}" -gt 0 ] && [ -z "${DRIFT_IGNORE_IN_FLIGHT:-}" ]; then
+    printf '%s\t%s\t%s\t%s\n' "$name" "$first_env" "$wf" "$meta" >>"$UNITS"
+done
+
+# --- 3. wait for in-flight runs, per workflow ----------------------------------
+# A queued/running/waiting run of a unit's workflow means that app is
+# legitimately mid-convergence; anything "behind" is behind on purpose.
+# Reporting drift then would train the reader to ignore this check, which is
+# worse than not having it. Per workflow, not global: apps deliver
+# independently, and one app parked on an approval for a day must not blind the
+# check to the rest. Anything not `completed` counts, including `pending` (held
+# by a concurrency group) and `waiting` (parked on an approval gate: it WILL
+# deliver).
+#
+# Rather than skip a busy unit at once, wait a bounded time for its workflow to
+# settle: every push to main starts every app's workflow, so a check that lands
+# a few minutes after a push would otherwise skip everything. Each workflow is
+# polled until it is seen idle once; a unit is judged against the commit this
+# check started from, so a run that starts later does not matter.
+#
+# in_flight <workflow-file> -> statuses of its unfinished runs, space-separated
+# (empty when idle, or when the read fails: the history read that follows then
+# fails loudly instead).
+in_flight() {
+    "$GH" run list --repo "$REPO" --workflow "$1" --branch "$BRANCH" \
+        --limit 20 --json status --jq '[.[] | select(.status != "completed") | .status] | join(" ")' 2>/dev/null || true
+}
+waited=0
+if [ -z "${DRIFT_IGNORE_IN_FLIGHT:-}" ]; then
+    busy="$(cut -f3 "$UNITS" | sort -u)"
+    poll=0
+    while [ -n "$busy" ]; do
+        still=""
+        for wf in $busy; do
+            statuses="$(in_flight "$wf")"
+            printf '%s\n' "$statuses" >"$PAGE_DIR/$wf.inflight"
+            for st in $statuses; do
+                # Only a run that can finish on its own is worth waiting for.
+                if [ "$st" != waiting ]; then
+                    still="${still} ${wf}"
+                    break
+                fi
+            done
+        done
+        busy="${still# }"
+        [ -n "$busy" ] && [ "$poll" -lt "$DRIFT_SETTLE_POLLS" ] || break
+        poll=$((poll + 1))
+        log "waiting ${DRIFT_SETTLE_INTERVAL}s for in-flight runs of: ${busy} (${poll}/${DRIFT_SETTLE_POLLS})"
+        sleep "$DRIFT_SETTLE_INTERVAL"
+        waited=$((waited + DRIFT_SETTLE_INTERVAL))
+    done
+fi
+
+# --- 4. per-unit check --------------------------------------------------------
+while IFS=$'\t' read -r name first_env wf meta <&3; do
+    statuses="$(cat "$PAGE_DIR/$wf.inflight" 2>/dev/null || true)"
+    # shellcheck disable=SC2086 # count the words
+    n_in_flight="$(set -- $statuses && echo $#)"
+    if [ "$n_in_flight" -gt 0 ]; then
         log "${name}: ${n_in_flight} run(s) of ${wf} in flight -- mid-convergence, not checked"
-        in_flight_units="${in_flight_units}${in_flight_units:+, }${name}"
+        case " $statuses " in
+        *" in_progress "* | *" queued "* | *" pending "* | *" requested "*)
+            skip "$name" "${n_in_flight} run(s) of \`${wf}\` still in flight after waiting $((waited / 60))m${nl}  ($statuses)" ;;
+        *) skip "$name" "a run of \`${wf}\` is waiting on an approval (it will deliver once approved)" ;;
+        esac
         continue
     fi
 
@@ -277,7 +372,6 @@ for label in $LABELS; do
     # match on the prefix to cover both shapes.
     job_prefix="${name}-${first_env}"
 
-    checked=$((checked + 1))
     last_delivered "$wf" "$job_prefix"
     if [ "$LD_STATE" = absent ] && [ -n "$LEGACY_WORKFLOW_FILE" ] && [ "$LEGACY_WORKFLOW_FILE" != "$wf" ]; then
         last_delivered "$LEGACY_WORKFLOW_FILE" "$job_prefix"
@@ -286,17 +380,27 @@ for label in $LABELS; do
     fi
     if [ "$LD_STATE" != found ]; then
         why_unknown "$name" "$first_env" "$wf"
-        drift_found=1
+        failed "$name" "UNKNOWN: no delivery found in \`${wf}\` (${LD_STATE}, ${LD_RUNS} runs read)"
         continue
     fi
     last_sha="$LD_SHA"
     if [ "$last_sha" = "$HEAD_SHA" ]; then
         log "${name}: up to date (delivered ${HEAD_SHA:0:8})"
+        judged "$name" "up to date (delivered \`${HEAD_SHA:0:8}\`)"
         continue
     fi
     if ! git rev-parse --verify --quiet "${last_sha}^{commit}" >/dev/null; then
-        log "${name}: last-delivered commit ${last_sha:0:8} not in this checkout -- UNKNOWN (shallow clone?)"
-        drift_found=1
+        # Most often a commit that landed on main after this check started (the
+        # wait makes that likelier): a newer run delivered it. Ask GitHub how
+        # it relates to HEAD; only "ahead" (it contains HEAD) is current.
+        relation="$("$GH" api "repos/${REPO}/compare/${HEAD_SHA}...${last_sha}" --jq .status 2>/dev/null || true)"
+        if [ "$relation" = ahead ]; then
+            log "${name}: up to date (delivered ${last_sha:0:8}, newer than ${HEAD_SHA:0:8})"
+            judged "$name" "up to date (delivered \`${last_sha:0:8}\`, newer than this check's \`${HEAD_SHA:0:8}\`)"
+            continue
+        fi
+        log "${name}: last-delivered commit ${last_sha:0:8} not in this checkout, and GitHub's compare says '${relation:-no answer}' -- UNKNOWN"
+        failed "$name" "UNKNOWN: delivered \`${last_sha:0:8}\`, which is not in this checkout"
         continue
     fi
 
@@ -308,7 +412,7 @@ for label in $LABELS; do
     ask_engine() { # <before> <after> ; echoes the engine's stdout+stderr
         EXTRA_PATH_REGEX="$_extra" EXCLUDE_PATH_REGEX="$_exclude" DEPLOY_TARGETS="$_targets" \
             BEFORE_REV="$1" AFTER_REV="$2" GITHUB_OUTPUT=/dev/null \
-            bash tools/ci/deploy-affected.sh 2>&1 || true
+            bash tools/ci/deploy-affected.sh 2>&1 </dev/null || true
     }
 
     # PHASE 1 -- cheap range pre-filter. Clean here means genuinely nothing to
@@ -324,11 +428,12 @@ for label in $LABELS; do
     _phase1="$(ask_engine "$last_sha" "$HEAD_SHA")"
     if printf '%s' "$_phase1" | grep -q 'deploy-gate-fallback\|gate degraded'; then
         log "${name}: engine could not determine affectedness (gate degraded) -- NOT CHECKED"
-        unknown_units="${unknown_units}${unknown_units:+, }${name}"
+        skip "$name" "the affectedness engine could not tell (gate degraded)"
         continue
     fi
     if ! printf '%s' "$_phase1" | grep -q 'affected=true'; then
         log "${name}: delivered ${last_sha:0:8}; nothing since affects it ($(printf '%s' "$_phase1" | grep -o 'affected=false (.*)' | head -1))"
+        judged "$name" "delivered \`${last_sha:0:8}\`; nothing since affects it"
         continue
     fi
 
@@ -360,24 +465,57 @@ for label in $LABELS; do
 
     if [ -z "$culprit" ]; then
         log "${name}: delivered ${last_sha:0:8}; only version-bump commits since (promote by tag, nothing to deploy)"
+        judged "$name" "delivered \`${last_sha:0:8}\`; only version-bump commits since"
         continue
     fi
     # Record WHY, so a drift report that disagrees with the orchestrator can be
     # adjudicated from the log instead of re-derived by hand.
     log "DRIFT ${name}: last delivered ${last_sha:0:8}, but ${culprit:0:8} ('$(git log -1 --pretty=%s "$culprit" | cut -c1-60)') should have delivered and did not -- ${culprit_why:-no reason reported}"
-    drift_found=1
-done
+    failed "$name" "DRIFT: last delivered \`${last_sha:0:8}\`, but \`${culprit:0:8}\` should have delivered and did not"
+done 3<"$UNITS"
 
-log "checked ${checked} unit(s)"
-[ -z "$unknown_units" ] || log "NOT CHECKED (engine could not determine): ${unknown_units}"
-[ -z "$in_flight_units" ] || log "NOT CHECKED (their workflow is mid-convergence): ${in_flight_units}"
+# --- 5. verdict -----------------------------------------------------------------
+total=$((checked + skipped))
+log "checked ${checked} unit(s), not checked ${skipped}"
 if [ "$drift_found" -ne 0 ]; then
-    echo "DRIFT"
-    exit 1
+    verdict=DRIFT
+    conclusion=failure
+    title="${bad} of ${total} unit(s) behind main or unknown"
+elif [ "$checked" -eq 0 ]; then
+    verdict=NOTHING_CHECKED
+    conclusion=neutral
+    title="Nothing checked: all ${skipped} unit(s) were skipped"
+else
+    verdict=OK
+    conclusion=success
+    title="${checked} unit(s) delivered"
+    [ "$skipped" -eq 0 ] || title="${title}; ${skipped} not checked"
 fi
-if [ "$checked" -eq 0 ] && [ -n "$in_flight_units" ]; then
-    echo "IN_FLIGHT"
-    exit 0
+[ -z "$SKIPPED_NAMES" ] || log "NOT CHECKED: ${SKIPPED_NAMES}"
+if [ -n "${DRIFT_RESULT_FILE:-}" ]; then
+    printf 'conclusion=%s\ntitle=%s\nchecked=%s\nskipped=%s\n' "$conclusion" "$title" "$checked" "$skipped" >>"$DRIFT_RESULT_FILE"
 fi
-echo "OK"
+if [ -n "${DRIFT_SUMMARY_FILE:-}" ]; then
+    {
+        echo "**${title}** (commit \`${HEAD_SHA:0:8}\`)"
+        echo
+        if [ "$verdict" = NOTHING_CHECKED ]; then
+            echo "This is not a pass: no unit was judged. Every one was skipped, for the reason given below."
+            echo
+        fi
+        if [ -n "$CHECKED_MD" ]; then
+            echo "### Checked (${checked})"
+            printf '%s' "$CHECKED_MD"
+            echo
+        fi
+        if [ -n "$SKIPPED_MD" ]; then
+            echo "### Not checked (${skipped})"
+            printf '%s' "$SKIPPED_MD"
+            echo
+        fi
+        [ "$waited" -eq 0 ] || echo "Waited $((waited / 60))m for in-flight delivery runs before judging."
+    } >"$DRIFT_SUMMARY_FILE"
+fi
+echo "$verdict"
+[ "$verdict" != DRIFT ] || exit 1
 exit 0

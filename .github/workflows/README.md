@@ -111,3 +111,27 @@ The same idea for Dependabot's grouped `*-minor-patch` PRs, but triggered on
 `pull_request`, so it waits for CI in the default-branch context, then enables
 auto-merge as the App). **Major** bumps are never auto-merged — they land as a
 single PR for deliberate review.
+
+## Scheduled checks
+
+### `delivery-drift.yaml` — did every app ship what is on `main`?
+
+Hourly, it asks each delivery unit whether the last commit it delivered still
+covers everything on `main` that affects it (`tools/ci/delivery-drift.sh`). A
+skipped delivery looks green in the runs list, so this is the check that can
+see one.
+
+**Read its verdict from the `delivery-drift verdict` check run** on the commit
+it checked, not from the run's colour:
+
+| Check run | Means | What to do |
+|---|---|---|
+| success | At least one unit was checked and none is behind. Units it skipped are named in the summary. | Nothing. |
+| **neutral** | **Nothing was checked.** Every unit was skipped, usually because each app's workflow was still busy with the latest push. Not a pass. | Nothing for one. Several in a row means the check is blind: look at why in the summary. |
+| failure | A unit is behind `main` (DRIFT), its state is UNKNOWN (a failed API read is never a pass), or the check did not finish. | Read the summary and the job log. |
+
+Before judging, it waits up to 15 minutes (polling once a minute) for
+in-flight delivery runs to finish, so a check that lands just after a push
+still checks something. A run parked on an approval is not waited for. In the
+runs list a neutral verdict still shows as a green run, because Actions has no
+neutral run; the run page carries a "nothing checked" notice.
