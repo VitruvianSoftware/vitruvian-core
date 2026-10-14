@@ -907,7 +907,6 @@ private struct ExternalToolSettingRow: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .controlNamed(setting.title)
             .controlSize(.small)
             .frame(width: 200)
             .focused($focus, equals: .setting(setting.id))
