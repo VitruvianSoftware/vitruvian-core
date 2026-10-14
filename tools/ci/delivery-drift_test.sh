@@ -80,7 +80,10 @@ EOF
 # gh stub: \$STUB_INFLIGHT controls the in-flight count; \$STUB_DELIVERED_SHA is
 # the head sha of the run whose job succeeded (empty => no successful delivery).
 # \$STUB_DELIVERED_WF, when set, is the ONLY workflow whose history holds that
-# run. Every workflow queried is appended to \$STUB_LOG.
+# run. Every workflow queried is appended to \$STUB_LOG. \$STUB_RUNS, when set,
+# replaces that one-run history with "<run id> <sha>" lines, newest first;
+# \$STUB_HIT_RUNS lists the run ids whose dev job succeeded; \$STUB_API_SLEEP
+# makes each job-list call take that many seconds.
 cat >"$stubs/gh" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = "run" ] && [ "$2" = "list" ]; then
@@ -91,10 +94,18 @@ if [ "$1" = "run" ] && [ "$2" = "list" ]; then
     *"length"*) echo "${STUB_INFLIGHT:-0}"; exit 0 ;;
     *)
       if [ -n "${STUB_DELIVERED_WF:-}" ] && [ "$wf" != "$STUB_DELIVERED_WF" ]; then exit 0; fi
+      if [ -n "${STUB_RUNS:-}" ]; then printf '%s\n' "$STUB_RUNS"; exit 0; fi
       [ -n "${STUB_DELIVERED_SHA:-}" ] && echo "111 ${STUB_DELIVERED_SHA}"; exit 0 ;;
   esac
 fi
 if [ "$1" = "api" ]; then
+  [ -z "${STUB_API_SLEEP:-}" ] || sleep "$STUB_API_SLEEP"
+  if [ -n "${STUB_RUNS:-}" ]; then
+    for r in ${STUB_HIT_RUNS:-}; do
+      case "$*" in *"/runs/$r/jobs"*) echo "oauth-user-inspector-development / deploy"; exit 0 ;; esac
+    done
+    exit 0
+  fi
   # jobs listing: report the unit's dev job as successful for run 111
   case "$*" in
     *"/runs/111/jobs"*) [ -n "${STUB_DELIVERED_SHA:-}" ] && echo "oauth-user-inspector-development / deploy"; exit 0 ;;
@@ -208,6 +219,37 @@ if [ "$rc" -eq 1 ]; then
     pass "with the legacy fallback disabled, that unit is UNKNOWN"
 else
     fail "expected rc=1 with LEGACY_WORKFLOW_FILE empty, got rc=$rc out='$out'"
+fi
+
+echo "--- the newest delivery wins when runs are checked in batches ---"
+# 20 runs, newest first, batches of 8. Runs 1010 and 1013 both delivered and
+# sit in the same batch; 1010 is newer, so its sha must be the answer, whichever
+# call happens to finish first.
+runs=""
+for n in $(seq 1001 1020); do
+    sha="$BASE_SHA"
+    [ "$n" -eq 1010 ] && sha="$HEAD_SHA"
+    runs="${runs}${runs:+
+}${n} ${sha}"
+done
+read -r rc out <<<"$(STUB_RUNS="$runs" STUB_HIT_RUNS="1013 1010" run_drift 0 "")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && grep -q "up to date (delivered ${HEAD_SHA:0:8})" "$work/err"; then
+    pass "the newest successful run is used, not an older one from the same batch"
+else
+    fail "expected the run-1010 delivery (HEAD) to win, got rc=$rc out='$out'"
+    sed 's/^/      /' "$work/err" >&2
+fi
+
+echo "--- a long history is checked in batches, not one call at a time ---"
+# The scheduled job hit its 20-minute limit walking 250 runs one API call at a
+# time. 20 runs at 0.5 s each is 10 s one by one, about 1.5 s in batches of 8.
+start=$(date +%s)
+read -r rc out <<<"$(STUB_RUNS="$runs" STUB_HIT_RUNS="1020" STUB_API_SLEEP=0.5 run_drift 0 "")"
+took=$(($(date +%s) - start))
+if [ "$took" -lt 6 ]; then
+    pass "20 slow job-list calls finished in ${took}s (one at a time would take 10s)"
+else
+    fail "20 job-list calls took ${took}s -- they are running one at a time again"
 fi
 
 echo "--- an unknown delivery state is NOT treated as healthy ---"
