@@ -158,6 +158,9 @@ enum BrightnessRig {
         var lidStops = 0
         /// Runs while subscribing, before the service rechecks the lid.
         var onLidSubscribe: (() -> Void)?
+        /// Runs inside each reconfiguration, before it takes effect: what the
+        /// service has saved by then is what a crash at that moment leaves.
+        var onConfigure: ((CGDirectDisplayID, Bool) -> Void)?
         private var lidChanged: (@MainActor () -> Void)?
         var isWatchingLid: Bool { lidChanged != nil }
 
@@ -336,6 +339,7 @@ enum BrightnessRig {
             var configure: (@MainActor (CGDirectDisplayID, Bool) -> Bool)?
             if configureAvailable {
                 configure = { [unowned self] id, enabled in
+                    self.onConfigure?(id, enabled)
                     self.configurations.append("\(enabled ? "on" : "off"):\(id)")
                     self.events.append("\(enabled ? "on" : "off"):\(id)")
                     guard self.configureSucceeds else { return false }
