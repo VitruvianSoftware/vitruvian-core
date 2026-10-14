@@ -78,6 +78,7 @@ exclude:
   - BUILD
   - README.md
   - catalog-info.yaml
+  - OWNERS
   - Gemfile
   - Gemfile.lock
   - vendor/
