@@ -37,6 +37,9 @@ sh_binary(
     data = [
         "delivery-legacy.tsv",
         "version-pins.tsv",
+        # check_owners runs the generator itself (`--check`) instead of
+        # trusting that CODEOWNERS exists.
+        "//tools/owners",
     ],
     visibility = ["//visibility:public"],
 )
@@ -74,4 +77,19 @@ sh_test(
     size = "small",
     srcs = ["conformance-delivery_test.sh"],
     data = ["check.sh"],
+)
+
+# Test-the-guard for check_owners: the arm must go red when the committed
+# CODEOWNERS is not what the OWNERS files compile to (a hand-added row), when
+# an OWNERS file is invalid, and when the generator cannot be found. Same
+# hermetic contract as check_test (throwaway roots); the real generator is a
+# data dep so the verdict under test is the generator's, not a stub's.
+sh_test(
+    name = "conformance-owners_test",
+    size = "small",
+    srcs = ["conformance-owners_test.sh"],
+    data = [
+        "check.sh",
+        "//tools/owners",
+    ],
 )
