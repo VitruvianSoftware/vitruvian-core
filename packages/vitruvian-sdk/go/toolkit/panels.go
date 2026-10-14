@@ -51,7 +51,8 @@ func (e PanelEvent) Row() (string, bool) {
 	return row, ok
 }
 
-// Text is, for submit and change, the field's text.
+// Text is, for submit and change, the field's text. For the change of a
+// choice it is the picked option's value.
 func (e PanelEvent) Text() (string, bool) {
 	if e.Kind != "submit" && e.Kind != "change" {
 		return "", false

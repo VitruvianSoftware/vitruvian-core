@@ -16,7 +16,7 @@ description: >-
   Everything ships from one public monorepo.
 baseurl: ""
 url: "https://vitruviansoftware.dev"
-logo: /images/logo-dark.jpeg
+logo: /assets/img/vitruvian-medallion.png
 github_username: VitruvianSoftware
 monorepo: https://github.com/VitruvianSoftware/vitruvian-core
 
@@ -78,6 +78,7 @@ exclude:
   - BUILD
   - README.md
   - catalog-info.yaml
+  - OWNERS
   - Gemfile
   - Gemfile.lock
   - vendor/

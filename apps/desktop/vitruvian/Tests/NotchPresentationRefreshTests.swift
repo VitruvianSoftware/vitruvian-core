@@ -86,6 +86,7 @@ enum NotchPresentationRefreshContract {
         defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
         defaults.set(false, forKey: DefaultsKey.notchCoversMenus)
         compactMusicDepartureChecks(suite)
+        restingStatusChecks(suite)
         mascotYieldChecks(suite)
 
         let outlined = island()

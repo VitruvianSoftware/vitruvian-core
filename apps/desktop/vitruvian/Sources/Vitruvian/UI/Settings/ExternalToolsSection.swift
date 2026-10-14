@@ -97,6 +97,9 @@ package struct ExternalToolSetting: Identifiable, Equatable {
         case whole(Int)
         /// A number field.
         case number(Double)
+        /// A pop-up menu, for a text setting whose author gave options: the
+        /// selected value, and the rows. The value is text, as for a field.
+        case choice(String, [Choice])
 
         /// The value the control holds, as the store saves it.
         package var value: PreferenceDeclaration.Value {
@@ -105,7 +108,69 @@ package struct ExternalToolSetting: Identifiable, Equatable {
             case .text(let text): return .string(text)
             case .whole(let number): return .int(number)
             case .number(let number): return .double(number)
+            case .choice(let value, _): return .string(value)
             }
+        }
+
+        /// A menu's rows; nil for any other control.
+        package var choices: [Choice]? {
+            if case .choice(_, let choices) = self { return choices }
+            return nil
+        }
+
+        /// The menu with `value` picked. Picking an option takes away the
+        /// row that stood for a stored value that was none of them: only
+        /// the person's pick replaces such a value, and once it has, the
+        /// row has nothing to stand for. Any other control is as it was.
+        package func picking(_ value: String) -> Control {
+            guard case .choice(_, let choices) = self else { return self }
+            return .choice(value, Choice.rows(selected: value, among: choices))
+        }
+    }
+
+    /// One row of a menu: the value it stands for, and what it says.
+    package struct Choice: Identifiable, Equatable, Sendable {
+        /// What is saved, or sent, when the person picks it.
+        package let value: String
+        /// What the row says, as one short line of plain text.
+        package let title: String
+        /// True for the row that stands for a stored value that is none of
+        /// the options, shown as written so that it is never lost unseen.
+        package let isStored: Bool
+
+        package var id: String { value }
+
+        package init(value: String, title: String, isStored: Bool) {
+            self.value = value
+            self.title = title
+            self.isStored = isStored
+        }
+
+        /// The rows of a menu: the options in order, each title cut to one
+        /// line of `limit` characters. When `selected` is none of them, a
+        /// first row holds it as written. The app never refuses such a
+        /// value and never rewrites it.
+        package static func menu(selected: String, options: [(value: String, title: String)],
+                                 limit: Int) -> [Choice] {
+            rows(selected: selected,
+                 among: options.map { Choice(value: $0.value, title: ToolOwnWords.oneLine($0.title, limit: limit),
+                                             isStored: false) },
+                 limit: limit)
+        }
+
+        /// The rows a menu draws while `selected` is selected: the rows of
+        /// `rows` that stand for options, and before them a row for
+        /// `selected` when it is none of them. So what is selected is
+        /// always one of the rows, and the row for a value that is no
+        /// option's is there exactly while that value is selected.
+        package static func rows(selected: String, among rows: [Choice],
+                                 limit: Int = ManifestLimits.maxPreferenceTitleLength) -> [Choice] {
+            let options = rows.filter { !$0.isStored }
+            if !options.contains(where: { $0.value == selected }) {
+                return [Choice(value: selected, title: ToolOwnWords.oneLine(selected, limit: limit), isStored: true)]
+                    + options
+            }
+            return options
         }
     }
 
@@ -124,6 +189,12 @@ package struct ExternalToolSetting: Identifiable, Equatable {
                                      limit: ManifestLimits.maxPreferenceTitleLength)
         switch setting.value {
         case .bool(let isOn): control = .toggle(isOn)
+        case .string(let text) where !setting.options.isEmpty:
+            // The manifest's rules hold an option's title to a preference
+            // title's length. It is bounded again here, where it is drawn.
+            let options = setting.options.map { (value: $0.value, title: $0.title.text(for: language.rawValue) ?? $0.value) }
+            control = .choice(text, Choice.menu(selected: text, options: options,
+                                                limit: ManifestLimits.maxPreferenceTitleLength))
         case .string(let text): control = .text(text)
         case .int(let number): control = .whole(number)
         case .double(let number): control = .number(number)
@@ -176,7 +247,11 @@ package struct ExternalToolDetail: Equatable {
     package let showsInIsland: Bool?
     /// The words beside that switch.
     package let showInIslandTitle: String
-
+    /// The switch that draws the tool's status on the closed island, as it
+    /// stands; nil for a tool whose manifest declares no status.
+    package let showsStatus: Bool?
+    /// The words beside that switch.
+    package let showStatusTitle: String
 
     /// The app's word above the tool's own settings.
     package let settingsTitle: String
@@ -199,6 +274,8 @@ package struct ExternalToolDetail: Equatable {
         case close
         /// The switch that lists the tool's page in the island.
         case showsInIsland
+        /// The switch that draws the tool's status on the closed island.
+        case showsStatus
         /// The Open button of one of the tool's windows, by the panel's id.
         case window(String)
         /// A control of the tool's Settings panel, by its block's id.
@@ -214,6 +291,7 @@ package struct ExternalToolDetail: Equatable {
     /// How many rows the lists hold together.
     package var listRows: Int {
         settings.count + commands.count + uses.count + windows.count + (showsInIsland == nil ? 0 : 1)
+            + (showsStatus == nil ? 0 : 1)
     }
     /// True when the lists are too long to draw whole, and scroll in a
     /// region of a fixed height, as on the agreement sheet. A tool's own
@@ -240,7 +318,8 @@ package struct ExternalToolDetail: Equatable {
     /// `settingsTitle` the app's existing word for Settings.
     package init(_ listed: ExternalToolStore.Listed, files: URL?, language: AppLanguage,
                  strings: ExternalToolStrings, settings: [ExternalToolStore.Setting] = [], settingsTitle: String = "",
-                 updateAvailable: Bool = false, showsInIsland: Bool = true, home: String = NSHomeDirectory(),
+                 updateAvailable: Bool = false, showsInIsland: Bool = true, showsStatus: Bool = true,
+                 home: String = NSHomeDirectory(),
                  hasSymbol: (String) -> Bool = { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }) {
         let tag = language.rawValue
         self.settingsTitle = settingsTitle
@@ -267,6 +346,8 @@ package struct ExternalToolDetail: Equatable {
         }
         self.showsInIsland = listed.tool?.panel(in: .island) == nil ? nil : showsInIsland
         showInIslandTitle = strings.showInIsland
+        self.showsStatus = listed.tool?.showsStatus == true ? showsStatus : nil
+        showStatusTitle = strings.showStatusInIsland
     }
 }
 
@@ -557,13 +638,15 @@ package struct ExternalToolsSection: View {
                 detail: ExternalToolDetail(listed, files: store.folder(of: id), language: l10n.language, strings: text,
                                            settings: store.settings(of: id), settingsTitle: l10n.s.panelSettings,
                                            updateAvailable: newer != nil,
-                                           showsInIsland: store.showsInIsland(id)),
+                                           showsInIsland: store.showsInIsland(id),
+                                           showsStatus: store.showsStatus(id)),
                 log: ExternalToolDetail.shownLog(store.tool(id)?.log.text ?? ""),
                 removal: ToolRemovalContent(name: name, strings: text, cancel: l10n.s.uninstallerCancel),
                 text: text,
                 startAgain: { store.startAgain(id) },
                 saveSetting: { name, value in store.setSetting(value, for: name, of: id) == nil },
                 setShowsInIsland: { store.setShowsInIsland(id, $0) },
+                setShowsStatus: { store.setShowsStatus(id, $0) },
                 panel: { panel, open in
                     let key = ToolPanelHost.Key(tool: id, panel: panel)
                     if open { ToolPanelHost.shared.open(key, in: .settings) } else { ToolPanelHost.shared.close(key) }
@@ -696,6 +779,7 @@ private struct ExternalToolRowView: View {
             }
             Toggle(row.name, isOn: Binding(get: { row.isOn }, set: setOn))
                 .labelsHidden()
+                .controlNamed(row.name)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .disabled(!row.canSwitch)
@@ -753,7 +837,8 @@ private struct ExternalToolUpdateLabel: View {
 }
 
 /// One of a tool's own settings in its detail: its title, and a switch, a
-/// text field or a number field. A switch saves as it is turned. A field
+/// text field, a number field or a pop-up menu. A switch saves as it is
+/// turned, and a menu as an option is picked. A field
 /// saves when Return is pressed, when the person moves on from it, and when
 /// the detail closes. A value the store will not take is put back as it was.
 private struct ExternalToolSettingRow: View {
@@ -795,6 +880,7 @@ private struct ExternalToolSettingRow: View {
         case .toggle(let isOn):
             Toggle(setting.title, isOn: Binding(get: { isOn }, set: { commit(.toggle($0)) }))
                 .labelsHidden()
+                .controlNamed(setting.title)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .focused($focus, equals: .setting(setting.id))
@@ -809,12 +895,28 @@ private struct ExternalToolSettingRow: View {
             field(TextField(setting.title, value: Binding(get: { number }, set: { draft = .number($0) }), format: .number,
                             prompt: Text(verbatim: "")),
                   width: 100)
+        case .choice(let value, _):
+            // In the row a text field has, and as wide. A pick is saved at
+            // once, as a switch is. The rows are the setting's as the detail
+            // was last drawn, so they follow the language while it is open;
+            // what is selected is what this row holds.
+            let rows = ExternalToolSetting.Choice.rows(selected: value, among: setting.control.choices ?? [])
+            Picker(setting.title, selection: Binding(get: { value }, set: { commit(draft.picking($0)) })) {
+                // The tool's own words: plain text, one line each.
+                ForEach(rows) { Text(verbatim: $0.title).tag($0.value) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(width: 200)
+            .focused($focus, equals: .setting(setting.id))
         }
     }
 
     private func field(_ field: some View, width: CGFloat) -> some View {
         field
             .labelsHidden()
+            .controlNamed(setting.title)
             .textFieldStyle(.roundedBorder)
             .controlSize(.small)
             .frame(width: width)
@@ -848,6 +950,8 @@ private struct ExternalToolDetailView: View {
     let saveSetting: (String, PreferenceDeclaration.Value) -> Bool
     /// Turns the switch that lists the tool's page in the island.
     let setShowsInIsland: (Bool) -> Void
+    /// Turns the switch that draws the tool's status on the closed island.
+    let setShowsStatus: (Bool) -> Void
     /// Opens the tool's Settings panel, by its id, or closes it.
     let panel: (String, _ open: Bool) -> Void
     /// Opens one of the tool's windows, by the panel's id.
@@ -975,15 +1079,26 @@ private struct ExternalToolDetailView: View {
     @ViewBuilder
     private var lists: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.settingsPanel != nil {
+            if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.showsStatus != nil
+                || detail.settingsPanel != nil {
                 section(detail.settingsTitle) {
                     if let shows = detail.showsInIsland {
                         Toggle(isOn: Binding(get: { shows }, set: { setShowsInIsland($0) })) {
                             Text(detail.showInIslandTitle).font(.callout)
                         }
+                        .controlNamed(detail.showInIslandTitle)
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .focused($focus, equals: .showsInIsland)
+                    }
+                    if let shows = detail.showsStatus {
+                        Toggle(isOn: Binding(get: { shows }, set: { setShowsStatus($0) })) {
+                            Text(detail.showStatusTitle).font(.callout)
+                        }
+                        .controlNamed(detail.showStatusTitle)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .focused($focus, equals: .showsStatus)
                     }
                     ForEach(detail.settings) { setting in
                         ExternalToolSettingRow(setting: setting, focus: $focus,

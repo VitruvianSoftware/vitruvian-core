@@ -16,6 +16,13 @@ Run it on macOS (CI runs it weekly):
 Arguments after `--` are passed on to each `bazel test`, such as cache flags.
 The mutated files must have no uncommitted changes, so that whatever stops a
 run, `git checkout` puts them back.
+
+Each mutation quotes its source exactly, so an edit to a quoted line leaves
+the mutation with nothing to replace. `--check --app-dir <folder>` only reads:
+it lists every mutation whose quoted text is not in its file exactly once, in
+a second, on any platform. The pull-request tests run it
+(`//apps/desktop/vitruvian:mutation_fixtures_test`), so the change that moves
+a quoted line is the one that fails, not the weekly run days later.
 """
 from pathlib import Path
 import os
@@ -117,8 +124,8 @@ MUTATIONS = [
      " || NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))",
      "disabled automatic music stops the reader even when resting content is Music"),
     ("closing music retains its on-demand reader", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
-     "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n    }\n\n    package func toggle()",
-     "        removeEventMonitors()\n        closeCapture?()\n    }\n\n    package func toggle()",
+     "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n        services.closeToolPanel()\n",
+     "        removeEventMonitors()\n        closeCapture?()\n        services.closeToolPanel()\n",
      "closing manually opened controls stops the reader and never leaves a music strip behind"),
     ("the display is probed before its picture is restored when software dimming is turned off", "software-dimming",
      "Sources/Vitruvian/Services/Display/BrightnessService.swift",
@@ -559,8 +566,8 @@ MUTATIONS = [
      "a command the tool leaves out cannot run"),
     ("a tool that starts with the app is stopped for being idle", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalTool.swift",
-     "        guard !startsAtLaunch else { return }\n",
-     "",
+     "        guard !startsAtLaunch, openPanels.isEmpty else { return }\n",
+     "        guard openPanels.isEmpty else { return }\n",
      "and is kept running however long nothing is asked of it"),
     ("a tool that was removed is left running", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
@@ -664,9 +671,53 @@ MUTATIONS = [
      "deleting a tool's copy leaves what it saved, and leaves every other tool alone"),
     ("a delete reaches through a link out of the app's folder", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
-     "            guard stays(folder.deletingLastPathComponent(), at: home + [parent], fileManager),\n                  (try? fileManager.removeItem(at: folder)) != nil else {\n",
-     "            guard (try? fileManager.removeItem(at: folder)) != nil else {\n",
+     "            guard stays(folder.deletingLastPathComponent(), at: home + [parent], fileManager),\n                  Self.remove(folder, fileManager) else {\n",
+     "            guard Self.remove(folder, fileManager) else {\n",
      "with Tools a link to another place, nothing there is deleted"),
+    ("a read-only tool folder cannot be added", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        Self.letOwnerChange(copy, files: true, fileManager)\n",
+     "",
+     "a folder nothing may be written in is added, and nothing half-made is left beside the copy"),
+    ("a file in the app's copy of a tool stays read-only", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        Self.letOwnerChange(copy, files: true, fileManager)\n",
+     "        Self.letOwnerChange(copy, files: false, fileManager)\n",
+     "in the app's copy the person may write every folder and file; nothing else about who may "
+     "do what is changed: what could be run can be, and nothing more"),
+    ("every file in the app's copy of a tool becomes a program", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "            if mode & 0o600 != 0o600 { _ = lchmod(url.path, mode | 0o600) }\n",
+     "            if mode & 0o700 != 0o700 { _ = lchmod(url.path, mode | 0o700) }\n",
+     "in the app's copy the person may write every folder and file; nothing else about who may "
+     "do what is changed: what could be run can be, and nothing more"),
+    ("opening up the app's copy follows a link out of it", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        guard lstat(url.path, &entry) == 0 else { return }\n",
+     "        guard stat(url.path, &entry) == 0 else { return }\n",
+     "the picked folder is left as it was, and so is what a link in it points at: "
+     "only the copy is opened up"),
+    ("a copy that failed is left beside the tool's place", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        defer { Self.remove(incoming, fileManager) }\n",
+     "        defer { try? fileManager.removeItem(at: incoming) }\n",
+     "a read-only folder that cannot be copied whole is not added, and what was copied of it is gone"),
+    ("what an earlier failed copy left blocks the next", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        Self.remove(incoming, fileManager)\n        defer",
+     "        try? fileManager.removeItem(at: copy)\n        defer",
+     "a read-only copy an earlier failure left behind is cleared first: it does not stop the tool "
+     "being added, and none of it is in the new copy"),
+    ("a read-only copy of a tool cannot be replaced", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        Self.remove(place.files, fileManager)\n",
+     "        try? fileManager.removeItem(at: place.files)\n",
+     "a copy nothing may be written in is replaced whole by the newer folder"),
+    ("a read-only folder of a tool cannot be deleted", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+     "        letOwnerChange(url, files: false, fileManager)\n        return (try? fileManager.removeItem(at: url)) != nil\n",
+     "        return false\n",
+     "a copy nothing may be written in is deleted, and what the tool saved is left as it was"),
     ("a removed tool's preferences outlive what it saved", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
      "        if data, !left.contains(where: { $0 == dataFolder }) { parts.forgetPreferences(id) }\n",
@@ -750,8 +801,8 @@ MUTATIONS = [
      "the log a detail shows is the newest of what the tool wrote, at most so many lines and bytes, as plain text"),
     ("a tool's detail grows with every command the tool adds", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
-     "    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole }\n",
-     "    package var listsScroll: Bool { false }\n",
+     "    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole || settingsPanel != nil }\n",
+     "    package var listsScroll: Bool { settingsPanel != nil }\n",
      "a tool with the most a tool may have scrolls its two lists in the detail, as on the sheet"),
     ("a manifest's long words fill the alert that refuses it", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
@@ -846,7 +897,7 @@ MUTATIONS = [
      "its record and its copy are gone; the tool's settings stay as long as the folder of what it saved does"),
     ("a running tool is not told that the language changed", "tool-runtime",
      "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
-     "        for id in tools.keys.sorted(by: { $0.rawValue < $1.rawValue }) { tools[id]?.languageChanged(language) }\n",
+     "            tools[id]?.languageChanged(language)\n",
      "",
      "a running tool is sent language/changed once for each change, and what it is sent is the "
      "protocol's own example of the message: a notice with no id, whose params hold the tag"),
@@ -893,6 +944,97 @@ MUTATIONS = [
      "        guard `protocol` != \"1\" else { return [.panelsNeedProtocol2(`protocol`)] }\n",
      "",
      "a manifest of protocol 1 with panels is refused, and the reason names its protocol"),
+    ("options on a setting that is not text are accepted", "platform",
+     "../../../packages/vitruvian-sdk/Sources/VitruvianToolProtocol/ToolManifestFile.swift",
+     "        guard kind == .string else { return [.optionsNeedString(preference: preference.id)] }\n",
+     "",
+     "options on a setting that is not text is refused, and the reason names it"),
+    ("a default that is no option is accepted", "platform",
+     "../../../packages/vitruvian-sdk/Sources/VitruvianToolProtocol/ToolManifestFile.swift",
+     "            found.append(.defaultNotAnOption(preference: preference.id))\n",
+     "",
+     "a default that is none of the options is refused, and the reason names it"),
+    ("a choice with no id is read", "platform",
+     "../../../packages/vitruvian-sdk/Sources/VitruvianToolProtocol/Panels.swift",
+     "    public static let kindsWithID: Set<String> = [\"button\", \"toggle\", \"field\", \"list\", \"choice\"]\n",
+     "    public static let kindsWithID: Set<String> = [\"button\", \"toggle\", \"field\", \"list\"]\n",
+     "a choice with no id refuses the page, and says where"),
+    ("a manifest of protocol 1 may declare a status", "platform",
+     "../../../packages/vitruvian-sdk/Sources/VitruvianToolProtocol/ToolManifestFile.swift",
+     "        guard `protocol` != \"1\" else { return [.statusNeedsProtocol2(`protocol`)] }\n",
+     "",
+     "a status in a manifest of protocol 1 is refused, and the reason names it"),
+    ("a status outlives its program", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+     "        for key in shown.keys where key.tool == tool { forgetPanel(key) }\n        forgetStatus(of: tool)\n",
+     "        for key in shown.keys where key.tool == tool { forgetPanel(key) }\n",
+     "a status goes when the tool's program ends, at once: it never outlives its program"),
+    ("a tool that declared no status may show one", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+     "        guard parts.described(tool)?.showsStatus == true else { return .noStatus }\n",
+     "",
+     "a status from a tool whose manifest declares none is refused, and none is kept"),
+    ("a switched-off status is listed", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "            guard let id = ToolID(record.id), record.showsStatus ?? true,\n",
+     "            guard let id = ToolID(record.id),\n",
+     "a tool whose status the person switched off is left out"),
+    ("the mildest status wins", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "            if severity > (best?.severity ?? -1) { best = (.tool(tool, status), severity) }\n",
+     "            if severity < (best?.severity ?? 4) { best = (.tool(tool, status), severity) }\n",
+     "of two tools the worse status wins, whichever was added first"),
+    ("the app says it has nothing", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+     "                                            dataFolder: data.path,\n"
+     "                                            features: ProtocolFeature.allCases.map(\\.rawValue)),\n",
+     "                                            dataFolder: data.path),\n",
+     "the hello names what this app has: a status, a choice block and options on a preference"),
+    ("a stored value that is no option is dropped from the menu", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+     "            if !options.contains(where: { $0.value == selected }) {\n",
+     "            if options.isEmpty {\n",
+     "a stored value that is no option is shown as written, as the first row, and selected"),
+    ("a green mark opens the tool's page", "platform",
+     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+     "        guard case .tool(let tool, let status)? = mark, status.state != .ok else { return nil }\n",
+     "        guard case .tool(let tool, _)? = mark else { return nil }\n",
+     "a green mark asks for nothing: the click does what it does today"),
+    ("busy does not breathe", "platform",
+     "Sources/Vitruvian/UI/ToolPanels/ToolStatusMark.swift",
+     "        breathes = status.state == .busy\n",
+     "        breathes = false\n",
+     "busy is amber: 9 points, medium, orange, breathing"),
+    ("the agreement sheet says nothing of a status", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+     "        showsStatus = tool.showsStatus ? strings.agreeShowsStatus : nil\n",
+     "        showsStatus = nil\n",
+     "the agreement sheet says, in the app's words, that the tool shows a status on the closed"),
+    ("the island's button does not say a tool's mark", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : closedTitle,\n",
+     "        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : text.open,\n",
+     "a tool's status mark on the closed island is said by the island's button, the one element VoiceOver reaches"),
+    ("the island does not hear a status change", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "            self?.restingStatusChanged()\n",
+     "            _ = self\n",
+     "the island hears a status change by itself and names its button again"),
+    ("the button says a mark the wings do not draw", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "            && compactActivity == nil && idleContent == .agents\n",
+     "            && idleContent == .agents\n",
+     "an activity's strip takes the wings' place, the mark is not drawn, and the button does not say it"),
+    ("a copy's button never says a changed mark", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchMirrors.swift",
+     "                if said[id] != title {\n",
+     "                if said[id] != said[id] {\n",
+     "a status mark that changes is said by the copy's button, with the copy left as it is"),
+    ("the button's name leaves the mark out", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "        default: return title + \", \" + said\n",
+     "        default: return title\n",
+     "the closed island's button is named with the mark's words after its own name"),
     ("a page over 256 KB is drawn", "platform",
      "Sources/Vitruvian/Core/Platform/ToolPanel.swift",
      "        guard data.count <= UILimits.maxTreeBytes else { return .failure(.tooLarge(bytes: data.count)) }\n",
@@ -1099,6 +1241,35 @@ MUTATIONS = [
 ]
 
 
+def stale_fixtures(root):
+    """One line for each mutation that can no longer be planted: its file is
+    gone, or the text it quotes is not there exactly once, or it replaces the
+    text with itself. Reads only."""
+    problems = []
+    for name, _, relative, before, after, _ in MUTATIONS:
+        path = root / relative
+        if not path.is_file():
+            problems.append(f"{name}: {relative} is not there (a new file must also be in the test's data)")
+            continue
+        found = path.read_text().count(before)
+        if found != 1:
+            problems.append(f"{name}: {relative} holds the quoted text {found} times, not once")
+        elif before == after:
+            problems.append(f"{name}: the mutation changes nothing")
+    return problems
+
+
+def check(root):
+    problems = stale_fixtures(root)
+    if problems:
+        print("These mutations in Tests/mutation_checks.py no longer match the source they quote.\n"
+              "Update each to plant the same regression in the code as it is now:\n  " + "\n  ".join(problems),
+              file=sys.stderr)
+        return 1
+    print(f"MUTATION FIXTURES OK ({len(MUTATIONS)} mutations match their source)")
+    return 0
+
+
 def run(bazel_flags, test_arguments, timeout):
     """Runs the unit tests once, never from the cache. Returns Bazel's exit
     status (3 when the build passed and a test failed) and its output, which
@@ -1128,6 +1299,10 @@ def main(bazel_flags):
     dirty = subprocess.check_output(["git", "status", "--porcelain", "--", *paths], cwd=ROOT, text=True)
     if dirty:
         raise RuntimeError("Commit or stash these first; the checks edit them in place:\n" + dirty)
+    # All of them at once, before an hour of building finds the first.
+    stale = stale_fixtures(ROOT)
+    if stale:
+        raise RuntimeError("Mutation fixtures need updating:\n  " + "\n  ".join(stale))
 
     print("Checking the unmodified baseline…", flush=True)
     status, output = run(bazel_flags, [], timeout=3600)
@@ -1151,4 +1326,8 @@ def main(bazel_flags):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--check"]:
+        if len(sys.argv) != 4 or sys.argv[2] != "--app-dir":
+            sys.exit("usage: mutation_checks.py --check --app-dir <folder>")
+        sys.exit(check(Path(sys.argv[3])))
     main(sys.argv[1:])

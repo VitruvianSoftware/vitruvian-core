@@ -321,9 +321,13 @@ final class Session {
     /// app would go on with.
     private func greet() -> Bool {
         lastID += 1
+        // As the newest app says it: with everything it has beyond the first
+        // release of the protocol version. The conformance script's "an
+        // older app" step is where a tool meets an app that has none.
         let hello = InitializeParams(protocolVersions: ProtocolVersion.supported,
                                      language: Locale.preferredLanguages.first ?? "en",
-                                     dataFolder: dataFolder.path)
+                                     dataFolder: dataFolder.path,
+                                     features: ProtocolFeature.allCases.map(\.rawValue))
         guard let params = try? JSONValue(encoding: hello),
               send(.request(id: .number(lastID), method: ToolMethod.initialize.rawValue, params: params))
         else { return false }

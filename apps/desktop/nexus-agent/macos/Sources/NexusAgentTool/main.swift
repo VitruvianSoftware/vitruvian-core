@@ -47,43 +47,28 @@ final class WakerLink: ToolLink {
         self.kit = kit
     }
 
-    /// Hands `work` to the kit's thread. Work that asks the app for
-    /// something waits for the answer, and the kit keeps what the app sends
-    /// meanwhile. Kit 1.1.0 then went back to waiting for a new message
-    /// without looking at what it had kept, so a command sent just after
-    /// the Quick Prompt was shown sat unanswered until the next message or
-    /// timer. Each piece of work therefore ends by waking the kit, which
-    /// makes it look. A later kit looks by itself and this does no harm
-    /// there; it can go once Package.swift asks for that kit.
-    private func hand(_ work: @escaping @Sendable (App) -> Void) {
-        kit.tool.waker.later { [kit] app in
-            work(app)
-            kit.tool.waker.later { _ in }
-        }
-    }
-
     func badge(count: Int?, dot: Bool) {
-        hand { [kit] _ in try? kit.panels[NexusAgentTool.islandPanel]?.badge(count: count, dot: dot) }
+        kit.tool.waker.later { [kit] _ in try? kit.panels[NexusAgentTool.islandPanel]?.badge(count: count, dot: dot) }
     }
 
     func render(panel: String, _ tree: UITree) {
-        hand { [kit] _ in _ = kit.panels[panel]?.render(tree) }
+        kit.tool.waker.later { [kit] _ in _ = kit.panels[panel]?.render(tree) }
     }
 
     func showMessage(_ message: String, icon: String) {
-        hand { app in try? app.showMessage(message, icon: icon) }
+        kit.tool.waker.later { app in try? app.showMessage(message, icon: icon) }
     }
 
     func log(_ message: String) {
-        hand { app in app.log(message) }
+        kit.tool.waker.later { app in app.log(message) }
     }
 
     func setValue(_ value: JSONValue, for key: String) {
-        hand { app in try? app.setValue(value, for: key) }
+        kit.tool.waker.later { app in try? app.setValue(value, for: key) }
     }
 
     func setRunnable(_ commands: [String]) {
-        hand { app in app.setRunnable(commands) }
+        kit.tool.waker.later { app in app.setRunnable(commands) }
     }
 }
 

@@ -583,6 +583,27 @@ py_binary(
     main = "Tests/mutation_checks.py",
 )
 
+# The same file, reading only: every mutation still quotes its source exactly.
+# A change that moves or rewords a quoted line fails here, in its own pull
+# request, instead of stopping the weekly run. Not `manual` and not macOS-only,
+# so it also runs wherever `bazel test //...` does. A few mutations are planted
+# in the tool protocol's sources, hence that package's files in `data`.
+py_test(
+    name = "mutation_fixtures_test",
+    size = "small",
+    srcs = ["Tests/mutation_checks.py"],
+    args = [
+        "--check",
+        "--app-dir",
+        package_name(),
+    ],
+    data = ["//packages/vitruvian-sdk:protocol_sources"] + glob([
+        "Sources/**/*.swift",
+        "Tests/**/*.swift",
+    ]),
+    main = "Tests/mutation_checks.py",
+)
+
 # Runs the unmodified upstream Tests/generate_sources.py (see sync_sources.py).
 genrule(
     name = "generated_test_sources",
@@ -817,6 +838,23 @@ py_test(
     main = "bazel/pin_nexus_agent_shared.py",
 )
 
+# make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
+# Held to the output a macOS runner printed when a failed create left an image
+# attached that the script could not find.
+sh_test(
+    name = "dmg_image_devices_test",
+    size = "small",
+    srcs = ["bazel/dmg_image_devices_test.sh"],
+    args = [
+        "$(rootpath Tools/dmg-image-devices.sh)",
+        "$(rootpath bazel/testdata/hdiutil-info-stale-image.txt)",
+    ],
+    data = [
+        "Tools/dmg-image-devices.sh",
+        "bazel/testdata/hdiutil-info-stale-image.txt",
+    ],
+)
+
 # Rules over how all of the code is written, not what one piece of it does: an
 # API that never appears, every SF Symbol and system tool named, the build
 # script's temp-dir sweep, and the rest (bazel/source_lints.py). They read the
@@ -830,6 +868,7 @@ py_test(
         package_name(),
     ],
     data = [
+        "Tools/dmg-image-devices.sh",
         "Tools/make-dmg.sh",
         "Tools/notarize.sh",
         "Tools/package-release.sh",
@@ -886,6 +925,7 @@ pipeline_unit(
         ":app_holds_mermaid_test",
         ":by-hand",
         ":fan_helper_selftest",
+        ":mutation_fixtures_test",
         ":selftest",
         ":source_lints_test",
         ":sources_in_sync_test",

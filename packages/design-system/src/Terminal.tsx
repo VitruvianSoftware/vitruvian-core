@@ -78,3 +78,20 @@ export function Code({
 }: React.HTMLAttributes<HTMLPreElement>) {
   return <pre className={cn("code", className)} {...rest} />;
 }
+
+/**
+ * Step-end 1Hz blinking block cursor (`8px x 1em`). Mirrors Android's
+ * `BlinkingCursor` composable.
+ */
+export function BlinkingCursor({
+  className,
+  ...rest
+}: React.HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("term-cursor", className)}
+      {...rest}
+    />
+  );
+}

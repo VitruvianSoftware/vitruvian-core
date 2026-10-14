@@ -53,6 +53,40 @@ fn type_name(definition: &str) -> String {
 }
 
 #[test]
+fn the_kit_builds_the_examples_choice() {
+    // The page of the example, written with the kit's builder, is the
+    // example.
+    use vitruvian_tool_kit::{choice, LocalizedText, UiBlock, UiChoiceOption, UiText};
+    let file: Value = serde_json::from_str(MESSAGES).unwrap();
+    let example = file["examples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|each| each["about"] == "a page with a choice among fixed options")
+        .expect("the example of a choice")["message"]["params"]["tree"]["blocks"][0]
+        .clone();
+    let mut pulsing = LocalizedText::new();
+    pulsing.insert("en".to_string(), "Pulsing green".to_string());
+    pulsing.insert("de".to_string(), "Pulsierendes Grün".to_string());
+    let options = vec![
+        UiChoiceOption {
+            value: "green".to_string(),
+            title: "Green".into(),
+        },
+        UiChoiceOption {
+            value: "breathe green".to_string(),
+            title: UiText::Languages(pulsing),
+        },
+    ];
+    let built: UiBlock = choice("light", "green", options)
+        .title("Mouse when green")
+        .enabled(true)
+        .fallback("Mouse when green: Green")
+        .into();
+    assert_eq!(serde_json::to_value(&built).unwrap(), example);
+}
+
+#[test]
 fn methods_are_methods_json() {
     let table: Value = serde_json::from_str(TABLE).unwrap();
     assert_eq!(table["protocol"], PROTOCOL_VERSION);

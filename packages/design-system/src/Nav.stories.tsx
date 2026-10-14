@@ -21,10 +21,24 @@
  */
 import * as React from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Nav, Tabs, Shell, SideGroup, SideItem, Crumbs } from "./Nav.js";
+import {
+  Nav,
+  Tabs,
+  Shell,
+  SideGroup,
+  SideItem,
+  Crumbs,
+  HostChip,
+  TopBar,
+  TabBar,
+  Rail,
+  Pagination,
+  Avatar,
+} from "./Nav.js";
 import { Button } from "./Button.js";
 import { Status } from "./DataDisplay.js";
 import { Plate } from "./Plate.js";
+import { VIcon } from "./Icons.js";
 
 const navMeta: Meta = {
   title: "Components/Navigation",
@@ -37,9 +51,13 @@ export const Header: StoryObj = {
     <Plate field="lg" className="pb-6">
       <Nav
         actions={
-          <Button size="sm" variant="primary">
-            GitHub
-          </Button>
+          <div className="flex items-center gap-3">
+            <HostChip host="edge-01.lab" signal="ok" />
+            <Avatar monogram="JN" status="ok" />
+            <Button size="sm" variant="primary">
+              GitHub
+            </Button>
+          </div>
         }
       >
         <a href="#" aria-current="page">
@@ -59,6 +77,7 @@ export const Header: StoryObj = {
 export const ApplicationShell: StoryObj = {
   render: function Render() {
     const [tab, setTab] = React.useState("nodes");
+    const [page, setPage] = React.useState(1);
     return (
       <Plate className="overflow-hidden">
         <Shell
@@ -91,12 +110,43 @@ export const ApplicationShell: StoryObj = {
               { id: "config", label: "Config" },
             ]}
           />
-          <div className="flex gap-5 mt-5">
-            <Status signal="ok">3/3 ready</Status>
-            <Status signal="run">reconciling</Status>
+          <div className="flex items-center justify-between gap-5 mt-5">
+            <div className="flex gap-5">
+              <Status signal="ok">3/3 ready</Status>
+              <Status signal="run">reconciling</Status>
+            </div>
+            <Pagination page={page} totalPages={4} onPageChange={setPage} />
           </div>
         </Shell>
       </Plate>
+    );
+  },
+};
+
+export const MobileBarsAndRail: StoryObj = {
+  render: function Render() {
+    const [active, setActive] = React.useState("remote");
+    const dests = [
+      { id: "remote", label: "Remote", icon: <VIcon icon="MOUSE_POINTER" /> },
+      { id: "now", label: "Now", icon: <VIcon icon="ACTIVITY" /> },
+      { id: "keypad", label: "Keypad", icon: <VIcon icon="GRID_2X2" /> },
+      { id: "shell", label: "Shell", icon: <VIcon icon="TERMINAL" /> },
+    ];
+    return (
+      <div className="grid grid-cols-2 gap-5">
+        <Plate className="overflow-hidden">
+          <TopBar
+            title="Android Remote"
+            trailing={<HostChip host="mac-studio.local" signal="ok" />}
+          />
+          <div className="p-5 dim">Touch viewport body</div>
+          <TabBar tabs={dests} active={active} onChange={setActive} />
+        </Plate>
+        <Plate className="flex min-h-[260px] overflow-hidden">
+          <Rail items={dests} active={active} onChange={setActive} />
+          <div className="p-5 dim">Tablet rail layout</div>
+        </Plate>
+      </div>
     );
   },
 };

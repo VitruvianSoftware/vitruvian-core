@@ -25,10 +25,11 @@ import VitruvianToolProtocol
 
 /// What `run` answers a tool's requests with.
 final class DeskTests: XCTestCase {
-    private func desk(uses: [String] = AppService.allCases.map(\.rawValue)) throws -> Desk {
+    private func desk(uses: [String] = AppService.allCases.map(\.rawValue), status: Bool = true) throws -> Desk {
         let manifest = """
-            {"id":"com.example.desk","name":{"en":"Desk"},"version":"1","protocol":"1","publisher":"Example",
+            {"id":"com.example.desk","name":{"en":"Desk"},"version":"1","protocol":"2","publisher":"Example",
              "uses":\(String(decoding: try JSONEncoder().encode(uses), as: UTF8.self)),
+             "contributes":{\(status ? #""status":{"placement":"island"}"# : "")},
              "preferences":[{"id":"project","type":"string","default":"web"},{"id":"count","type":"integer","default":0}],
              "runtime":{"kind":"external","exec":"bin/tool"}}
             """
@@ -60,6 +61,7 @@ final class DeskTests: XCTestCase {
             (.storageSet, #"{"key":"count","value":4}"#, "{}"),
             (.storageGet, #"{"key":"count"}"#, #"{"value":4}"#),
             (.uiBadge, #"{"count":2}"#, "{}"),
+            (.uiStatus, #"{"state":"busy","icon":"arrow.triangle.branch"}"#, "{}"),
         ]
         for (method, sent, wanted) in asked {
             let (answer, said) = desk.serve(method.rawValue, try params(sent))
@@ -68,6 +70,29 @@ final class DeskTests: XCTestCase {
         }
         let answered = Set(asked.map(\.0))
         XCTAssertEqual(answered, Set(ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }))
+    }
+
+    func testAStatusIsSaidAndAnUndeclaredOneRefused() throws {
+        var desk = try desk(uses: [])
+        XCTAssertEqual(desk.serve("ui/status", try params(#"{"state":"busy"}"#)).said,
+                       "the app would show busy on the closed island", "it needs nothing in `uses`")
+        XCTAssertEqual(desk.serve("ui/status", try params(#"{"state":"failure","text":"main is red"}"#)).said,
+                       "the app would show failure on the closed island, saying \"main is red\"")
+        XCTAssertEqual(desk.serve("ui/status", try params(#"{"state":"ok","text":{"en":"Fine","fr":"Bien"}}"#)).said,
+                       "the app would show ok on the closed island, saying \"Fine\"")
+        let gone = desk.serve("ui/status", try params(#"{"state":"none"}"#))
+        XCTAssertEqual(try gone.answer.get(), .object([:]))
+        XCTAssertEqual(gone.said, "the app would show no status on the closed island")
+        XCTAssertEqual(code(desk.serve("ui/status", try params(#"{"state":"broken"}"#)).answer), -32602)
+        XCTAssertEqual(code(desk.serve("ui/status", nil).answer), -32602)
+
+        var undeclared = try self.desk(status: false)
+        let refused = undeclared.serve("ui/status", try params(#"{"state":"busy"}"#))
+        XCTAssertEqual(code(refused.answer), -32602, "as the app refuses it")
+        XCTAssertEqual(refused.said, "refused: the manifest declares no status. Add `contributes.status`")
+        // Params that are not the message's are that first, declared or not.
+        XCTAssertEqual(undeclared.serve("ui/status", try params(#"{"state":"broken"}"#)).said,
+                       "params that are not this message's")
     }
 
     func testItRefusesWhatTheAppRefuses() throws {

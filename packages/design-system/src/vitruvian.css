@@ -45,6 +45,7 @@
   --color-steel: var(--color-accent);
   --color-steel-text: var(--color-accent-text);
   --color-steel-quiet: var(--color-accent-quiet);
+  --color-on-steel: var(--color-on-accent);
   --color-steel-100: var(--color-accent-100);
   --color-steel-200: var(--color-accent-200);
   --color-steel-300: var(--color-accent-300);
@@ -57,6 +58,26 @@
 
   --color-sanguine: var(--color-sanguine);
   --color-sanguine-text: var(--color-sanguine-text);
+  --color-sanguine-100: var(--color-sanguine-100);
+  --color-sanguine-200: var(--color-sanguine-200);
+  --color-sanguine-300: var(--color-sanguine-300);
+  --color-sanguine-400: var(--color-sanguine-400);
+  --color-sanguine-500: var(--color-sanguine-500);
+  --color-sanguine-600: var(--color-sanguine-600);
+  --color-sanguine-700: var(--color-sanguine-700);
+  --color-sanguine-800: var(--color-sanguine-800);
+  --color-sanguine-900: var(--color-sanguine-900);
+
+  --color-neutral-100: var(--color-neutral-100);
+  --color-neutral-200: var(--color-neutral-200);
+  --color-neutral-300: var(--color-neutral-300);
+  --color-neutral-400: var(--color-neutral-400);
+  --color-neutral-500: var(--color-neutral-500);
+  --color-neutral-600: var(--color-neutral-600);
+  --color-neutral-700: var(--color-neutral-700);
+  --color-neutral-800: var(--color-neutral-800);
+  --color-neutral-900: var(--color-neutral-900);
+
   --color-ok: var(--color-ok);
   --color-warn: var(--color-warn);
   --color-crit: var(--color-crit);

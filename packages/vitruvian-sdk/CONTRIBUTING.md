@@ -26,7 +26,7 @@ nothing from the app's folder may be copied here.
 
 ## A change to the protocol
 
-The protocol is written down once, in `protocol/`, and four other places
+The protocol is written down once, in `protocol/`, and five other places
 must agree with it. A change touches all of them in one pull request, and
 the tests refuse anything less.
 
@@ -35,13 +35,25 @@ the tests refuse anything less.
 | The schema | `protocol/manifest.schema.json`, `protocol/messages.schema.json`, `protocol/methods.json` | `protocol_examples_test` |
 | The Swift types | `Sources/VitruvianToolProtocol` | `VitruvianToolProtocolTests` |
 | An example | `protocol/examples/` | both of the above: they can only see a difference an example crosses |
-| The kits in other languages | `kits/`, their types generated from the schema | none yet: the kits and their generator arrive in the next release, with a test that fails when the generated types are stale |
+| The kits in other languages | `kits/` and `go/`, their types generated from the schema by `bazel run //tools/sdk-codegen` | `//tools/sdk-codegen:in_sync_test`, which fails when a generated file is not what the generator writes; and each kit's own tests, which hold that every request a tool may send has a call |
 | The app's pin | `apps/desktop/vitruvian/bazel/tool_protocol.sha256` in vitruvian-core, written by `bazel run //apps/desktop/vitruvian:pin_tool_protocol` | `tool_protocol_pin_test`, in the app's folder |
+| The conformance script and `vitruvian-tool run` | `conformance/conformance.py`, whose table of params is written by hand; `Sources/VitruvianToolCLI/Desk.swift` | `conformance_test`; `VitruvianToolCLITests`, which holds that the desk answers every request a tool may send |
 
 **Additive within a version.** A new message or field needs no new version
 when an older tool or an older app can ignore it: a field nobody knows is
 ignored, a notice nobody knows is ignored, and a request nobody knows is
-answered with failure -32601.
+answered with failure -32601. A new value in a closed list of the manifest
+is **not** additive: a `uses` entry, a preference `type`, a surface, a
+panel's `placement` or `kind`, an activation. An older app refuses the whole
+manifest for a name it does not know, so the tool could not be added there
+at all. Add a key instead, as `options` on a `string` preference stands in
+for a new preference type, and `contributes.status` for a new `uses` entry.
+
+**Say what the app has.** Something added within a version gets a name in
+`initialize`'s `features` (`ProtocolFeature` in Swift), so a tool can ask
+before it uses it, and each kit's call for it sends nothing to an app that
+did not name it. The conformance script plays an app from before the
+feature, in its step "an older app".
 
 **Anything an older side would misread is a new version.** A tool's
 manifest names one `protocol`, and the app refuses a manifest whose version it

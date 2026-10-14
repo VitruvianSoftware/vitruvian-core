@@ -58,6 +58,7 @@ pub mod methods {
     pub const UI_CLOSE: &str = "ui/close";
     pub const UI_RENDER: &str = "ui/render";
     pub const UI_BADGE: &str = "ui/badge";
+    pub const UI_STATUS: &str = "ui/status";
 }
 
 /// The names a manifest's `uses` may list.
@@ -262,6 +263,14 @@ pub const METHODS: &[Method] = &[
         params: Some("UiBadgeParams"),
         result: Some("Empty"),
     },
+    Method {
+        name: methods::UI_STATUS,
+        sender: "tool",
+        kind: "request",
+        uses: None,
+        params: Some("UiStatusParams"),
+        result: Some("Empty"),
+    },
 ];
 
 /// Why a request was not done. Codes: -32700 the line was not JSON; -32600 it
@@ -312,6 +321,12 @@ pub struct InitializeParams {
     /// tool is started in.
     #[serde(rename = "dataFolder")]
     pub data_folder: String,
+    /// What this app has beyond the first release of the protocol version, by
+    /// name: ui.status, ui.choice, preferences.options. A name the tool does
+    /// not know is ignored. An app before 3.48 sends none, and has none of
+    /// them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub features: Option<Vec<String>>,
 }
 
 /// The tool's answer to initialize. A tool that picks a version the app did not
@@ -508,15 +523,16 @@ pub struct UiEventParams {
     pub block: Option<String>,
     /// What the person did. tap: a button, a row or a list's row was pressed.
     /// toggle: a switch was turned. submit: Return was pressed in a field.
-    /// change: a field was left with other text in it. bridge: a web panel's
-    /// page called window.vitruvian.call. One of: tap, toggle, submit, change,
-    /// bridge.
+    /// change: a field was left with other text in it, or an option of a choice
+    /// was picked. bridge: a web panel's page called window.vitruvian.call. One
+    /// of: tap, toggle, submit, change, bridge.
     pub event: String,
     /// For toggle, the switch's new state. For submit and change, the field's
-    /// text. For a tap on a list's row, the row's id. For bridge, an object:
-    /// method, the request the page made, and params, what it carries. A tool
-    /// sends such a request to the app as its own; a method that starts with
-    /// tool/ is the tool's own.
+    /// text; for the change of a choice, the picked option's value. For a tap
+    /// on a list's row, the row's id. For bridge, an object: method, the
+    /// request the page made, and params, what it carries. A tool sends such a
+    /// request to the app as its own; a method that starts with tool/ is the
+    /// tool's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<Value>,
 }
@@ -570,6 +586,30 @@ pub struct UiBadgeParams {
     pub dot: Option<bool>,
 }
 
+/// The tool's status: a small mark the app draws on the closed island. Each one
+/// replaces the last, and it goes when the tool's program ends. The manifest
+/// must declare it, under contributes.status: without that the app answers
+/// failure -32602. The person can switch it off for the tool; it is then still
+/// answered with {} and nothing is drawn. An app before 3.48 answers failure
+/// -32601.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiStatusParams {
+    /// none: no mark. ok: all is well. busy: something is under way. attention:
+    /// something waits for the person. failure: something failed. One of: none,
+    /// ok, busy, attention, failure.
+    pub state: String,
+    /// What it means, in one short line, for VoiceOver and the tooltip. Shown
+    /// as one line of at most 120 characters. Left out, the app says its own
+    /// word for the state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<UiText>,
+    /// An SF Symbol name, drawn in place of the state's own glyph. The colour,
+    /// the size and the motion stay the app's. A name this Mac does not have,
+    /// or a blank one, draws the state's own glyph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
 /// A page: blocks, drawn one under the other. At most 262,144 bytes as JSON, an
 /// image written into it included: the app does not draw a larger one, and the
 /// tool's log says so.
@@ -579,14 +619,14 @@ pub struct UiTree {
     pub blocks: Vec<UiBlock>,
 }
 
-/// One block. type says which of the twelve kinds it is, and the kind's own
+/// One block. type says which of the thirteen kinds it is, and the kind's own
 /// fields go beside it. A kind the app does not know is drawn as its fallback,
 /// or left out: that is how a later version adds one.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UiBlock {
     /// The block's name within the page, as the events it causes name it.
-    /// Required for button, toggle, field and list; a row with one can be
-    /// tapped. The same characters as a command id.
+    /// Required for button, toggle, field, list and choice; a row with one can
+    /// be tapped. The same characters as a command id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// What an app that does not know this kind draws instead, as plain text.
@@ -626,6 +666,8 @@ pub enum UiBlockContent {
     Link(LinkBlock),
     #[serde(rename = "spacer")]
     Spacer(SpacerBlock),
+    #[serde(rename = "choice")]
+    Choice(ChoiceBlock),
     /// A kind these types do not have, from a later protocol.
     #[serde(untagged)]
     Other(Map<String, Value>),
@@ -820,12 +862,45 @@ pub struct SpacerBlock {
     pub size: Option<f64>,
 }
 
+/// One option of a choice.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiChoiceOption {
+    /// What the event carries when the person picks it. At most 128 characters.
+    /// It may be empty.
+    pub value: String,
+    /// What the menu shows for it, as one line.
+    pub title: UiText,
+}
+
+/// A pop-up menu: one of a fixed list of options. Picking one is the event
+/// change, with the option's value. No two options share a value: JSON Schema
+/// cannot say that, and the app refuses a page that breaks it. An app before
+/// 3.48 does not know this kind and draws its fallback, which nobody can
+/// change: ask the app for ui.choice first, and send a field to an app without
+/// it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ChoiceBlock {
+    /// What is being chosen, beside the menu.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<UiText>,
+    /// The selected option's value. One that is no option's is drawn as an
+    /// extra first row, as written.
+    pub value: String,
+    /// The options, from 1 to 64.
+    pub options: Vec<UiChoiceOption>,
+    /// False draws it dimmed, and nothing can be picked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
 /// The file vitruvian-tool.json at the top of a tool's folder. It says what the
 /// tool is, which of the app's services it calls, what it adds, and which
 /// program to start. A field this schema does not name is ignored, which is how
-/// a later version adds one. Two rules are not written here because JSON Schema
-/// cannot say them: no two commands, no two panels and no two preferences share
-/// an id; and the whole file is at most 65,536 bytes.
+/// a later version adds one. Four rules are not written here because JSON
+/// Schema cannot say them: no two commands, no two panels and no two
+/// preferences share an id; the whole file is at most 65,536 bytes; no two
+/// options of one preference share a value; and a preference with options has a
+/// default that is one of them.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {
     /// The tool's identity, in reverse-DNS form, for example com.acme.deploys.
@@ -876,7 +951,8 @@ pub struct Manifest {
     pub runtime: Runtime,
 }
 
-/// What the tool adds to the app: commands, and in protocol 2 panels.
+/// What the tool adds to the app: commands, and in protocol 2 panels and a
+/// status.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Contributes {
     /// The tool's commands. At most 32.
@@ -886,6 +962,19 @@ pub struct Contributes {
     /// one in Settings. Protocol 2 only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<Vec<Panel>>,
+    /// The tool shows a status: a small mark the app draws, which the tool sets
+    /// with ui/status. Without this, the app refuses ui/status. Protocol 2
+    /// only. An app before 3.48 ignores it, and shows no status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<StatusContribution>,
+}
+
+/// That the tool shows a status, and where.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct StatusContribution {
+    /// Where it is shown. island: on the closed island, beside the agent mark.
+    /// One of: island.
+    pub placement: String,
 }
 
 /// One thing the tool can be asked to do.
@@ -952,6 +1041,27 @@ pub struct Preference {
     pub r#type: String,
     /// The value before anything is saved. It is of the type named.
     pub default: Value,
+    /// The values the person chooses among: the app draws the setting as a pop-
+    /// up menu, not a field. From 1 to 64, no two with one value, and the
+    /// default is one of them. Only a string preference may have them. They are
+    /// how the app draws, not a rule on the value: a saved value that is no
+    /// option's is kept and shown as written. An app before 3.48 ignores them,
+    /// and draws a text field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<PreferenceOption>>,
+}
+
+/// One value a preference with options may be set to, and what the person reads
+/// for it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PreferenceOption {
+    /// What is saved when the person picks it. At most 128 characters, with no
+    /// line break and no other control character. It may be empty.
+    pub value: String,
+    /// What the menu shows for it, as written. Held to what a preference's
+    /// title is: at most 60 characters in each language, with no line break and
+    /// no other control character.
+    pub title: LocalizedText,
 }
 
 /// The program the app starts.
@@ -1006,6 +1116,7 @@ pub fn round_trip(name: &str, value: &Value) -> Option<serde_json::Result<Value>
         "UiCloseParams" => again::<UiCloseParams>(value),
         "UiRenderParams" => again::<UiRenderParams>(value),
         "UiBadgeParams" => again::<UiBadgeParams>(value),
+        "UiStatusParams" => again::<UiStatusParams>(value),
         "UiTree" => again::<UiTree>(value),
         "UiBlock" => again::<UiBlock>(value),
         "LocalizedText" => again::<LocalizedText>(value),
@@ -1023,11 +1134,15 @@ pub fn round_trip(name: &str, value: &Value) -> Option<serde_json::Result<Value>
         "DividerBlock" => again::<DividerBlock>(value),
         "LinkBlock" => again::<LinkBlock>(value),
         "SpacerBlock" => again::<SpacerBlock>(value),
+        "UiChoiceOption" => again::<UiChoiceOption>(value),
+        "ChoiceBlock" => again::<ChoiceBlock>(value),
         "Manifest" => again::<Manifest>(value),
         "Contributes" => again::<Contributes>(value),
+        "StatusContribution" => again::<StatusContribution>(value),
         "Command" => again::<Command>(value),
         "Panel" => again::<Panel>(value),
         "Preference" => again::<Preference>(value),
+        "PreferenceOption" => again::<PreferenceOption>(value),
         "Runtime" => again::<Runtime>(value),
         _ => return None,
     })

@@ -70,13 +70,14 @@ blocks, with package `ui` of the kit:
 
 ```go
 // page is the island page: what it says now.
-func (c *counter) page() toolkit.UITree {
+func (c *counter) page(app *toolkit.App) toolkit.UITree {
 	return ui.Tree(
 		ui.Heading("Counter"),
 		ui.Text(fmt.Sprintf("Pressed %d times", c.count)),
 		ui.Button("add", fmt.Sprintf("Add %d", c.step()), ui.ButtonOptions{Style: ui.Prominent}),
 		ui.Field("name", ui.FieldOptions{Title: "Your name", Value: c.name, Placeholder: "Type it and press Return"}),
 		ui.If(c.name != "", ui.Text("Hello, "+c.name, ui.TextOptions{Style: ui.Secondary})),
+		c.statusPicker(app),
 	)
 }
 ```

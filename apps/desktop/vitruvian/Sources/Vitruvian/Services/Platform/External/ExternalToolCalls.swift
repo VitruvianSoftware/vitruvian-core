@@ -23,12 +23,17 @@ package struct ExternalToolCalls {
     private let services: ToolServices
     /// Puts the tool's badge in the island's Tools area.
     private let badge: @MainActor (UIBadgeParams) -> Void
+    /// Keeps the tool's status for the closed island. What it gives back
+    /// is why it would not: the failure the tool is answered with.
+    private let status: @MainActor (UIStatusParams) -> RPCErrorObject?
 
     package init(manifest: ToolManifest, broker: CapabilityBroker,
-                 badge: @escaping @MainActor (UIBadgeParams) -> Void = { _ in }) {
+                 badge: @escaping @MainActor (UIBadgeParams) -> Void = { _ in },
+                 status: @escaping @MainActor (UIStatusParams) -> RPCErrorObject? = { _ in nil }) {
         tool = manifest.id
         services = broker.services(for: manifest)
         self.badge = badge
+        self.status = status
     }
 
     /// Does what one request asks and answers it, once: at once, or when
@@ -41,6 +46,14 @@ package struct ExternalToolCalls {
             // makes. The link answers these itself; this is for a caller
             // that does not.
             reply(.failure(RPCErrorObject(code: RPCErrorCode.methodNotFound, message: "unknown method")))
+
+        case .uiStatus:
+            // Behind nothing in `uses`: the manifest's own declaration is
+            // the permission, and whoever keeps the status holds the tool
+            // to it. A status the person switched off is answered the same.
+            guard let asked = Self.read(UIStatusParams.self, params) else { return reply(Self.badParams) }
+            if let refusal = status(asked) { return reply(.failure(refusal)) }
+            reply(.success(Self.nothing))
 
         case .uiBadge:
             // Behind `notify`, as the protocol says.

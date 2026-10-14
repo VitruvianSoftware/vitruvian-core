@@ -20,27 +20,44 @@
 
 package dev.vitruvian.design
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** The banner's three severities. */
 public enum class BannerTone {
   Info,
   Warn,
-  Err
+  Err,
 }
 
 /** `color-mix(in srgb, <c> 8%, transparent)` - the banner's ground. */
@@ -129,6 +146,98 @@ public fun EmptyState(
       if (actions != null) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3), content = actions)
       }
+    }
+  }
+}
+
+/**
+ * `.skeleton` - a square loading placeholder that pulses linearly between 0.35 and 0.90 alpha
+ * (collapsing to static 0.65 under reduced motion).
+ */
+@Composable
+public fun Skeleton(
+    modifier: Modifier = Modifier,
+    height: Dp = 18.dp,
+) {
+  val colors = Vitruvian
+  val alpha =
+      if (LocalReduceMotion.current) {
+        0.65f
+      } else {
+        val transition = rememberInfiniteTransition(label = "skeleton")
+        val value by
+            transition.animateFloat(
+                initialValue = 0.35f,
+                targetValue = 0.90f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = 1200, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                label = "skeletonAlpha",
+            )
+        value
+      }
+  Box(
+      modifier =
+          modifier
+              .fillMaxWidth()
+              .height(height)
+              .alpha(alpha)
+              .background(colors.surface2)
+              .border(1.dp, colors.line),
+  )
+}
+
+/**
+ * `.spinner` - a technical compass-arc activity indicator that rotates linearly (or renders a
+ * static three-quarter arc under reduced motion).
+ */
+@Composable
+public fun Spinner(
+    modifier: Modifier = Modifier,
+    spinnerSize: Dp = 18.dp,
+    color: Color = Vitruvian.accentText,
+    trackColor: Color = Vitruvian.line,
+) {
+  val angle =
+      if (LocalReduceMotion.current) {
+        0f
+      } else {
+        val transition = rememberInfiniteTransition(label = "spinner")
+        val value by
+            transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = 900, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart,
+                    ),
+                label = "spinnerAngle",
+            )
+        value
+      }
+  Canvas(modifier = modifier.size(spinnerSize)) {
+    val stroke = 1.5.dp.toPx()
+    val inset = stroke / 2f
+    val arcSize = Size(size.width - stroke, size.height - stroke)
+    drawOval(
+        color = trackColor,
+        topLeft = Offset(inset, inset),
+        size = arcSize,
+        style = Stroke(width = stroke),
+    )
+    rotate(degrees = angle) {
+      drawArc(
+          color = color,
+          startAngle = -90f,
+          sweepAngle = 110f,
+          useCenter = false,
+          topLeft = Offset(inset, inset),
+          size = arcSize,
+          style = Stroke(width = stroke, cap = StrokeCap.Square),
+      )
     }
   }
 }

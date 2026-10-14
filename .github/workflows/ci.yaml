@@ -421,6 +421,16 @@ jobs:
           # folder through the conformance script, and the release's zip of
           # it. All `manual`, so named here.
           bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:HomeSpeakerToolTests //apps/desktop/home-speaker:tool_conformance_test //apps/desktop/home-speaker:tool_version_test //apps/desktop/home-speaker:zip_tool_test
+          # Release packaging, under the bash the release runner uses. A Mac's
+          # /bin/bash is 3.2, where an empty array under `set -u` ends a script
+          # and an EXIT trap can turn that into exit 0: HomeSpeaker 1.12.0 and
+          # 1.13.0 shipped with no files that way, and the dry run below was
+          # green throughout. The Linux lane runs these two tests as well, but
+          # its bash is too new to hit the case; REQUIRE_BASH32=1 makes them
+          # fail here if they ever stop finding a bash 3.
+          bazel test "${cache[@]}" --config=macos-app --test_env=REQUIRE_BASH32=1 //tools/desktop-package:package-desktop_test //apps/desktop/home-speaker:publish_test
+          # The whole of it for real (SwiftPM build, codesign, hdiutil), short
+          # of uploading. publish.sh fails unless every artifact is in dist.
           (cd apps/desktop/home-speaker && ./scripts/publish.sh --dry-run)
 
           # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build

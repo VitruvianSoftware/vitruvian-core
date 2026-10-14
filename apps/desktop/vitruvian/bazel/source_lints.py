@@ -944,6 +944,91 @@ def menu_panel_switches_have_names(repo):
     return []
 
 
+def _modifier_chain(lines, index):
+    """The lines of the modifier chain that follows the control opened at
+    `index`: its closures, then each `.modifier` at its own indent or one
+    step in, until the next statement."""
+    line = lines[index]
+    indent = len(line) - len(line.lstrip())
+    chain = []
+    for later in lines[index + 1 : index + 30]:
+        text = later.strip()
+        depth = len(later) - len(later.lstrip())
+        if text and depth <= indent and not (depth == indent and text[0] in ".}"):
+            break
+        if depth in (indent, indent + 4) and text.startswith("."):
+            chain.append(text)
+    return chain
+
+
+def tool_screen_controls_have_names(repo):
+    """Every control on a tool's screens is named once for VoiceOver. A
+    switch drawn beside its title reaches it as a text and then a switch
+    with no name, and a text field's label never reaches it: both take
+    their row's title outright (`controlNamed`). A pop-up menu is named by
+    its own label, hidden or not; naming it again makes VoiceOver say the
+    name twice ("Status, Status"), so it takes no second name."""
+    found = []
+    for path in (
+        "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+    ):
+        lines = repo.lines_at(path)
+        if not lines:
+            return [f"{path} reads back"]
+        fields = 0
+        for index, line in enumerate(lines):
+            if is_comment(line):
+                continue
+            text = line.strip()
+            if "Toggle(" in line:
+                if not any(
+                    m.startswith(".controlNamed(")
+                    for m in _modifier_chain(lines, index)
+                ):
+                    found.append(
+                        f"{path}:{index + 1}: a switch has no name for VoiceOver"
+                    )
+            elif "Picker(" in line:
+                if 'Picker("",' in line or 'Picker("",' in line:
+                    found.append(
+                        f"{path}:{index + 1}: a pop-up menu has no title to be named by"
+                    )
+                if any(
+                    m.startswith(".controlNamed(")
+                    or m.startswith(".accessibilityLabel(")
+                    for m in _modifier_chain(lines, index)
+                ):
+                    found.append(f"{path}:{index + 1}: a pop-up menu is named twice")
+            elif text == "field":
+                fields += 1
+                if not any(
+                    m.startswith(".controlNamed(")
+                    for m in _modifier_chain(lines, index)
+                ):
+                    found.append(
+                        f"{path}:{index + 1}: a text field has no name for VoiceOver"
+                    )
+        if path.endswith("ExternalToolsSection.swift"):
+            helper = code_without_comments(lines)
+            start = helper.find("private func field(")
+            if (
+                start < 0
+                or ".controlNamed(setting.title)" not in helper[start : start + 400]
+            ):
+                found.append(f"{path}: a setting's field is named with its title")
+        elif fields == 0:
+            found.append(
+                f"{path}: the page's field block is where this check looks for it"
+            )
+    if found:
+        return [
+            "every control a tool's screens draw is named once with its row's title: "
+            + "; ".join(found)
+        ]
+    return []
+
+
 def path_identity_rule_is_spelled_once(repo):
     """The leading-slash test IS the rule that tells a stored path from a
     bundle identifier. A second spelling of it drifts the day the rule learns
@@ -1035,6 +1120,7 @@ RELEASE_SCRIPTS = (
     "publish.sh",
     "Tools/package-release.sh",
     "Tools/make-dmg.sh",
+    "Tools/dmg-image-devices.sh",
     "Tools/notarize.sh",
 )
 
@@ -1092,7 +1178,12 @@ def dmg_detach_accepts_a_mount_that_is_gone(repo):
     "Resource busy" and the volume then unmounts on its own. Every later detach
     fails with "No such file or directory". make-dmg.sh must treat a mount that
     is gone as detached, and not run a forced detach on it, or a release that
-    packaged fine dies at the last step."""
+    packaged fine dies at the last step.
+
+    A `hdiutil create` that fails with "Resource busy" can also leave its
+    half-made image attached with no mount point. Retrying into the same file
+    then makes the leftover look like the image being packaged, and no detach
+    by mount path or by the new attachment's device reaches it."""
     text = repo.read_text("Tools/make-dmg.sh")
     if not text:
         return ["Tools/make-dmg.sh is readable for the detach check"]
@@ -1108,9 +1199,15 @@ def dmg_detach_accepts_a_mount_that_is_gone(repo):
     convert = [x for x in text.split("\n") if "hdiutil convert" in x]
     if not convert or any("-quiet" in x for x in convert):
         problems.append("make-dmg.sh converts without -quiet so a failure says why")
-    if 'hdiutil detach "$DEVICE" -force' not in text:
+    if text.count('release_image "$RW"') < 2:
         problems.append(
-            "make-dmg.sh releases a still-attached image by its device node"
+            "make-dmg.sh releases a still-attached image by its device nodes,"
+            " after a failed create and before converting"
+        )
+    if 'RW="$WORK/rw-$attempt.dmg"' not in text:
+        problems.append(
+            "make-dmg.sh writes each create attempt to its own file, so a"
+            " failed attempt's leftover is never taken for the image packaged"
         )
     if "convert failed (attempt" not in text:
         problems.append("make-dmg.sh retries a failed convert")
@@ -2916,6 +3013,7 @@ RULES = [
     click_debounce_schedules_nothing,
     smooth_scroll_disabled_tap_rearms_only_when_wanted,
     menu_panel_switches_have_names,
+    tool_screen_controls_have_names,
     path_identity_rule_is_spelled_once,
     build_sweeps_its_temp_dirs,
     build_signs_with_a_stable_identity,

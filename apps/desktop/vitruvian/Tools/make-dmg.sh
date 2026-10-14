@@ -60,18 +60,32 @@ mkdir "$STAGING/.background"
 cp "$BACKGROUND" "$STAGING/.background/background.png"
 
 echo "▸ Creating writable image…"
-RW="$WORK/rw.dmg"
+# Detaches every attachment of one image, found by the image's path. It reaches
+# an attachment that has no mount point and whose device nobody recorded.
+release_image() {
+    local device
+    for device in $(hdiutil info | sh Tools/dmg-image-devices.sh "$1"); do
+        hdiutil detach "$device" -force || true
+    done
+}
 # Clear any stale mount left by a previous attempt on the same runner.
 hdiutil detach "/Volumes/$VOLUME" -force 2>/dev/null || true
 # hdiutil can fail transiently on CI runners; retry a few times. No -quiet, so a
 # real error is visible in the build log rather than swallowed.
+#
+# A create that fails with "Resource busy" can leave its half-made image
+# attached. Each attempt therefore writes its own file, so a leftover from a
+# failed attempt is never mistaken for the image being packaged, and the
+# leftover is detached before the next attempt.
 created=0
 for attempt in 1 2 3; do
+    RW="$WORK/rw-$attempt.dmg"
     if hdiutil create -volname "$VOLUME" -srcfolder "$STAGING" -fs HFS+ -format UDRW -ov "$RW"; then
         created=1
         break
     fi
     echo "  hdiutil create failed (attempt $attempt of 3), retrying…" >&2
+    release_image "$RW"
     rm -f "$RW"
     sleep 3
 done
@@ -81,9 +95,6 @@ if [[ $created -ne 1 ]]; then
 fi
 ATTACH_OUTPUT="$(hdiutil attach "$RW" -nobrowse)"
 MOUNT="$(printf '%s\n' "$ATTACH_OUTPUT" | awk '/\/Volumes\// {print substr($0, index($0, "/Volumes/")); exit}')"
-# The whole-disk device node (/dev/diskN). It still detaches the image after
-# the mount folder is gone, which a detach by mount path cannot.
-DEVICE="$(printf '%s\n' "$ATTACH_OUTPUT" | awk '/^\/dev\/disk[0-9]+[[:space:]]/ {print $1; exit}')"
 if [[ -z "$MOUNT" || ! -d "$MOUNT" ]]; then
     echo "✗ Could not find mounted volume in hdiutil output" >&2
     printf '%s\n' "$ATTACH_OUTPUT" >&2
@@ -169,10 +180,10 @@ for _ in $(seq 1 5); do
     sleep 2
 done
 # Still attached with the mount folder gone: a detach by path has nothing to
-# act on, so release the image by its device node, forced.
-if hdiutil info | grep -qF "$RW" && [[ -n "$DEVICE" ]]; then
+# act on, so release the image by its device nodes, forced.
+if hdiutil info | grep -qF "$RW"; then
     for attempt in 1 2 3 4 5; do
-        hdiutil detach "$DEVICE" -force || true
+        release_image "$RW"
         hdiutil info | grep -qF "$RW" || break
         echo "  image still attached after forced detach (attempt $attempt of 5), retrying…" >&2
         sleep 3

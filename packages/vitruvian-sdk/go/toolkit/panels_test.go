@@ -22,6 +22,9 @@ package toolkit_test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
@@ -225,7 +228,178 @@ func TestAPageIsWrittenAsTheBlocksItHolds(t *testing.T) {
 			kinds++
 		}
 	}
-	if kinds != 12 {
+	if kinds != 13 {
 		t.Errorf("%d kinds of block", kinds)
+	}
+}
+
+func TestAStatusIsSentToAnAppThatHasIt(t *testing.T) {
+	b := (&bench{}).helloWith(`["1","2"]`, `["ui.status","ui.later"]`).run("check", 2).
+		app(`{"jsonrpc":"2.0","id":1,"result":{}}`).app(`{"jsonrpc":"2.0","id":2,"result":{}}`).goodbye()
+	tool := b.tool()
+	var shown []bool
+	tool.Command("check", func(ctx context.Context, app *toolkit.App) error {
+		first, err := app.UI.Status(toolkit.StatusBusy,
+			toolkit.StatusOptions{Text: "Checks are running", Icon: "arrow.triangle.branch"})
+		if err != nil {
+			return err
+		}
+		second, err := app.UI.Status(toolkit.StatusNone)
+		shown = []bool{first, second}
+		return err
+	})
+	tool.Serve()
+	if !reflect.DeepEqual(shown, []bool{true, true}) {
+		t.Errorf("shown %v", shown)
+	}
+	same(t, b.lines(t)[1:],
+		`{"jsonrpc":"2.0","id":1,"method":"ui/status","params":{"state":"busy","text":"Checks are running","icon":"arrow.triangle.branch"}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"ui/status","params":{"state":"none"}}`,
+		`{"jsonrpc":"2.0","id":2,"result":{}}`)
+}
+
+func TestAStatusWritesNothingForAnOlderApp(t *testing.T) {
+	// An app before 3.48: its hello has no features. No answer is scripted,
+	// so a request sent here would end with the link.
+	b := (&bench{}).helloOffering(`["1","2"]`).run("check", 2).goodbye()
+	tool := b.tool()
+	shown := true
+	var failed error
+	tool.Command("check", func(ctx context.Context, app *toolkit.App) error {
+		shown, failed = app.UI.Status(toolkit.StatusFailure, toolkit.StatusOptions{Text: "main is red"})
+		return nil
+	})
+	tool.Serve()
+	if shown || failed != nil {
+		t.Errorf("the call says the status is not shown, and that is no error: %v, %v", shown, failed)
+	}
+	// Nothing was sent for it: only the two answers are on the link.
+	same(t, b.lines(t),
+		`{"jsonrpc":"2.0","id":"hello","result":{"protocolVersion":"2","toolVersion":"9.9.9"}}`,
+		`{"jsonrpc":"2.0","id":2,"result":{}}`)
+
+	// The same for an app that says what it has, and does not have this.
+	other := (&bench{}).helloWith(`["2"]`, `["ui.choice"]`).run("check", 2).goodbye()
+	second := other.tool()
+	again := true
+	second.Command("check", func(ctx context.Context, app *toolkit.App) error {
+		again, _ = app.UI.Status(toolkit.StatusOK)
+		return nil
+	})
+	second.Serve()
+	if again || len(other.lines(t)) != 2 {
+		t.Errorf("shown %v, written %v", again, other.lines(t))
+	}
+}
+
+func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
+	b := (&bench{}).helloWith(`["1"]`, `["ui.choice","preferences.options","ui.later"]`).run("ask", 2).goodbye()
+	tool := b.tool()
+	var has []bool
+	tool.Command("ask", func(ctx context.Context, app *toolkit.App) error {
+		for _, name := range []string{
+			toolkit.FeatureChoice, toolkit.FeaturePreferenceOptions, toolkit.FeatureStatus,
+			"ui.later", "ui.never",
+		} {
+			has = append(has, app.Supports(name))
+		}
+		return nil
+	})
+	tool.Serve()
+	if !reflect.DeepEqual(has, []bool{true, true, false, true, false}) {
+		t.Errorf("has %v", has)
+	}
+	names := []string{toolkit.FeatureStatus, toolkit.FeatureChoice, toolkit.FeaturePreferenceOptions}
+	if !reflect.DeepEqual(names, []string{"ui.status", "ui.choice", "preferences.options"}) {
+		t.Errorf("names %v", names)
+	}
+
+	// An app that says nothing has none of them.
+	old := (&bench{}).hello().run("ask", 2).goodbye()
+	before := old.tool()
+	var none []bool
+	before.Command("ask", func(ctx context.Context, app *toolkit.App) error {
+		for _, name := range names {
+			none = append(none, app.Supports(name))
+		}
+		return nil
+	})
+	before.Serve()
+	if !reflect.DeepEqual(none, []bool{false, false, false}) {
+		t.Errorf("none %v", none)
+	}
+}
+
+func TestAChoiceIsBuiltAsTheProtocolsExample(t *testing.T) {
+	options := []toolkit.UIChoiceOption{
+		{Value: "green", Title: "Green"},
+		{Value: "breathe green", Title: toolkit.LocalizedText{"en": "Pulsing green", "de": "Pulsierendes Grün"}},
+	}
+	data, err := os.ReadFile(filepath.Join("..", "..", "protocol", "examples", "messages.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct {
+		Examples []struct {
+			About   string
+			Message map[string]any
+		}
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	var example any
+	for _, each := range file.Examples {
+		if each.About == "a page with a choice among fixed options" {
+			tree := each.Message["params"].(map[string]any)["tree"].(map[string]any)
+			example = tree["blocks"].([]any)[0]
+		}
+	}
+	plain := func(block toolkit.UIBlock) any {
+		written, err := json.Marshal(block)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var value any
+		if err := json.Unmarshal(written, &value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	enabled := ui.Choice("light", "green", options,
+		ui.ChoiceOptions{Title: "Mouse when green", Fallback: "Mouse when green: Green"})
+	yes := true
+	enabled.Choice.Enabled = &yes
+	if built := plain(enabled); example == nil || !reflect.DeepEqual(built, example) {
+		t.Errorf("built:\n%v\nthe example:\n%v", built, example)
+	}
+
+	// With no fallback given, the builder writes one: an app before 3.48
+	// draws it in the menu's place.
+	fallback := func(block toolkit.UIBlock) any { return plain(block).(map[string]any)["fallback"] }
+	if got := fallback(ui.Choice("light", "green", options, ui.ChoiceOptions{Title: "Mouse when green"})); got != "Mouse when green: Green" {
+		t.Errorf("the fallback: %v", got)
+	}
+	if got := fallback(ui.Choice("light", "green", options)); got != "Green" {
+		t.Errorf("with no title, the selected option's title alone: %v", got)
+	}
+	both := fallback(ui.Choice("light", "breathe green", options, ui.ChoiceOptions{Title: "Mouse when green"}))
+	if !reflect.DeepEqual(both, map[string]any{"en": "Mouse when green: Pulsing green", "de": "Mouse when green: Pulsierendes Grün"}) {
+		t.Errorf("in every language either text has: %v", both)
+	}
+	if got := fallback(ui.Choice("light", "typed by hand", options, ui.ChoiceOptions{Title: "Light"})); got != "Light: typed by hand" {
+		t.Errorf("a value that is no option's is written as it is: %v", got)
+	}
+	dimmed := ui.Choice("light", "green", options, ui.ChoiceOptions{Disabled: true})
+	if dimmed.Choice.Enabled == nil || *dimmed.Choice.Enabled {
+		t.Errorf("a disabled choice says so")
+	}
+	if dimmed.ID == nil || *dimmed.ID != "light" || dimmed.Type != "choice" {
+		t.Errorf("its id and its kind: %+v", dimmed)
+	}
+	// A pick arrives as the event a field's change is, with the option's value.
+	picked, ok := toolkit.PanelEvent{Block: "light", Kind: "change", Value: "breathe green"}.Text()
+	if !ok || picked != "breathe green" {
+		t.Errorf("picked %q", picked)
 	}
 }

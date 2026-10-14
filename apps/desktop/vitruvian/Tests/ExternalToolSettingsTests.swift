@@ -18,6 +18,12 @@ enum ExternalToolSettingsTests {
         changing(suite)
         told(suite)
         inTheDetail(suite)
+        aSettingWithOptionsIsAMenu(suite)
+        theTitlesFollowTheLanguage(suite)
+        aStoredValueThatIsNoOptionIsShownAsWritten(suite)
+        aSettingWithNoOptionsIsAsBefore(suite)
+        pickingSaves(suite)
+        theMenuIsDrawnFromTheSettingAsItIsNow(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -362,5 +368,152 @@ enum ExternalToolSettingsTests {
             suite.expect(none.settings.isEmpty && none.initialFocus == .close,
                          "a detail with no settings opens with Close focused too, not with a button that leaves it")
         }
+    }
+}
+
+extension ExternalToolSettingsTests {
+    typealias Choice = ExternalToolSetting.Choice
+
+    /// A text setting with three options, one of them the empty value.
+    static let lights = #"""
+        {"preferences": [
+          {"id": "light", "title": {"en": "Mouse when green", "de": "Maus bei Grün"}, "type": "string", "default": "green",
+           "options": [{"value": "green", "title": {"en": "Green", "de": "Grün"}},
+                       {"value": "breathe green", "title": {"en": "Pulsing green", "de": "Pulsierendes Grün"}},
+                       {"value": "", "title": {"en": "Nothing"}}]},
+          {"id": "project", "title": {"en": "Project"}, "type": "string", "default": "web"}]}
+        """#
+
+    static func shown(_ bench: ExternalToolStoreTests.Bench, _ language: AppLanguage = .enUS) -> [ExternalToolSetting] {
+        bench.store.settings(of: id).map { ExternalToolSetting($0, language: language) }
+    }
+
+    static func aSettingWithOptionsIsAMenu(_ suite: TestSuite) {
+        let bench = bench(lights)
+        defer { bench.close() }
+        let light = shown(bench).first
+        suite.expect(light?.control == .choice("green", [Choice(value: "green", title: "Green", isStored: false),
+                                                         Choice(value: "breathe green", title: "Pulsing green", isStored: false),
+                                                         Choice(value: "", title: "Nothing", isStored: false)]),
+                     "a text setting with options is a menu of them, in the manifest's order, with the saved value "
+                         + "or the default selected")
+        suite.expect(light?.control.value == .string("green"),
+                     "what the menu holds is saved as text, the kind of value the preference is")
+        bench.box.values[key("light")] = ""
+        suite.expect(shown(bench).first?.control.value == .string("")
+                         && shown(bench).first?.control.choices?.contains { $0.isStored } == false,
+                     "an option whose value is empty is an option like any other")
+    }
+
+    static func theTitlesFollowTheLanguage(_ suite: TestSuite) {
+        let bench = bench(lights)
+        defer { bench.close() }
+        suite.expect(shown(bench, .de).first?.title == "Maus bei Grün"
+                         && shown(bench, .de).first?.control.choices?.map(\.title) == ["Grün", "Pulsierendes Grün", "Nothing"]
+                         && shown(bench, .fr).first?.control.choices?.map(\.title) == ["Green", "Pulsing green", "Nothing"],
+                     "an option's title is shown in the person's language where its author wrote one, and in "
+                         + "English where not")
+        // A title is one short line of plain text, whatever it holds.
+        let long = ExternalToolSetting(
+            ExternalToolStore.Setting(id: "light", title: LocalizedText(["en": "Light"]), value: .string("a"),
+                                      options: [PreferenceOption(value: "a", title: LocalizedText(["en": "Gre\nen\u{202E}" + String(repeating: "x", count: 5_000)]))]),
+            language: .enUS).control.choices?.first?.title ?? ""
+        suite.expect(long.hasPrefix("Gre enxxx") && long.hasSuffix("…") && long.count == 60 && !long.contains("\n"),
+                     "an option's title is drawn as one line of plain text of at most 60 characters")
+    }
+
+    static func aStoredValueThatIsNoOptionIsShownAsWritten(_ suite: TestSuite) {
+        let bench = bench(lights)
+        defer { bench.close() }
+        bench.box.values[key("light")] = "breathe blue 5"
+        let light = shown(bench).first
+        suite.expect(light?.control == .choice("breathe blue 5",
+                                               [Choice(value: "breathe blue 5", title: "breathe blue 5", isStored: true),
+                                                Choice(value: "green", title: "Green", isStored: false),
+                                                Choice(value: "breathe green", title: "Pulsing green", isStored: false),
+                                                Choice(value: "", title: "Nothing", isStored: false)]),
+                     "a stored value that is no option is shown as written, as the first row, and selected; the "
+                         + "other rows are the options in order")
+        suite.expect(bench.box.values[key("light")] as? String == "breathe blue 5" && notices(bench.runs.last ?? FakeTool()).isEmpty,
+                     "showing it changes nothing: the value is as it was saved")
+        // Picking an option replaces it, and the row for what was stored goes.
+        let picked = light?.control.picking("breathe green")
+        suite.expect(picked == .choice("breathe green", [Choice(value: "green", title: "Green", isStored: false),
+                                                         Choice(value: "breathe green", title: "Pulsing green", isStored: false),
+                                                         Choice(value: "", title: "Nothing", isStored: false)]),
+                     "picking an option selects it, and the row for the value that was stored is gone")
+        suite.expect(light?.control.picking("breathe blue 5") == light?.control,
+                     "picking the stored row again keeps it as it is")
+        // A long one, or one with a line break, is cut where it is drawn and
+        // whole where it is saved.
+        let odd = "breathe\nblue " + String(repeating: "9", count: 300)
+        bench.box.values[key("light")] = odd
+        let cut = shown(bench).first?.control.choices?.first
+        suite.expect(cut?.isStored == true && cut?.value == odd && cut?.title.count == 60
+                         && cut?.title.hasPrefix("breathe blue 999") == true,
+                     "its row is cut to one line; the value itself is whole")
+    }
+
+    static func aSettingWithNoOptionsIsAsBefore(_ suite: TestSuite) {
+        let bench = bench(lights)
+        defer { bench.close() }
+        suite.expect(shown(bench).last?.control == .text("web") && shown(bench).last?.control.choices == nil,
+                     "a text setting with no options is a text field, as before")
+        let plain = self.bench()
+        defer { plain.close() }
+        suite.expect(shown(plain).map(\.control) == [.text("web"), .toggle(true), .whole(5), .number(0.5)],
+                     "and a tool with no options at all is drawn exactly as it was")
+    }
+
+    /// A pick is saved through the store, as text, and a running tool is told.
+    static func pickingSaves(_ suite: TestSuite) {
+        let bench = bench(lights)
+        defer { bench.close() }
+        bench.registry.run(copy)
+        bench.current.greets()
+        guard let picked = shown(bench).first?.control.picking("breathe green") else {
+            return suite.expect(false, "the setting is a menu")
+        }
+        suite.expect(bench.store.setSetting(picked.value, for: "light", of: id) == nil
+                         && bench.box.values[key("light")] as? String == "breathe green"
+                         && notices(bench.current) == [["light": .string("breathe green")]]
+                         && shown(bench).first?.control.value == .string("breathe green"),
+                     "a pick is saved as the option's value, and the tool is sent preferences/changed, as for any setting")
+    }
+}
+
+extension ExternalToolSettingsTests {
+    /// The row keeps what the person picked while the detail is open, and
+    /// the setting it is handed is read again whenever the detail is drawn:
+    /// in another language, or after the value changed. The rows it draws
+    /// come from both.
+    static func theMenuIsDrawnFromTheSettingAsItIsNow(_ suite: TestSuite) {
+        let bench = bench(lights)
+        defer { bench.close() }
+        bench.box.values[key("light")] = "breathe blue 5"
+        let english = shown(bench).first?.control.choices ?? []
+        let german = shown(bench, .de).first?.control.choices ?? []
+        // The detail was opened in English, and the language changed.
+        suite.expect(Choice.rows(selected: "breathe blue 5", among: german).map(\.title)
+                         == ["breathe blue 5", "Grün", "Pulsierendes Grün", "Nothing"],
+                     "when the language changes with the detail open, the rows follow at once, and the value "
+                         + "that is no option's stays the first row")
+        // The person picked an option; the setting has not been read again.
+        suite.expect(Choice.rows(selected: "breathe green", among: english)
+                         == [Choice(value: "green", title: "Green", isStored: false),
+                             Choice(value: "breathe green", title: "Pulsing green", isStored: false),
+                             Choice(value: "", title: "Nothing", isStored: false)],
+                     "once an option is picked the row for the value it replaced is gone, whether or not the "
+                         + "setting was read again")
+        // The tool wrote another value while the detail was open, and the
+        // setting was read again: what the row still holds is drawn, never a
+        // menu with nothing selected.
+        bench.box.values[key("light")] = "green"
+        let fresh = shown(bench).first?.control.choices ?? []
+        suite.expect(Choice.rows(selected: "breathe blue 5", among: fresh).first
+                         == Choice(value: "breathe blue 5", title: "breathe blue 5", isStored: true)
+                         && Choice.rows(selected: "breathe blue 5", among: fresh).count == 4
+                         && Choice.rows(selected: "green", among: fresh) == fresh,
+                     "whatever is selected is always one of the rows")
     }
 }

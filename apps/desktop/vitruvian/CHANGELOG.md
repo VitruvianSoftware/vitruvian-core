@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.47.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.47.1...vitruvian-v3.47.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **desktop:** add a tool whose folder is read-only ([#3249](https://github.com/VitruvianSoftware/vitruvian-core/issues/3249)) ([cbb6f66](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbb6f66e6036345d29e6abdb57f29d586ebe64cb))
+
+## [3.47.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.47.0...vitruvian-v3.47.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **desktop:** a failed disk image attempt no longer kills the release ([#3232](https://github.com/VitruvianSoftware/vitruvian-core/issues/3232)) ([c427880](https://github.com/VitruvianSoftware/vitruvian-core/commit/c427880c03b7a1ea2dfe7112da0e45641b4e7c38))
+
+## [3.47.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.46.1...vitruvian-v3.47.0) (2026-10-13)
+
+
+### Features
+
+* **nexus-agent:** the Nexus Agent tool, released beside the app from its mirror ([#3210](https://github.com/VitruvianSoftware/vitruvian-core/issues/3210)) ([34c499f](https://github.com/VitruvianSoftware/vitruvian-core/commit/34c499fd5901b55b95a829822a98d893d442681d))
+
+
+### Bug Fixes
+
+* **desktop:** Vitruvian never freezes behind the Keychain's password prompt ([#3227](https://github.com/VitruvianSoftware/vitruvian-core/issues/3227)) ([cd9b3bc](https://github.com/VitruvianSoftware/vitruvian-core/commit/cd9b3bc9bf268ad617fd878750717bbd6efe03d7))
+* **desktop:** Vitruvian's launch never waits for the Bluetooth prompt ([#3225](https://github.com/VitruvianSoftware/vitruvian-core/issues/3225)) ([b585997](https://github.com/VitruvianSoftware/vitruvian-core/commit/b58599771b74b32a8b6bff4df52e0d5e62cabcde))
+
 ## [3.46.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.46.0...vitruvian-v3.46.1) (2026-10-13)
 
 

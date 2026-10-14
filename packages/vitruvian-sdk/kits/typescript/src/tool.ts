@@ -29,6 +29,8 @@ import {
   readUIEventParams,
   readUIOpenParams,
   type RPCErrorObject,
+  type StatusState,
+  type UIText,
 } from "./generated/messages.js";
 import { type AppCalls, appCalls, METHODS } from "./generated/methods.js";
 import {
@@ -62,6 +64,19 @@ export const RefusalCode = {
   unavailable: -32004,
   /** The tool: it would not run the command. */
   commandRefused: -32010,
+} as const;
+
+/**
+ * What an app may have beyond the first release of a protocol version, by
+ * the name it gives at hello. Ask with `app.supports(Feature.choice)`.
+ */
+export const Feature = {
+  /** `ui/status`: the tool's status on the closed island. */
+  status: "ui.status",
+  /** The `choice` block. */
+  choice: "ui.choice",
+  /** `options` on a text preference, drawn as a pop-up menu. */
+  preferenceOptions: "preferences.options",
 } as const;
 
 /** A command that will not run. Throw it from a handler; the app is answered with -32010 and `message`. */
@@ -120,6 +135,39 @@ export interface App extends AppCalls {
   readonly language: string;
   /** The folder the tool may keep its own files in; also the folder it is started in. */
   readonly dataFolder: string;
+  /**
+   * Whether this app has something a later release added to the protocol
+   * version: it named it at hello. `Feature` holds the names. False for an
+   * app that named nothing, as every app before 3.48 does. Ask before using
+   * a `choice` block, and send a `field` to an app without it.
+   */
+  supports(feature: string): boolean;
+  /**
+   * Sets the tool's status, a small mark the app draws on the closed island:
+   * `ui/status`. Each one replaces the last; `"none"` takes it away; and it
+   * goes when the tool's program ends, so a tool that wants it to last
+   * starts with the app (`"activation": ["onLaunch"]`). `text` says what it
+   * means, for VoiceOver. `icon`, an SF Symbol name, replaces the state's
+   * own glyph. The manifest must declare `contributes.status`: without it
+   * the app refuses, and this throws the `Refusal`. It needs nothing in
+   * `uses`.
+   *
+   * False, and nothing is sent, when the app did not say it has
+   * `ui.status`: an app before 3.48 shows no status. True when it was sent
+   * and answered; the person may still have switched the mark off.
+   *
+   * `app.ui.status(params)` is the bare request: it is sent whatever the app
+   * said, and an older app answers it with a `Refusal`, -32601.
+   */
+  status(state: StatusState, options?: StatusOptions): boolean;
+}
+
+/** What `app.status` takes beside the state. */
+export interface StatusOptions {
+  /** What it means, in one short line, for VoiceOver and the tooltip. */
+  text?: UIText;
+  /** An SF Symbol name, drawn in place of the state's own glyph. */
+  icon?: string;
 }
 
 export type Handler = (app: App) => void;
@@ -164,6 +212,11 @@ export class Tool {
 
   private languageTag = "en";
   private folder = process.cwd();
+  /**
+   * What the app said it has beyond the first release of the protocol
+   * version: the hello's `features`. Empty for an app that said nothing.
+   */
+  private featureNames: ReadonlySet<string> = new Set();
   private readonly handlers = new Map<string, Handler>();
   /** The tool's panels, by id, as `panel()` made them. */
   private readonly panels = new Map<string, Panel>();
@@ -182,7 +235,7 @@ export class Tool {
       (method, params) => this.note(method, params),
     );
     const tool = this;
-    this.app = Object.freeze({
+    const app = {
       ...calls,
       get language() {
         return tool.languageTag;
@@ -190,7 +243,27 @@ export class Tool {
       get dataFolder() {
         return tool.folder;
       },
+    } as App;
+    // The kit's own two, beside the protocol's calls and not among them:
+    // what `Object.keys(app)` lists stays one name for each message.
+    Object.defineProperties(app, {
+      supports: {
+        value: (feature: string) => tool.featureNames.has(feature),
+      },
+      status: {
+        value: (state: StatusState, options: StatusOptions = {}) => {
+          if (!tool.featureNames.has(Feature.status)) return false;
+          const params: { state: StatusState; text?: UIText; icon?: string } = {
+            state,
+          };
+          if (options.text !== undefined) params.text = options.text;
+          if (options.icon !== undefined) params.icon = options.icon;
+          calls.ui.status(params);
+          return true;
+        },
+      },
     });
+    this.app = Object.freeze(app);
   }
 
   /** The language the app is in. */
@@ -314,6 +387,7 @@ export class Tool {
     }
     this.languageTag = hello.language;
     this.folder = hello.dataFolder;
+    this.featureNames = new Set(hello.features ?? []);
     this.greeted = true;
     this.wire.send({
       kind: "result",

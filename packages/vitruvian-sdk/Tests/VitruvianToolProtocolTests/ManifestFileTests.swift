@@ -85,8 +85,21 @@ final class ManifestFileTests: XCTestCase {
         ])).get()
         let panel = try XCTUnwrap(drawn.contributes?.panels?.first)
         XCTAssertEqual(ProtocolFiles.fields(of: panel), ProtocolFiles.fields(declaredBy: schema["$defs"]?["panel"]))
+        let chosen = try ToolManifestFile.read(manifest(changing: [
+            "protocol": .string("2"),
+            "contributes": .object(["status": .object(["placement": .string("island")])]),
+            "preferences": .array([.object(["id": .string("project"), "type": .string("string"),
+                                            "default": .string("acme"),
+                                            "options": .array([.object(["value": .string("acme"),
+                                                                        "title": .object(["en": .string("Acme")])])])])]),
+        ])).get()
+        XCTAssertEqual(ProtocolFiles.fields(of: try XCTUnwrap(chosen.contributes?.status)),
+                       ProtocolFiles.fields(declaredBy: schema["$defs"]?["statusContribution"]))
+        XCTAssertEqual(ProtocolFiles.fields(of: try XCTUnwrap(chosen.preferences?.first?.options?.first)),
+                       ProtocolFiles.fields(declaredBy: schema["$defs"]?["preferenceOption"]))
         XCTAssertEqual(Set((schema["$defs"]?.objectValue ?? [:]).keys),
-                       ["localizedText", "contributes", "command", "panel", "preference", "runtime"])
+                       ["localizedText", "contributes", "statusContribution", "command", "panel", "preference",
+                        "preferenceOption", "runtime"])
     }
 
     func testTheListsAreTheSchemasLists() {
@@ -123,6 +136,17 @@ final class ManifestFileTests: XCTestCase {
                        Double(ManifestLimits.maxCommands))
         XCTAssertEqual(schema["properties"]?["preferences"]?["maxItems"]?.numberValue,
                        Double(ManifestLimits.maxPreferences))
+        XCTAssertEqual(listed(schema["$defs"]?["statusContribution"]?["properties"]?["placement"]),
+                       StatusPlacement.allCases.map(\.rawValue))
+        XCTAssertEqual(preference?["options"]?["maxItems"]?.numberValue, Double(ManifestLimits.maxOptions))
+        XCTAssertEqual(preference?["options"]?["minItems"]?.numberValue, 1)
+        let option = schema["$defs"]?["preferenceOption"]?["properties"]
+        XCTAssertEqual(option?["value"]?["maxLength"]?.numberValue, Double(ManifestLimits.maxOptionValueLength))
+        XCTAssertEqual(option?["value"]?["pattern"], preference?["title"]?["additionalProperties"]?["pattern"],
+                       "an option's value has no control character, by the title's rule")
+        XCTAssertEqual(option?["title"]?["additionalProperties"], preference?["title"]?["additionalProperties"],
+                       "an option's title is held to what a preference's title is")
+        XCTAssertEqual(option?["title"]?["$ref"]?.stringValue, "#/$defs/localizedText")
     }
 
     func testTheLimits() {
@@ -132,6 +156,8 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(ManifestLimits.maxNameLength, 128)
         XCTAssertEqual(ManifestLimits.maxPreferenceTitleLength, 60)
         XCTAssertEqual(ManifestLimits.maxPanels, 8)
+        XCTAssertEqual(ManifestLimits.maxOptions, 64)
+        XCTAssertEqual(ManifestLimits.maxOptionValueLength, 128)
 
         func commands(_ count: Int) -> JSONValue {
             .object(["commands": .array((0..<count).map { index in
@@ -194,6 +220,8 @@ final class ManifestFileTests: XCTestCase {
         case preferenceTitleNotWellFormed
         case panelsNeedProtocol2, tooManyPanels, panelNotWellFormed, duplicatePanel, unknownPlacement
         case unknownPanelKind, placementTaken, webPanelWithoutEntry, panelEntryLeavesFolder
+        case statusNeedsProtocol2, unknownStatusPlacement, optionsNeedString, optionCountOutOfRange
+        case optionValueNotWellFormed, duplicateOption, optionTitleNotWellFormed, defaultNotAnOption
 
         init(_ problem: ManifestProblem) {
             switch problem {
@@ -229,6 +257,14 @@ final class ManifestFileTests: XCTestCase {
             case .placementTaken: self = .placementTaken
             case .webPanelWithoutEntry: self = .webPanelWithoutEntry
             case .panelEntryLeavesFolder: self = .panelEntryLeavesFolder
+            case .statusNeedsProtocol2: self = .statusNeedsProtocol2
+            case .unknownStatusPlacement: self = .unknownStatusPlacement
+            case .optionsNeedString: self = .optionsNeedString
+            case .optionCountOutOfRange: self = .optionCountOutOfRange
+            case .optionValueNotWellFormed: self = .optionValueNotWellFormed
+            case .duplicateOption: self = .duplicateOption
+            case .optionTitleNotWellFormed: self = .optionTitleNotWellFormed
+            case .defaultNotAnOption: self = .defaultNotAnOption
             }
         }
     }
@@ -268,7 +304,7 @@ final class ManifestFileTests: XCTestCase {
         let missing = Set(ProblemName.allCases).subtracting(names).map(\.rawValue).sorted()
         XCTAssertEqual(missing, [], "no test gives these problems")
         XCTAssertEqual(names.count, ProblemName.allCases.count)
-        XCTAssertEqual(ProblemName.allCases.count, 32)
+        XCTAssertEqual(ProblemName.allCases.count, 40)
     }
 
     func testNamesAndPaths() {
@@ -383,6 +419,100 @@ final class ManifestFileTests: XCTestCase {
                        "an app reading a protocol 1 manifest never finds panels in it")
         XCTAssertEqual(problem(["protocol": .string("3"), "contributes": panels]), .unsupportedProtocol("3"))
         XCTAssertEqual(ProtocolVersion.supported, ["1", "2"])
+    }
+
+    func testAToolMayDeclareAStatusInProtocolTwo() throws {
+        func status(_ placement: JSONValue?) -> JSONValue {
+            .object(["status": .object(placement.map { ["placement": $0] } ?? [:])])
+        }
+        let read = try ToolManifestFile.read(manifest(changing: ["protocol": .string("2"),
+                                                                 "contributes": status(.string("island"))])).get()
+        XCTAssertEqual(read.contributes?.status?.placement, "island")
+        XCTAssertNil(try ToolManifestFile.read(manifest(changing: ["protocol": .string("2")])).get().contributes?.status,
+                     "a manifest that declares none has none")
+        XCTAssertEqual(problem(["contributes": status(.string("island"))]), .statusNeedsProtocol2("1"))
+        XCTAssertEqual(problem(["protocol": .string("2"), "contributes": status(.string("menuBar"))]),
+                       .unknownStatusPlacement("menuBar"))
+        XCTAssertEqual(problem(["protocol": .string("2"), "contributes": status(nil)]),
+                       .malformed(field: "contributes.status.placement"))
+        XCTAssertEqual(StatusPlacement.allCases.map(\.rawValue), ["island"])
+    }
+
+    func testATextPreferenceMayOfferOptions() throws {
+        func option(_ value: String, _ title: [String: String] = ["en": "Title"]) -> JSONValue {
+            .object(["value": .string(value), "title": .object(title.mapValues(JSONValue.string))])
+        }
+        func preference(type: String = "string", default value: JSONValue = .string("a"),
+                        _ options: [JSONValue]) -> [String: JSONValue] {
+            ["preferences": .array([.object(["id": .string("project"), "type": .string(type), "default": value,
+                                             "options": .array(options)])])]
+        }
+        let read = try ToolManifestFile.read(manifest(changing: preference([
+            option("a", ["en": "Acme", "fr": "Acmé"]), option("", ["en": "None"]),
+        ]))).get()
+        XCTAssertEqual(read.preferences?.first?.options?.map(\.value), ["a", ""])
+        XCTAssertEqual(read.preferences?.first?.options?.map(\.title),
+                       [LocalizedText(["en": "Acme", "fr": "Acmé"]), LocalizedText(["en": "None"])])
+        XCTAssertNil(try ToolManifestFile.read(manifest()).get().preferences?.first?.options,
+                     "a preference with none is read as it always was")
+
+        XCTAssertEqual(problem(preference(type: "boolean", default: .bool(true), [option("a")])),
+                       .optionsNeedString(preference: "project"))
+        XCTAssertEqual(problem(preference(type: "integer", default: .number(1), [option("1")])),
+                       .optionsNeedString(preference: "project"))
+        XCTAssertEqual(problem(preference([])), .optionCountOutOfRange(preference: "project", count: 0))
+        let most = (0..<ManifestLimits.maxOptions).map { option("v\($0)") }
+        XCTAssertNil(problem(preference(default: .string("v0"), most)))
+        XCTAssertEqual(problem(preference(default: .string("v0"), most + [option("more")])),
+                       .optionCountOutOfRange(preference: "project", count: 65))
+
+        let longest = String(repeating: "\u{1F680}", count: ManifestLimits.maxOptionValueLength)
+        XCTAssertNil(problem(preference([option("a"), option(longest)])))
+        XCTAssertEqual(problem(preference([option("a"), option(longest + "a")])),
+                       .optionValueNotWellFormed(preference: "project"))
+        for control in ["\n", "\r", "\t", "\u{0}", "\u{7F}", "\u{85}"] {
+            XCTAssertEqual(problem(preference([option("a"), option("b" + control + "c")])),
+                           .optionValueNotWellFormed(preference: "project"), "\(control.unicodeScalars.map(\.value))")
+            XCTAssertFalse(ManifestRules.isWellFormedOptionValue("b" + control + "c"))
+        }
+        XCTAssertTrue(ManifestRules.isWellFormedOptionValue(""), "an empty value is a value")
+        XCTAssertTrue(ManifestRules.isWellFormedOptionValue("breathe blue 9"))
+
+        XCTAssertEqual(problem(preference([option("a"), option("b"), option("a")])),
+                       .duplicateOption(preference: "project", value: "a"))
+        XCTAssertEqual(problem(preference(default: .string("z"), [option("a"), option("b")])),
+                       .defaultNotAnOption(preference: "project"))
+
+        let title = String(repeating: "a", count: ManifestLimits.maxPreferenceTitleLength)
+        XCTAssertNil(problem(preference([option("a", ["en": title])])))
+        XCTAssertEqual(problem(preference([option("a", ["en": title + "a"])])),
+                       .optionTitleNotWellFormed(preference: "project"))
+        XCTAssertEqual(problem(preference([option("a", ["en": "A", "de": title + "a"])])),
+                       .optionTitleNotWellFormed(preference: "project"), "every language is held to the length")
+        XCTAssertEqual(problem(preference([option("a", ["en": "A\nB"])])),
+                       .optionTitleNotWellFormed(preference: "project"))
+        XCTAssertEqual(problem(preference([option("a"), option("b", ["fr": "Bé"])])),
+                       .noEnglish(field: "preferences[project].options[1].title"))
+        XCTAssertEqual(problem(preference([option("a", ["en": "A", "fr": " "])])),
+                       .blankText(field: "preferences[project].options[0].title"))
+    }
+
+    func testOptionsChangeNoVerdictOfAManifestWithout() {
+        // Every problem a preference could have before is still the first
+        // one given, with options or without.
+        func preference(_ fields: [String: JSONValue]) -> [String: JSONValue] {
+            var all: [String: JSONValue] = ["id": .string("project"), "type": .string("string"), "default": .string("a"),
+                                            "options": .array([.object(["value": .string("a"),
+                                                                        "title": .object(["en": .string("A")])])])]
+            for (key, value) in fields { all[key] = value }
+            return ["preferences": .array([.object(all)])]
+        }
+        XCTAssertNil(problem(preference([:])))
+        XCTAssertEqual(problem(preference(["type": .string("choice")])),
+                       .unknownPreferenceType(preference: "project", type: "choice"),
+                       "a type nobody knows is still that problem: options add no type")
+        XCTAssertEqual(problem(preference(["default": .number(1)])), .defaultOfWrongType(preference: "project"))
+        XCTAssertEqual(problem(preference(["id": .string("my project")])), .preferenceNotWellFormed("my project"))
     }
 
     func testTheReferenceToolsManifestIsRead() throws {

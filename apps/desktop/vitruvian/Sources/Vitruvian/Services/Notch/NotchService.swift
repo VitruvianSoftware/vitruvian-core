@@ -141,6 +141,11 @@ package final class NotchService: ObservableObject {
         package var statusBarThickness: @MainActor () -> CGFloat
         /// The Mac has a battery of its own, whose charge the island can show.
         package var hasBattery: @MainActor () -> Bool
+        /// What a tool's status mark on the closed island says now, or nil
+        /// when the wing shows none. The island's button says it too.
+        package var restingStatus: @MainActor () -> String?
+        /// Fires when `restingStatus` may have changed.
+        package var restingStatusChanges: AnyPublisher<Void, Never>
         /// The environments of the island's own parts.
         package var parts: Parts
 
@@ -231,6 +236,8 @@ package final class NotchService: ObservableObject {
                      separateSpaces: @escaping @MainActor () -> Bool,
                      statusBarThickness: @escaping @MainActor () -> CGFloat,
                      hasBattery: @escaping @MainActor () -> Bool,
+                     restingStatus: @escaping @MainActor () -> String? = { nil },
+                     restingStatusChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
                      parts: Parts) {
             self.defaults = defaults
             self.makeHost = makeHost
@@ -243,6 +250,8 @@ package final class NotchService: ObservableObject {
             self.separateSpaces = separateSpaces
             self.statusBarThickness = statusBarThickness
             self.hasBattery = hasBattery
+            self.restingStatus = restingStatus
+            self.restingStatusChanges = restingStatusChanges
             self.parts = parts
         }
 
@@ -269,6 +278,8 @@ package final class NotchService: ObservableObject {
                 separateSpaces: { NSScreen.screensHaveSeparateSpaces },
                 statusBarThickness: { NSStatusBar.system.thickness },
                 hasBattery: { PowerSampler.hasInternalBattery },
+                restingStatus: { RestingStatus.saidNow(language: L10n.shared.language) },
+                restingStatusChanges: RestingStatus.saidChanges,
                 parts: .system)
         }
     }
@@ -646,7 +657,7 @@ package final class NotchService: ObservableObject {
             showsInCaptures: { [defaults] in NotchSupport.showsInCaptures(in: defaults) },
             outlineEnabled: { [defaults] in defaults[Preferences.notchOutlineEnabled] },
             hidesInFullscreen: { [defaults] in defaults[Preferences.notchHideInFullscreen] },
-            openTitle: { FeatureStrings.notch(L10n.shared.language).open }),
+            openTitle: { [weak self] in self?.closedTitle ?? FeatureStrings.notch(L10n.shared.language).open }),
         island: { [weak self] in
             guard let self, self.showsOnAllDisplays, self.running, !self.suspended, self.windowHost != nil else { return nil }
             return Mirrors.Island(displayID: self.displayID, activity: self.compactActivity,
@@ -798,6 +809,11 @@ package final class NotchService: ObservableObject {
     private let separateSpaces: @MainActor () -> Bool
     private let statusBarThickness: @MainActor () -> CGFloat
     private let hasBattery: @MainActor () -> Bool
+    private let restingStatus: @MainActor () -> String?
+    private let restingStatusChanges: AnyPublisher<Void, Never>
+    private var restingStatusSubscription: AnyCancellable?
+    /// The name the closed island's button was last given.
+    private var saidClosedTitle: String?
     /// The environments of the island's parts (`Environment.parts`).
     private let parts: Environment.Parts
 
@@ -813,6 +829,8 @@ package final class NotchService: ObservableObject {
         separateSpaces = environment.separateSpaces
         statusBarThickness = environment.statusBarThickness
         hasBattery = environment.hasBattery
+        restingStatus = environment.restingStatus
+        restingStatusChanges = environment.restingStatusChanges
         parts = environment.parts
     }
 
@@ -987,6 +1005,32 @@ package final class NotchService: ObservableObject {
     package var compactCompanion: NotchCompactActivity? {
         guard let activity = compactActivity, activity == activitySelection.preferred else { return nil }
         return activitySelection.companion(available: compactCompanions(of: activity))
+    }
+
+    /// Whether the closed island draws its resting wings with the agents'
+    /// mark, which is where a tool's status mark stands. An activity's
+    /// strip takes the wings' place, and so does anything else it shows.
+    private var restingWingsShowStatus: Bool {
+        !fullscreenCompact && !expanded && !dragPlaceholder && notice == nil && captureControls == nil
+            && compactActivity == nil && idleContent == .agents
+    }
+
+    /// The name of the closed island's button: "Open Dynamic Island", and
+    /// after it what a tool's status mark says while the wings show one.
+    /// What the island draws at rest is hidden from assistive technology,
+    /// so this button is where VoiceOver hears the status.
+    package var closedTitle: String {
+        let language = L10n.shared.language
+        return RestingStatus.buttonTitle(FeatureStrings.notch(language).open,
+                                         saying: restingWingsShowStatus ? restingStatus() : nil, language: language)
+    }
+
+    /// A tool's status changed, or what decides whether it shows did. The
+    /// island's button is named again, and its copies', when that changes
+    /// what they say.
+    package func restingStatusChanged() {
+        guard running, !expanded, let saidClosedTitle, saidClosedTitle != closedTitle else { return }
+        refreshPresentation(animated: false)
     }
 
     private var compactActivityIsVisible: Bool {
@@ -1556,6 +1600,8 @@ package final class NotchService: ObservableObject {
         services.stopAgentUsage()
         guard running else { return }
         running = false
+        restingStatusSubscription = nil
+        saidClosedTitle = nil
         services.stopTimer()
         services.stopAccessories()
         services.stopWatch()
@@ -2923,7 +2969,9 @@ package final class NotchService: ObservableObject {
                 .activationArea(in: size, hasHeader: expanded || peeking, compactActivity: compactActivityIsVisible, expandedHeader: expanded)
         }
         let text = FeatureStrings.notch(L10n.shared.language)
-        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : text.open,
+        let closedTitle = closedTitle
+        saidClosedTitle = closedTitle
+        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : closedTitle,
             willPress: { [weak self] in
                 self?.hoverWork?.cancel()
                 self?.hoverState.close(pointerInside: true)
@@ -3167,6 +3215,11 @@ package final class NotchService: ObservableObject {
     }
 
     private func installObservers() {
+        // A status is set a moment after this fires: the publishers speak
+        // before they change, so the reading waits a turn of the main queue.
+        restingStatusSubscription = restingStatusChanges.receive(on: DispatchQueue.main).sink { [weak self] in
+            self?.restingStatusChanged()
+        }
         observe(parts.notifications, NSMenu.didBeginTrackingNotification) { [weak self] in
             guard let self else { return }
             self.activityPickerMenuOpen = self.showsCompactActivityPicker

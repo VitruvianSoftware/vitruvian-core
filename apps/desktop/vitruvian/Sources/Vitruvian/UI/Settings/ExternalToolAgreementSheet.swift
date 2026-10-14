@@ -67,6 +67,10 @@ package struct ToolAgreementContent: Equatable {
     package let commandsTitle: String
     /// Each command the tool adds, by its title in the person's language.
     package let commands: [String]
+    /// For a tool whose manifest declares a status: that it shows a small
+    /// mark on the closed island. One line under the commands, and no row
+    /// of the lists. Nil for a tool that declares none.
+    package let showsStatus: String?
     package let usesTitle: String
     /// Each of the app's services the tool says it uses, in plain words.
     package let uses: [String]
@@ -118,6 +122,7 @@ package struct ToolAgreementContent: Equatable {
         detail = strings.agreeDetail
         commandsTitle = strings.commandsTitle
         commands = tool.manifest.tool.commands.map { tool.commandTitles[$0.id]?.text(for: tag) ?? $0.title }
+        showsStatus = tool.showsStatus ? strings.agreeShowsStatus : nil
         usesTitle = strings.usesTitle
         uses = tool.manifest.capabilities.compactMap { strings.use($0.capability) }
         usesNote = strings.usesNote
@@ -229,7 +234,7 @@ package struct ToolAgreementSheet: View {
                     lists.frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(height: ToolAgreementContent.listsHeight)
-            } else if content.listRows > 0 {
+            } else if content.listRows > 0 || content.showsStatus != nil {
                 lists
             }
             buttons
@@ -254,6 +259,10 @@ package struct ToolAgreementSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             if !content.commands.isEmpty {
                 list(content.commandsTitle, content.commands, symbol: "command", lines: 2)
+            }
+            if let showsStatus = content.showsStatus {
+                // The app's own sentence: what the tool adds that is no command.
+                Text(showsStatus).font(.callout).fixedSize(horizontal: false, vertical: true)
             }
             if !content.uses.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {

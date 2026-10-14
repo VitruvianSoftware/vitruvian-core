@@ -172,6 +172,7 @@ enum TestGroups {
                 ToolBrokerTests.run(suite)
                 ExternalToolManifestTests.run(suite)
                 ToolPanelTests.run(suite)
+                ToolStatusTests.run(suite)
                 GitHubHandoffTests.run(suite)
             }),
             ("tool-runtime", {

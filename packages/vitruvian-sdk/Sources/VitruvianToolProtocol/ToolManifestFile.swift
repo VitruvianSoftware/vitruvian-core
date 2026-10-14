@@ -35,6 +35,11 @@ public enum ManifestLimits {
     /// The most panels a tool may contribute. At most one of them may be
     /// in the island, and one in Settings.
     public static let maxPanels = 8
+    /// The most options a preference may offer.
+    public static let maxOptions = 64
+    /// The longest value of an option, in characters as JSON Schema counts
+    /// them. An option's title is held to `maxPreferenceTitleLength`.
+    public static let maxOptionValueLength = 128
 }
 
 /// A piece of text in one or more languages, keyed by language tag (`en`,
@@ -104,6 +109,21 @@ public struct ToolManifestFile: Codable, Equatable, Sendable {
         public let commands: [Command]?
         /// What the tool draws, and where. Protocol 2 only.
         public let panels: [Panel]?
+        /// That the tool shows a status, and where. Protocol 2 only.
+        public let status: Status?
+    }
+
+    /// That the tool shows a status. Its `placement` is held as the text
+    /// the file has, so that a name nobody knows can be reported by name.
+    public struct Status: Codable, Equatable, Sendable {
+        public let placement: String
+    }
+
+    /// One value a preference with options may be set to, and what the
+    /// person reads for it.
+    public struct Option: Codable, Equatable, Sendable {
+        public let value: String
+        public let title: LocalizedText
     }
 
     /// One place the tool draws in. Its `placement` and `kind` are held as
@@ -140,6 +160,10 @@ public struct ToolManifestFile: Codable, Equatable, Sendable {
         public let title: LocalizedText?
         public let type: String
         public let `default`: JSONValue
+        /// The values the person chooses among, drawn as a pop-up menu.
+        /// Only a `string` preference may have them. They are how the app
+        /// draws, not a rule on the value.
+        public let options: [Option]?
     }
 
     public struct Runtime: Codable, Equatable, Sendable {
@@ -216,6 +240,22 @@ public enum ManifestProblem: Error, Equatable, Sendable {
     case webPanelWithoutEntry(String)
     /// A web panel's `entry` is not a path that stays inside the folder.
     case panelEntryLeavesFolder(panel: String, entry: String)
+    /// A manifest of protocol 1 declares a status. Only protocol 2 has one.
+    case statusNeedsProtocol2(String)
+    case unknownStatusPlacement(String)
+    /// Options on a preference whose type is not `string`.
+    case optionsNeedString(preference: String)
+    /// No option, or more than `ManifestLimits.maxOptions`.
+    case optionCountOutOfRange(preference: String, count: Int)
+    /// An option's value longer than `ManifestLimits.maxOptionValueLength`,
+    /// or with a control character, a line break among them.
+    case optionValueNotWellFormed(preference: String)
+    case duplicateOption(preference: String, value: String)
+    /// An option's title that is, in some language, longer than
+    /// `ManifestLimits.maxPreferenceTitleLength` or holds a control character.
+    case optionTitleNotWellFormed(preference: String)
+    /// A preference with options whose default is none of them.
+    case defaultNotAnOption(preference: String)
 }
 
 /// The rules about names and paths, for anything that checks one alone.
@@ -247,6 +287,14 @@ public enum ManifestRules {
     /// a control character. That it is not blank is another rule.
     public static func isWellFormedTitle(_ text: String) -> Bool {
         text.unicodeScalars.count <= ManifestLimits.maxPreferenceTitleLength
+            && !text.unicodeScalars.contains { $0.properties.generalCategory == .control }
+    }
+
+    /// Whether `text` can be an option's value: at most
+    /// `ManifestLimits.maxOptionValueLength` code points, none of them a
+    /// control character. An empty one is allowed.
+    public static func isWellFormedOptionValue(_ text: String) -> Bool {
+        text.unicodeScalars.count <= ManifestLimits.maxOptionValueLength
             && !text.unicodeScalars.contains { $0.properties.generalCategory == .control }
     }
 
@@ -312,6 +360,7 @@ extension ToolManifestFile {
         }
 
         found += panelProblems()
+        found += statusProblems()
 
         let settings = preferences ?? []
         if settings.count > ManifestLimits.maxPreferences {
@@ -337,6 +386,7 @@ extension ToolManifestFile {
                 continue
             }
             if !kind.accepts(preference.default) { found.append(.defaultOfWrongType(preference: preference.id)) }
+            found += Self.optionProblems(preference, kind)
         }
 
         for name in activation ?? [] where ActivationName(rawValue: name) == nil {
@@ -384,6 +434,44 @@ extension ToolManifestFile {
             case .some(nil):
                 found.append(.unknownPanelKind(panel: panel.id, kind: panel.kind ?? ""))
             }
+        }
+        return found
+    }
+
+    /// What is wrong with the status the manifest declares.
+    private func statusProblems() -> [ManifestProblem] {
+        guard let status = contributes?.status else { return [] }
+        // Version 1 has no status, as it has no panels.
+        guard `protocol` != "1" else { return [.statusNeedsProtocol2(`protocol`)] }
+        guard StatusPlacement(rawValue: status.placement) != nil else {
+            return [.unknownStatusPlacement(status.placement)]
+        }
+        return []
+    }
+
+    /// What is wrong with a preference's options, in the order they are
+    /// written. A preference with none has nothing wrong here.
+    private static func optionProblems(_ preference: Preference, _ kind: PreferenceKind) -> [ManifestProblem] {
+        guard let options = preference.options else { return [] }
+        guard kind == .string else { return [.optionsNeedString(preference: preference.id)] }
+        guard (1...ManifestLimits.maxOptions).contains(options.count) else {
+            return [.optionCountOutOfRange(preference: preference.id, count: options.count)]
+        }
+        var found: [ManifestProblem] = []
+        var values = Set<String>()
+        for (index, option) in options.enumerated() {
+            if !ManifestRules.isWellFormedOptionValue(option.value) {
+                found.append(.optionValueNotWellFormed(preference: preference.id))
+            } else if !values.insert(option.value).inserted {
+                found.append(.duplicateOption(preference: preference.id, value: option.value))
+            }
+            found += textProblems(option.title, field: "preferences[\(preference.id)].options[\(index)].title")
+            if !option.title.byLanguage.values.allSatisfy(ManifestRules.isWellFormedTitle) {
+                found.append(.optionTitleNotWellFormed(preference: preference.id))
+            }
+        }
+        if case .string(let text) = preference.default, !options.contains(where: { $0.value == text }) {
+            found.append(.defaultNotAnOption(preference: preference.id))
         }
         return found
     }

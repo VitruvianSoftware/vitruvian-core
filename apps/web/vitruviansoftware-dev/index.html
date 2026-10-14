@@ -127,10 +127,27 @@ description: >-
 
 <section class="section">
   <div class="container">
-    <div class="section-head">
-      <span class="eyebrow">Principles</span>
-      <h2>Named for Vitruvius, who said a building must be strong, useful and beautiful.</h2>
-      <p>Two thousand years later it is still a good test for software.</p>
+    <div class="section-head-row principles-head-row">
+      <div class="section-head">
+        <span class="eyebrow">Principles</span>
+        <h2>Named for Vitruvius, who said a building must be strong, useful and beautiful.</h2>
+        <p>Two thousand years later it is still a good test for software.</p>
+      </div>
+      <div class="plate principles-seal" aria-label="Vitruvian proportion marks: circular medallion and golden-datum V">
+        <div class="principles-seal-marks">
+          <img
+            class="principles-medallion"
+            src="{{ '/assets/img/vitruvian-medallion.png' | relative_url }}"
+            alt="Vitruvian Man circular medallion"
+            width="64"
+            height="64"
+            loading="lazy"
+          >
+          <span class="principles-seal-divider" aria-hidden="true"></span>
+          {%- include mark.svg class="principles-vector" -%}
+        </div>
+        <span class="principles-seal-caption">De Architectura · 1 : &phi;</span>
+      </div>
     </div>
 
     <div class="grid grid-3">

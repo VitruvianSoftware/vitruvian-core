@@ -127,8 +127,20 @@ package struct NotchAgentRestingWing: View {
     package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var nexusSession = NexusAgentService.shared.session
+    /// The tools' statuses, and the list of tools: a status set, a tool
+    /// switched off, or its status switched off, draws the wing again.
+    @ObservedObject private var panels = ToolPanelHost.shared
+    @ObservedObject private var registry = ToolRegistry.shared
+    @ObservedObject private var l10n = L10n.shared
     @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(Preferences.notchAgentsLimitFocus) private var focus: String
+
+    /// The one status mark the wing shows: the worst of every tool's
+    /// status.
+    private var statusMark: RestingMark? {
+        RestingStatus.winner(tools: RestingStatus.shown(of: ExternalToolStore.shared.statusTools(),
+                                                        statuses: panels.statuses))
+    }
 
     package var body: some View {
         TimelineView(.periodic(from: .now, by: nexusSession.isRunning ? 1 : 6)) { context in
@@ -136,8 +148,17 @@ package struct NotchAgentRestingWing: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            NotchService.shared.agentTab = .chat
-            NotchService.shared.select(.agents)
+            // A tool's mark that is not green opens that tool's island
+            // page, when the island lists it. Anything else is as before.
+            if let page = RestingStatus.opens(statusMark, pages: ExternalToolStore.shared.islandPanels()),
+               NotchService.shared.modules.contains(.tools) {
+                NotchService.shared.select(.tools)
+                QuickLauncherService.shared.closeUtility()
+                panels.open(page, in: .island)
+            } else {
+                NotchService.shared.agentTab = .chat
+                NotchService.shared.select(.agents)
+            }
         }
     }
 
@@ -191,7 +212,10 @@ package struct NotchAgentRestingWing: View {
             let (remaining, used) = remainingUsageFraction(for: provider, snapshot: snapshot, now: now)
             let tint = agentLimitTint(provider, usedFraction: used)
             if leading {
-                NotchAgentMark(provider: provider, size: 10, tint: tint)
+                HStack(spacing: 3) {
+                    NotchAgentMark(provider: provider, size: 10, tint: tint)
+                    NotchRestingStatusMark(mark: statusMark, language: l10n.language)
+                }
             } else {
                 Text(AgentFormat.percent(remaining))
                     .font(.system(size: 9, weight: .medium))
@@ -205,3 +229,26 @@ package struct NotchAgentRestingWing: View {
 }
 
 package typealias NotchRestingWing = NotchAgentRestingWing
+
+/// The one status mark of the resting wing: a tool's, or nothing, as
+/// `RestingStatus.winner` picked.
+private struct NotchRestingStatusMark: View {
+    let mark: RestingMark?
+    let language: AppLanguage
+
+    var body: some View {
+        switch mark {
+        case .tool(let id, let status)?:
+            ToolStatusMark(content: ToolStatusMarkContent(status, toolName: name(of: id), language: language,
+                                                          strings: FeatureStrings.externalTools(language)))
+        case nil:
+            EmptyView()
+        }
+    }
+
+    /// The tool's name in the person's language, as the tool wrote it.
+    private func name(of id: ToolID) -> String {
+        let tool = ExternalToolStore.shared.installed[id]?.tool
+        return tool?.name.text(for: language.rawValue) ?? tool?.manifest.tool.name ?? id.rawValue
+    }
+}

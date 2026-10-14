@@ -1,8 +1,9 @@
 # A tool that draws, in TypeScript
 
 A counter the app draws in the island, from blocks the tool sends, with a
-button and a field; a switch in Settings; and a command, `addOne`, that counts
-too and sends the open page again. The same tool as `hello-panel-swift`,
+button and a field; a switch in Settings; a command, `addOne`, that counts
+too and sends the open page again; and a status, the small mark the app draws
+on the closed island, with a pop-up menu to pick it. The same tool as `hello-panel-swift`,
 written with the TypeScript kit in plain JavaScript that Node runs as it is.
 
 ```sh
@@ -15,7 +16,7 @@ A page is `tree` of its blocks, one function for each kind; a block that is
 
 ```javascript file=samples/hello-panel-typescript/bin/tool.mjs
 /** The island page: what it says now. */
-function page() {
+function page(app) {
   return tree([
     heading("Counter"),
     text(`Pressed ${counter.count} times`),
@@ -27,6 +28,7 @@ function page() {
     }),
     counter.name !== "" &&
       text(`Hello, ${counter.name}`, { style: "secondary" }),
+    statusPicker(app),
   ]);
 }
 ```
@@ -38,8 +40,8 @@ with `render`, and sets the tool's badge in the island, with `badge`:
 
 ```javascript file=samples/hello-panel-typescript/bin/tool.mjs
 const island = tool.panel("counter", {
-  onOpen: () => page(),
-  onEvent: (_app, panel, event) => {
+  onOpen: (app) => page(app),
+  onEvent: (app, panel, event) => {
     switch (event.block) {
       case "add":
         counter.count += step();
@@ -48,19 +50,76 @@ const island = tool.panel("counter", {
       case "name":
         counter.name = event.text ?? counter.name;
         break;
+      case "status":
+        // A pick is the event `change`, as leaving a field changed is.
+        if (!STATUSES.some(({ state }) => state === event.text))
+          return { keep: true };
+        counter.status = event.text;
+        showStatus(app);
+        break;
       default:
         return { keep: true };
     }
-    return { page: page() };
+    return { page: page(app) };
   },
 });
 ```
 
 ```javascript file=samples/hello-panel-typescript/bin/tool.mjs
-tool.command("addOne", () => {
+tool.command("addOne", (app) => {
   counter.count += step();
-  island.render(page());
+  island.render(page(app));
 });
+```
+
+## A status, and a choice
+
+The tool's status is a small mark the app draws on the closed island. The
+manifest declares it, `"status": { "placement": "island" }` under
+`contributes`, and `app.status` sets it: `none`, `ok`, `busy`, `attention` or
+`failure`, with a line for VoiceOver. It needs nothing in `uses`.
+
+```javascript file=samples/hello-panel-typescript/bin/tool.mjs
+function showStatus(app) {
+  const says = STATUSES.find(({ state }) => state === counter.status)?.says;
+  return app.status(counter.status, says === undefined ? {} : { text: says });
+}
+```
+
+The mark goes when the tool's program ends, so the tool sets it each time it
+starts, and its manifest says `"activation": ["onLaunch"]` so that it starts
+with the app:
+
+```javascript file=samples/hello-panel-typescript/bin/tool.mjs
+tool.onStart = (app) => {
+  try {
+    showStatus(app);
+  } catch (error) {
+    app.log({ message: `no status: ${error}` });
+  }
+};
+```
+
+The island page has a pop-up menu to pick the status with: a `choice` block.
+Picking is the event `change`, with the option's value, as leaving a field
+changed is. Both the status and the `choice` block are newer than protocol 2
+itself, and Vitruvian 3.46 and 3.47 have neither. There `app.status` sends
+nothing and returns false. A `choice` would be drawn as plain words nobody
+can change, so the tool asks first and sends a field in its place:
+
+```javascript file=samples/hello-panel-typescript/bin/tool.mjs
+function statusPicker(app) {
+  if (!app.supports(Feature.choice)) {
+    return field("status", {
+      title: "Status: none, ok, busy, attention or failure",
+      value: counter.status,
+    });
+  }
+  const options = STATUSES.map(({ state, title }) => ({ value: state, title }));
+  return choice("status", counter.status, options, {
+    title: "Status on the closed island",
+  });
+}
 ```
 
 The manifest says `"protocol": "2"` and lists the two panels under

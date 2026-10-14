@@ -227,6 +227,29 @@ enum Words {
         case .panelEntryLeavesFolder(let panel, let entry):
             return "the web panel `\(panel)` has the `entry` \"\(entry)\", which is not a path that stays inside "
                 + "the folder"
+        case .statusNeedsProtocol2(let version):
+            return "`contributes.status` is there, and `protocol` is \"\(version)\": only protocol \"2\" has a status"
+        case .unknownStatusPlacement(let placement):
+            return "`contributes.status` names the placement `\(placement)`, which is not one: "
+                + StatusPlacement.allCases.map(\.rawValue).joined(separator: ", ")
+        case .optionsNeedString(let preference):
+            return "the preference `\(preference)` has `options`, and only a preference of the type `string` may. "
+                + "Never write a new type for a list of choices: an app that does not know a type refuses the tool"
+        case .optionCountOutOfRange(let preference, let count):
+            return "the preference `\(preference)` has \(count) options, and may have from 1 to "
+                + "\(ManifestLimits.maxOptions)"
+        case .optionValueNotWellFormed(let preference):
+            return "an option of the preference `\(preference)` has a value over "
+                + "\(ManifestLimits.maxOptionValueLength) characters, or one that holds a line break or another "
+                + "control character"
+        case .duplicateOption(let preference, let value):
+            return "two options of the preference `\(preference)` have the value \"\(value)\""
+        case .optionTitleNotWellFormed(let preference):
+            return "an option of the preference `\(preference)` has a title that is, in some language, over "
+                + "\(ManifestLimits.maxPreferenceTitleLength) characters, or holds a line break or another "
+                + "control character"
+        case .defaultNotAnOption(let preference):
+            return "the default of the preference `\(preference)` is none of its options"
         }
     }
 

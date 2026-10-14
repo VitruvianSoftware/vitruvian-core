@@ -32,11 +32,14 @@ import VitruvianToolProtocol
 ///
 /// It refuses what the app refuses for the same reason: a service the
 /// manifest's `uses` does not list, a preference the manifest does not
-/// declare, a value of the wrong kind, params that are not the message's.
+/// declare, a value of the wrong kind, a status the manifest does not
+/// declare, params that are not the message's.
 public struct Desk {
     public typealias Answer = Result<JSONValue, RPCErrorObject>
 
     private let uses: Set<String>
+    /// Whether the manifest declares a status, under `contributes.status`.
+    private let showsStatus: Bool
     private let kinds: [String: PreferenceKind]
     public private(set) var values: [String: JSONValue]
     public private(set) var clipboard: String? = "text from vitruvian-tool run"
@@ -46,6 +49,7 @@ public struct Desk {
 
     public init(manifest: ToolManifestFile) {
         uses = Set(manifest.uses ?? [])
+        showsStatus = manifest.contributes?.status != nil
         var kinds: [String: PreferenceKind] = [:]
         var values: [String: JSONValue] = [:]
         for preference in manifest.preferences ?? [] {
@@ -63,11 +67,11 @@ public struct Desk {
     /// Answers one request, and says in a few words what the app would
     /// have done.
     public mutating func serve(_ method: String, _ params: JSONValue?) -> (answer: Answer, said: String) {
-        guard let known = ToolMethod(rawValue: method), known.sender == .tool, let service = known.service else {
+        guard let known = ToolMethod(rawValue: method), known.sender == .tool, known.isAnswered else {
             return (.failure(RPCErrorObject(code: RPCErrorCode.methodNotFound, message: "method not found")),
                     "not a request a tool may make")
         }
-        guard uses.contains(service.rawValue) else {
+        if let service = known.service, !uses.contains(service.rawValue) {
             return (.failure(RefusalCode.notInUses.error(service: service)),
                     "refused: `\(service.rawValue)` is not in the manifest's `uses`")
         }
@@ -83,8 +87,19 @@ public struct Desk {
         switch known {
         case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
              .uiOpen, .uiEvent, .uiClose, .uiRender:
-            // Not reached: none of these has a service.
+            // Not reached: none of these is a request a tool makes.
             return wrong
+        case .uiStatus:
+            // No service: the manifest's declaration is the permission.
+            guard let asked = read(UIStatusParams.self) else { return wrong }
+            guard showsStatus else {
+                return (.failure(RPCErrorObject(code: RPCErrorCode.invalidParams,
+                                                message: "the manifest declares no status")),
+                        "refused: the manifest declares no status. Add `contributes.status`")
+            }
+            let words = asked.text.map { ", saying \"\($0.text(for: "en"))\"" } ?? ""
+            let shown = asked.state == .none ? "no status" : asked.state.rawValue
+            return (Self.done, "the app would show \(shown) on the closed island\(words)")
         case .uiBadge:
             guard let asked = read(UIBadgeParams.self) else { return wrong }
             let badge = asked.count.flatMap { $0 > 0 ? "the count \($0)" : nil }

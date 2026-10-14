@@ -41,4 +41,10 @@
 //
 // Never write to standard output yourself: it is the link. Write to
 // standard error, or call App.Log.
+//
+// Two things are newer than protocol 2 itself, and an app says at hello
+// whether it has them (App.Supports): the tool's status on the closed
+// island (UI.Status), and a pop-up menu on a page (ui.Choice). On an app
+// from before them a status sends nothing, and a choice is drawn as its
+// fallback text.
 package toolkit

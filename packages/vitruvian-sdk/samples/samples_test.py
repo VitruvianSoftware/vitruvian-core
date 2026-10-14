@@ -55,34 +55,43 @@ sys.path.insert(0, os.path.join(PACKAGE, "conformance"))
 
 import conformance
 
+# How the line for an app from before 3.48 starts, when the tool carried on.
+OLDER = "an older app: answered the hello, "
+
 # For each sample, by the last part of its id: the lines the conformance
 # script must print, one of each group.
+
 WANTED = {
     "hello-python": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-swift": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-typescript": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-python-kit": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-swift": [
-        ["a command: addOne: ran"],
-        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+        ["a command: addOne: ran, and set the status: ok"],
+        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-panel-typescript": [
-        ["a command: addOne: ran"],
-        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+        ["a command: addOne: ran, and set the status: ok"],
+        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-panel-python": [
-        ["a command: addOne: ran"],
-        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+        ["a command: addOne: ran, and set the status: ok"],
+        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-go": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-go": [
-        ["a command: addOne: ran"],
-        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+        ["a command: addOne: ran, and set the status: ok"],
+        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "hello-rust": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-rust": [
-        ["a command: addOne: ran"],
-        ["a panel: counter: a page of 4 blocks, and a new page after a tap on add"],
+        ["a command: addOne: ran, and set the status: ok"],
+        ["a panel: counter: a page of 5 blocks, and a new page after a tap on add"],
+        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
     ],
     "front-window": [
         [

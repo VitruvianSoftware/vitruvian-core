@@ -138,3 +138,83 @@ export function Segmented({
     </div>
   );
 }
+
+export interface SliderProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "type"
+> {
+  /** Optional formatted value readout rendered in tabular mono to the right of the track. */
+  valueLabel?: React.ReactNode;
+}
+
+/**
+ * Mechanical range slider with a square steel thumb and optional tabular
+ * value readout.
+ */
+export const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
+  function Slider({ valueLabel, className, ...rest }, ref) {
+    return (
+      <div className="slider-wrap">
+        <input
+          ref={ref}
+          type="range"
+          className={cn("slider", className)}
+          {...rest}
+        />
+        {valueLabel !== undefined ? (
+          <span className="slider-val">{valueLabel}</span>
+        ) : null}
+      </div>
+    );
+  },
+);
+
+export interface CopyButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  /** The text payload copied to the clipboard when clicked. */
+  value: string;
+  /** Label shown in resting state (default `"Copy"`). */
+  label?: React.ReactNode;
+  /** Label shown for 1.4s after copying (default `"Copied"`). */
+  copiedLabel?: React.ReactNode;
+}
+
+/**
+ * One-click clipboard copy button that flips to `.is-done` (`--color-ok` green
+ * border + tint) upon copying.
+ */
+export const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
+  function CopyButton(
+    {
+      value,
+      label = "Copy",
+      copiedLabel = "Copied",
+      className,
+      onClick,
+      ...rest
+    },
+    ref,
+  ) {
+    const [copied, setCopied] = React.useState(false);
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      onClick?.(e);
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        void navigator.clipboard.writeText(value);
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    };
+
+    return (
+      <button
+        ref={ref}
+        type="button"
+        className={cn("btn btn-sm", copied && "is-done", className)}
+        onClick={handleClick}
+        {...rest}
+      >
+        {copied ? copiedLabel : label}
+      </button>
+    );
+  },
+);

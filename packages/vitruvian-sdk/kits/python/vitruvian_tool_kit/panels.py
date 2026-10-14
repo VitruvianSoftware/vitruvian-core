@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from .generated.messages import (
     ButtonBlock,
+    ChoiceBlock,
     DividerBlock,
     FieldBlock,
     HeadingBlock,
@@ -40,6 +41,7 @@ from .generated.messages import (
     TextBlock,
     ToggleBlock,
     UIBlock,
+    UIChoiceOption,
     UIListRow,
     UIRenderParams,
     UIText,
@@ -69,7 +71,8 @@ class PanelEvent:
 
     @property
     def text(self) -> Optional[str]:
-        """For submit and change: the field's text."""
+        """For submit and change: the field's text. For the change of a
+        choice: the picked option's value."""
         if self.kind in ("submit", "change") and isinstance(self.value, str):
             return self.value
         return None
@@ -259,6 +262,63 @@ def link(title: UIText, url: str) -> UIBlock:
 def spacer(size: Optional[float] = None) -> UIBlock:
     """Room between blocks, in points; 8 when left out."""
     return UIBlock("spacer", SpacerBlock(size=size))
+
+
+def choice(
+    id: str,
+    value: str,
+    options: List[UIChoiceOption],
+    title: Optional[UIText] = None,
+    enabled: Optional[bool] = None,
+    fallback: Optional[UIText] = None,
+) -> UIBlock:
+    """A pop-up menu: one of a fixed list of options, each a
+    `UIChoiceOption(value=..., title=...)`. `value` is the selected option's.
+    Picking one is the event change, read with `event.text`.
+
+    An app before 3.48 does not know this kind and draws `fallback`, which
+    nobody can change. So ask `app.supports(Feature.CHOICE)` first, and send
+    a `field` to an app without it. With no `fallback` given, one is written:
+    the title, a colon and the selected option's title."""
+    return UIBlock(
+        "choice",
+        ChoiceBlock(value=value, options=options, title=title, enabled=enabled),
+        id=id,
+        fallback=_said_plainly(title, value, options) if fallback is None else fallback,
+    )
+
+
+def _said_plainly(
+    title: Optional[UIText], value: str, options: List[UIChoiceOption]
+) -> UIText:
+    """What a choice says, as words: the title, a colon and the selected
+    option's title, or that title alone, in every language either has. A
+    value that is no option's is written as it is."""
+    selected: UIText = next(
+        (option.title for option in options if option.value == value), value
+    )
+    if title is None:
+        return selected
+
+    def words(text: UIText, language: str) -> str:
+        if isinstance(text, str):
+            return text
+        return text.get(language, text.get("en", ""))
+
+    languages = sorted(
+        {
+            language
+            for text in (title, selected)
+            if not isinstance(text, str)
+            for language in text
+        }
+    )
+    if not languages:
+        return f"{words(title, 'en')}: {words(selected, 'en')}"
+    return {
+        language: f"{words(title, language)}: {words(selected, language)}"
+        for language in languages
+    }
 
 
 def tree(*blocks: Optional[UIBlock]) -> UITree:
