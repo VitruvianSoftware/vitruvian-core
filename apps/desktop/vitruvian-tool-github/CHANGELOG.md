@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.1.0...vitruvian-tool-github-v1.2.0) (2026-10-14)
+
+
+### Features
+
+* **vitruvian-tool-github:** the closed island shows how many checks are running ([#3277](https://github.com/VitruvianSoftware/vitruvian-core/issues/3277)) ([524af37](https://github.com/VitruvianSoftware/vitruvian-core/commit/524af373a70c50cd82b50a46f41cc56cb10f03b1))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.0.1...vitruvian-tool-github-v1.1.0) (2026-10-14)
 
 
