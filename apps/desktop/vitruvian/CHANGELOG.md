@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.50.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.50.0...vitruvian-v3.50.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **desktop:** the closed island's Nexus sparkles keep still under Reduce Motion ([#3272](https://github.com/VitruvianSoftware/vitruvian-core/issues/3272)) ([a681dd5](https://github.com/VitruvianSoftware/vitruvian-core/commit/a681dd5b970c438fc165090d27a959f159c3a790))
+
 ## [3.50.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.49.0...vitruvian-v3.50.0) (2026-10-14)
 
 
