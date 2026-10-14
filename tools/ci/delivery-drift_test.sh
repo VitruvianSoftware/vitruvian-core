@@ -88,15 +88,21 @@ esac
 EOF
 # gh stub. It answers BOTH ways a run history can be read -- `run list` +
 # one `api .../runs/<id>/jobs` per run, and `api graphql` pages of runs with
-# their successful jobs -- so the same cases can be pointed at an older
-# delivery-drift.sh and show it failing.
+# their successful jobs -- and both ways the in-flight state has been read --
+# #3280's polled in-flight count, and today's one list of recent push runs --
+# so the same cases can be pointed at an older delivery-drift.sh and show it
+# failing.
 #
-#   STUB_INFLIGHT        the in-flight count.
-#   STUB_INFLIGHT_SEQ    one in-flight count per poll of a workflow ("1 1 0":
-#                        busy for two polls, then settled; the last repeats).
+#   STUB_RECENT          the newest push runs of every workflow, newest first:
+#                        "<run id> <status> <head sha> <conclusion>" lines.
+#                        Unset => STUB_INFLIGHT runs in flight, then one run
+#                        that finished (success) at the checkout's HEAD.
+#   STUB_RECENT_OTHER    the same, for delivery-other.yaml only.
+#   STUB_RUNLIST_FAIL    make every `run list` fail.
+#   STUB_INFLIGHT        the in-flight count (default 0).
 #   STUB_INFLIGHT_WF     when set, the ONLY workflow with runs in flight.
 #   STUB_INFLIGHT_STATUS the status of those runs (default in_progress).
-#   STUB_POLL_LOG        one line per in-flight poll: "<workflow>".
+#   STUB_POLL_LOG        one line per `run list` of recent runs: "<workflow>".
 #   STUB_COMPARE         the answer of the compare API (empty => it fails).
 #   STUB_DELIVERED_SHA   one-run history "111 <sha>" whose dev job succeeded
 #                        (empty => no successful delivery).
@@ -117,14 +123,18 @@ history() { # <workflow> -> "<id> <sha>" lines, newest first
   if [ -n "${STUB_DELIVERED_WF:-}" ] && [ "$1" != "$STUB_DELIVERED_WF" ]; then return; fi
   [ -z "${STUB_DELIVERED_SHA:-}" ] || echo "111 ${STUB_DELIVERED_SHA}"
 }
-inflight_n() { # <workflow> -> the in-flight count of this poll
+inflight_n() { # <workflow> -> its in-flight count
   if [ -n "${STUB_INFLIGHT_WF:-}" ] && [ "$1" != "$STUB_INFLIGHT_WF" ]; then echo 0; return; fi
-  if [ -z "${STUB_INFLIGHT_SEQ:-}" ]; then echo "${STUB_INFLIGHT:-0}"; return; fi
-  local seq i
-  seq=($STUB_INFLIGHT_SEQ)
-  i="$(grep -cx "$1" "${STUB_POLL_LOG:-/dev/null}" 2>/dev/null || true)"
-  [ "${i:-0}" -lt "${#seq[@]}" ] || i=$((${#seq[@]} - 1))
-  echo "${seq[${i:-0}]}"
+  echo "${STUB_INFLIGHT:-0}"
+}
+recent() { # <workflow> -> "<id> <status> <sha> <conclusion>" lines, newest first
+  if [ "$1" = "delivery-other.yaml" ] && [ -n "${STUB_RECENT_OTHER:-}" ]; then printf '%s\n' "$STUB_RECENT_OTHER"; return; fi
+  if [ -n "${STUB_RECENT:-}" ]; then printf '%s\n' "$STUB_RECENT"; return; fi
+  local n i=0 head
+  n="$(inflight_n "$1")"
+  head="$(git rev-parse HEAD)"
+  while [ "$i" -lt "$n" ]; do echo "90$i ${STUB_INFLIGHT_STATUS:-in_progress} ${head} "; i=$((i + 1)); done
+  echo "800 completed ${head} success"
 }
 hits=" ${STUB_HIT_RUNS:-} "
 [ -z "${STUB_DELIVERED_SHA:-}" ] || hits="${hits}111 "
@@ -136,11 +146,15 @@ if [ "$1" = "run" ] && [ "$2" = "list" ]; then
     prev="$a"
   done
   echo "$wf" >> "${STUB_LOG:-/dev/null}"
+  [ -z "${STUB_RUNLIST_FAIL:-}" ] || { echo "gh: HTTP 502" >&2; exit 1; }
   case "$*" in
+    *"headSha"*)
+      echo "$wf" >>"${STUB_POLL_LOG:-/dev/null}"
+      recent "$wf" | head -n "$limit"; exit 0 ;;
     *"length"*) inflight_n "$wf"; exit 0 ;;
     *"join"*)
       n="$(inflight_n "$wf")"
-      [ -z "${STUB_POLL_LOG:-}" ] || echo "$wf" >>"$STUB_POLL_LOG"
+      echo "$wf" >>"${STUB_POLL_LOG:-/dev/null}"
       out=""; i=0
       while [ "$i" -lt "$n" ]; do out="${out}${out:+ }${STUB_INFLIGHT_STATUS:-in_progress}"; i=$((i + 1)); done
       echo "$out"; exit 0 ;;
@@ -183,18 +197,26 @@ if [ "$1" = "api" ]; then
 fi
 exit 0
 EOF
-chmod +x "$stubs/bazel" "$stubs/gh"
+# The check must never wait: any call to sleep is recorded, never slept.
+cat >"$stubs/sleep" <<'EOF'
+#!/usr/bin/env bash
+echo "sleep $*" >>"${STUB_SLEEP_LOG:-/dev/null}"
+EOF
+chmod +x "$stubs/bazel" "$stubs/gh" "$stubs/sleep"
+sleeps="$work/sleeps"
+: >"$sleeps"
 
 # Each run also leaves its verdict for the check run in $work/result
 # (conclusion=, title=) and the reader's summary in $work/summary, and one line
-# per in-flight poll in $work/polls. Waits are polls with no sleep in between.
+# per read of a workflow's recent runs in $work/polls. Every sleep any run
+# asks for lands in $sleeps.
 run_drift() { # <inflight> <delivered_sha> ; echoes "<rc> <stdout>"
     local out rc
     rm -f "$work/result" "$work/summary"
     : >"$work/polls"
     out="$(cd "$repo" && env PATH="$stubs:/usr/bin:/bin" \
-        STUB_INFLIGHT="$1" STUB_DELIVERED_SHA="$2" STUB_POLL_LOG="$work/polls" \
-        DRIFT_SETTLE_INTERVAL=0 DRIFT_RESULT_FILE="$work/result" DRIFT_SUMMARY_FILE="$work/summary" \
+        STUB_INFLIGHT="$1" STUB_DELIVERED_SHA="$2" STUB_POLL_LOG="$work/polls" STUB_SLEEP_LOG="$sleeps" \
+        DRIFT_RESULT_FILE="$work/result" DRIFT_SUMMARY_FILE="$work/summary" \
         REPO="o/r" bash "$SCRIPT" 2>"$work/err")"
     rc=$?
     echo "$rc ${out}"
@@ -205,7 +227,10 @@ conclusion_is() { [ -f "$work/result" ] && grep -qx "conclusion=$1" "$work/resul
 show() { # dump what a failing case saw
     sed 's/^/      err: /' "$work/err" >&2
     [ ! -f "$work/result" ] || sed 's/^/      result: /' "$work/result" >&2
+    [ ! -f "$work/summary" ] || sed 's/^/      summary: /' "$work/summary" >&2
 }
+polls() { grep -c . "$work/polls"; }
+NEWER_SHA=1234567890abcdef1234567890abcdef12345678
 
 echo "--- drift is detected when a unit is behind main ---"
 read -r rc out <<<"$(run_drift 0 "$BASE_SHA")"
@@ -271,66 +296,180 @@ else
     fail "drift line does not name the culprit commit"
 fi
 
+echo "--- a busy workflow is judged at its newest FINISHED run, not skipped ---"
+# The shape of run 38626875844: every push starts every app's workflow, so on
+# a busy day one is always in flight. Two runs are in flight here; the newest
+# finished one is at BASE_SHA and delivered it. REAL_SHA (which affects the
+# unit) is newer: the runs in flight are delivering it. Not drift, and judged.
+busy_base="$(printf '905 in_progress %s \n904 queued %s \n903 completed %s success\n' "$HEAD_SHA" "$HEAD_SHA" "$BASE_SHA")"
+read -r rc out <<<"$(STUB_RECENT="$busy_base" run_drift 0 "$BASE_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && conclusion_is success && grep -q "up to date (delivered ${BASE_SHA:0:8})" "$work/err"; then
+    pass "busy, newest finished run at the delivered commit => judged, OK (not skipped, not drift)"
+else
+    fail "expected OK judged at ${BASE_SHA:0:8} while 2 runs are in flight, got rc=$rc out='$out'"
+    show
+fi
+if grep -q 'checked=1' "$work/result" 2>/dev/null && grep -q 'skipped=0' "$work/result" 2>/dev/null &&
+    grep -q '2 newer still in flight' "$work/err"; then
+    pass "the unit is counted as checked, and the log says 2 newer runs are still in flight"
+else
+    fail "expected checked=1 skipped=0 and the in-flight runs named"
+    show
+fi
+# Same busy workflow, but its newest FINISHED run is at REAL_SHA and the unit
+# was last delivered at BASE_SHA: that run should have delivered REAL_SHA and
+# did not. Runs in flight must not hide that.
+busy_real="$(printf '905 in_progress %s \n904 completed %s success\n' "$HEAD_SHA" "$REAL_SHA")"
+read -r rc out <<<"$(STUB_RECENT="$busy_real" run_drift 0 "$BASE_SHA")"
+if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ] && conclusion_is failure &&
+    grep -q "DRIFT oauth-user-inspector: last delivered ${BASE_SHA:0:8}, but ${REAL_SHA:0:8}" "$work/err"; then
+    pass "busy, and the finished run skipped an affecting commit => DRIFT naming it"
+else
+    fail "expected DRIFT blaming ${REAL_SHA:0:8} at the finished run, got rc=$rc out='$out'"
+    show
+fi
+# A run that finished with a FAILURE is evidence too: what it did not deliver
+# is reported, never hidden behind the older success.
+read -r rc out <<<"$(STUB_RECENT="$(printf '904 completed %s failure\n903 completed %s success\n' "$REAL_SHA" "$BASE_SHA")" run_drift 0 "$BASE_SHA")"
+if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ] && conclusion_is failure; then
+    pass "a failed run is judged, not passed over for an older success"
+else
+    fail "expected DRIFT at the failed run's commit, got rc=$rc out='$out'"
+    show
+fi
+
+echo "--- the delivered commit includes the judged one ---"
+# A newer run delivered REAL_SHA; the newest finished run is older (BASE_SHA).
+# What was delivered contains what is judged: up to date. Read as a diff, the
+# range REAL_SHA..BASE_SHA runs backwards and would look like a change.
+read -r rc out <<<"$(STUB_RECENT="$busy_base" run_drift 0 "$REAL_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && grep -q "delivered ${REAL_SHA:0:8}, which includes the judged ${BASE_SHA:0:8}" "$work/err"; then
+    pass "a delivery newer than the judged commit is up to date, by ancestry"
+else
+    fail "expected OK by ancestry (delivered ${REAL_SHA:0:8} includes ${BASE_SHA:0:8}), got rc=$rc out='$out'"
+    show
+fi
+
+echo "--- a cancelled run is neither delivery nor drift ---"
+# The newest run was cancelled when a newer push superseded it; it delivered
+# nothing. Its commit (HEAD) is handed to the run that superseded it, which has
+# not finished. So the unit is judged at the newest run that DID finish.
+cancelled="$(printf '906 queued %s \n905 completed %s cancelled\n904 completed %s success\n' "$HEAD_SHA" "$HEAD_SHA" "$BASE_SHA")"
+read -r rc out <<<"$(STUB_RECENT="$cancelled" run_drift 0 "$BASE_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && grep -q "up to date (delivered ${BASE_SHA:0:8})" "$work/err" &&
+    grep -q '1 newer cancelled' "$work/err"; then
+    pass "a superseded (cancelled) run is passed over, not blamed: judged at the run before it"
+else
+    fail "expected OK at ${BASE_SHA:0:8}, the cancelled run passed over, got rc=$rc out='$out'"
+    show
+fi
+# Followed forward: once the run that superseded it finishes, that run is the
+# judged commit and covers the cancelled run's commits. Here it finished at
+# HEAD without delivering REAL_SHA: drift, judged at HEAD.
+forward="$(printf '906 completed %s success\n905 completed %s cancelled\n904 completed %s success\n' "$HEAD_SHA" "$REAL_SHA" "$BASE_SHA")"
+read -r rc out <<<"$(STUB_RECENT="$forward" run_drift 0 "$BASE_SHA")"
+if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ] && grep -q "but ${REAL_SHA:0:8}" "$work/err"; then
+    pass "the run that superseded a cancelled one is judged, and covers its commits"
+else
+    fail "expected DRIFT blaming ${REAL_SHA:0:8} at the superseding run, got rc=$rc out='$out'"
+    show
+fi
+read -r rc out <<<"$(STUB_RECENT="$forward" run_drift 0 "$HEAD_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ]; then
+    pass "...and when it delivered, the unit is up to date"
+else
+    fail "expected OK when the superseding run delivered, got rc=$rc out='$out'"
+    show
+fi
+
 echo "--- a run that checked nothing is NEUTRAL, not a pass ---"
-# Every unit's workflow stays busy through the whole wait. Nothing was judged,
-# so the verdict must not look like "everything delivered".
-read -r rc out <<<"$(DRIFT_SETTLE_POLLS=3 run_drift 2 "$BASE_SHA")"
+# No push run of the workflow has finished yet: every one in the window is in
+# flight or was cancelled. Nothing can be judged, and that must not look like
+# "everything delivered".
+unfinished="$(printf '903 in_progress %s \n902 completed %s cancelled\n901 queued %s \n' "$HEAD_SHA" "$HEAD_SHA" "$BASE_SHA")"
+read -r rc out <<<"$(STUB_RECENT="$unfinished" run_drift 0 "$BASE_SHA")"
 if [ "$rc" -eq 0 ] && [ "$out" = "NOTHING_CHECKED" ] && conclusion_is neutral; then
-    pass "all units in flight => NOTHING_CHECKED, check run neutral (rc=$rc)"
+    pass "no finished run => NOTHING_CHECKED, check run neutral (rc=$rc)"
 else
     fail "expected rc=0/NOTHING_CHECKED/neutral, got rc=$rc out='$out'"
     show
 fi
 if grep -q 'Nothing checked' "$work/result" 2>/dev/null && grep -q 'oauth-user-inspector' "$work/summary" 2>/dev/null &&
-    grep -q 'still in flight after waiting' "$work/summary"; then
+    grep -q 'no finished push run' "$work/summary" && grep -q '2 in flight, 1 cancelled' "$work/summary"; then
     pass "the title says nothing was checked, and the summary names the skipped unit and why"
 else
     fail "expected a 'Nothing checked' title and the skipped unit named in the summary"
     show
 fi
-if [ "$(grep -c . "$work/polls")" -eq 4 ]; then
-    pass "it polled once, then waited the full 3 extra polls before giving up"
-else
-    fail "expected 4 in-flight polls (1 + DRIFT_SETTLE_POLLS=3), got $(grep -c . "$work/polls")"
-fi
 if ! grep -q 'should have delivered and did not' "$work/err"; then
     pass "mid-convergence is not reported as drift"
 else
-    fail "an in-flight unit was judged"
+    fail "an unfinished unit was judged"
 fi
 
-echo "--- a run that settles within the wait is judged normally ---"
-read -r rc out <<<"$(STUB_INFLIGHT_SEQ="1 1 0" run_drift 0 "$BASE_SHA")"
-if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ] && conclusion_is failure && [ "$(grep -c . "$work/polls")" -eq 3 ]; then
-    pass "busy for two polls, then settled: the unit is judged (DRIFT), after exactly 3 polls"
+echo "--- a run parked on an approval leaves its units not checked ---"
+read -r rc out <<<"$(STUB_RECENT="$(printf '905 waiting %s \n904 completed %s success\n' "$HEAD_SHA" "$BASE_SHA")" run_drift 0 "$BASE_SHA")"
+if [ "$out" = "NOTHING_CHECKED" ] && conclusion_is neutral && grep -q 'waiting on an approval' "$work/summary" 2>/dev/null; then
+    pass "a waiting run => unit skipped with its reason, verdict neutral"
 else
-    fail "expected DRIFT after 3 polls, got rc=$rc out='$out' polls=$(grep -c . "$work/polls")"
+    fail "expected a neutral verdict naming the approval, got out='$out'"
     show
 fi
-read -r rc out <<<"$(STUB_INFLIGHT_SEQ="1 0" run_drift 0 "$HEAD_SHA")"
-if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && conclusion_is success; then
-    pass "settled and delivered => OK, check run success"
-else
-    fail "expected OK/success after settling, got rc=$rc out='$out'"
-    show
-fi
-
-echo "--- a run parked on an approval is not waited for ---"
-# A human gate can hold a run for days; polling it for 15 minutes every hour
-# only burns a runner. It still counts as in flight.
 read -r rc out <<<"$(STUB_INFLIGHT_STATUS=waiting run_drift 1 "$BASE_SHA")"
-if [ "$out" = "NOTHING_CHECKED" ] && conclusion_is neutral && [ "$(grep -c . "$work/polls")" -eq 1 ] &&
-    grep -q 'waiting on an approval' "$work/summary" 2>/dev/null; then
-    pass "a waiting run is polled once, skipped with its reason, verdict neutral"
+if [ "$out" = "NOTHING_CHECKED" ] && [ "$(polls)" -eq 1 ]; then
+    pass "a waiting run is read once, not polled"
 else
-    fail "expected one poll and a neutral verdict for a waiting run, got out='$out' polls=$(grep -c . "$work/polls")"
+    fail "expected one read for a waiting run, got out='$out' polls=$(polls)"
     show
 fi
 
-echo "--- some checked, some still in flight: success, naming the skipped ---"
-read -r rc out <<<"$(STUB_LABELS="$OAUTH_LABEL $OTHER_LABEL" STUB_INFLIGHT_WF=delivery-other.yaml DRIFT_SETTLE_POLLS=2 run_drift 1 "$HEAD_SHA")"
+echo "--- nothing waits: one read per workflow, no sleep ---"
+# Two units sharing one workflow, which is busy: one read of its recent runs,
+# shared by both, and not a single sleep.
+read -r rc out <<<"$(STUB_LABELS="$OAUTH_LABEL $OTHER_LABEL" WORKFLOW_FILE=delivery-shared.yaml run_drift 3 "$HEAD_SHA")"
+if grep -qx checked=2 "$work/result" && [ "$(polls)" -eq 1 ] && [ "$(grep -cx delivery-shared.yaml "$work/polls")" -eq 1 ]; then
+    pass "a busy workflow is read exactly once and its units are judged"
+else
+    fail "expected exactly 1 read of delivery-shared.yaml, got polls=$(polls): $(tr '\n' ' ' <"$work/polls") out='$out'"
+    show
+fi
+if [ ! -s "$sleeps" ]; then
+    pass "no case so far asked to sleep"
+else
+    fail "the check slept: $(sort <"$sleeps" | uniq -c | tr '\n' ' ')"
+fi
+
+echo "--- a failed read of recent runs is UNKNOWN, not idle ---"
+read -r rc out <<<"$(STUB_RUNLIST_FAIL=1 run_drift 0 "$HEAD_SHA")"
+if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ] && conclusion_is failure && grep -q 'could not read the recent runs' "$work/err"; then
+    pass "a failed run-list read is UNKNOWN (check run failure), never a pass"
+else
+    fail "expected rc=1/failure for a failed run-list read, got rc=$rc out='$out'"
+    show
+fi
+
+echo "--- a finished run newer than this checkout ---"
+# The run finished at a commit pushed after this checkout was taken. If it
+# contains the checkout, judging at the checkout is a subset of what it covered.
+read -r rc out <<<"$(STUB_RECENT="800 completed ${NEWER_SHA} success" STUB_COMPARE=ahead run_drift 0 "$HEAD_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && grep -q 'judged at the checkout' "$work/err"; then
+    pass "a newer finished run that contains the checkout => judged at the checkout"
+else
+    fail "expected OK judged at the checkout, got rc=$rc out='$out'"
+    show
+fi
+read -r rc out <<<"$(STUB_RECENT="800 completed ${NEWER_SHA} success" STUB_COMPARE="" run_drift 0 "$HEAD_SHA")"
+if [ "$rc" -eq 1 ] && conclusion_is failure && grep -q 'not in this checkout' "$work/err"; then
+    pass "if GitHub cannot place it, it is UNKNOWN (red)"
+else
+    fail "expected UNKNOWN when the finished run cannot be placed, got rc=$rc out='$out'"
+    show
+fi
+
+echo "--- some checked, some not checkable: success, naming the skipped ---"
+read -r rc out <<<"$(STUB_LABELS="$OAUTH_LABEL $OTHER_LABEL" STUB_RECENT_OTHER="$unfinished" run_drift 0 "$HEAD_SHA")"
 if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && conclusion_is success; then
-    pass "one unit judged and delivered, one still delivering => OK, check run success"
+    pass "one unit judged and delivered, one with no finished run => OK, check run success"
 else
     fail "expected OK/success with one unit skipped, got rc=$rc out='$out'"
     show
@@ -342,16 +481,15 @@ else
     fail "expected other-unit named as skipped"
     show
 fi
-if grep -qx 'delivery-other.yaml' "$work/polls" && [ "$(grep -cx 'delivery-oauth-user-inspector.yaml' "$work/polls")" -eq 1 ]; then
-    pass "only the busy workflow is polled again; the settled one is polled once"
+if [ "$(grep -cx 'delivery-other.yaml' "$work/polls")" -eq 1 ] && [ "$(grep -cx 'delivery-oauth-user-inspector.yaml' "$work/polls")" -eq 1 ]; then
+    pass "each workflow is read once"
 else
-    fail "expected the settled workflow polled once, got: $(tr '\n' ' ' <"$work/polls")"
+    fail "expected one read per workflow, got: $(tr '\n' ' ' <"$work/polls")"
 fi
 
 echo "--- a delivery newer than this check's checkout is current, not UNKNOWN ---"
 # While the check waits, main moves on and a newer run delivers a commit this
 # checkout does not have. GitHub's compare says it contains HEAD.
-NEWER_SHA=1234567890abcdef1234567890abcdef12345678
 read -r rc out <<<"$(STUB_RUNS="700 ${NEWER_SHA}" STUB_HIT_RUNS="700" STUB_COMPARE=ahead run_drift 0 "")"
 if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && grep -q 'up to date (delivered 12345678, newer than' "$work/err"; then
     pass "a delivery of a newer commit that contains HEAD is up to date"
@@ -514,6 +652,13 @@ if [ "$rc" -eq 1 ] && conclusion_is failure; then
     pass "no successful delivery found => reported, not silently OK (rc=$rc, check run failure)"
 else
     fail "expected rc=1 for unknown state, got rc=$rc out='$out'"
+fi
+
+echo "--- across every case: the check never slept ---"
+if [ ! -s "$sleeps" ]; then
+    pass "no run of the check called sleep"
+else
+    fail "the check slept: $(sort <"$sleeps" | uniq -c | tr '\n' ' ')"
 fi
 
 echo
