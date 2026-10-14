@@ -65,6 +65,15 @@ cat >"$repo/bazel-bin/oauth-user-inspector/infra/app/oauth-user-inspector.delive
  "environments":["development","nonproduction","production"],
  "extra_paths":["oauth-user-inspector/"],"exclude_paths":[],"graph_targets":[]}
 EOF
+# A second unit, on its own workflow, used only where STUB_LABELS names it: it
+# lets one run hold a unit that is judged and one that is still delivering.
+mkdir -p "$repo/bazel-bin/other/infra"
+cat >"$repo/bazel-bin/other/infra/other-unit.delivery.json" <<EOF
+{"schema":1,"name":"other-unit","app":"other","kind":"cloud-run",
+ "environments":["development"],"extra_paths":["other/"],"exclude_paths":[],"graph_targets":[]}
+EOF
+OAUTH_LABEL="//oauth-user-inspector/infra/app:oauth-user-inspector.delivery_unit"
+OTHER_LABEL="//other/infra:other-unit.delivery_unit"
 
 # --- stubs --------------------------------------------------------------------
 stubs="$work/stubs"
@@ -72,7 +81,7 @@ mkdir -p "$stubs"
 cat >"$stubs/bazel" <<EOF
 #!/usr/bin/env bash
 case "\$1" in
-  query) echo "//oauth-user-inspector/infra/app:oauth-user-inspector.delivery_unit" ;;
+  query) printf '%s\n' \${STUB_LABELS:-$OAUTH_LABEL} ;;
   build) exit 0 ;;
   info)  echo "$repo/bazel-bin" ;;
 esac
@@ -83,6 +92,12 @@ EOF
 # delivery-drift.sh and show it failing.
 #
 #   STUB_INFLIGHT        the in-flight count.
+#   STUB_INFLIGHT_SEQ    one in-flight count per poll of a workflow ("1 1 0":
+#                        busy for two polls, then settled; the last repeats).
+#   STUB_INFLIGHT_WF     when set, the ONLY workflow with runs in flight.
+#   STUB_INFLIGHT_STATUS the status of those runs (default in_progress).
+#   STUB_POLL_LOG        one line per in-flight poll: "<workflow>".
+#   STUB_COMPARE         the answer of the compare API (empty => it fails).
 #   STUB_DELIVERED_SHA   one-run history "111 <sha>" whose dev job succeeded
 #                        (empty => no successful delivery).
 #   STUB_DELIVERED_WF    when set, the ONLY workflow whose history holds it.
@@ -102,6 +117,15 @@ history() { # <workflow> -> "<id> <sha>" lines, newest first
   if [ -n "${STUB_DELIVERED_WF:-}" ] && [ "$1" != "$STUB_DELIVERED_WF" ]; then return; fi
   [ -z "${STUB_DELIVERED_SHA:-}" ] || echo "111 ${STUB_DELIVERED_SHA}"
 }
+inflight_n() { # <workflow> -> the in-flight count of this poll
+  if [ -n "${STUB_INFLIGHT_WF:-}" ] && [ "$1" != "$STUB_INFLIGHT_WF" ]; then echo 0; return; fi
+  if [ -z "${STUB_INFLIGHT_SEQ:-}" ]; then echo "${STUB_INFLIGHT:-0}"; return; fi
+  local seq i
+  seq=($STUB_INFLIGHT_SEQ)
+  i="$(grep -cx "$1" "${STUB_POLL_LOG:-/dev/null}" 2>/dev/null || true)"
+  [ "${i:-0}" -lt "${#seq[@]}" ] || i=$((${#seq[@]} - 1))
+  echo "${seq[${i:-0}]}"
+}
 hits=" ${STUB_HIT_RUNS:-} "
 [ -z "${STUB_DELIVERED_SHA:-}" ] || hits="${hits}111 "
 if [ "$1" = "run" ] && [ "$2" = "list" ]; then
@@ -113,7 +137,13 @@ if [ "$1" = "run" ] && [ "$2" = "list" ]; then
   done
   echo "$wf" >> "${STUB_LOG:-/dev/null}"
   case "$*" in
-    *"length"*) echo "${STUB_INFLIGHT:-0}"; exit 0 ;;
+    *"length"*) inflight_n "$wf"; exit 0 ;;
+    *"join"*)
+      n="$(inflight_n "$wf")"
+      [ -z "${STUB_POLL_LOG:-}" ] || echo "$wf" >>"$STUB_POLL_LOG"
+      out=""; i=0
+      while [ "$i" -lt "$n" ]; do out="${out}${out:+ }${STUB_INFLIGHT_STATUS:-in_progress}"; i=$((i + 1)); done
+      echo "$out"; exit 0 ;;
     *) history "$wf" | head -n "$limit"; exit 0 ;;
   esac
 fi
@@ -143,6 +173,7 @@ fi
 if [ "$1" = "api" ]; then
   case "$2" in
     repos/*/actions/workflows/*) echo "WF:${2##*/}"; exit 0 ;;
+    repos/*/compare/*) [ -n "${STUB_COMPARE:-}" ] || exit 1; echo "$STUB_COMPARE"; exit 0 ;;
   esac
   # jobs listing for one run
   for r in $hits; do
@@ -154,19 +185,32 @@ exit 0
 EOF
 chmod +x "$stubs/bazel" "$stubs/gh"
 
+# Each run also leaves its verdict for the check run in $work/result
+# (conclusion=, title=) and the reader's summary in $work/summary, and one line
+# per in-flight poll in $work/polls. Waits are polls with no sleep in between.
 run_drift() { # <inflight> <delivered_sha> ; echoes "<rc> <stdout>"
     local out rc
+    rm -f "$work/result" "$work/summary"
+    : >"$work/polls"
     out="$(cd "$repo" && env PATH="$stubs:/usr/bin:/bin" \
-        STUB_INFLIGHT="$1" STUB_DELIVERED_SHA="$2" \
+        STUB_INFLIGHT="$1" STUB_DELIVERED_SHA="$2" STUB_POLL_LOG="$work/polls" \
+        DRIFT_SETTLE_INTERVAL=0 DRIFT_RESULT_FILE="$work/result" DRIFT_SUMMARY_FILE="$work/summary" \
         REPO="o/r" bash "$SCRIPT" 2>"$work/err")"
     rc=$?
     echo "$rc ${out}"
 }
 
+# conclusion_is <want> -> true when the run left that check-run conclusion
+conclusion_is() { [ -f "$work/result" ] && grep -qx "conclusion=$1" "$work/result"; }
+show() { # dump what a failing case saw
+    sed 's/^/      err: /' "$work/err" >&2
+    [ ! -f "$work/result" ] || sed 's/^/      result: /' "$work/result" >&2
+}
+
 echo "--- drift is detected when a unit is behind main ---"
 read -r rc out <<<"$(run_drift 0 "$BASE_SHA")"
-if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ]; then
-    pass "a unit whose last delivery predates an affecting commit reports DRIFT"
+if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ] && conclusion_is failure; then
+    pass "a unit whose last delivery predates an affecting commit reports DRIFT (check run failure)"
 else
     fail "expected rc=1/DRIFT, got rc=$rc out='$out'"
     sed 's/^/      /' "$work/err" >&2
@@ -179,8 +223,8 @@ fi
 
 echo "--- no drift when the unit already has main ---"
 read -r rc out <<<"$(run_drift 0 "$HEAD_SHA")"
-if [ "$rc" -eq 0 ] && [ "$out" = "OK" ]; then
-    pass "a unit delivered at main HEAD reports OK"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && conclusion_is success; then
+    pass "a unit delivered at main HEAD reports OK (check run success)"
 else
     fail "expected rc=0/OK, got rc=$rc out='$out'"
     sed 's/^/      /' "$work/err" >&2
@@ -227,12 +271,100 @@ else
     fail "drift line does not name the culprit commit"
 fi
 
-echo "--- an in-flight run suppresses the report ---"
-read -r rc out <<<"$(run_drift 2 "$BASE_SHA")"
-if [ "$rc" -eq 0 ] && [ "$out" = "IN_FLIGHT" ]; then
-    pass "mid-convergence is not reported as drift (rc=$rc)"
+echo "--- a run that checked nothing is NEUTRAL, not a pass ---"
+# Every unit's workflow stays busy through the whole wait. Nothing was judged,
+# so the verdict must not look like "everything delivered".
+read -r rc out <<<"$(DRIFT_SETTLE_POLLS=3 run_drift 2 "$BASE_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "NOTHING_CHECKED" ] && conclusion_is neutral; then
+    pass "all units in flight => NOTHING_CHECKED, check run neutral (rc=$rc)"
 else
-    fail "expected rc=0/IN_FLIGHT, got rc=$rc out='$out'"
+    fail "expected rc=0/NOTHING_CHECKED/neutral, got rc=$rc out='$out'"
+    show
+fi
+if grep -q 'Nothing checked' "$work/result" 2>/dev/null && grep -q 'oauth-user-inspector' "$work/summary" 2>/dev/null &&
+    grep -q 'still in flight after waiting' "$work/summary"; then
+    pass "the title says nothing was checked, and the summary names the skipped unit and why"
+else
+    fail "expected a 'Nothing checked' title and the skipped unit named in the summary"
+    show
+fi
+if [ "$(grep -c . "$work/polls")" -eq 4 ]; then
+    pass "it polled once, then waited the full 3 extra polls before giving up"
+else
+    fail "expected 4 in-flight polls (1 + DRIFT_SETTLE_POLLS=3), got $(grep -c . "$work/polls")"
+fi
+if ! grep -q 'should have delivered and did not' "$work/err"; then
+    pass "mid-convergence is not reported as drift"
+else
+    fail "an in-flight unit was judged"
+fi
+
+echo "--- a run that settles within the wait is judged normally ---"
+read -r rc out <<<"$(STUB_INFLIGHT_SEQ="1 1 0" run_drift 0 "$BASE_SHA")"
+if [ "$rc" -eq 1 ] && [ "$out" = "DRIFT" ] && conclusion_is failure && [ "$(grep -c . "$work/polls")" -eq 3 ]; then
+    pass "busy for two polls, then settled: the unit is judged (DRIFT), after exactly 3 polls"
+else
+    fail "expected DRIFT after 3 polls, got rc=$rc out='$out' polls=$(grep -c . "$work/polls")"
+    show
+fi
+read -r rc out <<<"$(STUB_INFLIGHT_SEQ="1 0" run_drift 0 "$HEAD_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && conclusion_is success; then
+    pass "settled and delivered => OK, check run success"
+else
+    fail "expected OK/success after settling, got rc=$rc out='$out'"
+    show
+fi
+
+echo "--- a run parked on an approval is not waited for ---"
+# A human gate can hold a run for days; polling it for 15 minutes every hour
+# only burns a runner. It still counts as in flight.
+read -r rc out <<<"$(STUB_INFLIGHT_STATUS=waiting run_drift 1 "$BASE_SHA")"
+if [ "$out" = "NOTHING_CHECKED" ] && conclusion_is neutral && [ "$(grep -c . "$work/polls")" -eq 1 ] &&
+    grep -q 'waiting on an approval' "$work/summary" 2>/dev/null; then
+    pass "a waiting run is polled once, skipped with its reason, verdict neutral"
+else
+    fail "expected one poll and a neutral verdict for a waiting run, got out='$out' polls=$(grep -c . "$work/polls")"
+    show
+fi
+
+echo "--- some checked, some still in flight: success, naming the skipped ---"
+read -r rc out <<<"$(STUB_LABELS="$OAUTH_LABEL $OTHER_LABEL" STUB_INFLIGHT_WF=delivery-other.yaml DRIFT_SETTLE_POLLS=2 run_drift 1 "$HEAD_SHA")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && conclusion_is success; then
+    pass "one unit judged and delivered, one still delivering => OK, check run success"
+else
+    fail "expected OK/success with one unit skipped, got rc=$rc out='$out'"
+    show
+fi
+if grep -q 'other-unit' "$work/summary" 2>/dev/null && grep -q '1 not checked' "$work/result" 2>/dev/null &&
+    ! grep -q 'other-unit: up to date' "$work/err"; then
+    pass "the skipped unit is named in the summary and counted in the title"
+else
+    fail "expected other-unit named as skipped"
+    show
+fi
+if grep -qx 'delivery-other.yaml' "$work/polls" && [ "$(grep -cx 'delivery-oauth-user-inspector.yaml' "$work/polls")" -eq 1 ]; then
+    pass "only the busy workflow is polled again; the settled one is polled once"
+else
+    fail "expected the settled workflow polled once, got: $(tr '\n' ' ' <"$work/polls")"
+fi
+
+echo "--- a delivery newer than this check's checkout is current, not UNKNOWN ---"
+# While the check waits, main moves on and a newer run delivers a commit this
+# checkout does not have. GitHub's compare says it contains HEAD.
+NEWER_SHA=1234567890abcdef1234567890abcdef12345678
+read -r rc out <<<"$(STUB_RUNS="700 ${NEWER_SHA}" STUB_HIT_RUNS="700" STUB_COMPARE=ahead run_drift 0 "")"
+if [ "$rc" -eq 0 ] && [ "$out" = "OK" ] && grep -q 'up to date (delivered 12345678, newer than' "$work/err"; then
+    pass "a delivery of a newer commit that contains HEAD is up to date"
+else
+    fail "expected OK for a newer delivered commit, got rc=$rc out='$out'"
+    show
+fi
+read -r rc out <<<"$(STUB_RUNS="700 ${NEWER_SHA}" STUB_HIT_RUNS="700" STUB_COMPARE="" run_drift 0 "")"
+if [ "$rc" -eq 1 ] && conclusion_is failure && grep -q 'UNKNOWN' "$work/err"; then
+    pass "if GitHub cannot say how it relates to HEAD, it stays UNKNOWN (red)"
+else
+    fail "expected UNKNOWN when the compare read fails, got rc=$rc out='$out'"
+    show
 fi
 
 echo "--- each unit is read from its own app's workflow ---"
@@ -369,7 +501,7 @@ fi
 
 echo "--- an API failure is UNKNOWN, not a fallback and not green ---"
 read -r rc out <<<"$(STUB_GQL_FAIL=1 STUB_DELIVERED_WF=delivery.yaml run_drift 0 "$HEAD_SHA")"
-if [ "$rc" -eq 1 ] && grep -q 'could not read' "$work/err" && ! grep -q 'last delivered by delivery.yaml' "$work/err"; then
+if [ "$rc" -eq 1 ] && conclusion_is failure && grep -q 'could not read' "$work/err" && ! grep -q 'last delivered by delivery.yaml' "$work/err"; then
     pass "a failed history read is reported, and nothing is inferred from it"
 else
     fail "expected rc=1 'could not read', got rc=$rc out='$out'"
@@ -378,8 +510,8 @@ fi
 
 echo "--- an unknown delivery state is NOT treated as healthy ---"
 read -r rc out <<<"$(run_drift 0 "")"
-if [ "$rc" -eq 1 ]; then
-    pass "no successful delivery found => reported, not silently OK (rc=$rc)"
+if [ "$rc" -eq 1 ] && conclusion_is failure; then
+    pass "no successful delivery found => reported, not silently OK (rc=$rc, check run failure)"
 else
     fail "expected rc=1 for unknown state, got rc=$rc out='$out'"
 fi

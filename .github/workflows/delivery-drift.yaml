@@ -29,6 +29,16 @@
 # It is deliberately NOT a required check on any PR: it describes the fleet's
 # convergence, not a change's correctness, and gating merges on it would make
 # an unrelated stalled deploy block everyone.
+#
+# THE VERDICT IS A CHECK RUN, not this job's colour. A job can only pass or
+# fail, and a run that skipped every unit (each app's workflow still busy with
+# the last push) passed just like one that found everything delivered. So the
+# job publishes "delivery-drift verdict" on the commit it checked:
+#   success  units were checked and none is behind (skipped ones are named);
+#   neutral  NOTHING was checked -- not a pass; the summary says why;
+#   failure  drift or UNKNOWN, or the check never reached a verdict.
+# In the runs list a neutral run still shows green (Actions has no neutral run),
+# with a "nothing checked" notice on the run page; the check run is the record.
 name: delivery-drift
 
 on:
@@ -42,7 +52,9 @@ permissions:
   # The detector reads each run's successful jobs through GraphQL, where a
   # workflow job is a check run: without this the query is refused and every
   # unit reports UNKNOWN (red, never a silent green).
-  checks: read
+  # write: the job publishes its verdict as the "delivery-drift verdict" check
+  # run (write includes the read above).
+  checks: write
   contents: read
 
 # One drift poll at a time; a slow run must not stack with the next tick.
@@ -53,7 +65,9 @@ concurrency:
 jobs:
   drift:
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    # Up to 15 minutes of waiting for in-flight delivery runs, plus the check
+    # itself (about 2 minutes) and setup.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,8 +89,37 @@ jobs:
         # set +e: a non-zero exit is the SIGNAL here, not a runner failure.
         run: |
           set +e -u -o pipefail
-          bash tools/ci/delivery-drift.sh | tee "$RUNNER_TEMP/drift.out"
+          DRIFT_RESULT_FILE="$GITHUB_OUTPUT" DRIFT_SUMMARY_FILE="$RUNNER_TEMP/drift-summary.md" \
+            bash tools/ci/delivery-drift.sh | tee "$RUNNER_TEMP/drift.out"
           echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # Always, so a crash or a failed setup still leaves a verdict (failure),
+      # never a commit with no record of this check.
+      - name: Publish the verdict
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+          CONCLUSION: ${{ steps.drift.outputs.conclusion }}
+          TITLE: ${{ steps.drift.outputs.title }}
+        run: |
+          set -euo pipefail
+          summary="$RUNNER_TEMP/drift-summary.md"
+          if [ -z "$CONCLUSION" ]; then
+            CONCLUSION=failure
+            TITLE="No verdict: the check did not finish"
+            echo "The drift step ended without a verdict (setup failed, or it crashed). See the job log." >"$summary"
+          fi
+          cat "$summary" >>"$GITHUB_STEP_SUMMARY"
+          if [ "$CONCLUSION" = neutral ]; then
+            echo "::notice title=delivery-drift: nothing checked::${TITLE}. This is not a pass; see the run summary."
+          fi
+          gh api "repos/${REPO}/check-runs" \
+            -f name="delivery-drift verdict" -f head_sha="$HEAD_SHA" \
+            -f status=completed -f conclusion="$CONCLUSION" \
+            -f "output[title]=${TITLE}" -F "output[summary]=@${summary}" \
+            --jq '"published: \(.name) = \(.conclusion) \(.html_url)"'
 
       - name: Report
         if: steps.drift.outputs.rc != '0'
