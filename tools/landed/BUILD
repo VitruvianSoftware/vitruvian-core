@@ -15,6 +15,9 @@ verifies THAT against origin/main. See tools/landed/landed.sh for the full why.
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+# //tools/worktree calls `landed.sh --branch` to gate branch deletion.
+exports_files(["landed.sh"])
+
 sh_binary(
     name = "landed",
     srcs = ["landed.sh"],
