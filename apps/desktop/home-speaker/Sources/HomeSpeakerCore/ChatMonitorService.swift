@@ -402,6 +402,11 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     private let configManager: ConfigManager
     private let secrets: SecretStore
     private let announcer: Announcer
+    /// The Google sign-in Chat is read with, and the session its Chat
+    /// requests go through. The engine's own, for an engine that is not the
+    /// app's: the monitor reads Chat as whoever that engine is signed in as.
+    private let auth: GoogleAuth
+    private let chatSession: URLSession
     /// Where the running state is written for other processes; nil writes
     /// nothing, which is what a test's monitor gets unless it asks.
     private let statusFile: ChatMonitorStatusFile?
@@ -421,12 +426,15 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     public init(
         configManager: ConfigManager? = nil, secrets: SecretStore = .shared,
         home: GoogleHomeClient = .shared, announcer: Announcer? = nil,
-        statusFile: ChatMonitorStatusFile? = nil
+        statusFile: ChatMonitorStatusFile? = nil,
+        auth: GoogleAuth = .shared, chatSession: URLSession = .shared
     ) {
         self.configManager = configManager ?? .shared
         self.secrets = secrets
         self.announcer = announcer ?? Announcer(home: home)
         self.statusFile = statusFile
+        self.auth = auth
+        self.chatSession = chatSession
     }
 
     /// What the status file says right now.
@@ -477,7 +485,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         if cfg.googleChatEnabled {
             switch Self.chooseChatSource(preference: cfg.googleChatSource, hasChatScopes: hasScopes, gwsInstalled: gwsPath != nil) {
             case .api:
-                chat = GoogleChatClient()
+                chat = GoogleChatClient(auth: auth, session: chatSession)
                 googleChatVia = "api"
             case .gws:
                 chat = GwsChatClient(executable: gwsPath ?? "gws", account: cfg.gwsAccount)

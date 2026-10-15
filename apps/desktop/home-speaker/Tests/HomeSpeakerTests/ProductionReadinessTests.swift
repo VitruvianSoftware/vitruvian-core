@@ -105,6 +105,24 @@ private func json(_ text: String) -> [String: Any] {
     }
 }
 
+@Suite struct NoKeychainTests {
+    /// Sign-ins live in a 0600 file (`SecretStore`), never the Keychain: the
+    /// app is ad-hoc signed, so a Keychain item would ask for permission after
+    /// every update, and the extension has no such prompt to give. This scans
+    /// every source file of every target, the way the home-directory scan does.
+    @Test func noSourceTouchesTheKeychain() throws {
+        let sources = packageRoot().appendingPathComponent("Sources")
+        let files = try FileManager.default.subpathsOfDirectory(atPath: sources.path).filter { $0.hasSuffix(".swift") }
+        #expect(!files.isEmpty)
+        for f in files {
+            let text = try String(contentsOf: sources.appendingPathComponent(f), encoding: .utf8)
+            #expect(!text.contains("SecItem"), "\(f) calls the Keychain (SecItem)")
+            #expect(text.range(of: #"import\s+Security\b"#, options: .regularExpression) == nil,
+                    "\(f) imports Security, the Keychain's framework")
+        }
+    }
+}
+
 @Suite struct AliasTests {
     @Test func aliasIsSafeAndStable() {
         #expect(SpeakerDevice.alias(for: "Lake Office display") == "lake_office_display")
