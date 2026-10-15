@@ -67,13 +67,17 @@ final class GitHubToolTests: XCTestCase {
         transport.answers["/user/teams"] = (200, "[]")
         transport.answers["/repos/VitruvianSoftware/vitruvian-core"] = (200, #"{"default_branch": "main"}"#)
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/commits/main"] = (200, #"{"sha": "h1"}"#)
-        transport.answers["/repos/VitruvianSoftware/vitruvian-core/commits/h1/check-runs"] = (200, #"{"check_runs": []}"#)
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/commits/h1/check-runs?per_page=100"] = (200, #"{"check_runs": []}"#)
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/actions/runs?branch=main&per_page=10"] =
             (200, #"{"workflow_runs": [{"id": 9, "name": "ci", "head_sha": "h1", "status": "completed", "conclusion": "\#(conclusion)", "html_url": null}]}"#)
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/actions/runs?branch=main&per_page=10&status=waiting"] =
             (200, #"{"workflow_runs": []}"#)
-        transport.answers["/repos/VitruvianSoftware/vitruvian-core/pulls?state=open&per_page=20"] =
-            (200, #"[{"number": 3, "title": "Fix", "draft": false, "html_url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/3", "user": {"login": "james"}, "head": {"sha": "p3"}, "requested_reviewers": [], "requested_teams": []}]"#)
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/pulls?state=open&per_page=100"] =
+            (200, #"[{"number": 3, "title": "Fix", "draft": false, "html_url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/3", "user": {"login": "james"}, "head": {"sha": "p3"}, "requested_reviewers": [], "requested_teams": []}, {"number": 4, "title": "Someone else's", "draft": false, "html_url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/4", "user": {"login": "stranger"}, "head": {"sha": "p4"}, "requested_reviewers": [], "requested_teams": []}]"#)
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/commits/p3/check-runs?per_page=100"] =
+            (200, #"{"check_runs": [{"id": 30, "name": "unit", "head_sha": "p3", "status": "completed", "conclusion": "success", "html_url": null}]}"#)
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/pulls/3/reviews?per_page=100"] =
+            (200, #"[{"user": {"login": "ana"}, "state": "APPROVED"}]"#)
     }
 
     private func pathsAsked() -> [String] { transport.requests.map { $0.url!.path } }
@@ -111,7 +115,12 @@ final class GitHubToolTests: XCTestCase {
         tool.start()
         XCTAssertEqual(tool.auth, .signedIn(login: "james"))
         XCTAssertEqual(tool.summary.repositories.map(\.verdict), [.red])
-        XCTAssertEqual(tool.summary.pullRequests.map(\.pullRequest.number), [3])
+        XCTAssertEqual(tool.summary.pullRequests.map(\.pullRequest.number), [3],
+                       "only pull requests that concern the signed-in person are kept")
+        XCTAssertEqual(tool.summary.pullRequests.map(\.verdict), [.green],
+                       "the pull request's own check runs set its colour")
+        XCTAssertEqual(tool.summary.pullRequests.map(\.pullRequest.reviewState), [.approved],
+                       "the pull request's reviews set its standing")
         XCTAssertEqual(host.badges, [1], "one red default branch")
         XCTAssertEqual(mouse, [["/usr/bin/gravastar-mouse", "breathe", "red"]], "the first snapshot writes the mouse")
         XCTAssertEqual(host.rendered.map(\.panel), ["settings", "status", "settings"],

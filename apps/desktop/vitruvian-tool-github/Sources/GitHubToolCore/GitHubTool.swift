@@ -308,12 +308,13 @@ public final class GitHubTool {
     }
 
     private func poll() {
-        guard let token, identity != nil else { return }
+        guard let token, let identity else { return }
         let watched = watched
         var next = states
         for repo in watched {
             do {
-                if let updated = try parts.api.snapshot(repo: repo, token: token, known: states[repo], now: parts.now()) {
+                if let updated = try parts.api.snapshot(repo: repo, token: token, identity: identity, known: states[repo],
+                                                        now: parts.now()) {
                     next[repo] = updated
                 } else {
                     host.log("could not read \(repo.fullName): GitHub did not give it")
@@ -321,7 +322,7 @@ public final class GitHubTool {
             } catch APIError.refused(status: 401) {
                 rejectedToken = token
                 self.token = nil
-                identity = nil
+                self.identity = nil
                 parts.secrets.clear()
                 auth = .failed(.tokenRejected)
                 nextPollAt = nil
