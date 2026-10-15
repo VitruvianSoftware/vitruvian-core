@@ -63,8 +63,8 @@ bundles; this is a tool, and its one artifact is a zip (see "Releases").
   runs the tests, builds the tool's folder and puts it through the
   conformance script. Everything is `manual` and macOS-only; the pipeline
   unit `vitruvian-tool-github` runs it on the `xcode-27` lane.
-- To try it in the app: build `:tool-folder`, then Settings, Features, Tools
-  from outside, Add a Tool…, and pick
+- To try it in the app: build `:tool-folder`, then Settings, Features,
+  Extensions & Tools, Add a Tool…, and pick
   `bazel-bin/apps/desktop/vitruvian-tool-github/built/github`.
 - `python3 packages/vitruvian-sdk/conformance/conformance.py bazel-bin/apps/desktop/vitruvian-tool-github/built/github`
   is what `:conformance_test` runs.

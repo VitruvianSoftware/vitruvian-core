@@ -11,7 +11,7 @@ GPL-3.0-or-later like the app, not MIT like the kit it links.
 
 ## Get it
 
-In the app: Settings, Features, Tools from outside, Browse Tools…, GitHub,
+In the app: Settings, Features, Extensions & Tools, Browse Tools…, GitHub,
 Install. The app verifies the download against the signed catalog and shows
 the same agreement sheet as for any tool. Nothing here is audited by that:
 the tool runs as you, with every permission the app has.
@@ -21,12 +21,12 @@ unpacked anywhere, then Add a Tool… in the same place.
 
 ## What it does
 
-- **In the island**, on the Tools page, a tile "GitHub": each watched
+- **In the island**, in the Explore gallery, a section "GitHub": each watched
   repository with the colour of its `main` (green, amber, red, grey) and
   what passed, failed and runs; then the pull requests you wrote or were
   asked to review, each with its checks' colour and its review standing. A
   tap opens the pull request. "Refresh" asks GitHub now; "Re-run failed
-  checks" re-runs the failed jobs of `main`'s workflow runs. The tile's
+  checks" re-runs the failed jobs of `main`'s workflow runs. The section's
   badge counts what is red.
 - **On the closed island**, from Vitruvian 3.48: a small mark after the
   agent mark, as the app's own GitHub feature drew it. A tick when
@@ -69,9 +69,9 @@ the watched repositories, the poll intervals, the mouse settings and the
 client ID. The tool moves the token into `secrets.json` on its first run and
 clears the handed copy. The feature itself went in 3.49; the hand-off went
 after 3.50.1. Added with a later app, the tool starts signed out, with its
-own defaults: sign in once. The feature's island page, its place in your
-island layout and its `h` key did not move: the tool's page is a tile on the
-island's Tools page.
+own defaults: sign in once. The feature's `h` key did not move: from
+Vitruvian 3.51 the tool's page is a section in the island's Explore gallery
+(on 3.46 to 3.50.2, a tile on the island's Tools page).
 
 ## Build
 

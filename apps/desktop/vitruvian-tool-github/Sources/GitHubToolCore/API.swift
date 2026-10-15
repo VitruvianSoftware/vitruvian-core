@@ -56,11 +56,26 @@ public final class GitHubAPI {
     public static let defaultAPIURL = URL(string: "https://api.github.com")!
     public static let defaultWebURL = URL(string: "https://github.com")!
     public static let deviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"
+    /// The newest concerning pull requests per repository whose check runs
+    /// and reviews are fetched on each poll, bounding the request budget.
+    public static let maxDetailedPulls = 10
+    /// The most conditional-GET responses kept in memory before the cache is
+    /// cleared and refilled.
+    public static let maxCachedResponses = 512
+
+    private struct Run: Decodable {
+        let id: Int64
+        let name: String
+        let head_sha: String
+        let status: String
+        let conclusion: String?
+        let html_url: String?
+    }
 
     private let transport: any Transport
     private let apiURL: URL
     private let webURL: URL
-    private var etags: [URL: String] = [:]
+    private var cached: [URL: (etag: String, data: Data)] = [:]
 
     public init(transport: any Transport = URLSessionTransport(), apiURL: URL = defaultAPIURL,
                 webURL: URL = defaultWebURL) {
@@ -68,6 +83,9 @@ public final class GitHubAPI {
         self.apiURL = apiURL
         self.webURL = webURL
     }
+
+    /// How many conditional-GET responses are currently cached.
+    var cachedResponseCount: Int { cached.count }
 
     // MARK: Who
 
@@ -95,9 +113,11 @@ public final class GitHubAPI {
     // MARK: A repository
 
     /// A snapshot of the default branch, its checks and the open pull
-    /// requests; nil when the repository could not be read (a status other
-    /// than 200 and 401). A 401 is thrown: the token is dead.
-    public func snapshot(repo: RepoKey, token: String, known: RepoState? = nil, now: Date = Date()) throws -> RepoState? {
+    /// requests that concern `identity` (or all when `identity` is nil); nil
+    /// when the repository could not be read (a status other than 200 and
+    /// 401). A 401 is thrown: the token is dead.
+    public func snapshot(repo: RepoKey, token: String, identity: GitHubIdentity? = nil,
+                         known: RepoState? = nil, now: Date = Date()) throws -> RepoState? {
         let base = apiURL.appendingPathComponent("repos/\(repo.owner)/\(repo.name)")
         let defaultBranch: String
         if let known {
@@ -121,25 +141,7 @@ public final class GitHubAPI {
         struct Commit: Decodable { let sha: String }
         guard let headSHA = (try? JSONDecoder().decode(Commit.self, from: commitData))?.sha else { return nil }
 
-        var checks: [String: CheckRun] = [:]
-        struct Run: Decodable {
-            let id: Int64
-            let name: String
-            let head_sha: String
-            let status: String
-            let conclusion: String?
-            let html_url: String?
-        }
-        if let (data, response) = try? send(url: base.appendingPathComponent("commits/\(headSHA)/check-runs"), token: token),
-           response.statusCode == 200 {
-            struct CheckRuns: Decodable { let check_runs: [Run] }
-            for run in (try? JSONDecoder().decode(CheckRuns.self, from: data))?.check_runs ?? [] {
-                checks["check_run:\(run.id)"] = CheckRun(
-                    key: "check_run:\(run.id)", name: run.name, headSHA: run.head_sha,
-                    status: CheckStatus(raw: run.status), conclusion: run.conclusion.map(CheckConclusion.init(raw:)),
-                    htmlURL: run.html_url.flatMap(URL.init(string:)))
-            }
-        }
+        var checks = checkRuns(base: base, sha: headSHA, token: token) ?? [:]
         // The head commit's workflow runs, plus any paused for approval on
         // an earlier commit: a deploy often still waits at its gate after
         // the next push has moved the branch on.
@@ -161,7 +163,7 @@ public final class GitHubAPI {
 
         var pulls: [Int: PullRequest] = [:]
         var pullParts = URLComponents(url: base.appendingPathComponent("pulls"), resolvingAgainstBaseURL: false)
-        pullParts?.queryItems = [URLQueryItem(name: "state", value: "open"), URLQueryItem(name: "per_page", value: "20")]
+        pullParts?.queryItems = [URLQueryItem(name: "state", value: "open"), URLQueryItem(name: "per_page", value: "100")]
         if let url = pullParts?.url, let (data, response) = try? send(url: url, token: token), response.statusCode == 200 {
             struct Pull: Decodable {
                 let number: Int
@@ -177,17 +179,86 @@ public final class GitHubAPI {
                 struct Team: Decodable { let slug: String }
                 let requested_teams: [Team]?
             }
+            var candidates: [PullRequest] = []
             for pull in (try? JSONDecoder().decode([Pull].self, from: data)) ?? [] {
-                pulls[pull.number] = PullRequest(
+                let candidate = PullRequest(
                     number: pull.number, title: pull.title, author: pull.user?.login ?? "",
                     headSHA: pull.head?.sha ?? "", isDraft: pull.draft ?? false,
                     htmlURL: pull.html_url.flatMap(URL.init(string:)),
                     requestedReviewers: Set((pull.requested_reviewers ?? []).map(\.login)),
                     requestedTeams: Set((pull.requested_teams ?? []).map(\.slug)))
+                if let identity, !Verdicts.concerns(candidate, in: repo, identity: identity) { continue }
+                candidates.append(candidate)
+            }
+            candidates.sort { $0.number > $1.number }
+            for (index, var candidate) in candidates.enumerated() {
+                let previous = known?.pullRequests[candidate.number]
+                let sameHead = previous?.headSHA == candidate.headSHA
+                if index < Self.maxDetailedPulls {
+                    candidate.checks = checkRuns(base: base, sha: candidate.headSHA, token: token)
+                        ?? (sameHead ? previous?.checks ?? [:] : [:])
+                    candidate.reviews = pullReviews(base: base, number: candidate.number, token: token)
+                        ?? previous?.reviews ?? [:]
+                } else {
+                    candidate.checks = sameHead ? previous?.checks ?? [:] : [:]
+                    candidate.reviews = previous?.reviews ?? [:]
+                }
+                pulls[candidate.number] = candidate
             }
         }
         return RepoState(repo: repo, defaultBranch: defaultBranch, headSHA: headSHA, checks: checks,
                          pullRequests: pulls, updatedAt: now)
+    }
+
+    private func checkRuns(base: URL, sha: String, token: String) -> [String: CheckRun]? {
+        struct CheckRuns: Decodable { let check_runs: [Run] }
+        var parts = URLComponents(url: base.appendingPathComponent("commits/\(sha)/check-runs"), resolvingAgainstBaseURL: false)
+        parts?.queryItems = [URLQueryItem(name: "per_page", value: "100")]
+        guard !sha.isEmpty, let url = parts?.url,
+              let (data, response) = try? send(url: url, token: token),
+              response.statusCode == 200,
+              let decoded = try? JSONDecoder().decode(CheckRuns.self, from: data) else { return nil }
+        var checks: [String: CheckRun] = [:]
+        for run in decoded.check_runs {
+            checks["check_run:\(run.id)"] = CheckRun(
+                key: "check_run:\(run.id)", name: run.name, headSHA: run.head_sha,
+                status: CheckStatus(raw: run.status), conclusion: run.conclusion.map(CheckConclusion.init(raw:)),
+                htmlURL: run.html_url.flatMap(URL.init(string:)))
+        }
+        return checks
+    }
+
+    private func pullReviews(base: URL, number: Int, token: String) -> [String: ReviewState]? {
+        struct Review: Decodable {
+            struct User: Decodable { let login: String }
+            let user: User?
+            let state: String?
+        }
+        var parts = URLComponents(url: base.appendingPathComponent("pulls/\(number)/reviews"), resolvingAgainstBaseURL: false)
+        parts?.queryItems = [URLQueryItem(name: "per_page", value: "100")]
+        guard let url = parts?.url,
+              let (data, response) = try? send(url: url, token: token),
+              response.statusCode == 200,
+              let decoded = try? JSONDecoder().decode([Review].self, from: data) else { return nil }
+        return Self.reviews(from: decoded.map { ($0.user?.login ?? "", $0.state ?? "") })
+    }
+
+    /// Each reviewer's latest approval or change request, in the order
+    /// GitHub returned them; comments do not change standing, and a
+    /// dismissed review drops out.
+    public static func reviews(from entries: [(reviewer: String, state: String)]) -> [String: ReviewState] {
+        var out: [String: ReviewState] = [:]
+        for entry in entries {
+            let reviewer = entry.reviewer.lowercased()
+            guard !reviewer.isEmpty else { continue }
+            switch entry.state.lowercased() {
+            case "approved": out[reviewer] = .approved
+            case "changes_requested": out[reviewer] = .changesRequested
+            case "dismissed": out[reviewer] = nil
+            default: break
+            }
+        }
+        return out
     }
 
     /// `POST /repos/{owner}/{repo}/actions/runs/{id}/rerun-failed-jobs` for
@@ -254,10 +325,25 @@ public final class GitHubAPI {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        if method == "GET", let etag = etags[url] { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+        if method == "GET", let entry = cached[url] {
+            request.setValue(entry.etag, forHTTPHeaderField: "If-None-Match")
+        }
         let (data, response): (Data, HTTPURLResponse)
         do { (data, response) = try transport.send(request) } catch { throw APIError.unreachable }
-        if method == "GET", let etag = response.value(forHTTPHeaderField: "ETag") { etags[url] = etag }
+        if method == "GET" {
+            if response.statusCode == 304, let entry = cached[url] {
+                let etag = response.value(forHTTPHeaderField: "ETag") ?? entry.etag
+                cached[url] = (etag, entry.data)
+                let replayed = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["ETag": etag])!
+                return (entry.data, replayed)
+            }
+            if response.statusCode == 200, let etag = response.value(forHTTPHeaderField: "ETag") {
+                if cached[url] == nil, cached.count >= Self.maxCachedResponses {
+                    cached.removeAll()
+                }
+                cached[url] = (etag, data)
+            }
+        }
         return (data, response)
     }
 
