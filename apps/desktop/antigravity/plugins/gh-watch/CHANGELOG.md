@@ -2,6 +2,16 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.6.0
+
+- "Waiting on your review" rows get Approve and Approve & merge buttons, shown
+  only once the pull request's pipeline is fully green (every check finished,
+  none failed or cancelled, not already queued, no conflicts). Each needs a
+  second click to confirm, and the panel re-reads the pull request and
+  refuses if it is no longer green. Approve & merge turns on GitHub's
+  auto-merge, which joins the merge queue where there is one; it never
+  bypasses branch protection.
+
 ## 0.5.0
 
 - Pull requests opened by a subagent, a delegated CLI such as `claude -p`, or

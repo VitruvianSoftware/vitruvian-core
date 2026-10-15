@@ -105,6 +105,17 @@ Two things in the panel are about what is waiting on a person, not an agent:
   repository in the list has a tick box; untick one to leave it out. The
   choice is remembered, and a repository that asks for your review for the
   first time is listed until you untick it.
+- **Approve and Approve & merge** appear on a row once, and only once, its
+  pipeline is fully green: every check finished, none failed or was
+  cancelled, at least one passed, it is not already in a merge queue, and it
+  has no merge conflict. Each takes two clicks; the first turns the button
+  into "Confirm …" for six seconds. Before acting, the panel reads the pull
+  request again and refuses if it is no longer green, since the list can be
+  two minutes old. Approve & merge approves, then turns on GitHub's
+  auto-merge: on a repository with a merge queue that adds it to the queue,
+  and elsewhere GitHub merges it with the merge method in Settings once its
+  required reviews are in. It never bypasses branch protection or the queue.
+  Approving clears your review request, so the row leaves the list.
 - **Ready to merge** marks a watched pull request that is green and
   mergeable, but is not in the merge queue and has no auto-merge set, so it
   will sit there until someone merges it.

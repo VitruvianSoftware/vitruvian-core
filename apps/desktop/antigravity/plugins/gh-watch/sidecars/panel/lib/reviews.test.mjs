@@ -241,3 +241,44 @@ test("reviewStatus falls back to latestReviews and reviewRequests", () => {
   assert.equal(reviewStatus({}), null);
   assert.equal(reviewStatus(null), null);
 });
+
+test("readyForAction is true only for a finished, all-green pipeline", async () => {
+  const { readyForAction } = await import("./reviews.mjs");
+  const rollup = (rows) => ({
+    state: "SUCCESS",
+    contexts: { checkRunCountsByState: rows },
+  });
+  const pass = { state: "SUCCESS", count: 3 };
+  assert.equal(readyForAction({ rollup: rollup([pass]) }), true);
+  assert.equal(
+    readyForAction({ rollup: rollup([pass, { state: "SKIPPED", count: 2 }]) }),
+    true,
+  );
+  assert.equal(
+    readyForAction({
+      rollup: rollup([pass, { state: "IN_PROGRESS", count: 1 }]),
+    }),
+    false,
+  );
+  assert.equal(
+    readyForAction({ rollup: rollup([pass, { state: "FAILURE", count: 1 }]) }),
+    false,
+  );
+  assert.equal(
+    readyForAction({
+      rollup: rollup([pass, { state: "CANCELLED", count: 1 }]),
+    }),
+    false,
+  );
+  assert.equal(readyForAction({ rollup: rollup([]) }), false);
+  assert.equal(readyForAction({ queued: true, rollup: rollup([pass]) }), false);
+  assert.equal(
+    readyForAction({ mergeable: "CONFLICTING", rollup: rollup([pass]) }),
+    false,
+  );
+  // Without per-state counts, only an overall SUCCESS counts.
+  assert.equal(readyForAction({ rollup: { state: "SUCCESS" } }), true);
+  assert.equal(readyForAction({ rollup: { state: "PENDING" } }), false);
+  assert.equal(readyForAction({ rollup: null }), false);
+  assert.equal(readyForAction(null), false);
+});

@@ -22,6 +22,7 @@ package(default_visibility = ["//apps/desktop/antigravity/plugins/gh-watch:__sub
 js_library(
     name = "lib",
     srcs = [
+        "sidecars/panel/lib/actions.mjs",
         "sidecars/panel/lib/decide.mjs",
         "sidecars/panel/lib/flakes.mjs",
         "sidecars/panel/lib/github.mjs",
@@ -37,6 +38,13 @@ js_library(
 )
 
 # Run with Node's built-in `node:test` runner, as nexus-agent's tests are.
+js_test(
+    name = "actions_test",
+    size = "small",
+    data = [":lib"],
+    entry_point = "sidecars/panel/lib/actions.test.mjs",
+)
+
 js_test(
     name = "decide_test",
     size = "small",
@@ -124,6 +132,7 @@ pipeline_unit(
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [
+        ":actions_test",
         ":decide_test",
         ":flakes_test",
         ":landing_test",
