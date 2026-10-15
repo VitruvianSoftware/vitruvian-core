@@ -126,6 +126,9 @@ enum Entry {
                         _ = NSWorkspace.shared.open(url)
                     }
                     print("signed in as \(creds.email ?? "unknown"); scopes: \(creds.scopes.joined(separator: " "))")
+                    // A running menu bar app re-reads the login and starts or
+                    // restarts the chat monitor with it.
+                    CredentialsChangedNotice.post()
                 } catch {
                     FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8)); exit(1)
                 }

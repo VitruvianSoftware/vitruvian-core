@@ -125,8 +125,8 @@ final class SettingsTests: XCTestCase {
             return XCTFail("the switcher comes first, as a choice")
         }
         XCTAssertEqual(switcher.value, "general")
-        XCTAssertEqual(switcher.options.map(\.value), ["general", "speakers"])
-        XCTAssertEqual(switcher.options.map { $0.title.text(for: "en") }, ["General", "Speakers"])
+        XCTAssertEqual(switcher.options.map(\.value), ["general", "speakers", "monitor"])
+        XCTAssertEqual(switcher.options.map { $0.title.text(for: "en") }, ["General", "Speakers", "Chat & Slack"])
         tree = event(tool, Pages.Block.section, .change, .string("speakers"))
         XCTAssertEqual(tool.section, .speakers)
         XCTAssertNotNil(content(tree, Pages.Block.discover))
@@ -137,8 +137,8 @@ final class SettingsTests: XCTestCase {
         link.features = []
         tree = show(tool, .general)
         XCTAssertEqual(tool.section, .general)
-        XCTAssertEqual(rows(tree, Pages.Block.section).map(\.id), ["general", "speakers"])
-        XCTAssertEqual(rows(tree, Pages.Block.section).map { $0.trailing?.text(for: "en") }, ["✓", nil])
+        XCTAssertEqual(rows(tree, Pages.Block.section).map(\.id), ["general", "speakers", "monitor"])
+        XCTAssertEqual(rows(tree, Pages.Block.section).map { $0.trailing?.text(for: "en") }, ["✓", nil, nil])
         XCTAssertNotNil(content(tree, Pages.Block.broadcasting))
     }
 
@@ -177,11 +177,12 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(store.config?.enabled, false)
     }
 
-    func testTheBannerShowsOnBothSections() {
+    func testTheBannerShowsOnEverySection() {
         store.corrupt = "permission denied"
         let tool = opened()
         XCTAssertTrue(texts(tool.settingsPage()).contains { $0.contains("does not read") })
         XCTAssertTrue(texts(show(tool, .speakers)).contains { $0.contains("does not read") })
+        XCTAssertTrue(texts(show(tool, .monitor)).contains { $0.contains("does not read") })
     }
 
     func testSignedOutOffersSignInAndTheAntigravityImport() {

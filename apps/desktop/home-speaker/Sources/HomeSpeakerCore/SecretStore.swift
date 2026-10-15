@@ -93,11 +93,33 @@ public struct Secrets: Codable, Equatable {
 /// prompt after every update. A 0600 file in the user's own Application
 /// Support folder is what gcloud and gh do, and it is what the Claude Code
 /// hook process (a second copy of this binary) can read without prompts.
+///
+/// Several processes write it: the running app refreshing a Google token,
+/// `HomeSpeaker --sign-in` / `--sign-out`, and the Vitruvian tool saving a
+/// Slack token. So every write -- above all `update`'s read-modify-write --
+/// holds an exclusive `flock` on `secrets.json.lock` beside it; without it,
+/// the app's token refresh could write back a copy read a moment before the
+/// tool saved a Slack token, and the token would be gone.
+///
+/// Re-entrancy: BSD `flock` belongs to an open file description, so a
+/// second `open()` of the lock file in the same process waits on the first,
+/// like another process would, and nesting would deadlock. The lock is
+/// therefore only ever taken inside `queue`, which is serial and is entered
+/// once per public call (`save`, `update`, `clear`), never from inside
+/// another; at most one descriptor in this process holds or waits for it.
+/// `mutate` must not call back into the store. Reads take no lock: a write
+/// replaces the file atomically (rename), so a reader sees the old file or
+/// the new one, never half of one.
 public final class SecretStore: @unchecked Sendable {
     public static let shared = SecretStore()
 
     public let fileURL: URL
     private let queue = DispatchQueue(label: "com.vitruviansoftware.homespeaker.secrets")
+
+    /// The file `flock` is taken on: `secrets.json.lock`, next to it. Its
+    /// own file, so the atomic replace of `secrets.json` never swaps the
+    /// locked inode out from under a waiting writer.
+    public var lockURL: URL { fileURL.appendingPathExtension("lock") }
 
     public static func defaultURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -110,33 +132,66 @@ public final class SecretStore: @unchecked Sendable {
     }
 
     public func load() -> Secrets {
-        queue.sync {
-            guard let data = try? Data(contentsOf: fileURL),
-                  let secrets = try? Self.decoder.decode(Secrets.self, from: data) else { return Secrets() }
-            return secrets
-        }
+        queue.sync { read() }
     }
 
     public func save(_ secrets: Secrets) throws {
         try queue.sync {
-            let dir = fileURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(
-                at: dir, withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700])
-            let data = try Self.encoder.encode(secrets)
-            try data.write(to: fileURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            try withFileLock { try write(secrets) }
         }
     }
 
+    /// Reads, changes and writes the secrets as one step, under the lock,
+    /// so a change another process made meanwhile is never written over.
     public func update(_ mutate: (inout Secrets) -> Void) throws {
-        var s = load()
-        mutate(&s)
-        try save(s)
+        try queue.sync {
+            try withFileLock {
+                var s = read()
+                mutate(&s)
+                try write(s)
+            }
+        }
     }
 
     public func clear() throws {
-        try? FileManager.default.removeItem(at: fileURL)
+        try queue.sync {
+            guard FileManager.default.fileExists(atPath: fileURL.deletingLastPathComponent().path) else { return }
+            try withFileLock { try? FileManager.default.removeItem(at: fileURL) }
+        }
+    }
+
+    // MARK: Inside the queue
+
+    /// Call only inside `queue`.
+    private func read() -> Secrets {
+        guard let data = try? Data(contentsOf: fileURL),
+              let secrets = try? Self.decoder.decode(Secrets.self, from: data) else { return Secrets() }
+        return secrets
+    }
+
+    /// Call only inside `queue` and the file lock.
+    private func write(_ secrets: Secrets) throws {
+        let data = try Self.encoder.encode(secrets)
+        try data.write(to: fileURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
+
+    /// Runs `body` holding an exclusive `flock` on `lockURL`, creating the
+    /// folder (0700) and the lock file (0600) if need be. Blocks while
+    /// another process -- or another `SecretStore` on the same file -- holds
+    /// it. Call only inside `queue`: see the type's note on re-entrancy.
+    private func withFileLock<T>(_ body: () throws -> T) throws -> T {
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        let fd = open(lockURL.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(fd) }
+        while flock(fd, LOCK_EX) != 0 {
+            guard errno == EINTR else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        }
+        defer { flock(fd, LOCK_UN) }
+        return try body()
     }
 
     // MARK: Antigravity import

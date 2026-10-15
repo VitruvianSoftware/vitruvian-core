@@ -72,3 +72,47 @@ public final class NoGoogleAccount: GoogleAccount {
     public var hasAntigravityTokens: Bool { false }
     public func importFromAntigravity() throws -> Bool { false }
 }
+
+/// The Chat & Slack credentials, as far as the tool's Settings needs them:
+/// whether a Slack token is saved and whether Google Chat access was
+/// granted, never either's value. A token goes in through `saveSlackToken`
+/// and nothing reads it back out.
+public protocol ChatCredentials: AnyObject {
+    var hasSlackToken: Bool { get }
+    /// The Google Chat login exists with every Chat scope.
+    var hasChatAccess: Bool { get }
+    /// Saves `token` as it is given: the caller trims it.
+    func saveSlackToken(_ token: String) throws
+    func clearSlackToken() throws
+}
+
+/// HomeSpeaker's own secrets file, read afresh on every question, and
+/// written through `SecretStore.update`, under its lock, so the running
+/// app refreshing a Google token never writes over the token saved here.
+public final class SecretStoreChatCredentials: ChatCredentials {
+    private let store: SecretStore
+
+    public init(store: SecretStore = .shared) {
+        self.store = store
+    }
+
+    public var hasSlackToken: Bool { !(store.load().slackToken?.isEmpty ?? true) }
+    public var hasChatAccess: Bool { store.load().hasChatAccess }
+
+    public func saveSlackToken(_ token: String) throws {
+        try store.update { $0.slackToken = token.isEmpty ? nil : token }
+    }
+
+    public func clearSlackToken() throws {
+        try store.update { $0.slackToken = nil }
+    }
+}
+
+/// No credentials at all: the tool before it is told of any.
+public final class NoChatCredentials: ChatCredentials {
+    public init() {}
+    public var hasSlackToken: Bool { false }
+    public var hasChatAccess: Bool { false }
+    public func saveSlackToken(_ token: String) throws {}
+    public func clearSlackToken() throws {}
+}

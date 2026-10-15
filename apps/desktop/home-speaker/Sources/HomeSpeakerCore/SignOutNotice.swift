@@ -68,3 +68,65 @@ public enum SignOutNotice {
         }
     }
 }
+
+// The other way round: a login or token was ADDED or changed by another
+// process -- `HomeSpeaker --sign-in [--chat]`, or the Vitruvian tool saving
+// or clearing the Slack token or importing the Antigravity login. The
+// running app re-reads the login and gets the chat monitor going with what
+// is now there: a monitor that could not start for want of a Slack token
+// starts once one is saved, with nobody touching the menu bar.
+
+public enum CredentialsChangedNotice {
+    public static let notificationName = Notification.Name("com.vitruviansoftware.homespeaker.credentials-changed")
+
+    /// The other process's side. `name` is for tests, so they never reach
+    /// a real running app.
+    public static func post(name: Notification.Name = notificationName) {
+        DistributedNotificationCenter.default().postNotificationName(
+            name, object: nil, userInfo: nil, deliverImmediately: true)
+    }
+
+    /// The app's side: run `handle` on the main actor for each notice.
+    @MainActor public static func listen(
+        name: Notification.Name = notificationName,
+        handle: @escaping @MainActor @Sendable () -> Void
+    ) -> NSObjectProtocol {
+        DistributedNotificationCenter.default().addObserver(forName: name, object: nil, queue: .main) { _ in
+            Task { @MainActor in handle() }
+        }
+    }
+
+    /// The app's side, wired to the shared config manager and chat monitor.
+    @MainActor public static func listen(
+        name: Notification.Name = notificationName, config: ConfigManager, monitor: any ChatMonitorControlling
+    ) -> NSObjectProtocol {
+        listen(name: name) { [weak config, weak monitor] in
+            guard let config, let monitor else { return }
+            apply(config: config, monitor: monitor)
+        }
+    }
+
+    /// What a notice does to the chat monitor, pure: a running monitor is
+    /// restarted so it reads the new credentials; a stopped one starts when
+    /// a source is switched on (it may have been waiting for exactly this
+    /// token or sign-in); otherwise it is left alone. Never `.stop`: new
+    /// credentials are no reason to stop -- a sign-out has its own notice.
+    public static func decide(isRunning: Bool, anySourceEnabled: Bool) -> ChatMonitorReconciliation {
+        if isRunning { return .restart }
+        return anySourceEnabled ? .start : .none
+    }
+
+    /// What the app does on a notice: re-read the login, then act on
+    /// `decide`. A restart is stop-then-start, which is what
+    /// `ChatMonitorService.restartIfRunning()` does for a running monitor.
+    @MainActor public static func apply(config: ConfigManager, monitor: any ChatMonitorControlling) {
+        config.checkConnection()
+        switch decide(isRunning: monitor.isRunning, anySourceEnabled: config.config.effectiveChatMonitor.anySourceEnabled) {
+        case .none, .stop: break
+        case .start: monitor.start()
+        case .restart:
+            monitor.stop()
+            monitor.start()
+        }
+    }
+}
