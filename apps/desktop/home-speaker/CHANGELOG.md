@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.17.0...home-speaker-v1.18.0) (2026-10-15)
+
+
+### Features
+
+* **home-speaker:** add live chat monitor status, control, and full JSON-RPC conformance test ([#3341](https://github.com/VitruvianSoftware/vitruvian-core/issues/3341)) ([6645ac0](https://github.com/VitruvianSoftware/vitruvian-core/commit/6645ac0a3595e70aaa501cf094564bc391532eba))
+
 ## [1.17.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.16.1...home-speaker-v1.17.0) (2026-10-15)
 
 

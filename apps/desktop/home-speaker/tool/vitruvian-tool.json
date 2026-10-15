@@ -6,7 +6,7 @@
   "description": {
     "en": "Speaks what you type, or the clipboard, on your Google Home speakers through HomeSpeaker, and keeps broadcasting, quiet hours and the volume at hand."
   },
-  "version": "1.17.0",
+  "version": "1.18.0",
   "protocol": "2",
   "publisher": "VitruvianSoftware",
   "license": "MIT",
