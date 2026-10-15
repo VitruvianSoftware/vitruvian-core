@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.15.0...home-speaker-v1.16.0) (2026-10-15)
+
+
+### Features
+
+* **home-speaker:** the tool's Settings gets AI Agents and Google Cloud sections ([#3331](https://github.com/VitruvianSoftware/vitruvian-core/issues/3331)) ([ea53845](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea53845fe6c772354542948b15f2380c1ffc9bf0))
+
 ## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.14.0...home-speaker-v1.15.0) (2026-10-15)
 
 
