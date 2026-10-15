@@ -161,6 +161,9 @@ public struct MenuBarView: View {
         .frame(width: 340)
         .onAppear {
             configManager.checkConnection()
+            // `--say` and the Stop hook add to the history from their own
+            // processes; show what they wrote since the menu last opened.
+            configManager.reloadHistory()
             // The popover window is not yet key when onAppear fires; defer one
             // runloop hop so the focus request lands.
             Task { @MainActor in

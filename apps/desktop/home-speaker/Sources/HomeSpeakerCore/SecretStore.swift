@@ -176,22 +176,13 @@ public final class SecretStore: @unchecked Sendable {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
-    /// Runs `body` holding an exclusive `flock` on `lockURL`, creating the
-    /// folder (0700) and the lock file (0600) if need be. Blocks while
-    /// another process -- or another `SecretStore` on the same file -- holds
-    /// it. Call only inside `queue`: see the type's note on re-entrancy.
+    /// Runs `body` holding an exclusive `flock` on `lockURL` (see
+    /// `FileLock`), creating the folder (0700) and the lock file (0600) if
+    /// need be. Blocks while another process -- or another `SecretStore` on
+    /// the same file -- holds it. Call only inside `queue`: see the type's
+    /// note on re-entrancy.
     private func withFileLock<T>(_ body: () throws -> T) throws -> T {
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700])
-        let fd = open(lockURL.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        defer { close(fd) }
-        while flock(fd, LOCK_EX) != 0 {
-            guard errno == EINTR else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        }
-        defer { flock(fd, LOCK_UN) }
-        return try body()
+        try FileLock.withExclusiveLock(at: lockURL, directoryPermissions: 0o700, body)
     }
 
     // MARK: Antigravity import
