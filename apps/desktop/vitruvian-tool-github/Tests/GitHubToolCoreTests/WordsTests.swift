@@ -9,7 +9,7 @@ final class WordsTests: XCTestCase {
     func testEveryTextIsInEveryLanguageWithEnglishFirst() {
         XCTAssertEqual(Words.languages.first, "en")
         XCTAssertEqual(Words.languages.count, 15)
-        XCTAssertEqual(Words.table.count, 49)
+        XCTAssertEqual(Words.table.count, 57)
         for key in ["statusOK", "statusBusy", "statusAttention", "statusFailure"] {
             XCTAssertNotNil(Words.table[key], "the status on the closed island says \(key)")
         }

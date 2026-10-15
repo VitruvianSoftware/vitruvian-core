@@ -50,9 +50,12 @@ final class APITests: XCTestCase {
         transport.answers["/repos/acme/web/commits/head1/check-runs?per_page=100"] = (200, #"{"check_runs": [{"id": 1, "name": "lint", "head_sha": "head1", "status": "completed", "conclusion": "success", "html_url": "https://x/1"}]}"#)
         transport.answers["/repos/acme/web/actions/runs?branch=trunk&per_page=10"] = (200, #"{"workflow_runs": [{"id": 50, "name": "ci", "head_sha": "head1", "status": "completed", "conclusion": "failure", "html_url": null}, {"id": 51, "name": "old", "head_sha": "head0", "status": "completed", "conclusion": "success", "html_url": null}]}"#)
         transport.answers["/repos/acme/web/actions/runs?branch=trunk&per_page=10&status=waiting"] = (200, #"{"workflow_runs": [{"id": 52, "name": "deploy", "head_sha": "head0", "status": "waiting", "conclusion": null, "html_url": null}]}"#)
-        transport.answers["/repos/acme/web/pulls?state=open&per_page=100"] = (200, #"[{"number": 7, "title": "Fix", "draft": true, "html_url": "https://x/pull/7", "user": {"login": "Ana"}, "head": {"sha": "p7"}, "requested_reviewers": [{"login": "James"}], "requested_teams": [{"slug": "Platform-Team"}]}, {"number": 8, "title": "Stranger", "draft": false, "html_url": "https://x/pull/8", "user": {"login": "Bob"}, "head": {"sha": "p8"}, "requested_reviewers": [], "requested_teams": []}]"#)
+        transport.answers["/repos/acme/web/pulls?state=open&per_page=100"] = (200, #"[{"number": 7, "title": "Fix", "draft": true, "html_url": "https://x/pull/7", "user": {"login": "Ana"}, "head": {"sha": "p7"}, "requested_reviewers": [{"login": "James"}], "requested_teams": [{"slug": "Platform-Team"}]}, {"number": 8, "title": "Stranger", "draft": false, "html_url": "https://x/pull/8", "user": {"login": "Bob"}, "head": {"sha": "p8"}, "requested_reviewers": [], "requested_teams": []}, {"number": 9, "title": "Auto", "draft": false, "html_url": "https://x/pull/9", "user": {"login": "James"}, "head": {"sha": "p9"}, "requested_reviewers": [], "requested_teams": [], "auto_merge": {}}]"#)
+        transport.answers["/graphql"] = (200, #"{"data": {"repository": {"mergeQueue": {"entries": {"nodes": [{"position": 4, "pullRequest": {"number": 7}}]}}}}}"#)
         transport.answers["/repos/acme/web/commits/p7/check-runs?per_page=100"] = (200, #"{"check_runs": [{"id": 70, "name": "test", "head_sha": "p7", "status": "completed", "conclusion": "success", "html_url": "https://x/70"}]}"#)
         transport.answers["/repos/acme/web/pulls/7/reviews?per_page=100"] = (200, #"[{"user": {"login": "James"}, "state": "CHANGES_REQUESTED"}, {"user": {"login": "James"}, "state": "COMMENTED"}, {"user": {"login": "James"}, "state": "APPROVED"}, {"user": {"login": "Bo"}, "state": "CHANGES_REQUESTED"}, {"user": {"login": "Bo"}, "state": "DISMISSED"}]"#)
+        transport.answers["/repos/acme/web/commits/p9/check-runs?per_page=100"] = (200, #"{"check_runs": []}"#)
+        transport.answers["/repos/acme/web/pulls/9/reviews?per_page=100"] = (200, "[]")
         let me = GitHubIdentity(login: "james", teams: ["acme/platform-team"])
         let now = Date(timeIntervalSince1970: 5)
         let state = try XCTUnwrap(try api.snapshot(repo: repo, token: "t", identity: me, now: now))
@@ -62,7 +65,7 @@ final class APITests: XCTestCase {
                        "the head's runs and the one waiting on an older commit, not the old finished one")
         XCTAssertEqual(state.checks["workflow_run:50"]?.workflowRunID, 50)
         XCTAssertEqual(state.checks["workflow_run:52"]?.status, .waiting)
-        XCTAssertEqual(Set(state.pullRequests.keys), [7], "only pull requests that concern the signed-in person")
+        XCTAssertEqual(Set(state.pullRequests.keys), [7, 9], "only pull requests that concern the signed-in person")
         XCTAssertTrue(transport.requests.contains {
             $0.url?.path == "/repos/acme/web/commits/p7/check-runs" && $0.url?.query == "per_page=100"
         }, "check-runs asks for 100 items per page")
@@ -72,6 +75,13 @@ final class APITests: XCTestCase {
         XCTAssertEqual(state.pullRequests[7]?.requestedReviewers, ["james"])
         XCTAssertEqual(state.pullRequests[7]?.requestedTeams, ["platform-team"])
         XCTAssertEqual(state.pullRequests[7]?.isDraft, true)
+        XCTAssertEqual(state.pullRequests[7]?.mergeQueue, MergeQueueState(position: 4),
+                       "merge-queue position comes from the repository's mergeQueue in GraphQL")
+        XCTAssertNil(state.pullRequests[9]?.mergeQueue,
+                     "auto_merge alone does not mean a pull request has entered the merge queue")
+        let graphqlRequest = try XCTUnwrap(transport.requests.first { $0.url?.path == "/graphql" })
+        let graphqlBody = String(decoding: graphqlRequest.httpBody ?? Data(), as: UTF8.self)
+        XCTAssertTrue(graphqlBody.contains(#""branch":"trunk""#), "GraphQL mergeQueue query asks for the default branch")
         XCTAssertEqual(state.pullRequests[7]?.checks["check_run:70"]?.conclusion, .success)
         XCTAssertEqual(Verdicts.verdict(for: try XCTUnwrap(state.pullRequests[7])), .green)
         XCTAssertEqual(state.pullRequests[7]?.reviews, ["james": .approved],

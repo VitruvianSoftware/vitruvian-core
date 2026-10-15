@@ -111,6 +111,8 @@ public final class GitHubTool {
     public private(set) var auth: AuthState = .signedOut
     public private(set) var states: [RepoKey: RepoState] = [:]
     public private(set) var summary = GitHubSummary(states: [:], watched: [])
+    /// The pull request open in the island panel, or nil on the main island page.
+    public private(set) var selectedPull: (repo: RepoKey, number: Int)?
     /// When the next poll is due; nil until signed in.
     public private(set) var nextPollAt: Date?
 
@@ -254,6 +256,7 @@ public final class GitHubTool {
         auth = .signedOut
         states = [:]
         summary = GitHubSummary(states: [:], watched: watched)
+        selectedPull = nil
         nextPollAt = nil
         host.badge(count: nil, dot: false)
         showStatus()
@@ -325,7 +328,9 @@ public final class GitHubTool {
                 self.identity = nil
                 parts.secrets.clear()
                 auth = .failed(.tokenRejected)
+                selectedPull = nil
                 nextPollAt = nil
+                renderIsland()
                 renderSettings()
                 return
             } catch {
@@ -334,6 +339,7 @@ public final class GitHubTool {
         }
         states = next.filter { watched.contains($0.key) }
         summary = GitHubSummary(states: states, watched: watched)
+        clearGoneSelectedPull()
         let active = summary.repositories.contains { $0.running > 0 }
         let seconds = max(5, active ? int(Preference.pollActiveInterval, 10) : int(Preference.pollInterval, 30))
         nextPollAt = parts.now().addingTimeInterval(TimeInterval(seconds))
@@ -345,6 +351,13 @@ public final class GitHubTool {
         }
         firstSnapshot = false
         renderIsland()
+    }
+
+    private func clearGoneSelectedPull() {
+        guard let selected = selectedPull else { return }
+        if !summary.pullRequests.contains(where: { $0.repo == selected.repo && $0.pullRequest.number == selected.number }) {
+            selectedPull = nil
+        }
     }
 
     // MARK: The status on the closed island
@@ -396,6 +409,7 @@ public final class GitHubTool {
     public func preferencesChanged(_ ids: [String]) {
         if ids.contains(Preference.watchlist) {
             summary = GitHubSummary(states: states, watched: watched)
+            clearGoneSelectedPull()
             nextPollAt = parts.now()
             renderIsland()
         }
@@ -417,11 +431,19 @@ public final class GitHubTool {
     // MARK: The island
 
     public func islandPage() -> UITree {
-        Pages.island(summary: summary, auth: auth)
+        if auth.isSignedIn, let selected = selectedPull,
+           let pull = states[selected.repo]?.pullRequests[selected.number],
+           summary.pullRequests.contains(where: { $0.repo == selected.repo && $0.pullRequest.number == selected.number }) {
+            return Pages.pullDetail(repo: selected.repo, pull: pull)
+        }
+        return Pages.island(summary: summary, auth: auth)
     }
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
         switch (event.block, event.kind) {
+        case (Pages.backButton?, .tap):
+            selectedPull = nil
+            return .page(islandPage())
         case (Pages.refreshButton?, .tap):
             refresh()
             return .page(islandPage())
@@ -437,10 +459,27 @@ public final class GitHubTool {
             return .keep
         case (Pages.pullsList?, .tap):
             guard let id = event.row, let named = Pages.pull(ofRow: id),
-                  let url = states[named.repo]?.pullRequests[named.number]?.htmlURL else { return .keep }
-            host.open(url.absoluteString)
+                  states[named.repo]?.pullRequests[named.number] != nil,
+                  summary.pullRequests.contains(where: { $0.repo == named.repo && $0.pullRequest.number == named.number })
+            else { return .keep }
+            selectedPull = named
+            return .page(islandPage())
+        case (Pages.checksList?, .tap):
+            guard let id = event.row else { return .keep }
+            if let check = Pages.check(ofRow: id),
+               let url = states[check.repo]?.pullRequests[check.number]?.checks[check.runID]?.htmlURL {
+                host.open(url.absoluteString)
+            } else if let detail = Pages.pullDetail(ofRow: id),
+                      let url = states[detail.repo]?.pullRequests[detail.number]?.htmlURL {
+                host.open(url.absoluteString)
+            }
             return .keep
         case (let id?, .tap):
+            if let detail = Pages.pullDetail(ofRow: id),
+               let url = states[detail.repo]?.pullRequests[detail.number]?.htmlURL {
+                host.open(url.absoluteString)
+                return .keep
+            }
             guard let repo = Pages.repo(ofRow: id) else { return .keep }
             host.open("https://github.com/\(repo.fullName)/actions")
             return .keep

@@ -25,9 +25,11 @@ unpacked anywhere, then Add a Tool… in the same place.
   repository with the colour of its `main` (green, amber, red, grey) and
   what passed, failed and runs; then the pull requests you wrote or were
   asked to review, each with its checks' colour and its review standing. A
-  tap opens the pull request. "Refresh" asks GitHub now; "Re-run failed
-  checks" re-runs the failed jobs of `main`'s workflow runs. The section's
-  badge counts what is red.
+  tap on a pull request opens its check list (failing first, then running,
+  then passed) and its merge-queue standing; a tap on the pull request header
+  or a check row opens it on GitHub, and "Back" returns to the list.
+  "Refresh" asks GitHub now; "Re-run failed checks" re-runs the failed jobs
+  of `main`'s workflow runs. The section's badge counts what is red.
 - **On the closed island**, from Vitruvian 3.48: a small mark after the
   agent mark, as the app's own GitHub feature drew it. A tick when
   everything is green, the branch glyph while checks run, a red mark when

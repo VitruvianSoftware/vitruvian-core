@@ -11,18 +11,22 @@ import VitruvianToolProtocol
 /// is `Words`, so the app draws the person's language.
 public enum Pages {
     // The ids the events name.
+    public static let backButton = "back"
     public static let refreshButton = "refresh"
     public static let rerunButton = "rerun"
     public static let pullsList = "pulls"
+    public static let checksList = "checks"
     public static let useCLIButton = "useCLI"
     public static let tokenField = "token"
     public static let useCodeButton = "useCode"
     public static let cancelButton = "cancel"
     public static let signOutButton = "signOut"
-    /// The newest pull requests a page lists, and the most of a title it
-    /// shows: a page is at most 256 KB and a list 200 rows, and each row's
-    /// standing is in fifteen languages.
+    /// The newest pull requests a page lists, the most checks a pull request
+    /// page lists, and the most of a title it shows: a page is at most
+    /// 256 KB and a list 200 rows, and each row's standing is in fifteen
+    /// languages.
     public static let maxPullRows = 100
+    public static let maxCheckRows = 150
     public static let maxTitleLength = 120
 
     /// The SF Symbol for a colour.
@@ -39,9 +43,9 @@ public enum Pages {
     // and underscore in parts joined by dots, at most
     // `ManifestLimits.maxNameLength` long. The app draws none of a page with
     // one id that is not (1.0.0 sent `repo:acme/web` and `pr:acme/web#2`,
-    // and the island page was a spinner for ever). So an owner and a name
-    // are each written with `_` as `__` and `.` as `_d`, which leaves no dot
-    // in a part and reads back exactly.
+    // and the island page was a spinner for ever). So an owner, a name and a
+    // check key are each written with `_` as `__`, `.` as `_d` and `:` as
+    // `_c`, which leaves no dot or colon in a part and reads back exactly.
 
     /// A repository row's id, and the repository it names.
     public static func repoRow(_ repo: RepoKey) -> String {
@@ -67,6 +71,33 @@ public enum Pages {
         return (repo, number)
     }
 
+    /// A pull request detail row's id, and what it names.
+    public static func pullDetailRow(_ repo: RepoKey, _ number: Int) -> String {
+        named("prdetail.\(part(repo.owner)).\(part(repo.name)).\(number)",
+              else: "prdetail.x\(mark(repo.fullName)).\(number)")
+    }
+
+    public static func pullDetail(ofRow id: String) -> (repo: RepoKey, number: Int)? {
+        let parts = id.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4, parts[0] == "prdetail", let owner = written(parts[1]), let name = written(parts[2]),
+              let repo = RepoKey(fullName: "\(owner)/\(name)"), let number = Int(parts[3]) else { return nil }
+        return (repo, number)
+    }
+
+    /// A check run row's id, and what it names.
+    public static func checkRow(_ repo: RepoKey, _ number: Int, _ runID: String) -> String {
+        named("check.\(part(repo.owner)).\(part(repo.name)).\(number).\(part(runID))",
+              else: "check.x\(mark(repo.fullName)).\(number).x\(mark(runID))")
+    }
+
+    public static func check(ofRow id: String) -> (repo: RepoKey, number: Int, runID: String)? {
+        let parts = id.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 5, parts[0] == "check", let owner = written(parts[1]), let name = written(parts[2]),
+              let repo = RepoKey(fullName: "\(owner)/\(name)"), let number = Int(parts[3]),
+              let runID = written(parts[4]) else { return nil }
+        return (repo, number, runID)
+    }
+
     /// `id` when the protocol will read it, or `short`: a repository whose
     /// name is too long for an id still has a row, and a tap on it does
     /// nothing, where an id that is not well formed would cost the page.
@@ -74,12 +105,14 @@ public enum Pages {
         ManifestRules.isWellFormedName(id) ? id : short
     }
 
-    /// One part of an id, from an owner or a name.
+    /// One part of an id, from an owner, a name or a check key.
     private static func part(_ name: String) -> String {
-        name.replacingOccurrences(of: "_", with: "__").replacingOccurrences(of: ".", with: "_d")
+        name.replacingOccurrences(of: "_", with: "__")
+            .replacingOccurrences(of: ".", with: "_d")
+            .replacingOccurrences(of: ":", with: "_c")
     }
 
-    /// The owner or name a part was written from, or nil when it is none.
+    /// The owner, name or check key a part was written from, or nil when it is none.
     private static func written(_ part: Substring) -> String? {
         var name = ""
         var escaped = false
@@ -88,6 +121,7 @@ public enum Pages {
                 switch character {
                 case "_": name.append("_")
                 case "d": name.append(".")
+                case "c": name.append(":")
                 default: return nil
                 }
                 escaped = false
@@ -115,6 +149,32 @@ public enum Pages {
 
     // MARK: The island
 
+    private static func reviewStanding(for state: ReviewState) -> String {
+        switch state {
+        case .approved: return "approved"
+        case .changesRequested: return "changesRequested"
+        case .pending: return "reviewPending"
+        }
+    }
+
+    private static func checkStanding(for verdict: Verdict) -> String? {
+        switch verdict {
+        case .red: return "checkFailed"
+        case .amber: return "checkRunning"
+        case .green: return "checkPassed"
+        case .grey: return nil
+        }
+    }
+
+    private static func checkOrder(_ verdict: Verdict) -> Int {
+        switch verdict {
+        case .red: return 0
+        case .amber: return 1
+        case .green: return 2
+        case .grey: return 3
+        }
+    }
+
     public static func island(summary: GitHubSummary, auth: AuthState) -> UITree {
         guard auth.isSignedIn else {
             return UITree {
@@ -138,12 +198,7 @@ public enum Pages {
             } else {
                 list(pullsList, summary.pullRequests.prefix(maxPullRows).map { row in
                     let pull = row.pullRequest
-                    let standing: String
-                    switch pull.reviewState {
-                    case .approved: standing = "approved"
-                    case .changesRequested: standing = "changesRequested"
-                    case .pending: standing = "reviewPending"
-                    }
+                    let standing = reviewStanding(for: pull.reviewState)
                     return UIListRow(id: pullRow(row.repo, pull.number),
                                      title: .plain("#\(pull.number) \(pull.title.prefix(maxTitleLength))"),
                                      subtitle: .plain("\(row.repo.fullName) · @\(pull.author)"),
@@ -154,6 +209,51 @@ public enum Pages {
             button(refreshButton, Words.text("refresh"))
             if summary.repositories.contains(where: { !$0.failedRunIDs.isEmpty }) {
                 button(rerunButton, Words.text("rerunFailed"), style: .destructive)
+            }
+        }
+    }
+
+    /// One pull request's check list, one step in from the island page.
+    public static func pullDetail(repo: RepoKey, pull: PullRequest) -> UITree {
+        let sortedChecks = pull.checks.values.sorted { lhs, rhs in
+            let leftOrder = checkOrder(Verdicts.verdict(for: [lhs]))
+            let rightOrder = checkOrder(Verdicts.verdict(for: [rhs]))
+            if leftOrder != rightOrder { return leftOrder < rightOrder }
+            if lhs.name != rhs.name { return lhs.name < rhs.name }
+            return lhs.key < rhs.key
+        }
+        var rows = sortedChecks.prefix(maxCheckRows).map { check in
+            let verdict = Verdicts.verdict(for: [check])
+            return UIListRow(id: checkRow(repo, pull.number, check.key),
+                             title: .plain(String(check.name.prefix(maxTitleLength))),
+                             icon: icon(for: verdict),
+                             trailing: checkStanding(for: verdict).map(Words.text))
+        }
+        let overflow = sortedChecks.count - maxCheckRows
+        if overflow > 0 {
+            rows.append(UIListRow(id: pullDetailRow(repo, pull.number),
+                                  title: Words.format("moreChecksOnGitHubFormat", String(overflow)),
+                                  icon: "arrow.up.right"))
+        }
+        let standing = reviewStanding(for: pull.reviewState)
+        return UITree {
+            button(backButton, Words.text("back"))
+            row(pullDetailRow(repo, pull.number),
+                .plain("#\(pull.number) \(pull.title.prefix(maxTitleLength))"),
+                subtitle: .plain("\(repo.fullName) · @\(pull.author)"),
+                icon: icon(for: Verdicts.verdict(for: pull)),
+                trailing: Words.text(pull.isDraft ? "draft" : standing))
+            if let queue = pull.mergeQueue {
+                row(nil,
+                    queue.position.map { Words.format("mergeQueuePositionFormat", String($0)) }
+                        ?? Words.text("mergeQueueQueued"),
+                    icon: "arrow.triangle.merge")
+            }
+            heading(Words.text("checks"))
+            if rows.isEmpty {
+                text(Words.text("noChecks"), style: .secondary)
+            } else {
+                list(checksList, rows)
             }
         }
     }
