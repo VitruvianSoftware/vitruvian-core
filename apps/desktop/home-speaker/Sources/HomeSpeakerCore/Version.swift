@@ -22,5 +22,5 @@ import Foundation
 
 public enum HomeSpeakerVersion {
     /// App version — auto-managed by release-please. Do not edit manually.
-    public static let current = "1.13.1" // x-release-please-version
+    public static let current = "1.13.2" // x-release-please-version
 }
