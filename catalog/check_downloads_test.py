@@ -175,6 +175,12 @@ class CheckDownloadsTest(unittest.TestCase):
         more = dict(MANIFEST, uses=["notify", "keystrokes"])
         data = tool_zip(more)
         self.assertIn("uses:", " ".join(self.run_check(catalog(entry_for(data)), data)))
+        self.assertIn(
+            "panels:",
+            " ".join(
+                self.run_check(catalog(entry_for(data, panels=["island"])), data)
+            ),
+        )
 
     def test_validate_is_the_judge_of_the_folder(self):
         data = tool_zip()

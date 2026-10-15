@@ -123,6 +123,10 @@ def entry(manifest, version, url, data):
             {"id": c["id"], "title": c["title"]}
             for c in manifest.get("contributes", {}).get("commands", [])
         ],
+        "panels": [
+            p["placement"]
+            for p in manifest.get("contributes", {}).get("panels", [])
+        ],
     }
 
 

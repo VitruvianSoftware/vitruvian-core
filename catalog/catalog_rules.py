@@ -201,6 +201,17 @@ def manifest_problems(entry, manifest):
             entry.get("commands", []),
         ),
     ]
+    if "panels" in entry:
+        pairs.append(
+            (
+                "panels",
+                [
+                    p.get("placement")
+                    for p in manifest.get("contributes", {}).get("panels", [])
+                ],
+                entry.get("panels"),
+            )
+        )
     for field, theirs, ours in pairs:
         if theirs != ours:
             found.append(

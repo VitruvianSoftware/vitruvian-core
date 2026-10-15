@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-14T20:05:17Z",
+  "generated": "2026-10-15T06:25:00Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -28,7 +28,8 @@
             "en": "Say hello"
           }
         }
-      ]
+      ],
+      "panels": []
     },
     {
       "id": "dev.vitruvian.github",
@@ -104,7 +105,8 @@
             "zh-HK": "打開我的拉取請求"
           }
         }
-      ]
+      ],
+      "panels": ["island", "settings"]
     },
     {
       "id": "dev.vitruvian.homespeaker",
@@ -156,7 +158,8 @@
             "en": "Turn quiet hours on or off"
           }
         }
-      ]
+      ],
+      "panels": ["island", "settings"]
     }
   ]
 }
