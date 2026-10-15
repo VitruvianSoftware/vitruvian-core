@@ -36,7 +36,7 @@ enum Entry {
         // `--announce <text>`, so a reply that happens to contain a flag name
         // is never mistaken for one. Automated, so quiet hours hold.
         if arguments.first == ClaudeStopHook.announceArgument, arguments.count == 2, let text = arguments.last {
-            announce(text, force: false)
+            announce(text, force: false, source: "Claude Code")
         }
 
         if arguments.contains(ClaudeStopHook.argument) {
@@ -67,7 +67,7 @@ enum Entry {
         // Deliberate, like Quick Announce, so it overrides quiet hours but
         // still honours the master switch. Exit 1 on failure so scripts can tell.
         if let i = arguments.firstIndex(of: "--say") {
-            announce(arguments[arguments.index(after: i)...].joined(separator: " "), force: true)
+            announce(arguments[arguments.index(after: i)...].joined(separator: " "), force: true, source: "Say")
         }
 
         // The default speaker's volume, as JSON on stdout -- the contract the
@@ -209,7 +209,9 @@ enum Entry {
     /// say, and exits. Does not exit before this Mac has finished speaking
     /// (docs/local-speech.md rule 9). Exit 0 when anything was heard, or
     /// nothing was meant to be (quiet hours, no outputs); 1 when it failed.
-    private static func announce(_ text: String, force: Bool) -> Never {
+    /// What was heard goes into the history (`BroadcastHistory`) under
+    /// `source`, so the menu bar's Recent Broadcasts shows it.
+    private static func announce(_ text: String, force: Bool, source: String) -> Never {
         let initial = MainActor.assumeIsolated { ConfigManager.shared.config }
         // 20 s covered a home broadcast; the Mac speaking adds its own time.
         var timeout: TimeInterval = 20
@@ -239,6 +241,15 @@ enum Entry {
             case .announced(let home, let local):
                 if home.didSpeak { print("sent to \(config.defaultDevice?.name ?? "the home speakers")") }
                 if local.didSpeak { print("spoke on this Mac") }
+                if outcome.anySpoke {
+                    let heardOn = outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers")
+                    do {
+                        try BroadcastHistory.shared.append(
+                            BroadcastLogItem(text: text, targetName: heardOn, source: source))
+                    } catch {
+                        FileHandle.standardError.write(Data("warning: could not record the broadcast: \(error.localizedDescription)\n".utf8))
+                    }
+                }
                 for failure in outcome.failureMessages {
                     FileHandle.standardError.write(Data("error: \(failure)\n".utf8))
                 }

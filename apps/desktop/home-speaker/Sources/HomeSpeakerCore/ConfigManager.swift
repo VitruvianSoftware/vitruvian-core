@@ -43,7 +43,7 @@ public class ConfigManager: ObservableObject {
     private let fileManager = FileManager.default
     private let configPath: URL
     private let file: SpeakerConfigFile
-    private let logHistoryPath: URL
+    private let history: BroadcastHistory
     private let secrets: SecretStore
 
     /// The bytes this process last wrote to the config file, so a change
@@ -60,7 +60,7 @@ public class ConfigManager: ObservableObject {
     }
 
     nonisolated public static func defaultHistoryURL() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gemini/speaker_history.json")
+        BroadcastHistory.defaultURL()
     }
 
     public init(
@@ -71,11 +71,11 @@ public class ConfigManager: ObservableObject {
     ) {
         self.configPath = configPath
         self.file = SpeakerConfigFile(url: configPath, fileSystem: fileSystem)
-        self.logHistoryPath = historyPath
+        self.history = BroadcastHistory(fileURL: historyPath)
         self.secrets = secrets
         self.config = SpeakerConfig()
         loadConfig()
-        loadHistory()
+        reloadHistory()
         checkConnection()
     }
 
@@ -208,12 +208,24 @@ public class ConfigManager: ObservableObject {
         saveConfig()
     }
 
+    /// Adds `item` to the history file -- under its lock, on top of whatever
+    /// the CLI or the Stop hook added meanwhile -- and shows the result. If
+    /// the file cannot be written the entry still shows, as before.
     public func addLogItem(_ item: BroadcastLogItem) {
-        recentBroadcasts.insert(item, at: 0)
-        if recentBroadcasts.count > 30 {
-            recentBroadcasts = Array(recentBroadcasts.prefix(30))
+        do {
+            recentBroadcasts = try history.append(item)
+        } catch {
+            print("Error saving broadcast history: \(error.localizedDescription)")
+            recentBroadcasts = Array(([item] + recentBroadcasts).prefix(BroadcastHistory.limit))
         }
-        saveHistory()
+    }
+
+    /// Re-reads the history file, so entries `HomeSpeaker --say`, the Stop
+    /// hook or another copy of the app wrote show up. The menu calls this
+    /// each time it opens.
+    public func reloadHistory() {
+        let items = history.load()
+        if items != recentBroadcasts { recentBroadcasts = items }
     }
 
     /// Re-reads the secret store; the Google login is "connected" when a
@@ -222,20 +234,5 @@ public class ConfigManager: ObservableObject {
         let google = secrets.load().google
         isConnectedToGoogle = !(google?.refreshToken.isEmpty ?? true)
         googleEmail = google?.email
-    }
-
-    private func loadHistory() {
-        guard fileManager.fileExists(atPath: logHistoryPath.path) else { return }
-        do {
-            let data = try Data(contentsOf: logHistoryPath)
-            self.recentBroadcasts = try JSONDecoder().decode([BroadcastLogItem].self, from: data)
-        } catch {}
-    }
-
-    private func saveHistory() {
-        do {
-            let data = try JSONEncoder().encode(recentBroadcasts)
-            try data.write(to: logHistoryPath, options: .atomic)
-        } catch {}
     }
 }

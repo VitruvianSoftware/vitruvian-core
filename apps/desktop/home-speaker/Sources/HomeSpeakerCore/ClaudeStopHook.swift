@@ -167,9 +167,29 @@ public enum ClaudeStopHook {
         return false
     }
 
+    /// Sends one announcement to a speaker; true when it was sent. The real
+    /// one is `GoogleHomeClient.shared.broadcast`; tests pass their own.
+    public typealias Broadcaster = @Sendable (
+        _ text: String, _ target: SpeakerDevice, _ structureId: String, _ config: SpeakerConfig
+    ) async throws -> Bool
+
+    public static let googleHomeBroadcaster: Broadcaster = { text, target, structureId, config in
+        try await GoogleHomeClient.shared.broadcast(
+            text: text, target: target, structureId: structureId, config: config, force: false)
+    }
+
     /// Entry point for `HomeSpeaker --claude-stop-hook`. Reads the hook JSON
     /// from `input`, speaks if appropriate, and always returns normally.
-    public static func run(input: Data, configManager: ConfigManager? = nil) async {
+    ///
+    /// A broadcast it sends itself goes into `history`. One it hands to the
+    /// detached `--announce` is recorded by that process, not here, so it is
+    /// never listed twice.
+    public static func run(
+        input: Data,
+        configManager: ConfigManager? = nil,
+        history: BroadcastHistory = .shared,
+        broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
+    ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
               let transcriptPath = payload["transcript_path"] as? String,
               let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
@@ -195,8 +215,10 @@ public enum ClaudeStopHook {
             return
         }
         guard let target = config.defaultDevice else { return }
-        _ = try? await GoogleHomeClient.shared.broadcast(
-            text: spoken, target: target, structureId: config.structureId, config: config, force: false)
+        let sent = (try? await broadcaster(spoken, target, config.structureId, config)) ?? false
+        if sent {
+            _ = try? history.append(BroadcastLogItem(text: spoken, targetName: target.name, source: "Claude Code"))
+        }
     }
 }
 
