@@ -80,13 +80,28 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// (`CredentialsChangedNotice.post()`), so it re-reads them and
         /// starts or restarts its chat monitor.
         public var credentialsChanged: () -> Void
+        /// The home folder the coding agents keep their files in.
+        public var home: URL
+        /// Where HomeSpeaker's settings and secrets files are, for Files.
+        public var settingsURL: URL
+        public var secretsURL: URL
+        /// The installed HomeSpeaker's version, from its bundle; nil when
+        /// it is not installed or does not say.
+        public var homeSpeakerVersion: () -> String?
+        /// Stops a launchd job (`AgentIntegration.launchctlBootout`); the
+        /// tests record instead, so they never touch the live session.
+        public var launchctlBootout: @Sendable (String) -> Void
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
                     later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
                     account: GoogleAccount = NoGoogleAccount(), voices: @escaping () -> [LocalVoice] = { [] },
                     previewVoice: @escaping @Sendable (String) async throws -> Void = { _ in },
                     chat: ChatCredentials = NoChatCredentials(), gwsLocation: @escaping () -> String? = { nil },
-                    isAppRunning: @escaping () -> Bool = { false }, credentialsChanged: @escaping () -> Void = {}) {
+                    isAppRunning: @escaping () -> Bool = { false }, credentialsChanged: @escaping () -> Void = {},
+                    home: URL = FileManager.default.homeDirectoryForCurrentUser,
+                    settingsURL: URL = ConfigManager.defaultConfigURL(), secretsURL: URL = SecretStore.defaultURL(),
+                    homeSpeakerVersion: @escaping () -> String? = { nil },
+                    launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -99,6 +114,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.gwsLocation = gwsLocation
             self.isAppRunning = isAppRunning
             self.credentialsChanged = credentialsChanged
+            self.home = home
+            self.settingsURL = settingsURL
+            self.secretsURL = secretsURL
+            self.homeSpeakerVersion = homeSpeakerVersion
+            self.launchctlBootout = launchctlBootout
         }
     }
 
@@ -124,6 +144,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     public private(set) var selectedHomeId: String?
     public private(set) var previewing = false
     public private(set) var removingSpeakers = false
+    /// The OAuth client typed under Google Cloud, held until Save. The
+    /// secret is never drawn back into its field.
+    public private(set) var draftClientId = ""
+    public private(set) var draftClientSecret = ""
     private var voices: [LocalVoice]?
     /// Asked once each time Settings opens, so a failure is not asked again
     /// at every redraw.
@@ -138,9 +162,17 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// program this tool located. Never at the tool's own `bin/tool`, which
     /// `AgentIntegration`'s default (the running program) would be here;
     /// nil when HomeSpeaker is not installed, so there is nothing to point at.
-    public func agentIntegration(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> AgentIntegration? {
+    public func agentIntegration(home: URL? = nil) -> AgentIntegration? {
         guard let program = parts.driver.program else { return nil }
-        return AgentIntegration(home: home, executablePath: program.path)
+        return AgentIntegration(home: home ?? parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
+    }
+
+    /// The agents' state and the cleanup, which need no HomeSpeaker: the
+    /// installing integration when there is one, so its own hook reads as
+    /// installed, else one pointed at nothing, which reads every hook as
+    /// not HomeSpeaker's current one and refuses to install any.
+    public func agentStatusIntegration() -> AgentIntegration {
+        agentIntegration() ?? AgentIntegration(home: parts.home, executablePath: "", bootout: parts.launchctlBootout)
     }
 
     // MARK: - The app's messages
@@ -231,6 +263,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             askedLoginItem = false
             askedHomes = false
             voices = nil
+            draftClientId = parts.account.customOAuthClientId ?? ""
+            draftClientSecret = ""
         }
         openPanels.insert(Self.settingsPanel)
         reload()
@@ -249,6 +283,33 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 self.section = section
                 removingSpeakers = false
                 return .page(settingsTree())
+            case Pages.Block.openGoogleCloud?:
+                section = .googleCloud
+                removingSpeakers = false
+                return .page(settingsTree())
+            case Pages.Block.oauthClientId?:
+                guard event.kind == .change || event.kind == .submit, let text = event.text else { return .keep }
+                let wasEmpty = draftClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                draftClientId = text
+                // Only Save's enabled state depends on it: a redraw for
+                // every edit would also wipe a secret typed but not saved.
+                guard wasEmpty != text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .keep }
+            case Pages.Block.oauthClientSecret?:
+                // The page always draws this field empty, so a redraw now
+                // would wipe what was typed before Save.
+                guard event.kind == .change || event.kind == .submit, let text = event.text else { return .keep }
+                draftClientSecret = text
+                return .keep
+            case Pages.Block.saveOAuthClient?:
+                try saveOAuthClient()
+            case Pages.Block.clearOAuthClient?:
+                try parts.account.clearOAuthClient()
+                draftClientId = ""
+                draftClientSecret = ""
+                setupNotice = "OAuth client cleared"
+            case Pages.Block.removeLegacyAgent?:
+                try agentStatusIntegration().removeLegacyLaunchAgent()
+                setupNotice = "Legacy launch agent removed"
             case Pages.Block.signIn?:
                 try setupJob(.signIn(chatOnly: false))
             case Pages.Block.signOut?:
@@ -292,6 +353,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     parts.link.log("the settings could not be saved: \(error)")
                     reload()
                 }
+            case let id?:
+                guard let (action, agent) = Pages.Block.agentAction(id) else { return .keep }
+                try agentAction(action, agent)
             default:
                 return .keep
             }
@@ -299,6 +363,40 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             setupNotice = Self.words(error)
         }
         return .page(settingsTree())
+    }
+
+    /// Saves the typed client in one write. A secret left untyped keeps
+    /// the one already saved for the same id; a new id drops it, so a
+    /// client is never paired with another client's secret.
+    private func saveOAuthClient() throws {
+        let id = draftClientId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { throw CommandRefused("type the Client ID first") }
+        let secret = draftClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        try parts.account.saveOAuthClient(id: id, secret: secret.isEmpty ? nil : secret)
+        draftClientId = id
+        draftClientSecret = ""
+        setupNotice = "OAuth client saved. Sign in from General to use it"
+    }
+
+    /// What an AI Agents button does. Only installing needs HomeSpeaker,
+    /// since a hook runs it; the rest work on the files alone.
+    private func agentAction(_ action: Pages.Block.AgentAction, _ agent: CodingAgent) throws {
+        let name = agent.displayName
+        switch action {
+        case .installHook:
+            guard let integration = agentIntegration() else { throw CommandRefused("HomeSpeaker is not installed") }
+            try integration.installHook(for: agent)
+            setupNotice = "\(name) hook installed"
+        case .removeHook:
+            try agentStatusIntegration().removeHook(for: agent)
+            setupNotice = "\(name) hook removed"
+        case .disableRival:
+            try agentStatusIntegration().disableRivalHook(for: agent)
+            setupNotice = "Disabled the duplicate hook; replies are announced once now"
+        case .addInstruction:
+            try agentStatusIntegration().addBroadcastInstruction(for: agent)
+            setupNotice = "Instruction added to \(agent.instructionFileName)"
+        }
     }
 
     /// Applies a settings change to `config`. False when the event changes
@@ -490,6 +588,26 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             let account = parts.account
             status.account = Pages.Account(isSignedIn: account.isSignedIn, email: account.email,
                                            hasOAuthClient: account.hasOAuthClient, hasAntigravityTokens: account.hasAntigravityTokens)
+            if section == .googleCloud {
+                status.account.customOAuthClientId = account.customOAuthClientId
+                status.account.hasCustomOAuthClientSecret = account.hasCustomOAuthClientSecret
+                status.account.hasBundledOAuthClient = account.hasBundledOAuthClient
+                status.draftClientId = draftClientId
+                status.draftClientSecretTyped = !draftClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                status.files = Pages.Files(settings: parts.settingsURL.path, secrets: parts.secretsURL.path,
+                                           homeSpeakerVersion: parts.driver.isInstalled ? parts.homeSpeakerVersion() : nil)
+            }
+            if section == .agents {
+                // The agents' files are read here and nowhere else.
+                let integration = agentStatusIntegration()
+                let installer = agentIntegration()
+                status.agents = Pages.Agents(
+                    statuses: CodingAgent.allCases.map(integration.status(of:)),
+                    hookCommands: Dictionary(uniqueKeysWithValues: CodingAgent.allCases.compactMap { agent in
+                        installer.map { (agent, $0.hookCommand(for: agent)) }
+                    }),
+                    legacyLaunchAgent: integration.isLegacyLaunchAgentInstalled())
+            }
             if section == .monitor {
                 let chat = parts.chat
                 status.chat = Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,

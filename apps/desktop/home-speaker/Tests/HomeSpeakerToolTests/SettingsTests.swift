@@ -125,8 +125,8 @@ final class SettingsTests: XCTestCase {
             return XCTFail("the switcher comes first, as a choice")
         }
         XCTAssertEqual(switcher.value, "general")
-        XCTAssertEqual(switcher.options.map(\.value), ["general", "speakers", "monitor"])
-        XCTAssertEqual(switcher.options.map { $0.title.text(for: "en") }, ["General", "Speakers", "Chat & Slack"])
+        XCTAssertEqual(switcher.options.map(\.value), ["general", "speakers", "monitor", "agents", "googleCloud"])
+        XCTAssertEqual(switcher.options.map { $0.title.text(for: "en") }, ["General", "Speakers", "Chat & Slack", "AI Agents", "Google Cloud"])
         tree = event(tool, Pages.Block.section, .change, .string("speakers"))
         XCTAssertEqual(tool.section, .speakers)
         XCTAssertNotNil(content(tree, Pages.Block.discover))
@@ -137,8 +137,8 @@ final class SettingsTests: XCTestCase {
         link.features = []
         tree = show(tool, .general)
         XCTAssertEqual(tool.section, .general)
-        XCTAssertEqual(rows(tree, Pages.Block.section).map(\.id), ["general", "speakers", "monitor"])
-        XCTAssertEqual(rows(tree, Pages.Block.section).map { $0.trailing?.text(for: "en") }, ["✓", nil, nil])
+        XCTAssertEqual(rows(tree, Pages.Block.section).map(\.id), ["general", "speakers", "monitor", "agents", "googleCloud"])
+        XCTAssertEqual(rows(tree, Pages.Block.section).map { $0.trailing?.text(for: "en") }, ["✓", nil, nil, nil, nil])
         XCTAssertNotNil(content(tree, Pages.Block.broadcasting))
     }
 
@@ -183,6 +183,8 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(texts(tool.settingsPage()).contains { $0.contains("does not read") })
         XCTAssertTrue(texts(show(tool, .speakers)).contains { $0.contains("does not read") })
         XCTAssertTrue(texts(show(tool, .monitor)).contains { $0.contains("does not read") })
+        XCTAssertTrue(texts(show(tool, .agents)).contains { $0.contains("does not read") })
+        XCTAssertTrue(texts(show(tool, .googleCloud)).contains { $0.contains("does not read") })
     }
 
     func testSignedOutOffersSignInAndTheAntigravityImport() {
@@ -193,13 +195,15 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains("Not signed in · "))
         XCTAssertEqual(button(tree, Pages.Block.signIn)?.title.text(for: "en"), "Sign In…")
         XCTAssertNil(content(tree, Pages.Block.signOut))
-        XCTAssertTrue(texts(tree).contains { $0.contains("configure one in HomeSpeaker") })
+        XCTAssertTrue(texts(tree).contains { $0.contains("Google Cloud project of your own") })
+        XCTAssertEqual(button(tree, Pages.Block.openGoogleCloud)?.title.text(for: "en"), "Set up…")
         XCTAssertNotNil(button(tree, Pages.Block.importAntigravity))
         XCTAssertTrue(texts(tree).contains { $0.contains("Antigravity connector") })
         account.hasOAuthClient = true
         account.hasAntigravityTokens = false
         tree = tool.settingsPage()
-        XCTAssertFalse(texts(tree).contains { $0.contains("configure one in HomeSpeaker") })
+        XCTAssertFalse(texts(tree).contains { $0.contains("Google Cloud project of your own") })
+        XCTAssertNil(content(tree, Pages.Block.openGoogleCloud))
         XCTAssertNil(content(tree, Pages.Block.importAntigravity))
     }
 

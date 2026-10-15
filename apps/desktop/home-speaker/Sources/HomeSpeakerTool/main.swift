@@ -64,7 +64,14 @@ let speaker = HomeSpeakerTool(parts: .init(
     chat: SecretStoreChatCredentials(),
     gwsLocation: { GwsChatClient.locate() },
     isAppRunning: { ProcessDriver.isAppRunning() },
-    credentialsChanged: { CredentialsChangedNotice.post() }))
+    credentialsChanged: { CredentialsChangedNotice.post() },
+    // Read afresh each time, not through `Bundle`, which caches the
+    // Info.plist: an updated HomeSpeaker shows its new version.
+    homeSpeakerVersion: {
+        guard let bundle = appBundle else { return nil }
+        let plist = bundle.bundleURL.appendingPathComponent("Contents/Info.plist")
+        return NSDictionary(contentsOf: plist)?["CFBundleShortVersionString"] as? String
+    }))
 
 link.panels[HomeSpeakerTool.islandPanel] = tool.panel(HomeSpeakerTool.islandPanel, onOpen: { app, _ in
     link.app = app

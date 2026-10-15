@@ -153,17 +153,36 @@ public struct AgentIntegration {
     private let fileManager = FileManager.default
     private let home: URL
     private let executablePath: String
+    /// Stops a launchd job by its service target (`gui/<uid>/<label>`).
+    /// Injected so tests never stop a job in the live login session.
+    private let bootout: @Sendable (String) -> Void
 
     /// `executablePath` is the HomeSpeaker program the hooks will run. A
     /// process other than the app (the Vitruvian tool's `bin/tool`) must pass
     /// the HomeSpeaker it located: the default is whatever is running, and a
-    /// hook pointed at another program would never speak.
+    /// hook pointed at another program would never speak. An empty path
+    /// gives an integration that can read the agents' state and clean up,
+    /// but never install a hook (`installHook` refuses it).
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        executablePath: String = AgentIntegration.runningExecutable()
+        executablePath: String = AgentIntegration.runningExecutable(),
+        bootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout
     ) {
         self.home = home
         self.executablePath = executablePath
+        self.bootout = bootout
+    }
+
+    /// `launchctl bootout <target>`, waited for. A job that is not loaded
+    /// makes launchctl fail, which is fine: the plist is removed regardless.
+    public static let launchctlBootout: @Sendable (String) -> Void = { target in
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        proc.arguments = ["bootout", target]
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+        } catch {}
     }
 
     /// The running program as an absolute path: the bundle's executable, else
@@ -453,12 +472,11 @@ public struct AgentIntegration {
         fileManager.fileExists(atPath: legacyLaunchAgentURL.path)
     }
 
+    /// The launchd service target the legacy agent runs as in this login.
+    public static var legacyLaunchAgentTarget: String { "gui/\(getuid())/\(legacyLaunchAgentLabel)" }
+
     public func removeLegacyLaunchAgent() throws {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        proc.arguments = ["bootout", "gui/\(getuid())/\(Self.legacyLaunchAgentLabel)"]
-        try? proc.run()
-        proc.waitUntilExit()
+        bootout(Self.legacyLaunchAgentTarget)
         try fileManager.removeItem(at: legacyLaunchAgentURL)
     }
 }

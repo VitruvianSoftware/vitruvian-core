@@ -530,13 +530,10 @@ final class ChatSlackTests: XCTestCase {
 
     // MARK: - The general footer
 
-    func testTheGeneralFooterNamesOnlyWhatIsStillInHomeSpeaker() {
+    func testTheGeneralPageNoLongerSendsAnythingToHomeSpeaker() {
         let page = Pages.settings(Pages.Status())
-        let footer = texts(page).last ?? ""
-        XCTAssertTrue(footer.contains("coding-agent hooks"))
-        XCTAssertTrue(footer.contains("Google Cloud OAuth client"))
-        XCTAssertFalse(footer.contains("Slack"), "Slack is set up here now")
-        XCTAssertFalse(footer.contains("Google Chat"))
+        XCTAssertFalse(texts(page).contains { $0.contains("set up in HomeSpeaker") }, "agents and Google Cloud are set up here now")
+        XCTAssertFalse(texts(page).contains { $0.contains("coding-agent hooks") })
     }
 
     // MARK: - Limits
