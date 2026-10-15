@@ -22,14 +22,21 @@ unpacked anywhere, then Add a Tool… in the same place.
 ## What it does
 
 - **In the island**, in the Explore gallery, a section "GitHub": each watched
-  repository with the colour of its `main` (green, amber, red, grey) and
-  what passed, failed and runs; then the pull requests you wrote or were
-  asked to review, each with its checks' colour and its review standing. A
-  tap on a pull request opens its check list (failing first, then running,
-  then passed) and its merge-queue standing; a tap on the pull request header
-  or a check row opens it on GitHub, and "Back" returns to the list.
-  "Refresh" asks GitHub now; "Re-run failed checks" re-runs the failed jobs
-  of `main`'s workflow runs. The section's badge counts what is red.
+  repository with the colour of its `main` (green, amber, red, grey), what
+  passed, failed and runs, and its branch and head (`main · a1b2c3d`); the
+  merge queue of the repository in view, every entry in queue order with
+  where it stands; then the pull requests you wrote or were asked to
+  review, each with its checks' colour and its review standing. A tap on a
+  repository opens its branch's check list (failing first, then running,
+  then passed, then the rest) and its merge queue; a tap on a pull request
+  opens its check list and its merge-queue standing. On either, a tap on
+  the header opens it on GitHub (a repository's Actions page), a tap on a
+  check opens the check, and "Back" returns to the list. With more than one
+  repository watched, from Vitruvian 3.48, a menu picks the repository in
+  view. "Refresh" asks GitHub now; "Open in GitHub" opens the repository in
+  view; "Re-run failed checks" re-runs the failed jobs of `main`'s workflow
+  runs. Under them, the time GitHub was last read. The section's badge
+  counts what is red.
 - **On the closed island**, from Vitruvian 3.48: a small mark after the
   agent mark, as the app's own GitHub feature drew it. A tick when
   everything is green, the branch glyph while checks run, a red mark when
@@ -42,7 +49,11 @@ unpacked anywhere, then Add a Tool… in the same place.
   "3", or "99+" above 99. Every other state shows no number. Vitruvian
   3.48 and 3.49 show the mark without it.
 - **In Settings**, in the tool's detail: the account (sign in with the
-  GitHub CLI's login, a token, or a code; sign out), and below it the
+  GitHub CLI's login, a token, or a code; sign out; a link makes a token on
+  GitHub with the scopes the tool reads, `repo`, `workflow` and `read:org`;
+  "Copy" puts a sign-in code on the clipboard), a button for each mouse
+  light, to try it now, when a mouse command is found and the mouse shows
+  the status, and below it the
   settings the app draws for the tool: the watched repositories, the two
   poll intervals, and the mouse's command, colours and styles. From
   Vitruvian 3.48 each of the five mouse lights is a menu: the ten colours,

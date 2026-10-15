@@ -52,7 +52,10 @@ bundles; this is a tool, and its one artifact is a zip (see "Releases").
   setting a new type, and never rewrite a stored value: `MouseTests` holds
   every option to what `MouseLight.parse` reads and to what the app's
   feature handed over (3.46 to 3.50.1): those values stay in people's
-  storage.
+  storage. The island's repository picker is a `choice` (from 3.48), sent
+  only when `Host.supports(.choice)`; an older app gets no picker, and
+  each repository's own page (a tap on its row) still shows its merge
+  queue.
 - **The colour options' titles are English only.** Eighty options in
   fifteen languages would pass the 65,536 bytes every app allows a manifest;
   `MouseTests` keeps the file under three quarters of that.

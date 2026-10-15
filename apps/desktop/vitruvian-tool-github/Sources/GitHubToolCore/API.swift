@@ -161,6 +161,10 @@ public final class GitHubAPI {
             }
         }
 
+        // One query a poll, whatever pull requests there are: the island
+        // shows the whole queue, and the person's pull requests take their
+        // positions from it.
+        let queue = mergeQueue(repo: repo, branch: defaultBranch, token: token)
         var pulls: [Int: PullRequest] = [:]
         var pullParts = URLComponents(url: base.appendingPathComponent("pulls"), resolvingAgainstBaseURL: false)
         pullParts?.queryItems = [URLQueryItem(name: "state", value: "open"), URLQueryItem(name: "per_page", value: "100")]
@@ -190,9 +194,8 @@ public final class GitHubAPI {
                 if let identity, !Verdicts.concerns(candidate, in: repo, identity: identity) { continue }
                 candidates.append(candidate)
             }
-            let queuePositions = candidates.isEmpty
-                ? [:]
-                : mergeQueuePositions(repo: repo, branch: defaultBranch, token: token)
+            var queuePositions: [Int: MergeQueueState] = [:]
+            for entry in queue?.entries ?? [] { queuePositions[entry.number] = MergeQueueState(position: entry.position) }
             candidates.sort { $0.number > $1.number }
             for (index, var candidate) in candidates.enumerated() {
                 candidate.mergeQueue = queuePositions[candidate.number]
@@ -211,60 +214,82 @@ public final class GitHubAPI {
             }
         }
         return RepoState(repo: repo, defaultBranch: defaultBranch, headSHA: headSHA, checks: checks,
-                         pullRequests: pulls, updatedAt: now)
+                         pullRequests: pulls, mergeQueue: queue, updatedAt: now)
     }
 
-    private func mergeQueuePositions(repo: RepoKey, branch: String, token: String) -> [Int: MergeQueueState] {
+    /// The default branch's merge queue, every entry in it, from GraphQL:
+    /// REST has no merge queue. Nil when the branch has none, or the answer
+    /// was not one. GraphQL is a `POST`, which GitHub answers without an
+    /// ETag, so this is asked in full each poll.
+    public func mergeQueue(repo: RepoKey, branch: String, token: String) -> MergeQueue? {
         struct Query: Encodable {
             let query: String
             let variables: [String: String]
         }
+        guard let body = try? JSONEncoder().encode(Query(
+            query: Self.mergeQueueQuery,
+            variables: ["owner": repo.owner, "name": repo.name, "branch": branch]
+        )),
+        let (data, response) = try? send(url: apiURL.appendingPathComponent("graphql"), token: token, method: "POST",
+                                         body: body),
+        response.statusCode == 200 else { return nil }
+        return Self.mergeQueue(from: data)
+    }
+
+    static let mergeQueueQuery = """
+        query($owner: String!, $name: String!, $branch: String!) {
+          repository(owner: $owner, name: $name) {
+            mergeQueue(branch: $branch) {
+              url
+              entries(first: 100) {
+                nodes { position state pullRequest { number title url author { login } } }
+              }
+            }
+          }
+        }
+        """
+
+    /// The queue in a GraphQL answer; nil when it names none. An entry
+    /// without a pull request is left out.
+    static func mergeQueue(from data: Data) -> MergeQueue? {
         struct Response: Decodable {
             struct DataField: Decodable {
                 struct Repository: Decodable {
-                    struct MergeQueue: Decodable {
+                    struct Queue: Decodable {
                         struct Entries: Decodable {
                             struct Node: Decodable {
-                                struct Pull: Decodable { let number: Int }
+                                struct Pull: Decodable {
+                                    struct Author: Decodable { let login: String? }
+                                    let number: Int
+                                    let title: String?
+                                    let url: String?
+                                    let author: Author?
+                                }
                                 let position: Int?
+                                let state: String?
                                 let pullRequest: Pull?
                             }
                             let nodes: [Node?]?
                         }
+                        let url: String?
                         let entries: Entries?
                     }
-                    let mergeQueue: MergeQueue?
+                    let mergeQueue: Queue?
                 }
                 let repository: Repository?
             }
             let data: DataField?
         }
-        let query = """
-            query($owner: String!, $name: String!, $branch: String!) {
-              repository(owner: $owner, name: $name) {
-                mergeQueue(branch: $branch) {
-                  entries(first: 100) {
-                    nodes { position pullRequest { number } }
-                  }
-                }
-              }
-            }
-            """
-        guard let body = try? JSONEncoder().encode(Query(
-            query: query,
-            variables: ["owner": repo.owner, "name": repo.name, "branch": branch]
-        )),
-        let (data, response) = try? send(url: apiURL.appendingPathComponent("graphql"), token: token, method: "POST",
-                                         body: body),
-        response.statusCode == 200,
-        let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return [:] }
-        var positions: [Int: MergeQueueState] = [:]
-        for node in (decoded.data?.repository?.mergeQueue?.entries?.nodes ?? []).compactMap({ $0 }) {
-            if let number = node.pullRequest?.number {
-                positions[number] = MergeQueueState(position: node.position)
-            }
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: data),
+              let queue = decoded.data?.repository?.mergeQueue else { return nil }
+        let entries = (queue.entries?.nodes ?? []).compactMap { node -> MergeQueueEntry? in
+            guard let node, let pull = node.pullRequest else { return nil }
+            return MergeQueueEntry(position: node.position, number: pull.number, title: pull.title ?? "",
+                                   author: pull.author?.login ?? "",
+                                   state: MergeQueueEntryState(raw: node.state ?? ""),
+                                   htmlURL: pull.url.flatMap(URL.init(string:)))
         }
-        return positions
+        return MergeQueue(entries: entries, htmlURL: queue.url.flatMap(URL.init(string:)))
     }
 
     private func checkRuns(base: URL, sha: String, token: String) -> [String: CheckRun]? {

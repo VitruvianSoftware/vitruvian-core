@@ -26,6 +26,7 @@
   "license": "GPL-3.0-or-later",
   "icon": "arrow.triangle.branch",
   "uses": [
+    "clipboard.write",
     "notify",
     "open",
     "storage"
