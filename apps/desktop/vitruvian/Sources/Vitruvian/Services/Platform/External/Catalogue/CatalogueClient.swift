@@ -35,6 +35,26 @@ package struct CatalogueEntry: Equatable, Sendable {
     /// The services its manifest names in `uses`, as the manifest spells them.
     package let uses: [String]
     package let commands: [Command]
+    /// The placements of the panels its manifest names in `contributes.panels`;
+    /// nil when the catalog entry predates `panels`.
+    package let panels: [String]?
+
+    package init(id: ToolID, name: LocalizedText, publisher: String, summary: LocalizedText, version: String,
+                 protocolVersion: String, minimumAppVersion: String, source: URL, download: Download,
+                 uses: [String], commands: [Command], panels: [String]? = nil) {
+        self.id = id
+        self.name = name
+        self.publisher = publisher
+        self.summary = summary
+        self.version = version
+        self.protocolVersion = protocolVersion
+        self.minimumAppVersion = minimumAppVersion
+        self.source = source
+        self.download = download
+        self.uses = uses
+        self.commands = commands
+        self.panels = panels
+    }
 }
 
 /// The list of tools, read and checked. It is only ever made from bytes whose
@@ -80,6 +100,7 @@ package struct Catalogue: Equatable, Sendable {
             let download: Download
             let uses: [String]
             let commands: [Command]
+            let panels: [String]?
         }
 
         let version: Int
@@ -123,7 +144,8 @@ package struct Catalogue: Equatable, Sendable {
                 id: id, name: tool.name, publisher: tool.publisher, summary: tool.summary, version: tool.version,
                 protocolVersion: tool.protocol, minimumAppVersion: tool.minimumAppVersion, source: source,
                 download: .init(url: url, sha256: tool.download.sha256, size: tool.download.size),
-                uses: tool.uses, commands: tool.commands.map { .init(id: $0.id, title: $0.title) }))
+                uses: tool.uses, commands: tool.commands.map { .init(id: $0.id, title: $0.title) },
+                panels: tool.panels))
         }
         return Catalogue(generated: generated, tools: tools)
     }

@@ -319,8 +319,10 @@ Each row of that section carries a pill, `ExternalToolRow.kind`: a package
 whose manifest has any `panels` (island, Settings or window) is an
 Extension, one with none is a Tool. The manifest's fields and the protocol
 keep the word "tool" for both. A package that is held back has no manifest
-the app reads, so it is badged Tool until it is updated. The catalog's
-sheet has no pill: `CatalogueEntry` carries no panels, so it cannot tell.
+the app reads, so it is badged Tool until it is updated. A row on the
+catalog's sheet (`CatalogueRow.kindBadge`) carries the same pill when its
+entry in `catalog/tools.json` lists `panels` (`[]` for Tool, non-empty for
+Extension), and none when an older entry leaves `panels` out.
 The section's words name every place an extension's page may be, never the
 island alone, since some extensions only add a Settings part or a window.
 

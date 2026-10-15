@@ -77,14 +77,19 @@ enum CatalogueListTests {
 
     static func reading(_ suite: TestSuite) {
         let permits = CatalogueFixtures.source.permits
-        let read = Catalogue.read(CatalogueFixtures.list([CatalogueFixtures.entry()]), permits: permits)
+        let read = Catalogue.read(CatalogueFixtures.list([
+            CatalogueFixtures.entry(),
+            CatalogueFixtures.entry(["id": "com.acme.tool", "panels": [] as [String]]),
+            CatalogueFixtures.entry(["id": "com.acme.extension", "panels": ["island", "settings"]]),
+        ]), permits: permits)
         let entry = read?.tools.first
-        suite.expect(read?.tools.count == 1 && entry?.id == ToolID("com.acme.deploys")
+        suite.expect(read?.tools.count == 3 && entry?.id == ToolID("com.acme.deploys")
                          && entry?.name.text(for: "fr") == "Déploiements" && entry?.version == "1.2.0"
                          && entry?.download.size == 4096 && entry?.uses == ["clipboard.write", "notify", "storage"]
                          && entry?.commands.map(\.id) == ["copyLatest"]
+                         && read?.tools.map(\.panels) == [nil, [], ["island", "settings"]]
                          && read?.generated == ISO8601DateFormatter().date(from: "2026-11-02T10:00:00Z"),
-                     "a list is read: each entry's words, version, download and what it says it uses")
+                     "a list is read: each entry's words, version, download, what it says it uses, and its panel placements")
 
         let broken: [(String, [String: Any], [String: Any])] = [
             ("an id with no dot", ["id": "deploys"], [:]),

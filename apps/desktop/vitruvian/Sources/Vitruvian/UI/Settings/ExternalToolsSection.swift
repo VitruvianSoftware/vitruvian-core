@@ -839,7 +839,7 @@ private struct ExternalToolStatusLabel: View {
 }
 
 /// "Extension" or "Tool", in a quiet pill beside the byline.
-private struct ExternalToolKindBadge: View {
+struct ExternalToolKindBadge: View {
     let text: String
 
     var body: some View {

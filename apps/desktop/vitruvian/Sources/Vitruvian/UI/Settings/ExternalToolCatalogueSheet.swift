@@ -24,6 +24,10 @@ package struct CatalogueRow: Identifiable, Equatable {
     package let name: String
     /// The publisher and the version, as the catalog copies them.
     package let byline: String
+    /// The pill beside the byline ("Extension" or "Tool", in the person's
+    /// language), when the entry carries `panels`; nil when it predates
+    /// `panels`.
+    package let kindBadge: String?
     package let summary: String
     /// What the tool says it uses, in the app's plain words.
     package let uses: [String]
@@ -75,6 +79,7 @@ package struct CatalogueSheetContent: Equatable {
                     entry: entry,
                     name: ToolOwnWords.oneLine(entry.name.text(for: tag) ?? entry.id.rawValue),
                     byline: "\(ToolOwnWords.oneLine(entry.publisher)) · \(entry.version)",
+                    kindBadge: entry.panels.map { $0.isEmpty ? strings.kindTool : strings.kindExtension },
                     summary: entry.summary.text(for: tag) ?? "",
                     uses: entry.uses.compactMap { Capability(rawValue: $0).flatMap(strings.use) },
                     action: action,
@@ -175,7 +180,12 @@ package struct ExternalToolCatalogueSheet: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(row.name).lineLimit(1)
-                Text(row.byline).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(row.byline).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if let badge = row.kindBadge {
+                        ExternalToolKindBadge(text: badge)
+                    }
+                }
                 Text(row.summary).font(.callout).lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 if !row.uses.isEmpty {
                     // The app's own words for each service, one to a line,

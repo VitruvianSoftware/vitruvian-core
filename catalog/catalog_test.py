@@ -91,6 +91,9 @@ class CatalogTest(unittest.TestCase):
 
     def test_a_good_entry_passes(self):
         self.assertEqual(self.refused(catalog_with(GOOD)), [])
+        self.assertEqual(
+            self.refused(catalog_with(entry(panels=["island", "settings"]))), []
+        )
 
     def test_each_rule_refuses(self):
         cases = {
@@ -116,6 +119,8 @@ class CatalogTest(unittest.TestCase):
             "an empty download": entry(download__size=0),
             "a download over 256 MB": entry(download__size=268435457),
             "a service the protocol has not": entry(uses=["camera"]),
+            "a panel placement the protocol has not": entry(panels=["menubar"]),
+            "a panel placement listed twice": entry(panels=["island", "island"]),
             "a field the schema does not name": entry(homepage="https://example.com"),
             "two commands with one id": entry(
                 commands=[

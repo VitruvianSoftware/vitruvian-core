@@ -51,16 +51,22 @@ enum CatalogueScreensTests {
         rig.install()
         rig.serve([CatalogueFixtures.entry(["version": "1.3.0"]),
                    CatalogueFixtures.entry(["id": "com.acme.other", "name": ["en": "Other", "fr": "Autre"],
-                                            "uses": ["keystrokes"]])])
+                                            "uses": ["keystrokes"], "panels": [] as [String]]),
+                   CatalogueFixtures.entry(["id": "com.acme.github", "name": ["en": "GitHub"],
+                                            "panels": ["island", "settings"]])])
         rig.watch.refresh()
         let listed = rows(content(rig))
-        suite.expect(listed.map(\.action) == [.update, .install] && listed.map(\.actionText) == ["Update", "Install"]
+        suite.expect(listed.map(\.action) == [.update, .install, .install]
+                         && listed.map(\.actionText) == ["Update", "Install", "Install"]
+                         && listed.map(\.kindBadge) == [nil, "Tool", "Extension"]
+                         && rows(content(rig, language: .fr)).map(\.kindBadge) == [nil, "Outil", "Module d’extension"]
                          && listed.first?.byline == "Acme · 1.3.0"
                          && listed.first?.summary == "Copies the address of your latest deploy."
-                         && listed.last?.uses == ["Paste and press menu commands in other apps"]
-                         && rows(content(rig, language: .fr)).last?.name == "Autre",
-                     "each tool is listed with its name, publisher, version, summary and what it says it uses, and "
-                         + "Install, or Update when a newer version of one installed from the catalog is listed")
+                         && listed[1].uses == ["Paste and press menu commands in other apps"]
+                         && rows(content(rig, language: .fr))[1].name == "Autre",
+                     "each tool is listed with its name, publisher, version, kind pill when its entry carries panels, "
+                         + "summary and what it says it uses, and Install, or Update when a newer version of one "
+                         + "installed from the catalog is listed")
 
         let byHand = CatalogueWatchTests.Rig()
         defer { byHand.close() }
