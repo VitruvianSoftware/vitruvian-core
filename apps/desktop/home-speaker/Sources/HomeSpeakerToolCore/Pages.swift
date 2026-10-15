@@ -108,24 +108,25 @@ public enum Pages {
         public var hasChatAccess = false
         /// Where the `gws` command is; nil when it is not installed.
         public var gwsPath: String?
-        /// HomeSpeaker.app is running, and so can read messages.
-        public var appRunning = false
-        /// What the app's monitor last wrote about itself
-        /// (`ChatMonitorStatusFile`), as far as it can be believed: with the
-        /// app not running it never reads as running, whatever the file says.
+        /// The process that runs the chat monitor (HomeSpeaker.app, for the
+        /// app) is running, and so can read messages.
+        public var ownerRunning = false
+        /// What the monitor last wrote about itself (`ChatMonitorStatusFile`),
+        /// as far as it can be believed: with its owner not running it never
+        /// reads as running, whatever the file says.
         public var monitor: ChatMonitorStatus?
 
-        public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, appRunning: Bool = false,
+        public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, ownerRunning: Bool = false,
                     monitor: ChatMonitorStatus? = nil) {
             self.hasSlackToken = hasSlackToken
             self.hasChatAccess = hasChatAccess
             self.gwsPath = gwsPath
-            self.appRunning = appRunning
-            self.monitor = monitor?.believed(appRunning: appRunning)
+            self.ownerRunning = ownerRunning
+            self.monitor = monitor?.believed(ownerRunning: ownerRunning)
         }
 
-        /// The monitor is polling: the app runs and says so.
-        public var monitorRunning: Bool { appRunning && monitor?.isRunning == true }
+        /// The monitor is polling: its owner runs and says so.
+        public var monitorRunning: Bool { ownerRunning && monitor?.isRunning == true }
 
         /// What went wrong while it ran, when it is running.
         public var runtimeError: String? {
@@ -412,7 +413,7 @@ public enum Pages {
     public static func chatWarnings(_ status: Status) -> [String] {
         guard status.config.effectiveChatMonitor.anySourceEnabled else { return [] }
         var lines = monitorProblemLines(status)
-        if !status.chat.appRunning { lines.append(appNotReadingChat) }
+        if !status.chat.ownerRunning { lines.append(appNotReadingChat) }
         return lines
     }
 
@@ -691,14 +692,14 @@ public enum Pages {
         let canRun = status.installed && status.setupBusy == nil
         return UITree {
             heading("Background Monitoring")
-            if chat.appRunning {
+            if chat.ownerRunning {
                 row(nil, "HomeSpeaker is running", icon: "bolt.fill")
             } else {
                 row(nil, "HomeSpeaker is not running", icon: "moon.fill")
             }
             text("HomeSpeaker reads new messages in the background while Slack or Google Chat is on, and announces them on your speakers. Nothing is sent anywhere except to Google Home.",
                  style: .caption)
-            if !chat.appRunning && monitor.anySourceEnabled {
+            if !chat.ownerRunning && monitor.anySourceEnabled {
                 text("Open HomeSpeaker to start: it is what reads the messages.", style: .caption)
             }
             monitorRunBlocks(status)
@@ -762,7 +763,7 @@ public enum Pages {
         return UITree {
             row(nil, running ? "Chat monitor running" : "Chat monitor stopped",
                 icon: running ? "dot.radiowaves.left.and.right" : "pause.circle")
-            if chat.appRunning && status.config.effectiveChatMonitor.anySourceEnabled {
+            if chat.ownerRunning && status.config.effectiveChatMonitor.anySourceEnabled {
                 if running {
                     button(Block.stopChatMonitor, "Stop")
                 } else {

@@ -587,51 +587,65 @@ public final class MediaPauseCoordinator: ObservableObject {
 // MARK: - Asking for a pause from any process
 
 public enum MediaPauseRequest {
-    public static let notificationName = Notification.Name("com.vitruviansoftware.homespeaker.media-pause")
+    /// The name requests travel under for `profile`: the app's for the app,
+    /// the extension's for the extension, so neither pauses for the other.
+    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+        profile.messageName(.mediaPause)
+    }
 
-    /// Set by the menu bar app at launch. When nil (the Stop hook, `--say`),
-    /// requests go to the app as a distributed notification instead.
-    @MainActor public static var inProcess: MediaPauseCoordinator?
+    /// The coordinator each profile's long-lived process holds, set by
+    /// `listen`. When there is none (the Stop hook, `--say`), requests go
+    /// to that process as a distributed notification instead.
+    @MainActor private static var coordinators: [String: MediaPauseCoordinator] = [:]
 
-    /// Pause media for `seconds`. A no-op when the app is not running: the
-    /// feature lives in the menu bar app, which is a login item.
-    public static func pause(seconds: Double) async {
-        if let coordinator = await MainActor.run(body: { inProcess }) {
+    /// The coordinator this process holds for `profile`, if it listens.
+    @MainActor public static func inProcess(for profile: HomeSpeakerProfile) -> MediaPauseCoordinator? {
+        coordinators[profile.messagePrefix]
+    }
+
+    /// Pause media for `seconds`. A no-op when nothing is listening: the
+    /// feature lives in the long-lived process (the menu bar app, a login
+    /// item, or the extension's).
+    public static func pause(seconds: Double, profile: HomeSpeakerProfile = .current) async {
+        if let coordinator = await MainActor.run(body: { inProcess(for: profile) }) {
             await coordinator.pause(for: seconds)
         } else {
-            post(["action": "pause", "seconds": seconds])
+            post(["action": "pause", "seconds": seconds], profile: profile)
             // Give the app a moment to pause before the chime starts.
             try? await Task.sleep(for: .milliseconds(400))
         }
     }
 
     /// Keep media paused `seconds` longer, if anything is paused.
-    public static func extend(seconds: Double) async {
-        if let coordinator = await MainActor.run(body: { inProcess }) {
+    public static func extend(seconds: Double, profile: HomeSpeakerProfile = .current) async {
+        if let coordinator = await MainActor.run(body: { inProcess(for: profile) }) {
             await coordinator.extend(for: seconds)
         } else {
-            post(["action": "extend", "seconds": seconds])
+            post(["action": "extend", "seconds": seconds], profile: profile)
         }
     }
 
-    public static func resumeNow() async {
-        if let coordinator = await MainActor.run(body: { inProcess }) {
+    public static func resumeNow(profile: HomeSpeakerProfile = .current) async {
+        if let coordinator = await MainActor.run(body: { inProcess(for: profile) }) {
             await coordinator.resumeNow()
         } else {
-            post(["action": "resume"])
+            post(["action": "resume"], profile: profile)
         }
     }
 
-    private static func post(_ info: [String: Any]) {
+    private static func post(_ info: [String: Any], profile: HomeSpeakerProfile) {
         DistributedNotificationCenter.default().postNotificationName(
-            notificationName, object: nil, userInfo: info, deliverImmediately: true)
+            notificationName(for: profile), object: nil, userInfo: info, deliverImmediately: true)
     }
 
-    /// The app's side: listen for other HomeSpeaker processes asking.
-    @MainActor public static func listen(with coordinator: MediaPauseCoordinator) -> NSObjectProtocol {
-        inProcess = coordinator
+    /// The long-lived process's side: listen for other HomeSpeaker
+    /// processes of `profile` asking.
+    @MainActor public static func listen(
+        with coordinator: MediaPauseCoordinator, profile: HomeSpeakerProfile = .current
+    ) -> NSObjectProtocol {
+        coordinators[profile.messagePrefix] = coordinator
         return DistributedNotificationCenter.default().addObserver(
-            forName: notificationName, object: nil, queue: .main
+            forName: notificationName(for: profile), object: nil, queue: .main
         ) { note in
             let action = note.userInfo?["action"] as? String
             let seconds = (note.userInfo?["seconds"] as? Double) ?? 0

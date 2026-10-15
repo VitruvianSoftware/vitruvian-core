@@ -27,18 +27,22 @@ import Foundation
 // the Stop hook and `--say` hand media pausing to the app (MediaPauseRequest).
 
 public enum SignOutNotice {
-    public static let notificationName = Notification.Name("com.vitruviansoftware.homespeaker.signed-out")
+    /// The name the notice travels under for `profile`.
+    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+        profile.messageName(.signedOut)
+    }
 
     /// The CLI's side: tell a running HomeSpeaker that the login changed.
-    /// `name` is for tests, so they never reach a real running app.
-    public static func post(chatOnly: Bool, name: Notification.Name = notificationName) {
+    /// `name` is the process's profile's unless given; tests give their own,
+    /// so they never reach a real running app.
+    public static func post(chatOnly: Bool, name: Notification.Name = notificationName(for: .current)) {
         DistributedNotificationCenter.default().postNotificationName(
             name, object: nil, userInfo: ["chatOnly": chatOnly], deliverImmediately: true)
     }
 
     /// The app's side: run `handle` on the main actor for each notice.
     @MainActor public static func listen(
-        name: Notification.Name = notificationName,
+        name: Notification.Name = notificationName(for: .current),
         handle: @escaping @MainActor @Sendable (_ chatOnly: Bool) -> Void
     ) -> NSObjectProtocol {
         DistributedNotificationCenter.default().addObserver(forName: name, object: nil, queue: .main) { note in
@@ -47,9 +51,11 @@ public enum SignOutNotice {
         }
     }
 
-    /// The app's side, wired to the shared config manager and chat monitor.
-    @MainActor public static func listen(config: ConfigManager, monitor: any ChatMonitorControlling) -> NSObjectProtocol {
-        listen { [weak config, weak monitor] chatOnly in
+    /// The app's side, wired to a config manager and chat monitor.
+    @MainActor public static func listen(
+        name: Notification.Name = notificationName(for: .current), config: ConfigManager, monitor: any ChatMonitorControlling
+    ) -> NSObjectProtocol {
+        listen(name: name) { [weak config, weak monitor] chatOnly in
             guard let config, let monitor else { return }
             apply(chatOnly: chatOnly, config: config, monitor: monitor)
         }
@@ -77,18 +83,21 @@ public enum SignOutNotice {
 // starts once one is saved, with nobody touching the menu bar.
 
 public enum CredentialsChangedNotice {
-    public static let notificationName = Notification.Name("com.vitruviansoftware.homespeaker.credentials-changed")
+    /// The name the notice travels under for `profile`.
+    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+        profile.messageName(.credentialsChanged)
+    }
 
-    /// The other process's side. `name` is for tests, so they never reach
-    /// a real running app.
-    public static func post(name: Notification.Name = notificationName) {
+    /// The other process's side. `name` is the process's profile's unless
+    /// given; tests give their own, so they never reach a real running app.
+    public static func post(name: Notification.Name = notificationName(for: .current)) {
         DistributedNotificationCenter.default().postNotificationName(
             name, object: nil, userInfo: nil, deliverImmediately: true)
     }
 
     /// The app's side: run `handle` on the main actor for each notice.
     @MainActor public static func listen(
-        name: Notification.Name = notificationName,
+        name: Notification.Name = notificationName(for: .current),
         handle: @escaping @MainActor @Sendable () -> Void
     ) -> NSObjectProtocol {
         DistributedNotificationCenter.default().addObserver(forName: name, object: nil, queue: .main) { _ in
@@ -96,9 +105,10 @@ public enum CredentialsChangedNotice {
         }
     }
 
-    /// The app's side, wired to the shared config manager and chat monitor.
+    /// The app's side, wired to a config manager and chat monitor.
     @MainActor public static func listen(
-        name: Notification.Name = notificationName, config: ConfigManager, monitor: any ChatMonitorControlling
+        name: Notification.Name = notificationName(for: .current), config: ConfigManager,
+        monitor: any ChatMonitorControlling
     ) -> NSObjectProtocol {
         listen(name: name) { [weak config, weak monitor] in
             guard let config, let monitor else { return }

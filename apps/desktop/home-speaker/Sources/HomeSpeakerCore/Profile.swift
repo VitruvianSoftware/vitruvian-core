@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import AppKit
 import Foundation
 
 /// Where one HomeSpeaker keeps its settings, sign-ins, history and status,
@@ -130,5 +131,96 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
         return (
             tool: parent.appendingPathComponent("Tools").appendingPathComponent(id),
             data: parent.appendingPathComponent("ToolData").appendingPathComponent(id))
+    }
+}
+
+// MARK: - Messages between processes
+
+/// The messages HomeSpeaker's processes send each other, as distributed
+/// notifications. Each is named `<messagePrefix>.<rawValue>`.
+public enum HomeSpeakerMessage: String, CaseIterable, Sendable {
+    /// Pause, extend or resume media (`MediaPauseRequest`).
+    case mediaPause = "media-pause"
+    /// Put a speaker back after an announcement (`VolumeRestoreRequest`).
+    case volumeRestore = "volume-restore"
+    /// A login was removed (`SignOutNotice`).
+    case signedOut = "signed-out"
+    /// A login or token was added or changed (`CredentialsChangedNotice`).
+    case credentialsChanged = "credentials-changed"
+    /// Start or stop the chat monitor (`ChatMonitorControlNotice`).
+    case chatMonitorControl = "chat-monitor-control"
+}
+
+extension HomeSpeakerProfile {
+    /// The name `message` travels under for this HomeSpeaker.
+    public func messageName(_ message: HomeSpeakerMessage) -> Notification.Name {
+        Notification.Name("\(messagePrefix).\(message.rawValue)")
+    }
+}
+
+// MARK: - The process's profile
+
+extension HomeSpeakerProfile {
+    private final class ProcessProfile: @unchecked Sendable {
+        let lock = NSLock()
+        var profile: HomeSpeakerProfile?
+    }
+
+    private static let processProfile = ProcessProfile()
+
+    /// The profile this process runs as: whatever the program set with
+    /// `useForThisProcess(_:)`, or the app's. Every message a caller posts
+    /// or listens for without naming a profile goes by it.
+    public static var current: HomeSpeakerProfile {
+        processProfile.lock.lock()
+        defer { processProfile.lock.unlock() }
+        return processProfile.profile ?? .app()
+    }
+
+    /// Set once, by the program, at its start, before anything posts or
+    /// listens. Only entry points call it (the app, the tool's program);
+    /// tests pass their profile instead, so they never change the process's.
+    public static func useForThisProcess(_ profile: HomeSpeakerProfile) {
+        processProfile.lock.lock()
+        defer { processProfile.lock.unlock() }
+        processProfile.profile = profile
+    }
+}
+
+// MARK: - Is this side's long-lived process alive
+
+extension HomeSpeakerProfile {
+    /// The standalone app's bundle id.
+    public static let appBundleID = "com.vitruviansoftware.homespeaker"
+
+    /// One running application, as `NSRunningApplication` describes it.
+    public typealias RunningApp = (bundleIdentifier: String?, activationPolicy: NSApplication.ActivationPolicy)
+
+    /// This Mac's running applications with the app's bundle id.
+    public static func runningApps() -> [RunningApp] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: appBundleID)
+            .map { ($0.bundleIdentifier, $0.activationPolicy) }
+    }
+
+    /// HomeSpeaker.app is running as an app: a process with its bundle id
+    /// whose activation policy is not `.prohibited`. The menu bar app is
+    /// `.accessory`; its short-lived command-line runs (`--say`, `--volume`,
+    /// the tool's own jobs) carry the same bundle id but never become apps,
+    /// and must not count, or a `--volume` read would say it is running.
+    public static func isAppRunning(among apps: [RunningApp]) -> Bool {
+        apps.contains { $0.bundleIdentifier == appBundleID && $0.activationPolicy != .prohibited }
+    }
+
+    /// Is the process that runs this side's chat monitor, and puts volumes
+    /// back, alive? The app's is its running app; the extension's holds the
+    /// lock on `liveLockURL`. `runningApps` is asked only for the app.
+    public func ownerRunning(runningApps: () -> [RunningApp] = HomeSpeakerProfile.runningApps) -> Bool {
+        switch door {
+        case .app:
+            return Self.isAppRunning(among: runningApps())
+        case .extension:
+            guard let liveLockURL else { return false }
+            return LiveLock.isHeld(at: liveLockURL)
+        }
     }
 }

@@ -58,10 +58,14 @@ public actor GoogleHomeClient {
     /// The sign-in whose tokens reach the speakers.
     public nonisolated let auth: GoogleAuth
     private let session: URLSession
+    /// Whose names the media pause and the volume restore go under. Nil is
+    /// the process's (`HomeSpeakerProfile.current`), read at each call.
+    public nonisolated let messages: HomeSpeakerProfile?
 
-    public init(auth: GoogleAuth = .shared, session: URLSession = .shared) {
+    public init(auth: GoogleAuth = .shared, session: URLSession = .shared, messages: HomeSpeakerProfile? = nil) {
         self.auth = auth
         self.session = session
+        self.messages = messages
     }
 
     // MARK: Speech
@@ -162,11 +166,14 @@ public actor GoogleHomeClient {
         guard !spoken.isEmpty else { return false }
         guard !structureId.isEmpty else { throw BroadcastError.noSpeaker }
 
+        // One profile for the whole announcement: pause, raise, put back.
+        let profile = messages ?? .current
+
         // After every reason not to speak, right before speaking.
         let pausing = config?.effectivePauseMedia == true
         if pausing {
             let hold = AnnouncementTiming.seconds(for: spoken, extra: config?.effectivePauseMediaExtraSeconds ?? 1)
-            await MediaPauseRequest.pause(seconds: hold)
+            await MediaPauseRequest.pause(seconds: hold, profile: profile)
         }
 
         // Announce at a set volume: raise or lower the speaker first, and hand
@@ -175,7 +182,7 @@ public actor GoogleHomeClient {
         if let config, config.effectiveAnnounceVolumeEnabled {
             boost = await AnnounceVolume.prepare(
                 level: config.effectiveAnnounceVolume, target: target, structureId: structureId,
-                client: self, canRestore: await VolumeRestoreRequest.canRestore())
+                client: self, canRestore: await VolumeRestoreRequest.canRestore(profile: profile))
         }
 
         let arguments: [String: Any] = [
@@ -195,13 +202,13 @@ public actor GoogleHomeClient {
         } catch {
             // Nothing will be said, so do not leave the video paused or the
             // speaker at the announcement volume.
-            if pausing { await MediaPauseRequest.resumeNow() }
-            if let boost { await VolumeRestoreRequest.schedule(boost, after: 0) }
+            if pausing { await MediaPauseRequest.resumeNow(profile: profile) }
+            if let boost { await VolumeRestoreRequest.schedule(boost, after: 0, profile: profile) }
             throw error
         }
         if let boost {
             await VolumeRestoreRequest.schedule(
-                boost, after: AnnouncementTiming.seconds(for: spoken, extra: 1.5))
+                boost, after: AnnouncementTiming.seconds(for: spoken, extra: 1.5), profile: profile)
         }
         return true
     }

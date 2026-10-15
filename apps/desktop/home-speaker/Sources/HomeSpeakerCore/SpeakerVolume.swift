@@ -18,7 +18,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import AppKit
 import Foundation
 
 // A speaker's volume: read it, set it, and -- for "announce at a set volume"
@@ -326,28 +325,45 @@ public final class VolumeRestoreCoordinator: ObservableObject {
     }
 }
 
-/// Hands a restore to the menu bar app from any process.
+/// Hands a restore to the long-lived process (the menu bar app, or the
+/// extension's) from any process of the same profile.
 public enum VolumeRestoreRequest {
-    public static let notificationName = Notification.Name("com.vitruviansoftware.homespeaker.volume-restore")
-    public static let bundleID = "com.vitruviansoftware.homespeaker"
-
-    @MainActor public static var inProcess: VolumeRestoreCoordinator?
-
-    /// Whether anything will be alive to put the volume back. The Stop hook
-    /// and --say exit seconds after announcing; without the app running,
-    /// raising the volume would leave it raised.
-    public static func canRestore() async -> Bool {
-        if await MainActor.run(body: { inProcess != nil }) { return true }
-        return !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+    /// The name requests travel under for `profile`.
+    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+        profile.messageName(.volumeRestore)
     }
 
-    public static func schedule(_ boost: VolumeBoost, after seconds: Double) async {
-        if let c = await MainActor.run(body: { inProcess }) {
+    /// The coordinator each profile's long-lived process holds, set by `listen`.
+    @MainActor private static var coordinators: [String: VolumeRestoreCoordinator] = [:]
+
+    /// The coordinator this process holds for `profile`, if it listens.
+    @MainActor public static func inProcess(for profile: HomeSpeakerProfile) -> VolumeRestoreCoordinator? {
+        coordinators[profile.messagePrefix]
+    }
+
+    /// Whether anything will be alive to put the volume back. The Stop hook
+    /// and --say exit seconds after announcing; with nothing of `profile`'s
+    /// alive, raising the volume would leave it raised. This process, when
+    /// it listens; otherwise the profile's owner: the running app for the
+    /// app, the live lock for the extension.
+    public static func canRestore(
+        profile: HomeSpeakerProfile = .current,
+        runningApps: () -> [HomeSpeakerProfile.RunningApp] = HomeSpeakerProfile.runningApps
+    ) async -> Bool {
+        if await MainActor.run(body: { inProcess(for: profile) != nil }) { return true }
+        return profile.ownerRunning(runningApps: runningApps)
+    }
+
+    public static func schedule(
+        _ boost: VolumeBoost, after seconds: Double, profile: HomeSpeakerProfile = .current
+    ) async {
+        if let c = await MainActor.run(body: { inProcess(for: profile) }) {
             await c.schedule(boost, after: seconds)
             return
         }
         DistributedNotificationCenter.default().postNotificationName(
-            notificationName, object: nil, userInfo: encode(boost, after: seconds), deliverImmediately: true)
+            notificationName(for: profile), object: nil, userInfo: encode(boost, after: seconds),
+            deliverImmediately: true)
     }
 
     static func encode(_ b: VolumeBoost, after seconds: Double) -> [String: Any] {
@@ -368,10 +384,14 @@ public enum VolumeRestoreRequest {
         return (VolumeBoost(target: target, structureId: structureId, restoreTo: restoreTo, announceLevel: level), seconds)
     }
 
-    @MainActor public static func listen(with coordinator: VolumeRestoreCoordinator) -> NSObjectProtocol {
-        inProcess = coordinator
+    /// The long-lived process's side: take restores from other HomeSpeaker
+    /// processes of `profile`.
+    @MainActor public static func listen(
+        with coordinator: VolumeRestoreCoordinator, profile: HomeSpeakerProfile = .current
+    ) -> NSObjectProtocol {
+        coordinators[profile.messagePrefix] = coordinator
         return DistributedNotificationCenter.default().addObserver(
-            forName: notificationName, object: nil, queue: .main
+            forName: notificationName(for: profile), object: nil, queue: .main
         ) { note in
             guard let (boost, seconds) = decode(note.userInfo) else { return }
             Task { @MainActor in coordinator.schedule(boost, after: seconds) }

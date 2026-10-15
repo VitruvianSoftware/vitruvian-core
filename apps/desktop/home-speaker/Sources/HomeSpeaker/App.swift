@@ -37,19 +37,19 @@ struct HomeSpeakerApp: App {
             // The phone (via the Mac agent) and the CLI edit the same file;
             // the menu bar has to notice or it will write stale state back.
             ConfigManager.shared.startWatchingConfigFile()
+            let engine = HomeSpeakerEngine.app
             // The one long-lived process: it holds paused media for the
-            // Stop hook and --say, which exit before an announcement ends.
-            _ = MediaPauseRequest.listen(with: .shared)
-            // Likewise for putting a speaker back after "announce at a set volume".
-            _ = VolumeRestoreRequest.listen(with: .shared)
+            // Stop hook and --say, which exit before an announcement ends,
+            // and puts a speaker back after "announce at a set volume".
+            _ = engine.listen()
             // `HomeSpeaker --sign-out` runs as another process; without
             // this the menu bar kept showing "Connected" and kept polling.
-            _ = SignOutNotice.listen(config: ConfigManager.shared, monitor: ChatMonitorService.shared)
             // And `--sign-in`, or the Vitruvian tool saving a Slack token:
             // re-read the login and start or restart the monitor with it.
-            _ = CredentialsChangedNotice.listen(config: ConfigManager.shared, monitor: ChatMonitorService.shared)
+            _ = engine.listenForNotices(monitor: ChatMonitorService.shared)
             // Start and Stop from the Vitruvian tool or `--chat-monitor`.
-            _ = ChatMonitorControlNotice.listen(monitor: ChatMonitorService.shared)
+            _ = ChatMonitorControlNotice.listen(
+                name: ChatMonitorControlNotice.notificationName(for: engine.profile), monitor: ChatMonitorService.shared)
             // A quit says the monitor stopped, so the status file does not
             // go on saying it runs. (A crash cannot; readers check the app.)
             _ = NotificationCenter.default.addObserver(

@@ -133,7 +133,7 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "googleChatEnabled", "chatSource",
                                                     "grantChat", "muteOwnMessages", "pollInterval"])
         // A token saved, Chat granted, gws there.
-        status.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", appRunning: true)
+        status.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", ownerRunning: true)
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "clearSlackToken", "googleChatEnabled",
                                                     "chatSource", "disconnectChat", "gwsAccount", "muteOwnMessages", "pollInterval"])
         XCTAssertTrue(texts(Pages.settings(status)).contains("Slack token saved · "))

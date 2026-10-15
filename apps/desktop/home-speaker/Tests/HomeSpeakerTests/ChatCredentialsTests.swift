@@ -329,6 +329,6 @@ final class GatedChatMonitor: ChatMonitorControlling {
 
     /// The two notices are two names: a sign-in never reads as a sign-out.
     @Test func itIsNotTheSignOutNotice() {
-        #expect(CredentialsChangedNotice.notificationName != SignOutNotice.notificationName)
+        #expect(CredentialsChangedNotice.notificationName(for: .app()) != SignOutNotice.notificationName(for: .app()))
     }
 }

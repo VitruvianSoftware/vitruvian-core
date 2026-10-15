@@ -66,7 +66,7 @@ final class IslandTests: XCTestCase {
 
     private func tool() -> HomeSpeakerTool {
         HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, account: account, chat: chat,
-                                     gwsLocation: { nil }, isAppRunning: { [unowned self] in appRunning },
+                                     gwsLocation: { nil }, ownerRunning: { [unowned self] in appRunning },
                                      settingsURL: settingsURL))
     }
 
@@ -329,7 +329,7 @@ final class IslandTests: XCTestCase {
         var status = ready()
         XCTAssertEqual(Pages.chatWarnings(status), [], "every source off: nothing to warn about")
         status.config.effectiveChatMonitor.slackEnabled = true
-        status.chat = Pages.Chat(hasSlackToken: false, appRunning: false)
+        status.chat = Pages.Chat(hasSlackToken: false, ownerRunning: false)
         XCTAssertEqual(Pages.chatWarnings(status), [ChatMonitorError.slackTokenMissing.localizedDescription, Pages.appNotReadingChat])
         XCTAssertEqual(Pages.appNotReadingChat, "HomeSpeaker isn't running, so nothing is reading chat")
         let page = Pages.island(status)
@@ -341,11 +341,11 @@ final class IslandTests: XCTestCase {
         XCTAssertLessThan(warning, say, "warned above the controls")
 
         // Running, with its token: nothing to say.
-        status.chat = Pages.Chat(hasSlackToken: true, appRunning: true)
+        status.chat = Pages.Chat(hasSlackToken: true, ownerRunning: true)
         XCTAssertEqual(Pages.chatWarnings(status), [])
         XCTAssertFalse(texts(Pages.island(status)).contains("Fix it in Settings > Chat & Slack"))
         // Only the app not running.
-        status.chat.appRunning = false
+        status.chat.ownerRunning = false
         XCTAssertEqual(Pages.chatWarnings(status), [Pages.appNotReadingChat])
     }
 

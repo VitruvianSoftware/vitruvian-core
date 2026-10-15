@@ -22,8 +22,9 @@ import Foundation
 
 /// One HomeSpeaker's working parts, built from one profile so they agree:
 /// the settings, the secrets, the history, the Google sign-in on those
-/// secrets, the speakers on that sign-in, and the announcer on those
-/// speakers. Two engines on two profiles share no file.
+/// secrets, the speakers on that sign-in, the announcer on those speakers,
+/// and the media-pause and volume-restore coordinators. Two engines on two
+/// profiles share no file, and send each other no message.
 ///
 /// `HomeSpeakerEngine.app` is the app's engine. Its parts are the existing
 /// `.shared` singletons themselves, so every caller of `.shared` keeps
@@ -37,6 +38,10 @@ public final class HomeSpeakerEngine {
     public let auth: GoogleAuth
     public let home: GoogleHomeClient
     public let announcer: Announcer
+    /// Holds paused media for the profile's short-lived processes.
+    public let mediaPause: MediaPauseCoordinator
+    /// Puts speakers back after the profile's announcements.
+    public let volumeRestore: VolumeRestoreCoordinator
 
     /// The app's engine: today's files, and the `.shared` singletons.
     public static let app = HomeSpeakerEngine(
@@ -46,10 +51,13 @@ public final class HomeSpeakerEngine {
         history: .shared,
         auth: .shared,
         home: .shared,
-        announcer: .shared)
+        announcer: .shared,
+        mediaPause: .shared,
+        volumeRestore: .shared)
 
-    /// A new engine on `profile`'s files. `session` carries the sign-in's
-    /// and the speakers' requests; `local` speaks on this Mac.
+    /// A new engine on `profile`'s files and message names. `session`
+    /// carries the sign-in's and the speakers' requests; `local` speaks on
+    /// this Mac.
     public convenience init(
         profile: HomeSpeakerProfile,
         session: URLSession = .shared,
@@ -58,7 +66,7 @@ public final class HomeSpeakerEngine {
         let secrets = SecretStore(fileURL: profile.secretsURL)
         let history = BroadcastHistory(fileURL: profile.historyURL)
         let auth = GoogleAuth(store: secrets, session: session)
-        let home = GoogleHomeClient(auth: auth, session: session)
+        let home = GoogleHomeClient(auth: auth, session: session, messages: profile)
         self.init(
             profile: profile,
             config: ConfigManager(configPath: profile.settingsURL, history: history, secrets: secrets),
@@ -66,7 +74,9 @@ public final class HomeSpeakerEngine {
             history: history,
             auth: auth,
             home: home,
-            announcer: Announcer(home: home, local: local))
+            announcer: Announcer(home: home, local: local, media: SharedMediaPause(profile: profile)),
+            mediaPause: MediaPauseCoordinator(),
+            volumeRestore: VolumeRestoreCoordinator(client: home))
     }
 
     private init(
@@ -76,7 +86,9 @@ public final class HomeSpeakerEngine {
         history: BroadcastHistory,
         auth: GoogleAuth,
         home: GoogleHomeClient,
-        announcer: Announcer
+        announcer: Announcer,
+        mediaPause: MediaPauseCoordinator,
+        volumeRestore: VolumeRestoreCoordinator
     ) {
         self.profile = profile
         self.config = config
@@ -85,5 +97,30 @@ public final class HomeSpeakerEngine {
         self.auth = auth
         self.home = home
         self.announcer = announcer
+        self.mediaPause = mediaPause
+        self.volumeRestore = volumeRestore
+    }
+
+    /// Makes this process the profile's long-lived one: it holds paused
+    /// media and puts speakers back for the Stop hook and `--say`, which
+    /// exit before an announcement ends. Listens on the profile's names
+    /// only. Keep the tokens to stop listening.
+    public func listen() -> [NSObjectProtocol] {
+        [
+            MediaPauseRequest.listen(with: mediaPause, profile: profile),
+            VolumeRestoreRequest.listen(with: volumeRestore, profile: profile),
+        ]
+    }
+
+    /// Takes the sign-out and credentials-changed notices on the profile's
+    /// names: re-reads the login, then stops, starts or restarts `monitor`.
+    /// The engine owns no chat monitor; whoever runs one passes it.
+    public func listenForNotices(monitor: any ChatMonitorControlling) -> [NSObjectProtocol] {
+        [
+            SignOutNotice.listen(
+                name: SignOutNotice.notificationName(for: profile), config: config, monitor: monitor),
+            CredentialsChangedNotice.listen(
+                name: CredentialsChangedNotice.notificationName(for: profile), config: config, monitor: monitor),
+        ]
     }
 }

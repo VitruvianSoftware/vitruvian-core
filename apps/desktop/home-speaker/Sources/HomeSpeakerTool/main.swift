@@ -63,7 +63,7 @@ let speaker = HomeSpeakerTool(parts: .init(
     previewVoice: { voice in try await LocalSpeaker.shared.speak(Pages.previewText, voiceID: voice) },
     chat: SecretStoreChatCredentials(),
     gwsLocation: { GwsChatClient.locate() },
-    isAppRunning: { ProcessDriver.isAppRunning() },
+    ownerRunning: { ProcessDriver.isAppRunning() },
     credentialsChanged: { CredentialsChangedNotice.post() },
     // Read afresh each time, not through `Bundle`, which caches the
     // Info.plist: an updated HomeSpeaker shows its new version.
