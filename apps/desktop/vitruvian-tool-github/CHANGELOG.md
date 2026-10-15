@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.2.1...vitruvian-tool-github-v1.3.0) (2026-10-15)
+
+
+### Features
+
+* **vitruvian-tool-github:** one level of check-run drill-down in the island panel ([#3303](https://github.com/VitruvianSoftware/vitruvian-core/issues/3303)) ([cbadb1c](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbadb1cf1303a2b49c86e3efc5c505bac0a8be06))
+
 ## [1.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.2.0...vitruvian-tool-github-v1.2.1) (2026-10-15)
 
 
