@@ -75,7 +75,7 @@ final class GitHubToolTests: XCTestCase {
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/pulls?state=open&per_page=100"] =
             (200, #"[{"number": 3, "title": "Fix", "draft": false, "html_url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/3", "user": {"login": "james"}, "head": {"sha": "p3"}, "requested_reviewers": [], "requested_teams": []}, {"number": 4, "title": "Someone else's", "draft": false, "html_url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/4", "user": {"login": "stranger"}, "head": {"sha": "p4"}, "requested_reviewers": [], "requested_teams": []}]"#)
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/commits/p3/check-runs?per_page=100"] =
-            (200, #"{"check_runs": [{"id": 30, "name": "unit", "head_sha": "p3", "status": "completed", "conclusion": "success", "html_url": null}]}"#)
+            (200, #"{"check_runs": [{"id": 30, "name": "unit", "head_sha": "p3", "status": "completed", "conclusion": "success", "html_url": "https://github.com/VitruvianSoftware/vitruvian-core/runs/30"}]}"#)
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/pulls/3/reviews?per_page=100"] =
             (200, #"[{"user": {"login": "ana"}, "state": "APPROVED"}]"#)
     }
@@ -396,9 +396,44 @@ final class GitHubToolTests: XCTestCase {
         answerGitHub(conclusion: "failure")
         transport.answers["/repos/VitruvianSoftware/vitruvian-core/actions/runs/9/rerun-failed-jobs"] = (201, "")
         tool.start()
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "pulls", kind: .tap, value: .string("pr.VitruvianSoftware.vitruvian-core.3"))),
-                       .keep)
+        // Tapping a pull request row drills into its check list instead of opening the browser immediately.
+        guard case .page(let detailPage) = tool.islandEvent(
+            PanelEvent(block: "pulls", kind: .tap, value: .string("pr.VitruvianSoftware.vitruvian-core.3"))
+        ) else { return XCTFail() }
+        XCTAssertEqual(detailPage.ids, ["back", "prdetail.VitruvianSoftware.vitruvian-core.3", "checks"])
+        XCTAssertEqual(host.opened, [], "drilling in does not open a browser tab")
+
+        // Tapping a check row in the detail page opens the check run's htmlURL.
+        XCTAssertEqual(tool.islandEvent(
+            PanelEvent(block: "checks", kind: .tap, value: .string("check.VitruvianSoftware.vitruvian-core.3.check__run_c30"))
+        ), .keep)
+        XCTAssertEqual(host.opened, ["https://github.com/VitruvianSoftware/vitruvian-core/runs/30"])
+
+        // Tapping the pull request header row (or the "+N more on GitHub" overflow row) opens the PR's htmlURL.
+        XCTAssertEqual(tool.islandEvent(
+            PanelEvent(block: "prdetail.VitruvianSoftware.vitruvian-core.3", kind: .tap)
+        ), .keep)
+        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/pull/3")
+        host.opened.removeAll()
+        XCTAssertEqual(tool.islandEvent(
+            PanelEvent(block: "checks", kind: .tap, value: .string("prdetail.VitruvianSoftware.vitruvian-core.3"))
+        ), .keep)
         XCTAssertEqual(host.opened, ["https://github.com/VitruvianSoftware/vitruvian-core/pull/3"])
+
+        // Tapping Back returns to the main island page.
+        guard case .page(let mainPage) = tool.islandEvent(PanelEvent(block: "back", kind: .tap)) else { return XCTFail() }
+        XCTAssertEqual(mainPage.ids.first, "repo.VitruvianSoftware.vitruvian-core")
+        XCTAssertNil(tool.selectedPull)
+
+        // If a PR disappears while its detail page is open, the next poll returns to the main island page automatically.
+        _ = tool.islandEvent(PanelEvent(block: "pulls", kind: .tap, value: .string("pr.VitruvianSoftware.vitruvian-core.3")))
+        XCTAssertNotNil(tool.selectedPull)
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/pulls?state=open&per_page=100"] = (200, "[]")
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertNil(tool.selectedPull, "a pull request that closed or merged clears selectedPull on the next poll")
+        XCTAssertEqual(tool.islandPage().ids.first, "repo.VitruvianSoftware.vitruvian-core")
+
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repo.VitruvianSoftware.vitruvian-core", kind: .tap)), .keep)
         XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/actions")
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: "rerun", kind: .tap)), .keep)

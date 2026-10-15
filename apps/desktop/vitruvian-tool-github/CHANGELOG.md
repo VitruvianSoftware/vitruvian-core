@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.2.0...vitruvian-tool-github-v1.2.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **vitruvian-tool-github:** fetch PR checks and reviews, filter concerns, and replay 304 bodies ([#3301](https://github.com/VitruvianSoftware/vitruvian-core/issues/3301)) ([7f25524](https://github.com/VitruvianSoftware/vitruvian-core/commit/7f255240f2012b5da54b983e44d052294a0dd92f))
+
 ## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.1.0...vitruvian-tool-github-v1.2.0) (2026-10-14)
 
 

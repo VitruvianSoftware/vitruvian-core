@@ -153,6 +153,17 @@ public enum ReviewState: Sendable, Equatable {
     case approved, changesRequested, pending
 }
 
+/// Where a pull request stands in the merge queue.
+public struct MergeQueueState: Sendable, Equatable {
+    /// Its 1-based position in the queue when GitHub gives one; nil when
+    /// queued without a position.
+    public var position: Int?
+
+    public init(position: Int? = nil) {
+        self.position = position
+    }
+}
+
 /// An open pull request the signed-in person wrote or was asked to review.
 public struct PullRequest: Sendable, Equatable {
     public let number: Int
@@ -169,10 +180,13 @@ public struct PullRequest: Sendable, Equatable {
     public var reviews: [String: ReviewState]
     /// The checks on `headSHA`, by `CheckRun.key`.
     public var checks: [String: CheckRun]
+    /// Its standing in the merge queue; nil when it is not queued.
+    public var mergeQueue: MergeQueueState?
 
     public init(number: Int, title: String, author: String, headSHA: String, isDraft: Bool,
                 htmlURL: URL?, requestedReviewers: Set<String>, requestedTeams: Set<String>,
-                reviews: [String: ReviewState] = [:], checks: [String: CheckRun] = [:]) {
+                reviews: [String: ReviewState] = [:], checks: [String: CheckRun] = [:],
+                mergeQueue: MergeQueueState? = nil) {
         self.number = number
         self.title = title
         self.author = author
@@ -183,6 +197,7 @@ public struct PullRequest: Sendable, Equatable {
         self.requestedTeams = Set(requestedTeams.map { $0.lowercased() })
         self.reviews = reviews
         self.checks = checks
+        self.mergeQueue = mergeQueue
     }
 
     /// Changes requested by anyone outranks approvals; with neither, pending.

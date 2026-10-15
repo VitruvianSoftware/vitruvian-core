@@ -215,4 +215,20 @@ if [[ $converted -ne 1 ]]; then
     exit 1
 fi
 
+# Sign the image itself, not only the app inside it. Gatekeeper judges a
+# downloaded disk image by the image's own signature before it mounts; an
+# unsigned image that was notarized still fails `spctl -t open`. This runs
+# before notarize.sh submits the image, so the image is signed and notarized.
+DEVELOPER_ID="${DEVELOPER_ID:-$(security find-identity -v -p codesigning 2>/dev/null \
+    | grep 'Developer ID Application' \
+    | head -1 \
+    | sed -E 's/.*"(.*)".*/\1/' || true)}"
+if [[ -n "$DEVELOPER_ID" ]]; then
+    echo "▸ Signing the disk image with $DEVELOPER_ID…"
+    codesign --force --timestamp --sign "$DEVELOPER_ID" "$OUT"
+    codesign --verify --strict "$OUT"
+else
+    echo "▸ No Developer ID identity installed; the disk image stays unsigned"
+fi
+
 echo "✓ DMG ready: $OUT"

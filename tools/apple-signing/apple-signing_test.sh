@@ -50,7 +50,10 @@ esac
 F
 cat >"$FAKES/xcrun" <<'F'
 #!/usr/bin/env bash
-echo "xcrun $*" >>"$LOG"; [ -z "${XCRUN_FAILS:-}" ]
+echo "xcrun $*" >>"$LOG"
+[ "$2" = info ] && echo "  status: ${FAKE_STATUS:-In Progress}"
+[ "$2" = history ] && echo "  id: sub-1"
+[ -z "${XCRUN_FAILS:-}" ]
 F
 cat >"$FAKES/security" <<'F'
 #!/usr/bin/env bash
@@ -109,6 +112,21 @@ check "no password in the output" '! printf "%s" "$out" | grep -qiE "password[^ 
 check "the bundle opens with a 32-character password only" '! openssl pkcs12 -in "$APPLE_SIGNING_DIR/developer-id.p12" -passin pass: -noout 2>/dev/null'
 check "temporary copies are gone" '[ ! -e "$APPLE_SIGNING_DIR/p12.b64" ] && [ ! -e "$APPLE_SIGNING_DIR/keypair.pem" ]'
 check "the summary counts 5 of 5" 'printf "%s" "$out" | grep -q "5 of 5"'
+
+check "secrets keeps the two (non-secret) IDs for notary-status" 'grep -qx "KEY_ID=K1" "$APPLE_SIGNING_DIR/notary.env" && grep -qx "ISSUER_ID=ISS" "$APPLE_SIGNING_DIR/notary.env"'
+
+# notary-status: no ID lists every submission; an ID shows that one, plus
+# Apple's report once there is a verdict.
+: >"$LOG"; out=$(bash "$SCRIPT" notary-status 2>&1); rc=$?
+check "notary-status lists submissions" '[ $rc -eq 0 ] && grep -q "^xcrun notarytool history --key $APPLE_SIGNING_DIR/AuthKey_K1.p8 --key-id K1 --issuer ISS$" "$LOG"'
+: >"$LOG"; bash "$SCRIPT" notary-status sub-1 >/dev/null 2>&1
+check "an in-progress submission shows no report yet" 'grep -q "^xcrun notarytool info sub-1 " "$LOG" && ! grep -q "notarytool log" "$LOG"'
+: >"$LOG"; out=$(FAKE_STATUS=Invalid bash "$SCRIPT" notary-status sub-1 2>&1)
+check "a finished submission also shows Apple's report" 'grep -q "^xcrun notarytool log sub-1 " "$LOG" && printf "%s" "$out" | grep -q "status: Invalid"'
+mv "$APPLE_SIGNING_DIR/notary.env" "$WORK/notary.env.away"; : >"$LOG"
+bash "$SCRIPT" notary-status >/dev/null 2>&1; rc=$?
+check "notary-status without saved IDs fails and calls nothing" '[ $rc -ne 0 ] && [ ! -s "$LOG" ]'
+mv "$WORK/notary.env.away" "$APPLE_SIGNING_DIR/notary.env"
 
 # A second run leaves existing Bitwarden items alone.
 echo '[{"name":"Apple Developer ID Application certificate (p12)"},{"name":"App Store Connect API key (notary)"},{"name":"Apple Developer ID private key + certificate (PEM)"}]' >"$WORK/bw-items"

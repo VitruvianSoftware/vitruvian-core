@@ -96,7 +96,7 @@ Release runners are Macs, and a Mac's `/bin/bash` is 3.2. Two things differ from
 When running in CI (`delivery-<app>.yaml` or `<app>-release.yaml`):
 
 - `SIGNING_IDENTITY` / ambient Developer ID: Codesigns nested binaries and bundle (falls back to ad-hoc when absent).
-- `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`, `NOTARY_API_KEY_P8`: Apple Notary Service API credentials for automated notarization and stapling.
+- `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`, `NOTARY_API_KEY_P8`: Apple Notary Service API credentials for automated notarization and stapling. `NOTARY_API_KEY_P8` may be the `.p8` key itself or its base64, which is how the `VITRUVIAN_NOTARY_API_KEY_P8` secret holds it (see `//tools/apple-signing`). An `.app` is zipped before it is submitted, and the ticket is stapled to the `.app`.
 - `HOMEBREW_TAP_TOKEN`: GitHub App or Personal Access Token with write permissions to `VitruvianSoftware/homebrew-tap`.
 - `GH_TOKEN`: Token for GitHub release asset uploads.
 
