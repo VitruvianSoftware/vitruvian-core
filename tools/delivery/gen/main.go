@@ -733,8 +733,9 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string, opts rend
 // The rung name IS the grade: "beta" on the push rung (a rolling prerelease),
 // "production" on the release rung (the release-please release). The script
 // refuses a production publish whose tag does not match the version it
-// builds. Signing and notarization use the VITRUVIAN_* secrets when they are
-// set; without them the app is signed ad-hoc and the DMG is not notarized.
+// builds. Signing uses the VITRUVIAN_SIGNING_* secrets on both rungs when they
+// are set (ad-hoc without them); only the production rung passes the
+// VITRUVIAN_NOTARY_* secrets, so only a release is notarized.
 func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string, opts renderOpts) {
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", opts.pin("actions/checkout"))
@@ -774,9 +775,15 @@ func renderVitruvianPublishSteps(b *strings.Builder, u unit, env string, opts re
 	if env == "production" {
 		b.WriteString("          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}\n")
 	}
-	b.WriteString("          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}\n")
-	b.WriteString("          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}\n")
-	b.WriteString("          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}\n")
+	// Only a release goes to Apple's notary service. A beta is still signed
+	// with the Developer ID (so macOS keeps its permissions across updates), but
+	// waiting on Apple for every push to main held a macOS runner until the
+	// job's 60-minute limit while Apple was slow, and then the run retried.
+	if env == "production" {
+		b.WriteString("          NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}\n")
+		b.WriteString("          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}\n")
+		b.WriteString("          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}\n")
+	}
 	b.WriteString("        run: bash apps/desktop/vitruvian/publish.sh\n")
 }
 
