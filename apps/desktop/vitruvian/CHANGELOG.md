@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.53.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.52.2...vitruvian-v3.53.0) (2026-10-15)
+
+
+### Features
+
+* **desktop:** the island's Notifications page can show a list, grouped by app ([#3332](https://github.com/VitruvianSoftware/vitruvian-core/issues/3332)) ([84ef622](https://github.com/VitruvianSoftware/vitruvian-core/commit/84ef6222c1dfe2b3414300af8548907445f63b11))
+
 ## [3.52.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.52.1...vitruvian-v3.52.2) (2026-10-15)
 
 
