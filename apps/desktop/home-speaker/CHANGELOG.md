@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.16.0...home-speaker-v1.16.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **home-speaker:** the app, CLI and tool share one broadcast history file ([#3334](https://github.com/VitruvianSoftware/vitruvian-core/issues/3334)) ([654d176](https://github.com/VitruvianSoftware/vitruvian-core/commit/654d17668fa781b0d5bf5a2f14a758488392ba1a))
+
 ## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.15.0...home-speaker-v1.16.0) (2026-10-15)
 
 
