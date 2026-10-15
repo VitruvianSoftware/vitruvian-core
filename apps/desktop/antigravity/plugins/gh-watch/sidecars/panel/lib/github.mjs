@@ -27,7 +27,12 @@ import { execFile } from "node:child_process";
 
 import { normaliseChecks } from "./decide.mjs";
 import { collectFeedback } from "./notices.mjs";
-import { REVIEW_LIMIT, readyForAction, reviewCheckStatus } from "./reviews.mjs";
+import {
+  REVIEW_LIMIT,
+  conflictBadge,
+  readyForAction,
+  reviewCheckStatus,
+} from "./reviews.mjs";
 
 const FIELDS =
   "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup,reviewDecision,latestReviews,reviewRequests";
@@ -327,6 +332,7 @@ export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
           queuePosition: pr.mergeQueueEntry?.position ?? null,
           rollup,
         }),
+        conflict: conflictBadge(pr.mergeable),
         // Fully green: the panel offers Approve and Approve & merge.
         ready: readyForAction({
           queued: pr.isInMergeQueue === true,

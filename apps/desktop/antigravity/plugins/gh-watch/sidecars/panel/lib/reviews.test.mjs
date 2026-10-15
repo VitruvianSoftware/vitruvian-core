@@ -249,9 +249,15 @@ test("readyForAction is true only for a finished, all-green pipeline", async () 
     contexts: { checkRunCountsByState: rows },
   });
   const pass = { state: "SUCCESS", count: 3 };
-  assert.equal(readyForAction({ rollup: rollup([pass]) }), true);
   assert.equal(
-    readyForAction({ rollup: rollup([pass, { state: "SKIPPED", count: 2 }]) }),
+    readyForAction({ mergeable: "MERGEABLE", rollup: rollup([pass]) }),
+    true,
+  );
+  assert.equal(
+    readyForAction({
+      mergeable: "MERGEABLE",
+      rollup: rollup([pass, { state: "SKIPPED", count: 2 }]),
+    }),
     true,
   );
   assert.equal(
@@ -261,7 +267,10 @@ test("readyForAction is true only for a finished, all-green pipeline", async () 
     false,
   );
   assert.equal(
-    readyForAction({ rollup: rollup([pass, { state: "FAILURE", count: 1 }]) }),
+    readyForAction({
+      mergeable: "MERGEABLE",
+      rollup: rollup([pass, { state: "FAILURE", count: 1 }]),
+    }),
     false,
   );
   assert.equal(
@@ -270,15 +279,54 @@ test("readyForAction is true only for a finished, all-green pipeline", async () 
     }),
     false,
   );
-  assert.equal(readyForAction({ rollup: rollup([]) }), false);
-  assert.equal(readyForAction({ queued: true, rollup: rollup([pass]) }), false);
+  assert.equal(
+    readyForAction({ mergeable: "MERGEABLE", rollup: rollup([]) }),
+    false,
+  );
+  assert.equal(
+    readyForAction({
+      mergeable: "MERGEABLE",
+      queued: true,
+      rollup: rollup([pass]),
+    }),
+    false,
+  );
   assert.equal(
     readyForAction({ mergeable: "CONFLICTING", rollup: rollup([pass]) }),
     false,
   );
   // Without per-state counts, only an overall SUCCESS counts.
-  assert.equal(readyForAction({ rollup: { state: "SUCCESS" } }), true);
-  assert.equal(readyForAction({ rollup: { state: "PENDING" } }), false);
-  assert.equal(readyForAction({ rollup: null }), false);
+  assert.equal(
+    readyForAction({ mergeable: "MERGEABLE", rollup: { state: "SUCCESS" } }),
+    true,
+  );
+  assert.equal(
+    readyForAction({ mergeable: "MERGEABLE", rollup: { state: "PENDING" } }),
+    false,
+  );
+  assert.equal(readyForAction({ mergeable: "MERGEABLE", rollup: null }), false);
+  // Only a confirmed "no conflict" counts; GitHub's "unknown" does not.
+  assert.equal(
+    readyForAction({ mergeable: "UNKNOWN", rollup: rollup([pass]) }),
+    false,
+  );
+  assert.equal(readyForAction({ rollup: rollup([pass]) }), false);
   assert.equal(readyForAction(null), false);
+});
+
+test("conflictBadge flags conflicts, and unknown until GitHub has checked", async () => {
+  const { conflictBadge } = await import("./reviews.mjs");
+  assert.deepEqual(conflictBadge("CONFLICTING"), {
+    text: "Conflicts",
+    tone: "bad",
+  });
+  assert.equal(conflictBadge("MERGEABLE"), null);
+  assert.deepEqual(conflictBadge("UNKNOWN"), {
+    text: "Checking for conflicts",
+    tone: "wait",
+  });
+  assert.deepEqual(conflictBadge(undefined), {
+    text: "Checking for conflicts",
+    tone: "wait",
+  });
 });

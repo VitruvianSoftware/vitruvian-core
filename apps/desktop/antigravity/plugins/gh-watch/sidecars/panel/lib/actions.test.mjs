@@ -96,6 +96,7 @@ test("nothing is approved or merged unless it is still green", async () => {
       /No checks have passed/,
     ],
     [green({ mergeable: "CONFLICTING" }), /conflicts/],
+    [green({ mergeable: "UNKNOWN" }), /not finished checking it for conflicts/],
     [green({ state: "MERGED" }), /no longer open/],
     [green({ isDraft: true }), /draft/],
   ];

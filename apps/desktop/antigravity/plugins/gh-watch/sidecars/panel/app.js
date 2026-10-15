@@ -554,6 +554,13 @@ function renderReviews(reviews) {
           { class: "review-side" },
           // Only once the whole pipeline is green, and not before.
           pr.ready ? reviewButtons(pr) : null,
+          pr.conflict
+            ? el(
+                "span",
+                { class: `badge ${pr.conflict.tone}` },
+                pr.conflict.text,
+              )
+            : null,
           pr.status
             ? el("span", { class: `badge ${pr.status.tone}` }, pr.status.text)
             : null,

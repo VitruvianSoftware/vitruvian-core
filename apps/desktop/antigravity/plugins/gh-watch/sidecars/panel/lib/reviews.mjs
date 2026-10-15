@@ -157,11 +157,11 @@ export function reviewCheckStatus(pr) {
 // Whether a review request in the list is fully green, so the panel may offer
 // to approve and merge it. Every check has finished and none failed or was
 // cancelled, at least one passed, it is not already in a merge queue, and
-// GitHub does not report a conflict. Anything less, or anything unknown, is
-// not ready: the buttons only appear once the pipeline is green.
+// GitHub has confirmed it has no conflict. Anything less, or anything unknown,
+// is not ready: the buttons only appear once the pipeline is green.
 export function readyForAction(pr) {
   if (!pr || pr.queued || pr.isDraft) return false;
-  if ((pr.mergeable ?? "").toUpperCase() === "CONFLICTING") return false;
+  if ((pr.mergeable ?? "").toUpperCase() !== "MERGEABLE") return false;
   const counts = rollupCounts(pr.rollup);
   if (counts)
     return (
@@ -180,8 +180,11 @@ export function notGreenReason(snap) {
   if (!snap) return "The pull request could not be read";
   if (snap.state !== "OPEN") return "The pull request is no longer open";
   if (snap.isDraft) return "The pull request is a draft";
-  if ((snap.mergeable ?? "").toUpperCase() === "CONFLICTING")
+  const mergeable = (snap.mergeable ?? "").toUpperCase();
+  if (mergeable === "CONFLICTING")
     return "The pull request has merge conflicts";
+  if (mergeable !== "MERGEABLE")
+    return "GitHub has not finished checking it for conflicts; try again in a minute";
   const counts = { pass: 0, fail: 0, pending: 0, skip: 0, cancel: 0 };
   for (const check of snap.checks ?? []) counts[check.bucket] += 1;
   if (counts.fail > 0) return `${counts.fail} check(s) failing`;
@@ -189,6 +192,17 @@ export function notGreenReason(snap) {
   if (counts.pending > 0) return `${counts.pending} check(s) still running`;
   if (counts.pass === 0) return "No checks have passed yet";
   return null;
+}
+
+// A second badge for a review request, about conflicts rather than CI, since a
+// pipeline can pass on a branch that no longer merges cleanly. GitHub works
+// conflicts out lazily, so "unknown" usually settles by the next read.
+// Returns null when GitHub reports no conflict.
+export function conflictBadge(mergeable) {
+  const state = (mergeable ?? "").toUpperCase();
+  if (state === "CONFLICTING") return { text: "Conflicts", tone: "bad" };
+  if (state === "MERGEABLE") return null;
+  return { text: "Checking for conflicts", tone: "wait" };
 }
 
 // Determines the review status badge for a pull request snapshot.
