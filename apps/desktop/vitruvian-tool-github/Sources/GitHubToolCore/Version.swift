@@ -5,5 +5,5 @@
 /// (`release-please-config.json`), and `version_test.py` holds them to each
 /// other.
 public enum ToolVersion {
-    public static let current = "1.3.0" // x-release-please-version
+    public static let current = "1.4.0" // x-release-please-version
 }
