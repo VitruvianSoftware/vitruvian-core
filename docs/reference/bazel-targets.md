@@ -45,10 +45,10 @@ mindmap
 |---|---|
 | `//:doctor` | Verifies your core toolchain (bazel, git required; node/pnpm/go/gh/gcloud/docker/direnv advisory) |
 | `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/tabula:doctor`, `//apps/cli/devx:doctor`, …) |
-| `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --list`, `-- --remove <branch>`. Branch work in the primary checkout is blocked — this is the sanctioned path |
+| `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --list`, `-- --remove <branch> [--delete-branch]`, `-- --prune [--execute]` (removes only clean, landed, unlocked worktrees; dry run by default). Branch work in the primary checkout is blocked — this is the sanctioned path |
 | `//tools/agent-app -- env <agent>` | Mints scoped GitHub App credentials (`GH_TOKEN`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`) for automated agents and bots (`atlas`, `quill`, etc.) |
 | `//tools/watch-pr -- <pr#\|branch\|sha>` | Autonomous PR watchdog: monitors CI checks, extracts failed logs, tracks merge queue, and verifies post-merge pipeline on `main` |
-| `//tools/landed -- <pr#\|branch\|sha>` | Resolves whether a PR or branch has landed on `origin/main` by inspecting the squashed commit (`main` is squash-only) |
+| `//tools/landed -- <pr#\|branch\|sha>` | Resolves whether a PR or branch has landed on `origin/main` by inspecting the squashed commit (`main` is squash-only). `-- --branch <name>` is the stricter delete gate: is every commit on that LOCAL branch on `origin/main` |
 | `//tools/pipeline-status -- <pr#\|sha>` | Evaluates the health of post-merge push workflows on `main`, asserting that CI, delivery, and image builds completed green |
 | `//:tidy` | **The single hygiene entrypoint**: gazelle → python manifest → all formatters. Required check (`tidy-check`); run before every PR |
 | `//:gazelle` | Regenerate `BUILD` files after adding/moving code |
@@ -56,7 +56,7 @@ mindmap
 | `//tools/ci-preflight` | The repo-side counterpart to `//:doctor`: every `secrets.*`/`vars.*` the workflows reference, and whether it is actually configured. Flags secrets that PR-triggered workflows read but the **Dependabot** store lacks — those silently resolve to `""` on dependency PRs. `-- --list` for the required set without touching the network |
 | `//tools/gomod:tidy` | `go mod tidy` across the `replace`-coupled Go modules (library ↔ go-foundation examples), which Dependabot cannot keep in step on its own. The fix side of `//tools/gomod:check` |
 | `//tools/antigravity-telemetry` | Antigravity & `agy` OTLP telemetry CLI: workstation setup (`setup`), diagnostics (`status`), test metric/trace emission (`emit`), and hook event exporter (`export`) |
-| `//tools/bazel-cache:gc` | Reclaims orphaned per-worktree output base caches in `~/.cache/bazel/worktrees/` (`--execute`) |
+| `//tools/bazel-cache:gc` | Reclaims Bazel output bases whose workspace is gone, or that are stale, across the default root, the per-worktree roots in `~/.cache/bazel/worktrees/` and stray bases; never one with a live server or a live worktree. Dry run unless `--execute` |
 | `//tools/remote:setup` | Opt-in build caching / RBE bootstrap — writes `user.bazelrc` for BuildBuddy or any REAPI provider. See [build cache](../guides/build-cache.md) / [remote build](../guides/remote-build.md) |
 
 ## Checks (run locally what CI gates)

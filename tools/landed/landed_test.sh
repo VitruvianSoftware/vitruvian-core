@@ -155,6 +155,69 @@ check "fallback: squashed commit on origin/main reports LANDED when gh fails" "$
 case "${out}" in *commit\ log*) check "...and notes it was resolved via commit log" 0 ;; *) check "...and notes it was resolved via commit log" 1 ;; esac
 rm -rf "${repo}" "${bin}"
 
+# ── --branch: the gate //tools/worktree uses before deleting a branch. ───────
+# gh_fails: a gh that cannot answer, so the content check must stand on its own.
+gh_fails() { mkdir -p "$1"; printf '#!/usr/bin/env bash\nexit 1\n' > "$1/gh"; chmod +x "$1/gh"; }
+# gh_pr <bin> <state> <headSha> <mergeSha>: what `gh pr list --head` returns.
+gh_pr() {
+  mkdir -p "$1"
+  printf '#!/usr/bin/env bash\necho "42 %s %s %s"\n' "$2" "$3" "$4" > "$1/gh"; chmod +x "$1/gh"
+}
+gate() { out="$(cd "$1" && BUILD_WORKSPACE_DIRECTORY="$1" LANDED_NO_FETCH=1 PATH="$2:${PATH}" \
+        bash "${UNDER_TEST}" --branch "$3" 2>&1)"; rc=$?; }
+
+# 8. squash-merged branch passes on CONTENT alone, with no GitHub at all.
+repo="$(new_repo)"; bin="$(mktemp -d)"; gh_fails "${bin}"
+gate "${repo}" "${bin}" topic
+check "--branch: squash-merged branch is landed by content, gh unavailable" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+case "${out}" in *content*) check "...and says it was the content check" 0 ;; *) check "...and says it was the content check: ${out}" 1 ;; esac
+
+# 9. THE DATA-LOSS CASE: PR merged, then the branch grew another local commit.
+#    `landed 42` would say yes; --branch must say no.
+head_at_merge="$(git -C "${repo}" rev-parse topic)"
+( cd "${repo}" && git checkout -q topic && echo more > g.txt && git add -A &&
+  git commit -qm "after the merge" && git checkout -q main ) >/dev/null 2>&1
+gh_pr "${bin}" MERGED "${head_at_merge}" "$(git -C "${repo}" rev-parse main)"
+gate "${repo}" "${bin}" topic
+check "--branch: merged PR + extra local commit -> NOT landed" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+case "${out}" in *"past what the PR merged"*) check "...and names the unmerged commits as the reason" 0 ;;
+  *) check "...and names the unmerged commits as the reason: ${out}" 1 ;; esac
+rm -rf "${repo}" "${bin}"
+
+# 10. a branch that never landed, gh unavailable -> NOT landed (unknown fails safe).
+repo="$(new_repo)"; bin="$(mktemp -d)"; gh_fails "${bin}"
+( cd "${repo}" && git checkout -q -b wip main && echo wip > w.txt && git add -A &&
+  git commit -qm wip && git checkout -q main ) >/dev/null 2>&1
+gate "${repo}" "${bin}" wip
+check "--branch: unlanded branch -> NOT landed" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+
+# 11. an OPEN PR does not make it landed.
+gh_pr "${bin}" OPEN "$(git -C "${repo}" rev-parse wip)" "-"
+gate "${repo}" "${bin}" wip
+check "--branch: open PR -> NOT landed" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+
+# 12. a branch with no commits of its own has nothing to lose.
+git -C "${repo}" branch -q empty main
+gate "${repo}" "${bin}" empty
+check "--branch: no commits of its own -> landed" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+case "${out}" in *"no commits of its own"*) check "...and says so (worktree --prune keys on this)" 0 ;; *) check "...and says so: ${out}" 1 ;; esac
+
+# 13. no such branch is an error, not a green.
+gate "${repo}" "${bin}" nope
+check "--branch: unknown branch -> error" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+rm -rf "${repo}" "${bin}"
+
+# 14. merged PR, but main has since changed the SAME lines: the content check
+#     sees a difference, so the PR proof (local tip == PR head) must carry it.
+repo="$(new_repo)"; bin="$(mktemp -d)"
+squashed="$(git -C "${repo}" rev-parse main)"
+( cd "${repo}" && echo later > f.txt && git add -A && git commit -qm "later edit" &&
+  git update-ref refs/remotes/origin/main refs/heads/main ) >/dev/null 2>&1
+gh_pr "${bin}" MERGED "$(git -C "${repo}" rev-parse topic)" "${squashed}"
+gate "${repo}" "${bin}" topic
+check "--branch: merged PR whose lines main later changed -> landed via the PR" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+rm -rf "${repo}" "${bin}"
+
 echo
 if [ "${FAIL}" -ne 0 ]; then
   printf '\033[31mFAIL\033[0m — %d passed, %d failed\n' "${PASS}" "${FAIL}"; exit 1

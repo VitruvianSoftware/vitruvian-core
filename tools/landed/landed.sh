@@ -24,6 +24,12 @@
 #   bazel run //tools/landed -- 1205                 # a PR number
 #   bazel run //tools/landed -- claude/my-branch     # a branch
 #   bazel run //tools/landed -- da6612ad             # a local commit
+#   bazel run //tools/landed -- --branch my/branch   # is it SAFE TO DELETE this local branch?
+#
+# --branch is the gate //tools/worktree uses before it deletes a branch. The
+# plain modes answer "did PR #N land"; --branch answers the stricter question
+# "is every commit on this LOCAL branch already on main", so a branch that had
+# its PR merged and then grew more unpushed commits is NOT safe. See gate_branch.
 #
 # WHY THIS EXISTS, and why the obvious one-liner is wrong:
 #
@@ -70,6 +76,71 @@ die()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}" ||
   die "cannot find a workspace to run in"
 
+fetch_base() {
+  # LANDED_NO_FETCH=1 lets a caller that checks many branches fetch once.
+  [ "${LANDED_NO_FETCH:-0}" = "1" ] || git fetch origin "${BASE#origin/}" -q 2>/dev/null || true
+}
+
+# ── --branch: is every commit on this LOCAL branch already on BASE? ──────────
+# Passes (exit 0) on any ONE of three independent proofs, cheapest first:
+#   1. the branch tip is an ancestor of BASE -- nothing of its own to lose.
+#   2. CONTENT: merging the branch into BASE changes nothing (`git merge-tree`
+#      yields BASE's own tree). This is what survives a squash: the SHAs differ
+#      but every line the branch would add is already there. No network needed.
+#   3. PR: the branch's PR is MERGED, its squashed commit is on BASE, AND the
+#      local tip is the PR's head (or behind it). Covers a landed branch whose
+#      lines main has since changed again, which makes (2) see a difference.
+# Anything else is "not landed" (exit 1), and that includes "could not tell":
+# this gate guards a deletion, so an unknown must fail toward keeping the work.
+gate_branch() {
+  local br="$1" tip base_tree merged pr_line pr state head squashed ahead
+  tip="$(git rev-parse --verify -q "refs/heads/${br}^{commit}")" ||
+    die "no local branch '${br}'."
+  fetch_base
+  git rev-parse --verify -q "${BASE}^{commit}" >/dev/null ||
+    die "${BASE} does not exist in this checkout, so '${br}' cannot be checked."
+
+  if git merge-base --is-ancestor "${tip}" "${BASE}" 2>/dev/null; then
+    ok "${br} has no commits of its own: everything on it is already on ${BASE}."
+    exit 0
+  fi
+
+  base_tree="$(git rev-parse "${BASE}^{tree}")"
+  if merged="$(git merge-tree --write-tree "${BASE}" "${tip}" 2>/dev/null | head -1)" &&
+     [ "${merged}" = "${base_tree}" ]; then
+    ok "${br} is landed: merging it into ${BASE} would change nothing (content check)."
+    exit 0
+  fi
+
+  ahead="$(git rev-list --count "${BASE}..${tip}" 2>/dev/null || echo '?')"
+  if command -v gh >/dev/null 2>&1; then
+    pr_line="$(gh pr list --repo "${REPO}" --head "${br}" --state all \
+      --json number,state,headRefOid,mergeCommit,createdAt \
+      -q 'sort_by(.createdAt)|last|"\(.number) \(.state) \(.headRefOid) \(.mergeCommit.oid // "-")"' 2>/dev/null || true)"
+    read -r pr state head squashed <<<"${pr_line}"
+    if [ "${state:-}" = "MERGED" ] && [ -n "${squashed:-}" ] && [ "${squashed}" != "-" ] &&
+       git merge-base --is-ancestor "${squashed}" "${BASE}" 2>/dev/null; then
+      if [ "${tip}" = "${head}" ] ||
+         { git cat-file -e "${head}^{commit}" 2>/dev/null &&
+           git merge-base --is-ancestor "${tip}" "${head}" 2>/dev/null; }; then
+        ok "${br} is landed: PR #${pr} merged as ${squashed:0:8}, and the local branch has nothing past the PR's head."
+        exit 0
+      fi
+      die "${br} is NOT safe to delete: PR #${pr} merged, but the local branch has commits
+   past what the PR merged (local ${tip:0:8}, PR head ${head:0:8}). Push or save them first."
+    fi
+    [ -n "${pr:-}" ] && [ "${pr}" != "null" ] &&
+      die "${br} is NOT landed: ${ahead} commit(s) not on ${BASE}, and PR #${pr} is ${state:-unknown}."
+  fi
+  die "${br} is NOT landed: ${ahead} commit(s) not on ${BASE}, their changes are not on it
+   either, and no merged pull request covers them."
+}
+
+if [ "${1:-}" = "--branch" ]; then
+  [ -n "${2:-}" ] || die "usage: landed --branch <local-branch>"
+  gate_branch "$2"
+fi
+
 ref="${1:-}"
 [ -n "${ref}" ] || die "usage: landed <pr-number|branch|commit-sha>
 
@@ -112,7 +183,7 @@ read -r state squashed < <(gh pr view "${pr}" --repo "${REPO}" \
 
 if [ -z "${state:-}" ]; then
   # Fallback: check if the commit already landed on BASE via squash title suffix "(#$pr)"
-  git fetch origin "${BASE#origin/}" -q 2>/dev/null || true
+  fetch_base
   local_squashed="$(git log -1 --grep "(#${pr})" --format='%H' "${BASE}" 2>/dev/null || true)"
   if [ -n "${local_squashed}" ]; then
     ok "PR #${pr} is on ${BASE} as ${local_squashed:0:8} (squashed) [resolved via commit log]."
@@ -134,7 +205,7 @@ esac
   die "PR #${pr} reports MERGED but exposes no merge commit, so it cannot be
    verified against ${BASE}. Check it by content instead."
 
-git fetch origin "${BASE#origin/}" -q 2>/dev/null || true
+fetch_base
 
 if ! git cat-file -e "${squashed}^{commit}" 2>/dev/null; then
   die "PR #${pr} squashed to ${squashed:0:8}, which this checkout does not have.
