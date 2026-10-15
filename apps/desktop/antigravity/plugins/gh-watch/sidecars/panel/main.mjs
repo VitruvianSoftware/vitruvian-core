@@ -31,7 +31,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Response, SidecarApp } from "sidecar_sdk";
 
+import { reviewAction } from "./lib/actions.mjs";
 import {
+  approvePr,
   fetchCommitChecks,
   fetchFailureLog,
   fetchFeedback,
@@ -143,6 +145,35 @@ app.api(
   },
   "GET",
 );
+
+// POST /api/review-action {repo, number, merge}: approve a pull request from
+// "Waiting on your review", and with `merge` also set it to merge. Refused
+// unless a fresh read shows it is still fully green. GitHub drops the review
+// request once it is approved, so the row is taken out of the list at once
+// and the list is read again on the next look.
+app.api("/api/review-action", async (data) => {
+  try {
+    const done = await reviewAction(
+      {
+        repo: data.repo,
+        number: data.number,
+        merge: data.merge === true,
+        mergeMethod: store.settings().mergeMethod,
+      },
+      { fetchPr, approvePr, setAutoMerge },
+    );
+    reviews = {
+      ...reviews,
+      at: 0,
+      items: reviews.items.filter(
+        (pr) => !(pr.repo === data.repo && pr.number === Number(data.number)),
+      ),
+    };
+    return done;
+  } catch (err) {
+    return fail(err.message);
+  }
+});
 
 // POST /api/presence {visible}: the panel reports whether it is showing.
 // While it is, the watcher polls at the fast pace.

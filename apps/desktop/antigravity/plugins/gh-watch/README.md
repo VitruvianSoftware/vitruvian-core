@@ -31,7 +31,8 @@ switch in Claude Code's desktop app.
   the next time it fails the agent is told to re-run it before changing code.
 - The panel also lists the pull requests waiting on your review, anywhere on
   GitHub, with a tick box per repository so you can choose which ones are
-  listed. It marks a watched pull request "Ready to merge" when it is green
+  listed. Once a pull request's pipeline is fully green, its row gets
+  Approve and Approve & merge buttons. It marks a watched pull request "Ready to merge" when it is green
   and mergeable but nothing is set to merge it.
 - When an agent runs `gh pr create`, the new pull request is watched
   automatically for the conversation that opened it.
@@ -192,7 +193,8 @@ pull request until you turn it on.
 | `sidecars/panel/lib/inbox.mjs` | Reads the notes the hook leaves |
 | `sidecars/panel/lib/watcher.mjs` | The polling loop |
 | `sidecars/panel/lib/pace.mjs` | How often to poll, and the settings limits (pure logic) |
-| `sidecars/panel/lib/reviews.mjs` | Which review requests to list (pure logic) |
+| `sidecars/panel/lib/reviews.mjs` | Which review requests to list, and which are green enough to act on (pure logic) |
+| `sidecars/panel/lib/actions.mjs` | Approve, and approve & merge, from the review list |
 | `sidecars/panel/lib/github.mjs` | Reads pull requests through `gh` |
 | `sidecars/panel/lib/store.mjs` | The saved watch list |
 | `sidecars/panel/{index.html,app.js,styles.css}` | The side panel |

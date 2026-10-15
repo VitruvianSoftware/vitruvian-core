@@ -27,7 +27,7 @@ import { execFile } from "node:child_process";
 
 import { normaliseChecks } from "./decide.mjs";
 import { collectFeedback } from "./notices.mjs";
-import { REVIEW_LIMIT, reviewCheckStatus } from "./reviews.mjs";
+import { REVIEW_LIMIT, readyForAction, reviewCheckStatus } from "./reviews.mjs";
 
 const FIELDS =
   "number,title,url,state,isDraft,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,autoMergeRequest,mergeCommit,statusCheckRollup,reviewDecision,latestReviews,reviewRequests";
@@ -149,6 +149,12 @@ export async function setAutoMerge(repo, number, enabled, method, run = gh) {
   }
 }
 
+// Approves a pull request as the signed-in account. `run` is injectable for
+// tests.
+export async function approvePr(repo, number, run = gh) {
+  await run(["pr", "review", String(number), "-R", repo, "--approve"]);
+}
+
 let cachedLogin = null;
 
 // The GitHub account `gh` is signed in as, read once.
@@ -266,6 +272,7 @@ query($limit: Int!) {
         author { __typename login }
         isInMergeQueue
         mergeQueueEntry { position }
+        mergeable
         commits(last: 1) {
           nodes {
             commit {
@@ -318,6 +325,12 @@ export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
         status: reviewCheckStatus({
           queued: pr.isInMergeQueue === true,
           queuePosition: pr.mergeQueueEntry?.position ?? null,
+          rollup,
+        }),
+        // Fully green: the panel offers Approve and Approve & merge.
+        ready: readyForAction({
+          queued: pr.isInMergeQueue === true,
+          mergeable: pr.mergeable,
           rollup,
         }),
       };

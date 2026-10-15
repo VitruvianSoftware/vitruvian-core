@@ -403,9 +403,93 @@ function render(state) {
   renderFlaky(state.flaky ?? []);
 }
 
+// Approve and Approve & merge on a fully green review request take two clicks:
+// the first arms the button for a few seconds, the second acts. The armed
+// button is remembered here, since the list is redrawn every few seconds.
+const ARM_MS = 6000;
+let armed = null; // { id, until }
+let lastReviews = { items: [] };
+// Actions sent and not yet answered, so a redraw cannot offer them again.
+const sending = new Set();
+
+function reviewButtons(pr) {
+  const buttons = [
+    { kind: "approve", merge: false, label: "Approve" },
+    { kind: "merge", merge: true, label: "Approve & merge" },
+  ];
+  return el(
+    "span",
+    { class: "review-actions" },
+    ...buttons.map((b) => {
+      const id = `${pr.repo}#${pr.number}:${b.kind}`;
+      const isArmed = armed?.id === id && armed.until > Date.now();
+      const isSending = sending.has(id);
+      return el(
+        "button",
+        {
+          type: "button",
+          class: isArmed ? "small" : "secondary small",
+          disabled: isSending,
+          "data-focus": `review-action:${id}`,
+          title: b.merge
+            ? "Approve, then set it to merge: it joins the merge queue, or GitHub merges it once its required reviews are in"
+            : "Approve this pull request",
+          onclick: async () => {
+            if (!isArmed) {
+              armed = { id, until: Date.now() + ARM_MS };
+              renderReviews(lastReviews);
+              setTimeout(() => {
+                if (armed?.id === id) {
+                  armed = null;
+                  renderReviews(lastReviews);
+                }
+              }, ARM_MS);
+              return;
+            }
+            armed = null;
+            sending.add(id);
+            renderReviews(lastReviews);
+            reviewResult(null);
+            try {
+              await callApi("/api/review-action", {
+                method: "POST",
+                body: { repo: pr.repo, number: pr.number, merge: b.merge },
+              });
+              reviewResult(
+                b.merge
+                  ? `#${pr.number} approved and set to merge.`
+                  : `#${pr.number} approved.`,
+              );
+            } catch (err) {
+              reviewResult(`#${pr.number}: ${err.message}`, true);
+            }
+            sending.delete(id);
+            await load();
+          },
+        },
+        isSending
+          ? b.merge
+            ? "Merging…"
+            : "Approving…"
+          : isArmed
+            ? `Confirm ${b.label.toLowerCase()}`
+            : b.label,
+      );
+    }),
+  );
+}
+
+function reviewResult(message, isError = false) {
+  const box = $("reviews-result");
+  box.textContent = message ?? "";
+  box.className = isError ? "error small" : "muted small";
+  box.hidden = !message;
+}
+
 // Pull requests where someone is waiting on the user's review, with a tick
 // box per repository to choose which ones are listed.
 function renderReviews(reviews) {
+  lastReviews = reviews;
   const items = reviews.items ?? [];
   const repos = reviews.repos ?? [];
   const total = reviews.total ?? items.length;
@@ -450,8 +534,9 @@ function renderReviews(reviews) {
   $("reviews-none").hidden = !(items.length === 0 && total > 0);
   const singleRepo =
     reviews.singleRepo ?? repos.filter((row) => row.shown).length === 1;
-  $("reviews-list").replaceChildren(
-    ...items.map((pr) => {
+  redraw(
+    $("reviews-list"),
+    items.map((pr) => {
       const label = singleRepo
         ? `#${pr.number} ${pr.title}`
         : `${pr.repo}#${pr.number} ${pr.title}`;
@@ -464,9 +549,15 @@ function renderReviews(reviews) {
           el("a", { href: pr.url, target: "_blank", rel: "noreferrer" }, label),
           el("span", { class: "muted small" }, ` · ${pr.author}`),
         ),
-        pr.status
-          ? el("span", { class: `badge ${pr.status.tone}` }, pr.status.text)
-          : null,
+        el(
+          "span",
+          { class: "review-side" },
+          // Only once the whole pipeline is green, and not before.
+          pr.ready ? reviewButtons(pr) : null,
+          pr.status
+            ? el("span", { class: `badge ${pr.status.tone}` }, pr.status.text)
+            : null,
+        ),
       );
     }),
   );

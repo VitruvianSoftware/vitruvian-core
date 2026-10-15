@@ -154,6 +154,43 @@ export function reviewCheckStatus(pr) {
   return null;
 }
 
+// Whether a review request in the list is fully green, so the panel may offer
+// to approve and merge it. Every check has finished and none failed or was
+// cancelled, at least one passed, it is not already in a merge queue, and
+// GitHub does not report a conflict. Anything less, or anything unknown, is
+// not ready: the buttons only appear once the pipeline is green.
+export function readyForAction(pr) {
+  if (!pr || pr.queued || pr.isDraft) return false;
+  if ((pr.mergeable ?? "").toUpperCase() === "CONFLICTING") return false;
+  const counts = rollupCounts(pr.rollup);
+  if (counts)
+    return (
+      counts.fail === 0 &&
+      counts.pending === 0 &&
+      counts.cancel === 0 &&
+      counts.pass > 0
+    );
+  return (pr.rollup?.state ?? "").toUpperCase() === "SUCCESS";
+}
+
+// The same test, made again on a freshly read pull request just before the
+// panel approves or merges it, since the list can be up to two minutes old.
+// Returns null when it is still green, or the reason it is not.
+export function notGreenReason(snap) {
+  if (!snap) return "The pull request could not be read";
+  if (snap.state !== "OPEN") return "The pull request is no longer open";
+  if (snap.isDraft) return "The pull request is a draft";
+  if ((snap.mergeable ?? "").toUpperCase() === "CONFLICTING")
+    return "The pull request has merge conflicts";
+  const counts = { pass: 0, fail: 0, pending: 0, skip: 0, cancel: 0 };
+  for (const check of snap.checks ?? []) counts[check.bucket] += 1;
+  if (counts.fail > 0) return `${counts.fail} check(s) failing`;
+  if (counts.cancel > 0) return `${counts.cancel} check(s) cancelled`;
+  if (counts.pending > 0) return `${counts.pending} check(s) still running`;
+  if (counts.pass === 0) return "No checks have passed yet";
+  return null;
+}
+
 // Determines the review status badge for a pull request snapshot.
 // Returns null if there is no review activity.
 export function reviewStatus(pr) {
