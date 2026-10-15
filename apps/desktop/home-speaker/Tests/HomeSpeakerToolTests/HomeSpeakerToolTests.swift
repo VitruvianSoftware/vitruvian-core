@@ -52,6 +52,7 @@ final class HomeSpeakerToolTests: XCTestCase {
     /// A HomeSpeaker that records what it was asked and answers when told.
     final class Driver: SpeakerDriver {
         var isInstalled = true
+        var program: URL? { isInstalled ? URL(fileURLWithPath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker") : nil }
         var jobs: [Job] = []
         var pending: [(Job, @Sendable (JobResult) -> Void)] = []
         func run(_ job: Job, then: @escaping @Sendable (JobResult) -> Void) {

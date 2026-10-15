@@ -58,6 +58,8 @@ public enum JobResult: Equatable, Sendable {
 public protocol SpeakerDriver: AnyObject {
     /// HomeSpeaker is on this Mac.
     var isInstalled: Bool { get }
+    /// The HomeSpeaker program the jobs run; nil when it is not installed.
+    var program: URL? { get }
     func run(_ job: Job, then: @escaping @Sendable (JobResult) -> Void)
 }
 
@@ -77,6 +79,7 @@ public final class ProcessDriver: SpeakerDriver {
     }
 
     public var isInstalled: Bool { binary != nil }
+    public var program: URL? { binary }
 
     /// The environment variable that names the program to drive instead of
     /// the installed app: a build of HomeSpeaker's, or, set and empty, no

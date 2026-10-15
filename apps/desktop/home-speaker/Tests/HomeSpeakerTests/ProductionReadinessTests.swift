@@ -33,6 +33,34 @@ private func tempDir() -> URL {
     return url
 }
 
+/// This package's root, holding Sources/ and Resources/. Under SwiftPM
+/// `#filePath` is absolute. Under Bazel it is relative to the workspace, and
+/// the files are runfiles (the test's `data` in BUILD): look in
+/// $TEST_SRCDIR/$TEST_WORKSPACE, then $RUNFILES_DIR, then the working
+/// directory, which is the runfiles root while a Bazel test runs.
+private func packageRoot(_ filePath: String = #filePath) -> URL {
+    func root(of file: URL) -> URL {
+        file.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    }
+    if filePath.hasPrefix("/") { return root(of: URL(fileURLWithPath: filePath)) }
+    let env = ProcessInfo.processInfo.environment
+    let workspace = env["TEST_WORKSPACE"] ?? "_main"
+    var bases: [URL] = []
+    if let srcdir = env["TEST_SRCDIR"] { bases.append(URL(fileURLWithPath: srcdir).appendingPathComponent(workspace)) }
+    if let runfiles = env["RUNFILES_DIR"] { bases.append(URL(fileURLWithPath: runfiles).appendingPathComponent(workspace)) }
+    let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    bases.append(cwd)
+    for base in bases {
+        let candidate = root(of: base.appendingPathComponent(filePath))
+        if FileManager.default.fileExists(atPath: candidate.appendingPathComponent("Sources").path) { return candidate }
+    }
+    return root(of: cwd.appendingPathComponent(filePath))
+}
+
+/// True inside a Bazel test sandbox, which has no keychain login, no network
+/// and no `gws` sign-in, so the live Chat checks cannot run there.
+private let inBazelSandbox = ProcessInfo.processInfo.environment["TEST_TMPDIR"] != nil
+
 private func json(_ text: String) -> [String: Any] {
     (try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]) ?? [:]
 }
@@ -63,9 +91,7 @@ private func json(_ text: String) -> [String: Any] {
 
     @Test func noSourceFileShipsAHomeDirectoryPath() throws {
         // The bug this guards: 1.x wrote "/Users/james/..." into every user's settings.
-        let sources = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources")
+        let sources = packageRoot().appendingPathComponent("Sources")
         let files = try FileManager.default.subpathsOfDirectory(atPath: sources.path).filter { $0.hasSuffix(".swift") }
         #expect(!files.isEmpty)
         for f in files {
@@ -793,8 +819,9 @@ private final class SentinelClass {}
     }
 
     /// Exercises the real Chat API when this machine has a Chat login in the
-    /// default secret store (skips cleanly on CI, which has none).
-    @Test func apiListsSpacesWhenChatLoginPresent() async throws {
+    /// default secret store (skips cleanly on CI, which has none, and in the Bazel sandbox).
+    @Test(.enabled(if: !inBazelSandbox, "no Chat login, network or gws in the Bazel sandbox"))
+    func apiListsSpacesWhenChatLoginPresent() async throws {
         guard SecretStore.shared.load().hasChatAccess else { return }
         let client = GoogleChatClient()
         let spaces = try await client.spaces()
@@ -805,8 +832,9 @@ private final class SentinelClass {}
     }
 
     /// Exercises the real gws binary when one is installed on the machine
-    /// running the tests (skips cleanly on CI, which has none).
-    @Test func gwsListsSpacesWhenInstalled() async throws {
+    /// running the tests (skips cleanly on CI, which has none, and in the Bazel sandbox).
+    @Test(.enabled(if: !inBazelSandbox, "no Chat login, network or gws in the Bazel sandbox"))
+    func gwsListsSpacesWhenInstalled() async throws {
         guard let path = GwsChatClient.locate() else { return }
         let client = GwsChatClient(executable: path, account: "james.nguyen@gmail.com")
         let spaces = try await client.spaces()
@@ -819,7 +847,7 @@ private final class SentinelClass {}
 
 @Suite struct VersionConsistencyTests {
     @Test func infoPlistMatchesVersionSwift() throws {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = packageRoot()
         let plist = try Data(contentsOf: root.appendingPathComponent("Resources/Info.plist"))
         let dict = try #require(PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any])
         #expect(dict["CFBundleShortVersionString"] as? String == HomeSpeakerVersion.current,

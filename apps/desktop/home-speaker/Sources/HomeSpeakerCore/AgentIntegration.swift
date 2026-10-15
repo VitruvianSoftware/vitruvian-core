@@ -154,13 +154,55 @@ public struct AgentIntegration {
     private let home: URL
     private let executablePath: String
 
+    /// `executablePath` is the HomeSpeaker program the hooks will run. A
+    /// process other than the app (the Vitruvian tool's `bin/tool`) must pass
+    /// the HomeSpeaker it located: the default is whatever is running, and a
+    /// hook pointed at another program would never speak.
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        executablePath: String = Bundle.main.executablePath ?? CommandLine.arguments[0]
+        executablePath: String = AgentIntegration.runningExecutable()
     ) {
         self.home = home
         self.executablePath = executablePath
     }
+
+    /// The running program as an absolute path: the bundle's executable, else
+    /// argv[0] made absolute against the working directory (a bare
+    /// `.build/debug/HomeSpeaker` would otherwise be written as a relative
+    /// hook that only works from this one folder).
+    public static func runningExecutable(
+        bundleExecutable: String? = Bundle.main.executablePath,
+        argv0: String = CommandLine.arguments.first ?? "",
+        currentDirectory: String = FileManager.default.currentDirectoryPath
+    ) -> String {
+        if let bundleExecutable, !bundleExecutable.isEmpty { return bundleExecutable }
+        let url = argv0.hasPrefix("/") ? URL(fileURLWithPath: argv0)
+            : URL(fileURLWithPath: currentDirectory).appendingPathComponent(argv0)
+        return url.standardizedFileURL.path
+    }
+
+    /// The program's file name every HomeSpeaker build has: the app bundle's
+    /// `Contents/MacOS/HomeSpeaker`, SwiftPM's `.build/*/HomeSpeaker`.
+    public static let programName = "HomeSpeaker"
+
+    /// True when `path` is a HomeSpeaker program, the only thing a hook may run.
+    public static func isHomeSpeakerProgram(_ path: String) -> Bool {
+        URL(fileURLWithPath: path).lastPathComponent == programName
+    }
+
+    public enum IntegrationError: Error, Equatable, LocalizedError {
+        /// The hook would run something that is not HomeSpeaker.
+        case notHomeSpeaker(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .notHomeSpeaker(let path):
+                return "\(path) is not the HomeSpeaker app, so a hook pointing at it would never speak. Install the hook from HomeSpeaker itself."
+            }
+        }
+    }
+
+    public var hookExecutablePath: String { executablePath }
 
     /// The exact command line the agent will run.
     public func hookCommand(for agent: CodingAgent) -> String {
@@ -271,8 +313,41 @@ public struct AgentIntegration {
         /// Announcements will happen one way or another.
         public var isConfigured: Bool { hook == .installed || configuredByInstruction }
 
-        /// True when two hooks would both speak the same reply.
-        public var speaksTwice: Bool { hook == .installed && rivalHook != nil }
+        /// True when two hooks would both speak the same reply. Only an
+        /// agent this app hooks can be doubled up this way: the rival is a
+        /// second hook file, and without ours installed there is one voice.
+        public var speaksTwice: Bool { agent.supportsHook && hook == .installed && rivalHook != nil }
+
+        /// The warning Settings shows when `speaksTwice`, naming the file
+        /// that also speaks; nil otherwise.
+        public var speaksTwiceWarning: String? {
+            guard speaksTwice, let rival = rivalHook else { return nil }
+            return "Every reply is spoken twice: \(rival.lastPathComponent) in \(rival.deletingLastPathComponent().lastPathComponent) also announces it."
+        }
+
+        /// Which of the three shapes the agent's Settings section takes.
+        public var section: Section {
+            if !isInstalled { return .notInstalled }
+            if !agent.supportsHook { return .instructionDriven }
+            return .hook
+        }
+
+        public init(agent: CodingAgent, isInstalled: Bool, hook: HookStatus, configuredByInstruction: Bool, rivalHook: URL?) {
+            self.agent = agent
+            self.isInstalled = isInstalled
+            self.hook = hook
+            self.configuredByInstruction = configuredByInstruction
+            self.rivalHook = rivalHook
+        }
+    }
+
+    public enum Section: Equatable, Sendable {
+        /// The agent is not on this Mac.
+        case notInstalled
+        /// Driven by a line in its instruction file (no hook support).
+        case instructionDriven
+        /// Driven by our hook; the "spoken twice" warning lives here.
+        case hook
     }
 
     public func status(of agent: CodingAgent) -> AgentStatus {
@@ -316,6 +391,7 @@ public struct AgentIntegration {
     public func isClaudeCodeHookInstalled() -> Bool { hookStatus() == .installed }
 
     public func installHook(for agent: CodingAgent) throws {
+        guard Self.isHomeSpeakerProgram(executablePath) else { throw IntegrationError.notHomeSpeaker(executablePath) }
         try writeSettings(Self.mergeHook(into: readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
     }
 
@@ -339,6 +415,9 @@ public struct AgentIntegration {
     /// Called on every launch: if the user moved the app (Downloads ->
     /// Applications), point every installed hook at the new location.
     public func repairHookIfMoved() {
+        // From any program but HomeSpeaker, every installed hook looks
+        // "moved"; repairing it would point it at that program.
+        guard Self.isHomeSpeakerProgram(executablePath) else { return }
         for agent in CodingAgent.allCases where agent.supportsHook {
             if case .stale = hookStatus(for: agent) { try? installHook(for: agent) }
         }

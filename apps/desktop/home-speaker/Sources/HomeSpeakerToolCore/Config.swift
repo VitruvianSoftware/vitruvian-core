@@ -23,8 +23,10 @@ import HomeSpeakerCore
 
 /// HomeSpeaker's settings file, `~/.gemini/speaker_broadcast.json`: the
 /// contract the app, the `speaker-broadcast` command and the Mac agent
-/// share. The tool reads it before each page and writes it back whole, as
-/// the app does; the app watches the folder and follows within a second.
+/// share. The tool reads it before each page and writes it back through
+/// `SpeakerConfigFile`, as the app does: merged into what is there, so keys
+/// the tool does not know survive, and never over a file that does not
+/// read. The app watches the folder and follows within a second.
 public protocol ConfigStore: AnyObject {
     /// Nil when there is no file, or none that reads.
     func load() -> SpeakerConfig?
@@ -32,26 +34,23 @@ public protocol ConfigStore: AnyObject {
 }
 
 public final class FileConfigStore: ConfigStore {
-    public let url: URL
+    public let file: SpeakerConfigFile
+    public var url: URL { file.url }
 
-    public init(url: URL = ConfigManager.defaultConfigURL()) {
-        self.url = url
+    public init(url: URL = ConfigManager.defaultConfigURL(), fileSystem: ConfigFileSystem = LocalConfigFileSystem()) {
+        self.file = SpeakerConfigFile(url: url, fileSystem: fileSystem)
     }
 
     public func load() -> SpeakerConfig? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(SpeakerConfig.self, from: data)
+        if case .loaded(let config) = file.read() { return config }
+        return nil
     }
 
-    /// Written as the app writes it: pretty, keys sorted, in one move.
+    /// Throws, writing nothing, when the file there does not read as
+    /// HomeSpeaker's settings: the tool would otherwise save its defaults
+    /// over them.
     public func save(_ config: SpeakerConfig) throws {
-        let folder = url.deletingLastPathComponent()
-        if !FileManager.default.fileExists(atPath: folder.path) {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(config).write(to: url, options: .atomic)
+        try file.write(config)
     }
 }
 
