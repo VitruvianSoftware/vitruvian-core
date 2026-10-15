@@ -163,6 +163,15 @@ package final class NotchNotificationService: ObservableObject {
         trimIcons()
     }
 
+    /// Dismisses an app's stack. A message being opened still needs its
+    /// mirror, so a stack that holds it waits, as Clear All does.
+    package func dismiss(_ ids: Set<UUID>) {
+        guard openingID.map({ !ids.contains($0) }) ?? true else { return }
+        inbox.dismiss(ids)
+        if let unavailableID, ids.contains(unavailableID) { self.unavailableID = nil }
+        trimIcons()
+    }
+
     /// Empties the island's inbox only; Notification Center keeps its own.
     /// An opening in flight still needs its message, so it waits for it.
     package func clearAll() {

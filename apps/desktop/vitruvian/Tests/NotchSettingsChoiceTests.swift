@@ -30,7 +30,10 @@ enum NotchSettingsChoiceTests {
             let choices = destinations.map { title in
                 (title, AnyView(NotchDestinationRow(title, symbol: "tray.full", value: .constant(true), language: language)))
             } + [(agents.limitsAs, AnyView(NotchAgentRows.Limits(
-                text: agents, limitDisplay: .constant(NotchAgentLimitDisplay.remaining.rawValue))))]
+                text: agents, limitDisplay: .constant(NotchAgentLimitDisplay.remaining.rawValue)))),
+                 (FeatureStrings.notchNotifications(language).layout, AnyView(NotchNotificationLayoutRow(
+                    text: FeatureStrings.notchNotifications(language),
+                    layout: .constant(NotchNotificationLayout.cards.rawValue))))]
             for (title, row) in choices {
                 let overflow = problems(row, width: narrowest, textColumn: column)
                 suite.expect(overflow.isEmpty, "\(language.rawValue): \(title) fits the narrowest Dynamic Island "

@@ -31,6 +31,26 @@ package struct NotchDestinationRow: View {
     }
 }
 
+/// Whether the Notifications page shows cards or a list.
+package struct NotchNotificationLayoutRow: View {
+    private let text: NotchNotificationStrings
+    @Binding private var layout: String
+
+    package init(text: NotchNotificationStrings, layout: Binding<String>) {
+        self.text = text
+        _layout = layout
+    }
+
+    package var body: some View {
+        // An unknown saved value reads as the cards, as the page does.
+        let selection = Binding(get: { NotchNotificationLayout(saved: layout).rawValue }, set: { layout = $0 })
+        SettingsChoiceRow(symbol: "list.bullet.rectangle", title: text.layout, selection: selection) {
+            Text(text.layoutCards).tag(NotchNotificationLayout.cards.rawValue)
+            Text(text.layoutList).tag(NotchNotificationLayout.list.rawValue)
+        }
+    }
+}
+
 /// The AI agents card's choices, each a row of its own so its layout can be
 /// measured on its own.
 package enum NotchAgentRows {

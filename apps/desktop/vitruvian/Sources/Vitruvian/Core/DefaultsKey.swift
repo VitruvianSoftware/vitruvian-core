@@ -836,6 +836,8 @@ package enum DefaultsKey {
     package static let notchKeyboardLight = "notchKeyboardLight"
     package static let notchNotificationsEnabled = "notchNotificationsEnabled"
     package static let notchDismissNativeNotifications = "notchDismissNativeNotifications"
+    package static let notchNotificationsLayout = "notchNotificationsLayout" // cards or list on the Notifications page
+    package static let notchNotificationsGrouped = "notchNotificationsGrouped" // the list stacks each app's messages
     package static let notchTimerEnabled = "notchTimerEnabled"
     package static let notchTimerMode = "notchTimerMode"
     package static let notchTimerSoundEnabled = "notchTimerSoundEnabled"
