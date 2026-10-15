@@ -159,12 +159,27 @@ public enum Pages {
         /// A client secret is typed and not saved yet. The field itself is
         /// always drawn empty: a secret goes in and never comes back out.
         public var draftClientSecretTyped = false
+        /// The shared history (`BroadcastHistory`), newest first: what the
+        /// app, `HomeSpeaker --say` and the Stop hook have spoken.
+        public var recentBroadcasts: [BroadcastLogItem] = []
 
         public init() {}
+
+        /// Not signed in, or signed in with no speakers yet: the island
+        /// offers the first-run steps where the speaker picker would be.
+        public var needsSetup: Bool { !account.isSignedIn || config.targets.isEmpty }
     }
 
     public static let releases = "https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker"
     public static let maxSpeakerRows = 20
+    /// How many of the history's entries the island lists.
+    public static let maxRecentBroadcasts = 5
+    /// How many homes the island's setup offers as buttons.
+    public static let maxSetupHomes = 10
+    public static let noRecentBroadcasts = "No recent announcements"
+    public static let homeSpeakersOff = "Home speakers are off"
+    public static let appNotReadingChat = "HomeSpeaker isn't running, so nothing is reading chat"
+    public static let fixChatInSettings = "Fix it in Settings > Chat & Slack"
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
 
@@ -214,6 +229,24 @@ public enum Pages {
         public static let saveOAuthClient = "saveOAuthClient"
         public static let clearOAuthClient = "clearOAuthClient"
         public static let removeLegacyAgent = "removeLegacyAgent"
+        // The island's first-run setup and its outputs. Their own ids, so
+        // the island never answers to a settings control's.
+        public static let setupSignIn = "setup.signIn"
+        public static let setupImportAntigravity = "setup.importAntigravity"
+        public static let setupDiscover = "setup.discover"
+        public static let setupDiscoverHomePrefix = "setup.discoverHome."
+        public static let outputHome = "output.home"
+        public static let outputLocal = "output.local"
+
+        /// The button that finds the speakers of the home at `index` in
+        /// the homes listed.
+        public static func setupDiscoverHome(_ index: Int) -> String { "\(setupDiscoverHomePrefix)\(index)" }
+
+        /// The index a home button's id names; nil for any other id.
+        public static func setupDiscoverHomeIndex(_ id: String) -> Int? {
+            guard id.hasPrefix(setupDiscoverHomePrefix) else { return nil }
+            return Int(id.dropFirst(setupDiscoverHomePrefix.count)).flatMap { $0 >= 0 ? $0 : nil }
+        }
 
         /// What a button under AI Agents does to one agent. Its block id is
         /// `<action>:<agent>`, e.g. `installHook:claudeCode`.
@@ -241,11 +274,17 @@ public enum Pages {
     public static func island(_ status: Status) -> UITree {
         UITree {
             heading("HomeSpeaker")
+            configProblemBlocks(status)
             if !status.installed {
                 text("HomeSpeaker is not installed on this Mac. The tool speaks through it.", style: .secondary)
                 link("Get HomeSpeaker", url: releases)
             } else {
-                field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
+                chatWarningBlocks(status)
+                // Before setup only this Mac can speak: offer the field
+                // when it would.
+                if !status.needsSetup || status.config.effectiveSpeakLocal {
+                    field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
+                }
                 if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
                 if let busy = status.busy { text(UIText.plain(busyLine(busy)), style: .caption) }
                 toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
@@ -254,25 +293,145 @@ public enum Pages {
                     text(UIText.plain("Quiet hours until \(until): what you type still plays"), style: .caption)
                 }
                 divider()
-                row(nil, UIText.plain(status.config.defaultDevice?.name ?? "No speaker picked"),
-                    subtitle: UIText.plain(volumeLine(status)), icon: "hifispeaker.2")
-                if status.config.defaultDevice != nil {
-                    if status.volume?.muted == true {
-                        button(Block.unmute, "Unmute")
-                    } else {
-                        button(Block.mute, "Mute")
-                    }
-                    field(Block.volume, title: "Volume (0 to 100)", value: status.volume?.percent.map(String.init) ?? "",
-                          placeholder: "Type a level and press Return", kind: .number)
-                    button(Block.refresh, "Read the volume")
+                if status.needsSetup {
+                    setupBlocks(status)
+                } else {
+                    speakerBlocks(status)
                 }
-                let speakers = status.config.uniqueTargets()
-                if !speakers.isEmpty {
-                    text("Speak on", style: .caption)
-                    list(Block.speakers, speakerRows(speakers, chosen: status.config.defaultTarget))
+                outputBlocks(status)
+            }
+            divider()
+            recentBroadcastBlocks(status)
+        }
+    }
+
+    /// The settings file is there and does not read: said first, on both
+    /// pages, since nothing is saved until it reads again.
+    static func configProblemBlocks(_ status: Status) -> [UIBlock] {
+        guard let problem = status.configProblem else { return [] }
+        return [
+            row(nil, "The settings file does not read", subtitle: UIText.plain(problem), icon: "exclamationmark.triangle.fill"),
+            text("Nothing is saved until it reads again: fix or remove the file.", style: .caption),
+        ]
+    }
+
+    /// The default speaker, its volume and the picker. With Home speakers
+    /// off the volume is not read, so the controls give way to a note.
+    static func speakerBlocks(_ status: Status) -> [UIBlock] {
+        UITree {
+            row(nil, UIText.plain(status.config.defaultDevice?.name ?? "No speaker picked"),
+                subtitle: UIText.plain(volumeLine(status)), icon: "hifispeaker.2")
+            if status.config.defaultDevice != nil && status.config.effectiveSpeakHome {
+                if status.volume?.muted == true {
+                    button(Block.unmute, "Unmute")
+                } else {
+                    button(Block.mute, "Mute")
+                }
+                field(Block.volume, title: "Volume (0 to 100)", value: status.volume?.percent.map(String.init) ?? "",
+                      placeholder: "Type a level and press Return", kind: .number)
+                button(Block.refresh, "Read the volume")
+            }
+            let speakers = status.config.uniqueTargets()
+            if !speakers.isEmpty {
+                text("Speaker", style: .caption)
+                list(Block.speakers, speakerRows(speakers, chosen: status.config.defaultTarget))
+            }
+        }.blocks
+    }
+
+    /// The first run, inline: the island cannot open Settings. Sign in,
+    /// then find the speakers, as Settings' General and Speakers do.
+    static func setupBlocks(_ status: Status) -> [UIBlock] {
+        let account = status.account
+        let idle = status.setupBusy == nil
+        let canRun = status.installed && idle
+        let homes = status.homes ?? []
+        return UITree {
+            heading("Setup")
+            if account.isSignedIn {
+                row(nil, "1 · Google sign-in", subtitle: UIText.plain(account.email.map { "Signed in as \($0)" } ?? "Signed in"),
+                    icon: "checkmark.circle.fill")
+            } else {
+                row(nil, "1 · Google sign-in", subtitle: "Not signed in", icon: "exclamationmark.triangle.fill")
+                button(Block.setupSignIn, "Sign In…", style: .prominent, enabled: canRun && account.hasOAuthClient)
+                if !account.hasOAuthClient {
+                    text("Sign In needs a Google Cloud project of your own first: set it up in Settings > Google Cloud.", style: .caption)
+                }
+                if account.hasAntigravityTokens {
+                    button(Block.setupImportAntigravity, "Import Antigravity login", enabled: idle)
                 }
             }
-        }
+            row(nil, "2 · Find your speakers",
+                subtitle: UIText.plain(status.config.targets.isEmpty ? "No speakers yet" : "Speakers found"),
+                icon: status.config.targets.isEmpty ? "circle" : "checkmark.circle.fill")
+            button(Block.setupDiscover, "Find Speakers", style: .prominent, enabled: canRun && account.isSignedIn)
+            if homes.count > 1 {
+                text("Or pick the home to find them in:", style: .caption)
+                for (index, home) in homes.prefix(maxSetupHomes).enumerated() {
+                    button(Block.setupDiscoverHome(index), UIText.plain(home.name), enabled: canRun && account.isSignedIn)
+                }
+            }
+            if let busy = status.setupBusy { text(UIText.plain(busyLine(busy)), style: .caption) }
+            if let notice = status.setupNotice { text(UIText.plain(notice), style: .caption) }
+        }.blocks
+    }
+
+    /// Where announcements go: the two outputs and what they add up to.
+    static func outputBlocks(_ status: Status) -> [UIBlock] {
+        let config = status.config
+        let label = config.activeOutputsLabel
+        return UITree {
+            text("Speak on", style: .caption)
+            toggle(Block.outputHome, "Home speakers", isOn: config.effectiveSpeakHome)
+            toggle(Block.outputLocal, "This Mac", isOn: config.effectiveSpeakLocal)
+            text(UIText.plain(label.isEmpty ? outputsFooter(config) : "Speaking on \(label)"), style: .caption)
+        }.blocks
+    }
+
+    /// Why the chat monitor, switched on, reads nothing: each problem, and
+    /// HomeSpeaker not running, then where to fix it. Empty while every
+    /// source is off.
+    public static func chatWarnings(_ status: Status) -> [String] {
+        guard status.config.effectiveChatMonitor.anySourceEnabled else { return [] }
+        var lines = monitorProblems(status).map(\.localizedDescription)
+        if !status.chat.appRunning { lines.append(appNotReadingChat) }
+        return lines
+    }
+
+    static func chatWarningBlocks(_ status: Status) -> [UIBlock] {
+        let lines = chatWarnings(status)
+        guard !lines.isEmpty else { return [] }
+        return UITree {
+            problemRows(lines)
+            text(UIText.plain(fixChatInSettings), style: .caption)
+        }.blocks
+    }
+
+    /// A warning row a line, with no id to tap.
+    static func problemRows(_ lines: [String]) -> [UIBlock] {
+        lines.map { row(nil, UIText.plain($0), icon: "exclamationmark.triangle.fill") }
+    }
+
+    /// The newest of the shared history, as the menu bar's Recent
+    /// Broadcasts lists it.
+    static func recentBroadcastBlocks(_ status: Status) -> [UIBlock] {
+        UITree {
+            heading("Recent Broadcasts")
+            if status.recentBroadcasts.isEmpty {
+                text(UIText.plain(noRecentBroadcasts), style: .secondary)
+            } else {
+                for item in status.recentBroadcasts.prefix(maxRecentBroadcasts) {
+                    row(nil, UIText.plain(item.text), subtitle: UIText.plain(broadcastLine(item)), icon: "text.bubble")
+                }
+            }
+        }.blocks
+    }
+
+    /// "Say · Kitchen + This Mac · 14 Oct 2026 at 9:41": who, where, when.
+    public static func broadcastLine(_ item: BroadcastLogItem) -> String {
+        [item.source, item.targetName, item.timestamp.formatted(date: .abbreviated, time: .shortened)]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     public static func busyLine(_ job: Job) -> String {
@@ -295,6 +454,7 @@ public enum Pages {
     /// "Volume 40 %", "Muted", "Offline", or that it has not been read.
     public static func volumeLine(_ status: Status) -> String {
         guard status.config.defaultDevice != nil else { return "Pick one in HomeSpeaker, or below" }
+        guard status.config.effectiveSpeakHome else { return homeSpeakersOff }
         guard let volume = status.volume else { return "Volume not read yet" }
         if volume.online == false { return "Offline" }
         if volume.muted == true { return "Muted" }
@@ -319,10 +479,7 @@ public enum Pages {
             if !status.installed {
                 text("HomeSpeaker is not installed on this Mac; these are its settings, which it reads too.", style: .caption)
             }
-            if let problem = status.configProblem {
-                row(nil, "The settings file does not read", subtitle: UIText.plain(problem), icon: "exclamationmark.triangle.fill")
-                text("Nothing is saved until it reads again: fix or remove the file.", style: .caption)
-            }
+            configProblemBlocks(status)
             if let busy = status.setupBusy { text(UIText.plain(busyLine(busy)), style: .caption) }
             if let notice = status.setupNotice { text(UIText.plain(notice), style: .caption) }
             switch status.section {
@@ -514,9 +671,7 @@ public enum Pages {
             if !chat.appRunning && monitor.anySourceEnabled {
                 text("Open HomeSpeaker to start: it is what reads the messages.", style: .caption)
             }
-            for problem in monitorProblems(status) {
-                row(nil, UIText.plain(problem.localizedDescription), icon: "exclamationmark.triangle.fill")
-            }
+            problemRows(monitorProblems(status).map(\.localizedDescription))
 
             heading("Slack")
             toggle(Block.slackEnabled, "Announce Slack messages", isOn: monitor.slackEnabled)

@@ -91,6 +91,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// Stops a launchd job (`AgentIntegration.launchctlBootout`); the
         /// tests record instead, so they never touch the live session.
         public var launchctlBootout: @Sendable (String) -> Void
+        /// The shared broadcast history (`BroadcastHistory`) the island
+        /// lists: by default beside the settings file, so a test's
+        /// temporary settings never read this Mac's history.
+        public var historyURL: URL
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
                     later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
@@ -101,7 +105,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     home: URL = FileManager.default.homeDirectoryForCurrentUser,
                     settingsURL: URL = ConfigManager.defaultConfigURL(), secretsURL: URL = SecretStore.defaultURL(),
                     homeSpeakerVersion: @escaping () -> String? = { nil },
-                    launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout) {
+                    launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
+                    historyURL: URL? = nil) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -119,6 +124,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.secretsURL = secretsURL
             self.homeSpeakerVersion = homeSpeakerVersion
             self.launchctlBootout = launchctlBootout
+            self.historyURL = historyURL ?? Self.historyURL(beside: settingsURL)
+        }
+
+        /// `speaker_history.json` in the settings file's folder, where
+        /// HomeSpeaker keeps it (`BroadcastHistory.defaultURL()`).
+        public static func historyURL(beside settingsURL: URL) -> URL {
+            settingsURL.deletingLastPathComponent().appendingPathComponent("speaker_history.json")
         }
     }
 
@@ -153,6 +165,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// at every redraw.
     private var askedLoginItem = false
     private var askedHomes = false
+    /// The island's setup lists the homes once each time it opens.
+    private var askedIslandHomes = false
 
     public init(parts: Parts) {
         self.parts = parts
@@ -179,7 +193,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     public func start() {
         reload()
-        if parts.driver.isInstalled, config.defaultDevice != nil { try? run(.volume) }
+        if readsVolume { try? run(.volume) }
         if !parts.driver.isInstalled { parts.link.log("HomeSpeaker is not installed: the tool can only show its settings") }
     }
 
@@ -209,13 +223,32 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     // MARK: - Panels
 
     public func islandPage() -> UITree {
+        if !openPanels.contains(Self.islandPanel) { askedIslandHomes = false }
         openPanels.insert(Self.islandPanel)
         reload()
-        if parts.driver.isInstalled, config.defaultDevice != nil, volume == nil, busy == nil { try? run(.volume) }
+        if readsVolume, volume == nil, busy == nil { try? run(.volume) }
+        listHomesForSetup()
         return Pages.island(status())
     }
 
+    /// The volume is read only where it can answer: HomeSpeaker installed,
+    /// a speaker picked, and Home speakers on. With them off a read would
+    /// only wait on a Cast speaker nobody is using.
+    private var readsVolume: Bool {
+        parts.driver.isInstalled && config.defaultDevice != nil && config.effectiveSpeakHome
+    }
+
+    /// Signed in with no speakers: the island's setup offers each home, so
+    /// they are listed once an opening, in the setup slot.
+    private func listHomesForSetup() {
+        guard parts.driver.isInstalled, setupBusy == nil, homes == nil, !askedIslandHomes,
+              config.targets.isEmpty, parts.account.isSignedIn else { return }
+        askedIslandHomes = true
+        try? setupJob(.app(.discover(save: false, home: nil)))
+    }
+
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
+        if let answer = islandSetupEvent(event) { return answer }
         do {
             switch event.block {
             case Pages.Block.say?:
@@ -247,12 +280,49 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 config.defaultTarget = key
                 try save()
                 volume = nil
-                if parts.driver.isInstalled { try run(.volume) }
+                if readsVolume { try run(.volume) }
+            case Pages.Block.outputHome?:
+                guard let isOn = event.isOn else { return .keep }
+                reload()
+                config.effectiveSpeakHome = isOn
+                try save()
+                // A reading from before Home speakers went off is stale.
+                volume = nil
+            case Pages.Block.outputLocal?:
+                guard let isOn = event.isOn else { return .keep }
+                reload()
+                config.effectiveSpeakLocal = isOn
+                try save()
             default:
                 return .keep
             }
         } catch {
             notice = Self.words(error)
+        }
+        return .page(Pages.island(status()))
+    }
+
+    /// The island's first-run buttons: the same actions as Settings'
+    /// Sign In, Import and Find Speakers. Nil for any other block. What
+    /// goes wrong is said where setup speaks, under the steps.
+    private func islandSetupEvent(_ event: PanelEvent) -> PanelAnswer? {
+        guard let id = event.block, id.hasPrefix("setup.") else { return nil }
+        reload()
+        do {
+            switch id {
+            case Pages.Block.setupSignIn:
+                try setupJob(.signIn(chatOnly: false))
+            case Pages.Block.setupImportAntigravity:
+                try importAntigravity()
+            case Pages.Block.setupDiscover:
+                try discover()
+            default:
+                guard let index = Pages.Block.setupDiscoverHomeIndex(id), let homes, index < homes.count else { return .keep }
+                selectedHomeId = homes[index].id
+                try discover()
+            }
+        } catch {
+            setupNotice = Self.words(error)
         }
         return .page(Pages.island(status()))
     }
@@ -584,10 +654,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.selectedHomeId = selectedHomeId
         status.previewing = previewing
         status.removingSpeakers = removingSpeakers
-        if openPanels.contains(Self.settingsPanel) {
-            let account = parts.account
+        let account = parts.account
+        let islandOpen = openPanels.contains(Self.islandPanel)
+        if islandOpen || openPanels.contains(Self.settingsPanel) {
             status.account = Pages.Account(isSignedIn: account.isSignedIn, email: account.email,
                                            hasOAuthClient: account.hasOAuthClient, hasAntigravityTokens: account.hasAntigravityTokens)
+        }
+        if islandOpen {
+            status.recentBroadcasts = BroadcastHistory(fileURL: parts.historyURL).load()
+            // The island warns about the chat monitor only while it is on,
+            // so nothing is looked for otherwise.
+            if config.effectiveChatMonitor.anySourceEnabled { status.chat = chatStatus() }
+        }
+        if openPanels.contains(Self.settingsPanel) {
             if section == .googleCloud {
                 status.account.customOAuthClientId = account.customOAuthClientId
                 status.account.hasCustomOAuthClientSecret = account.hasCustomOAuthClientSecret
@@ -608,17 +687,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     }),
                     legacyLaunchAgent: integration.isLegacyLaunchAgentInstalled())
             }
-            if section == .monitor {
-                let chat = parts.chat
-                status.chat = Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
-                                         gwsPath: parts.gwsLocation(), appRunning: parts.isAppRunning())
-            }
+            if section == .monitor { status.chat = chatStatus() }
             if section == .speakers, config.effectiveSpeakLocal {
                 if voices == nil { voices = parts.voices() }
                 status.voices = voices ?? []
             }
         }
         return status
+    }
+
+    private func chatStatus() -> Pages.Chat {
+        let chat = parts.chat
+        return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
+                          gwsPath: parts.gwsLocation(), appRunning: parts.isAppRunning())
     }
 
     /// The settings page, after starting what Settings reads by itself:

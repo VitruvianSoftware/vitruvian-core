@@ -85,7 +85,7 @@ final class ChatSlackTests: XCTestCase {
             link: link, store: store, driver: driver, later: { $0() }, account: account, chat: chat,
             gwsLocation: { [unowned self] in gwsAsked += 1; return gwsPath },
             isAppRunning: { [unowned self] in runningAsked += 1; return appRunning },
-            credentialsChanged: { [unowned self] in posted += 1 }))
+            credentialsChanged: { [unowned self] in posted += 1 }, historyURL: HomeSpeakerToolTests.noHistory))
     }
 
     /// Settings opened on Chat & Slack, the login item answered.
