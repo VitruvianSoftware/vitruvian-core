@@ -400,6 +400,36 @@ swift_binary(
     target_compatible_with = MACOS_ONLY,
 )
 
+# Checks against the live internet what the unit tests check against
+# fixtures: the app's own update check finds the newest release and its
+# universal disk image, and every link on Settings > About opens. With
+# `-- --verify-download` it also checks that image the way the installer does.
+# By hand only: no test depends on the network.
+#   bazel run --config=macos-app //apps/desktop/vitruvian:release_feed_check
+genrule(
+    name = "release_feed_check_main",
+    srcs = ["Tools/ReleaseFeedCheck.swift"],
+    outs = ["release_feed_check_src/main.swift"],
+    cmd = "cp $< $@",
+)
+
+swift_binary(
+    name = "release_feed_check",
+    package_name = SWIFT_PACKAGE,
+    srcs = [":release_feed_check_main"],
+    copts = [
+        "-default-isolation",
+        "MainActor",
+    ],
+    features = ["swift.enable_v6"],
+    tags = ["manual"],
+    target_compatible_with = MACOS_ONLY,
+    deps = [
+        ":VitruvianCore",
+        ":VitruvianServices",
+    ],
+)
+
 # Draws the Nexus Agent chat in fixed states and writes each as a PNG, to
 # compare before and after a change that should not alter its look:
 #   bazel run --config=macos-app //apps/desktop/vitruvian:nexus_agent_chat_snapshots -- <output folder>
@@ -597,7 +627,10 @@ py_test(
         "--app-dir",
         package_name(),
     ],
-    data = ["//packages/vitruvian-sdk:protocol_sources"] + glob([
+    data = [
+        "Resources/Info.plist",
+        "//packages/vitruvian-sdk:protocol_sources",
+    ] + glob([
         "Sources/**/*.swift",
         "Tests/**/*.swift",
     ]),

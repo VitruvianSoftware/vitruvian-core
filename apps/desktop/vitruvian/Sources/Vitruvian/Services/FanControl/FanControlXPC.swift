@@ -5,7 +5,10 @@ import Foundation
 import FanControlKit
 
 package enum FanControlIdentifiers {
-    package static let teamID = "3D485NHW29"
+    /// The Developer ID team that signs Vitruvian (VitruvianSoftware's,
+    /// Q5MH753M3F), never upstream's: the app and the helper each accept only
+    /// the other signed by it, and the updater installs only what it signed.
+    package static let teamID = "Q5MH753M3F"
 
     #if VITRUVIAN_DEVELOPMENT
     package static let appBundleID = "com.vitruviansoftware.vitruvian.dev"

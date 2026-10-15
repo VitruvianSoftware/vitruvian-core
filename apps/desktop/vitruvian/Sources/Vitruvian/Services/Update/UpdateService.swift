@@ -69,10 +69,10 @@ package final class UpdateService: ObservableObject {
     /// preview. Set alongside `.available`; cleared otherwise.
     @Published package private(set) var availableNotes: String?
 
-    /// Releases come from the planned public mirror. Until it publishes one, the
-    /// check finds nothing; it must never point at upstream (TRADEMARKS.md).
-    private let repository = "VitruvianSoftware/vitruvian"
-    private var downloadURL: URL?
+    /// The universal disk image of the offered release (`VitruvianReleases`
+    /// says where releases are and which image is the one). Never upstream's
+    /// (TRADEMARKS.md).
+    package private(set) var downloadURL: URL?
     /// Size the release advertises for the asset, used to bound the download.
     private var downloadExpectedBytes: Int64?
     private var refreshTimer: Timer?
@@ -166,75 +166,111 @@ package final class UpdateService: ObservableObject {
         if case .installing = state { return }
         state = .checking
 
-        let endpoint = includeBetaUpdates
-            ? "https://api.github.com/repos/\(repository)/releases?per_page=10"
-            : "https://api.github.com/repos/\(repository)/releases/latest"
+        // Two requests: every Vitruvian release tag, then the newest one's
+        // release. The repository releases other products too, so neither
+        // "latest release" nor the first page of releases is Vitruvian's.
+        let includeBetas = includeBetaUpdates
+        Self.fetch(VitruvianReleases.tagsURL) { [weak self] tags in
+            guard let self else { return }
+            let tag: String
+            switch tags {
+            case let .failure(reason):
+                self.finishCheck(failed: reason)
+                return
+            case let .success(data):
+                guard let newest = VitruvianReleases.newestTag(refsJSON: data, includeBetas: includeBetas) else {
+                    self.finishCheck(failed: L10n.shared.s.updateNoReleaseFound)
+                    return
+                }
+                tag = newest
+            }
+            Self.fetch(VitruvianReleases.releaseURL(tag: tag)) { [weak self] release in
+                guard let self else { return }
+                switch release {
+                case let .failure(reason):
+                    self.finishCheck(failed: reason)
+                case let .success(data):
+                    guard let decoded = try? JSONDecoder().decode(VitruvianReleases.Release.self, from: data),
+                          let candidate = VitruvianReleases.candidate(from: decoded) else {
+                        self.finishCheck(failed: L10n.shared.s.updateNoReleaseFound)
+                        return
+                    }
+                    self.finishCheck(candidate: candidate, includeBetas: includeBetas, manual: manual)
+                }
+            }
+        }
+    }
 
-        var request = URLRequest(url: URL(string: endpoint)!)
+    /// One GET to GitHub's API, answered on the main thread with the body, or
+    /// with the reason the check failed, written for the person.
+    private static func fetch(_ url: URL,
+                              completion: @escaping @MainActor @Sendable (Result<Data, CheckFailure>) -> Void) {
+        var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Vitruvian/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
         request.cachePolicy = .reloadIgnoringLocalCacheData
-
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
-            guard let self else { return }
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let http = response as? HTTPURLResponse
+            let status = http?.statusCode ?? 0
+            let remaining = http?.value(forHTTPHeaderField: "x-ratelimit-remaining")
+            let errorText = error?.localizedDescription
             DispatchQueue.main.async {
-                self.lastChecked = Date()
-                guard let data, error == nil else {
-                    self.availableNotes = nil
-                    self.state = .failed(error?.localizedDescription ?? "-")
+                if let errorText {
+                    completion(.failure(CheckFailure(errorText)))
                     return
                 }
-
-                let releases: [GitHubRelease]
-                if self.includeBetaUpdates {
-                    releases = (try? JSONDecoder().decode([GitHubRelease].self, from: data)) ?? []
-                } else if let single = try? JSONDecoder().decode(GitHubRelease.self, from: data) {
-                    releases = [single]
-                } else {
-                    releases = []
-                }
-
-                guard !releases.isEmpty else {
-                    self.availableNotes = nil
-                    self.state = .failed(error?.localizedDescription ?? "-")
-                    return
-                }
-
-                let candidates = releases.map { rel -> UpdateServiceSupport.ReleaseCandidate in
-                    let asset = rel.assets.first { $0.name.hasSuffix(".dmg") }
-                    return UpdateServiceSupport.ReleaseCandidate(
-                        tagName: rel.tagName,
-                        isPrerelease: rel.prerelease ?? false,
-                        isDraft: rel.draft ?? false,
-                        dmgURL: asset?.browserDownloadURL,
-                        dmgExpectedBytes: asset?.size,
-                        body: rel.body
-                    )
-                }
-
-                if let chosen = UpdateServiceSupport.selectUpdate(
-                    from: candidates,
-                    currentVersion: AppInfo.version,
-                    includeBetas: self.includeBetaUpdates
-                ) {
-                    let versionClean = chosen.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "vV "))
-                    self.downloadURL = chosen.dmgURL
-                    self.downloadExpectedBytes = chosen.dmgExpectedBytes
-                    self.availableNotes = ReleaseNotes.inAppUpdateNotes(from: chosen.body)
-                    self.state = .available(version: versionClean)
-                    // Notify once per distinct release, not on every hourly re-check.
-                    if !manual, versionClean != self.notifiedVersion {
-                        self.notifiedVersion = versionClean
-                        let s = L10n.shared.s
-                        Notifier.post(title: s.updateNotifyTitle,
-                                      body: "\(s.updateAvailablePrefix) \(versionClean)")
-                    }
-                } else {
-                    self.availableNotes = nil
-                    self.state = .upToDate
+                switch VitruvianReleases.refusal(status: status, rateLimitRemaining: remaining) {
+                case .none:
+                    completion(.success(data ?? Data()))
+                case .rateLimited:
+                    completion(.failure(CheckFailure(L10n.shared.s.updateRateLimited)))
+                case let .status(code):
+                    completion(.failure(CheckFailure("HTTP \(code)")))
                 }
             }
         }.resume()
+    }
+
+    /// Why a check failed, already in words.
+    private struct CheckFailure: Error, Sendable {
+        let reason: String
+        init(_ reason: String) { self.reason = reason }
+    }
+
+    private func finishCheck(failed reason: CheckFailure) {
+        finishCheck(failed: reason.reason)
+    }
+
+    private func finishCheck(failed reason: String) {
+        lastChecked = Date()
+        availableNotes = nil
+        state = .failed(reason)
+    }
+
+    private func finishCheck(candidate: UpdateServiceSupport.ReleaseCandidate, includeBetas: Bool, manual: Bool) {
+        lastChecked = Date()
+        guard let chosen = UpdateServiceSupport.selectUpdate(
+            from: [candidate],
+            currentVersion: AppInfo.version,
+            includeBetas: includeBetas
+        ) else {
+            availableNotes = nil
+            state = .upToDate
+            return
+        }
+        // The candidate's tag name is the bare version (VitruvianReleases).
+        let version = chosen.tagName
+        downloadURL = chosen.dmgURL
+        downloadExpectedBytes = chosen.dmgExpectedBytes
+        availableNotes = ReleaseNotes.inAppUpdateNotes(from: chosen.body)
+        state = .available(version: version)
+        // Notify once per distinct release, not on every hourly re-check.
+        if !manual, version != notifiedVersion {
+            notifiedVersion = version
+            let s = L10n.shared.s
+            Notifier.post(title: s.updateNotifyTitle,
+                          body: "\(s.updateAvailablePrefix) \(version)")
+        }
     }
 
     /// Re-checks only if the last check is stale — called when the app reactivates
@@ -635,42 +671,5 @@ package final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDeleg
             try? FileManager.default.removeItem(at: fileURL)
         }
         completion(location, response, error)
-    }
-}
-
-// MARK: - GitHub API shapes
-
-private struct GitHubRelease: Decodable {
-    let tagName: String
-    let prerelease: Bool?
-    let draft: Bool?
-    let assets: [Asset]
-    let body: String?
-
-    enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name"
-        case prerelease
-        case draft
-        case assets
-        case body
-    }
-
-    struct Asset: Decodable {
-        let name: String
-        let browserDownloadURL: URL
-        let size: Int64?
-
-        enum CodingKeys: String, CodingKey {
-            case name
-            case browserDownloadURL = "browser_download_url"
-            case size
-        }
-
-        // Spelled out because a memberwise initializer never leaves its module.
-        package init(name: String, browserDownloadURL: URL, size: Int64?) {
-            self.name = name
-            self.browserDownloadURL = browserDownloadURL
-            self.size = size
-        }
     }
 }

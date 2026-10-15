@@ -71,9 +71,13 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
   Playing adapter IDs.
 - **Icon:** Vitruvian's own app icon and menu bar mark (VitruvianSoftware/vitruvian-core#2643),
   which replaced the placeholders the import used.
-- **Update feed and price list:** the planned public mirror
-  `VitruvianSoftware/vitruvian`. It does not exist yet, so update checks find
-  nothing and prices fall back to the bundled list.
+- **Update feed and price list:** the public monorepo,
+  `VitruvianSoftware/vitruvian-core`. The update check reads its
+  `vitruvian-vX.Y.Z` release tags (`Core/Update/VitruvianReleases.swift`) and
+  installs the universal disk image; prices come from
+  `apps/desktop/vitruvian/Resources/agent-prices.json` on `main`.
+- **Signing team:** the updater and the fan helper trust VitruvianSoftware's
+  Developer ID team (`FanControlIdentifiers.teamID`), not upstream's.
 - **Temporary links and feedback:** these were upstream's own servers. They now
   target reserved `.invalid` hosts (RFC 6761) and fail closed, so no capture or
   report leaves the Mac.
@@ -102,8 +106,6 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
 - **A Developer ID signing identity and notary credentials.** Until they are
   set as the `VITRUVIAN_SIGNING_*` and `VITRUVIAN_NOTARY_*` secrets, releases
   are signed ad hoc and macOS asks before the first open.
-- **The public mirror `VitruvianSoftware/vitruvian`.** The update feed points
-  there, so update checks find nothing until it exists.
 - **The temporary-link and feedback backends:** run our own, or remove those
   features and their dead UI.
 - **`CHANGELOG.md`:** release-please writes Vitruvian's entries above
@@ -136,6 +138,16 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-15**: Settings > About works again, and the app checks for and installs its own releases. Every link on the page, the update check, the price list and the showcase video pointed at `VitruvianSoftware/vitruvian`, a repository that does not exist (set by the rename, VitruvianSoftware/vitruvian-core#2641), so "Check for updates" said "Couldn't check: -". Releases are tags of `VitruvianSoftware/vitruvian-core`, which releases other products too.
+  - `Core/AppInfo.swift` (upstream file): View on GitHub opens this app's folder in vitruvian-core, and the website is vitruviansoftware.dev. The copyright line is Info.plist's `NSHumanReadableCopyright`, so the page says what the About box says (set by VitruvianSoftware/vitruvian-core#3304), with `copyrightNotice` for a binary with no Info.plist.
+  - `Services/Update/UpdateService.swift` (upstream file): the check lists the `vitruvian-v` tags, takes the newest by version, reads that release (`VitruvianReleases`, VitruvianSoftware's) and offers its universal disk image instead of the first image the release lists. A refusal says why: GitHub's request limit, an HTTP status, or no release found. The GitHub API types move to `VitruvianReleases`.
+  - `Services/Update/UpdateInstallerSupport.swift` and `Services/FanControl/FanControlXPC.swift` (upstream files): the installer, the app and the fan helper trust VitruvianSoftware's Developer ID team, Q5MH753M3F, which signs the releases, instead of upstream's 3D485NHW29, so an update can pass the installer's signature checks. The installer reads the team from `FanControlIdentifiers.teamID` through `diskImageRequirement` and `appRequirement`.
+  - `Services/Update/UpdateShowcaseMedia.swift` (upstream file): the showcase video is upstream's, so no server is asked for it and the showcase shows its unavailable state.
+  - `Services/AgentUsage/AgentPriceSource.swift` (upstream file): the price list comes from this app's folder in vitruvian-core.
+  - `UI/Settings/SettingsView.swift` (upstream file): the About header is `AboutHeader`, which shows the app's own icon at 128 points, as macOS's About panels show the app icon, instead of the logo drawn in white inside a 76-point tile.
+  - `Core/Localization.swift` and `Core/Localizations/Strings+*.swift` (upstream files): `updateRateLimited` and `updateNoReleaseFound`, in all fifteen languages.
+  - `Tests/SwitcherModelFeatureTests.swift` (upstream file): the link check names the repository instead of accepting anything under the organisation, which passed while every link was dead. `Tests/AboutAndReleaseFeedTests.swift` (VitruvianSoftware's) adds `VitruvianReleaseFeedContract`, `UpdateSignerContract` and `AboutPageContract`. `Tests/mutation_checks.py` (upstream file): six mutations for them.
+  - `Tools/ReleaseFeedCheck.swift` (VitruvianSoftware's): `bazel run //apps/desktop/vitruvian:release_feed_check` runs the update check against the live GitHub API and opens the About links; `-- --verify-download` also checks the disk image as the installer does.
 - **2026-10-15**: `packages/vitruvian-sdk/Sources/VitruvianToolProtocol/Panels.swift` (MIT, written by VitruvianSoftware): comments on `PanelPlacement.island` and `UIBadgeParams` say "the island's Explore gallery" instead of "the island's Tools area", and the pin follows (`bazel/tool_protocol.sha256`, fa537c713a96).
 - **2026-10-15**: The release's disk images are signed, and the About box names VitruvianSoftware while keeping Vorssaint's notice. Vitruvian 3.51.0 was the first release signed with the Developer ID: its app was signed and notarized, but `make-dmg.sh` never signed the disk images, so a downloaded DMG failed `spctl -t open` ("no usable signature") although Apple had notarized it.
   - `Tools/make-dmg.sh` (upstream file): signs the compressed image with the installed Developer ID and verifies it, before `notarize.sh` submits it; without an identity the image stays unsigned, as before.

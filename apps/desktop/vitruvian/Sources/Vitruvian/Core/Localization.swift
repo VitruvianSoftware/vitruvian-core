@@ -832,6 +832,10 @@ package struct Strings {
     package let updateDownloading: String
     package let updateInstalling: String
     package let updateFailedPrefix: String
+    /// Why a check failed: GitHub refused for too many requests.
+    package let updateRateLimited: String
+    /// Why a check failed: GitHub answered, but named no Vitruvian release.
+    package let updateNoReleaseFound: String
     package let updateLastChecked: String
     package let updateNotifyTitle: String
     package let updateInstallFailedBody: String
@@ -1946,6 +1950,8 @@ extension Strings {
         updateDownloading: "Baixando atualização…",
         updateInstalling: "Instalando e reiniciando…",
         updateFailedPrefix: "Não foi possível verificar:",
+        updateRateLimited: "o GitHub está limitando as solicitações. Tente novamente mais tarde.",
+        updateNoReleaseFound: "nenhuma versão do Vitruvian foi encontrada.",
         updateLastChecked: "Última verificação:",
         updateNotifyTitle: "Atualização do Vitruvian",
         updateInstallFailedBody: "A atualização foi baixada, mas não pôde ser aplicada. Baixe a versão mais recente na página de releases do GitHub e arraste o app por cima do atual.",
@@ -3041,6 +3047,8 @@ extension Strings {
         updateDownloading: "Downloading update…",
         updateInstalling: "Installing and restarting…",
         updateFailedPrefix: "Couldn’t check:",
+        updateRateLimited: "GitHub is limiting requests. Try again in a while.",
+        updateNoReleaseFound: "no Vitruvian release was found.",
         updateLastChecked: "Last checked:",
         updateNotifyTitle: "Vitruvian update",
         updateInstallFailedBody: "The update was downloaded but could not be applied. Download the latest version from the GitHub releases page and drag the app over the current one.",

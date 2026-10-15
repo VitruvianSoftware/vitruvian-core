@@ -11,9 +11,11 @@ package enum UpdateShowcaseInfo {
     package static let mediaAssetName = "vitruvian-3.1.4-showcase-1.mp4"
     package static let mediaSHA256 = "88031b2b48708b8eb96248fef1143432a0600382b59ad5ea39e0746af27ab9e8"
 
-    package static var remoteMediaURL: URL {
-        URL(string: "https://github.com/VitruvianSoftware/vitruvian/releases/download/v\(releaseVersion)/\(mediaAssetName)")!
-    }
+    /// Where the showcase video is published. Vitruvian publishes none: the
+    /// video and its 3.1.4 release are upstream's, and upstream's servers are
+    /// not ours to use (TRADEMARKS.md). So the loader asks no server and shows
+    /// its "unavailable" state; a Developer build can still play a local file.
+    package static let remoteMediaURL: URL? = nil
 
     package static var localDeveloperMediaURL: URL? {
         guard AppInfo.isDeveloperBuild else { return nil }
@@ -88,12 +90,16 @@ package final class UpdateShowcaseMediaLoader: ObservableObject {
             return
         }
         try? FileManager.default.removeItem(at: cached)
-        download(startingWith: Self.startDownload)
+        guard let remote = UpdateShowcaseInfo.remoteMediaURL else {
+            state = .failed
+            return
+        }
+        download { Self.startDownload($0, from: remote) }
     }
 
     /// Downloads the showcase into the cache. `start` opens the session that
     /// runs the download with this delegate, starts its task and hands the
-    /// session back; `load()` passes `startDownload`.
+    /// session back; `load()` passes `startDownload` when there is a video to fetch.
     package func download(startingWith start: (BoundedUpdateDownloadDelegate) -> URLSession) {
         state = .loading
         // The checksum is verified after the download, so it cannot stop a
@@ -140,13 +146,13 @@ package final class UpdateShowcaseMediaLoader: ObservableObject {
     }
 
     /// The release asset, over an ephemeral session.
-    nonisolated private static func startDownload(_ delegate: BoundedUpdateDownloadDelegate) -> URLSession {
+    nonisolated private static func startDownload(_ delegate: BoundedUpdateDownloadDelegate, from url: URL) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 12
         configuration.timeoutIntervalForResource = 120
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-        session.dataTask(with: UpdateShowcaseInfo.remoteMediaURL).resume()
+        session.dataTask(with: url).resume()
         return session
     }
 

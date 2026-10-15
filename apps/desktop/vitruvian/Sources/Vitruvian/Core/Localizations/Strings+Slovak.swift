@@ -647,6 +647,8 @@ extension Strings {
         updateDownloading: "Sťahuje sa aktualizácia…",
         updateInstalling: "Inštaluje sa a reštartuje…",
         updateFailedPrefix: "Nepodarilo sa skontrolovať:",
+        updateRateLimited: "GitHub obmedzuje požiadavky. Skúste to znova neskôr.",
+        updateNoReleaseFound: "nenašla sa žiadna verzia aplikácie Vitruvian.",
         updateLastChecked: "Naposledy skontrolované:",
         updateNotifyTitle: "Aktualizácia Vitruvianu",
         updateInstallFailedBody: "Aktualizácia sa stiahla, ale nepodarilo sa ju použiť. Stiahnite si najnovšiu verziu zo stránky vydaní na GitHube a potiahnite aplikáciu na tú súčasnú.",

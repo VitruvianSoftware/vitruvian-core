@@ -6,13 +6,21 @@ import Foundation
 /// Static identity of the app, shared by UI, notifications and tooling.
 package enum AppInfo {
     package static let name = "Vitruvian"
-    /// Vitruvian is a fork of Vorssaint, whose notice stays (GPL-3.0 §5).
-    package static let copyright = "© 2026 Vorssaint, VitruvianSoftware"
+    /// The copyright line, exactly as the standard About box shows it: read
+    /// from Info.plist's `NSHumanReadableCopyright`, so Settings > About and
+    /// the About box never say different things.
+    package static var copyright: String {
+        Bundle.main.object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String ?? copyrightNotice
+    }
+    /// The same line for the bare binary (`--selftest`, the tests), which has
+    /// no Info.plist; a test holds it equal to Info.plist's. Vitruvian is built
+    /// on Vorssaint's GPL-3.0 work, whose notice stays (GPL-3.0 §5).
+    package static let copyrightNotice = "© 2026 VitruvianSoftware. Portions © 2026 Vorssaint."
     /// Public home of the source, which the GPL obliges us to offer with every
-    /// distributed build: the planned public mirror of apps/desktop/vitruvian.
-    /// It has to exist before the first release (see UPSTREAM.md).
-    package static let repositoryURL = URL(string: "https://github.com/VitruvianSoftware/vitruvian")!
-    package static let websiteURL = repositoryURL
+    /// distributed build: this app's folder in the public monorepo, where each
+    /// release is a tag (`VitruvianReleases`).
+    package static let repositoryURL = URL(string: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian")!
+    package static let websiteURL = URL(string: "https://vitruviansoftware.dev")!
     /// Upstream's donation, Discord and X channels belong to upstream. The fork
     /// has none yet, so the Support page and the post-update support prompt are
     /// hidden and these links fall back to the repository.
