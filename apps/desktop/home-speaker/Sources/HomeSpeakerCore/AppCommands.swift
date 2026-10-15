@@ -22,10 +22,11 @@
 import Foundation
 import ServiceManagement
 
-// The flags that must run as HomeSpeaker.app itself: its keychain-held
-// sign-in, its TCC Automation grant, its login item. Parsing and the work
-// behind each flag live here, against protocols, so tests drive them without
-// a network, a keychain or System Settings; Entry only wires the real parts.
+// The flags that must run as one HomeSpeaker itself (the app, or the
+// extension): its sign-in file, its TCC Automation grant, its login item.
+// Parsing and the work behind each flag live here, against protocols, so
+// tests drive them without a network, a sign-in or System Settings;
+// HomeSpeakerCommandLine only wires an engine's real parts.
 
 /// One of the app-identity commands, parsed.
 public enum AppCommand: Equatable, Sendable {
@@ -221,8 +222,9 @@ public struct SystemLoginItem: LoginItemControlling {
 
 public enum AppCommandRunner {
     /// Signs out, then checks the stored login is really gone. On success
-    /// `notify` tells a running app (Entry passes `SignOutNotice.post`; the
-    /// default does nothing, so tests never reach a real running app).
+    /// `notify` tells a running app (the command line posts `SignOutNotice`
+    /// under its profile's names; the default does nothing, so tests never
+    /// reach a real running app).
     public static func signOut(
         chatOnly: Bool, auth: GoogleSigningOut, signedIn: @Sendable () -> Set<GoogleAuth.Purpose>,
         notify: @Sendable (_ chatOnly: Bool) -> Void = { _ in }
