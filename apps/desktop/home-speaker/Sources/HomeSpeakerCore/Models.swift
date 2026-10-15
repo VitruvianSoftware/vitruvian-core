@@ -26,6 +26,12 @@ public struct SpeakerDevice: Codable, Identifiable, Hashable, Sendable {
     public var name: String
     public var room: String?
 
+    /// Spelled out (not synthesized) so the config writer knows which keys of
+    /// a device are this app's and which belong to someone else.
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id, type, name, room
+    }
+
     public init(id: String, type: String, name: String, room: String? = nil) {
         self.id = id
         self.type = type
@@ -132,7 +138,7 @@ public struct SpeakerConfig: Codable, Equatable {
     /// `AVSpeechSynthesisVoice` identifier used on this Mac.
     public var localVoice: String?
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case enabled
         case defaultTarget = "default_target"
         case structureId = "structure_id"
@@ -378,7 +384,7 @@ public struct ChatMonitorConfig: Codable, Equatable {
     /// `--account` passed to gws; empty means gws's default account.
     public var gwsAccount: String
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case slackEnabled = "slack_enabled"
         case googleChatEnabled = "google_chat_enabled"
         case pollIntervalSeconds = "poll_interval_seconds"

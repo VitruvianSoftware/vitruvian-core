@@ -337,10 +337,34 @@ extension ChatMonitorService {
 
 // MARK: - Service
 
+/// What `ConfigManager` needs of the chat monitor to follow an edit made
+/// outside the app. A protocol so a test can record the calls.
+@MainActor
+public protocol ChatMonitorControlling: AnyObject {
+    var isRunning: Bool { get }
+    func start()
+    func stop()
+}
+
+/// What to do with the chat monitor when its settings change on disk.
+public enum ChatMonitorReconciliation: Equatable, Sendable {
+    case none, start, stop, restart
+
+    /// Unchanged settings leave the monitor alone, whatever its state: a
+    /// monitor stopped by signing out must not come back because the phone
+    /// picked another speaker. Otherwise: every source off stops it; a
+    /// source on starts it, or restarts it so the new settings take hold.
+    public static func decide(old: ChatMonitorConfig, new: ChatMonitorConfig, isRunning: Bool) -> Self {
+        guard old != new else { return .none }
+        guard new.anySourceEnabled else { return isRunning ? .stop : .none }
+        return isRunning ? .restart : .start
+    }
+}
+
 /// Polls Slack and Google Chat from inside the app and announces new
 /// messages. Nothing runs until the user switches a source on.
 @MainActor
-public class ChatMonitorService: ObservableObject {
+public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     public static let shared = ChatMonitorService()
 
     @Published public var isRunning: Bool = false

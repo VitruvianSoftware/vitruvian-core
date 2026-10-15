@@ -31,6 +31,9 @@ struct HomeSpeakerApp: App {
         // Chat monitoring only runs when the user opted in earlier.
         Task { @MainActor in
             ChatMonitorService.shared.startIfConfigured()
+            // An edit from the phone or the CLI that turns a chat source on
+            // or off must reach the running poller, not just the settings.
+            ConfigManager.shared.chatMonitor = ChatMonitorService.shared
             // The phone (via the Mac agent) and the CLI edit the same file;
             // the menu bar has to notice or it will write stale state back.
             ConfigManager.shared.startWatchingConfigFile()
@@ -39,6 +42,9 @@ struct HomeSpeakerApp: App {
             _ = MediaPauseRequest.listen(with: .shared)
             // Likewise for putting a speaker back after "announce at a set volume".
             _ = VolumeRestoreRequest.listen(with: .shared)
+            // `HomeSpeaker --sign-out` runs as another process; without
+            // this the menu bar kept showing "Connected" and kept polling.
+            _ = SignOutNotice.listen(config: ConfigManager.shared, monitor: ChatMonitorService.shared)
         }
     }
 

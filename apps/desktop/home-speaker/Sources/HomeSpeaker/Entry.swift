@@ -50,23 +50,16 @@ enum Entry {
             }
         }
 
-        // Support/diagnostic mode: prints the homes and broadcast targets the
-        // signed-in account can see, without touching the saved config.
-        if arguments.contains("--discover") {
-            runHeadless(timeout: 60, onTimeout: { print("error: timed out") }) {
-                do {
-                    let homes = try await GoogleHomeClient.shared.listHomes()
-                    for home in homes {
-                        print("home: \(home.name) (\(home.id))")
-                        let targets = try await GoogleHomeClient.shared.discoverBroadcastTargets(structureId: home.id)
-                        for (alias, d) in targets.sorted(by: { $0.key < $1.key }) {
-                            print("  \(alias)\t\(d.type)\t\(d.displayLine)\t\(d.id)")
-                        }
-                    }
-                    if homes.isEmpty { print("no homes visible to this account") }
-                } catch {
-                    FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8))
-                }
+        // Commands that must run as HomeSpeaker.app (its sign-in, its TCC
+        // grants, its login item), so the Vitruvian tool and scripts go
+        // through this binary for them. Parsed in Core (AppCommandParser).
+        if let parsed = AppCommandParser.parse(Array(arguments)) {
+            switch parsed {
+            case .failure(let usage):
+                FileHandle.standardError.write(Data("error: \(usage.message)\nrun HomeSpeaker --help for usage\n".utf8))
+                exit(AppCommandParser.usageExitCode)
+            case .success(let command):
+                run(command)
             }
         }
 
@@ -150,8 +143,8 @@ enum Entry {
               --say <text>         announce text on the default speaker and/or this Mac
               --volume             the default speaker's volume, as JSON
               --set-volume <0-100> set it; --mute / --unmute likewise
-              --discover           list homes and broadcast targets
               --sign-in [--chat]   sign in for Home (or Google Chat)
+            \(AppCommandParser.usageLines)
               --claude-stop-hook   Claude Code Stop hook; reads hook JSON on stdin
               --version            print the version
               --help               print this
@@ -165,6 +158,48 @@ enum Entry {
         }
 
         HomeSpeakerApp.main()
+    }
+
+    /// Runs one app-identity command with the real parts and exits with
+    /// its code.
+    private static func run(_ command: AppCommand) -> Never {
+        switch command {
+        case .loginItem(let action):
+            emit(AppCommandRunner.loginItem(action, control: SystemLoginItem()))
+        case .signOut(let chatOnly):
+            runHeadless(timeout: 30, onTimeout: { failTimedOut() }) {
+                emit(await AppCommandRunner.signOut(chatOnly: chatOnly, auth: GoogleAuth.shared, signedIn: {
+                    let secrets = SecretStore.shared.load()
+                    return Set(GoogleAuth.Purpose.allCases.filter { secrets.slot($0) != nil })
+                }, notify: { SignOutNotice.post(chatOnly: $0) }))
+            }
+        case .discover(let save, let home):
+            runHeadless(timeout: 60, onTimeout: { failTimedOut() }) {
+                let current = await MainActor.run { ConfigManager.shared.config.structureId }
+                emit(await AppCommandRunner.discover(
+                    save: save, home: home, client: GoogleHomeClient.shared, currentStructureId: current,
+                    apply: { home, targets in
+                        let manager = ConfigManager.shared
+                        manager.config.applyDiscovery(structureId: home.id, structureName: home.name, targets: targets)
+                        try manager.trySaveConfig()
+                    }))
+            }
+        case .testMediaPause:
+            runHeadless(timeout: 30, onTimeout: { failTimedOut() }) {
+                emit(await AppCommandRunner.testMediaPause(coordinator: MediaPauseCoordinator()))
+            }
+        }
+    }
+
+    private static func emit(_ output: CLIOutput) -> Never {
+        for line in output.stdout { print(line) }
+        for line in output.stderr { FileHandle.standardError.write(Data("\(line)\n".utf8)) }
+        exit(output.exitCode)
+    }
+
+    @Sendable private static func failTimedOut() {
+        FileHandle.standardError.write(Data("error: timed out\n".utf8))
+        exit(AppCommandParser.failureExitCode)
     }
 
     /// Speaks `text` on the home speakers and/or this Mac, as the settings

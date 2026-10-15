@@ -159,6 +159,15 @@ public struct SettingsView: View {
 
     private var generalTab: some View {
         Form {
+            if let problem = configManager.configProblem {
+                Section("Settings File") {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
             Section("Google Home Account") {
                 LabeledContent("Status") {
                     HStack(spacing: 8) {
@@ -634,27 +643,17 @@ public struct SettingsView: View {
         Form {
             ForEach(viewModel.agents, id: \.agent) { st in
                 Section {
-                    if !st.isInstalled {
+                    switch st.section {
+                    case .notInstalled:
                         LabeledContent {
                             Text("Not installed on this Mac").foregroundStyle(.secondary)
                         } label: {
                             Text("\(st.agent.displayName) hook")
                             Text("Nothing to do here.")
                         }
-                    } else if !st.agent.supportsHook {
+                    case .instructionDriven:
                         LabeledContent {
-                            if st.speaksTwice, let rival = st.rivalHook {
-                            HStack(alignment: .firstTextBaseline) {
-                                Label(
-                                    "Every reply is spoken twice: \(rival.lastPathComponent) in \(rival.deletingLastPathComponent().lastPathComponent) also announces it.",
-                                    systemImage: "exclamationmark.triangle.fill")
-                                    .font(.caption).foregroundStyle(.orange)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Button("Turn it off") { disableRival(st.agent) }
-                                    .controlSize(.small)
-                            }
-                        }
-                        if st.configuredByInstruction {
+                            if st.configuredByInstruction {
                                 Label("Configured", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             } else {
                                 Button("Add Instruction") { addInstruction(st.agent) }
@@ -666,7 +665,19 @@ public struct SettingsView: View {
                                  ? "\(st.agent.instructionFileName) tells \(st.agent.displayName) to speak each reply through the app's speaker settings."
                                  : "Adds one line to \(st.agent.instructionFileName) asking \(st.agent.displayName) to speak each reply. Antigravity's CLI does not run end-of-turn hooks, so this is the only path.")
                         }
-                    } else {
+                    case .hook:
+                        // Claude Code is the agent with a rival hook file
+                        // (the 1.x skill's hooks.json); the warning belongs
+                        // with its hook, not the instruction-only agent.
+                        if let warning = st.speaksTwiceWarning {
+                            HStack(alignment: .firstTextBaseline) {
+                                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption).foregroundStyle(.orange)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Button("Turn it off") { disableRival(st.agent) }
+                                    .controlSize(.small)
+                            }
+                        }
                         LabeledContent {
                             switch st.hook {
                             case .installed:

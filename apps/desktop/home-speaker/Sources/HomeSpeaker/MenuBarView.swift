@@ -111,6 +111,17 @@ public struct MenuBarView: View {
                     .accessibilityLabel("Quiet hours active until \(until)")
             }
 
+            // The settings file did not read: say so, since nothing changed
+            // here will be saved until it does.
+            if let problem = configManager.configProblem {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("Settings file problem: \(problem)")
+            }
+
             Divider()
 
             if !configManager.isConnectedToGoogle {

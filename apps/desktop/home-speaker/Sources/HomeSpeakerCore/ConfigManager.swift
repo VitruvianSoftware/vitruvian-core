@@ -28,9 +28,21 @@ public class ConfigManager: ObservableObject {
     @Published public var recentBroadcasts: [BroadcastLogItem] = []
     @Published public var isConnectedToGoogle: Bool = false
     @Published public var googleEmail: String?
+    /// Set when the config file exists but does not read as a config (bad
+    /// JSON, a wrong type, no permission). While set, nothing is saved: the
+    /// in-memory settings are built-in defaults, and writing them would wipe
+    /// whatever the phone, the CLI or the person put in the file. Cleared
+    /// as soon as the file reads again.
+    @Published public private(set) var configProblem: String?
+
+    /// Told when an edit from outside (the phone, the CLI) changes the
+    /// chat monitor's settings, so the running poller follows. Weak: the
+    /// service holds this manager, not the other way round.
+    public weak var chatMonitor: (any ChatMonitorControlling)?
 
     private let fileManager = FileManager.default
     private let configPath: URL
+    private let file: SpeakerConfigFile
     private let logHistoryPath: URL
     private let secrets: SecretStore
 
@@ -54,9 +66,11 @@ public class ConfigManager: ObservableObject {
     public init(
         configPath: URL = ConfigManager.defaultConfigURL(),
         historyPath: URL = ConfigManager.defaultHistoryURL(),
-        secrets: SecretStore = .shared
+        secrets: SecretStore = .shared,
+        fileSystem: ConfigFileSystem = LocalConfigFileSystem()
     ) {
         self.configPath = configPath
+        self.file = SpeakerConfigFile(url: configPath, fileSystem: fileSystem)
         self.logHistoryPath = historyPath
         self.secrets = secrets
         self.config = SpeakerConfig()
@@ -65,32 +79,47 @@ public class ConfigManager: ObservableObject {
         checkConnection()
     }
 
+    /// Reads the file. No file: the defaults are written, so the CLI and
+    /// the phone find one. A file that does not read: the defaults stay in
+    /// memory, `configProblem` says why, and nothing is written.
     public func loadConfig() {
-        guard fileManager.fileExists(atPath: configPath.path) else {
+        switch file.read() {
+        case .missing:
+            configProblem = nil
             saveConfig()
-            return
-        }
-        do {
-            let data = try Data(contentsOf: configPath)
-            self.config = try JSONDecoder().decode(SpeakerConfig.self, from: data)
-        } catch {
-            print("Error loading speaker config: \(error)")
+        case .loaded(let loaded):
+            configProblem = nil
+            config = loaded
+        case .unreadable(let why):
+            configProblem = why.localizedDescription
+            print("Error loading speaker config: \(why.localizedDescription)")
         }
     }
 
-    public func saveConfig() {
+    /// Saves, or logs why not. False when nothing was written.
+    @discardableResult
+    public func saveConfig() -> Bool {
         do {
-            let folder = configPath.deletingLastPathComponent()
-            if !fileManager.fileExists(atPath: folder.path) {
-                try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-            }
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
-            lastWritten = data
-            try data.write(to: configPath, options: .atomic)
+            try trySaveConfig()
+            return true
         } catch {
-            print("Error saving speaker config: \(error)")
+            print("Error saving speaker config: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Saves, merged into the file so keys other writers own survive.
+    /// Throws, writing nothing, while `configProblem` is set or when the
+    /// file on disk has stopped reading as a config since it was loaded.
+    public func trySaveConfig() throws {
+        if let configProblem {
+            throw ConfigFileError.unreadable(path: configPath.path, reason: "refusing to save: \(configProblem)")
+        }
+        do {
+            lastWritten = try file.write(config)
+        } catch let error as ConfigFileError {
+            configProblem = error.localizedDescription
+            throw error
         }
     }
 
@@ -127,11 +156,36 @@ public class ConfigManager: ObservableObject {
 
     /// Applies the on-disk config when it differs from what this process
     /// last wrote. Public so a test can drive it without a real file event.
+    ///
+    /// A file that no longer reads sets `configProblem` (so nothing saves
+    /// over it) and keeps the settings in memory. A chat-monitor change is
+    /// passed on to `chatMonitor`, which starts, stops or restarts to match.
     public func reloadIfChangedExternally() {
-        guard let data = try? Data(contentsOf: configPath), data != lastWritten else { return }
-        guard let fresh = try? JSONDecoder().decode(SpeakerConfig.self, from: data) else { return }
-        lastWritten = data
-        if fresh != config { config = fresh }
+        guard let data = try? file.fileSystem.read(configPath), data != lastWritten else { return }
+        switch file.decode(data) {
+        case .loaded(let fresh):
+            lastWritten = data
+            configProblem = nil
+            let before = config.effectiveChatMonitor
+            if fresh != config { config = fresh }
+            reconcileChatMonitor(from: before, to: fresh.effectiveChatMonitor)
+        case .unreadable(let why):
+            configProblem = why.localizedDescription
+        case .missing:
+            break
+        }
+    }
+
+    private func reconcileChatMonitor(from before: ChatMonitorConfig, to after: ChatMonitorConfig) {
+        guard let monitor = chatMonitor else { return }
+        switch ChatMonitorReconciliation.decide(old: before, new: after, isRunning: monitor.isRunning) {
+        case .none: break
+        case .start: monitor.start()
+        case .stop: monitor.stop()
+        case .restart:
+            monitor.stop()
+            monitor.start()
+        }
     }
 
     public func toggleEnabled() {

@@ -460,6 +460,9 @@ public final class MediaPauseCoordinator: ObservableObject {
     /// could not -- the Chrome setting, most likely.
     @Published public private(set) var lastReport: String?
     @Published public private(set) var isHolding = false
+    /// The last pause met a player it could not pause (refused, or one
+    /// HomeSpeaker cannot drive). For `--test-media-pause`'s exit code.
+    public private(set) var lastPauseHadProblems = false
 
     private let controller: MediaController
     private let audio: @Sendable () -> Set<String>
@@ -489,6 +492,7 @@ public final class MediaPauseCoordinator: ObservableObject {
         }
         let (players, unsupported) = MediaPlayer.players(producing: audio(), safariRunning: safariRunning())
         guard !players.isEmpty else {
+            lastPauseHadProblems = !unsupported.isEmpty
             lastReport = unsupported.isEmpty ? nil : "Could not pause \(unsupported.joined(separator: ", ")) -- HomeSpeaker does not know how to control it."
             return
         }
@@ -518,6 +522,7 @@ public final class MediaPauseCoordinator: ObservableObject {
             isHolding = true
             schedule()
         }
+        lastPauseHadProblems = !problems.isEmpty
         lastReport = Self.report(paused: paused, problems: problems)
     }
 

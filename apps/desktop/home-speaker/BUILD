@@ -29,6 +29,9 @@ swift_test(
         ["Tests/**/*.swift"],
         exclude = ["Tests/HomeSpeakerToolTests/**"],
     ),
+    # ProductionReadinessTests reads these: no source ships a home-directory
+    # path, and Info.plist tracks Version.swift.
+    data = glob(["Sources/**/*.swift"]) + ["Resources/Info.plist"],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":HomeSpeakerCore"],

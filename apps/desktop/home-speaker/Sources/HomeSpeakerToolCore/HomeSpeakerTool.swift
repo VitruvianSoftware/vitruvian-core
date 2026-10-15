@@ -80,6 +80,15 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         self.parts = parts
     }
 
+    /// Agent hooks as HomeSpeaker installs them, pointed at the HomeSpeaker
+    /// program this tool located. Never at the tool's own `bin/tool`, which
+    /// `AgentIntegration`'s default (the running program) would be here;
+    /// nil when HomeSpeaker is not installed, so there is nothing to point at.
+    public func agentIntegration(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> AgentIntegration? {
+        guard let program = parts.driver.program else { return nil }
+        return AgentIntegration(home: home, executablePath: program.path)
+    }
+
     // MARK: - The app's messages
 
     public func start() {
