@@ -131,6 +131,24 @@ public enum AppCommandParser {
         }
     }
 
+    /// The arguments that `parse` reads back as `command`: how the
+    /// Vitruvian tool asks HomeSpeaker's program to run one.
+    public static func arguments(for command: AppCommand) -> [String] {
+        switch command {
+        case .signOut(let chatOnly):
+            return [signOutFlag] + (chatOnly ? ["--chat"] : [])
+        case .discover(let save, let home):
+            var arguments = [discoverFlag]
+            if save { arguments.append("--save") }
+            if let home { arguments += ["--home", home] }
+            return arguments
+        case .loginItem(let action):
+            return [loginItemFlag, action.rawValue]
+        case .testMediaPause:
+            return [testMediaPauseFlag]
+        }
+    }
+
     private static func unexpected(_ arg: String, after flag: String) -> UsageError {
         UsageError("unexpected argument \"\(arg)\" for \(flag)")
     }

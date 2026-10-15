@@ -30,6 +30,9 @@ public protocol ToolLink: AnyObject {
     func showMessage(_ message: String, icon: String)
     func log(_ message: String)
     func clipboardText() -> String?
+    /// Whether the app has something a later protocol release added, such
+    /// as the `choice` block.
+    func supports(_ feature: ProtocolFeature) -> Bool
 }
 
 /// What the tool is: HomeSpeaker's settings file, HomeSpeaker's program,
@@ -58,23 +61,55 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// Runs work on the kit's thread, from any thread.
         public var later: @Sendable (@escaping @Sendable () -> Void) -> Void
         public var now: () -> Date
+        /// The Google Home sign-in: whether there is one, never its tokens.
+        public var account: GoogleAccount
+        /// The English voices installed on this Mac.
+        public var voices: () -> [LocalVoice]
+        /// Says `Pages.previewText` on this Mac in the voice with this id.
+        public var previewVoice: @Sendable (String) async throws -> Void
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
-                    later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init) {
+                    later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
+                    account: GoogleAccount = NoGoogleAccount(), voices: @escaping () -> [LocalVoice] = { [] },
+                    previewVoice: @escaping @Sendable (String) async throws -> Void = { _ in }) {
             self.link = link
             self.store = store
             self.driver = driver
             self.later = later
             self.now = now
+            self.account = account
+            self.voices = voices
+            self.previewVoice = previewVoice
         }
     }
 
     public let parts: Parts
     public private(set) var config = SpeakerConfig()
+    /// Why the settings file does not read, while it does not.
+    public private(set) var configProblem: String?
     public private(set) var volume: Volume?
+    /// The speaker job running: speaking, the volume, muting.
     public private(set) var busy: Job?
+    /// The setup job running beside it: signing in or out, discovery, the
+    /// login item, the media-pause test. Its own slot, so a browser sign-in
+    /// that takes minutes never holds up speech or a mute.
+    public private(set) var setupBusy: Job?
     public private(set) var notice: String?
+    public private(set) var setupNotice: String?
     public private(set) var openPanels: Set<String> = []
+    /// The settings section shown, kept across redraws.
+    public private(set) var section = Pages.Section.general
+    public private(set) var loginItem: LoginItemState?
+    public private(set) var mediaPauseReport: String?
+    public private(set) var homes: [HomeStructure]?
+    public private(set) var selectedHomeId: String?
+    public private(set) var previewing = false
+    public private(set) var removingSpeakers = false
+    private var voices: [LocalVoice]?
+    /// Asked once each time Settings opens, so a failure is not asked again
+    /// at every redraw.
+    private var askedLoginItem = false
+    private var askedHomes = false
 
     public init(parts: Parts) {
         self.parts = parts
@@ -166,57 +201,131 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 return .keep
             }
         } catch {
-            notice = "\(error)"
+            notice = Self.words(error)
         }
         return .page(Pages.island(status()))
     }
 
     public func settingsPage() -> UITree {
+        if !openPanels.contains(Self.settingsPanel) {
+            // Opened, not redrawn: what Settings reads once is read again.
+            askedLoginItem = false
+            askedHomes = false
+            voices = nil
+        }
         openPanels.insert(Self.settingsPanel)
         reload()
-        return Pages.settings(status())
+        return settingsTree()
     }
 
     public func settingsEvent(_ event: PanelEvent) -> PanelAnswer {
         reload()
+        // The value a picker answers with: a choice's as text, a list's as
+        // the row tapped.
+        let picked = event.text ?? event.row
+        do {
+            switch event.block {
+            case Pages.Block.section?:
+                guard let picked, let section = Pages.Section(rawValue: picked) else { return .keep }
+                self.section = section
+                removingSpeakers = false
+                return .page(settingsTree())
+            case Pages.Block.signIn?:
+                try setupJob(.signIn(chatOnly: false))
+            case Pages.Block.signOut?:
+                try setupJob(.app(.signOut(chatOnly: false)))
+            case Pages.Block.importAntigravity?:
+                try importAntigravity()
+            case Pages.Block.loginItem?:
+                guard let isOn = event.isOn else { return .keep }
+                try setupJob(.app(.loginItem(isOn ? .enable : .disable)))
+            case Pages.Block.testMediaPause?:
+                mediaPauseReport = nil
+                try setupJob(.app(.testMediaPause))
+            case Pages.Block.discover?:
+                try discover()
+            case Pages.Block.home?:
+                guard let picked, homes?.contains(where: { $0.id == picked }) == true else { return .keep }
+                selectedHomeId = picked
+            case Pages.Block.editSpeakers?:
+                removingSpeakers.toggle()
+            case Pages.Block.previewVoice?:
+                preview()
+            case Pages.Block.broadcasting?, Pages.Block.speechLength?, Pages.Block.speakHome?, Pages.Block.speakLocal?,
+                 Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
+                 Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?:
+                guard change(event, picked: picked) else { return .keep }
+                do {
+                    try save()
+                } catch {
+                    parts.link.log("the settings could not be saved: \(error)")
+                    reload()
+                }
+            default:
+                return .keep
+            }
+        } catch {
+            setupNotice = Self.words(error)
+        }
+        return .page(settingsTree())
+    }
+
+    /// Applies a settings change to `config`. False when the event changes
+    /// nothing, so nothing is saved.
+    private func change(_ event: PanelEvent, picked: String?) -> Bool {
         switch event.block {
+        case Pages.Block.broadcasting?:
+            guard let isOn = event.isOn else { return false }
+            config.enabled = isOn
         case Pages.Block.speechLength?:
-            guard let id = event.row, let length = SpeechLength(rawValue: id) else { return .keep }
+            guard let picked, let length = SpeechLength(rawValue: picked) else { return false }
             config.effectiveSpeechLength = length
         case Pages.Block.speakHome?:
-            guard let isOn = event.isOn else { return .keep }
+            guard let isOn = event.isOn else { return false }
             config.effectiveSpeakHome = isOn
         case Pages.Block.speakLocal?:
-            guard let isOn = event.isOn else { return .keep }
+            guard let isOn = event.isOn else { return false }
             config.effectiveSpeakLocal = isOn
         case Pages.Block.announceVolume?:
-            guard let isOn = event.isOn else { return .keep }
+            guard let isOn = event.isOn else { return false }
             config.effectiveAnnounceVolumeEnabled = isOn
         case Pages.Block.announceLevel?:
-            guard let text = event.text, let level = Int(text.trimmingCharacters(in: .whitespaces)) else { return .keep }
+            guard let text = event.text, let level = Int(text.trimmingCharacters(in: .whitespaces)) else { return false }
             config.effectiveAnnounceVolume = level
         case Pages.Block.pauseMedia?:
-            guard let isOn = event.isOn else { return .keep }
+            guard let isOn = event.isOn else { return false }
             config.effectivePauseMedia = isOn
+        case Pages.Block.pauseExtra?:
+            guard let text = event.text, let seconds = Double(text.trimmingCharacters(in: .whitespaces)), seconds.isFinite else { return false }
+            config.effectivePauseMediaExtraSeconds = seconds.rounded()
         case Pages.Block.quiet?:
-            guard let isOn = event.isOn else { return .keep }
+            guard let isOn = event.isOn else { return false }
             config.quietHoursEnabled = isOn
         case Pages.Block.quietStart?:
-            guard let text = event.text, let hour = SpeakerConfig.quietHour(text) else { return .keep }
+            guard let text = event.text, let hour = SpeakerConfig.quietHour(text) else { return false }
             config.quietHoursStart = hour
         case Pages.Block.quietEnd?:
-            guard let text = event.text, let hour = SpeakerConfig.quietHour(text) else { return .keep }
+            guard let text = event.text, let hour = SpeakerConfig.quietHour(text) else { return false }
             config.quietHoursEnd = hour
+        case Pages.Block.targets?:
+            guard let key = event.row, config.targets[key] != nil else { return false }
+            let before = config.defaultTarget
+            if removingSpeakers {
+                config.removeTarget(key)
+                if config.targets.isEmpty { removingSpeakers = false }
+            } else {
+                guard before != key else { return false }
+                config.defaultTarget = key
+            }
+            // The island's reading was the old default's.
+            if config.defaultTarget != before { volume = nil }
+        case Pages.Block.voice?:
+            guard let picked, !picked.isEmpty else { return false }
+            config.effectiveLocalVoice = picked
         default:
-            return .keep
+            return false
         }
-        do {
-            try save()
-        } catch {
-            parts.link.log("the settings could not be saved: \(error)")
-            reload()
-        }
-        return .page(Pages.settings(status()))
+        return true
     }
 
     public func panelClosed(_ panel: String) {
@@ -227,7 +336,17 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// HomeSpeaker's program ended a job: what it said, drawn again.
     public func finished(_ job: Job, _ result: JobResult) {
-        if busy == job { busy = nil }
+        if job.isSetup {
+            if setupBusy == job { setupBusy = nil }
+            finishedSetup(job, result)
+        } else {
+            if busy == job { busy = nil }
+            finishedSpeaking(job, result)
+        }
+        refreshOpenPanels()
+    }
+
+    private func finishedSpeaking(_ job: Job, _ result: JobResult) {
         switch result {
         case .spoke(let where_):
             notice = where_.capitalizingFirst
@@ -238,11 +357,58 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case .volume(let read):
             volume = read
             if case .setVolume = job { notice = nil }
-        case .unavailable(let why):
+        case .unavailable(let why), .failed(let why):
             volume = nil
             notice = why.capitalizingFirst
+        case .done, .homes, .loginItem:
+            break
         }
-        refreshOpenPanels()
+    }
+
+    private func finishedSetup(_ job: Job, _ result: JobResult) {
+        switch (job, result) {
+        case (.app(.testMediaPause), .done(let lines)):
+            mediaPauseReport = lines.joined(separator: ". ").capitalizingFirst
+        case (.app(.testMediaPause), .failed(let why)), (.app(.testMediaPause), .unavailable(let why)):
+            mediaPauseReport = why.capitalizingFirst
+        case (_, .homes(let listed)):
+            homes = listed
+            if selectedHomeId == nil || !listed.contains(where: { $0.id == selectedHomeId }) {
+                selectedHomeId = listed.first(where: { $0.id == config.structureId })?.id ?? listed.first?.id
+            }
+        case (_, .loginItem(let state, let problem)):
+            loginItem = state
+            if let problem { setupNotice = problem.capitalizingFirst }
+        case (.signIn, .done):
+            let email = parts.account.email
+            setupNotice = "Signed in" + (email.map { " as \($0)" } ?? "")
+            signedInAfresh()
+        case (.app(.signOut), .done(let lines)):
+            setupNotice = lines.first?.capitalizingFirst ?? "Signed out"
+            homes = nil
+            selectedHomeId = nil
+        case (.app(.discover(save: true, _)), .done(let lines)):
+            reload()
+            setupNotice = lines.last?.capitalizingFirst ?? "Speakers saved"
+        case (_, .done(let lines)):
+            setupNotice = lines.last?.capitalizingFirst
+        case (.app(.discover(save: false, _)), .failed(let why)):
+            homes = []
+            setupNotice = why.capitalizingFirst
+        case (_, .failed(let why)), (_, .unavailable(let why)), (_, .notSpoken(let why)):
+            setupNotice = why.capitalizingFirst
+        case (_, .spoke), (_, .volume):
+            break
+        }
+    }
+
+    /// A fresh Google Home sign-in: the homes are listed again, and with no
+    /// speakers yet they are found, as HomeSpeaker's Settings does.
+    private func signedInAfresh() {
+        homes = nil
+        askedHomes = false
+        reload()
+        if !config.hasSpeakers, setupBusy == nil { try? discover() }
     }
 
     public func status() -> Pages.Status {
@@ -253,7 +419,85 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.busy = busy
         status.notice = notice
         status.quietNow = config.isInQuietHours(at: parts.now())
+        status.offersChoice = parts.link.supports(.choice)
+        status.configProblem = configProblem
+        status.section = section
+        status.setupBusy = setupBusy
+        status.setupNotice = setupNotice
+        status.loginItem = loginItem
+        status.mediaPauseReport = mediaPauseReport
+        status.homes = homes
+        status.selectedHomeId = selectedHomeId
+        status.previewing = previewing
+        status.removingSpeakers = removingSpeakers
+        if openPanels.contains(Self.settingsPanel) {
+            let account = parts.account
+            status.account = Pages.Account(isSignedIn: account.isSignedIn, email: account.email,
+                                           hasOAuthClient: account.hasOAuthClient, hasAntigravityTokens: account.hasAntigravityTokens)
+            if section == .speakers, config.effectiveSpeakLocal {
+                if voices == nil { voices = parts.voices() }
+                status.voices = voices ?? []
+            }
+        }
         return status
+    }
+
+    /// The settings page, after starting what Settings reads by itself:
+    /// the login item once it opens, the homes once Speakers shows with a
+    /// sign-in. Each waits for the setup slot and is asked once an opening.
+    private func settingsTree() -> UITree {
+        if parts.driver.isInstalled, setupBusy == nil {
+            if !askedLoginItem {
+                askedLoginItem = true
+                try? setupJob(.app(.loginItem(.status)))
+            } else if section == .speakers, homes == nil, !askedHomes, parts.account.isSignedIn {
+                askedHomes = true
+                try? setupJob(.app(.discover(save: false, home: nil)))
+            }
+        }
+        return Pages.settings(status())
+    }
+
+    private func discover() throws {
+        guard parts.account.isSignedIn else { throw CommandRefused("sign in under General first") }
+        let home = selectedHomeId.flatMap { $0.isEmpty ? nil : $0 }
+        try setupJob(.app(.discover(save: true, home: home)))
+    }
+
+    private func importAntigravity() throws {
+        guard try parts.account.importFromAntigravity() else {
+            throw CommandRefused("no Google Home login found in the Antigravity token file")
+        }
+        setupNotice = "Imported the Antigravity Google Home login"
+        homes = nil
+        askedHomes = false
+        if !config.hasSpeakers, parts.driver.isInstalled, setupBusy == nil { try discover() }
+    }
+
+    /// Speaks the preview on this Mac, in the tool's own process: it needs
+    /// no sign-in and no HomeSpeaker.
+    private func preview() {
+        guard !previewing else { return }
+        previewing = true
+        let voice = config.effectiveLocalVoice
+        let speak = parts.previewVoice
+        let later = parts.later
+        Task { [weak self] in
+            let failure: String?
+            do {
+                try await speak(voice)
+                failure = nil
+            } catch {
+                failure = error.localizedDescription
+            }
+            later { [weak self] in self?.previewed(failure) }
+        }
+    }
+
+    private func previewed(_ failure: String?) {
+        previewing = false
+        if let failure { setupNotice = failure.capitalizingFirst }
+        refreshOpenPanels()
     }
 
     private func say(_ text: String) throws {
@@ -270,13 +514,27 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         try run(job)
     }
 
-    /// One job at a time: HomeSpeaker's program takes seconds, and two at
-    /// once would read a volume the other is setting. A second is refused,
-    /// saying what is still running.
+    /// A setup job needs HomeSpeaker and nothing more: not a speaker, and
+    /// not the speaker slot.
+    private func setupJob(_ job: Job) throws {
+        guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
+        try run(job)
+    }
+
+    /// One job a slot at a time: HomeSpeaker's program takes seconds, and
+    /// two speaker jobs at once would read a volume the other is setting. A
+    /// second in the same slot is refused, saying what is still running;
+    /// a setup job and a speaker job run side by side.
     private func run(_ job: Job) throws {
-        if let busy { throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(busy))") }
-        busy = job
-        notice = nil
+        if job.isSetup {
+            if let setupBusy { throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(setupBusy))") }
+            setupBusy = job
+            setupNotice = nil
+        } else {
+            if let busy { throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(busy))") }
+            busy = job
+            notice = nil
+        }
         let later = parts.later
         parts.driver.run(job) { [weak self] result in
             later { [weak self] in self?.finished(job, result) }
@@ -284,16 +542,33 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     private func reload() {
-        if let read = parts.store.load() { config = read }
+        switch parts.store.read() {
+        case .loaded(let read):
+            config = read
+            configProblem = nil
+        case .missing:
+            configProblem = nil
+        case .unreadable(let why):
+            configProblem = why.localizedDescription
+        }
     }
 
+    /// Never over a file that does not read: the tool's copy would replace
+    /// whatever the person, the phone or the app put there.
     private func save() throws {
+        if let configProblem { throw CommandRefused("refusing to save: \(configProblem)") }
         try parts.store.save(config)
+    }
+
+    /// An error as a sentence for the page: a refusal's own words, not
+    /// the struct around them.
+    static func words(_ error: Error) -> String {
+        ((error as? CommandRefused)?.message ?? error.localizedDescription).capitalizingFirst
     }
 
     private func refreshOpenPanels() {
         if openPanels.contains(Self.islandPanel) { parts.link.render(panel: Self.islandPanel, Pages.island(status())) }
-        if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, Pages.settings(status())) }
+        if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
     }
 }
 

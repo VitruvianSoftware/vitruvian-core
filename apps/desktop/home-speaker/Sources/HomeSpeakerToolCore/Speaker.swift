@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import Foundation
+import HomeSpeakerCore
 
 /// One thing the tool asks HomeSpeaker's program to do, as its flags do.
 public enum Job: Equatable, Sendable {
@@ -27,6 +28,20 @@ public enum Job: Equatable, Sendable {
     case setVolume(Int)
     case mute
     case unmute
+    /// One of the commands that must run as HomeSpeaker.app: sign out,
+    /// discover, the login item, the media-pause test.
+    case app(AppCommand)
+    /// `--sign-in [--chat]`: the browser sign-in, which can take minutes.
+    case signIn(chatOnly: Bool)
+
+    /// Setting HomeSpeaker up, not speaking: these run beside a speaker
+    /// job, so a slow sign-in never holds up a mute.
+    public var isSetup: Bool {
+        switch self {
+        case .say, .volume, .setVolume, .mute, .unmute: return false
+        case .app, .signIn: return true
+        }
+    }
 }
 
 /// The default speaker's volume, as `HomeSpeaker --volume` prints it.
@@ -52,6 +67,15 @@ public enum JobResult: Equatable, Sendable {
     case volume(Volume)
     /// The volume could not be read or set: why, in HomeSpeaker's words.
     case unavailable(String)
+    /// A setup job ran; the lines it printed.
+    case done([String])
+    /// A setup job failed: why, in HomeSpeaker's words.
+    case failed(String)
+    /// The homes `--discover` (without `--save`) listed.
+    case homes([HomeStructure])
+    /// What `--login-item` said the login item is, and, when switching it
+    /// failed, why: HomeSpeaker still prints the state it ended in.
+    case loginItem(LoginItemState, problem: String? = nil)
 }
 
 /// Runs jobs on HomeSpeaker's program and answers later, from any thread.
@@ -112,7 +136,41 @@ public final class ProcessDriver: SpeakerDriver {
         case .setVolume(let level): return ["--set-volume", String(min(100, max(0, level)))]
         case .mute: return ["--mute"]
         case .unmute: return ["--unmute"]
+        case .app(let command): return AppCommandParser.arguments(for: command)
+        case .signIn(let chatOnly): return ["--sign-in"] + (chatOnly ? ["--chat"] : [])
         }
+    }
+
+    /// The homes in what `--discover` printed: each `home: <name> (<id>)`
+    /// line, split at the last " (" so a name with brackets in it stays
+    /// whole. The indented, tab-separated speaker lines under each are not
+    /// homes.
+    public static func homes(in output: String) -> [HomeStructure] {
+        output.split(whereSeparator: \.isNewline).compactMap { line in
+            guard line.hasPrefix("home: "), line.hasSuffix(")") else { return nil }
+            let body = line.dropFirst("home: ".count).dropLast()
+            guard let split = body.range(of: " (", options: .backwards) else { return nil }
+            let name = String(body[..<split.lowerBound])
+            let id = String(body[split.upperBound...])
+            guard !id.isEmpty else { return nil }
+            return HomeStructure(id: id, name: name)
+        }
+    }
+
+    /// `login item: <state>`, as `--login-item` prints it.
+    public static func loginItemState(in output: String) -> LoginItemState? {
+        for line in output.split(whereSeparator: \.isNewline) where line.hasPrefix("login item: ") {
+            return LoginItemState(rawValue: String(line.dropFirst("login item: ".count)).trimmingCharacters(in: .whitespaces))
+        }
+        return nil
+    }
+
+    /// A failure's words without the "error: " each of HomeSpeaker's
+    /// complaints starts with.
+    static func complaint(_ text: String) -> String {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.hasPrefix("error: ") ? String($0.dropFirst("error: ".count)) : String($0) }
+            .joined(separator: " ")
     }
 
     /// What the program's end means for `job`.
@@ -137,11 +195,26 @@ public final class ProcessDriver: SpeakerDriver {
             }
             return .volume(Volume(speaker: object["speaker"] as? String ?? "", percent: object["percent"] as? Int,
                                   muted: object["muted"] as? Bool, online: object["online"] as? Bool))
+        case .app, .signIn:
+            guard status == 0 else {
+                let why = complaint(complained.isEmpty ? said : complained)
+                let problem = why.isEmpty ? "HomeSpeaker stopped with status \(status)" : why
+                if case .app(.loginItem) = job, let state = loginItemState(in: said) {
+                    return .loginItem(state, problem: problem)
+                }
+                return .failed(problem)
+            }
+            if case .app(.discover(save: false, _)) = job { return .homes(homes(in: said)) }
+            if case .app(.loginItem) = job {
+                guard let state = loginItemState(in: said) else { return .failed("HomeSpeaker did not say what the login item is") }
+                return .loginItem(state)
+            }
+            return .done(said.split(whereSeparator: \.isNewline).map(String.init))
         }
     }
 
     public func run(_ job: Job, then: @escaping @Sendable (JobResult) -> Void) {
-        guard let binary else { return then(.unavailable("HomeSpeaker is not installed")) }
+        guard let binary else { return then(job.isSetup ? .failed("HomeSpeaker is not installed") : .unavailable("HomeSpeaker is not installed")) }
         let process = Process()
         process.executableURL = binary
         process.arguments = Self.arguments(for: job)
@@ -158,7 +231,8 @@ public final class ProcessDriver: SpeakerDriver {
         do {
             try process.run()
         } catch {
-            then(.unavailable("HomeSpeaker could not be started: \(error.localizedDescription)"))
+            let why = "HomeSpeaker could not be started: \(error.localizedDescription)"
+            then(job.isSetup ? .failed(why) : .unavailable(why))
         }
     }
 }

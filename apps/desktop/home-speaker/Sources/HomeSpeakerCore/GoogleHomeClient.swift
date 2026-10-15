@@ -39,7 +39,7 @@ public enum BroadcastError: LocalizedError, Equatable {
     }
 }
 
-public struct HomeStructure: Identifiable, Equatable, Hashable {
+public struct HomeStructure: Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let name: String
 

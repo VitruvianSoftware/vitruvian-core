@@ -20,6 +20,7 @@
 
 import XCTest
 
+import HomeSpeakerCore
 import HomeSpeakerToolCore
 
 final class DriverTests: XCTestCase {
@@ -30,6 +31,74 @@ final class DriverTests: XCTestCase {
         XCTAssertEqual(ProcessDriver.arguments(for: .setVolume(-3)), ["--set-volume", "0"])
         XCTAssertEqual(ProcessDriver.arguments(for: .mute), ["--mute"])
         XCTAssertEqual(ProcessDriver.arguments(for: .unmute), ["--unmute"])
+    }
+
+    func testSetupJobsAreHomeSpeakersOwnFlagsToo() {
+        XCTAssertEqual(ProcessDriver.arguments(for: .signIn(chatOnly: false)), ["--sign-in"])
+        XCTAssertEqual(ProcessDriver.arguments(for: .signIn(chatOnly: true)), ["--sign-in", "--chat"])
+        XCTAssertEqual(ProcessDriver.arguments(for: .app(.signOut(chatOnly: false))), ["--sign-out"])
+        XCTAssertEqual(ProcessDriver.arguments(for: .app(.discover(save: false, home: nil))), ["--discover"])
+        XCTAssertEqual(ProcessDriver.arguments(for: .app(.discover(save: true, home: "h1"))), ["--discover", "--save", "--home", "h1"])
+        XCTAssertEqual(ProcessDriver.arguments(for: .app(.loginItem(.status))), ["--login-item", "status"])
+        XCTAssertEqual(ProcessDriver.arguments(for: .app(.testMediaPause)), ["--test-media-pause"])
+    }
+
+    func testDiscoveryPrintsHomesAndTheirSpeakers() {
+        let output = """
+        home: Lake House (h1)
+          kitchen\tSpeakerDevice\tKitchen · Kitchen (main)\td1
+          all\tStructure\tWhole Home\tstructure@h1
+        home: Mum's (old) flat (structures/abc-2)
+        home: Cabin (h3)
+
+        """
+        XCTAssertEqual(ProcessDriver.homes(in: output), [HomeStructure(id: "h1", name: "Lake House"),
+                                                        HomeStructure(id: "structures/abc-2", name: "Mum's (old) flat"),
+                                                        HomeStructure(id: "h3", name: "Cabin")],
+                       "split at the last bracket, so a name keeps its own; the speaker lines under each are not homes")
+        XCTAssertEqual(ProcessDriver.homes(in: "  home: Indented (h1)\nhome: no id\nhome: Empty ()\nsaved 1 target(s)"), [],
+                       "an indented line, a line without an id and an empty id are no homes")
+        XCTAssertEqual(ProcessDriver.result(of: .app(.discover(save: false, home: nil)), status: 0, output: output, error: ""),
+                       .homes(ProcessDriver.homes(in: output)))
+        XCTAssertEqual(ProcessDriver.result(of: .app(.discover(save: false, home: nil)), status: 1, output: "",
+                                            error: "error: no homes visible to this account\n"),
+                       .failed("no homes visible to this account"))
+        XCTAssertEqual(ProcessDriver.result(of: .app(.discover(save: true, home: nil)), status: 0,
+                                            output: "home: Cabin (h3)\nsaved 2 target(s) from Cabin\n", error: ""),
+                       .done(["home: Cabin (h3)", "saved 2 target(s) from Cabin"]))
+    }
+
+    func testTheLoginItemsStateIsRead() {
+        for state in [LoginItemState.enabled, .notRegistered, .requiresApproval, .notFound] {
+            XCTAssertEqual(ProcessDriver.result(of: .app(.loginItem(.status)), status: 0, output: "login item: \(state.rawValue)\n", error: ""),
+                           .loginItem(state))
+        }
+        XCTAssertEqual(ProcessDriver.result(of: .app(.loginItem(.enable)), status: 1, output: "login item: not found\n",
+                                            error: "error: the login item is not found after enable; run HomeSpeaker from its .app bundle\n"),
+                       .loginItem(.notFound, problem: "the login item is not found after enable; run HomeSpeaker from its .app bundle"))
+        XCTAssertEqual(ProcessDriver.result(of: .app(.loginItem(.enable)), status: 1, output: "",
+                                            error: "error: could not enable the login item: denied\n"),
+                       .failed("could not enable the login item: denied"), "no state printed: a plain failure")
+        XCTAssertEqual(ProcessDriver.result(of: .app(.loginItem(.status)), status: 0, output: "what?", error: ""),
+                       .failed("HomeSpeaker did not say what the login item is"))
+    }
+
+    func testOtherSetupJobsAreDoneOrFailed() {
+        XCTAssertEqual(ProcessDriver.result(of: .signIn(chatOnly: false), status: 0, output: "opening browser: accounts.google.com\nsigned in as a@b.c\n", error: ""),
+                       .done(["opening browser: accounts.google.com", "signed in as a@b.c"]))
+        XCTAssertEqual(ProcessDriver.result(of: .app(.signOut(chatOnly: false)), status: 1, output: "", error: ""),
+                       .failed("HomeSpeaker stopped with status 1"))
+        XCTAssertEqual(ProcessDriver.result(of: .app(.testMediaPause), status: 1, output: "could not pause Safari\n", error: ""),
+                       .failed("could not pause Safari"), "the report is what it printed")
+    }
+
+    func testAMissingProgramFailsASetupJob() {
+        let done = expectation(description: "answered")
+        ProcessDriver(binary: nil).run(.signIn(chatOnly: false)) { result in
+            XCTAssertEqual(result, .failed("HomeSpeaker is not installed"))
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 1)
     }
 
     func testWhatSayPrintsIsReadAsHomeSpeakerMeansIt() {

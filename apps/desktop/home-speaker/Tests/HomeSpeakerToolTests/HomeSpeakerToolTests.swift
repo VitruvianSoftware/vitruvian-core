@@ -31,21 +31,45 @@ final class HomeSpeakerToolTests: XCTestCase {
         var messages: [String] = []
         var logged: [String] = []
         var clipboard: String?
+        /// What the app named at hello; none, as before 3.48.
+        var features: Set<ProtocolFeature> = []
         func render(panel: String, _ tree: UITree) { rendered.append((panel, tree)) }
         func showMessage(_ message: String, icon: String) { messages.append(message) }
         func log(_ message: String) { logged.append(message) }
         func clipboardText() -> String? { clipboard }
+        func supports(_ feature: ProtocolFeature) -> Bool { features.contains(feature) }
     }
 
     final class Store: ConfigStore {
         var config: SpeakerConfig?
         var saves = 0
         var refuses = false
-        func load() -> SpeakerConfig? { config }
+        /// Set: the file is there and does not read, for this reason.
+        var corrupt: String?
+        func read() -> ConfigFileRead {
+            if let corrupt { return .unreadable(.unreadable(path: "/fake/.gemini/speaker_broadcast.json", reason: corrupt)) }
+            return config.map { .loaded($0) } ?? .missing
+        }
         func save(_ config: SpeakerConfig) throws {
-            if refuses { throw CocoaError(.fileWriteNoPermission) }
+            if refuses || corrupt != nil { throw CocoaError(.fileWriteNoPermission) }
             self.config = config
             saves += 1
+        }
+    }
+
+    /// A sign-in that says what it is told to.
+    final class Account: GoogleAccount {
+        var isSignedIn = false
+        var email: String?
+        var hasOAuthClient = true
+        var hasAntigravityTokens = false
+        /// Whether the Antigravity file holds a login.
+        var importFinds = true
+        var imports = 0
+        func importFromAntigravity() throws -> Bool {
+            imports += 1
+            if importFinds { isSignedIn = true }
+            return importFinds
         }
     }
 
@@ -61,6 +85,12 @@ final class HomeSpeakerToolTests: XCTestCase {
         }
         func answer(_ result: JobResult) {
             let (_, then) = pending.removeFirst()
+            then(result)
+        }
+        /// Answers the job asked for, wherever it is in the queue.
+        func answer(_ job: Job, _ result: JobResult) {
+            guard let index = pending.firstIndex(where: { $0.0 == job }) else { return XCTFail("\(job) was not asked") }
+            let (_, then) = pending.remove(at: index)
             then(result)
         }
     }

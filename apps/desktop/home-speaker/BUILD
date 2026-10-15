@@ -83,6 +83,7 @@ swift_binary(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
+        ":HomeSpeakerCore",
         ":HomeSpeakerToolCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",

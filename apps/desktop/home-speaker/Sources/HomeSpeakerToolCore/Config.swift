@@ -28,9 +28,18 @@ import HomeSpeakerCore
 /// the tool does not know survive, and never over a file that does not
 /// read. The app watches the folder and follows within a second.
 public protocol ConfigStore: AnyObject {
-    /// Nil when there is no file, or none that reads.
-    func load() -> SpeakerConfig?
+    /// The file: missing, read, or there but not readable as HomeSpeaker's
+    /// settings, and why.
+    func read() -> ConfigFileRead
     func save(_ config: SpeakerConfig) throws
+}
+
+extension ConfigStore {
+    /// Nil when there is no file, or none that reads.
+    public func load() -> SpeakerConfig? {
+        if case .loaded(let config) = read() { return config }
+        return nil
+    }
 }
 
 public final class FileConfigStore: ConfigStore {
@@ -41,9 +50,8 @@ public final class FileConfigStore: ConfigStore {
         self.file = SpeakerConfigFile(url: url, fileSystem: fileSystem)
     }
 
-    public func load() -> SpeakerConfig? {
-        if case .loaded(let config) = file.read() { return config }
-        return nil
+    public func read() -> ConfigFileRead {
+        file.read()
     }
 
     /// Throws, writing nothing, when the file there does not read as
