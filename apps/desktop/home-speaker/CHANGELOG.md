@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.13.2...home-speaker-v1.14.0) (2026-10-15)
+
+
+### Features
+
+* **home-speaker:** the tool's Settings gets General and Speakers sections ([#3327](https://github.com/VitruvianSoftware/vitruvian-core/issues/3327)) ([75de2c4](https://github.com/VitruvianSoftware/vitruvian-core/commit/75de2c4653e2f8c6a00941c1275d2098380cfe08))
+
 ## [1.13.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.13.1...home-speaker-v1.13.2) (2026-10-15)
 
 
