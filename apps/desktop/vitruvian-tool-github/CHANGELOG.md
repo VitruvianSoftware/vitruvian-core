@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.3.0...vitruvian-tool-github-v1.4.0) (2026-10-15)
+
+
+### Features
+
+* **vitruvian-tool-github:** bring back everything the app's GitHub view had ([#3323](https://github.com/VitruvianSoftware/vitruvian-core/issues/3323)) ([b88460e](https://github.com/VitruvianSoftware/vitruvian-core/commit/b88460e6253b8925a120f860424cb747b52f0b09))
+
 ## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.2.1...vitruvian-tool-github-v1.3.0) (2026-10-15)
 
 
