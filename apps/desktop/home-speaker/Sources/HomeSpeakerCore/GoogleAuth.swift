@@ -123,7 +123,9 @@ public actor GoogleAuth {
     public static let callbackPorts: [UInt16] = [8765, 8766, 8767, 8768]
     public static let callbackPath = "/callback"
 
-    private let store: SecretStore
+    /// The secrets this sign-in reads and saves. Its engine's, so the
+    /// settings, the sign-in and the speakers all use one file.
+    public nonisolated let store: SecretStore
     private let session: URLSession
 
     public init(store: SecretStore = .shared, session: URLSession = .shared) {

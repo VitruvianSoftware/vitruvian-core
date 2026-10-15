@@ -55,7 +55,8 @@ public actor GoogleHomeClient {
 
     public static let mcpEndpointString = "https://home.googleapis.com/mcp"
     private let mcpEndpoint = URL(string: GoogleHomeClient.mcpEndpointString)!
-    private let auth: GoogleAuth
+    /// The sign-in whose tokens reach the speakers.
+    public nonisolated let auth: GoogleAuth
     private let session: URLSession
 
     public init(auth: GoogleAuth = .shared, session: URLSession = .shared) {

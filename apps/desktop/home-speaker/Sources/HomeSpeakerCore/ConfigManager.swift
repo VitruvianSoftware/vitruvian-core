@@ -22,7 +22,10 @@ import Foundation
 
 @MainActor
 public class ConfigManager: ObservableObject {
-    public static let shared = ConfigManager()
+    /// The app's settings, on the app's history and secrets: the parts of
+    /// `HomeSpeakerEngine.app`.
+    public static let shared = ConfigManager(
+        configPath: ConfigManager.defaultConfigURL(), history: .shared, secrets: .shared)
 
     @Published public var config: SpeakerConfig
     @Published public var recentBroadcasts: [BroadcastLogItem] = []
@@ -43,8 +46,10 @@ public class ConfigManager: ObservableObject {
     private let fileManager = FileManager.default
     private let configPath: URL
     private let file: SpeakerConfigFile
-    private let history: BroadcastHistory
-    private let secrets: SecretStore
+    /// The history list this manager adds to and shows.
+    public let history: BroadcastHistory
+    /// The secrets the Google connection is read from.
+    public let secrets: SecretStore
 
     /// The bytes this process last wrote to the config file, so a change
     /// notification for our own save is not mistaken for someone else's edit.
@@ -63,15 +68,28 @@ public class ConfigManager: ObservableObject {
         BroadcastHistory.defaultURL()
     }
 
-    public init(
+    public convenience init(
         configPath: URL = ConfigManager.defaultConfigURL(),
         historyPath: URL = ConfigManager.defaultHistoryURL(),
         secrets: SecretStore = .shared,
         fileSystem: ConfigFileSystem = LocalConfigFileSystem()
     ) {
+        self.init(
+            configPath: configPath, history: BroadcastHistory(fileURL: historyPath),
+            secrets: secrets, fileSystem: fileSystem)
+    }
+
+    /// The settings at `configPath`, adding to `history` and reading the
+    /// Google connection from `secrets`: the objects an engine shares.
+    public init(
+        configPath: URL,
+        history: BroadcastHistory,
+        secrets: SecretStore,
+        fileSystem: ConfigFileSystem = LocalConfigFileSystem()
+    ) {
         self.configPath = configPath
         self.file = SpeakerConfigFile(url: configPath, fileSystem: fileSystem)
-        self.history = BroadcastHistory(fileURL: historyPath)
+        self.history = history
         self.secrets = secrets
         self.config = SpeakerConfig()
         loadConfig()
