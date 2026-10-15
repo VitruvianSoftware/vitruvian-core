@@ -402,4 +402,74 @@ $OUT"
   ok "[$ver] --verify-only passes a complete release and fails an incomplete or empty one"
 done
 
+# --- Notarization: the key's format and what reaches notarytool -------------
+# Offline: xcrun and ditto are fakes that record their arguments; the key is a
+# throwaway PEM, never a real one.
+NT="$(mktemp -d)"
+mkdir -p "$NT/bin"
+cat > "$NT/bin/xcrun" <<'FAKE'
+#!/usr/bin/env bash
+echo "xcrun $*" >> "$NT_LOG"
+if [[ "$1 $2" == "notarytool submit" ]]; then
+  key=""; prev=""
+  for a in "$@"; do [[ "$prev" == "--key" ]] && key="$a"; prev="$a"; done
+  head -1 "$key" >> "$NT_LOG"
+  [[ -f "$3" ]] || { echo "submitted a missing file: $3" >> "$NT_LOG"; exit 1; }
+  exit "${NT_SUBMIT_RC:-0}"
+fi
+FAKE
+cat > "$NT/bin/ditto" <<'FAKE'
+#!/usr/bin/env bash
+echo "ditto $*" >> "$NT_LOG"
+out="${*: -1}"; : > "$out"
+FAKE
+chmod +x "$NT/bin/xcrun" "$NT/bin/ditto"
+# Built from parts so the file holds nothing shaped like a real private key
+# (the secret scan matches that shape, and rightly so).
+dashes="-----"; kind="PRIVATE KEY"
+pem="${dashes}BEGIN ${kind}${dashes}"$'\nTEST\n'"${dashes}END ${kind}${dashes}"
+b64="$(printf '%s\n' "$pem" | base64 | tr -d '\n')"
+wrapped="$(printf '%s\n' "$pem" | base64 | fold -w 20)"
+mkdir -p "$NT/Mock.app"; : > "$NT/Mock.dmg"
+
+notary_key_to_file "$pem" "$NT/k1" && grep -q -- "${dashes}BEGIN ${kind}${dashes}" "$NT/k1" || fail "a PEM key is not written as is"
+ok "notary key: a PEM value is used as is"
+notary_key_to_file "$b64" "$NT/k2" && cmp -s "$NT/k1" "$NT/k2" || fail "a base64 key is not decoded to the PEM"
+ok "notary key: a base64 value (the secret's format) decodes to the PEM"
+notary_key_to_file "$wrapped" "$NT/k3" && cmp -s "$NT/k1" "$NT/k3" || fail "a line-wrapped base64 key is not decoded"
+ok "notary key: line-wrapped base64 decodes too"
+if notary_key_to_file "not a key at all" "$NT/k4" 2>/dev/null; then fail "garbage was accepted as a key"; fi
+ok "notary key: a value that is neither PEM nor base64 of one is refused"
+
+run_notarize() { # target -> rc; log in $NT/log
+  : > "$NT/log"
+  local rc=0
+  ( PATH="$NT/bin:$PATH" NT_LOG="$NT/log" NOTARY_KEY_ID=K1 NOTARY_ISSUER_ID=ISS \
+      NOTARY_API_KEY_P8="$b64" notarize_target "$1" ) >/dev/null 2>&1 || rc=$?
+  return $rc
+}
+
+run_notarize "$NT/Mock.app" || fail "notarizing a .app failed"
+grep -q "^xcrun notarytool submit .*/Mock.zip " "$NT/log" || fail "a .app was not zipped before submitting: $(cat "$NT/log")"
+grep -q "^ditto -c -k --keepParent $NT/Mock.app " "$NT/log" || fail "the .app was not zipped with ditto"
+grep -qx -- "${dashes}BEGIN ${kind}${dashes}" "$NT/log" || fail "notarytool was not handed the decoded PEM key"
+grep -q "^xcrun stapler staple $NT/Mock.app$" "$NT/log" || fail "the ticket was not stapled to the .app"
+ok "notarize: a .app is zipped, submitted with the decoded key, then stapled"
+
+run_notarize "$NT/Mock.dmg" || fail "notarizing a .dmg failed"
+grep -q "^xcrun notarytool submit $NT/Mock.dmg " "$NT/log" || fail "a .dmg was not submitted as is"
+! grep -q "^ditto" "$NT/log" || fail "a .dmg was zipped"
+ok "notarize: a .dmg is submitted as is and stapled"
+
+rc=0; NT_SUBMIT_RC=1 run_notarize "$NT/Mock.dmg" || rc=$?
+[[ $rc -ne 0 ]] || fail "a rejected submission was reported as success"
+! grep -q "stapler" "$NT/log" || fail "stapled after a rejected submission"
+ok "notarize: a rejected submission fails and staples nothing"
+
+: > "$NT/log"
+( PATH="$NT/bin:$PATH" NT_LOG="$NT/log" NOTARY_KEY_ID="" NOTARY_ISSUER_ID="" NOTARY_API_KEY_P8="" notarize_target "$NT/Mock.app" ) >/dev/null 2>&1 || fail "missing credentials failed instead of skipping"
+[[ ! -s "$NT/log" ]] || fail "missing credentials still called notarytool"
+ok "notarize: without credentials it skips and calls nothing"
+rm -rf "$NT"
+
 echo "All package-desktop tests passed successfully!"

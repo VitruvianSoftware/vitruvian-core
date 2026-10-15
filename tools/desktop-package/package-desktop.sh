@@ -142,6 +142,66 @@ missing_assets() {
 }
 
 # If sourced by unit tests, stop here and expose pure functions
+# The App Store Connect API key as a file notarytool can read. The value may be
+# the .p8 itself (PEM) or its base64, which is how the VITRUVIAN_NOTARY_API_KEY_P8
+# secret holds it (apps/desktop/vitruvian/Tools/notarize.sh decodes it too).
+notary_key_to_file() {
+  local value="${1:?key value required}"
+  local out="${2:?output path required}"
+  if [[ "$value" == *"-----BEGIN"* ]]; then
+    printf '%s\n' "$value" > "$out"
+  elif ! printf '%s' "$value" | tr -d ' \r\n' | base64 --decode > "$out" 2>/dev/null; then
+    echo "    NOTARY_API_KEY_P8 is neither a PEM key nor base64 of one" >&2
+    return 1
+  fi
+  if ! grep -q -- "-----BEGIN" "$out"; then
+    echo "    NOTARY_API_KEY_P8 did not decode to a PEM key" >&2
+    return 1
+  fi
+}
+
+notarize_target() {
+  local target_path="${1:?target path required}"
+
+  if [[ -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER_ID:-}" && (-n "${NOTARY_API_KEY_P8:-}" || -n "${NOTARY_KEY_FILE:-}") ]]; then
+    local key_file="${NOTARY_KEY_FILE:-}"
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    if [[ -z "$key_file" ]]; then
+      key_file="${tmp_dir}/AuthKey.p8"
+      if ! notary_key_to_file "$NOTARY_API_KEY_P8" "$key_file"; then
+        rm -rf "$tmp_dir"
+        return 1
+      fi
+    fi
+
+    # notarytool takes a zip, dmg or pkg, never a bare .app: zip it, then
+    # staple the ticket onto the .app itself.
+    local submit_path="$target_path"
+    if [[ "$target_path" == *.app ]]; then
+      submit_path="${tmp_dir}/$(basename "$target_path" .app).zip"
+      ditto -c -k --keepParent "$target_path" "$submit_path"
+    fi
+
+    echo "==> Submitting ${target_path} for notarization..."
+    local rc=0
+    xcrun notarytool submit "$submit_path" \
+      --key "$key_file" \
+      --key-id "$NOTARY_KEY_ID" \
+      --issuer "$NOTARY_ISSUER_ID" \
+      --wait || rc=$?
+    rm -rf "$tmp_dir"
+    [[ $rc -eq 0 ]] || return $rc
+
+    if [[ "$target_path" == *.app || "$target_path" == *.dmg ]]; then
+      echo "==> Stapling notarization ticket to ${target_path}..."
+      xcrun stapler staple "$target_path"
+    fi
+  else
+    echo "==> Notary credentials not provided; skipping notarization."
+  fi
+}
+
 if [[ "${PACKAGE_DESKTOP_LIB_ONLY:-}" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
@@ -244,38 +304,6 @@ sign_bundle() {
   fi
 
   codesign --verify --deep --strict "$bundle_path"
-}
-
-notarize_target() {
-  local target_path="${1:?target path required}"
-
-  if [[ -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER_ID:-}" && (-n "${NOTARY_API_KEY_P8:-}" || -n "${NOTARY_KEY_FILE:-}") ]]; then
-    local key_file="${NOTARY_KEY_FILE:-}"
-    local tmp_key=""
-    if [[ -z "$key_file" && -n "${NOTARY_API_KEY_P8:-}" ]]; then
-      tmp_key="$(mktemp)"
-      printf '%s\n' "$NOTARY_API_KEY_P8" > "$tmp_key"
-      key_file="$tmp_key"
-    fi
-
-    echo "==> Submitting ${target_path} for notarization..."
-    xcrun notarytool submit "$target_path" \
-      --key "$key_file" \
-      --key-id "$NOTARY_KEY_ID" \
-      --issuer "$NOTARY_ISSUER_ID" \
-      --wait
-
-    if [[ "$target_path" == *.app || "$target_path" == *.dmg ]]; then
-      echo "==> Stapling notarization ticket to ${target_path}..."
-      xcrun stapler staple "$target_path"
-    fi
-
-    if [[ -n "$tmp_key" ]]; then
-      rm -f "$tmp_key"
-    fi
-  else
-    echo "==> Notary credentials not provided; skipping notarization."
-  fi
 }
 
 create_dmg() {
