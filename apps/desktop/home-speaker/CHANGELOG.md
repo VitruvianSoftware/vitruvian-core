@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.16.1...home-speaker-v1.17.0) (2026-10-15)
+
+
+### Features
+
+* **home-speaker:** the tool's island gets setup, outputs, chat warnings and history ([#3337](https://github.com/VitruvianSoftware/vitruvian-core/issues/3337)) ([89c0b01](https://github.com/VitruvianSoftware/vitruvian-core/commit/89c0b0185d3e16f3c1afc9e16c9e13540258a6a1))
+
 ## [1.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.16.0...home-speaker-v1.16.1) (2026-10-15)
 
 
