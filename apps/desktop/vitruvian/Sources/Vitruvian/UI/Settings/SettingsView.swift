@@ -690,12 +690,10 @@ package struct UpdatesView: View {
 // MARK: - About
 
 package struct AboutSettings: View {
-    @ObservedObject private var l10n = L10n.shared
-
     package var body: some View {
         Form {
             Section {
-                aboutContent
+                AboutHeader()
             }
 
             UpdatesView()
@@ -703,9 +701,37 @@ package struct AboutSettings: View {
         .formStyle(.grouped)
     }
 
-    private var aboutContent: some View {
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
+}
+
+/// The top of Settings > About: the app's icon, name, version, the review
+/// links and the copyright line. Laid out like macOS's own About panels, which
+/// show the app icon itself, not a drawing of it.
+package struct AboutHeader: View {
+    /// The icon's side. The system's About panel shows it at 64 points in a
+    /// 284-point panel; this page is a whole Settings pane, so twice that.
+    /// The image carries the standard margin around its tile, as every macOS
+    /// app icon does, so the tile itself is about 103 points.
+    package static let iconSize: CGFloat = 128
+
+    @ObservedObject private var l10n = L10n.shared
+    private let icon: NSImage
+
+    /// `icon` is the running app's own (the one Finder and the Dock show);
+    /// tests pass the artwork from the source tree.
+    package init(icon: NSImage = NSApplication.shared.applicationIconImage) {
+        self.icon = icon
+    }
+
+    package var body: some View {
         VStack(spacing: 14) {
-            BrandBadge(size: 76)
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: Self.iconSize, height: Self.iconSize)
+                .accessibilityHidden(true)
             VStack(spacing: 3) {
                 Text(AppInfo.name)
                     .font(.title2.bold())

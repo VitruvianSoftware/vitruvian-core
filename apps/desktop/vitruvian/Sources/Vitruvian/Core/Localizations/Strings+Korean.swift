@@ -648,6 +648,8 @@ extension Strings {
         updateDownloading: "업데이트 다운로드 중…",
         updateInstalling: "설치하고 다시 시작하는 중…",
         updateFailedPrefix: "확인하지 못했습니다:",
+        updateRateLimited: "GitHub에서 요청을 제한하고 있습니다. 잠시 후 다시 시도하세요.",
+        updateNoReleaseFound: "Vitruvian 릴리스를 찾을 수 없습니다.",
         updateLastChecked: "마지막 확인:",
         updateNotifyTitle: "Vitruvian 업데이트",
         updateInstallFailedBody: "업데이트를 다운로드했지만 적용하지 못했습니다. GitHub 릴리스 페이지에서 최신 버전을 다운로드하고 현재 앱 위로 드래그해 교체하세요.",

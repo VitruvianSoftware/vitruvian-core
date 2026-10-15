@@ -131,6 +131,9 @@ enum TestGroups {
                 UpdateAdminInstallContract.run(suite)
                 UpdateHighlightsTests.run(suite)
                 UpdateIntroFlowTests.run(suite)
+                VitruvianReleaseFeedContract.run(suite)
+                UpdateSignerContract.run(suite)
+                AboutPageContract.run(suite)
             }),
             ("repository", {
                 RepositoryFeatureTests.run(suite)

@@ -647,6 +647,8 @@ extension Strings {
         updateDownloading: "Descargando la actualización…",
         updateInstalling: "Instalando y reiniciando…",
         updateFailedPrefix: "No se pudo comprobar:",
+        updateRateLimited: "GitHub está limitando las solicitudes. Inténtalo de nuevo más tarde.",
+        updateNoReleaseFound: "no se encontró ninguna versión de Vitruvian.",
         updateLastChecked: "Última comprobación:",
         updateNotifyTitle: "Actualización de Vitruvian",
         updateInstallFailedBody: "La actualización se descargó pero no se pudo aplicar. Descarga la última versión desde la página de releases de GitHub y arrastra la app sobre la actual.",

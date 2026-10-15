@@ -2121,12 +2121,16 @@ enum SwitcherModelFeatureTests {
                && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.4.0-beta.7", lastSeenVersion: nil)
                && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.5.0", lastSeenVersion: nil),
                "support prompt never leaks into another release series")
-        for url in [AppInfo.repositoryURL, AppInfo.websiteURL, AppInfo.coffeeURL,
-                    AppInfo.discordURL, AppInfo.socialURL] {
-            suite.expect(url.host == "github.com" && url.path.hasPrefix("/VitruvianSoftware/")
+        // A prefix check passed while every link led to a repository that does
+        // not exist; name the repository itself (AboutLinksContract).
+        for url in [AppInfo.repositoryURL, AppInfo.coffeeURL, AppInfo.discordURL, AppInfo.socialURL] {
+            suite.expect(url.host == "github.com"
+                         && url.pathComponents.prefix(3) == ["/", "VitruvianSoftware", "vitruvian-core"]
                          && !url.absoluteString.lowercased().contains("vorssaint"),
                    "every outbound app link points at Vitruvian's own repository, never upstream's channels")
         }
+        suite.expect(AppInfo.websiteURL.absoluteString == "https://vitruviansoftware.dev",
+               "the website link is Vitruvian's own site")
         // AppInfo.version falls back to "dev" in this bare harness, so parse
         // the plist the shipped app will actually carry. In Vitruvian, releases
         // are automated via release-please, which updates CFBundleShortVersionString.

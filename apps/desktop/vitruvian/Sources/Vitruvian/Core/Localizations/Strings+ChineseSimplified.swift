@@ -647,6 +647,8 @@ extension Strings {
         updateDownloading: "正在下载更新…",
         updateInstalling: "正在安装并重新启动…",
         updateFailedPrefix: "无法检查：",
+        updateRateLimited: "GitHub 正在限制请求，请稍后再试。",
+        updateNoReleaseFound: "未找到 Vitruvian 版本。",
         updateLastChecked: "上次检查：",
         updateNotifyTitle: "Vitruvian 更新",
         updateInstallFailedBody: "更新已下载，但无法安装。请前往 GitHub 发布页面下载最新版本，并将 App 拖到当前 App 上覆盖。",

@@ -647,6 +647,8 @@ extension Strings {
         updateDownloading: "Güncelleme indiriliyor…",
         updateInstalling: "Yükleniyor ve yeniden başlatılıyor…",
         updateFailedPrefix: "Denetlenemedi:",
+        updateRateLimited: "GitHub istekleri sınırlıyor. Bir süre sonra yeniden deneyin.",
+        updateNoReleaseFound: "Vitruvian sürümü bulunamadı.",
         updateLastChecked: "Son denetleme:",
         updateNotifyTitle: "Vitruvian güncellemesi",
         updateInstallFailedBody: "Güncelleme indirildi ancak uygulanamadı. GitHub sürümler sayfasından en yeni sürümü indirin ve uygulamayı mevcut olanın üzerine sürükleyin.",

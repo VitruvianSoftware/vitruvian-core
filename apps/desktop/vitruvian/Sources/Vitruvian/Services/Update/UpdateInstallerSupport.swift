@@ -19,6 +19,20 @@ package enum UpdateInstallerSupport {
         return trimmed
     }
 
+    /// What a downloaded disk image must be signed by before it is mounted:
+    /// Vitruvian's Developer ID team, the one that signs the app and its fan
+    /// helper (`FanControlIdentifiers.teamID`).
+    package static var diskImageRequirement: String {
+        "anchor apple generic and certificate leaf[subject.OU] = \"\(FanControlIdentifiers.teamID)\""
+    }
+
+    /// What the app inside the image must be: Vitruvian's bundle, signed by
+    /// the same team. The installer also asks Gatekeeper, which needs it
+    /// notarized.
+    package static var appRequirement: String {
+        "identifier \"com.vitruviansoftware.vitruvian\" and \(diskImageRequirement)"
+    }
+
     /// The installer: waits for the app to exit, verifies and mounts the DMG,
     /// stages and verifies the new bundle, swaps it in and relaunches.
     /// Arguments: $1 app path, $2 dmg path, $3 pid to wait for,
@@ -65,7 +79,7 @@ package enum UpdateInstallerSupport {
         }
         while kill -0 "$PID" 2>/dev/null; do sleep 0.3; done
         note fail-dmg-verify
-        DMG_VERIFY_REQ='anchor apple generic and certificate leaf[subject.OU] = "3D485NHW29"'
+        DMG_VERIFY_REQ='\(diskImageRequirement)'
         if ! /usr/bin/codesign -v --strict -R="$DMG_VERIFY_REQ" "$DMG" 2>/dev/null; then
             /bin/rm -f "$DMG"
             finalize
@@ -122,7 +136,7 @@ package enum UpdateInstallerSupport {
                     elif /usr/sbin/spctl -a -t exec "$STAGE" >/dev/null 2>&1; then
                         GATEKEEPER_OK=1
                     fi
-                    VERIFY_REQ='identifier "com.vitruviansoftware.vitruvian" and anchor apple generic and certificate leaf[subject.OU] = "3D485NHW29"'
+                    VERIFY_REQ='\(appRequirement)'
                     note fail-verify
                     if /usr/bin/codesign -v --deep --strict -R="$VERIFY_REQ" "$STAGE" 2>/dev/null \
                         && [ "$GATEKEEPER_OK" = 1 ]; then
