@@ -56,6 +56,42 @@ import Testing
         _ = agent.isClaudeCodeHookInstalled()
         _ = agent.isLegacyLaunchAgentInstalled()
     }
+
+    /// Removing the 1.x launch agent stops it through the injected
+    /// `bootout`, so a test never runs launchctl against the live session.
+    @Test func legacyLaunchAgentRemovalGoesThroughTheBootoutSeam() throws {
+        final class Asked: @unchecked Sendable {
+            let lock = NSLock()
+            var targets: [String] = []
+        }
+        let asked = Asked()
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-legacy-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let agent = AgentIntegration(home: home, executablePath: "", bootout: { target in
+            asked.lock.withLock { asked.targets.append(target) }
+        })
+        try FileManager.default.createDirectory(at: agent.legacyLaunchAgentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("<plist/>".utf8).write(to: agent.legacyLaunchAgentURL)
+        #expect(agent.isLegacyLaunchAgentInstalled())
+        try agent.removeLegacyLaunchAgent()
+        #expect(!agent.isLegacyLaunchAgentInstalled())
+        #expect(asked.targets == ["gui/\(getuid())/\(AgentIntegration.legacyLaunchAgentLabel)"])
+        #expect(asked.targets == [AgentIntegration.legacyLaunchAgentTarget])
+    }
+
+    /// An integration pointed at no program reads state and cleans up, but
+    /// never installs a hook that could not run.
+    @Test func anIntegrationWithNoProgramRefusesToInstall() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-noprogram-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let agent = AgentIntegration(home: home, executablePath: "", bootout: { _ in })
+        #expect(throws: AgentIntegration.IntegrationError.self) { try agent.installHook(for: .claudeCode) }
+        try AgentIntegration(home: home, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker", bootout: { _ in })
+            .installHook(for: .claudeCode)
+        if case .stale = agent.hookStatus(for: .claudeCode) {} else { Issue.record("an existing hook reads as not this integration's") }
+        try agent.removeHook(for: .claudeCode)
+        #expect(agent.hookStatus(for: .claudeCode) == .notInstalled)
+    }
 }
 
 // MARK: - Quiet Hours

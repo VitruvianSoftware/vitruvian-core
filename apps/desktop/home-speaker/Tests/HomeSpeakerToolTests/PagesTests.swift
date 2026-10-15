@@ -86,7 +86,7 @@ final class PagesTests: XCTestCase {
         status.config.effectiveAnnounceVolumeEnabled = true
         status.loginItem = .enabled
         let page = Pages.settings(status)
-        XCTAssertEqual(ids(page), ["section", "signIn", "broadcasting", "loginItem", "speechLength", "announceVolume", "announceLevel",
+        XCTAssertEqual(ids(page), ["section", "signIn", "openGoogleCloud", "broadcasting", "loginItem", "speechLength", "announceVolume", "announceLevel",
                                    "pauseMedia", "quiet", "quietStart", "quietEnd"])
         XCTAssertEqual(texts(page).filter { ["Google Home Account", "Broadcast Controls", "Quiet Hours"].contains($0) },
                        ["Google Home Account", "Broadcast Controls", "Quiet Hours"])
@@ -179,8 +179,22 @@ final class PagesTests: XCTestCase {
         var monitor = choices
         monitor.section = .monitor
         monitor.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true)
+        var agents = choices
+        agents.section = .agents
+        let rival = URL(fileURLWithPath: "/u/.claude/skills/google-home/hooks/hooks.json")
+        agents.agents = Pages.Agents(
+            statuses: [AgentIntegration.AgentStatus(agent: .claudeCode, isInstalled: true, hook: .installed, configuredByInstruction: true, rivalHook: rival),
+                       AgentIntegration.AgentStatus(agent: .antigravity, isInstalled: true, hook: .notInstalled, configuredByInstruction: false, rivalHook: nil)],
+            hookCommands: [.claudeCode: "\"" + String(repeating: "p", count: 1_000) + "\" --claude-stop-hook"], legacyLaunchAgent: true)
+        var cloud = choices
+        cloud.section = .googleCloud
+        cloud.account = Pages.Account(customOAuthClientId: String(repeating: "i", count: 300), hasCustomOAuthClientSecret: true,
+                                      hasBundledOAuthClient: true)
+        cloud.draftClientId = String(repeating: "d", count: 300)
+        cloud.files = Pages.Files(settings: String(repeating: "s", count: 1_000), secrets: String(repeating: "s", count: 1_000),
+                                  homeSpeakerVersion: "1.14.0")
         for tree in [Pages.island(status), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
-                     Pages.settings(monitor)] {
+                     Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
         }

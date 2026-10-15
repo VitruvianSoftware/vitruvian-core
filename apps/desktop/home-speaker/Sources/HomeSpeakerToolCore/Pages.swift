@@ -28,13 +28,15 @@ import VitruvianToolProtocol
 public enum Pages {
     /// The parts of the settings panel, one shown at a time.
     public enum Section: String, CaseIterable, Sendable {
-        case general, speakers, monitor
+        case general, speakers, monitor, agents, googleCloud
 
         public var title: String {
             switch self {
             case .general: return "General"
             case .speakers: return "Speakers"
             case .monitor: return "Chat & Slack"
+            case .agents: return "AI Agents"
+            case .googleCloud: return "Google Cloud"
             }
         }
     }
@@ -45,12 +47,56 @@ public enum Pages {
         public var email: String?
         public var hasOAuthClient = false
         public var hasAntigravityTokens = false
+        /// The person's own OAuth client id, if one is saved. Never its secret.
+        public var customOAuthClientId: String?
+        public var hasCustomOAuthClientSecret = false
+        /// HomeSpeaker.app was packaged with a shared OAuth client.
+        public var hasBundledOAuthClient = false
 
-        public init(isSignedIn: Bool = false, email: String? = nil, hasOAuthClient: Bool = false, hasAntigravityTokens: Bool = false) {
+        public init(isSignedIn: Bool = false, email: String? = nil, hasOAuthClient: Bool = false, hasAntigravityTokens: Bool = false,
+                    customOAuthClientId: String? = nil, hasCustomOAuthClientSecret: Bool = false, hasBundledOAuthClient: Bool = false) {
             self.isSignedIn = isSignedIn
             self.email = email
             self.hasOAuthClient = hasOAuthClient
             self.hasAntigravityTokens = hasAntigravityTokens
+            self.customOAuthClientId = customOAuthClientId
+            self.hasCustomOAuthClientSecret = hasCustomOAuthClientSecret
+            self.hasBundledOAuthClient = hasBundledOAuthClient
+        }
+    }
+
+    /// The coding agents, as AI Agents shows them.
+    public struct Agents: Equatable {
+        /// Each agent's state, read from its files.
+        public var statuses: [AgentIntegration.AgentStatus] = []
+        /// The command a hook runs, by agent: only while HomeSpeaker is
+        /// installed, since without it there is nothing a hook could run.
+        public var hookCommands: [CodingAgent: String] = [:]
+        /// The 1.x chat-monitor launch agent is still on this Mac.
+        public var legacyLaunchAgent = false
+
+        public init(statuses: [AgentIntegration.AgentStatus] = [], hookCommands: [CodingAgent: String] = [:],
+                    legacyLaunchAgent: Bool = false) {
+            self.statuses = statuses
+            self.hookCommands = hookCommands
+            self.legacyLaunchAgent = legacyLaunchAgent
+        }
+    }
+
+    /// Where HomeSpeaker keeps things, and the versions, as Files lists them.
+    public struct Files: Equatable, Sendable {
+        public var settings = ""
+        public var secrets = ""
+        public var toolVersion = ToolVersion.current
+        /// The installed HomeSpeaker's version; nil when it cannot be read.
+        public var homeSpeakerVersion: String?
+
+        public init(settings: String = "", secrets: String = "", toolVersion: String = ToolVersion.current,
+                    homeSpeakerVersion: String? = nil) {
+            self.settings = settings
+            self.secrets = secrets
+            self.toolVersion = toolVersion
+            self.homeSpeakerVersion = homeSpeakerVersion
         }
     }
 
@@ -106,6 +152,13 @@ public enum Pages {
         /// A tap on a speaker removes it, rather than making it the default.
         public var removingSpeakers = false
         public var chat = Chat()
+        public var agents = Agents()
+        public var files = Files()
+        /// The Client ID typed under Google Cloud and not saved yet.
+        public var draftClientId = ""
+        /// A client secret is typed and not saved yet. The field itself is
+        /// always drawn empty: a secret goes in and never comes back out.
+        public var draftClientSecretTyped = false
 
         public init() {}
     }
@@ -155,6 +208,32 @@ public enum Pages {
         public static let gwsAccount = "gwsAccount"
         public static let muteOwnMessages = "muteOwnMessages"
         public static let pollInterval = "pollInterval"
+        public static let openGoogleCloud = "openGoogleCloud"
+        public static let oauthClientId = "oauthClientId"
+        public static let oauthClientSecret = "oauthClientSecret"
+        public static let saveOAuthClient = "saveOAuthClient"
+        public static let clearOAuthClient = "clearOAuthClient"
+        public static let removeLegacyAgent = "removeLegacyAgent"
+
+        /// What a button under AI Agents does to one agent. Its block id is
+        /// `<action>:<agent>`, e.g. `installHook:claudeCode`.
+        public enum AgentAction: String, CaseIterable, Sendable {
+            case installHook, removeHook, disableRival, addInstruction
+        }
+
+        public static func agent(_ action: AgentAction, _ agent: CodingAgent) -> String {
+            "\(action.rawValue):\(agent.rawValue)"
+        }
+
+        /// The action and agent an AI Agents button's id names; nil for any
+        /// other id.
+        public static func agentAction(_ id: String) -> (AgentAction, CodingAgent)? {
+            let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let action = AgentAction(rawValue: parts[0]), let agent = CodingAgent(rawValue: parts[1]) else {
+                return nil
+            }
+            return (action, agent)
+        }
     }
 
     // MARK: - The island page
@@ -250,6 +329,8 @@ public enum Pages {
             case .general: general(status)
             case .speakers: speakers(status)
             case .monitor: monitor(status)
+            case .agents: agents(status)
+            case .googleCloud: googleCloud(status)
             }
         }
     }
@@ -282,8 +363,8 @@ public enum Pages {
                 row(nil, "Not signed in", icon: "exclamationmark.triangle.fill")
                 button(Block.signIn, "Sign In…", style: .prominent, enabled: canRun)
                 if !status.account.hasOAuthClient {
-                    text("Sign In needs a Google Cloud OAuth client: configure one in HomeSpeaker, under Settings > Google Cloud.",
-                         style: .caption)
+                    text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.", style: .caption)
+                    button(Block.openGoogleCloud, "Set up…")
                 }
                 if status.account.hasAntigravityTokens {
                     button(Block.importAntigravity, "Import Antigravity login")
@@ -319,7 +400,6 @@ public enum Pages {
             field(Block.quietStart, title: "From (HH:mm)", value: config.quietHoursStart ?? "22:00")
             field(Block.quietEnd, title: "Until (HH:mm)", value: config.quietHoursEnd ?? "07:00")
             text("Automated announcements are held during quiet hours. What you type yourself still plays.", style: .caption)
-            text("The coding-agent hooks and your own Google Cloud OAuth client are set up in HomeSpeaker.", style: .caption)
         }.blocks
     }
 
@@ -483,6 +563,145 @@ public enum Pages {
             heading("Options")
             toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: monitor.muteOwnMessages)
             field(Block.pollInterval, title: UIText.plain(pollIntervalTitle), value: String(monitor.clampedPollInterval), kind: .number)
+        }.blocks
+    }
+
+    /// What a hook says when it is there but HomeSpeaker, which it runs, is not.
+    public static let hookWithoutHomeSpeaker = "Points at HomeSpeaker, which isn't installed — it can't speak"
+
+    /// AI Agents, as HomeSpeaker's tab of that name: each coding agent's
+    /// hook or instruction, and the 1.x launch agent to clean up. Reading
+    /// state, removing and the instruction need no HomeSpeaker; installing
+    /// a hook does, since a hook runs it.
+    static func agents(_ status: Status) -> [UIBlock] {
+        UITree {
+            for agent in status.agents.statuses {
+                agentBlocks(agent, status)
+            }
+            if status.agents.legacyLaunchAgent {
+                heading("Cleanup")
+                row(nil, "Legacy chat-monitor launch agent", subtitle: "Installed by HomeSpeaker 1.x. Chat monitoring now runs inside the app.",
+                    icon: "trash")
+                button(Block.removeLegacyAgent, "Remove")
+            }
+        }.blocks
+    }
+
+    static func agentBlocks(_ st: AgentIntegration.AgentStatus, _ status: Status) -> [UIBlock] {
+        let name = st.agent.displayName
+        let file = st.agent.instructionFileName
+        return UITree {
+            heading(UIText.plain(name))
+            switch st.section {
+            case .notInstalled:
+                row(nil, UIText.plain("\(name) hook"), subtitle: "Not installed on this Mac. Nothing to do here.", icon: "minus.circle")
+            case .instructionDriven:
+                if st.configuredByInstruction {
+                    row(nil, UIText.plain("\(name) announcements"), subtitle: "Configured", icon: "checkmark.circle.fill")
+                    text(UIText.plain("\(file) tells \(name) to speak each reply through HomeSpeaker's speaker settings."), style: .caption)
+                } else {
+                    row(nil, UIText.plain("\(name) announcements"), subtitle: "Not set up", icon: "exclamationmark.circle")
+                    button(Block.agent(.addInstruction, st.agent), "Add Instruction", style: .prominent)
+                    text(UIText.plain("Adds one line to \(file) asking \(name) to speak each reply. \(name)'s CLI does not run end-of-turn hooks, so this is the only path."),
+                         style: .caption)
+                }
+            case .hook:
+                hookBlocks(st, status)
+            }
+            text(UIText.plain(st.agent == .claudeCode
+                              ? "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
+                              : "Reads the broadcast settings and speaker from the same files as HomeSpeaker, so switching speakers here changes where \(name) speaks."),
+                 style: .caption)
+        }.blocks
+    }
+
+    /// An agent HomeSpeaker hooks: the "spoken twice" warning, the hook's
+    /// state and what it runs. A hook left behind by a HomeSpeaker that is
+    /// gone says so and offers Remove, never an update it cannot make.
+    static func hookBlocks(_ st: AgentIntegration.AgentStatus, _ status: Status) -> [UIBlock] {
+        let name = st.agent.displayName
+        let title = UIText.plain("\(name) hook")
+        return UITree {
+            if let warning = st.speaksTwiceWarning {
+                row(nil, UIText.plain(warning), icon: "exclamationmark.triangle.fill")
+                button(Block.agent(.disableRival, st.agent), "Turn it off")
+            }
+            switch st.hook {
+            case .installed:
+                row(nil, title, subtitle: "Installed", icon: "checkmark.circle.fill")
+                button(Block.agent(.removeHook, st.agent), "Remove")
+            case .stale where !status.installed:
+                row(nil, title, subtitle: UIText.plain(hookWithoutHomeSpeaker), icon: "exclamationmark.triangle.fill")
+                button(Block.agent(.removeHook, st.agent), "Remove", enabled: true)
+            case .stale:
+                row(nil, title, subtitle: "Needs update", icon: "arrow.triangle.2.circlepath")
+                button(Block.agent(.installHook, st.agent), "Update Hook", style: .prominent)
+            case .notInstalled:
+                row(nil, title, subtitle: "Not installed", icon: "circle")
+                button(Block.agent(.installHook, st.agent), "Install Hook", style: .prominent, enabled: status.installed)
+                if !status.installed { text("Install HomeSpeaker first: the hook runs it.", style: .caption) }
+            }
+            text("Speaks a one-sentence summary of each reply when a turn finishes.", style: .caption)
+            if status.installed, let command = status.agents.hookCommands[st.agent] {
+                text(UIText.plain(command), style: .caption)
+            }
+            if st.configuredByInstruction {
+                text(UIText.plain(st.hook == .installed
+                                  ? "Your \(st.agent.instructionFileName) also tells \(name) to broadcast on its own. With the hook installed, remove that instruction to avoid hearing replies twice."
+                                  : "Already announcing: your \(st.agent.instructionFileName) tells \(name) to broadcast on its own. The hook is optional — it makes that deterministic and needs no model cooperation."),
+                     style: .caption)
+            }
+        }.blocks
+    }
+
+    public static let cloudConsole = "https://console.cloud.google.com/apis/credentials"
+
+    /// Google Cloud, as HomeSpeaker's tab of that name: the five steps to
+    /// a project of one's own, the client pasted in and saved with one
+    /// button, and where the files are. The secret field is always drawn
+    /// empty; what is typed there is held until Save.
+    static func googleCloud(_ status: Status) -> [UIBlock] {
+        let account = status.account
+        let canSave = !status.draftClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let secretHint: UIText
+        if status.draftClientSecretTyped {
+            secretHint = "Typed — press Save to keep it"
+        } else if account.hasCustomOAuthClientSecret {
+            secretHint = "Saved — type a new one to replace it"
+        } else {
+            secretHint = "Paste the client secret"
+        }
+        return UITree {
+            heading("Your Google Cloud project")
+            row(nil, "1 · Create or pick a project", subtitle: "console.cloud.google.com — use the Google account that owns your home.")
+            row(nil, "2 · Enable the Home API",
+                subtitle: "APIs & Services › Library › “Home API”. Also enable the Google Chat API if you want chat announcements.")
+            row(nil, "3 · Configure the consent screen, then Publish",
+                subtitle: "Google Auth Platform › Audience › External. Leave it on Testing and Google expires your login every 7 days.")
+            row(nil, "4 · Create an OAuth client",
+                subtitle: "Desktop app: nothing else to enter. Web application: add every callback below to Authorised redirect URIs.")
+            text(UIText.plain(GoogleAuth.allRedirectURIs.joined(separator: "\n")), style: .caption)
+            link("Open Google Cloud Console", url: cloudConsole)
+            text(account.hasBundledOAuthClient
+                 ? "This build also ships with a shared OAuth client. Fill in your own below to use your project instead; yours always wins."
+                 : "One-time setup. Your client ID and secret never leave this Mac.", style: .caption)
+
+            heading("Step 5 · Paste the client here")
+            field(Block.oauthClientId, title: "Client ID", value: status.draftClientId, placeholder: "…apps.googleusercontent.com")
+            field(Block.oauthClientSecret, title: "Client secret", value: "", placeholder: secretHint, kind: .secret)
+            button(Block.saveOAuthClient, "Save", style: .prominent, enabled: canSave)
+            if let id = account.customOAuthClientId {
+                row(nil, "Your OAuth client is saved", subtitle: UIText.plain(id), icon: "checkmark.circle.fill")
+                button(Block.clearOAuthClient, "Clear")
+            }
+
+            heading("Files")
+            row(nil, "Settings", subtitle: UIText.plain(status.files.settings))
+            row(nil, "Secrets", subtitle: UIText.plain(status.files.secrets))
+            row(nil, "Tool version", subtitle: UIText.plain(status.files.toolVersion))
+            if status.installed {
+                row(nil, "HomeSpeaker version", subtitle: UIText.plain(status.files.homeSpeakerVersion ?? "Unknown"))
+            }
         }.blocks
     }
 

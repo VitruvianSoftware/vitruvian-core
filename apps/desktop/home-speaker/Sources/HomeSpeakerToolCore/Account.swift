@@ -36,6 +36,19 @@ public protocol GoogleAccount: AnyObject {
     /// Copies that login into HomeSpeaker's secrets. False when the file
     /// holds no usable login.
     func importFromAntigravity() throws -> Bool
+    /// The person's own OAuth client id, saved under Google Cloud; nil when
+    /// there is none. Its secret is never read back out.
+    var customOAuthClientId: String? { get }
+    /// A secret is saved with that client.
+    var hasCustomOAuthClientSecret: Bool { get }
+    /// HomeSpeaker.app was packaged with a shared OAuth client.
+    var hasBundledOAuthClient: Bool { get }
+    /// Saves the person's own OAuth client in one write: `id` as given (the
+    /// caller trims it), and `secret` too unless it is nil, which keeps the
+    /// secret already saved.
+    func saveOAuthClient(id: String, secret: String?) throws
+    /// Forgets the person's own OAuth client, id and secret both.
+    func clearOAuthClient() throws
 }
 
 /// HomeSpeaker's own secrets file, read afresh on every question, as the
@@ -61,6 +74,43 @@ public final class SecretStoreAccount: GoogleAccount {
     public func importFromAntigravity() throws -> Bool {
         try store.importFromAntigravity(at: antigravityTokens)
     }
+
+    public var customOAuthClientId: String? {
+        let id = store.load().oauthClientIdOverride?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return id.isEmpty ? nil : id
+    }
+
+    public var hasCustomOAuthClientSecret: Bool { !(store.load().oauthClientSecretOverride?.isEmpty ?? true) }
+
+    public var hasBundledOAuthClient: Bool {
+        let id = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientID") as? String ?? ""
+        return !id.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// One `SecretStore.update`, under its cross-process lock, so the id
+    /// and the secret land together and nothing the app or the CLI writes
+    /// meanwhile is lost. With no secret given, the saved one stays only
+    /// for the same client: a different id never inherits another
+    /// client's secret.
+    public func saveOAuthClient(id: String, secret: String?) throws {
+        try store.update {
+            let newId = id.isEmpty ? nil : id
+            let sameClient = newId == $0.oauthClientIdOverride
+            $0.oauthClientIdOverride = newId
+            if let secret {
+                $0.oauthClientSecretOverride = secret.isEmpty ? nil : secret
+            } else if !sameClient {
+                $0.oauthClientSecretOverride = nil
+            }
+        }
+    }
+
+    public func clearOAuthClient() throws {
+        try store.update {
+            $0.oauthClientIdOverride = nil
+            $0.oauthClientSecretOverride = nil
+        }
+    }
 }
 
 /// No account at all: the tool before it is told of one.
@@ -71,6 +121,11 @@ public final class NoGoogleAccount: GoogleAccount {
     public var hasOAuthClient: Bool { false }
     public var hasAntigravityTokens: Bool { false }
     public func importFromAntigravity() throws -> Bool { false }
+    public var customOAuthClientId: String? { nil }
+    public var hasCustomOAuthClientSecret: Bool { false }
+    public var hasBundledOAuthClient: Bool { false }
+    public func saveOAuthClient(id: String, secret: String?) throws {}
+    public func clearOAuthClient() throws {}
 }
 
 /// The Chat & Slack credentials, as far as the tool's Settings needs them:

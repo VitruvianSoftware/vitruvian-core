@@ -71,6 +71,24 @@ final class HomeSpeakerToolTests: XCTestCase {
             if importFinds { isSignedIn = true }
             return importFinds
         }
+        var customOAuthClientId: String?
+        var customOAuthClientSecret: String?
+        var hasCustomOAuthClientSecret: Bool { customOAuthClientSecret != nil }
+        var hasBundledOAuthClient = false
+        /// Each save, as it was asked: one call is one write.
+        var oauthSaves: [(id: String, secret: String?)] = []
+        var oauthClears = 0
+        func saveOAuthClient(id: String, secret: String?) throws {
+            oauthSaves.append((id, secret))
+            let sameClient = id == customOAuthClientId
+            customOAuthClientId = id
+            if let secret { customOAuthClientSecret = secret } else if !sameClient { customOAuthClientSecret = nil }
+        }
+        func clearOAuthClient() throws {
+            oauthClears += 1
+            customOAuthClientId = nil
+            customOAuthClientSecret = nil
+        }
     }
 
     /// A HomeSpeaker that records what it was asked and answers when told.
