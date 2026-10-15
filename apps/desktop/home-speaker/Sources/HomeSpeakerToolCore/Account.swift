@@ -56,19 +56,24 @@ public protocol GoogleAccount: AnyObject {
 public final class SecretStoreAccount: GoogleAccount {
     private let store: SecretStore
     private let antigravityTokens: URL
-    private let bundle: Bundle
+    private let profile: HomeSpeakerProfile
 
-    /// `bundle` is HomeSpeaker.app's, whose Info.plist may carry the OAuth
-    /// client it was packaged with: the tool's own bundle has none.
-    public init(store: SecretStore = .shared, antigravityTokens: URL = SecretStore.antigravityTokensURL, bundle: Bundle = .main) {
+    /// `profile` says which sign-in client is shipped. The tool, which
+    /// still drives HomeSpeaker.app, passes the app's profile on the app's
+    /// bundle, whose Info.plist may carry the OAuth client it was packaged
+    /// with: the tool's own bundle has none.
+    public init(
+        store: SecretStore = .shared, antigravityTokens: URL = SecretStore.antigravityTokensURL,
+        profile: HomeSpeakerProfile = .current
+    ) {
         self.store = store
         self.antigravityTokens = antigravityTokens
-        self.bundle = bundle
+        self.profile = profile
     }
 
     public var isSignedIn: Bool { !(store.load().google?.refreshToken.isEmpty ?? true) }
     public var email: String? { store.load().google?.email }
-    public var hasOAuthClient: Bool { OAuthClient.resolve(secrets: store.load(), bundle: bundle) != nil }
+    public var hasOAuthClient: Bool { OAuthClient.resolve(secrets: store.load(), shipped: profile.shippedClient) != nil }
     public var hasAntigravityTokens: Bool { FileManager.default.fileExists(atPath: antigravityTokens.path) }
 
     public func importFromAntigravity() throws -> Bool {
@@ -82,10 +87,7 @@ public final class SecretStoreAccount: GoogleAccount {
 
     public var hasCustomOAuthClientSecret: Bool { !(store.load().oauthClientSecretOverride?.isEmpty ?? true) }
 
-    public var hasBundledOAuthClient: Bool {
-        let id = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientID") as? String ?? ""
-        return !id.trimmingCharacters(in: .whitespaces).isEmpty
-    }
+    public var hasBundledOAuthClient: Bool { profile.shippedClient != nil }
 
     /// One `SecretStore.update`, under its cross-process lock, so the id
     /// and the secret land together and nothing the app or the CLI writes

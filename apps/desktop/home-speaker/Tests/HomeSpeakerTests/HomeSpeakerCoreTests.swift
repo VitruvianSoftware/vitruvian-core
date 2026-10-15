@@ -252,3 +252,129 @@ private func sampleTargets() -> [String: SpeakerDevice] {
         #expect(ChatMonitorConfig(pollIntervalSeconds: 9999).clampedPollInterval == 300)
     }
 }
+
+// MARK: - Which Google sign-in client is used
+
+/// A folder of its own, removed by the OS later; nothing here touches the
+/// person's real files.
+private func scratchFolder() throws -> URL {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("homespeaker-oauth-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+/// An app bundle on disk whose Info.plist carries `info`, the way the
+/// packaged HomeSpeaker.app carries its sign-in client.
+private func bundle(with info: [String: String], in root: URL) throws -> Bundle {
+    let contents = root.appendingPathComponent("Fake-\(UUID().uuidString).app/Contents")
+    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+    var plist = info
+    plist["CFBundleIdentifier"] = "test.homespeaker.fake"
+    try (plist as NSDictionary).write(to: contents.appendingPathComponent("Info.plist"))
+    return try #require(Bundle(url: contents.deletingLastPathComponent()))
+}
+
+@Suite struct OAuthClientTests {
+    private let own = OAuthClient(clientId: "own", clientSecret: "own-secret")
+    private let shipped = OAuthClient(clientId: "shipped", clientSecret: "shipped-secret")
+    private let saved = GoogleCredentials(
+        clientId: "saved", clientSecret: "saved-secret", accessToken: "a", refreshToken: "r")
+
+    private func person(own: Bool = false, saved: Bool = false) -> Secrets {
+        var secrets = Secrets()
+        if own {
+            secrets.oauthClientIdOverride = "own"
+            secrets.oauthClientSecretOverride = "own-secret"
+        }
+        if saved { secrets.google = self.saved }
+        return secrets
+    }
+
+    @Test func theOwnClientWins() {
+        #expect(OAuthClient.resolve(secrets: person(own: true, saved: true), shipped: shipped) == own)
+    }
+
+    @Test func theShippedClientIsNext() {
+        #expect(OAuthClient.resolve(secrets: person(saved: true), shipped: shipped) == shipped)
+        #expect(OAuthClient.resolve(secrets: person(), shipped: shipped) == shipped)
+    }
+
+    @Test func aSavedLoginsClientIsLast() {
+        #expect(OAuthClient.resolve(secrets: person(saved: true), shipped: nil)
+                == OAuthClient(clientId: "saved", clientSecret: "saved-secret"))
+        #expect(OAuthClient.resolve(secrets: person(), shipped: nil) == nil, "no client anywhere is none")
+    }
+
+    @Test func aBlankOwnClientIsNotAnOwnClient() {
+        var secrets = person(saved: true)
+        secrets.oauthClientIdOverride = "  \n"
+        #expect(OAuthClient.resolve(secrets: secrets, shipped: shipped) == shipped)
+    }
+
+    @Test func anEmptyShippedFileIsNone() throws {
+        let tool = try scratchFolder()
+        let file = tool.appendingPathComponent("google-oauth-client.json")
+        #expect(OAuthClientFile.read(file) == nil, "no file")
+        try Data().write(to: file)
+        #expect(OAuthClientFile.read(file) == nil, "an empty file")
+        try Data(#"{"client_id": "", "client_secret": "s"}"#.utf8).write(to: file)
+        #expect(OAuthClientFile.read(file) == nil, "a blank client id")
+        try Data("not json".utf8).write(to: file)
+        #expect(OAuthClientFile.read(file) == nil, "a file that is not a client")
+        try Data(#"{"client_id": " id ", "client_secret": "s"}"#.utf8).write(to: file)
+        #expect(OAuthClientFile.read(file) == OAuthClient(clientId: "id", clientSecret: "s"))
+    }
+
+    @Test func theExtensionReadsItsToolFoldersFile() throws {
+        let root = try scratchFolder()
+        let tool = root.appendingPathComponent("tool")
+        try FileManager.default.createDirectory(at: tool, withIntermediateDirectories: true)
+        let profile = HomeSpeakerProfile.extension(
+            dataFolder: root.appendingPathComponent("data"), toolFolder: tool, messagePrefix: "test.oauth")
+        #expect(profile.shippedClient == nil, "nothing shipped yet")
+        try Data(#"{"client_id": "ext", "client_secret": "ext-secret"}"#.utf8)
+            .write(to: tool.appendingPathComponent("google-oauth-client.json"))
+        #expect(profile.shippedClient == OAuthClient(clientId: "ext", clientSecret: "ext-secret"),
+                "read when asked, so a file put there later is found")
+    }
+
+    @Test func anExtensionWithNoToolFolderShipsNothing() throws {
+        let root = try scratchFolder()
+        let profile = HomeSpeakerProfile.extension(
+            dataFolder: root, toolFolder: nil, messagePrefix: "test.oauth")
+        #expect(profile.shippedClient == nil)
+    }
+
+    @Test func theExtensionNeverReadsTheMainBundle() throws {
+        let root = try scratchFolder()
+        let withClient = try bundle(
+            with: ["GoogleOAuthClientID": "app-id", "GoogleOAuthClientSecret": "app-secret"], in: root)
+        let tool = root.appendingPathComponent("tool")
+        try FileManager.default.createDirectory(at: tool, withIntermediateDirectories: true)
+        let profile = HomeSpeakerProfile.extension(
+            dataFolder: root.appendingPathComponent("data"), toolFolder: tool,
+            messagePrefix: "test.oauth", bundle: withClient)
+        #expect(profile.shippedClient == nil, "a client in the bundle that runs it is not the extension's")
+
+        try Data(#"{"client_id": "ext", "client_secret": "s"}"#.utf8)
+            .write(to: tool.appendingPathComponent("google-oauth-client.json"))
+        #expect(profile.shippedClient?.clientId == "ext", "only its own file counts")
+    }
+
+    @Test func theAppReadsItsBundlesInfoPlist() throws {
+        let root = try scratchFolder()
+        let withClient = try bundle(
+            with: ["GoogleOAuthClientID": "app-id", "GoogleOAuthClientSecret": "app-secret"], in: root)
+        #expect(HomeSpeakerProfile.app(bundle: withClient).shippedClient
+                == OAuthClient(clientId: "app-id", clientSecret: "app-secret"))
+
+        let idOnly = try bundle(with: ["GoogleOAuthClientID": "app-id"], in: root)
+        #expect(HomeSpeakerProfile.app(bundle: idOnly).shippedClient
+                == OAuthClient(clientId: "app-id", clientSecret: ""), "a missing secret is empty, as before")
+
+        let blank = try bundle(with: ["GoogleOAuthClientID": "  "], in: root)
+        #expect(HomeSpeakerProfile.app(bundle: blank).shippedClient == nil)
+        #expect(HomeSpeakerProfile.app(bundle: try bundle(with: [:], in: root)).shippedClient == nil)
+    }
+}

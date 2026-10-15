@@ -52,8 +52,10 @@ public enum GoogleAuthError: LocalizedError, Equatable {
 
 /// OAuth client id/secret, resolved in this order:
 ///  1. a user override saved in the secret store (Settings > Advanced),
-///  2. the values baked into Info.plist at packaging time
-///     (`GoogleOAuthClientID` / `GoogleOAuthClientSecret`),
+///  2. the client shipped with this HomeSpeaker (`shipped`, from
+///     `HomeSpeakerProfile.shippedClient`): the app's Info.plist values
+///     (`GoogleOAuthClientID` / `GoogleOAuthClientSecret`) set at packaging
+///     time, or the extension's `google-oauth-client.json`,
 ///  3. the client that issued the credentials we already hold — an imported
 ///     Antigravity login carries its own client id and secret, and that
 ///     client demonstrably has Home API access for this user, so there is no
@@ -69,15 +71,19 @@ public struct OAuthClient: Equatable {
         self.clientSecret = clientSecret
     }
 
-    public static func resolve(secrets: Secrets, bundle: Bundle = .main) -> OAuthClient? {
+    /// The client packaged into an app bundle's Info.plist, or nil.
+    public static func inInfoPlist(of bundle: Bundle) -> OAuthClient? {
+        guard let id = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientID") as? String,
+              !id.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let secret = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientSecret") as? String ?? ""
+        return OAuthClient(clientId: id, clientSecret: secret)
+    }
+
+    public static func resolve(secrets: Secrets, shipped: OAuthClient?) -> OAuthClient? {
         if let id = secrets.oauthClientIdOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
             return OAuthClient(clientId: id, clientSecret: secrets.oauthClientSecretOverride ?? "")
         }
-        if let id = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientID") as? String,
-           !id.trimmingCharacters(in: .whitespaces).isEmpty {
-            let secret = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientSecret") as? String ?? ""
-            return OAuthClient(clientId: id, clientSecret: secret)
-        }
+        if let shipped { return shipped }
         for g in [secrets.google, secrets.googleChat].compactMap({ $0 }) where !g.clientId.isEmpty {
             return OAuthClient(clientId: g.clientId, clientSecret: g.clientSecret)
         }
@@ -127,10 +133,18 @@ public actor GoogleAuth {
     /// settings, the sign-in and the speakers all use one file.
     public nonisolated let store: SecretStore
     private let session: URLSession
+    /// The client shipped with this HomeSpeaker, asked for at each sign-in.
+    private let shippedClient: @Sendable () -> OAuthClient?
 
-    public init(store: SecretStore = .shared, session: URLSession = .shared) {
+    /// `shippedClient` is the profile's: the app's default reads its own
+    /// Info.plist, an extension passes its file's.
+    public init(
+        store: SecretStore = .shared, session: URLSession = .shared,
+        shippedClient: @escaping @Sendable () -> OAuthClient? = { HomeSpeakerProfile.app().shippedClient }
+    ) {
         self.store = store
         self.session = session
+        self.shippedClient = shippedClient
     }
 
     // MARK: PKCE (pure, testable)
@@ -222,7 +236,7 @@ public actor GoogleAuth {
         timeout: TimeInterval = 300
     ) async throws -> GoogleCredentials {
         let secrets = store.load()
-        guard let client = OAuthClient.resolve(secrets: secrets) else { throw GoogleAuthError.noOAuthClient }
+        guard let client = OAuthClient.resolve(secrets: secrets, shipped: shippedClient()) else { throw GoogleAuthError.noOAuthClient }
         let existing = secrets.slot(purpose)
         let scopes = purpose.scopes
 

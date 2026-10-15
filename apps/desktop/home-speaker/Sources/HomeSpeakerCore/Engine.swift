@@ -65,7 +65,7 @@ public final class HomeSpeakerEngine {
     ) {
         let secrets = SecretStore(fileURL: profile.secretsURL)
         let history = BroadcastHistory(fileURL: profile.historyURL)
-        let auth = GoogleAuth(store: secrets, session: session)
+        let auth = GoogleAuth(store: secrets, session: session, shippedClient: { profile.shippedClient })
         let home = GoogleHomeClient(auth: auth, session: session, messages: profile)
         self.init(
             profile: profile,

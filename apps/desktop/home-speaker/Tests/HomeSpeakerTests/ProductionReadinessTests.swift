@@ -261,7 +261,7 @@ private func json(_ text: String) -> [String: Any] {
         #expect(s.slot(.home)?.accessToken == "a")
         s.setSlot(.home, nil)
         #expect(s.hasChatAccess, "signing out of Home leaves Chat alone")
-        #expect(OAuthClient.resolve(secrets: s, bundle: Bundle(for: SentinelClass.self))?.clientId == "c", "the chat login can supply the client too")
+        #expect(OAuthClient.resolve(secrets: s, shipped: nil)?.clientId == "c", "the chat login can supply the client too")
     }
 
     @Test func callbackParsing() {
@@ -284,10 +284,10 @@ private func json(_ text: String) -> [String: Any] {
     }
 
     @Test func oauthClientResolutionOrder() {
-        #expect(OAuthClient.resolve(secrets: Secrets(), bundle: Bundle(for: SentinelClass.self)) == nil,
+        #expect(OAuthClient.resolve(secrets: Secrets(), shipped: nil) == nil,
                 "no override and no plist key means no client — sign-in must say so, not crash")
         let override = Secrets(oauthClientIdOverride: "mine", oauthClientSecretOverride: "s")
-        #expect(OAuthClient.resolve(secrets: override, bundle: Bundle(for: SentinelClass.self)) == OAuthClient(clientId: "mine", clientSecret: "s"))
+        #expect(OAuthClient.resolve(secrets: override, shipped: nil) == OAuthClient(clientId: "mine", clientSecret: "s"))
     }
 
     @Test func animportedLoginSuppliesItsOwnClient() {
@@ -297,17 +297,17 @@ private func json(_ text: String) -> [String: Any] {
         let imported = Secrets(google: GoogleCredentials(
             clientId: "292687603462-x.apps.googleusercontent.com", clientSecret: "GOCSPX-x",
             accessToken: "a", refreshToken: "r"))
-        #expect(OAuthClient.resolve(secrets: imported, bundle: Bundle(for: SentinelClass.self))
+        #expect(OAuthClient.resolve(secrets: imported, shipped: nil)
                 == OAuthClient(clientId: "292687603462-x.apps.googleusercontent.com", clientSecret: "GOCSPX-x"))
 
         // An explicit override still wins over the imported one.
         var both = imported
         both.oauthClientIdOverride = "mine"
         both.oauthClientSecretOverride = "s"
-        #expect(OAuthClient.resolve(secrets: both, bundle: Bundle(for: SentinelClass.self))?.clientId == "mine")
+        #expect(OAuthClient.resolve(secrets: both, shipped: nil)?.clientId == "mine")
 
         // A signed-out store with no client anywhere still resolves to nil.
-        #expect(OAuthClient.resolve(secrets: Secrets(google: nil), bundle: Bundle(for: SentinelClass.self)) == nil)
+        #expect(OAuthClient.resolve(secrets: Secrets(google: nil), shipped: nil) == nil)
     }
 
     @Test func weeklyExpiryGetsAnActionableHint() {

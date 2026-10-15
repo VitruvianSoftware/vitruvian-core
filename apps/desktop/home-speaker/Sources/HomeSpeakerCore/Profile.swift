@@ -63,13 +63,17 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
     public let liveLockURL: URL?
     /// The extension's installed folder (`…/Tools/<id>`). Nil for the app.
     public let toolFolder: URL?
+    /// The bundle of the program that runs this profile. Only the app reads
+    /// it, for the sign-in client packaged in its Info.plist; the
+    /// extension never does.
+    public let bundle: Bundle
 
     /// The chat monitor's status file, beside the settings.
     public var monitorStatusURL: URL { ChatMonitorStatusFile.url(beside: settingsURL) }
 
     public init(
         door: Door, settingsURL: URL, historyURL: URL, secretsURL: URL,
-        messagePrefix: String, liveLockURL: URL?, toolFolder: URL?
+        messagePrefix: String, liveLockURL: URL?, toolFolder: URL?, bundle: Bundle = .main
     ) {
         self.door = door
         self.settingsURL = settingsURL
@@ -78,12 +82,18 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
         self.messagePrefix = messagePrefix
         self.liveLockURL = liveLockURL
         self.toolFolder = toolFolder
+        self.bundle = bundle
     }
 
     /// The standalone app: today's paths and names, byte for byte. The
     /// settings and history are under `home`; the secrets are in the user's
     /// Application Support, wherever `SecretStore.defaultURL()` says.
-    public static func app(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Self {
+    /// `bundle` is the app's: its Info.plist may carry the sign-in client it
+    /// was packaged with. The app is `Bundle.main`; the tool's program,
+    /// which drives the app, passes the app's bundle.
+    public static func app(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser, bundle: Bundle = .main
+    ) -> Self {
         let gemini = home.appendingPathComponent(".gemini")
         return Self(
             door: .app,
@@ -92,13 +102,17 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
             secretsURL: SecretStore.defaultURL(),
             messagePrefix: appMessagePrefix,
             liveLockURL: nil,
-            toolFolder: nil)
+            toolFolder: nil,
+            bundle: bundle)
     }
 
     /// The Vitruvian extension: everything in `dataFolder`. Tests pass their
     /// own `messagePrefix`, so a real extension on the Mac never hears them.
+    /// `bundle` is only the program's own; the extension never reads a
+    /// sign-in client from it.
     public static func `extension`(
-        dataFolder: URL, toolFolder: URL?, messagePrefix: String = extensionMessagePrefix
+        dataFolder: URL, toolFolder: URL?, messagePrefix: String = extensionMessagePrefix,
+        bundle: Bundle = .main
     ) -> Self {
         Self(
             door: .extension,
@@ -107,7 +121,23 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
             secretsURL: dataFolder.appendingPathComponent("secrets.json"),
             messagePrefix: messagePrefix,
             liveLockURL: dataFolder.appendingPathComponent("running.lock"),
-            toolFolder: toolFolder)
+            toolFolder: toolFolder,
+            bundle: bundle)
+    }
+
+    /// The Google sign-in client shipped with this HomeSpeaker, read each
+    /// time it is asked for. The app's is in its bundle's Info.plist; the
+    /// extension's is `google-oauth-client.json` in its tool folder, and
+    /// nothing else: a client in whatever bundle runs the extension is not
+    /// its own. Nil when none is shipped.
+    public var shippedClient: OAuthClient? {
+        switch door {
+        case .app:
+            return OAuthClient.inInfoPlist(of: bundle)
+        case .extension:
+            guard let toolFolder else { return nil }
+            return OAuthClientFile.read(toolFolder.appendingPathComponent(OAuthClientFile.fileName))
+        }
     }
 
     /// The extension's folders, worked out from its program's own path:

@@ -59,7 +59,7 @@ public class SettingsViewModel: ObservableObject {
         slackToken = s.slackToken ?? ""
         oauthClientId = s.oauthClientIdOverride ?? ""
         oauthClientSecret = s.oauthClientSecretOverride ?? ""
-        hasBundledOAuthClient = OAuthClient.resolve(secrets: Secrets()) != nil
+        hasBundledOAuthClient = HomeSpeakerProfile.current.shippedClient != nil
         macVoices = LocalSpeaker.shared.englishVoices()
     }
 }
@@ -189,7 +189,7 @@ public struct SettingsView: View {
                     }
                 }
                 if !configManager.isConnectedToGoogle {
-                    if OAuthClient.resolve(secrets: SecretStore.shared.load()) == nil {
+                    if OAuthClient.resolve(secrets: SecretStore.shared.load(), shipped: HomeSpeakerProfile.current.shippedClient) == nil {
                         HStack(alignment: .firstTextBaseline) {
                             Text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.")
                                 .font(.caption)
