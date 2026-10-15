@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.52.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.52.1...vitruvian-v3.52.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **desktop:** the update check works when GitHub's API limit is spent ([#3319](https://github.com/VitruvianSoftware/vitruvian-core/issues/3319)) ([355deb1](https://github.com/VitruvianSoftware/vitruvian-core/commit/355deb13e5ba55126e0b2a8515a8c51fca9b9e9f))
+
 ## [3.52.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.52.0...vitruvian-v3.52.1) (2026-10-15)
 
 
