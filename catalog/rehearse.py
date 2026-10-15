@@ -124,8 +124,7 @@ def entry(manifest, version, url, data):
             for c in manifest.get("contributes", {}).get("commands", [])
         ],
         "panels": [
-            p["placement"]
-            for p in manifest.get("contributes", {}).get("panels", [])
+            p["placement"] for p in manifest.get("contributes", {}).get("panels", [])
         ],
     }
 
