@@ -1,6 +1,6 @@
 # HomeSpeaker extension without the app: Design
 
-**Status:** proposed, 2026-10-15. Waiting for James's approval. Nothing here is built.
+**Status:** approved by James, 2026-10-15, with every recommendation in section 10. Not built yet.
 **Plan:** `docs/superpowers/plans/2026-10-15-homespeaker-extension-independent.md`.
 **Checked against:** `origin/main` at `6a72b0af7` (HomeSpeaker 1.17.0, Vitruvian 3.53.0, SDK 1.4.0),
 and the open pull request #3341 (the live-monitor work), which this builds on (section 9).
@@ -527,25 +527,27 @@ on 2026-10-15):
 5. **A user-visible monitor change after #3341 lands after this work's third pull request**, or
    is rebased on it. Otherwise a release could run the extension's monitor on the app's files.
 
-## 10. Open questions for James
+## 10. Questions for James, decided 2026-10-15
+
+James approved every recommendation below.
 
 1. **Should the phone remote and `speaker-broadcast` follow the extension when it is chosen?**
    Today both talk to the app's files and program.
-   *Recommended: yes, in a short follow-up after 1.19.0.* `macagent` reads the choice file and
+   *Decided: yes, in a short follow-up after 1.19.0.* `macagent` reads the choice file and
    uses the chosen side's settings, history and program. The extension's `bin/tool` already
    takes the same flags. `speaker-broadcast` is your script, outside the repo, and needs the
    same two-line change. Until then, the switch warns before the app goes to the Trash.
 2. **Until someone picks, should the app keep running as today?**
-   *Recommended: yes* (section 7.3). Everyone with both today had the app first. The other
+   *Decided: yes* (section 7.3). Everyone with both today had the app first. The other
    choice, nobody speaking until they pick, would silence the Claude Code hook for anyone who
    updates the extension and does not open it.
 3. **Copy the Google sign-in, or ask for a fresh one?** A copy shares the refresh token, so the
    quiet side must never revoke it (section 7.7).
-   *Recommended: copy.* There is no second browser trip. The rule "the quiet side signs out
+   *Decided: copy.* There is no second browser trip. The rule "the quiet side signs out
    locally only" is small and has a test.
 4. **Should the tool protocol get a "switch me off" request**, so the app can switch the
    extension off itself rather than send the person to Vitruvian's Settings?
-   *Recommended: not now.* The extension goes quiet by itself, which is what matters. The
+   *Decided: not now.* The extension goes quiet by itself, which is what matters. The
    request would need an SDK release, every kit and a Vitruvian release.
 
 ## 11. Not in this design
