@@ -29,10 +29,22 @@ import Foundation
 /// `HomeSpeakerEngine.app` is the app's engine. Its parts are the existing
 /// `.shared` singletons themselves, so every caller of `.shared` keeps
 /// using exactly the objects it did.
+///
+/// Building an engine reads and writes no file. The settings are read the
+/// first time `config` is asked for, because reading them can write the
+/// defaults (no file) or print a problem (a file that does not read), and a
+/// command such as `--version` must do neither.
 @MainActor
 public final class HomeSpeakerEngine {
     public let profile: HomeSpeakerProfile
-    public let config: ConfigManager
+    /// The settings, read on first use.
+    public private(set) lazy var config: ConfigManager = {
+        configLoaded = true
+        return makeConfig()
+    }()
+    /// True once `config` has been asked for: the settings file was read.
+    public private(set) var configLoaded = false
+    private let makeConfig: @MainActor () -> ConfigManager
     public let secrets: SecretStore
     public let history: BroadcastHistory
     public let auth: GoogleAuth
@@ -46,7 +58,7 @@ public final class HomeSpeakerEngine {
     /// The app's engine: today's files, and the `.shared` singletons.
     public static let app = HomeSpeakerEngine(
         profile: .app(),
-        config: .shared,
+        config: { .shared },
         secrets: .shared,
         history: .shared,
         auth: .shared,
@@ -69,7 +81,7 @@ public final class HomeSpeakerEngine {
         let home = GoogleHomeClient(auth: auth, session: session, messages: profile)
         self.init(
             profile: profile,
-            config: ConfigManager(configPath: profile.settingsURL, history: history, secrets: secrets),
+            config: { ConfigManager(configPath: profile.settingsURL, history: history, secrets: secrets) },
             secrets: secrets,
             history: history,
             auth: auth,
@@ -81,7 +93,7 @@ public final class HomeSpeakerEngine {
 
     private init(
         profile: HomeSpeakerProfile,
-        config: ConfigManager,
+        config: @escaping @MainActor () -> ConfigManager,
         secrets: SecretStore,
         history: BroadcastHistory,
         auth: GoogleAuth,
@@ -91,7 +103,7 @@ public final class HomeSpeakerEngine {
         volumeRestore: VolumeRestoreCoordinator
     ) {
         self.profile = profile
-        self.config = config
+        self.makeConfig = config
         self.secrets = secrets
         self.history = history
         self.auth = auth

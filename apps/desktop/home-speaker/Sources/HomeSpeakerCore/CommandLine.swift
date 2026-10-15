@@ -160,15 +160,41 @@ public enum HomeSpeakerCommandLine {
 
     // MARK: - Running it
 
+    /// What one command does, decided but not yet done: print now, or run
+    /// off the main actor with a time limit.
+    public enum Action {
+        /// Print this and exit with its code.
+        case now(CLIOutput)
+        /// Run `body`, print what it returns and exit with its code; after
+        /// `timeout` seconds, print `timedOut` and exit instead.
+        case headless(timeout: TimeInterval, timedOut: CLIOutput, body: @Sendable () async -> CLIOutput)
+    }
+
     /// Runs `arguments` on `engine` and exits with the command's code. For
     /// arguments it does not recognize, prints a usage error and exits 2.
     @MainActor
     public static func run(_ arguments: [String], engine: HomeSpeakerEngine, parts: Parts) -> Never {
+        perform(action(for: arguments, engine: engine, parts: parts))
+    }
+
+    /// What `arguments` do on `engine`, without printing or exiting: the
+    /// whole of `run` but the printing, so tests drive the real wiring.
+    ///
+    /// The engine's settings are read only where they always were, and no
+    /// sooner: `--say` and `--announce` at once (for their time limit), the
+    /// Stop hook once its transcript reads, the volume flags and `--discover`
+    /// inside their run, and a bad `--set-volume` never. Every other command
+    /// reads no setting, so it never writes the default settings file and
+    /// never prints a settings problem ahead of its own lines.
+    @MainActor
+    public static func action(
+        for arguments: [String], engine: HomeSpeakerEngine, parts: Parts,
+        standardInput: () -> Data = { FileHandle.standardInput.readDataToEndOfFile() }
+    ) -> Action {
         guard let command = parse(arguments) else {
-            emit(usageError(UsageError("no HomeSpeaker command in: \(arguments.joined(separator: " "))")))
+            return .now(usageError(UsageError("no HomeSpeaker command in: \(arguments.joined(separator: " "))")))
         }
         let profile = engine.profile
-        let config = engine.config
         let history = engine.history
         let announcer = engine.announcer
         let home = engine.home
@@ -180,29 +206,29 @@ public enum HomeSpeakerCommandLine {
         switch command {
         case .announce(let text):
             // Automated, so quiet hours hold.
-            headless(timeout: announceTimeout(text, config: config.config), timedOut: timedOut) {
-                let settings = await MainActor.run { config.config }
+            return .headless(timeout: announceTimeout(text, config: engine.config.config), timedOut: timedOut) {
+                let settings = await MainActor.run { engine.config.config }
                 return await announce(
                     text, config: settings, announcer: announcer, history: history, standsAside: standsAside())
             }
         case .claudeStopHook:
-            let input = FileHandle.standardInput.readDataToEndOfFile()
+            let input = standardInput()
             // Claude Code enforces its own hook timeout; this backstop means
             // a hung network call can never wedge the agent. Output is always
             // "{}" so Claude Code sees a well-formed, no-op hook result.
-            headless(timeout: 8, timedOut: CLIOutput(stdout: ["{}"])) {
+            return .headless(timeout: 8, timedOut: CLIOutput(stdout: ["{}"])) {
                 await claudeStopHook(
-                    input: input, config: config, history: history, standsAside: standsAside(),
+                    input: input, config: { engine.config }, history: history, standsAside: standsAside(),
                     broadcaster: ClaudeStopHook.broadcaster(for: home))
             }
         case .app(.failure(let usage)), .chatMonitor(.failure(let usage)):
-            emit(usageError(usage))
+            return .now(usageError(usage))
         case .app(.success(let command)):
             switch command {
             case .loginItem(let action):
-                emit(loginItem(action, item: parts.loginItem))
+                return .now(loginItem(action, item: parts.loginItem))
             case .signOut(let chatOnly):
-                headless(timeout: 30, timedOut: timedOut) {
+                return .headless(timeout: 30, timedOut: timedOut) {
                     await signOut(
                         chatOnly: chatOnly, auth: auth,
                         signedIn: {
@@ -212,40 +238,43 @@ public enum HomeSpeakerCommandLine {
                         profile: profile, post: { SignOutNotice.post(chatOnly: $0, name: $1) })
                 }
             case .discover(let save, let wanted):
-                headless(timeout: 60, timedOut: timedOut) {
-                    let current = await MainActor.run { config.config.structureId }
+                return .headless(timeout: 60, timedOut: timedOut) {
+                    let current = await MainActor.run { engine.config.config.structureId }
                     return await AppCommandRunner.discover(
                         save: save, home: wanted, client: home, currentStructureId: current,
                         apply: { home, targets in
-                            config.config.applyDiscovery(structureId: home.id, structureName: home.name, targets: targets)
-                            try config.trySaveConfig()
+                            engine.config.config.applyDiscovery(
+                                structureId: home.id, structureName: home.name, targets: targets)
+                            try engine.config.trySaveConfig()
                         })
                 }
             case .testMediaPause:
-                headless(timeout: 30, timedOut: timedOut) {
+                return .headless(timeout: 30, timedOut: timedOut) {
                     await AppCommandRunner.testMediaPause(coordinator: MediaPauseCoordinator())
                 }
             }
         case .chatMonitor(.success(let action)):
-            emit(chatMonitor(action, profile: profile) { ChatMonitorControlNotice.post($0, name: $1) })
+            return .now(chatMonitor(action, profile: profile) { ChatMonitorControlNotice.post($0, name: $1) })
         case .say(let text):
             // Deliberate, like Quick Announce: it overrides quiet hours but
             // still honours the master switch.
-            headless(timeout: announceTimeout(text, config: config.config), timedOut: timedOut) {
-                let settings = await MainActor.run { config.config }
+            return .headless(timeout: announceTimeout(text, config: engine.config.config), timedOut: timedOut) {
+                let settings = await MainActor.run { engine.config.config }
                 return await say(
                     text, config: settings, announcer: announcer, history: history,
                     standsAside: standsAside(), door: profile.door)
             }
+        case .volume(.invalidLevel):
+            return .now(volumeFailure(badLevelReason))
         case .volume(let request):
             // Two 6 s confirm windows plus retries: 40 s, not --say's 20.
-            headless(timeout: 40, timedOut: volumeFailure("timed out")) {
-                let settings = await MainActor.run { config.config }
+            return .headless(timeout: 40, timedOut: volumeFailure("timed out")) {
+                let settings = await MainActor.run { engine.config.config }
                 return await volume(request, config: settings, speaker: home)
             }
         case .signIn(let purpose):
             let openBrowser = parts.openBrowser
-            headless(timeout: 300, timedOut: timedOut) {
+            return .headless(timeout: 300, timedOut: timedOut) {
                 await signIn(
                     purpose: purpose,
                     signIn: { try await auth.signIn(purpose: $0, openBrowser: $1) },
@@ -254,11 +283,21 @@ public enum HomeSpeakerCommandLine {
                     notify: { CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: profile)) })
             }
         case .help:
-            emit(help())
+            return .now(help())
         case .version:
-            emit(version())
+            return .now(version())
         case .location:
-            emit(dataFolder(of: profile))
+            return .now(dataFolder(of: profile))
+        }
+    }
+
+    /// Does `action`: prints and exits.
+    static func perform(_ action: Action) -> Never {
+        switch action {
+        case .now(let output):
+            emit(output)
+        case .headless(let timeout, let timedOut, let body):
+            runHeadless(timeout: timeout, onTimeout: { emit(timedOut) }) { emit(await body()) }
         }
     }
 
@@ -267,14 +306,6 @@ public enum HomeSpeakerCommandLine {
         for line in output.stdout { print(line) }
         for line in output.stderr { FileHandle.standardError.write(Data("\(line)\n".utf8)) }
         exit(output.exitCode)
-    }
-
-    /// Runs `body` off the main actor, then prints what it returned and
-    /// exits; after `timeout` seconds, prints `timedOut` and exits instead.
-    static func headless(
-        timeout: TimeInterval, timedOut: CLIOutput, _ body: @escaping @Sendable () async -> CLIOutput
-    ) -> Never {
-        runHeadless(timeout: timeout, onTimeout: { emit(timedOut) }) { emit(await body()) }
     }
 
     /// Runs `body` off the main actor while the main queue is serviced, then
@@ -383,17 +414,19 @@ public enum HomeSpeakerCommandLine {
     }
 
     /// `--claude-stop-hook`: speaks the turn's last reply, as
-    /// `ClaudeStopHook.run` decides, and always answers `{}`. When this side
-    /// stands aside it reads nothing and speaks nothing.
+    /// `ClaudeStopHook.run` decides, and always answers `{}`. `config` is
+    /// asked for only once the transcript reads. When this side stands aside
+    /// it reads nothing and speaks nothing.
     public static func claudeStopHook(
-        input: Data, config: ConfigManager, history: BroadcastHistory, standsAside: Bool,
+        input: Data, config: @escaping @MainActor @Sendable () -> ConfigManager, history: BroadcastHistory,
+        standsAside: Bool,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
         launchDetached: @escaping @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
         broadcaster: @escaping ClaudeStopHook.Broadcaster
     ) async -> CLIOutput {
         guard !standsAside else { return CLIOutput(stdout: ["{}"]) }
         await ClaudeStopHook.run(
-            input: input, configManager: config, history: history, lockDirectory: lockDirectory,
+            input: input, config: config, history: history, lockDirectory: lockDirectory,
             launchDetached: launchDetached, broadcaster: broadcaster)
         return CLIOutput(stdout: ["{}"])
     }
@@ -405,7 +438,7 @@ public enum HomeSpeakerCommandLine {
     public static func volume(
         _ request: VolumeRequest, config: SpeakerConfig, speaker: VolumeAndMuteControlling
     ) async -> CLIOutput {
-        if request == .invalidLevel { return volumeFailure("--set-volume needs a whole number from 0 to 100") }
+        if request == .invalidLevel { return volumeFailure(badLevelReason) }
         guard let target = config.defaultDevice else {
             return volumeFailure("no default speaker; open HomeSpeaker and pick one")
         }
@@ -432,6 +465,8 @@ public enum HomeSpeakerCommandLine {
                 exitCode: 1)
         }
     }
+
+    static let badLevelReason = "--set-volume needs a whole number from 0 to 100"
 
     static func volumeFailure(_ reason: String) -> CLIOutput {
         CLIOutput(stdout: volumeJSON(["available": false, "reason": reason]), exitCode: 1)

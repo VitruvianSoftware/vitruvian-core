@@ -126,6 +126,13 @@ private struct TwoHomes: HomeDiscovering {
     }
 }
 
+/// A failure with the words given.
+private struct StandInFailure: LocalizedError {
+    let words: String
+    init(_ words: String) { self.words = words }
+    var errorDescription: String? { words }
+}
+
 /// Settings: broadcasting on, the Office speaker picked, quiet hours
 /// 22:00 to 07:00 when `quiet`, and media never paused.
 private func settings(
@@ -201,10 +208,10 @@ usage: HomeSpeaker [flag]
   --help               print this
 """
 
-/// Runs `arguments` through the command line's parser, then the outcome
-/// for what it parsed, on `rig`'s stand-ins.
+/// Runs `--say` or `--announce` `arguments` through the command line's
+/// parser, then the outcome for what it parsed, on `rig`'s stand-ins.
 @MainActor
-private func say(_ arguments: [String], _ config: SpeakerConfig, _ rig: Rig, at date: Date = Date()) async throws -> CLIOutput {
+private func announcement(_ arguments: [String], _ config: SpeakerConfig, _ rig: Rig, at date: Date = Date()) async throws -> CLIOutput {
     let command = try #require(HomeSpeakerCommandLine.parse(arguments))
     switch command {
     case .say(let text):
@@ -233,32 +240,32 @@ private let goldens: [Golden] = [
     // --say
     Golden(name: "--say with broadcasting off",
            expected: CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1)) {
-        try await say(["--say", "dinner is ready"], settings(enabled: false), Rig())
+        try await announcement(["--say", "dinner is ready"], settings(enabled: false), Rig())
     },
     Golden(name: "--say in quiet hours speaks: it is deliberate",
            expected: CLIOutput(stdout: ["sent to Office"])) {
-        try await say(["--say", "dinner is ready"], settings(quiet: true), Rig(), at: lateEvening)
+        try await announcement(["--say", "dinner is ready"], settings(quiet: true), Rig(), at: lateEvening)
     },
     Golden(name: "--announce in quiet hours (the hook's own) says nothing",
            expected: CLIOutput(stderr: ["Quiet hours active until 07:00. Nothing spoken."])) {
-        try await say(["--announce", "the build is green"], settings(quiet: true), Rig(), at: lateEvening)
+        try await announcement(["--announce", "the build is green"], settings(quiet: true), Rig(), at: lateEvening)
     },
     Golden(name: "--say with no speaker",
            expected: CLIOutput(stderr: [noSpeaker], exitCode: 1)) {
-        try await say(["--say", "dinner is ready"], settings(speaker: false), Rig())
+        try await announcement(["--say", "dinner is ready"], settings(speaker: false), Rig())
     },
     Golden(name: "--say with nothing to say",
            expected: CLIOutput(stderr: ["nothing to say after cleaning up the text"])) {
-        try await say(["--say"], settings(), Rig())
+        try await announcement(["--say"], settings(), Rig())
     },
     Golden(name: "--say with no outputs",
            expected: CLIOutput(stdout: ["No outputs selected (home speakers and this Mac are both off)"])) {
-        try await say(["--say", "dinner is ready"], settings(home: false, local: false), Rig())
+        try await announcement(["--say", "dinner is ready"], settings(home: false, local: false), Rig())
     },
     Golden(name: "--say spoken on the home speaker",
            expected: CLIOutput(stdout: ["sent to Office"])) {
         let rig = try Rig()
-        let out = try await say(["--say", "dinner", "is", "ready"], settings(), rig)
+        let out = try await announcement(["--say", "dinner", "is", "ready"], settings(), rig)
         #expect(rig.home.calls.all == ["dinner is ready"])
         let saved = rig.history.load()
         #expect(saved.map(\.targetName) == ["Office"])
@@ -268,7 +275,7 @@ private let goldens: [Golden] = [
     Golden(name: "--say spoken on this Mac",
            expected: CLIOutput(stdout: ["spoke on this Mac"])) {
         let rig = try Rig()
-        let out = try await say(["--say", "dinner is ready"], settings(home: false, local: true), rig)
+        let out = try await announcement(["--say", "dinner is ready"], settings(home: false, local: true), rig)
         #expect(rig.local.calls.all.count == 1)
         #expect(rig.history.load().map(\.targetName) == ["This Mac"])
         return out
@@ -278,7 +285,7 @@ private let goldens: [Golden] = [
                                stderr: ["error: Home speakers: No speaker selected."])) {
         let rig = try Rig()
         rig.home.failure = BroadcastError.noSpeaker
-        return try await say(["--say", "dinner is ready"], settings(home: true, local: true), rig)
+        return try await announcement(["--say", "dinner is ready"], settings(home: true, local: true), rig)
     },
 
     // --volume and friends: one JSON object, keys sorted, for macagent.
@@ -363,6 +370,38 @@ private let goldens: [Golden] = [
             return CLIOutput()
         }
         return HomeSpeakerCommandLine.usageError(usage)
+    },
+
+    // --sign-in: the line printed while it waits, then who signed in.
+    Golden(name: "--sign-in --chat",
+           expected: CLIOutput(stdout: ["signed in as someone@example.com; scopes: chat.one chat.two"])) {
+        guard case .signIn(let purpose) = try #require(HomeSpeakerCommandLine.parse(["--sign-in", "--chat"])) else {
+            Issue.record("--sign-in --chat did not parse")
+            return CLIOutput()
+        }
+        let progress = Calls<String>()
+        let opened = Calls<String>()
+        let notified = Calls<String>()
+        let out = await HomeSpeakerCommandLine.signIn(
+            purpose: purpose,
+            signIn: { purpose, open in
+                #expect(purpose == .chat)
+                open(URL(string: "https://accounts.google.com/o/oauth2/v2/auth?client_id=x")!)
+                return GoogleCredentials(
+                    clientId: "c", clientSecret: "s", accessToken: "a", refreshToken: "r",
+                    scopes: ["chat.one", "chat.two"], email: "someone@example.com")
+            },
+            openBrowser: { opened.add($0.host ?? "") }, progress: { progress.add($0) },
+            notify: { notified.add("credentials changed") })
+        #expect(progress.all == ["opening browser: accounts.google.com"])
+        #expect(opened.all == ["accounts.google.com"])
+        #expect(notified.all == ["credentials changed"])
+        return out
+    },
+    Golden(name: "--sign-in failing", expected: CLIOutput(stderr: ["error: the browser was closed"], exitCode: 1)) {
+        await HomeSpeakerCommandLine.signIn(
+            purpose: .home, signIn: { _, _ in throw StandInFailure("the browser was closed") },
+            openBrowser: { _ in }, progress: { _ in }, notify: { Issue.record("told a running HomeSpeaker after a failure") })
     },
 
     Golden(name: "--help", expected: CLIOutput(stdout: [helpText])) {
@@ -489,7 +528,7 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
         let launches = Calls<String>()
         func hook(standsAside: Bool) async -> CLIOutput {
             await HomeSpeakerCommandLine.claudeStopHook(
-                input: input, config: manager, history: history, standsAside: standsAside,
+                input: input, config: { manager }, history: history, standsAside: standsAside,
                 lockDirectory: locks, launchDetached: { launches.add($0) },
                 broadcaster: { text, _, _, _ in broadcasts.add(text); return true })
         }
@@ -552,9 +591,158 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
     }
 
     /// The Stop hook's detached announcement runs this program again: the
-    /// app's, or for the extension, `bin/tool`, its own program.
-    @Test func theDetachedAnnouncementRunsThisProgram() {
-        #expect(DetachedAnnouncement.defaultExecutable == Bundle.main.executablePath)
-        #expect(DetachedAnnouncement.launch(text: "never spoken", executable: nil) == false)
+    /// app's, or for the extension, `bin/tool`, its own program. Nothing is
+    /// started: the spawn is a recorder.
+    @Test func theDetachedAnnouncementRunsThisProgram() throws {
+        let program = try #require(Bundle.main.executablePath)
+        let started = Calls<[String]>()
+        #expect(DetachedAnnouncement.launch(text: "never spoken") { executable, arguments in
+            started.add([executable] + arguments)
+            return true
+        })
+        #expect(started.all == [[program, program, "--announce", "never spoken"]])
+        #expect(DetachedAnnouncement.launch(text: "never spoken", executable: nil) { _, _ in
+            Issue.record("started a program with none to start")
+            return true
+        } == false)
+    }
+}
+
+// MARK: - The whole dispatch, on a real engine in a scratch folder
+
+/// An engine on an extension profile in a scratch folder, with this Mac's
+/// speech silent. Its settings file holds `settings`, or is absent.
+@MainActor
+private func scratchEngine(settings: String?) throws -> HomeSpeakerEngine {
+    let profile = scratchProfile(in: try scratchDir())
+    let folder = profile.settingsURL.deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    if let settings { try settings.write(to: profile.settingsURL, atomically: true, encoding: .utf8) }
+    return HomeSpeakerEngine(profile: profile, local: StandInLocal())
+}
+
+/// The extension's parts, with no browser.
+private let scratchParts = HomeSpeakerCommandLine.Parts(
+    openBrowser: { _ in Issue.record("opened a browser") },
+    loginItem: .none(reason: HomeSpeakerCommandLine.Parts.extensionHasNoLoginItem),
+    standsAside: { false })
+
+/// A settings file that does not read: reading it prints a problem.
+private let unreadableSettings = "{ not json"
+
+@Suite struct CommandLineDispatchTests {
+    /// What the settings file is after a run: its text, or nil when absent.
+    private func settingsText(_ engine: HomeSpeakerEngine) async -> String? {
+        let url = await MainActor.run { engine.profile.settingsURL }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// The commands that never read the settings still do not: with a
+    /// settings file that does not read, nothing but their own lines is
+    /// printed (reading it would print "Error loading speaker config" on
+    /// stdout first); with none, none is written.
+    @Test @MainActor func aCommandThatNeverReadTheSettingsStillDoesNot() async throws {
+        let commands: [([String], (CLIOutput) -> Bool)] = [
+            (["--version"], { $0 == CLIOutput(stdout: ["HomeSpeaker \(HomeSpeakerVersion.current)"]) }),
+            (["--help"], { $0 == HomeSpeakerCommandLine.help() }),
+            (["-h"], { $0 == HomeSpeakerCommandLine.help() }),
+            (["--where"], { $0.stdout.count == 1 && $0.stderr.isEmpty }),
+            (["--chat-monitor", "start"], { $0 == CLIOutput(stdout: ["asked a running HomeSpeaker to start the chat monitor"]) }),
+            (["--chat-monitor", "pause"], { $0.exitCode == 2 }),
+            (["--login-item", "status"], { $0.stderr == ["error: \(HomeSpeakerCommandLine.Parts.extensionHasNoLoginItem)"] }),
+            (["--chat", "--discover"], { $0.exitCode == 2 }),
+            (["--set-volume", "x"], { $0 == CLIOutput(stdout: [badLevel], exitCode: 1) }),
+        ]
+        for settings in [unreadableSettings, nil] {
+            for (arguments, expected) in commands {
+                let engine = try scratchEngine(settings: settings)
+                guard case .now(let out) = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts) else {
+                    Issue.record("\(arguments) did not print at once")
+                    continue
+                }
+                #expect(expected(out), "\(arguments): \(out)")
+                #expect(!engine.configLoaded, "\(arguments) read the settings")
+                #expect(await settingsText(engine) == settings, "\(arguments) changed the settings file")
+            }
+        }
+    }
+
+    /// The same for the commands that run off the main actor: building
+    /// them reads nothing, and neither does running them.
+    @Test @MainActor func aLongerCommandThatNeverReadTheSettingsStillDoesNot() async throws {
+        for settings in [unreadableSettings, nil] {
+            for arguments in [["--sign-in"], ["--sign-out"], ["--test-media-pause"], ["--claude-stop-hook"]] {
+                let engine = try scratchEngine(settings: settings)
+                let action = HomeSpeakerCommandLine.action(
+                    for: arguments, engine: engine, parts: scratchParts, standardInput: { Data("not json".utf8) })
+                guard case .headless(_, _, let body) = action else {
+                    Issue.record("\(arguments) did not run off the main actor")
+                    continue
+                }
+                #expect(!engine.configLoaded, "\(arguments) read the settings")
+                // Running them: no sign-in client, no stored login and no
+                // transcript, so none reaches Google. --test-media-pause
+                // would pause this Mac's music, so it is not run.
+                if arguments != ["--test-media-pause"] {
+                    let out = await body()
+                    #expect(out.exitCode == (arguments == ["--sign-in"] ? 1 : 0), "\(arguments): \(out)")
+                    #expect(!engine.configLoaded, "\(arguments) read the settings while running")
+                }
+                #expect(await settingsText(engine) == settings, "\(arguments) changed the settings file")
+            }
+        }
+    }
+
+    /// The commands that always read the settings read them where they
+    /// always did: --say and --announce at once, for their time limit; the
+    /// volume flags only while running.
+    @Test @MainActor func theSettingsAreReadWhereTheyAlwaysWere() async throws {
+        for arguments in [["--say", "hi"], ["--announce", "hi"]] {
+            let engine = try scratchEngine(settings: nil)
+            _ = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts)
+            #expect(engine.configLoaded, "\(arguments)")
+        }
+        for arguments in [["--volume"], ["--discover"]] {
+            let engine = try scratchEngine(settings: nil)
+            _ = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts)
+            #expect(!engine.configLoaded, "\(arguments) read the settings before running")
+        }
+        // Running --volume with no speaker picked reaches no speaker.
+        let engine = try scratchEngine(settings: nil)
+        guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(
+            for: ["--volume"], engine: engine, parts: scratchParts) else {
+            Issue.record("--volume did not run off the main actor")
+            return
+        }
+        #expect(await body() == CLIOutput(stdout: [#"{"available":false,"reason":"\#(noSpeaker)"}"#], exitCode: 1))
+        #expect(engine.configLoaded)
+    }
+
+    /// Each command's time limit and what it prints when it runs out.
+    @Test @MainActor func everyCommandKeepsItsTimeLimit() throws {
+        let timedOut = CLIOutput(stderr: ["error: timed out"], exitCode: 1)
+        let volumeTimedOut = CLIOutput(stdout: [#"{"available":false,"reason":"timed out"}"#], exitCode: 1)
+        let limits: [([String], TimeInterval, CLIOutput)] = [
+            (["--say", "hi"], 20, timedOut),
+            (["--announce", "hi"], 20, timedOut),
+            (["--claude-stop-hook"], 8, CLIOutput(stdout: ["{}"])),
+            (["--volume"], 40, volumeTimedOut),
+            (["--set-volume", "5"], 40, volumeTimedOut),
+            (["--mute"], 40, volumeTimedOut),
+            (["--sign-in"], 300, timedOut),
+            (["--sign-out"], 30, timedOut),
+            (["--discover"], 60, timedOut),
+            (["--test-media-pause"], 30, timedOut),
+        ]
+        for (arguments, limit, output) in limits {
+            let engine = try scratchEngine(settings: nil)
+            guard case .headless(let timeout, let onTimeout, _) = HomeSpeakerCommandLine.action(
+                for: arguments, engine: engine, parts: scratchParts, standardInput: { Data() }) else {
+                Issue.record("\(arguments) did not run off the main actor")
+                continue
+            }
+            #expect(timeout == limit, "\(arguments)")
+            #expect(onTimeout == output, "\(arguments)")
+        }
     }
 }

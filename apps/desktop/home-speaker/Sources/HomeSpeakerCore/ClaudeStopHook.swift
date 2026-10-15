@@ -198,11 +198,27 @@ public enum ClaudeStopHook {
         launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
         broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
+        await run(
+            input: input, config: { configManager ?? .shared }, history: history, lockDirectory: lockDirectory,
+            launchDetached: launchDetached, broadcaster: broadcaster)
+    }
+
+    /// The same, with the settings asked for only once the transcript
+    /// reads: reading them can write the default settings file or print a
+    /// problem, which a hook run on bad input must not do.
+    public static func run(
+        input: Data,
+        config makeConfig: @MainActor @Sendable () -> ConfigManager,
+        history: BroadcastHistory = .shared,
+        lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
+        broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
+    ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
               let transcriptPath = payload["transcript_path"] as? String,
               let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
 
-        let config = await MainActor.run { (configManager ?? ConfigManager.shared).config }
+        let config = await MainActor.run { makeConfig().config }
         guard config.enabled else { return }
         let local = config.effectiveSpeakLocal
         let homeReady = config.effectiveSpeakHome && config.defaultDevice != nil && !config.structureId.isEmpty
@@ -238,9 +254,22 @@ public enum DetachedAnnouncement {
     /// engine, so the announcement is made by the side the hook ran for.
     public static var defaultExecutable: String? { Bundle.main.executablePath }
 
+    /// Starts one program, detached: `arguments[0]` is the program itself.
+    public typealias Spawner = (_ executable: String, _ arguments: [String]) -> Bool
+
+    /// Starts `executable --announce text`. True when it started. Tests pass
+    /// their own `spawn`, so nothing is started.
     @discardableResult
-    public static func launch(text: String, executable: String? = DetachedAnnouncement.defaultExecutable) -> Bool {
+    public static func launch(
+        text: String, executable: String? = DetachedAnnouncement.defaultExecutable,
+        spawn: Spawner = DetachedAnnouncement.spawnDetached
+    ) -> Bool {
         guard let executable else { return false }
+        return spawn(executable, [executable, ClaudeStopHook.announceArgument, text])
+    }
+
+    /// `posix_spawn` in a session of its own, with no terminal.
+    public static func spawnDetached(_ executable: String, _ strings: [String]) -> Bool {
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
@@ -256,7 +285,6 @@ public enum DetachedAnnouncement {
         // Typed explicitly: CI's toolchain (Xcode's Swift) could not infer the
         // element type of `map { strdup($0) } + [nil]` and failed the build;
         // the local Command Line Tools compiler accepted it.
-        let strings: [String] = [executable, ClaudeStopHook.announceArgument, text]
         var argv: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
         argv.append(nil)
         defer { argv.forEach { free($0) } }
