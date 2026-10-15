@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.51.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.51.0...vitruvian-v3.51.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **desktop:** the release signs its disk images, and the About box names VitruvianSoftware ([#3304](https://github.com/VitruvianSoftware/vitruvian-core/issues/3304)) ([3f19567](https://github.com/VitruvianSoftware/vitruvian-core/commit/3f19567777bf3e21878c2e30feccfa5554cf4cff))
+
 ## [3.51.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.50.2...vitruvian-v3.51.0) (2026-10-15)
 
 
