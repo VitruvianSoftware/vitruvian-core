@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.51.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.50.2...vitruvian-v3.51.0) (2026-10-15)
+
+
+### Features
+
+* **vitruvian:** promote extension island pages to sections and unify section ordering ([#3294](https://github.com/VitruvianSoftware/vitruvian-core/issues/3294)) ([4994db9](https://github.com/VitruvianSoftware/vitruvian-core/commit/4994db9a2a0b84712b53c444dabf136752d62560))
+
 ## [3.50.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.50.1...vitruvian-v3.50.2) (2026-10-14)
 
 
