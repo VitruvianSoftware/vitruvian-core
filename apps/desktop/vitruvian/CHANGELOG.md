@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.53.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.53.0...vitruvian-v3.53.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **desktop:** opening a notification stack no longer overlaps its summary ([#3339](https://github.com/VitruvianSoftware/vitruvian-core/issues/3339)) ([6a72b0a](https://github.com/VitruvianSoftware/vitruvian-core/commit/6a72b0af7c67109364634e5637b9ca18cdcb45f2))
+
 ## [3.53.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.52.2...vitruvian-v3.53.0) (2026-10-15)
 
 
