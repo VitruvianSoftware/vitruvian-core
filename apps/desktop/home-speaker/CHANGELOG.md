@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.13.1...home-speaker-v1.13.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **home-speaker:** the app, the CLI and the tool share one settings file safely ([#3325](https://github.com/VitruvianSoftware/vitruvian-core/issues/3325)) ([9fd6e9c](https://github.com/VitruvianSoftware/vitruvian-core/commit/9fd6e9c64473ab8c44582e9d5dfab522bf128e76))
+
 ## [1.13.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.13.0...home-speaker-v1.13.1) (2026-10-13)
 
 
