@@ -69,6 +69,11 @@ package struct NotchNotificationInbox {
 
     package mutating func dismiss(_ id: UUID) { items.removeAll { $0.id == id } }
 
+    /// Dismisses the messages a person saw together, such as one app's
+    /// stack. One that arrived after the list was drawn is not among them,
+    /// so it stays.
+    package mutating func dismiss(_ ids: Set<UUID>) { items.removeAll { ids.contains($0.id) } }
+
     // Spelled out because a default initializer never leaves its module.
     package init() {}
 

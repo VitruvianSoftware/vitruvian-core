@@ -12,6 +12,8 @@ package struct NotchNotificationsView: View {
     @ObservedObject private var service = NotchNotificationService.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var l10n = L10n.shared
+    @AppStorage(Preferences.notchNotificationsLayout) private var layout: String
+    @AppStorage(Preferences.notchNotificationsGrouped) private var grouped: Bool
     private var text: NotchNotificationStrings { FeatureStrings.notchNotifications(l10n.language) }
 
     package var body: some View {
@@ -35,18 +37,320 @@ package struct NotchNotificationsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                let rows = NotchLayout.railRows(count: service.items.count,
-                                                perRow: NotchLayout.railCapacity(width: size.width, itemWidth: 240, spacing: 8),
-                                                rowHeight: 120, spacing: 8, height: size.height)
-                let cardHeight = (size.height - CGFloat(rows - 1) * 8) / CGFloat(rows)
-                NotchRail(items: service.items, rows: rows, itemWidth: 240, width: size.width) { item in
-                    NotchNotificationRow(item: item, service: service, text: text)
-                        .frame(height: cardHeight)
-                }
+                NotchNotificationPage(items: service.items, size: size, layout: NotchNotificationLayout(saved: layout),
+                                      grouped: grouped, service: service, text: text)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.locale, l10n.language.formattingLocale())
+    }
+}
+
+/// The messages themselves, as cards or as a list. It takes the messages it
+/// shows, so a test can draw the page with messages of its own.
+package struct NotchNotificationPage: View {
+    package let items: [NotchSystemNotification]
+    package let size: CGSize
+    package let layout: NotchNotificationLayout
+    /// Only the list groups; the cards ignore it.
+    package let grouped: Bool
+    /// The stacks open when the page first draws. The page then keeps its own.
+    package let expanded: Set<String>
+    @ObservedObject package var service: NotchNotificationService
+    package let text: NotchNotificationStrings
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(items: [NotchSystemNotification], size: CGSize, layout: NotchNotificationLayout, grouped: Bool,
+                 expanded: Set<String> = [], service: NotchNotificationService, text: NotchNotificationStrings) {
+        self.items = items
+        self.size = size
+        self.layout = layout
+        self.grouped = grouped
+        self.expanded = expanded
+        self.service = service
+        self.text = text
+    }
+
+    package var body: some View {
+        switch layout {
+        case .cards:
+            let rows = NotchLayout.railRows(count: items.count,
+                                            perRow: NotchLayout.railCapacity(width: size.width, itemWidth: 240, spacing: 8),
+                                            rowHeight: 120, spacing: 8, height: size.height)
+            let cardHeight = (size.height - CGFloat(rows - 1) * 8) / CGFloat(rows)
+            NotchRail(items: items, rows: rows, itemWidth: 240, width: size.width) { item in
+                NotchNotificationRow(item: item, service: service, text: text)
+                    .frame(height: cardHeight)
+            }
+        case .list:
+            NotchNotificationList(items: items, grouped: grouped, expanded: expanded, service: service, text: text)
+        }
+    }
+}
+
+/// How the list moves when a stack opens or closes, or a row goes: quick and
+/// smooth, and not at all with Reduce Motion on.
+package enum NotchNotificationListMotion {
+    package static func animation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.22)
+    }
+
+    /// A message in a stack fades in just under the stack's row. With Reduce
+    /// Motion it only fades.
+    package static func transition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .offset(y: -6))
+    }
+}
+
+/// One compact row per message, newest first, scrolling down when there are
+/// more than fit. Grouped, an app with several messages is one row that
+/// opens in place.
+private struct NotchNotificationList: View {
+    let items: [NotchSystemNotification]
+    let grouped: Bool
+    @ObservedObject var service: NotchNotificationService
+    let text: NotchNotificationStrings
+    @State private var expanded: Set<String>
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(items: [NotchSystemNotification], grouped: Bool, expanded: Set<String>,
+         service: NotchNotificationService, text: NotchNotificationStrings) {
+        self.items = items
+        self.grouped = grouped
+        self.service = service
+        self.text = text
+        _expanded = State(initialValue: expanded)
+    }
+
+    var body: some View {
+        ScrollView(.vertical) {
+            VStack(spacing: NotchNotificationListLayout.rowSpacing) {
+                ForEach(NotchNotificationListSupport.entries(items, grouped: grouped, expanded: expanded)) { entry in
+                    row(entry).transition(NotchNotificationListMotion.transition(reduceMotion: reduceMotion))
+                }
+            }
+            .padding(.bottom, NotchLayout.scrollBottomPadding)
+        }
+        .scrollIndicators(.never)
+        .notchScrollEdgeFade()
+        .onChange(of: items) { _, items in
+            expanded = NotchNotificationListSupport.expansion(expanded, keptFor: items)
+        }
+    }
+
+    @ViewBuilder private func row(_ entry: NotchNotificationListEntry) -> some View {
+        switch entry {
+        case .single(let item):
+            NotchNotificationListRow(item: item, member: false, service: service, text: text, motion: motion)
+        case .member(let item, _):
+            NotchNotificationListRow(item: item, member: true, service: service, text: text, motion: motion)
+                .padding(.leading, NotchNotificationListLayout.memberIndent)
+        case .group(let group, let open):
+            NotchNotificationGroupRow(group: group, expanded: open, service: service, text: text, motion: motion) {
+                withAnimation(motion) { expanded = NotchNotificationListSupport.toggling(group.id, in: expanded) }
+            }
+        }
+    }
+
+    private var motion: Animation? { NotchNotificationListMotion.animation(reduceMotion: reduceMotion) }
+}
+
+/// A message as one row: its app and time on top, its title and the start
+/// of its message below. Inside an open stack the app is already named, so
+/// the row leads with the title instead.
+private struct NotchNotificationListRow: View {
+    let item: NotchSystemNotification
+    let member: Bool
+    @ObservedObject var service: NotchNotificationService
+    let text: NotchNotificationStrings
+    let motion: Animation?
+    @State private var feedback: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if !member {
+                NotchNotificationAppIcon(app: item.content.app, size: NotchNotificationListLayout.iconSize)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                if member {
+                    HStack(spacing: 6) {
+                        Text(item.content.compactTitle).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Spacer(minLength: 4)
+                        NotchNotificationTime(date: item.received)
+                    }
+                    NotchNotificationLine(text: item.content.compactDetail, unavailable: message)
+                } else {
+                    HStack(spacing: 6) {
+                        NotchNotificationAppName(app: item.content.app, text: text)
+                        Spacer(minLength: 4)
+                        NotchNotificationTime(date: item.received)
+                    }
+                    NotchNotificationLine(title: item.content.compactTitle, text: item.content.compactDetail,
+                                          unavailable: message)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            NotchNotificationRowActions(item: item, service: service, text: text, motion: motion, feedback: $feedback)
+        }
+        .padding(.leading, NotchNotificationListLayout.horizontalPadding)
+        .padding(.trailing, 4)
+        .frame(height: NotchNotificationListLayout.rowHeight)
+        .background(.white.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: NotchNotificationListLayout.cornerRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(item.content.accessibilityText)
+    }
+
+    /// Opening that could not reach the message says so in place of its text.
+    private var message: String? { feedback ?? (service.unavailableID == item.id ? text.unavailable : nil) }
+}
+
+/// An app's stack: its newest message with a count while closed, and only
+/// its name, count and actions while open, its messages listed below.
+private struct NotchNotificationGroupRow: View {
+    let group: NotchNotificationGroup
+    let expanded: Bool
+    @ObservedObject var service: NotchNotificationService
+    let text: NotchNotificationStrings
+    let motion: Animation?
+    let toggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: toggle) {
+                HStack(spacing: 10) {
+                    NotchNotificationAppIcon(app: group.app, size: expanded ? NotchNotificationListLayout.openGroupIconSize
+                                                                            : NotchNotificationListLayout.iconSize)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 6) {
+                            NotchNotificationAppName(app: group.app, text: text)
+                            NotchNotificationCount(count: group.count)
+                            Spacer(minLength: 4)
+                            if !expanded { NotchNotificationTime(date: group.newest.received) }
+                        }
+                        if !expanded {
+                            NotchNotificationLine(title: group.newest.content.compactTitle,
+                                                  text: group.newest.content.compactDetail, unavailable: nil)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .frame(width: 14)
+                        .accessibilityHidden(true)
+                }
+                .padding(.leading, NotchNotificationListLayout.horizontalPadding)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(NotchButtonStyle(cornerRadius: NotchNotificationListLayout.cornerRadius, lifts: false))
+            .help(expanded ? text.showLess : text.showAll)
+            .accessibilityLabel(NotchNotificationListSupport.accessibilityLabel(for: group, text: text))
+            .accessibilityHint(expanded ? text.showLess : text.showAll)
+            NotchIconButton(symbol: "xmark", title: String(format: text.dismissAppFormat, group.app)) {
+                withAnimation(motion) { service.dismiss(group.ids) }
+            }
+            .disabled(service.openingID.map { group.ids.contains($0) } ?? false)
+        }
+        .padding(.trailing, 4)
+        .frame(height: expanded ? NotchNotificationListLayout.openGroupHeight : NotchNotificationListLayout.rowHeight)
+        .background(.white.opacity(expanded ? 0.03 : 0.06),
+                    in: RoundedRectangle(cornerRadius: NotchNotificationListLayout.cornerRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Open and dismiss, as on a card.
+private struct NotchNotificationRowActions: View {
+    let item: NotchSystemNotification
+    @ObservedObject var service: NotchNotificationService
+    let text: NotchNotificationStrings
+    let motion: Animation?
+    @Binding var feedback: String?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if service.openingID == item.id {
+                ProgressView().controlSize(.mini).frame(width: NotchLayout.iconButtonSide)
+            } else if service.canOpen(item) {
+                NotchIconButton(symbol: "arrow.up.forward.app", title: text.open) {
+                    feedback = nil
+                    service.open(item.id) { result in
+                        if result == .unavailable || result == .uncertain { feedback = text.unavailable }
+                    }
+                }
+                .disabled(service.openingID != nil)
+            }
+            NotchIconButton(symbol: "xmark", title: text.dismiss) { withAnimation(motion) { service.dismiss(item.id) } }
+                .disabled(service.openingID == item.id)
+        }
+    }
+}
+
+private struct NotchNotificationAppName: View {
+    let app: String
+    let text: NotchNotificationStrings
+
+    var body: some View {
+        Text(app.isEmpty ? text.title : app)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.white.opacity(0.6))
+            .lineLimit(1)
+    }
+}
+
+private struct NotchNotificationTime: View {
+    let date: Date
+
+    var body: some View {
+        Text(date, format: .dateTime.hour().minute())
+            .font(.system(size: 11)).monospacedDigit()
+            .foregroundStyle(.white.opacity(0.45))
+            .fixedSize()
+    }
+}
+
+/// How many messages a stack holds, in the quiet pill the island uses.
+private struct NotchNotificationCount: View {
+    let count: Int
+
+    var body: some View {
+        Text(count, format: .number)
+            .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+            .foregroundStyle(.white.opacity(0.75))
+            .padding(.horizontal, 5)
+            .frame(minWidth: 16, minHeight: 14)
+            .background(.white.opacity(0.12), in: Capsule())
+            .fixedSize()
+            .accessibilityHidden(true)
+    }
+}
+
+/// The one line of message a row has room for: the title in bold where the
+/// row shows one, then the message, cut at the end.
+private struct NotchNotificationLine: View {
+    var title: String = ""
+    let text: String
+    let unavailable: String?
+
+    var body: some View {
+        Group {
+            if let unavailable {
+                Text(unavailable).foregroundStyle(.orange)
+            } else if title.isEmpty {
+                Text(text).foregroundStyle(.white.opacity(0.7))
+            } else if text.isEmpty {
+                Text(title).fontWeight(.semibold).foregroundStyle(.white)
+            } else {
+                Text(title).fontWeight(.semibold).foregroundStyle(.white)
+                    + Text("  ") + Text(text).foregroundStyle(.white.opacity(0.7))
+            }
+        }
+        .font(.system(size: 12))
+        .lineLimit(1)
+        .truncationMode(.tail)
     }
 }
 
@@ -215,14 +519,28 @@ package struct NotchNotificationPreviewView: View {
     }
 }
 
+/// App icons a page is drawn with in place of the ones the service found,
+/// for a test that draws the page with messages of its own.
+private struct NotchNotificationIconsKey: EnvironmentKey {
+    static let defaultValue: [String: NSImage] = [:]
+}
+
+extension EnvironmentValues {
+    package var notchNotificationIcons: [String: NSImage] {
+        get { self[NotchNotificationIconsKey.self] }
+        set { self[NotchNotificationIconsKey.self] = newValue }
+    }
+}
+
 package struct NotchNotificationAppIcon: View {
     package let app: String
     package let size: CGFloat
     @ObservedObject private var service = NotchNotificationService.shared
+    @Environment(\.notchNotificationIcons) private var icons
 
     package var body: some View {
         Group {
-            if let icon = service.icon(for: app) {
+            if let icon = icons[app] ?? service.icon(for: app) {
                 Image(nsImage: icon).resizable().scaledToFit()
             } else {
                 Image(systemName: "bell.badge.fill")

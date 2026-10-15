@@ -162,6 +162,7 @@ enum TestGroups {
                 NotchVolumeKeyTests.run(suite)
                 NotchSettingsTabRowTests.run(suite)
                 NotchAccessoryLaunchTests.run(suite)
+                NotchNotificationListTests.run(suite)
             }),
             ("switcher-model", { SwitcherModelFeatureTests.run(suite) }),
             ("agents", {

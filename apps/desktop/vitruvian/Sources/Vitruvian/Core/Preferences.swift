@@ -134,6 +134,12 @@ package enum Preferences {
     package static let notchKeyboardLight = Preference(DefaultsKey.notchKeyboardLight, default: true)
     package static let notchNotificationsEnabled = Preference(DefaultsKey.notchNotificationsEnabled, default: true)
     package static let notchDismissNativeNotifications = Preference(DefaultsKey.notchDismissNativeNotifications, default: false)
+    /// Cards by default, so a Mac that never chose keeps the page it had.
+    package static let notchNotificationsLayout = Preference(DefaultsKey.notchNotificationsLayout,
+                                                             default: NotchNotificationLayout.cards.rawValue)
+    /// On, so choosing the list stacks a chatty app the way Notification
+    /// Center does. The cards never group.
+    package static let notchNotificationsGrouped = Preference(DefaultsKey.notchNotificationsGrouped, default: true)
     package static let notchTimerEnabled = Preference(DefaultsKey.notchTimerEnabled, default: true)
     package static let notchTimerSoundEnabled = Preference(DefaultsKey.notchTimerSoundEnabled, default: true)
     package static let notchHideTimerCountdown = Preference(DefaultsKey.notchHideTimerCountdown, default: false)

@@ -21,6 +21,8 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchKeyboardLight) private var keyboardLight: Bool
     @AppStorage(Preferences.notchNotificationsEnabled) private var notificationsEnabled: Bool
     @AppStorage(Preferences.notchDismissNativeNotifications) private var dismissNativeNotifications: Bool
+    @AppStorage(Preferences.notchNotificationsLayout) private var notificationsLayout: String
+    @AppStorage(Preferences.notchNotificationsGrouped) private var notificationsGrouped: Bool
     @AppStorage(Preferences.notchTimerEnabled) private var timerEnabled: Bool
     @AppStorage(Preferences.notchTimerSoundEnabled) private var timerSoundEnabled: Bool
     @AppStorage(Preferences.notchHideTimerCountdown) private var hideTimerCountdown: Bool
@@ -496,6 +498,13 @@ package struct NotchSettings: View {
                                      isOn: $liveEqualizer, feature: .notchLiveEqualizer, enabled: NotchAudioLevelSupport.isSupported)
         case .notifications:
             let notifications = FeatureStrings.notchNotifications(l10n.language)
+            NotchNotificationLayoutRow(text: notifications, layout: $notificationsLayout)
+            // Grouping is the list's: the cards never stack.
+            if NotchNotificationLayout(saved: notificationsLayout) == .list {
+                switchRow("square.stack", notifications.groupByApp, caption: notifications.groupByAppHint,
+                          isOn: $notificationsGrouped)
+                    .padding(.leading, settingsRowTextInset)
+            }
             switchRow("bell.slash", notifications.hideSystemBanner, caption: notifications.hideSystemBannerHint,
                       isOn: $dismissNativeNotifications)
             if notificationsEnabled, !permissions.accessibility { PermissionRow(kind: .accessibility) }

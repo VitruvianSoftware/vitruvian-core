@@ -480,6 +480,8 @@ package enum Defaults {
         DefaultsKey.notchKeyboardLight: Preferences.notchKeyboardLight.defaultValue,
         DefaultsKey.notchNotificationsEnabled: Preferences.notchNotificationsEnabled.defaultValue,
         DefaultsKey.notchDismissNativeNotifications: Preferences.notchDismissNativeNotifications.defaultValue,
+        DefaultsKey.notchNotificationsLayout: Preferences.notchNotificationsLayout.defaultValue,
+        DefaultsKey.notchNotificationsGrouped: Preferences.notchNotificationsGrouped.defaultValue,
         DefaultsKey.notchTimerEnabled: Preferences.notchTimerEnabled.defaultValue,
         DefaultsKey.notchTimerMode: Preferences.notchTimerMode.defaultValue,
         DefaultsKey.notchTimerSoundEnabled: Preferences.notchTimerSoundEnabled.defaultValue,
