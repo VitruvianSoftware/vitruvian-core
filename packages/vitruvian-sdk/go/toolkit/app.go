@@ -198,7 +198,7 @@ func (s Storage) Set(key string, value any) error {
 }
 
 // UI is what a tool of protocol 2 puts beside itself in the island: a badge
-// in its Tools area, and a status on the closed island. Its panels are the
+// on its page in the Explore gallery, and a status on the closed island. Its panels are the
 // tool's own; these are the calls the app answers.
 type UI struct{ tool *Tool }
 
@@ -277,7 +277,7 @@ func (u UI) Status(state string, options ...StatusOptions) (shown bool, err erro
 	return true, nil
 }
 
-// Badge puts a count, or a dot, beside the tool in the island's Tools area.
+// Badge puts a count, or a dot, beside the tool's page in the island's Explore gallery.
 // count nil and dot false take the badge away.
 func (u UI) Badge(count *int, dot bool) error {
 	params := UIBadgeParams{Count: count}

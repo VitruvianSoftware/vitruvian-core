@@ -187,7 +187,7 @@ impl Panel {
         app.state_mut().note(methods::UI_RENDER, &params)
     }
 
-    /// Puts a count, or a dot, beside the tool in the island's Tools area:
+    /// Puts a count, or a dot, beside the tool's page in the island's Explore gallery:
     /// `ui/badge`. With neither, the badge goes. Needs `notify` in `uses`.
     pub fn badge(&self, app: &mut App<'_>, count: Option<i64>, dot: bool) -> Result<(), ToolError> {
         app.ui().badge(count, dot)
