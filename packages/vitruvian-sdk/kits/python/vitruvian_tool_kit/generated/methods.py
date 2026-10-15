@@ -199,7 +199,7 @@ class _Ui:
         self._notice = notice
 
     def badge(self, count: Optional[int] = None, dot: Optional[bool] = None) -> EmptyObject:
-        """`ui/badge`. A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses. Needs `notify` in the manifest's `uses`."""
+        """`ui/badge`. A count or a dot beside the tool's page in the island's Explore gallery. With neither, the badge goes. Needs notify in the manifest's uses. Needs `notify` in the manifest's `uses`."""
         return EmptyObject.from_json(self._request("ui/badge", UIBadgeParams(count=count, dot=dot).to_json()), "the answer to ui/badge")
 
     def status(self, state: StatusState, text: Optional[UIText] = None, icon: Optional[str] = None, activity: Optional[UIText] = None, since: Optional[float] = None) -> EmptyObject:

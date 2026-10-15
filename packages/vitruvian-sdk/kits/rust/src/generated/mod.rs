@@ -574,8 +574,8 @@ pub struct UiRenderParams {
     pub tree: UiTree,
 }
 
-/// A count or a dot beside the tool in the island's Tools area. With neither,
-/// the badge goes. Needs notify in the manifest's uses.
+/// A count or a dot beside the tool's page in the island's Explore gallery.
+/// With neither, the badge goes. Needs notify in the manifest's uses.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UiBadgeParams {
     /// A whole number from 0. 0 is no count.
@@ -1021,9 +1021,9 @@ pub struct Panel {
     pub id: String,
     /// What the panel is called: the island page's title, the window's title.
     pub title: LocalizedText,
-    /// Where it is shown. island: a page in the island's Tools area. settings:
-    /// a part of the tool's detail in Settings. window: a window the app owns,
-    /// opened when the person asks. One of: island, settings, window.
+    /// Where it is shown. island: a page in the island's Explore gallery.
+    /// settings: a part of the tool's detail in Settings. window: a window the
+    /// app owns, opened when the person asks. One of: island, settings, window.
     pub placement: String,
     /// An SF Symbol name. Left out, the tool's icon is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]

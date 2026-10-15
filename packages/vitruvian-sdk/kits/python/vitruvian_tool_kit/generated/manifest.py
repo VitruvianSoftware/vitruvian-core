@@ -230,7 +230,7 @@ class Panel:
     title: LocalizedText
     """What the panel is called: the island page's title, the window's title."""
     placement: PanelPlacement
-    """Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks."""
+    """Where it is shown. island: a page in the island's Explore gallery. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks."""
     icon: Optional[str] = None
     """An SF Symbol name. Left out, the tool's icon is used."""
     kind: Optional[PanelKind] = None

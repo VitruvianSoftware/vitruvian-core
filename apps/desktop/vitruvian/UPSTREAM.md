@@ -136,6 +136,7 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-10-15**: `packages/vitruvian-sdk/Sources/VitruvianToolProtocol/Panels.swift` (MIT, written by VitruvianSoftware): comments on `PanelPlacement.island` and `UIBadgeParams` say "the island's Explore gallery" instead of "the island's Tools area", and the pin follows (`bazel/tool_protocol.sha256`, fa537c713a96).
 - **2026-10-15**: The release's disk images are signed, and the About box names VitruvianSoftware while keeping Vorssaint's notice. Vitruvian 3.51.0 was the first release signed with the Developer ID: its app was signed and notarized, but `make-dmg.sh` never signed the disk images, so a downloaded DMG failed `spctl -t open` ("no usable signature") although Apple had notarized it.
   - `Tools/make-dmg.sh` (upstream file): signs the compressed image with the installed Developer ID and verifies it, before `notarize.sh` submits it; without an identity the image stays unsigned, as before.
   - `Resources/Info.plist` (upstream file): `NSHumanReadableCopyright` is "© 2026 VitruvianSoftware. Portions © 2026 Vorssaint." instead of "© 2026 Vorssaint".
