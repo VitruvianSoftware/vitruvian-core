@@ -3,6 +3,7 @@
   bazel run //tools/apple-signing -- csr
   bazel run //tools/apple-signing -- secrets <KEY_ID> <ISSUER_ID> <AuthKey_*.p8>
   bazel run //tools/apple-signing -- check
+  bazel run //tools/apple-signing -- notary-status [SUBMISSION_ID]
 
 Asking Apple for the certificate and creating the API key are the two steps
 that cannot live here: Apple has no API for them and both need the account
