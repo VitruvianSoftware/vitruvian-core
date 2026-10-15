@@ -32,6 +32,18 @@ in the repository.
 5. `bazel run //tools/apple-signing -- check` counts the identities and the
    secrets.
 
+## Apple's verdict on a submission
+
+Apple has no web page for notarization submissions, so:
+
+- `bazel run //tools/apple-signing -- notary-status` lists every submission and
+  its status (In Progress, Accepted, Invalid, Rejected).
+- `bazel run //tools/apple-signing -- notary-status <SUBMISSION_ID>` shows one,
+  and once Apple has decided, its report, which names any file that failed.
+
+The Key ID and Issuer ID it uses are kept in `~/.vitruvian-signing/notary.env`
+by `secrets`; neither is secret.
+
 ## Renewing
 
 The certificate lasts until the date Apple prints on it. To renew, move the old

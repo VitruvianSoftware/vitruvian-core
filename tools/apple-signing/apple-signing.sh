@@ -25,6 +25,7 @@
 #   bazel run //tools/apple-signing -- csr
 #   bazel run //tools/apple-signing -- secrets <KEY_ID> <ISSUER_ID> <AuthKey_*.p8>
 #   bazel run //tools/apple-signing -- check
+#   bazel run //tools/apple-signing -- notary-status [SUBMISSION_ID]
 #
 # Two steps cannot live here, because Apple has no API for them: asking Apple
 # for the certificate (upload the .csr at developer.apple.com > Certificates >
@@ -105,6 +106,8 @@ cmd_secrets() {
     -passout env:P -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
   [ "$p8_in" -ef "AuthKey_$key_id.p8" ] || mv "$p8_in" "AuthKey_$key_id.p8"
   local p8="AuthKey_$key_id.p8"
+  # The two IDs are not secret; kept so notary-status needs no arguments.
+  printf 'KEY_ID=%s\nISSUER_ID=%s\n' "$key_id" "$issuer" > notary.env
 
   echo "2/5 Checking Apple accepts the API key"
   xcrun notarytool history --key "$p8" --key-id "$key_id" --issuer "$issuer" >/dev/null ||
@@ -171,9 +174,37 @@ cmd_check() {
   return $ok
 }
 
+# Apple has no web page for notarization submissions; this is the way to see
+# them. No ID: every submission and its status. An ID: that one, and Apple's
+# report once it has a verdict (the report names any file that failed).
+cmd_notary_status() {
+  [ $# -le 1 ] || usage
+  [ -f "$DIR/notary.env" ] || die "no $DIR/notary.env; run 'secrets' first"
+  local KEY_ID="" ISSUER_ID=""
+  # shellcheck source=/dev/null
+  . "$DIR/notary.env"
+  [ -n "$KEY_ID" ] && [ -n "$ISSUER_ID" ] || die "$DIR/notary.env lacks KEY_ID or ISSUER_ID"
+  local key="$DIR/AuthKey_$KEY_ID.p8"
+  [ -f "$key" ] || die "no API key at $key"
+  local auth=(--key "$key" --key-id "$KEY_ID" --issuer "$ISSUER_ID")
+  if [ $# -eq 0 ]; then
+    xcrun notarytool history "${auth[@]}"
+    return
+  fi
+  local info status
+  info=$(xcrun notarytool info "$1" "${auth[@]}")
+  printf '%s\n' "$info"
+  status=$(printf '%s\n' "$info" | sed -n 's/^ *status: //p')
+  if [ -n "$status" ] && [ "$status" != "In Progress" ]; then
+    echo; echo "Apple's report:"
+    xcrun notarytool log "$1" "${auth[@]}"
+  fi
+}
+
 case ${1:-} in
   csr) shift; cmd_csr "$@" ;;
   secrets) shift; cmd_secrets "$@" ;;
   check) shift; cmd_check "$@" ;;
+  notary-status) shift; cmd_notary_status "$@" ;;
   *) usage ;;
 esac
