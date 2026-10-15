@@ -11,8 +11,13 @@
 //   bazel run --config=macos-app //apps/desktop/vitruvian:release_feed_check -- --verify-download
 //
 // A bare binary reports its version as "dev", which every release is newer
-// than, so the check always names the newest stable release. It asks GitHub
-// without a token, as the app does: 60 requests an hour from one address.
+// than, so the check always names the newest stable release.
+//
+// The update check must not depend on api.github.com, whose 60 unsigned
+// requests an hour are shared by everything on the network. So this prints
+// how many of them are left, answers any request the check makes there as
+// "limit reached" (as if they were all spent, whatever the real count), and
+// lists every request the check made.
 
 import Foundation
 import VitruvianCore
@@ -20,7 +25,7 @@ import VitruvianServices
 
 let verifyDownload = CommandLine.arguments.contains("--verify-download")
 /// The newest stable release on the day this check was written.
-let oldestAcceptable = "3.51.0"
+let oldestAcceptable = "3.52.1"
 var failures = 0
 
 func report(_ passed: Bool, _ line: String) {
@@ -63,11 +68,71 @@ func run(_ tool: String, _ arguments: [String]) -> (status: Int32, output: Strin
     return (process.terminationStatus, String(decoding: data, as: UTF8.self))
 }
 
+/// Every request the update check makes, and what came back.
+nonisolated final class RequestLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [(host: String, line: String)] = []
+    func add(_ request: URLRequest, _ outcome: String) {
+        let host = request.url?.host ?? "?"
+        lock.withLock { lines.append((host, "\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "?") -> \(outcome)")) }
+    }
+    var entries: [(host: String, line: String)] { lock.withLock { lines } }
+}
+
+/// What api.github.com says about this network's unsigned quota. Asking
+/// does not spend any of it.
+func apiQuota() -> String {
+    var request = URLRequest(url: URL(string: "https://api.github.com/rate_limit")!)
+    request.setValue("Vitruvian-release-feed-check", forHTTPHeaderField: "User-Agent")
+    nonisolated(unsafe) var text = "unknown"
+    nonisolated(unsafe) var finished = false
+    URLSession.shared.dataTask(with: request) { data, _, _ in
+        if let data,
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let core = (json["resources"] as? [String: Any])?["core"] as? [String: Any],
+           let remaining = core["remaining"] as? Int, let limit = core["limit"] as? Int,
+           let reset = core["reset"] as? Double {
+            let at = DateFormatter.localizedString(from: Date(timeIntervalSince1970: reset),
+                                                   dateStyle: .none, timeStyle: .medium)
+            text = "\(remaining) of \(limit) left, resets at \(at)"
+        }
+        finished = true
+    }.resume()
+    wait(until: { finished }, seconds: 20)
+    return text
+}
+
+let log = RequestLog()
+let transport: VitruvianReleases.Transport = { request in
+    if request.url?.host == "api.github.com" {
+        log.add(request, "refused here: 403, no requests left")
+        return VitruvianReleases.Reply(status: 403, headers: ["x-ratelimit-remaining": "0"])
+    }
+    do {
+        let reply = try await VitruvianReleases.live(request)
+        let length = reply.header("Content-Length").map { ", Content-Length \($0)" } ?? ""
+        log.add(request, "HTTP \(reply.status), \(reply.body.count) bytes\(length)")
+        return reply
+    } catch {
+        log.add(request, "error: \(error.localizedDescription)")
+        throw error
+    }
+}
+
 MainActor.assumeIsolated {
-    print("Update check (UpdateService, live GitHub API)")
-    let service = UpdateService.shared
+    print("api.github.com unsigned quota for this network: \(apiQuota())")
+    print("\nUpdate check (UpdateService, live, with api.github.com answered as limit reached)")
+    let service = UpdateService(transport: transport)
+    let started = Date()
     service.check(manual: true)
     wait(until: { service.state != .checking }, seconds: 45)
+    print(String(format: "  the check took %.1f s", Date().timeIntervalSince(started)))
+    for entry in log.entries { print("  \(entry.line)") }
+    report(!log.entries.isEmpty && !log.entries.contains { $0.host == "api.github.com" },
+           "the check made no request to api.github.com")
+    report(log.entries.first?.host == "github.com"
+           && log.entries.first?.line.hasPrefix("POST \(VitruvianReleases.tagListURL.absoluteString)") == true,
+           "its first request lists the tags from git")
     var offered: (version: String, url: URL)?
     switch service.state {
     case let .available(version):
@@ -80,6 +145,9 @@ MainActor.assumeIsolated {
         } else {
             report(false, "it found no disk image to download")
         }
+        let notes = service.availableNotes ?? ""
+        report(!notes.isEmpty,
+               "it has the release notes: \(notes.split(separator: "\n").first.map(String.init) ?? "none")")
     default:
         report(false, "the check ended as \(service.state)")
     }
@@ -105,6 +173,11 @@ MainActor.assumeIsolated {
     wait(until: { saved }, seconds: 600)
     report(saved, "downloaded \(image.lastPathComponent)")
     guard saved else { return }
+    let received = ((try? FileManager.default.attributesOfItem(atPath: image.path))?[.size] as? NSNumber)?.int64Value
+    let advertised = log.entries.first { $0.line.hasPrefix("HEAD ") }?.line
+        .components(separatedBy: "Content-Length ").last.flatMap { Int64($0) }
+    report(received != nil && received == advertised,
+           "it is \(received.map(String.init) ?? "?") bytes, the size the HEAD request gave (\(advertised.map(String.init) ?? "none"))")
 
     let imageCheck = run("/usr/bin/codesign",
                          ["-v", "--strict", "-R=\(UpdateInstallerSupport.diskImageRequirement)", image.path])

@@ -456,6 +456,32 @@ def url_schemes_have_a_handler(repo):
     return problems
 
 
+def asks_the_github_api(lines):
+    """Whether code outside whole-line comments names api.github.com."""
+    return "api.github.com" in code_without_comments(lines)
+
+
+def the_app_never_asks_the_github_api(repo):
+    """Nothing the app runs asks api.github.com. Without a token it allows 60
+    requests an hour per network address, shared by everything on the
+    network, so another program can spend them all: on 2026-10-15 the update
+    check said "GitHub is limiting requests" while the app had asked nothing
+    that hour. The update check lists tags through git and reads release
+    files through their download links instead (`VitruvianReleases`).
+    `Tools/ReleaseFeedCheck.swift` asks the API only to print its quota."""
+    problems = []
+    if not asks_the_github_api(
+        ['    URL(string: "https://api.github.com/repos/x")!']
+    ) or asks_the_github_api(["    /// None of it uses api.github.com."]):
+        problems.append("the self-check no longer tells code from a comment")
+    for path in repo.app_sources():
+        if asks_the_github_api(repo.lines_at(path)):
+            problems.append(
+                f"{path} asks api.github.com; use git or a release download link (VitruvianReleases)"
+            )
+    return problems
+
+
 # --- Localization -------------------------------------------------------------
 
 
@@ -3111,6 +3137,7 @@ RULES = [
     tap_owners_invalidate_their_ports,
     keychain_is_never_touched,
     url_schemes_have_a_handler,
+    the_app_never_asks_the_github_api,
     visible_text_curls_its_apostrophes,
     french_punctuation_stays_on_its_line,
     decimals_name_their_region,
