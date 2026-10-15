@@ -104,6 +104,14 @@ the window is visible or fullscreen) [I]; **`SplashScreen.tsx`** (see Onboarding
   "Show/Hide Space Bar", "Lock App", "Keyboard Shortcuts", "Changelog", "Privacy && Security",
   "Follow %s on X", "Open %s Help", "Report a Problem", "Logout of %s...", "Close Window", "Quit %s".
 
+### Relaunch prompt after a system timezone change (added from the UI-text check)
+
+**What it does.** The app remembers the system timezone offset. When the system timezone changes,
+it shows a toast that stays until you act on it. The toast says the app must be relaunched to use
+the new timezone, and has a "Relaunch now" button. The toast shows again after each new change. [O]
+
+**Evidence:** "%s must be relaunched to use your new timezone"
+
 ---
 
 ## 2. Space bar, spaces, labels and account filters
@@ -278,6 +286,25 @@ FailedToSendComposerPill, LocalThreadComposerPill. Also **`BrandExpandableSectio
 - **Background** [O]: setting "Empty chat list background". Image assets named sky, sea, desert,
   meadow, mountains, sunset, lavender, default. [I] These are the selectable backgrounds.
 
+### Honeycomb chat cards for mentions, unread and quiet chats (added from the UI-text check)
+
+**What it does.** Besides the recommendation, event and stats cards, the Honeycomb carousel has
+cards about individual chats. Each one is in one of these states: [O]
+
+- **failed**: a message didn't send
+- **sending**: a message is still sending
+- **draft**: you have an unsent draft
+- **mention**: you were mentioned, with the number of unread mentions
+- **unread**: the chat has unread messages
+- **quiet**: you haven't talked in a while. The card reads "It's been <time> since you talked", or
+  "a while" when the app doesn't know how long.
+
+The mention, unread and quiet cards use the same reply pill, so you can answer from the card. [O]
+The quiet card is a "get back in touch"
+nudge, and it needs a rule for how long counts as quiet. [I] We did not find that rule.
+
+**Evidence:** "%d unread mention", "Quiet", "It's been %s since you talked"
+
 ---
 
 ## 5. Conversation view: header, timeline and message rendering
@@ -351,9 +378,41 @@ previews like "%d new replies"), **`BrandUserHoverCard.tsx`**, **`HoverCard.tsx`
 **User hover card** [O]: hovering a sender or mention shows a card with avatar, "Open in Mesh",
 "Call %s", "FaceTime" and "FaceTime Audio".
 
+### Per-message disappearing countdown and read-started timers (added from the UI-text check)
+
+**What it does.** A disappearing message carries its own timer. The timer can be one of two kinds:
+it starts when the message is sent, or it starts when the message is read. [O]
+
+- **Before the timer starts** (read-started timers only), the message says when it will disappear:
+  [O]
+  - Your own message in a one-to-one chat: so long after the recipient reads it.
+  - Your own message in a group: so long after someone in the group reads it.
+  - A message you received: so long after you mark it read.
+- **Once the timer is running**, the message shows a countdown ("Disappears in <time>"). [O]
+
+
+**Evidence:** "Disappears %s after the recipient reads it", "Disappears %s after someone in the
+group reads it", "Disappears %s after you mark it read", "Disappears in %s"
+
+### Inline edit-history expander on edited messages (added from the UI-text check)
+
+**What it does.** On an edited message, the "Edited" label can be a button. [O]
+
+- **Opening it.** Clicking it opens the message's earlier versions right below the message. The
+  button then reads "Hide Edits".
+- **The tooltip.** It shows the original text ("Originally …").
+- **When it is plain text.** When there is no history to show, "Edited" is plain text.
+- **Thread replies.** A reply in a thread that was also posted to the main chat is marked as sent
+  to the chat as well.
+
+
+**Evidence:** "Edit history", "Hide Edits", "Originally %s"
+
 ---
 
 ## 6. Composer
+
+In a merged chat, the composer also has a target switcher; see §9a "Merged-chat target switcher in the composer".
 
 **Purpose.** The text box at the bottom of a chat, with formatting, attachments and extras.
 
@@ -446,6 +505,14 @@ it"), and an emoji picker that can open on hover.
 **Forward** [O]: "Forward message" picks a destination. Note shown: "Forwarding messages through
 Beeper will not include any attribution on the native apps."
 
+### Insert as Draft on received messages (added from the UI-text check)
+
+**What it does.** Selected messages that someone else sent have an extra menu item, "Insert as
+Draft", next to Copy. It puts the message's text into your composer and moves the cursor there, so
+you can edit it and send it as your own. Your own messages don't have this item. [O]
+
+**Evidence:** "Insert as Draft"
+
 ---
 
 ## 8. Media, attachments and viewers
@@ -470,7 +537,7 @@ plus a TIFF image renderer) [O]; **`PictureInPictureBrowserWindow.tsx`** [O].
 others), "Fullscreen" / "Exit Fullscreen", "Open in PiP", mute, "Download". Error:
 "Something went wrong displaying video". PiP has "Restore from Picture in Picture".
 
-**Media viewer window** [O]: tabs "Media", "Links", "Files" (also "Images", "Videos", "Audio"),
+**Media viewer window** [O]: tabs "Media", "Links", "Docs" (the live app labels this tab "Docs", not "Files") (also "Images", "Videos", "Audio"),
 grouped by "Today", "Yesterday", "This week", "Last week". Items can be multi-selected
 ("%d selected", "%1$d selected (%2$s)", "Select all"). Actions: "Go to Message", "Download",
 "Copy Image", "Copy Link", "Delete…" (with "These messages can’t be deleted" and "Skipped %d
@@ -483,6 +550,31 @@ Opening it shows a full-screen overlay with a countdown/progress bar and mute. E
 
 **Downloads** [O]: "Downloads location" ("Change"), "Always ask where to save files before
 downloading", "%1$s %2$s has been downloaded", "Download failed: %s".
+
+### Media viewer sender filter and sort order (added from the UI-text check)
+
+**What it does.** The media viewer has a filter menu with two settings: [O]
+
+- **"Sent By"**: All, You or Others.
+- **"Sort by"**: Newest or Oldest.
+
+Caption search waits a moment after you stop typing before it runs. The live tabs are labelled
+Media, Links and **Docs** (not "Files"). [O]
+
+**Evidence:** "Sent By", "Sort by"
+
+### Voice-note played state and Mark as played (added from the UI-text check)
+
+**What it does.** Audio attachments can carry a played or unplayed status that comes from the
+network. [O]
+
+- A played note is labelled "Played", or shows when it was played.
+- An unplayed note has a "Mark as played" button. The button tells the network that the note was
+  played, without playing it.
+
+[I] This matches networks that show "played" receipts for voice notes, such as WhatsApp.
+
+**Evidence:** "Played", "Played %s", "Played at %s", "Mark as played"
 
 ---
 
@@ -545,6 +637,22 @@ Group…" (with a confirm). Status tags: "Admin", "Invited", "Exited", "(You)".
   chats."), "Apply merged info to contacts".
 - Afterwards: "You can now message %1$s across %2$d chats from one conversation.".
 
+#### Merged-chat target switcher in the composer (added from the UI-text check)
+
+**What it does.** In a merged chat (one conversation made of chats from several networks), the
+composer shows an avatar for the chat that your message will go to. [O]
+
+- **Switching.** Hovering the avatar opens a card headed "Switch chats". The card lists each chat
+  in the merge, with a subtitle, and you pick the one to send through. [O]
+- **Other uses.** Outside merged chats, the same control appears with the heading "Switch Chat".
+  [I] It may also pick the sending account.
+- **One-time hint.** The first time it is relevant, a small bubble says "Click the avatar to change
+  chat.". The app records that the hint was shown, and dismissing it hides it for good. [O]
+- **Default chat.** The merged-chat section in Chat Info marks one of the chats as the default. [O]
+
+
+**Evidence:** "Click the avatar to change chat.", "Switch chats", "Switch Chat"
+
 ### 9b. Chat theme
 
 **Components.** **`ChatThemeWindow.tsx`** and **`ChatThemeBrowserWindow.tsx`** [O].
@@ -600,6 +708,20 @@ JoinMatrixRoomRow, NewBlastRow) [O]; **`new-chat-utils.tsx`** (NetworkSkeleton) 
 - Empty state: "Whoever you’re looking for hasn’t messaged" and "Start typing to search for
   people to add".
 
+### Room-encryption choice when starting a Matrix group (added from the UI-text check)
+
+**What it does.** When you start a group on Beeper's own Matrix network, a "Room encryption"
+dialog appears before the group is created. It has an "Encrypted" switch. [O]
+
+- The dialog explains what the switch means for people you invite later:
+  - **Encrypted:** they can't see earlier messages.
+  - **Not encrypted:** they can.
+- The confirm button is "Start group chat". The switch is locked while the group is being created. [O]
+- [I] We could not see which way the switch starts.
+
+**Evidence:** "Room encryption", "Encrypted" (new-group toggle), "People invited later cannot see
+earlier messages.", "People invited later can see earlier messages."
+
 ---
 
 ## 12. Search and Command Bar
@@ -644,6 +766,30 @@ View, Window, plus Developer for internal users. Representative commands:
   window, summarize last N messages with AI, clear AI pane)
 - Per-user commands (copy name/username/phone/email, call, FaceTime, open profile)
 - "Message yourself", "Send later", "Remind me later"
+
+### Search home and result sections (added from the UI-text check)
+
+**What it does.** Search (⌘K) groups its results into sections, in this order: [O]
+
+1. Recent chats
+2. Last archived
+3. Chats
+4. In Groups
+5. Bookmarks
+6. Media
+7. Messages
+
+- **Before you type.** Search shows recent chats. It also shows the chat you archived most recently,
+  in its own "Last archived" section, so you can find it again straight away. That section only
+  appears if the chat isn't hidden, isn't already in the recent list, and isn't the chat you have
+  open. [O]
+- **"In Groups".** This section lists people who match your search because they are in a group
+  with you, even when you have no direct chat with them. [O] [I] for the "even when" part.
+- **"Bookmarks".** Bookmarked messages get their own section. [O]
+- **Expanding.** Each section can be expanded with "Show more". The Messages section has the
+  partial-matches toggle instead. [O]
+
+**Evidence:** "In Groups", "Last archived"
 
 ---
 
@@ -757,9 +903,30 @@ progress bar and "Skip" / "Continue →"; skip confirm "Are you sure you want to
 (on-screen key caps that light up when pressed). Success: "Nice work!" and
 "🤩 Check out that fancy fingerwork!".
 
+### Step-up re-authentication by emailed code (added from the UI-text check)
+
+**What it does.** Some account actions need you to prove who you are again. When the server asks
+for that, the app shows an "Authentication Required" window. [O]
+
+- **The window.** It says to "Check your email" for a sign-in code. You type the six-digit code and
+  press Next.
+- **One at a time.** Only one of these windows can be open. A second request brings the existing
+  window to the front.
+- **Triggers seen:** [O]
+  - resetting the recovery key or the encryption identity, during onboarding and later
+  - managing sign-in methods
+- **If you cancel:** the action fails with "Re-authentication is required to continue". [O]
+- **After a reset:** you are asked to try again with the new recovery key. [O]
+
+**Evidence:** "Authentication Required", "Check your email", "This action requires
+re-authentication. Please check %(email)s for your sign in code.", "Re-authentication is required
+to continue", "Authentication is required to manage sign-in methods."
+
 ---
 
 ## 16. Adding and managing chat-network accounts
+
+What each network loses in cloud versus on-device mode is listed in 03 §1.4, "Per-network connection-mode limitations list". Plan caps on accounts are in §17, "Plan limits".
 
 **Purpose.** Connect WhatsApp, Signal, Telegram, Instagram/Messenger, Discord, LinkedIn, X,
 Google Messages, Google Voice, Viber, WeChat, iMessage, Bluesky, Slack, Matrix and AI providers.
@@ -825,6 +992,20 @@ specific errors (rate-limited, timed out, passcode locked, outdated bridge).
 **Account limits and upsell** [O]: "%d Free Account Remaining", "Infinite Accounts Remaining",
 "You've reached the account limit…", "Upgrade to %1$s to connect another %2$s account",
 "iMessage account doesn't count towards your limits".
+
+### Challenge attachments in server-driven login forms (added from the UI-text check)
+
+**What it does.** A bridge's login step can include attachments above the form fields, as well as
+the fields themselves. [O]
+
+- **Images** are shown inline. Their fallback description is "Captcha image".
+- **Audio clips** get a small audio player.
+
+So a bridge can ask you to solve a captcha, or listen to a code, as part of logging in. [I] We don't
+know which networks use this in practice. The bridge sends the steps when you log in, so the bundle
+doesn't show them.
+
+**Evidence:** "Captcha image", "Your browser does not support the audio element."
 
 ---
 
@@ -921,6 +1102,24 @@ converted into a Beeper Plus subscription…"). **`AccountsBanner.tsx`** and
 **`AddMoreAccountsBanner.tsx`** (UpgradeButton) are prompts to add accounts or upgrade.
 **`AccountDisconnectedBanner.tsx`** is reused in settings and the list.
 
+### Plan limits, and what a lapsed plan takes away (added from the UI-text check)
+
+**What it does.**
+- **Three separate limits.** A plan caps the number of accounts per network, the total number of
+  accounts, and the number of merged chats. [O]
+- **Where the numbers come from.** Each limit comes from a server-sent feature value. A special
+  value means "unlimited". [O]
+- **Plan comparison.** The comparison shows each limit for your current plan and for the plan you
+  would upgrade to. Rows that improve on upgrade are highlighted. [O]
+- **When a paid plan lapses:** [O]
+  - Accounts above the Free limits may be disabled after 24 hours, newest-added first.
+  - A custom app icon reverts to the default, with a prompt to renew.
+
+**Evidence:** "%d Account Per Network", "Unlimited Accounts Per Network", "%d Total Account",
+"Unlimited Total Accounts", "%d Merged Chat", "Unlimited Merged Chats", "In 24 hours any accounts
+above the Free account limits may be disabled, in order of most recently added.", "Beeper has
+reverted to the default app icon — renew your subscription to keep your custom app icon."
+
 ---
 
 ## 18. Reminders, Send Later, Low Priority, Incognito (cross-cutting chat-state features)
@@ -941,6 +1140,22 @@ strings. [O]
   doesn't notify recipients you've read them." It asks whether to also hide typing. There is an
   indicator in the composer and a trial ("%d more day of free incognito mode").
 
+### Archive, Low Priority and Hide have different return rules (added from the UI-text check)
+
+**What it does.** The command bar explains each way of removing a chat from the inbox in a
+subtitle, and the empty states say the same thing: [O]
+
+- **Archive** hides the chat only until a new message arrives. Then it comes back to the inbox.
+- **Low Priority** hides the chat from the inbox for good.
+- **Hide** removes the chat from the inbox (a hidden feature).
+
+[I] So a new incoming message un-archives a chat, but does not undo Low Priority or Hide. The spec
+describes each action but not this rule. A rebuild needs it to decide what a new message does to a
+chat's place.
+
+**Evidence:** "Hides chat until new messages received", "Archive chats to hide them until new
+messages are received", "Hides chat from your inbox", "Removes from inbox"
+
 ---
 
 ## 19. Notifications UI
@@ -957,6 +1172,21 @@ strings. [O]
 - "If the chat is muted, you'll still be notified." and "Notify anyway" for pings that override
   a mute.
 
+### Incoming-call notification overlay (added from the UI-text check)
+
+**What it does.** Beeper can't take calls itself. When a call comes in on a connected network, an
+overlay card appears. [O]
+
+- **The card.** It shows a voice or video call icon, the caller's avatar and name, and a dismiss
+  button.
+- **If that network's own app is installed on the Mac,** the card has an "Open <app>" button. The
+  button launches that app so you can answer, and closes the card.
+- **If the app isn't installed,** the card says "Open <app> to answer".
+- **Several calls** stack in the overlay, one card each.
+
+
+**Evidence:** "Open %s to answer" (shown with the "Open %s" button, which is covered elsewhere)
+
 ---
 
 ## 20. Feedback, help and support
@@ -967,6 +1197,21 @@ a Problem", "Describe the issue...", "Attach screenshot or video", "Send a Probl
 "Priority Support", "Contact Support", "Having issues? Contact __SUPPORT_EMAIL__".
 The Help Hub window is listed in the window catalogue. No component files beyond
 **`HelpHubBrowserWindow.tsx`**. [O]
+
+### Problem report can attach the selected message details (added from the UI-text check)
+
+**What it does.** When you report a problem with a message selected, the report form has an
+"Include Message Details" checkbox. The checkbox attaches the message's underlying data to the
+report. [O]
+
+- **No message selected:** the checkbox is "Include Latest Message Details" instead.
+- **Copy button:** a button copies the same details to the clipboard.
+- **Unreadable messages:** a message the app can't display has a "Click here to report" link. The
+  link opens the report form with that message attached and a description already filled in: "This
+  <network> message didn't render".
+
+**Evidence:** "Include Message Details", "Include Latest Message Details", "Copy message details",
+"Copy latest message details", "Click here to report to %s team.", "This %s message didn't render"
 
 ---
 

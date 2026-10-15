@@ -152,6 +152,39 @@ Notes:
 - Read receipts come from room features.
 - Voice notes are a file type in room features. Recording uses an in-app Opus encoder (section 4).
 
+#### Per-network connection-mode limitations list (added from the UI-text check)
+
+**What it does.** When you add an account and pick where it runs (in Beeper's cloud or on this
+Mac), the picker shows a "Not supported:" line. The line lists the features that the network loses
+in the chosen mode. [O] The lists are fixed in the app: [O]
+
+| Network | Cloud: not supported | On-device: not supported |
+|---|---|---|
+| WhatsApp | online status | online status |
+| Facebook Messenger | online status, polls | push notifications, online status, polls |
+| Instagram | disappearing messages, online status, polls | media captions, disappearing messages, online status, polls |
+| Telegram | online status | online status |
+| iMessage | — | push notifications, disappearing messages |
+| Google Voice | — | push notifications, deleting messages, starting a new chat |
+| Google Chat | starting a new chat, disappearing messages, online status, polls | — |
+| X | disappearing messages | disappearing messages |
+| Slack | online status | — |
+| Discord | starting a new chat, online status, polls | — |
+| LinkedIn | online status | online status |
+| LINE | editing messages, typing indicators, polls | — |
+| Tumblr | starting a new chat, online status | starting a new chat, online status |
+
+That the "Not supported:" label goes with these lists is [I]: the label sits in the same picker
+part of the code. A rebuild
+should show the same warnings.
+
+**Evidence:** "Not supported:", "Online status", "Online status and polls", "Push notifications,
+online status, and polls", "Disappearing messages, online status, and polls", "Media captions,
+disappearing messages, online status, and polls", "Push notifications and disappearing messages",
+"Push notifications, delete messages, and start a new chat", "Start a new chat, disappearing
+messages, online status, and polls", "Start a new chat, online status, and polls", "Edit messages,
+typing indicators, and polls", "Start a new chat and online status"
+
 ---
 
 ## 2. Backend services

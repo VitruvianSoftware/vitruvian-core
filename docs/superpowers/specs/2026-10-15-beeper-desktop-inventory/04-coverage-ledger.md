@@ -1,6 +1,6 @@
 # Coverage ledger: how we know the spec isn't missing anything
 
-**Result:** every checklist item the app itself provides is accounted for in the spec. The one exception is the 18 behaviours found in the last check, which are written up in [05-gap-addendum.md](05-gap-addendum.md) and not yet merged into files 01–03.
+**Result:** every checklist item the app itself provides is accounted for in spec files 01–03. That includes the 18 behaviours found by the final UI-text check, which have been merged into their sections. Each is marked "(added from the UI-text check)".
 
 "Accounted for" doesn't mean "seen working". The confidence of each item is in the spec text (Observed or Inferred), and the known gaps are listed in the [README](README.md#known-gaps-not-yet-covered).
 
@@ -31,9 +31,23 @@ A string doesn't need to appear word for word in the spec; describing the behavi
 | Paraphrased | 772 | The behaviour is described in the spec in other words |
 | Detail | 520 | A small message (error, toast, confirmation, tooltip, plural form) for a feature already in the spec |
 | Noise | 77 | Units, weekday names, alt text, generic words |
-| **Gap** | **85** | Behaviour the spec didn't describe. Grouped into **18 features** in [05](05-gap-addendum.md). |
+| **Gap** | **85** | Behaviour the spec didn't describe at first. Grouped into **18 features**, now merged into 01–03 (search for "added from the UI-text check"). |
 
 1,177 + 772 + 520 + 77 + 85 = 2,631. Nothing is unclassified.
+
+## Borderline classifications
+
+- **"Social Account"** and **"Some of your accounts are still on Beeper’s Cloud"** appear only in
+  the translation table. We found no code that uses them, so we marked them DETAIL with a note. They
+  may belong to a feature that is turned off or was removed.
+- **"Last sent message"** is defined as a search section name, next to "Last archived". The search
+  code never lists it, so we marked it DETAIL rather than GAP.
+- **"thread archived", "notification clicked", "message scheduled"** are labels for local usage
+  counters in the dev-only usage stats view. We marked them NOISE.
+- **X login passcode errors** (for example "Passcode isn't set up for X Chat") suggest the X login
+  also asks for the X Chat passcode. The spec already lists "passcode locked" among the login
+  errors, so we marked them DETAIL. If the passcode is a separate login step, it would belong in
+  03 §1.3 for X.
 
 ## What this method can't catch
 
@@ -49,6 +63,6 @@ The scripts and raw captures live outside the repo, because they include a copy 
 1. Unpack `app.asar` from the installed app.
 2. Pull the component names and the English keys of a translation table out of the renderer bundle.
 3. Relaunch Beeper with `--remote-debugging-port` bound to 127.0.0.1. Capture the settings panes, ⌘J, the Hotkeys pane, and the menu bar (through System Events).
-4. Check each item against files 01–05. Anything not found goes back through the classification step.
+4. Check each item against files 01–03. Anything not found goes back through the classification step.
 
 If the generator gets reused for more than one version, promote it to a proper tool in the repo rather than a scratch script.

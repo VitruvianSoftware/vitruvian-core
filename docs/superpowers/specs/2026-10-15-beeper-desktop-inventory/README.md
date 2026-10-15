@@ -4,7 +4,7 @@ This is a clean-room spec of everything Beeper Desktop does: screens, settings, 
 
 It describes **behaviour**, in our own words. It contains no Beeper code, CSS or assets, and no keys or personal data.
 
-**Status:** inventory complete for the shipped app, with known gaps listed below. Nothing has been built yet.
+**Status:** inventory complete for the shipped app, with known gaps listed below. The 18 behaviours found by the final UI-text check are merged into files 01–03. Nothing has been built yet.
 
 ## How it was made
 
@@ -33,7 +33,6 @@ flowchart LR
 | [02-settings-keyboard-menus.md](02-settings-keyboard-menus.md) | Part A (static): 152 settings, 75 shortcuts, about 130 menu items, 128 commands. Part B (live): what the running app actually shows. |
 | [03-networks-backend-native.md](03-networks-backend-native.md) | The 20+ networks and how each logs in, per-network capabilities, every backend service, feature flags, OS integration, native modules and rebuild risks. |
 | [04-coverage-ledger.md](04-coverage-ledger.md) and [ledger.tsv](ledger.tsv) | Proof of coverage, plus what is still open. |
-| [05-gap-addendum.md](05-gap-addendum.md) | 18 behaviours found by the final UI-text check that files 01–03 don't describe yet: Bridges pane, plan limits, merged-chat network switcher, edit history, disappearing-message timers, and others. Read it alongside 01–03 until it is merged in. |
 
 ## What the app is, in one paragraph
 

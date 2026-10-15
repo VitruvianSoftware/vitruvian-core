@@ -221,10 +221,38 @@ Bindings marked "cannot reassign", flagged off, or disabled are not listed (O). 
 | Integrations approval dialog | When a third-party app requests access: "Approve connection", "Allow sensitive actions" toggle, "Expires in" (1 hour, 1 day, 1 week, 30 days, Never), Decline / Approve | O |
 | **Beeper Plus** | Plan comparison and features (Unlimited Labels, Incognito Mode, AI Voice Note Transcription, Chat Reminders, Send Later, Custom App Icon, unlimited merged chats and accounts, Priority Support) with trial or upgrade buttons | O |
 | **About** | Version and update status: check, download, relaunch, or manual download. "View changelog", "Report a problem", "Privacy", "Legal Notices" | O |
-| **Bridges** | "Cloud Bridges" and "Self-hosted Bridges" lists | O (list fields not traced) |
+| **Bridges** | "Cloud Bridges" and "Self-hosted Bridges" lists. Rows, expanders and menus are described under "Bridges pane contents" below | O |
 | **Browser Extension** | Install link; explains it adds "open in Beeper" shortcuts on Twitter, Messenger, Instagram, LinkedIn, Telegram, Discord and WhatsApp | O |
 | **Secret** (debug) | Debug switches: SDK feature flags, "Report errors to Sentry", "Disable contacts enrichment", "Run in browser tab", "Idle Timeout". Buttons: relaunch, show worker log, show app or SDK database. Per-account error counts | O |
 | **Debug Preferences** | Internal plan/entitlement overview | O / I |
+
+#### Bridges pane contents (added from the UI-text check)
+
+**What it does.** The Bridges pane splits bridges into two lists: cloud bridges and self-hosted
+bridges. If the app has no bridge information yet, it says so. [O]
+
+- **Bridge rows.** Each row shows the network icon, the bridge's current state, and how many
+  accounts run on it. Clicking a row expands it to show when the bridge was created, why it is in its
+  current state, what reported that state (when it wasn't the bridge itself), and any extra details. [O]
+- **Bridge menu.** A "Bridge Actions" button opens a menu with these items: [O]
+  - Open the bridge's bot room. If no bot room exists yet, the item creates one, and the new room's
+    ID is copied for you. If the room can't be found, you are told to create it again.
+  - Copy the bot room ID, copy the bridge ID, or copy all the bridge's details as JSON.
+  - "Experimental: Add an account" through this bridge.
+  - Delete the bridge, after a confirm. Beeper's own built-in chat bridge can't be deleted.
+- **Account rows.** Under each bridge is a list of the accounts it runs. Each one shows the account's
+  name on the network (or "No Profile" if it has none), its raw details, and its ID. If the account
+  has an error, the row shows the error and the reason for it. [O]
+- **Account menu.** Each account row has its own menu: open that account's settings, copy the
+  account ID, or copy the account's ID on the network itself. [O]
+- The bot room is a chat with the bridge's bot. [I] It is probably used to send the bridge text
+  commands, as in standard Matrix bridges.
+
+**Evidence:** "%d account", "Bridge Actions", "Open bot room", "Create a bot room", "Creating bot
+room...", "Bot room created! Room ID is copied to clipboard.", "Copy bot room ID", "Bot room ID
+copied to clipboard!", "We couldn't find the bot room. Please try creating it again.", "Copy bridge
+ID", "Copy bridge info as JSON", "Delete bridge", "Created:", "Reason:", "Source:", "Info:",
+"No Profile", "No bridge data available", "Copy Remote ID", "Remote ID copied to clipboard!"
 
 ---
 
@@ -556,7 +584,7 @@ Image-address, video-address, "Save Link", "Select All" and "Services" items exi
 - The commands supplied by the subscription store at the top of the command bar.
 - The exact display text of the app-language options (only the locale codes were confirmed).
 - The network-specific toggles on each Account pane, which come from each network's own definition at run time.
-- When the Bridges pane is shown, and the columns of its list.
+- When the Bridges pane is shown. Its contents are now described under "Bridges pane contents" in §1.7.
 - The Edit menu contents (assumed from Electron defaults).
 - The code that triggers "/a" AI reply suggestions.
 - The exact zoom percentage per slider step.

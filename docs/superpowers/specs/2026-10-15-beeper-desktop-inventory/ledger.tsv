@@ -55,7 +55,7 @@ component	BrandStopButton.tsx	01	covered
 component	BrandTypingIndicator.tsx	01	covered
 component	BrandUserHoverCard.tsx	01	covered
 component	BrandVideo.tsx	01	covered
-component	BridgeV2AuthComponent.tsx	01,05	covered
+component	BridgeV2AuthComponent.tsx	01	covered
 component	BridgeV2Instructions.tsx	01	covered
 component	BrowserExtPrefsSubView.tsx	01	covered
 component	BrowserSessionImportCard.tsx	01	covered
@@ -153,7 +153,7 @@ component	MembershipGrouper.tsx	01	covered
 component	MergeSuggestionNetworkIcons.tsx	01	covered
 component	MergedChatEditor.tsx	01	covered
 component	MessageContent.tsx	01	covered
-component	MessageEditHistory.tsx	01,05	covered
+component	MessageEditHistory.tsx	01	covered
 component	MessageErrorTooltip.tsx	01	covered
 component	MessageIFrame.tsx	01	covered
 component	MessageList.tsx	01	covered
@@ -433,7 +433,7 @@ component	waves.tsx	01	covered
 component	weekend.tsx	01	covered
 component	wine_bar.tsx	01	covered
 component	with-assets.tsx	01	covered
-command	Chats	01,02,03,05	covered
+command	Chats	01,02,03,04	covered
 command	Search chats	01,02	covered
 command	Merge chats	01,02	covered
 command	Open recently viewed chats	02	covered
@@ -442,7 +442,7 @@ command	Archive all chats older than a week	01,02	covered
 command	Archive all read chats	01,02	covered
 command	Mark all chats as read	01,02	covered
 command	Next Chat	01,02	covered
-command	Commands	01,02,03,05	covered
+command	Commands	01,02,03,04	covered
 command	Create new chat	01,02	covered
 command	Create new group	01,02	covered
 command	Join a Matrix room	01,02	covered
@@ -457,43 +457,43 @@ command	Email feedback	01,02	covered
 command	Logout of your Beeper account	02	covered
 command	View subscription details / billing history / edit payment methods	02	covered
 command	Lock app	01,02	covered
-command	Report a problem	01,02,03,05	covered
+command	Report a problem	01,02,03	covered
 command	Filter Chats	01,02	covered
 command	Filter by folder type	02	covered
 command	Filter by type	01,02	covered
 command	Filter by account	01,02	covered
-command	Settings	01,02,03,05	covered
+command	Settings	01,02,03,04	covered
 command	Add Account	01,02,03	covered
-command	Account	01,02,03,05	covered
-command	Accounts	01,02,03,05	covered
-command	Beeper Plus	01,02,05	covered
+command	Account	01,02,03,04	covered
+command	Accounts	01,02,03,04	covered
+command	Beeper Plus	01,02	covered
 command	General	01,02	covered
-command	AI	01,02,03,05	covered
+command	AI	01,02,03,04	covered
 command	Appearance	01,02	covered
-command	Notifications	01,02,03,05	covered
+command	Notifications	01,02,03	covered
 command	Secret	01,02	covered
 command	Browser Extension	01,02,03	covered
 command	Mobile Apps	01,02	covered
-command	Hotkeys	01,02	covered
-command	Storage	01,02,03	covered
+command	Hotkeys	01,02,04	covered
+command	Storage	01,02,03,04	covered
 command	Quick Replies	01,02,03	covered
-command	Bridges	01,02,03,05	covered
-command	Devices	01,02,03	covered
-command	About	01,02,03,05	covered
-command	Help	01,02,03,05	covered
-command	Profile	01,02,03,05	covered
+command	Bridges	01,02,03	covered
+command	Devices	01,02,03,04	covered
+command	About	01,02,03	covered
+command	Help	01,02,03,04	covered
+command	Profile	01,02,03	covered
 command	Debug Preferences	01,02	covered
 command	Integrations	01,02	covered
 command	Turn on incognito mode	02	covered
-command	Window	01,02,03,05	covered
-command	Media viewer	01,02,03,05	covered
+command	Window	01,02,03,04	covered
+command	Media viewer	01,02,03	covered
 command	Open space in new window	01,02	covered
 command	Maximize/unmaximize	01,02	covered
-command	View	01,02,03,05	covered
+command	View	01,02,03,04	covered
 command	Zoom in	01,02	covered
 command	Zoom out	01,02	covered
 command	Reset zoom	02	covered
-command	UI	01,02,03,05	covered
+command	UI	01,02,03,04	covered
 command	Set theme to light mode	02	covered
 command	Set theme to dark mode	01,02	covered
 command	Toggle chat selection mode	01,02	covered
@@ -509,7 +509,7 @@ command	Open console	02	covered
 command	Open Data Explorer	01,02	covered
 hotkey	Chat: Archive All Read	01,02	covered
 hotkey	Chat: Send File	01,02	covered
-hotkey	Chat: Start New	01,02,03,05	covered
+hotkey	Chat: Start New	01,02,03	covered
 hotkey	Chat: Toggle Archive	01,02	covered
 hotkey	Chat: Toggle Mark As Read	01,02	covered
 hotkey	Chat: Toggle Mute	01,02	covered
@@ -525,31 +525,31 @@ hotkey	Select Next Unread Chat	01,02	covered
 hotkey	Select Previous Chat	02	covered
 hotkey	Switch First 9 Chats Modifier	01,02	covered
 hotkey	Toggle Chat Info	01,02	covered
-hotkey	Command Bar	01,02,03,05	covered
+hotkey	Command Bar	01,02,03	covered
 hotkey	Cycle Filters	01,02	covered
 hotkey	Filter By Account	01,02	covered
-hotkey	Filter: Unread	01,02,03,05	covered
+hotkey	Filter: Unread	01,02,03	covered
 hotkey	Focus App	01,02	covered
 hotkey	Focus App and Command Bar	01,02	covered
 hotkey	Keyboard Shortcuts	01,02	covered
 hotkey	Minimize To Menu Bar	02,03	covered
 hotkey	Quit App	01,02	covered
 hotkey	Reload App	01,02	covered
-hotkey	Report a Problem	01,02,03,05	covered
+hotkey	Report a Problem	01,02,03	covered
 hotkey	Reset Zoom	02	covered
-hotkey	Search	01,02,03,05	covered
-hotkey	Search: Room	01,02,03,05	covered
+hotkey	Search	01,02,03,04	covered
+hotkey	Search: Room	01,02,03	covered
 hotkey	Select Next Account	02	covered
 hotkey	Select Previous Account	02	covered
 hotkey	Send Feedback	01,02	covered
-hotkey	Settings	01,02,03,05	covered
+hotkey	Settings	01,02,03,04	covered
 hotkey	Switch First 9 Spaces Modifier	01,02	covered
 hotkey	Toggle Sidebar	01,02	covered
 hotkey	Toggle Space Bar	01,02	covered
 hotkey	Zoom In	01,02	covered
 hotkey	Zoom Out	01,02	covered
 hotkey	Download Attachments	01,02	covered
-hotkey	Message: Edit	01,02,03,05	covered
+hotkey	Message: Edit	01,02,03	covered
 hotkey	Message: Forward	01,02,03	covered
 hotkey	Message: Open First Link	01,02	covered
 hotkey	Message: Quick React	01,02	covered
@@ -586,7 +586,7 @@ setting:appearance	Load external embeds automatically	01,02	covered
 setting:appearance	Show incognito mode indicator	02	covered
 setting:appearance	Show quick reactions Use my most frequent emoji Custom 👍 ❤️ 	01,02	covered
 setting:appearance	Use my most frequent emoji	01,02	covered
-setting:appearance	Custom 👍 ❤️ 😂	01,02,03,05	covered
+setting:appearance	Custom 👍 ❤️ 😂	01,02,03	covered
 setting:appearance	Quick reaction emoji ❤️	01,02	covered
 setting:appearance	Show reactions when a message is selected	01,02	covered
 setting:appearance	Show feedback widget	01,02	covered
@@ -609,7 +609,7 @@ setting:general	Default for remind later	02	covered
 setting:general	Archive after setting reminder on chat	02	covered
 setting:general	Mark unread chats as read on archive	01,02	covered
 setting:general	After archive	01,02	covered
-setting:general	Archive	01,02,03,05	covered
+setting:general	Archive	01,02,03,04	covered
 setting:general	After mark as read/unread	01,02	covered
 setting:general	On double-clicking a message	01,02	covered
 setting:general	Allow undo send (⌘ Z) for	02	covered
@@ -636,7 +636,7 @@ setting:general	Time Format	01,02	covered
 setting:general	Share Analytics	01,02	covered
 setting:integrations	Allow connections	01,02	covered
 setting:integrations	Claude Desktop	02,03	covered
-setting:integrations	Cursor	01,02,03,05	covered
+setting:integrations	Cursor	01,02,03	covered
 setting:integrations	VS Code	02,03	covered
 setting:integrations	Raycast	01,02,03	covered
 setting:integrations	Install to	02	covered
@@ -653,10 +653,10 @@ setting:notifications	Delay notifications for	01,02	covered
 setting:notifications	Repeat notification if still unread after	01,02	covered
 menu:Beeper	About Beeper	02	covered
 menu:Beeper	Check for Updates…	01,02	covered
-menu:Beeper	Accounts…	01,02,03,05	covered
+menu:Beeper	Accounts…	01,02,03,04	covered
 menu:Beeper	Preferences	01,02	covered
-menu:Beeper	Command Bar…	01,02,03,05	covered
-menu:Beeper	Search…	01,02,03,05	covered
+menu:Beeper	Command Bar…	01,02,03	covered
+menu:Beeper	Search…	01,02,03,04	covered
 menu:Beeper	Services	02,03	covered
 menu:Beeper	Hide Beeper	02	covered
 menu:Beeper	Hide Others	02	covered
@@ -664,14 +664,14 @@ menu:Beeper	Show All	02	covered
 menu:Beeper	Lock App	01,02	covered
 menu:Beeper	Logout of Beeper…	02	covered
 menu:Beeper	Quit Beeper	02	covered
-menu:File	Open…	01,02,03,05	covered
-menu:File	New Chat	01,02,03,05	covered
+menu:File	Open…	01,02,03	covered
+menu:File	New Chat	01,02,03	covered
 menu:File	Close Window	01,02	covered
 menu:File	Close All	02	covered
 menu:File	Open Chat in New Window	01,02	covered
 menu:View	Hide Space Bar	01,02	covered
 menu:View	Hide Sidebar	01,02	covered
-menu:Help	Report a Problem	01,02,03,05	covered
+menu:Help	Report a Problem	01,02,03	covered
 menu:Help	Open Beeper Help	02	covered
 menu:Help	Open Beeper.com	02	covered
 menu:Help	Follow @Beeper on X	02	covered
