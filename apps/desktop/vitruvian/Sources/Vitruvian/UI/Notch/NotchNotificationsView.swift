@@ -91,8 +91,20 @@ package struct NotchNotificationPage: View {
 /// How the list moves when a stack opens or closes, or a row goes: quick and
 /// smooth, and not at all with Reduce Motion on.
 package enum NotchNotificationListMotion {
+    /// How long a stack takes to open or close.
+    package static let duration: Double = 0.22
+    /// How long a closed stack's one-line summary takes to go as it opens:
+    /// well inside `duration`, so its first message never slides in over the
+    /// summary while it is still fading (it did in 3.53.0).
+    package static let summaryFade: Double = 0.06
+
     package static func animation(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .smooth(duration: 0.22)
+        reduceMotion ? nil : .smooth(duration: duration)
+    }
+
+    /// The summary and time a closed stack shows, leaving and coming back.
+    package static func summaryTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .identity : .opacity.animation(.easeOut(duration: summaryFade))
     }
 
     /// A message in a stack fades in just under the stack's row. With Reduce
@@ -214,6 +226,7 @@ private struct NotchNotificationGroupRow: View {
     let text: NotchNotificationStrings
     let motion: Animation?
     let toggle: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 4) {
@@ -226,11 +239,15 @@ private struct NotchNotificationGroupRow: View {
                             NotchNotificationAppName(app: group.app, text: text)
                             NotchNotificationCount(count: group.count)
                             Spacer(minLength: 4)
-                            if !expanded { NotchNotificationTime(date: group.newest.received) }
+                            if !expanded {
+                                NotchNotificationTime(date: group.newest.received)
+                                    .transition(NotchNotificationListMotion.summaryTransition(reduceMotion: reduceMotion))
+                            }
                         }
                         if !expanded {
                             NotchNotificationLine(title: group.newest.content.compactTitle,
                                                   text: group.newest.content.compactDetail, unavailable: nil)
+                                .transition(NotchNotificationListMotion.summaryTransition(reduceMotion: reduceMotion))
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -258,6 +275,9 @@ private struct NotchNotificationGroupRow: View {
         .frame(height: expanded ? NotchNotificationListLayout.openGroupHeight : NotchNotificationListLayout.rowHeight)
         .background(.white.opacity(expanded ? 0.03 : 0.06),
                     in: RoundedRectangle(cornerRadius: NotchNotificationListLayout.cornerRadius, style: .continuous))
+        // The row shrinks as it opens; nothing it held may spill over the
+        // messages sliding in under it.
+        .clipShape(RoundedRectangle(cornerRadius: NotchNotificationListLayout.cornerRadius, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 }

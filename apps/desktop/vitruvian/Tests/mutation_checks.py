@@ -1483,9 +1483,14 @@ MUTATIONS = [
      "dismissing a stack clears that app's messages and no other app's"),
     ("a stack opens with motion under Reduce Motion", "notch",
      "Sources/Vitruvian/UI/Notch/NotchNotificationsView.swift",
-     "        reduceMotion ? nil : .smooth(duration: 0.22)\n",
-     "        .smooth(duration: 0.22)\n",
+     "        reduceMotion ? nil : .smooth(duration: duration)\n",
+     "        .smooth(duration: duration)\n",
      "a stack opens and closes with a quick animation, and without one under Reduce Motion"),
+    ("an opening stack's summary fades as slowly as the stack opens", "notch",
+     "Sources/Vitruvian/UI/Notch/NotchNotificationsView.swift",
+     "    package static let summaryFade: Double = 0.06\n",
+     "    package static let summaryFade: Double = 0.22\n",
+     "an opening stack's summary is gone well before its first message slides in"),
 ]
 
 
