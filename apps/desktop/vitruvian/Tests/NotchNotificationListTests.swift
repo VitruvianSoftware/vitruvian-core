@@ -156,6 +156,9 @@ enum NotchNotificationListTests {
         suite.expect(NotchNotificationListMotion.animation(reduceMotion: true) == nil
                      && NotchNotificationListMotion.animation(reduceMotion: false) != nil,
                      "a stack opens and closes with a quick animation, and without one under Reduce Motion")
+        suite.expect(NotchNotificationListMotion.summaryFade > 0
+                     && NotchNotificationListMotion.summaryFade * 3 <= NotchNotificationListMotion.duration,
+                     "an opening stack's summary is gone well before its first message slides in")
 
         // Density: the list fits about twice what the cards do.
         let geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1512, height: 982), safeAreaTop: 32,
