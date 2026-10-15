@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: proposed, 2026-10-15. Not started.** James approves the design first. It starts from `main` after pull request #3341 (the live-monitor work) merges, and builds on it: design section 9.
+**Status: approved 2026-10-15, with question 1 answered yes (so Task 18 is in). In progress.** It starts from `main` after pull request #3341 (the live-monitor work), which merged on 2026-10-15, and builds on it: design section 9.
 
 **Goal:** the HomeSpeaker extension (the Vitruvian tool in `apps/desktop/home-speaker`) does everything the standalone app does without the app being installed. The app keeps working on its own, unchanged. When both are installed, whichever the person opens first asks which to use. It offers to copy settings and sign-ins across, quits the other, and offers to switch it off or move it to the Trash.
 
