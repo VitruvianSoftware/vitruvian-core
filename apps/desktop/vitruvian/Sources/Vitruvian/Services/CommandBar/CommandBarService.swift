@@ -3117,7 +3117,7 @@ package final class CommandBarService: ObservableObject {
             guard let self, let panel, event.window === panel else { return event }
             // A key while the drop still falls shows the bar at once, before
             // the field and its search take the key. Escape closes it instead.
-            if self.presentation == .droplet, event.keyCode != 53 { CommandBarDroplet.shared.hurry() }
+            CommandBarDroplet.shared.typed(keyCode: event.keyCode, presentation: self.presentation)
 
             // While a language is composing a character (Japanese, Korean,
             // Chinese, and dead keys for accents) Return confirms the

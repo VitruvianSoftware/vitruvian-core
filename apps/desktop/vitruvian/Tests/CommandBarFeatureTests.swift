@@ -28,6 +28,7 @@ enum CommandBarFeatureTests {
         CommandBarTerminationContract.run(suite)
         CommandBarAppSortContract.run(suite)
         CommandBarCatalogRowContract.run(suite)
+        CommandBarDropletContract.run(suite)
         // Upstream #1978: the Command Bar lists processes in the Kill Process
         // page's sort order (KillProcessService.sortedEntries), not raw order.
         do {
@@ -2573,6 +2574,100 @@ enum CommandBarAppSortContract {
                                             shortcuts: ["safari": same, "mail": same], pins: [])
         suite.expect(tied.prefix(2).map(\.key) == ["mail", "safari"],
                      "equal shortcuts fall back to the name in either direction")
+    }
+}
+
+/// The drop that carries the bar out of the island answers the person while
+/// it falls: typing hurries it, and closing it sends it back up the way it
+/// came instead of making it vanish. The real drop runs on a clock the test
+/// moves, with the island stood in for and each motion ended by hand.
+enum CommandBarDropletContract {
+    /// The island and Core Animation, as the drop reaches them.
+    final class DropRig {
+        var now: CFTimeInterval = 1_000
+        /// What each motion runs once it ends, waiting for the test to end it.
+        var pending: [@MainActor @Sendable () -> Void] = []
+        /// The companion leaving the island (true), or coming home with a face.
+        var trips: [(away: Bool, homecoming: NotchMascotMood?)] = []
+        /// How long the bar faded in over, each time it was shown.
+        var reveals: [TimeInterval] = []
+        /// The drop's windows, as they were put under the island.
+        var windows: [NSWindow] = []
+
+        var environment: CommandBarDroplet.Environment {
+            CommandBarDroplet.Environment(
+                now: { self.now },
+                whenDone: { self.pending.append($0) },
+                reducesMotion: { false },
+                dropSource: { nil },
+                setMascotInBar: { self.trips.append((away: $0, homecoming: $1)) },
+                orderBelowIsland: { window in
+                    if !self.windows.contains(where: { $0 === window }) { self.windows.append(window) }
+                    window.orderFrontRegardless()
+                })
+        }
+
+        /// Ends every motion started so far, and the ones they start.
+        func finish() {
+            while !pending.isEmpty { pending.removeFirst()() }
+        }
+
+        var onScreen: Bool { !windows.isEmpty && windows.allSatisfy { $0.isVisible } }
+    }
+
+    static func run(_ suite: TestSuite) {
+        // On screen, from the bottom left: the island at the top, the bar below it.
+        let island = CGRect(x: 600, y: 1_100, width: 200, height: 32)
+        let bar = CGRect(x: 400, y: 680, width: 600, height: 380)
+        let look = NotchMascotLook.standard
+        let hurried = CommandBarDropletMotion.hurriedReveal
+        /// A drop partway down: it takes more than 0.15 s to land.
+        func falling(_ rig: DropRig) -> CommandBarDroplet {
+            let droplet = CommandBarDroplet(environment: rig.environment)
+            droplet.drop(from: island, into: bar, look: look) { rig.reveals.append($0) }
+            rig.now += 0.08
+            return droplet
+        }
+
+        // A key (A, key code 0) reaching the bar while its drop falls.
+        let key = DropRig()
+        let keyed = falling(key)
+        keyed.typed(keyCode: 0, presentation: .droplet)
+        suite.expect(key.reveals == [hurried],
+                     "typing while the drop falls hurries it: the bar shows at once and fades in over the hurried reveal")
+        key.finish()
+        suite.expect(key.reveals == [hurried] && !key.windows.isEmpty && !key.onScreen,
+                     "a hurried drop shows the bar once: the fall it cut short reveals nothing more, and the drop goes")
+        keyed.cancel()
+
+        // Text reaching the field, as the bar's view reports it.
+        let text = DropRig()
+        let written = falling(text)
+        written.typed(keyCode: nil, presentation: .droplet)
+        suite.expect(text.reveals == [hurried], "text reaching the field while the drop falls hurries it too")
+        written.cancel()
+
+        let escape = DropRig()
+        let left = falling(escape)
+        left.typed(keyCode: 53, presentation: .droplet)
+        left.typed(keyCode: 0, presentation: .window)
+        left.typed(keyCode: 0, presentation: .island)
+        suite.expect(escape.reveals.isEmpty, "Escape, or a key to a bar that did not drop, hurries nothing")
+        escape.finish()
+        suite.expect(escape.reveals == [0], "left alone, the drop lands and the bar takes its place as is")
+        left.cancel()
+
+        // Closed while it falls: the bar's own window is already gone, and the drop rises.
+        let closed = DropRig()
+        let rising = falling(closed)
+        rising.retract(from: bar, look: look, mood: .wink)
+        suite.expect(closed.trips.count == 1 && closed.onScreen,
+                     "closing a drop that still falls rewinds it before anything cancels it: it stays to rise, and the companion is not home yet")
+        closed.finish()
+        suite.expect(closed.trips.count == 2 && !closed.trips[1].away && closed.trips[1].homecoming == .wink
+                     && closed.reveals.isEmpty && !closed.onScreen,
+                     "a rewound drop never shows the bar, and brings the companion home with its farewell once it has risen")
+        rising.cancel()
     }
 }
 

@@ -323,6 +323,8 @@ final class RecordingIslandHost: NotchIslandHost {
     private(set) var fileDropActions: NotchFileDropActions?
     /// Runs as each present arrives, with its size.
     var onPresent: ((CGSize) -> Void)?
+    /// Whether each end of the companion's stand-in faded it out, in order.
+    var bridgeEnds: [Bool] = []
 
     init(geometry: NotchGeometry, size: CGSize) {
         frame = geometry.frame(for: size)
@@ -374,6 +376,7 @@ final class RecordingIslandHost: NotchIslandHost {
         panel.orderOut(nil)
     }
     func finishDeparture() { departsContent = false }
+    func endMascotBridge(fading: Bool) { bridgeEnds.append(fading) }
     func whenSettled(_ action: @escaping @MainActor () -> Void) { action() }
     func close() {
         closed = true

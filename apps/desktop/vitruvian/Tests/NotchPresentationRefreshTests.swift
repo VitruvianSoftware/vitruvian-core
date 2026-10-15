@@ -459,6 +459,36 @@ enum NotchPresentationRefreshContract {
                      "an activity taking the resting companion's place tells it once to fade out ahead of the strip")
         suite.expect(arrival(reduceMotion: true).first == 0 && arrival(activity: false).first == 0,
                      "Reduce Motion or nothing arriving leaves it where it rests")
+
+        // A reaction asked for as the activity arrives keeps it where it
+        // rested, to react over the strip coming in.
+        defaults[Preferences.notchMascotReactions] = true
+        defer { defaults.removeValue(for: Preferences.notchMascotReactions) }
+        let lingering = island()
+        lingering.island.refreshPresentation(animated: false)
+        yields.value = 0
+        lingering.services.timerSession = NotchTimerSession(anchor: lingering.services.timerNow + 300)
+        lingering.island.reactMascot(.celebrate)
+        let lingers = lingering.island.mascotLingers
+        lingering.island.refreshPresentation()
+        suite.expect(lingers && yields.value == 0,
+                     "a companion staying to react is not told to fade out ahead of the strip"
+                         + " (lingers: \(lingers), yields: \(yields.value))")
+
+        // Closed around it, the stand-in heads for where it rests. It stays
+        // while that place is free, and fades out once something else takes it.
+        let bridged = island()
+        bridged.island.open()
+        bridged.island.collapse()
+        bridged.host?.bridgeEnds = []
+        bridged.island.refreshPresentation()
+        let kept = bridged.host?.bridgeEnds.isEmpty == true && bridged.island.mascotBridging
+        bridged.services.timerSession = NotchTimerSession(anchor: bridged.services.timerNow + 300)
+        bridged.island.refreshPresentation()
+        bridged.island.refreshPresentation()
+        suite.expect(kept && bridged.host?.bridgeEnds == [true] && !bridged.island.mascotBridging,
+                     "a stand-in still headed for its place stays, and one whose place went to something else fades out once"
+                         + " (kept: \(kept), ends: \(bridged.host?.bridgeEnds ?? []))")
     }
 
     private static func compactMusicDepartureChecks(_ suite: TestSuite) {

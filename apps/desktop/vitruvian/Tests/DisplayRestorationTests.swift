@@ -78,6 +78,31 @@ enum DisplayRestorationTests {
                      "the last switch-on clears both repair records")
         desk.tearDown()
 
+        // The transaction takes the connection with it, and with it the only
+        // way to tell which monitor was behind the number. What is saved when
+        // it runs is all a crash or a forced quit at that moment leaves.
+        (desk, service) = Self.desk()
+        var offAtTransaction: [Int]?
+        var identitiesAtTransaction: [String: String]?
+        desk.onConfigure = { id, enabled in
+            guard id == 2, !enabled else { return }
+            offAtTransaction = desk.defaults.array(forKey: DefaultsKey.displaysSwitchedOff) as? [Int] ?? []
+            identitiesAtTransaction = desk.defaults.dictionary(
+                forKey: DefaultsKey.displaysSwitchedOffFingerprints) as? [String: String] ?? [:]
+            desk.display(2).fingerprint = "0:0:0"
+        }
+        tap(desk, service, 2)
+        desk.onConfigure = nil
+        suite.expect(offAtTransaction == [2] && identitiesAtTransaction == ["2": "monitor-2"],
+                     "the original display identity reaches preferences before the disable transaction")
+        desk.display(2).fingerprint = "monitor-9"
+        desk.configurations = []
+        service.restoreDisplaysBeforeTermination()
+        desk.drain()
+        suite.expect(desk.configurations.isEmpty && switchedOff(desk).isEmpty,
+                     "the disabled monitor's identity is captured before its connection disappears")
+        desk.tearDown()
+
         // Sleep or an input change can read the switched-off monitor as
         // active for a moment; its row and its recovery stay.
         (desk, service) = Self.desk()
@@ -205,6 +230,22 @@ enum DisplayRestorationTests {
         suite.expect(desk.configurations.count == before && switchedOff(desk).isEmpty && savedIdentities(desk).isEmpty,
                      "a number that wakes behind another monitor is retired, not switched on")
         withExtendedLifetime(service) {}
+        desk.tearDown()
+
+        // A wake retry is waiting when the monitor comes back by itself, and
+        // the person switches it off before the retry runs.
+        (desk, service) = idle(saved: "monitor-2")
+        service.start()
+        desk.drain()
+        plug(desk, 2, in: true)
+        wake(desk)
+        desk.configureSucceeds = true
+        let beforeDisable = desk.configurations
+        tap(desk, service, 2)
+        desk.runDelayed()
+        suite.expect(desk.configurations == beforeDisable + ["off:2"] && !desk.isWatchingLid
+                     && switchedOff(desk) == [2] && savedIdentities(desk) == ["2": "monitor-2"],
+                     "an explicit disable cancels a pending wake enable and keeps the monitor off")
         desk.tearDown()
 
         // A record from before identities were saved is switched on by number.
