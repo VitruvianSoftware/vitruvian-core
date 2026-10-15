@@ -1334,6 +1334,17 @@ MUTATIONS = [
      "        if falling, !reducesMotion, rewind(homecoming: mood) { return }\n        let unseen = falling\n        cancel()\n",
      "        let unseen = falling\n        cancel()\n        if unseen, !reducesMotion, rewind(homecoming: mood) { return }\n",
      "closing a drop that still falls rewinds it before anything cancels it: it stays to rise, and the companion is not home yet"),
+    ("a failed save of off lets the fixed Space order's recovery go", "spaces-order",
+     "Sources/Vitruvian/Services/SpacesOrder/SpacesOrderHold.swift",
+     "            guard persisted else { return }\n",
+     "",
+     "failed off persistence and a reentrant sync cannot discard recovery"),
+    ("a superseded Space order reconcile reads the Dock's setting", "spaces-order",
+     "Sources/Vitruvian/Services/SpacesOrder/SpacesOrderHold.swift",
+     "    private func reconcileOnQueue(wanted: Bool, generation: UInt64) -> Bool {\n"
+     "        guard generation == currentRequest() else { return false }\n",
+     "    private func reconcileOnQueue(wanted: Bool, generation: UInt64) -> Bool {\n",
+     "a reconcile superseded before admission returns false without system work"),
 ]
 
 

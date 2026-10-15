@@ -209,6 +209,45 @@ extension SpacesOrderSystem {
     )
 }
 
+/// Where the hold's work runs. The live one is a serial queue of the hold's
+/// own and the main queue. A test can stop a request after it has taken its
+/// generation and before its work is queued, and choose when the main-thread
+/// toggle publication runs.
+package protocol SpacesOrderScheduler: AnyObject, Sendable {
+    /// Queues work on the hold's serial queue.
+    func async(_ work: @escaping @Sendable () -> Void)
+    /// Runs work on the hold's serial queue and waits for it; at once when
+    /// the caller already runs there.
+    func sync<T>(_ work: () -> T) -> T
+    /// Hands work to the main thread.
+    func main(_ work: @escaping @Sendable () -> Void)
+}
+
+/// The live scheduler. Serial, so preference writes and a restart never
+/// overlap. Its queue and key are set at init and never change, so it is
+/// `@unchecked Sendable`.
+package final class SpacesOrderQueues: SpacesOrderScheduler, @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces-order")
+    private let queueKey = DispatchSpecificKey<Bool>()
+
+    package init() {
+        queue.setSpecific(key: queueKey, value: true)
+    }
+
+    package func async(_ work: @escaping @Sendable () -> Void) {
+        queue.async(execute: work)
+    }
+
+    package func sync<T>(_ work: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKey) == true { return work() }
+        return queue.sync(execute: work)
+    }
+
+    package func main(_ work: @escaping @Sendable () -> Void) {
+        DispatchQueue.main.async(execute: work)
+    }
+}
+
 /// Keeps Spaces in a fixed order by turning off the Dock's rearranging by
 /// recent use, and puts the user's own setting back when the feature lets go.
 ///
@@ -227,9 +266,8 @@ package final class SpacesOrderHold: @unchecked Sendable {
                                     category: "spaces-order")
     private let defaults: UserDefaults
     private let system: SpacesOrderSystem
-    /// Serial, so preference writes and a restart never overlap.
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces-order")
-    private let queueKey = DispatchSpecificKey<Bool>()
+    /// Its serial queue and the main thread.
+    private let scheduler: any SpacesOrderScheduler
     /// A newer request invalidates a reply before its queued work starts. The
     /// main-thread toggle write can notify observers that request another sync.
     private let requestLock = NSRecursiveLock()
@@ -241,18 +279,19 @@ package final class SpacesOrderHold: @unchecked Sendable {
     /// from different holds must still have different identities.
     private var markerGeneration: UInt64 = 0
     /// Observers for the moments a change made in System Settings shows up:
-    /// a Space change and the app coming forward. Touched only on `queue`.
+    /// a Space change and the app coming forward. Touched only on the
+    /// serial queue.
     private var watchTokens: [(center: NotificationCenter, token: NSObjectProtocol)] = []
 
-    package init(defaults: UserDefaults, system: SpacesOrderSystem) {
+    package init(defaults: UserDefaults, system: SpacesOrderSystem,
+                 scheduler: any SpacesOrderScheduler = SpacesOrderQueues()) {
         self.defaults = defaults
         self.system = system
-        queue.setSpecific(key: queueKey, value: true)
+        self.scheduler = scheduler
     }
 
     private func onQueue<T>(_ work: () -> T) -> T {
-        if DispatchQueue.getSpecific(key: queueKey) == true { return work() }
-        return queue.sync(execute: work)
+        scheduler.sync(work)
     }
 
     private func newRequest() -> UInt64 {
@@ -308,7 +347,7 @@ package final class SpacesOrderHold: @unchecked Sendable {
     /// when the work runs, so rapid toggles settle on the last one.
     package func syncWithPreferences() {
         let generation = newRequest()
-        queue.async { [self] in
+        scheduler.async { [self] in
             guard generation == currentRequest() else { return }
             let wanted = isWanted
             let completed = reconcileOnQueue(wanted: wanted, generation: generation)
@@ -359,7 +398,7 @@ package final class SpacesOrderHold: @unchecked Sendable {
             (center: center, token: center.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
                 guard let self else { return }
                 let generation = self.currentRequest()
-                self.queue.async { [weak self] in
+                self.scheduler.async { [weak self] in
                     guard let self, !self.watchTokens.isEmpty else { return }
                     // Keep watching until the reply is accepted. A newer
                     // request may discard a reply already waiting on main.
@@ -485,7 +524,7 @@ package final class SpacesOrderHold: @unchecked Sendable {
     /// hold. No worker waits for this reply, including during removal.
     private func letGo(generation: UInt64) {
         let owner = markerGeneration
-        DispatchQueue.main.async { [self] in
+        scheduler.main { [self] in
             requestLock.lock()
             defer { requestLock.unlock() }
             guard generation == requestGeneration else { return }
@@ -502,7 +541,7 @@ package final class SpacesOrderHold: @unchecked Sendable {
             if pendingLetGoOwner == owner { pendingLetGoOwner = nil }
             // New syncs requested during publication wait on requestLock at
             // admission. They cannot forget recovery using an unpersisted off.
-            queue.async { [self] in
+            scheduler.async { [self] in
                 if markerGeneration == owner {
                     clearMarker()
                     watch(false)
