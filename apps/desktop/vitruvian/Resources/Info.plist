@@ -79,7 +79,7 @@
 	<key>NSCameraUseContinuityCameraDeviceType</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Vorssaint</string>
+	<string>© 2026 VitruvianSoftware. Portions © 2026 Vorssaint.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

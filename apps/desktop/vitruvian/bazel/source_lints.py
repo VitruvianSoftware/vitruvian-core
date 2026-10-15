@@ -1247,6 +1247,45 @@ def release_scripts_have_no_case_twins(repo):
     return problems
 
 
+def dmg_is_signed_after_compressing(repo):
+    """A downloaded disk image is judged by its own signature before it mounts,
+    so make-dmg.sh signs the compressed image with the Developer ID when one is
+    installed. Signing before `hdiutil convert` would sign the scratch image
+    that is thrown away; 3.51.0 shipped a notarized but unsigned DMG that
+    `spctl -t open` rejected."""
+    text = repo.read_text("Tools/make-dmg.sh")
+    if not text:
+        return ["Tools/make-dmg.sh is readable for the DMG signing check"]
+    sign = 'codesign --force --timestamp --sign "$DEVELOPER_ID" "$OUT"'
+    if sign not in text:
+        return ["make-dmg.sh signs the compressed disk image with the Developer ID"]
+    if text.index(sign) < text.index("hdiutil convert"):
+        return ["make-dmg.sh signs the disk image after compressing it, not before"]
+    if 'codesign --verify --strict "$OUT"' not in text:
+        return ["make-dmg.sh verifies the disk image's signature"]
+    return []
+
+
+def about_box_credits_both_authors(repo):
+    """The About box names VitruvianSoftware, and keeps Vorssaint's notice:
+    the app is built on Vorssaint's GPL-3.0 work (UPSTREAM.md), whose
+    copyright stays visible."""
+    text = repo.read_text("Resources/Info.plist")
+    if not text:
+        return ["Resources/Info.plist is readable for the copyright check"]
+    match = re.search(
+        r"<key>NSHumanReadableCopyright</key>\s*<string>([^<]*)</string>", text
+    )
+    if not match:
+        return ["Info.plist sets NSHumanReadableCopyright"]
+    shown = match.group(1)
+    return [
+        f"the About box's copyright names {who}"
+        for who in ("VitruvianSoftware", "Vorssaint")
+        if who not in shown
+    ]
+
+
 def dmg_detach_accepts_a_mount_that_is_gone(repo):
     """Finder can hold the disk image busy, so the first `hdiutil detach` says
     "Resource busy" and the volume then unmounts on its own. Every later detach
@@ -3095,6 +3134,8 @@ RULES = [
     build_signs_with_a_stable_identity,
     release_scripts_have_no_case_twins,
     dmg_detach_accepts_a_mount_that_is_gone,
+    dmg_is_signed_after_compressing,
+    about_box_credits_both_authors,
     test_types_do_not_shadow_real_ones,
     test_groups_list_what_they_run,
     names_use_the_apps_identifier,
