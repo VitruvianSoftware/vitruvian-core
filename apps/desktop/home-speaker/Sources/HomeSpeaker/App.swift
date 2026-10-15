@@ -27,7 +27,9 @@ struct HomeSpeakerApp: App {
 
     init() {
         // If the user moved the app since installing the hook, re-point it.
-        AgentIntegration.shared.repairHookIfMoved()
+        // Nothing records a choice between the app and the extension yet,
+        // so none is passed.
+        AgentIntegration.shared.repairHookIfMoved(choice: nil)
         // Chat monitoring only runs when the user opted in earlier.
         Task { @MainActor in
             ChatMonitorService.shared.startIfConfigured()

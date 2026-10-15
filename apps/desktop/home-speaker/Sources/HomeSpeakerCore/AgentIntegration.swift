@@ -204,9 +204,28 @@ public struct AgentIntegration {
     /// `Contents/MacOS/HomeSpeaker`, SwiftPM's `.build/*/HomeSpeaker`.
     public static let programName = "HomeSpeaker"
 
-    /// True when `path` is a HomeSpeaker program, the only thing a hook may run.
+    /// The Vitruvian extension's tool id. Its program is
+    /// `…/Tools/<extensionToolID>/bin/tool`.
+    public static let extensionToolID = "dev.vitruvian.homespeaker"
+
+    /// True when `path` is a HomeSpeaker program, the only thing a hook may
+    /// run: a copy of the app's program, or the extension's.
     public static func isHomeSpeakerProgram(_ path: String) -> Bool {
+        isAppProgram(path) || isExtensionProgram(path)
+    }
+
+    /// True when `path` is a copy of the app's program, wherever it is.
+    public static func isAppProgram(_ path: String) -> Bool {
         URL(fileURLWithPath: path).lastPathComponent == programName
+    }
+
+    /// True when `path` is the extension's program, the whole shape
+    /// `/…/Tools/dev.vitruvian.homespeaker/bin/tool`. Any other tool's
+    /// `bin/tool` is not HomeSpeaker.
+    public static func isExtensionProgram(_ path: String) -> Bool {
+        guard path.hasPrefix("/"),
+              let folders = HomeSpeakerProfile.extensionFolders(program: URL(fileURLWithPath: path)) else { return false }
+        return folders.tool.lastPathComponent == extensionToolID
     }
 
     public enum IntegrationError: Error, Equatable, LocalizedError {
@@ -230,6 +249,19 @@ public struct AgentIntegration {
 
     public static func hookCommand(executable: String, agent: CodingAgent = .claudeCode) -> String {
         "\"\(executable)\" \(agent.hookArgument)"
+    }
+
+    /// The program a hook command runs: the quoted path this integration
+    /// writes (`"<program>" --claude-stop-hook`), else the first word (the
+    /// 1.x hook's `python3`).
+    public static func program(ofHookCommand command: String) -> String {
+        let trimmed = command.drop { $0 == " " }
+        if trimmed.first == "\"" {
+            let rest = trimmed.dropFirst()
+            if let close = rest.firstIndex(of: "\"") { return String(rest[..<close]) }
+            return String(rest)
+        }
+        return String(trimmed.prefix { $0 != " " })
     }
 
     // Claude Code conveniences kept for callers and tests.
@@ -328,6 +360,10 @@ public struct AgentIntegration {
         /// A second, independent hook file that also speaks replies. With
         /// ours installed as well, every answer is announced twice.
         public var rivalHook: URL?
+        /// The program the agent's HomeSpeaker hook runs, whichever program
+        /// that is (this one, another copy of the app, the extension's).
+        /// Nil when no HomeSpeaker hook is installed.
+        public var hookProgram: String?
 
         /// Announcements will happen one way or another.
         public var isConfigured: Bool { hook == .installed || configuredByInstruction }
@@ -351,12 +387,16 @@ public struct AgentIntegration {
             return .hook
         }
 
-        public init(agent: CodingAgent, isInstalled: Bool, hook: HookStatus, configuredByInstruction: Bool, rivalHook: URL?) {
+        public init(
+            agent: CodingAgent, isInstalled: Bool, hook: HookStatus, configuredByInstruction: Bool, rivalHook: URL?,
+            hookProgram: String? = nil
+        ) {
             self.agent = agent
             self.isInstalled = isInstalled
             self.hook = hook
             self.configuredByInstruction = configuredByInstruction
             self.rivalHook = rivalHook
+            self.hookProgram = hookProgram
         }
     }
 
@@ -372,7 +412,8 @@ public struct AgentIntegration {
     public func status(of agent: CodingAgent) -> AgentStatus {
         let installed = agent.installMarkers(home: home).contains { fileManager.fileExists(atPath: $0.path) }
         let hook: HookStatus
-        if let cmd = Self.installedHookCommand(in: readSettings(agent), agent: agent) {
+        let command = Self.installedHookCommand(in: readSettings(agent), agent: agent)
+        if let cmd = command {
             hook = cmd == hookCommand(for: agent) ? .installed : .stale(cmd)
         } else {
             hook = .notInstalled
@@ -386,7 +427,8 @@ public struct AgentIntegration {
         }
         return AgentStatus(
             agent: agent, isInstalled: installed, hook: hook,
-            configuredByInstruction: byInstruction, rivalHook: rival)
+            configuredByInstruction: byInstruction, rivalHook: rival,
+            hookProgram: command.map(Self.program(ofHookCommand:)))
     }
 
     /// Appends the broadcast instruction to the agent's instruction file,
@@ -431,14 +473,32 @@ public struct AgentIntegration {
         try fileManager.moveItem(at: url, to: disabled)
     }
 
-    /// Called on every launch: if the user moved the app (Downloads ->
-    /// Applications), point every installed hook at the new location.
-    public func repairHookIfMoved() {
-        // From any program but HomeSpeaker, every installed hook looks
-        // "moved"; repairing it would point it at that program.
-        guard Self.isHomeSpeakerProgram(executablePath) else { return }
+    /// Called on every launch of the app: if the user moved the app
+    /// (Downloads -> Applications), point every installed hook at the new
+    /// location.
+    ///
+    /// A hook is re-pointed at this program when the program it runs does
+    /// not exist, is another copy of the app, or is the extension's program
+    /// while `choice` names the app. A hook that runs the extension's
+    /// existing program is left alone while `choice` is the extension or
+    /// nil (nobody has chosen), so the app never takes the hook back from an
+    /// extension the person set it up for. `extensionProgramExists` answers
+    /// whether the extension's program at a path is there.
+    public func repairHookIfMoved(
+        extensionProgramExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        choice: HomeSpeakerProfile.Door?
+    ) {
+        // Only the app repairs. From any other program every installed hook
+        // looks "moved", and repairing it would point it at that program.
+        guard Self.isAppProgram(executablePath) else { return }
         for agent in CodingAgent.allCases where agent.supportsHook {
-            if case .stale = hookStatus(for: agent) { try? installHook(for: agent) }
+            let status = status(of: agent)
+            guard case .stale = status.hook else { continue }
+            if let program = status.hookProgram, Self.isExtensionProgram(program),
+               extensionProgramExists(program), choice != .app {
+                continue
+            }
+            try? installHook(for: agent)
         }
     }
 

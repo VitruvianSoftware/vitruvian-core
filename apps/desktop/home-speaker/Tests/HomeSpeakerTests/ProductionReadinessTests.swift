@@ -427,7 +427,7 @@ private final class SentinelClass {}
 
         let moved = AgentIntegration(home: dir, executablePath: "/opt/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
         #expect(moved.hookStatus() == .stale(here.hookCommand))
-        moved.repairHookIfMoved()
+        moved.repairHookIfMoved(choice: nil)
         #expect(moved.hookStatus() == .installed)
         #expect(here.hookStatus() == .stale(moved.hookCommand))
 
@@ -518,7 +518,7 @@ private final class SentinelClass {}
         try JSONSerialization.data(withJSONObject: stale).write(to: settings)
         let a = AgentIntegration(home: home, executablePath: exe)
         #expect(a.status(of: .antigravity).hook == .stale("\"/old/HomeSpeaker\" --antigravity-hook"), "the fixture must be visible to the code under test")
-        a.repairHookIfMoved()
+        a.repairHookIfMoved(choice: nil)
         let after = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
         #expect(AgentIntegration.installedHookCommand(in: after ?? [:], agent: .antigravity) == "\"/old/HomeSpeaker\" --antigravity-hook", "left alone")
     }
