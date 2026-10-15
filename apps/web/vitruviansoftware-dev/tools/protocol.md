@@ -95,7 +95,7 @@ app has. These messages are for what is better done through the app.
 | `storage/get`, `storage/set` | request | `storage` | Read or write one of the preferences the manifest declares. Text is at most 4,096 characters; a longer one is refused with -32602. |
 | `log` | notice | | A line for the tool's log in Settings. |
 | `ui/render` | notice | | Version 2. A new page for a panel that is open. |
-| `ui/badge` | request | `notify` | Version 2. A count or a dot beside the tool in the island's Tools area. |
+| `ui/badge` | request | `notify` | Version 2. A count or a dot beside the tool's page in the island's Explore gallery. |
 
 ## Being refused
 

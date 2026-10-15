@@ -161,7 +161,7 @@ class Panel:
         )
 
     def badge(self, count: Optional[int] = None, dot: bool = False) -> None:
-        """Puts a count, or a dot, beside the tool in the island's Tools area:
+        """Puts a count, or a dot, beside the tool's page in the island's Explore gallery:
         ui/badge. With neither, the badge goes. Needs notify in uses. Raises
         a Refusal when the app refuses it."""
         self._tool._app.ui.badge(count=count, dot=True if dot else None)

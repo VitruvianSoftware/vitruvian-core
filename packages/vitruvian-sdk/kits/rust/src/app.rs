@@ -217,7 +217,7 @@ pub struct Ui<'a> {
 }
 
 impl Ui<'_> {
-    /// Puts a count, or a dot, beside the tool in the island's Tools area.
+    /// Puts a count, or a dot, beside the tool's page in the island's Explore gallery.
     /// With neither, the badge goes.
     pub fn badge(self, count: Option<i64>, dot: bool) -> Result<(), ToolError> {
         let params = UiBadgeParams {

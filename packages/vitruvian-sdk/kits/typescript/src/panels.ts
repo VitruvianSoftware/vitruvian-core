@@ -182,7 +182,7 @@ export class Panel {
   }
 
   /**
-   * Puts a count, or a dot, beside the tool in the island's Tools area:
+   * Puts a count, or a dot, beside the tool's page in the island's Explore gallery:
    * `ui/badge`. With neither, the badge goes. Needs `notify` in `uses`.
    * Throws a `Refusal` when the app refuses it.
    */

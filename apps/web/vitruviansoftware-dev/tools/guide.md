@@ -786,7 +786,7 @@ Any request can be refused, at any time. Your tool must cope.
 ## Drawing
 
 A tool of protocol 2 can show the person a page of its own, in three places:
-a page in the island's Tools area, a part of the tool's detail in Settings,
+a page in the island's Explore gallery, a part of the tool's detail in Settings,
 and a window. It describes the page as a list of blocks and the app draws
 them, with its own controls, in the person's light or dark appearance and at
 the island's small size. Or it brings a web page from its own folder, for
