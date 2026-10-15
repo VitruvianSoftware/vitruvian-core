@@ -433,8 +433,9 @@ type UIRenderParams struct {
 	Tree UITree `json:"tree"`
 }
 
-// UIBadgeParams: A count or a dot beside the tool in the island's Tools area.
-// With neither, the badge goes. Needs notify in the manifest's uses.
+// UIBadgeParams: A count or a dot beside the tool's page in the island's
+// Explore gallery. With neither, the badge goes. Needs notify in the
+// manifest's uses.
 type UIBadgeParams struct {
 	// A whole number from 0. 0 is no count.
 	Count *int `json:"count,omitempty"`
@@ -976,7 +977,7 @@ type Panel struct {
 	// title.
 	Title LocalizedText `json:"title"`
 
-	// Where it is shown. island: a page in the island's Tools area.
+	// Where it is shown. island: a page in the island's Explore gallery.
 	// settings: a part of the tool's detail in Settings. window: a window
 	// the app owns, opened when the person asks. One of: island,
 	// settings, window.

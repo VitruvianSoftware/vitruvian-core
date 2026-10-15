@@ -57,7 +57,7 @@ public enum UILimits {
 
 /// Where a panel is shown.
 public enum PanelPlacement: String, CaseIterable, Sendable {
-    /// A page in the island's Tools area. At most one per tool.
+    /// A page in the island's Explore gallery. At most one per tool.
     case island
     /// A part of the tool's detail in Settings. At most one per tool.
     case settings
@@ -669,8 +669,8 @@ public struct UIRenderParams: Codable, Equatable, Sendable {
     }
 }
 
-/// `ui/badge`: a count or a dot beside the tool in the island's Tools
-/// area. With neither, the badge goes.
+/// `ui/badge`: a count or a dot beside the tool's page in the island's
+/// Explore gallery. With neither, the badge goes.
 public struct UIBadgeParams: Codable, Equatable, Sendable {
     public let count: Int?
     public let dot: Bool?

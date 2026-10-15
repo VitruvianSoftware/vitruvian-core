@@ -106,8 +106,8 @@ public final class Panel {
         return tool.note(.uiRender, params)
     }
 
-    /// Puts a count, or a dot, beside the tool in the island's Tools area:
-    /// `ui/badge`. With neither, the badge goes. Needs `notify` in `uses`.
+    /// Puts a count, or a dot, beside the tool's page in the island's Explore
+    /// gallery: `ui/badge`. With neither, the badge goes. Needs `notify` in `uses`.
     public func badge(count: Int? = nil, dot: Bool = false) throws {
         try App(tool: tool).send(UIBadgeParams(count: count, dot: dot ? true : nil))
     }

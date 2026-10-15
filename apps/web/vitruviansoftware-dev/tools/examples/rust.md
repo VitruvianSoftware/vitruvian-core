@@ -45,7 +45,7 @@ fn main() {
 ```
 
 `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the
-folder you add in Vitruvian: Settings, Features, Tools from outside, Add a
+folder you add in Vitruvian: Settings, Features, Extensions & Tools, Add a
 Tool.
 
 ## Drawing
