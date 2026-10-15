@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.14.0...home-speaker-v1.15.0) (2026-10-15)
+
+
+### Features
+
+* **home-speaker:** the tool's Settings gets a Chat & Slack section ([#3329](https://github.com/VitruvianSoftware/vitruvian-core/issues/3329)) ([5a41729](https://github.com/VitruvianSoftware/vitruvian-core/commit/5a417291335be4c2f050a7aeff5eda0516428ec7))
+
 ## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.13.2...home-speaker-v1.14.0) (2026-10-15)
 
 
