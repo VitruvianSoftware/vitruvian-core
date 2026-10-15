@@ -110,7 +110,7 @@ export type Modifier = (typeof MODIFIERS)[number];
 export const PANEL_KINDS = ["blocks", "web"] as const;
 export type PanelKind = (typeof PANEL_KINDS)[number];
 
-/** Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks. */
+/** Where it is shown. island: a page in the island's Explore gallery. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks. */
 export const PANEL_PLACEMENTS = ["island", "settings", "window"] as const;
 export type PanelPlacement = (typeof PANEL_PLACEMENTS)[number];
 
@@ -635,7 +635,7 @@ export function readUIRenderParams(value: unknown, where = "uiRenderParams"): UI
   return read;
 }
 
-/** A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses. */
+/** A count or a dot beside the tool's page in the island's Explore gallery. With neither, the badge goes. Needs notify in the manifest's uses. */
 export interface UIBadgeParams {
   /** A whole number from 0. 0 is no count. */
   count?: number;

@@ -4,6 +4,8 @@
 
 **Goal:** Promote Protocol 2 island panels to first-class Dynamic Island sections in Explore (`NotchSectionsView`) with inline drag-to-reorder and show/hide customization alongside built-in sections, keep `Tools` (`QuickLauncherView`) focused on quick tools and one-shot commands, and unify Settings/Catalog presentation as **Extensions & Tools**.
 
+**Status:** built and shipped by 2026-10-14 (`apps/desktop/vitruvian/UPSTREAM.md`, 2026-10-14 entries for tasks 1–4).
+
 **Gate 1:** aligned 2026-10-14. Every task runs `unit_tests`, `selftest`, `source_lints_test` and `mutation_fixtures_test` before its review, and updates `mutation_checks.py` in the same change as the code a check guards.
 
 **Spec:** [`docs/superpowers/specs/2026-10-14-vitruvian-extensions-and-tools-design.md`](../specs/2026-10-14-vitruvian-extensions-and-tools-design.md)

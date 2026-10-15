@@ -139,6 +139,15 @@
               "title": { "$ref": "#/$defs/localizedText" }
             }
           }
+        },
+        "panels": {
+          "description": "The manifest's panel placements, copied.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 3,
+          "items": {
+            "enum": ["island", "settings", "window"]
+          }
         }
       }
     }

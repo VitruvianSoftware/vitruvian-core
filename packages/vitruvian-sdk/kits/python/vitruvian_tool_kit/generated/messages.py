@@ -132,7 +132,7 @@ PANEL_KINDS: Tuple[str, ...] = ("blocks", "web",)
 
 
 PanelPlacement = Literal["island", "settings", "window"]
-"""Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks."""
+"""Where it is shown. island: a page in the island's Explore gallery. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks."""
 PANEL_PLACEMENTS: Tuple[str, ...] = ("island", "settings", "window",)
 
 
@@ -858,7 +858,7 @@ class UIRenderParams:
 
 @dataclass(frozen=True)
 class UIBadgeParams:
-    """A count or a dot beside the tool in the island's Tools area. With neither, the badge goes. Needs notify in the manifest's uses."""
+    """A count or a dot beside the tool's page in the island's Explore gallery. With neither, the badge goes. Needs notify in the manifest's uses."""
 
     count: Optional[int] = None
     """A whole number from 0. 0 is no count."""

@@ -52,7 +52,7 @@ exec node "$(dirname "$0")/tool.mjs"
 ```
 
 Add the folder in Vitruvian, `node_modules/` and all: Settings, Features,
-Tools from outside, Add a Tool.
+Extensions & Tools, Add a Tool.
 
 ## Drawing
 

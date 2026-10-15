@@ -16,7 +16,7 @@ among fixed options as a pop-up menu: as a setting, or on a page.
 Vitruvian has. The app does not limit or check what it does.
 
 **The app adds a tool from a folder**, in Settings, under Features, in the
-section "Tools from outside". The person picks the folder and agrees on one
+section "Extensions & Tools". The person picks the folder and agrees on one
 sheet.
 
 **To write a tool, read [`docs/writing-a-tool.md`](docs/writing-a-tool.md).**
@@ -108,9 +108,9 @@ That leaves `bazel-bin/packages/vitruvian-sdk/built/hello-swift`,
 and `bin/tool`. Those are the folders to add.
 
 `hello-panel-swift` is a tool of protocol 2. Once it is added, the island's
-Tools page has a tile "Counter" after the quick tools: it opens a page with a
-count, a button that adds to it and a field. Each press puts the count on the
-tile, as a badge. Its detail in Settings has the switch "Count by two",
+Explore gallery has a section "Counter" with a
+count, a button that adds to it and a field. Each press puts the count beside
+the section, as a badge. Its detail in Settings has the switch "Count by two",
 drawn by the app from the tool's own page. The page also has a pop-up menu,
 "Status on the closed island": the tool starts at OK, a green tick beside
 the agent mark on the closed island, and the menu picks among none, OK,

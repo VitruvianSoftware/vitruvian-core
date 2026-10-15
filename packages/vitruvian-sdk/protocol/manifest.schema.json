@@ -199,7 +199,7 @@
           "$ref": "#/$defs/localizedText"
         },
         "placement": {
-          "description": "Where it is shown. island: a page in the island's Tools area. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks.",
+          "description": "Where it is shown. island: a page in the island's Explore gallery. settings: a part of the tool's detail in Settings. window: a window the app owns, opened when the person asks.",
           "enum": ["island", "settings", "window"]
         },
         "icon": {

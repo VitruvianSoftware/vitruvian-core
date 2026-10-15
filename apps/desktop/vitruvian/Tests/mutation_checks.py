@@ -1314,6 +1314,11 @@ MUTATIONS = [
      "        catalogue = offer.catalogue == nil ? nil : strings.agreeCatalog\n",
      "        catalogue = nil\n",
      "a tool from the catalog is asked about on the same sheet, with one more line"),
+    ("a catalog row's pill calls an extension a tool", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExternalToolCatalogueSheet.swift",
+     "                    kindBadge: entry.panels.map { $0.isEmpty ? strings.kindTool : strings.kindExtension },\n",
+     "                    kindBadge: entry.panels.map { _ in strings.kindTool },\n",
+     "each tool is listed with its name, publisher, version, kind pill when its entry carries panels"),
     ("launch waits for the Bluetooth prompt again", "notch",
      "Sources/Vitruvian/Services/Notch/NotchAccessoryService.swift",
      "        bluetoothQueue.async { [weak self] in\n"
