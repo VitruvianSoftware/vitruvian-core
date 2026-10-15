@@ -113,7 +113,7 @@ bazel build --config=macos-app --define=vitruvian_sample_tool=true //apps/deskto
 ```
 
 A tool that runs as its own program is added in Settings, under Features,
-in the section "Tools from outside": choose the tool's folder, read the
+in the section "Extensions & Tools": choose the tool's folder, read the
 sheet, and agree. To try it, choose `packages/vitruvian-sdk/samples/hello-python`,
 or build the two Swift samples with
 `bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders` and

@@ -21,7 +21,7 @@ import VitruvianToolProtocol
 package struct ExternalToolCalls {
     private let tool: ToolID
     private let services: ToolServices
-    /// Puts the tool's badge in the island's Tools area.
+    /// Puts the tool's badge on its section's tile in Explore.
     private let badge: @MainActor (UIBadgeParams) -> Void
     /// Keeps the tool's status for the closed island. What it gives back
     /// is why it would not: the failure the tool is answered with.

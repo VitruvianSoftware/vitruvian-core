@@ -64,7 +64,11 @@ package struct NotchQuickAccessView: View {
             if action == .control(.microphone) { return microphone.isMuted }
             if action == .control(.recording) { return recorder.isRecording }
             if case .module(let module) = action {
-                return !service.showingSections && !service.showingAppPanel && service.selected == module
+                return !service.showingSections && !service.showingAppPanel && service.extensionPage == nil
+                    && service.selected == module
+            }
+            if case .extensionPanel(let tool) = action {
+                return !service.showingSections && service.extensionPage?.tool == tool
             }
             return false
         }()
@@ -223,23 +227,31 @@ package struct NotchQuickAccessDrop: Shape {
 }
 
 extension NotchQuickAction {
-    package var symbol: String {
+    /// The button's SF Symbol. A tool's button draws its island page's,
+    /// from the Services lookup.
+    @MainActor package var symbol: String {
         switch self {
         case .explore: return "square.grid.2x2"
         case .settings: return "gearshape"
         case .pin: return "pin"
         case .module(let module): return module.symbol
         case .control(let item): return item.symbol
+        case .extensionPanel:
+            return NotchExtensionActions.live(language: L10n.shared.language).symbol(self) ?? NotchExtensionActions.fallbackSymbol
         }
     }
 
-    package func title(_ l10n: L10n) -> String {
+    /// The button's title. A tool's button has its island page's title,
+    /// in the tool's words, from the Services lookup.
+    @MainActor package func title(_ l10n: L10n) -> String {
         switch self {
         case .explore: return FeatureStrings.notch(l10n.language).sectionsTitle
         case .settings: return l10n.s.menuSettings
         case .pin: return FeatureStrings.notch(l10n.language).pin
         case .module(let module): return module.title(l10n.language)
         case .control(let item): return item.title(l10n)
+        case .extensionPanel(let tool):
+            return NotchExtensionActions.live(language: l10n.language).title(self) ?? tool.rawValue
         }
     }
 }

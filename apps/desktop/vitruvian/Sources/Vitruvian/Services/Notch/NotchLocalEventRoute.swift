@@ -62,6 +62,12 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
         package var clickedInside: () -> Void
         /// The Command Bar inside the island reads its own keys, Escape included.
         package var showingCommandBar: () -> Bool
+        /// Explore's sections are being moved, hidden and shown.
+        package var editingSections: () -> Bool
+        package var stopEditingSections: () -> Void
+        /// A tool's own page is the island's page, over the Tools page if
+        /// that is the one under it.
+        package var showingToolPage: () -> Bool
 
         package init(panel: @escaping () -> AnyObject?, isComposing: @escaping () -> Bool,
                      fieldTakesEscape: @escaping () -> Bool, isCapturing: @escaping () -> Bool,
@@ -75,7 +81,10 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
                      toolsKey: @escaping (Event, QuickToolsSupport.GridFlow) -> Bool,
                      stepBack: @escaping () -> Void, collapse: @escaping () -> Void,
                      clickedInside: @escaping () -> Void,
-                     showingCommandBar: @escaping () -> Bool = { false }) {
+                     showingCommandBar: @escaping () -> Bool = { false },
+                     editingSections: @escaping () -> Bool = { false },
+                     stopEditingSections: @escaping () -> Void = {},
+                     showingToolPage: @escaping () -> Bool = { false }) {
             self.panel = panel
             self.isComposing = isComposing
             self.fieldTakesEscape = fieldTakesEscape
@@ -98,6 +107,9 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
             self.collapse = collapse
             self.clickedInside = clickedInside
             self.showingCommandBar = showingCommandBar
+            self.editingSections = editingSections
+            self.stopEditingSections = stopEditingSections
+            self.showingToolPage = showingToolPage
         }
     }
 
@@ -133,15 +145,22 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
                 island.select(module)
                 return true
             }
+            let editing = island.showingSections() && island.editingSections()
             if event.keyCode == 53, island.showingSections() {
-                island.toggleSections()
+                // Escape ends editing first; the next one leaves Explore.
+                if editing { island.stopEditingSections() } else { island.toggleSections() }
+                return true
+            }
+            // While editing, Return, Tab and the arrows pick and move nothing.
+            if editing, [36, 76, 48, 123, 124, 125, 126].contains(event.keyCode),
+               modifiers.isEmpty || modifiers == .shift {
                 return true
             }
             if island.sectionKey(event) { return true }
             if island.scratchpadKey(event) { return true }
             if island.clipboardPasteKey(event) { return true }
         }
-        if key, island.selected() == .tools, !island.showingAppPanel(), !island.showingSections() {
+        if key, island.selected() == .tools, !island.showingAppPanel(), !island.showingSections(), !island.showingToolPage() {
             // The rail reads across its rows until it scrolls, in the rows
             // the open page leaves it below its header; the editing grid
             // keeps its own rows.

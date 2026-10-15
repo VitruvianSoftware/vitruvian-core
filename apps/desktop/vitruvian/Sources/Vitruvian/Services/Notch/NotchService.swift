@@ -146,6 +146,9 @@ package final class NotchService: ObservableObject {
         package var restingStatus: @MainActor () -> String?
         /// Fires when `restingStatus` may have changed.
         package var restingStatusChanges: AnyPublisher<Void, Never>
+        /// Fires when a tool's island page may have opened, closed, been
+        /// shown, hidden, or gone with its tool.
+        package var islandPanelChanges: AnyPublisher<Void, Never>
         /// The environments of the island's own parts.
         package var parts: Parts
 
@@ -238,6 +241,7 @@ package final class NotchService: ObservableObject {
                      hasBattery: @escaping @MainActor () -> Bool,
                      restingStatus: @escaping @MainActor () -> String? = { nil },
                      restingStatusChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
+                     islandPanelChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
                      parts: Parts) {
             self.defaults = defaults
             self.makeHost = makeHost
@@ -252,6 +256,7 @@ package final class NotchService: ObservableObject {
             self.hasBattery = hasBattery
             self.restingStatus = restingStatus
             self.restingStatusChanges = restingStatusChanges
+            self.islandPanelChanges = islandPanelChanges
             self.parts = parts
         }
 
@@ -280,6 +285,9 @@ package final class NotchService: ObservableObject {
                 hasBattery: { PowerSampler.hasInternalBattery },
                 restingStatus: { RestingStatus.saidNow(language: L10n.shared.language) },
                 restingStatusChanges: RestingStatus.saidChanges,
+                islandPanelChanges: ToolPanelHost.shared.$island.dropFirst().map { _ in () }
+                    .merge(with: ToolRegistry.shared.$revision.dropFirst().map { _ in () })
+                    .eraseToAnyPublisher(),
                 parts: .system)
         }
     }
@@ -316,11 +324,30 @@ package final class NotchService: ObservableObject {
         collapse()
         NexusAgentService.shared.showQuickPrompt()
     }
-    @Published package private(set) var selected: NotchModule = .controls
+    @Published package private(set) var selected: NotchModule = .controls { didSet { syncCurrentSection() } }
     @Published package private(set) var showingAppPanel = false
     @Published package private(set) var showingSections = false
+    /// Explore shows its sections to move, hide and show, in place of the
+    /// gallery. Only Explore has it: leaving Explore or closing the island
+    /// ends it.
+    @Published package var editingSections = false {
+        didSet {
+            guard editingSections != oldValue else { return }
+            guard expanded, showingSections else { editingSections = false; return }
+            refreshPresentation()
+        }
+    }
     @Published package private(set) var sectionQuery = ""
-    @Published package var highlightedSection: NotchModule? { didSet { revealHighlightedSection() } }
+    @Published package var highlightedSection: NotchSectionItem? { didSet { revealHighlightedSection() } }
+    /// The page the island shows, or shows under Explore: one of its own,
+    /// or a tool's island page.
+    @Published package private(set) var currentSection: NotchSectionItem = .module(.controls)
+    /// The tool's island page shown as the island's page, which the island
+    /// opened; nil while the page is one of the island's own.
+    @Published package private(set) var extensionPage: ToolPanelHost.Key? { didSet { syncCurrentSection() } }
+    /// The tool's page the island closed on, which reopening the last page
+    /// opens again.
+    private var lastExtensionPage: ToolPanelHost.Key?
     /// The gallery's first visible row; the rows above it have stepped away.
     @Published package private(set) var sectionRow = 0
     @Published package private(set) var modules: [NotchModule] = []
@@ -497,7 +524,10 @@ package final class NotchService: ObservableObject {
             || services.keepsCameraPrompt
             || (expanded && !showingSections && selected == .captures && captureContent != nil)
             || (expanded && !showingSections && selected == .tools
-                && (services.activeUtility != nil || services.showsToolPanel || services.editingTools))
+                && (services.activeUtility != nil || services.editingTools))
+            // Dragging a section, or a tool's own page, is work in the island.
+            || (expanded && showingSections && editingSections)
+            || (expanded && !showingSections && services.showsToolPanel)
     }
     /// Up and measuring its display. Settings previews read the island's
     /// size only then.
@@ -812,6 +842,8 @@ package final class NotchService: ObservableObject {
     private let restingStatus: @MainActor () -> String?
     private let restingStatusChanges: AnyPublisher<Void, Never>
     private var restingStatusSubscription: AnyCancellable?
+    private let islandPanelChanges: AnyPublisher<Void, Never>
+    private var islandPanelSubscription: AnyCancellable?
     /// The name the closed island's button was last given.
     private var saidClosedTitle: String?
     /// The environments of the island's parts (`Environment.parts`).
@@ -831,6 +863,7 @@ package final class NotchService: ObservableObject {
         hasBattery = environment.hasBattery
         restingStatus = environment.restingStatus
         restingStatusChanges = environment.restingStatusChanges
+        islandPanelChanges = environment.islandPanelChanges
         parts = environment.parts
     }
 
@@ -1201,8 +1234,15 @@ package final class NotchService: ObservableObject {
     }
 
     package var expandedSize: CGSize {
-        if showingSections {
-            return geometry.sectionPickerSize(count: filteredSections.count)
+        if showingSections, !editingSections {
+            return geometry.sectionPickerSize(count: filteredSectionItems.count)
+        }
+        // The editor and a tool's own page fill the page: every tile of the
+        // editor is in view for dragging, and a tool's page scrolls in it.
+        if (showingSections && editingSections)
+            || (extensionPage != nil && !showingAppPanel && selectedMetric == nil) {
+            return pageSize(in: expandedGeometry, module: .tools, detail: false, panel: false, detailHeight: nil,
+                            musicExtraHeight: 0, fileMediaHeight: nil, toolCount: nil, capturePreviewHeight: nil)
         }
         let musicExtras = NotchLyricsSupport.isEnabled(in: defaults) || NotchQueueSupport.isEnabled(in: defaults)
         return pageSize(in: expandedGeometry, module: showingAppPanel ? .tools : selected,
@@ -1211,7 +1251,7 @@ package final class NotchService: ObservableObject {
                         musicExtraHeight: musicExtras && musicDetailVisible ? geometry.musicExtrasHeight : 0,
                         fileMediaHeight: !choosingFileDropDestination && AppFeature.mediaTools.isAvailable(in: defaults)
                             && services.mediaPresented ? services.mediaContentHeight : nil,
-                        toolCount: services.editingTools || services.activeUtility != nil || services.showsToolPanel
+                        toolCount: services.editingTools || services.activeUtility != nil
                             ? nil : services.visibleToolCount,
                         capturePreviewHeight: captureContent == nil ? nil : captureContentHeight)
     }
@@ -1238,7 +1278,7 @@ package final class NotchService: ObservableObject {
     /// Settings previews the island while it is off too, when the floating
     /// buttons are not read for it, so a preview reads them as it draws.
     private var previewShowsSectionsButton: Bool {
-        !NotchQuickAccessConfiguration.current(in: defaults).actions.contains(.explore)
+        !quickAccess.actions.contains(.explore)
     }
 
     /// The tallest island a preview can show: a page that fills the budget,
@@ -1295,8 +1335,8 @@ package final class NotchService: ObservableObject {
     private var headerTitleWidth: CGFloat {
         guard !showingSections else { return 0 }
         let detail = showingAppPanel || selectedMetric != nil
-        guard detail || modules.isEmpty else {
-            return NotchLayout.headerTitleWidth(selected.title(L10n.shared.language), button: headerShowsSectionsButton)
+        guard detail || hasNoSections else {
+            return NotchLayout.headerTitleWidth(sectionTitle(currentSection), button: headerShowsSectionsButton)
         }
         return NotchLayout.headerTitleWidth(detailTitle, font: NotchLayout.detailTitleFont, button: detail)
     }
@@ -1601,6 +1641,7 @@ package final class NotchService: ObservableObject {
         guard running else { return }
         running = false
         restingStatusSubscription = nil
+        islandPanelSubscription = nil
         saidClosedTitle = nil
         services.stopTimer()
         services.stopAccessories()
@@ -1675,6 +1716,10 @@ package final class NotchService: ObservableObject {
         noticeQueue.clear()
         showingAppPanel = false
         showingSections = false
+        editingSections = false
+        if extensionPage != nil { services.closeToolPanel() }
+        extensionPage = nil
+        lastExtensionPage = nil
         sectionQuery = ""
         highlightedSection = nil
         sectionRow = 0
@@ -1705,24 +1750,27 @@ package final class NotchService: ObservableObject {
     /// Opening without a page shows what the closed island is already
     /// presenting: a mirrored banner, or an activity unless the user turned
     /// that off. Otherwise the reopening preference decides.
-    package var reopeningDestination: (module: NotchModule, appPanel: Bool, sections: Bool) {
+    /// `toolPage` is a tool's island page to open as the page, for a saved
+    /// opening page or a last page that is one.
+    package var reopeningDestination: (module: NotchModule, appPanel: Bool, sections: Bool, toolPage: ToolPanelHost.Key?) {
         if !expanded {
             let opensActivity = defaults[Preferences.notchOpensActivity]
             let activity = notice?.notificationID != nil ? NotchModule.notifications
                 : opensActivity ? compactActivity?.module : nil
-            if let activity, modules.contains(activity) { return (activity, false, false) }
-            if defaults[Preferences.notchReturnHome] {
-                let saved = defaults[Preferences.notchHomeModule]
-                switch NotchReopeningDestination(rawValue: saved) {
-                case .appPanel: return (modules.contains(.controls) ? .controls : modules.first ?? .controls, true, false)
-                case .explore: return (selected, false, true)
-                case nil:
-                    let home = NotchModule(rawValue: saved) ?? .controls
-                    return (modules.contains(home) ? home : modules.first ?? .controls, false, false)
-                }
+            if let activity, modules.contains(activity) { return (activity, false, false, nil) }
+            // The rule is `NotchSupport.reopeningTarget`, which the
+            // reopening picker in Settings shares.
+            switch NotchSupport.reopeningTarget(returnHome: defaults[Preferences.notchReturnHome],
+                                                saved: defaults[Preferences.notchHomeModule], sections: sections) {
+            case .lastPage: break
+            case .appPanel: return (modules.contains(.controls) ? .controls : modules.first ?? .controls, true, false, nil)
+            case .explore: return (selected, false, true, nil)
+            case .section(.module(let home)): return (home, false, false, nil)
+            case .section(.tool(let tool)): return (selected, false, false, visibleIslandPanel(of: tool))
             }
+            if let last = lastExtensionPage, services.islandPanels.contains(last) { return (selected, false, false, last) }
         }
-        return (selected, false, false)
+        return (selected, false, false, nil)
     }
 
     package var reopeningModule: NotchModule {
@@ -1752,28 +1800,53 @@ package final class NotchService: ObservableObject {
         if compactActivity == .calendar { openCountdownEvent() } else { open() }
     }
 
+    /// `toolPage` opens a tool's island page as the page; refused, Explore
+    /// opens in its place.
     package func open(_ module: NotchModule? = nil, pinned: Bool = false, takeFocus: Bool = true,
-              appPanel: Bool = false, metric: MetricDetailKind? = nil, feedback: Bool = true, sections: Bool = false) {
+              appPanel: Bool = false, metric: MetricDetailKind? = nil, feedback: Bool = true, sections: Bool = false,
+              toolPage: ToolPanelHost.Key? = nil) {
         guard NotchSupport.isEnabled(in: defaults), !suspended else { return }
         if !running || self.panel == nil { syncWithPreferences() }
         else { refreshModules() }
         guard let panel else { return }
         let reopening = reopeningDestination
-        let useReopeningSurface = module == nil && !expanded && !appPanel && !sections && metric == nil
-        let destination = module.flatMap { modules.contains($0) ? $0 : nil } ?? reopening.module
+        let useReopeningSurface = module == nil && toolPage == nil && !expanded && !appPanel && !sections && metric == nil
+        let destination = module.flatMap { modules.contains($0) ? $0 : nil } ?? (toolPage == nil ? reopening.module : selected)
         let appPanel = appPanel || (useReopeningSurface && reopening.appPanel)
-        let sections = sections || (useReopeningSurface && reopening.sections)
+        var sections = sections || (useReopeningSurface && reopening.sections)
         if useReopeningSurface && reopening.appPanel { MainActor.assumeIsolated { services.showNormalMenuPanel() } }
         if useReopeningSurface && reopening.sections {
             sectionQuery = ""
             sectionRow = 0
-            highlightedSection = destination
+            highlightedSection = .module(destination)
         }
         let metric = metric.flatMap { metricIsAvailable($0) ? $0 : nil }
+        let pageBefore = extensionPage
+        // Reopening has read it; whatever opens now is the last page next.
+        lastExtensionPage = nil
+        // A tool's page stays under Explore and comes back from it; any page
+        // of the island's own, the app panel or a detail takes its place.
+        let keepsToolPage = module == nil && expanded && !appPanel && metric == nil
+        if let toolPage = toolPage ?? (useReopeningSurface ? reopening.toolPage : nil) {
+            if extensionPage != toolPage, !openToolPage(toolPage) {
+                // Refused: Explore, where the page was chosen, stays or comes back.
+                // A search the person typed stays; the tile they chose is lit.
+                if !showingSections {
+                    sectionQuery = ""
+                    sectionRow = 0
+                }
+                highlightedSection = .tool(toolPage.tool)
+                sections = true
+            } else {
+                sections = false
+            }
+        } else if !keepsToolPage {
+            closeExtensionPage()
+        }
         let closesCommandBar = showingCommandBar
-        let changesPresentation = !expanded || selected != destination || closesCommandBar
+        let changesPresentation = !expanded || selected != destination || closesCommandBar || extensionPage != pageBefore
             || showingAppPanel != appPanel || selectedMetric != metric || showingSections != sections
-        if changesPresentation, destination == .tools, !appPanel, !sections, metric == nil {
+        if changesPresentation, destination == .tools, extensionPage == nil, !appPanel, !sections, metric == nil {
             services.prepareTools()
         }
         MainActor.assumeIsolated { services.closeMenuPopover() }
@@ -1794,6 +1867,7 @@ package final class NotchService: ObservableObject {
             showingCommandBar = false
             showingAppPanel = appPanel
             showingSections = sections
+            if !sections { editingSections = false }
             if selected != destination { selected = destination }
             if pinned { self.pinned = true }
             selectedMetric = metric
@@ -1822,6 +1896,8 @@ package final class NotchService: ObservableObject {
         hoverWork?.cancel(); hoverWork = nil
         if noticeExpanded { noticeWork?.cancel(); noticeWork = nil }
         let mascotFrom = mascotBridgeStart(opening: false)
+        // The tool's page closes below; reopening the last page opens it again.
+        if expanded { lastExtensionPage = extensionPage }
         mutatePresentation(transitionContent: expanded || peeking || noticeExpanded ? .dismiss : .none) {
             if noticeExpanded { noticeQueue.clear() }
             expanded = false
@@ -1830,10 +1906,12 @@ package final class NotchService: ObservableObject {
             selectedMetric = nil
             showingAppPanel = false
             showingSections = false
+            editingSections = false
             showingCommandBar = false
             sectionQuery = ""
             highlightedSection = nil
             sectionRow = 0
+            extensionPage = nil
         }
         if let mascotFrom { bridgeMascot(from: mascotFrom, opening: false) }
         panel?.acceptsKeyFocus = false
@@ -2039,19 +2117,96 @@ package final class NotchService: ObservableObject {
         schedule(duration, work)
     }
 
-    package var filteredSections: [NotchModule] {
-        NotchSupport.filteredModules(modules, query: sectionQuery) { module in
+    /// The sections the person shows, the island's own and tools' island
+    /// pages, in the person's order.
+    package var sections: [NotchSectionItem] {
+        NotchSupport.sectionOrder(live: modules.map(NotchSectionItem.module) + services.islandPanels.map { .tool($0.tool) },
+                                  from: defaults[Preferences.notchModuleOrder])
+    }
+
+    /// The quick-access buttons the island shows: a tool's button only
+    /// while the island lists its page.
+    package var quickAccess: NotchQuickAccessConfiguration {
+        NotchQuickAccessConfiguration.current(in: defaults, shownIslandTools: Set(services.islandPanels.map(\.tool)))
+    }
+
+    private var hasExtensionButton: Bool {
+        NotchQuickAccessConfiguration.stored(in: defaults).actions.contains {
+            if case .extensionPanel = $0 { return true }
+            return false
+        }
+    }
+
+    /// No section shows, of the island's own or tools': the island shows
+    /// its empty page and no Explore button. A tool's page alone is a
+    /// section, so it is never stranded behind the empty page.
+    package var hasNoSections: Bool { sections.isEmpty }
+
+    /// Every section there is to show, hidden ones too: the island's own
+    /// whose feature is on, and every tool's island page.
+    package var availableSectionItems: [NotchSectionItem] {
+        let modules = NotchModule.allCases.filter { $0.isAvailable(in: defaults) }.map(NotchSectionItem.module)
+        return NotchSupport.sectionOrder(live: modules + services.availableIslandPanels.map { .tool($0.tool) },
+                                         from: defaults[Preferences.notchModuleOrder])
+    }
+
+    /// The sections the search finds, by their titles and names.
+    package var filteredSectionItems: [NotchSectionItem] {
+        NotchSupport.filteredItems(sections, query: sectionQuery) { item in
             let language = L10n.shared.language
-            let music = module == .music ? FeatureStrings.notch(language).music : ""
-            return [module.title(language), module.rawValue, music].joined(separator: " ")
+            switch item {
+            case .module(let module):
+                let music = module == .music ? FeatureStrings.notch(language).music : ""
+                return [module.title(language), module.rawValue, music].joined(separator: " ")
+            case .tool(let tool):
+                return [sectionTitle(item), tool.rawValue].joined(separator: " ")
+            }
+        }
+    }
+
+    /// A section's title: the island's own, or the tool's words.
+    package func sectionTitle(_ item: NotchSectionItem) -> String {
+        let language = L10n.shared.language
+        switch item {
+        case .module(let module): return module.title(language)
+        case .tool(let tool):
+            guard let key = services.availableIslandPanels.first(where: { $0.tool == tool }) else { return tool.rawValue }
+            return services.islandPanelTitle(key, language: language)
+        }
+    }
+
+    /// A tool's island page, when the person shows it.
+    private func visibleIslandPanel(of tool: ToolID) -> ToolPanelHost.Key? {
+        services.islandPanels.first { $0.tool == tool }
+    }
+
+    /// Saves the order Explore's editor leaves, through the island's rule,
+    /// so a section not showing keeps its place.
+    package func saveSectionOrder(_ items: [NotchSectionItem], installedTools: Set<ToolID>) {
+        defaults[Preferences.notchModuleOrder] = NotchSupport.savedSectionOrder(
+            afterMoving: items, previous: defaults[Preferences.notchModuleOrder], installedTools: installedTools)
+        objectWillChange.send()
+    }
+
+    /// Shows or hides a section from Explore's editor: an island page's own
+    /// switch and the hidden list, or a tool's switch in its detail.
+    package func setSectionShown(_ item: NotchSectionItem, _ shown: Bool) {
+        switch item {
+        case .module(let module):
+            NotchSupport.setModuleShown(module, shown, in: defaults)
+            refreshModules()
+            refreshPresentation()
+        case .tool(let tool):
+            services.setIslandPanelShown(tool, shown)
+            islandPanelsChanged()
         }
     }
 
     package func searchSections(_ query: String) {
-        guard sectionQuery != query else { return }
+        guard sectionQuery != query, !editingSections else { return }
         mutatePresentation {
             sectionQuery = query
-            highlightedSection = filteredSections.first
+            highlightedSection = filteredSectionItems.first
         }
     }
 
@@ -2064,20 +2219,20 @@ package final class NotchService: ObservableObject {
             // The gallery opens from its top, stepping only as far as the
             // current section's row.
             sectionRow = 0
-            highlightedSection = selected
+            highlightedSection = currentSection
             open(appPanel: showingAppPanel, metric: selectedMetric, sections: true)
         }
     }
 
     private var sectionRowLimits: (rows: Int, visible: Int) {
-        let count = filteredSections.count
+        let count = filteredSectionItems.count
         return (NotchSectionPaging.rows(count: count, columns: geometry.sectionColumns), geometry.sectionRows(count: count))
     }
 
     /// Keyboard moves and search results keep the highlighted tile's row in
     /// view, moving the gallery no further than that row needs.
     private func revealHighlightedSection() {
-        guard let target = highlightedSection, let index = filteredSections.firstIndex(of: target) else { return }
+        guard let target = highlightedSection, let index = filteredSectionItems.firstIndex(of: target) else { return }
         let limits = sectionRowLimits
         let row = NotchSectionPaging.revealing(row: index / max(1, geometry.sectionColumns), first: sectionRow,
                                                rows: limits.rows, visible: limits.visible)
@@ -2086,6 +2241,8 @@ package final class NotchService: ObservableObject {
 
     /// Rest the gallery on `row`, within the rows it has.
     package func showSectionRow(_ row: Int) {
+        // The editor shows every section at once and keeps the wheel still.
+        guard !editingSections else { return }
         let limits = sectionRowLimits
         let next = NotchSectionPaging.clamped(row, rows: limits.rows, visible: limits.visible)
         guard next != sectionRow else { return }
@@ -2100,13 +2257,13 @@ package final class NotchService: ObservableObject {
               (panel?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return false }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         if event.keyCode == 48, modifiers.isEmpty || modifiers == .shift {
-            highlightedSection = NotchSupport.adjacentModule(to: highlightedSection, modules: filteredSections,
-                                                             backwards: modifiers == .shift)
+            highlightedSection = NotchSupport.adjacentItem(to: highlightedSection, items: filteredSectionItems,
+                                                           backwards: modifiers == .shift)
             return true
         }
         guard modifiers.isEmpty else { return false }
         if event.keyCode == 36 || event.keyCode == 76 {
-            if let target = highlightedSection, filteredSections.contains(target) { select(target) }
+            if let target = highlightedSection, filteredSectionItems.contains(target) { selectSection(target) }
             return true
         }
         let direction: QuickToolsSupport.GridDirection
@@ -2117,13 +2274,13 @@ package final class NotchService: ObservableObject {
         case 126: direction = .up
         default: return false
         }
-        let sections = filteredSections
+        let sections = filteredSectionItems
         guard !sections.isEmpty else { return true }
         // While typing, the side arrows keep editing the query and the
         // vertical pair steps through the matches in order.
         guard sectionQuery.isEmpty else {
-            highlightedSection = NotchSupport.adjacentModule(to: highlightedSection, modules: sections,
-                                                             backwards: direction == .up)
+            highlightedSection = NotchSupport.adjacentItem(to: highlightedSection, items: sections,
+                                                           backwards: direction == .up)
             return true
         }
         let index = highlightedSection.flatMap { sections.firstIndex(of: $0) } ?? 0
@@ -2136,7 +2293,8 @@ package final class NotchService: ObservableObject {
     /// The floating pad's tab shortcuts work on its page too. With one pad
     /// left, Command-W closes the island the way it hides the pad.
     private func handleScratchpadKey(_ event: NSEvent) -> Bool {
-        guard selected == .scratchpad, !showingAppPanel, !showingSections, selectedMetric == nil else { return false }
+        guard selected == .scratchpad, extensionPage == nil, !showingAppPanel, !showingSections, selectedMetric == nil
+        else { return false }
         let commandOnly = event.modifierFlags.intersection([.command, .control, .option]) == .command
         let shift = event.modifierFlags.contains(.shift)
         guard let action = ScratchpadFocusedShortcut.action(charactersIgnoringModifiers: event.charactersIgnoringModifiers,
@@ -2166,7 +2324,8 @@ package final class NotchService: ObservableObject {
     }
 
     private func handleClipboardPasteKey(_ event: NSEvent) -> Bool {
-        guard selected == .clipboard, !showingAppPanel, !showingSections, selectedMetric == nil else { return false }
+        guard selected == .clipboard, extensionPage == nil, !showingAppPanel, !showingSections, selectedMetric == nil
+        else { return false }
         let commandOnly = event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
         guard let index = NotchClipboardPastePress.index(keyCode: event.keyCode, commandOnly: commandOnly)
         else { return false }
@@ -2175,12 +2334,20 @@ package final class NotchService: ObservableObject {
     }
 
     package func activateQuickAction(_ action: NotchQuickAction) {
-        guard NotchSupport.isEnabled(in: defaults), action.isAvailable() else { return }
+        guard NotchSupport.isEnabled(in: defaults) else { return }
+        // Core cannot see the tools, so it calls their buttons unavailable;
+        // the island knows which pages it shows.
+        if case .extensionPanel(let tool) = action {
+            if let key = visibleIslandPanel(of: tool) { openExtensionSection(key) }
+            return
+        }
+        guard action.isAvailable() else { return }
         switch action {
         case .explore: toggleSections()
         case .settings: openSettings()
         case .pin: pinned.toggle()
         case .module(let module): select(module)
+        case .extensionPanel: break
         case .control(let item):
             switch item {
             case .keepAwake: services.toggleKeepAwake()
@@ -2203,6 +2370,74 @@ package final class NotchService: ObservableObject {
     package func select(_ module: NotchModule) {
         guard modules.contains(module) else { return }
         open(module)
+    }
+
+    /// Opens a section from Explore, the keyboard or a button: one of the
+    /// island's own pages, which closes a tool's page, or a tool's page.
+    package func selectSection(_ item: NotchSectionItem) {
+        switch item {
+        case .module(let module): select(module)
+        case .tool(let tool):
+            guard let key = visibleIslandPanel(of: tool) else { return }
+            openExtensionSection(key)
+        }
+    }
+
+    /// Opens a tool's island page as the island's page. Refused by its
+    /// tool, the island shows Explore.
+    package func openExtensionSection(_ key: ToolPanelHost.Key) {
+        guard services.islandPanels.contains(key) else { return }
+        open(toolPage: key)
+    }
+
+    /// The host opens a page without closing the one there, and keeps one
+    /// already open as it is: the old page closes first.
+    private func openToolPage(_ key: ToolPanelHost.Key) -> Bool {
+        closeExtensionPage()
+        guard services.openIslandToolPanel(key) else { return false }
+        extensionPage = key
+        lastExtensionPage = nil
+        return true
+    }
+
+    private func closeExtensionPage() {
+        guard extensionPage != nil else { return }
+        extensionPage = nil
+        services.closeToolPanel()
+    }
+
+    private func syncCurrentSection() {
+        let current = extensionPage.map { NotchSectionItem.tool($0.tool) } ?? .module(selected)
+        if currentSection != current { currentSection = current }
+    }
+
+    /// A tool's island page opened, closed, was shown or hidden, or went
+    /// with its tool. The page the island shows going (the tool ended, was
+    /// held, switched off, removed or hidden) leaves Explore, or the
+    /// island's empty page when no section is left.
+    package func islandPanelsChanged() {
+        guard running else { return }
+        if let last = lastExtensionPage, !services.islandPanels.contains(last) { lastExtensionPage = nil }
+        objectWillChange.send()
+        guard let page = extensionPage, services.openToolPanel != page || !services.islandPanels.contains(page) else {
+            // A tool's quick-access button comes and goes with its page.
+            if expanded, showingSections || hasExtensionButton { refreshPresentation() }
+            return
+        }
+        extensionPage = nil
+        if services.openToolPanel == page { services.closeToolPanel() }
+        guard expanded, !showingSections, !showingAppPanel, selectedMetric == nil else {
+            refreshPresentation()
+            return
+        }
+        if sections.isEmpty {
+            open(feedback: false)
+        } else {
+            sectionQuery = ""
+            sectionRow = 0
+            highlightedSection = sections.first
+            open(feedback: false, sections: true)
+        }
     }
 
     /// The pad lives in the island when its page is on; otherwise the
@@ -2276,7 +2511,7 @@ package final class NotchService: ObservableObject {
         guard captureControls == nil, !heldDrag else { return }
         if showingAppPanel || selectedMetric != nil {
             if detailHasPage { goBack() } else { collapse() }
-        } else if let close = pageLayers[selected] {
+        } else if extensionPage == nil, let close = pageLayers[selected] {
             close()
         } else {
             collapse()
@@ -2334,6 +2569,9 @@ package final class NotchService: ObservableObject {
         showingCommandBar = false
         expanded = false
         showingSections = false
+        editingSections = false
+        if extensionPage != nil { lastExtensionPage = extensionPage }
+        closeExtensionPage()
         peeking = false
         noticeQueue.clear()
         hoverWork?.cancel()
@@ -2910,7 +3148,7 @@ package final class NotchService: ObservableObject {
             removeScreenEdgeClickMonitors()
             return
         }
-        let access = NotchQuickAccessConfiguration.current(in: defaults)
+        let access = quickAccess
         let size = surfaceSize
         let contentTransition = compactMusicTransition(transitionContent, animated: animated)
         if captureControls == nil {
@@ -3157,7 +3395,7 @@ package final class NotchService: ObservableObject {
         var next = baseGeometry(for: screen)
         let sameMenuBar = next.hasSameMenuBar(as: geometry)
         if sameMenuBar { next.compactSideRoom = geometry.compactSideRoom }
-        let access = NotchQuickAccessConfiguration.current(in: defaults)
+        let access = quickAccess
         next.quickAccessBottomInset = access.hasBottom ? NotchQuickAccessLayout.gutter : 0
         headerShowsSectionsButton = !access.actions.contains(.explore)
         if next != geometry { menuSpace.invalidate(); geometry = next }
@@ -3219,6 +3457,10 @@ package final class NotchService: ObservableObject {
         // before they change, so the reading waits a turn of the main queue.
         restingStatusSubscription = restingStatusChanges.receive(on: DispatchQueue.main).sink { [weak self] in
             self?.restingStatusChanged()
+        }
+        // The host and the registry speak before they change, too.
+        islandPanelSubscription = islandPanelChanges.receive(on: DispatchQueue.main).sink { [weak self] in
+            self?.islandPanelsChanged()
         }
         observe(parts.notifications, NSMenu.didBeginTrackingNotification) { [weak self] in
             guard let self else { return }
@@ -3362,7 +3604,10 @@ package final class NotchService: ObservableObject {
         stepBack: { [weak self] in self?.stepBack() },
         collapse: { [weak self] in self?.collapse() },
         clickedInside: { [weak self] in self?.clickedSinceOpening = true },
-        showingCommandBar: { [weak self] in self?.showingCommandBar ?? false }))
+        showingCommandBar: { [weak self] in self?.showingCommandBar ?? false },
+        editingSections: { [weak self] in self?.editingSections ?? false },
+        stopEditingSections: { [weak self] in self?.editingSections = false },
+        showingToolPage: { [weak self] in self?.extensionPage != nil }))
 
     /// The panel and what hangs from it: a SwiftUI popover opened in the
     /// island is a child window, so a click in it is not a click away.
@@ -3388,7 +3633,7 @@ package final class NotchService: ObservableObject {
 
     private func handleSectionScroll(_ event: NSEvent) -> Bool {
         var surface: NotchSectionScrollSurface?
-        if running, !suspended, expanded, showingSections, !trackingMenu, let panel {
+        if running, !suspended, expanded, showingSections, !editingSections, !trackingMenu, let panel {
             let host = windowHost
             surface = NotchSectionScrollSurface(frame: panel.frame, toScreen: { panel.convertPoint(toScreen: $0) },
                                                 containsSurface: { host?.containsSurface($0) == true },
@@ -3586,16 +3831,17 @@ package final class NotchService: ObservableObject {
             releaseMonitor()
             return
         }
-        if !NotchCameraSupport.canPresent(expanded: expanded && !showingSections && !showingCommandBar, selected: selected,
+        if !NotchCameraSupport.canPresent(expanded: expanded && !showingSections && !showingCommandBar && extensionPage == nil,
+                                          selected: selected,
             appPanel: showingAppPanel, captureControls: captureControls != nil) {
             services.hideCamera()
         }
         let musicWanted = modules.contains(.music) && ((expanded && (selected == .music || (selected == .controls && NotchSupport.controls(in: defaults).contains(.music)))
-            && !showingAppPanel && !showingSections && !showingCommandBar)
+            && !showingAppPanel && !showingSections && !showingCommandBar && extensionPage == nil)
             || (!hiddenUntilHover && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))
         if musicWanted { services.startMusic() } else { services.stopMusic() }
         let needs = expanded && selected == .system && selectedMetric == nil && modules.contains(.system) && !showingAppPanel
-            && !showingSections && !showingCommandBar
+            && !showingSections && !showingCommandBar && extensionPage == nil
         var detailNeeds = expanded && !showingSections ? selectedMetric?.monitorNeeds ?? .none : .none
         if needs, AppFeature.monitorDisk.isAvailable(in: defaults) { detailNeeds.disk = true }
         if needs, AppFeature.fanControl.isAvailable(in: defaults) { detailNeeds.fanSpeed = true }
@@ -3992,6 +4238,7 @@ extension NotchService {
             showingCommandBar = true
             showingAppPanel = false
             showingSections = false
+            editingSections = false
             selectedMetric = nil
             peeking = false
             openedByHover = false

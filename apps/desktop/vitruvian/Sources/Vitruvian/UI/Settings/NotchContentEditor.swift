@@ -251,22 +251,39 @@ private struct NotchScratchpadStill: View {
 /// One section in the list beside its options: the box that shows it in the
 /// island, its icon and its name. A row drags to a new place; choosing one
 /// opens its options and its preview. A box rather than a switch leaves the
-/// name its whole line even in the narrowest window.
+/// name its whole line even in the narrowest window. A tool's island page
+/// is a row like the island's own, in the tool's words.
 package struct NotchSectionListRow: View {
-    package let module: NotchModule
+    package let item: NotchSectionItem
+    package let title: String
+    package let summary: String
+    package let tile: NotchSectionTile
     @Binding package var included: Bool
     package let available: Bool
     package let selected: Bool
-    @Binding package var order: [NotchModule]
-    @Binding package var dragging: NotchModule?
+    @Binding package var order: [NotchSectionItem]
+    @Binding package var dragging: NotchSectionItem?
     package let select: () -> Void
     @ObservedObject private var l10n = L10n.shared
     @State private var hovering = false
-    private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
-    private var title: String { module.title(l10n.language) }
+
+    package init(item: NotchSectionItem, title: String, summary: String, tile: NotchSectionTile, included: Binding<Bool>,
+                 available: Bool, selected: Bool, order: Binding<[NotchSectionItem]>,
+                 dragging: Binding<NotchSectionItem?>, select: @escaping () -> Void) {
+        self.item = item
+        self.title = title
+        self.summary = summary
+        self.tile = tile
+        self._included = included
+        self.available = available
+        self.selected = selected
+        self._order = order
+        self._dragging = dragging
+        self.select = select
+    }
 
     package var body: some View {
-        PanelReorderableItem(item: module, order: $order, dragging: $dragging) {
+        PanelReorderableItem(item: item, order: $order, dragging: $dragging) {
             HStack(spacing: 8) {
                 // A section whose feature is off cannot show, whatever was chosen.
                 Toggle(title, isOn: available ? $included : .constant(false))
@@ -275,8 +292,8 @@ package struct NotchSectionListRow: View {
                     .disabled(!available)
                 Button(action: select) {
                     HStack(spacing: 8) {
-                        NotchSectionTile(module: module, shown: included && available, side: 22)
-                        Text(title)
+                        tile.shown(included && available)
+                        Text(verbatim: title)
                             .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
                             .foregroundStyle(available ? .primary : .secondary)
                             .lineLimit(2)
@@ -287,9 +304,9 @@ package struct NotchSectionListRow: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(editor.summary(module))
-                .accessibilityLabel(title)
-                .accessibilityValue(editor.summary(module))
+                .help(summary)
+                .accessibilityLabel(Text(verbatim: title))
+                .accessibilityValue(summary)
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 .accessibilityAction(named: FeatureStrings.clipboard(l10n.language).moveUp) { move(by: -1) }
                 .accessibilityAction(named: FeatureStrings.clipboard(l10n.language).moveDown) { move(by: 1) }
@@ -300,12 +317,12 @@ package struct NotchSectionListRow: View {
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
-            .opacity(dragging == module ? 0.45 : 1)
+            .opacity(dragging == item ? 0.45 : 1)
         }
     }
 
     private func move(by offset: Int) {
-        guard let index = order.firstIndex(of: module), order.indices.contains(index + offset) else { return }
+        guard let index = order.firstIndex(of: item), order.indices.contains(index + offset) else { return }
         order.swapAt(index, index + offset)
     }
 }
@@ -313,20 +330,30 @@ package struct NotchSectionListRow: View {
 /// What the chosen section is, above its options: its icon, name and one
 /// line on what it shows, and why it cannot show while its feature is off.
 package struct NotchSectionHeader: View {
-    package let module: NotchModule
-    package let shown: Bool
+    package let title: String
+    package let summary: String
+    package let tile: NotchSectionTile
     /// Why an unavailable section cannot show.
     package let reason: String?
     package let openFeatures: () -> Void
     @ObservedObject private var l10n = L10n.shared
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
 
+    package init(title: String, summary: String, tile: NotchSectionTile, reason: String?,
+                 openFeatures: @escaping () -> Void) {
+        self.title = title
+        self.summary = summary
+        self.tile = tile
+        self.reason = reason
+        self.openFeatures = openFeatures
+    }
+
     package var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            NotchSectionTile(module: module, shown: shown, side: 38)
+            tile
             VStack(alignment: .leading, spacing: 3) {
-                Text(module.title(l10n.language)).font(.title3.weight(.semibold))
-                Text(editor.summary(module))
+                Text(verbatim: title).font(.title3.weight(.semibold))
+                Text(summary)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -349,18 +376,91 @@ package struct NotchSectionHeader: View {
 
 /// A section's icon on its own color; grey while the section is hidden.
 package struct NotchSectionTile: View {
-    package let module: NotchModule
-    package let shown: Bool
+    package let symbol: String
+    package let tint: Color
+    package let glyph: Color
+    package var isShown: Bool
     package let side: CGFloat
 
+    package init(symbol: String, tint: Color, glyph: Color = .white, shown: Bool, side: CGFloat) {
+        self.symbol = symbol
+        self.tint = tint
+        self.glyph = glyph
+        self.isShown = shown
+        self.side = side
+    }
+
+    package init(module: NotchModule, shown: Bool, side: CGFloat) {
+        self.init(symbol: module.symbol, tint: module.settingsTint, glyph: module.settingsGlyph, shown: shown, side: side)
+    }
+
+    /// A tool's island page, on the grey of the island's Tools.
+    package init(extensionSymbol symbol: String, shown: Bool, side: CGFloat) {
+        self.init(symbol: symbol, tint: NotchModule.tools.settingsTint, shown: shown, side: side)
+    }
+
+    /// The same tile, shown or hidden.
+    package func shown(_ shown: Bool) -> Self {
+        var tile = self
+        tile.isShown = shown
+        return tile
+    }
+
     package var body: some View {
-        Image(systemName: module.symbol)
+        Image(systemName: symbol)
             .font(.system(size: side * 0.46, weight: .semibold))
-            .foregroundStyle(shown ? module.settingsGlyph : Color.secondary)
+            .foregroundStyle(isShown ? glyph : Color.secondary)
             .frame(width: side, height: side)
-            .background(shown ? module.settingsTint : Color.secondary.opacity(0.14),
+            .background(isShown ? tint : Color.secondary.opacity(0.14),
                         in: RoundedRectangle(cornerRadius: side * 0.27, style: .continuous))
             .accessibilityHidden(true)
+    }
+}
+
+/// A tool's island page in the Content tab's preview column. The island
+/// draws the page only while the tool's program sends it, so Settings shows
+/// what the tile in Explore shows instead of a live page.
+package struct NotchExtensionPreview: View {
+    package let title: String
+    package let symbol: String
+    package let hidden: Bool
+    @ObservedObject private var l10n = L10n.shared
+    private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
+
+    package init(title: String, symbol: String, hidden: Bool) {
+        self.title = title
+        self.symbol = symbol
+        self.hidden = hidden
+    }
+
+    package var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+            Text(verbatim: title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(minWidth: 160, minHeight: 120)
+        .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .opacity(hidden ? 0.4 : 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.quaternary.opacity(0.35))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(alignment: .bottomLeading) {
+            Label(hidden ? editor.hiddenInIsland : editor.preview, systemImage: hidden ? "eye.slash" : "eye")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(editor.preview)
+        .accessibilityValue(Text(verbatim: title + (hidden ? ", " + editor.hiddenInIsland : "")))
     }
 }
 

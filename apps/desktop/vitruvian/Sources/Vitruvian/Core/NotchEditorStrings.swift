@@ -68,6 +68,9 @@ package struct NotchEditorStrings {
     package let scratchpadSummary: String
     package let agentsSummary: String
     package let watchSummary: String
+    /// One line on what a tool's island page is, where the island's own
+    /// sections have their summary.
+    package let extensionSummary: String
 
     package func enableFeature(_ title: String) -> String { String(format: enableFeatureFormat, title) }
     package func enableSetting(_ title: String) -> String { String(format: enableSettingFormat, title) }
@@ -163,7 +166,8 @@ extension FeatureStrings {
             downloadsSummary: "Downloads in progress and just finished.",
             scratchpadSummary: "Quick notes that save by themselves.",
             agentsSummary: "Claude Code, Codex, OpenCode and GitHub Copilot usage, limits and costs.",
-            watchSummary: "Any part of a window, read live, with an alert when it changes."
+            watchSummary: "Any part of a window, read live, with an alert when it changes.",
+            extensionSummary: "A page an extension adds to the island. Its own settings are in Features."
         )
         case .ptBR: return NotchEditorStrings(
             layout: "Layout",
@@ -229,7 +233,8 @@ extension FeatureStrings {
             downloadsSummary: "Downloads em andamento e os que acabaram de terminar.",
             scratchpadSummary: "Anotações rápidas que se salvam sozinhas.",
             agentsSummary: "Uso, limites e custos do Claude Code, do Codex, do OpenCode e do GitHub Copilot.",
-            watchSummary: "Qualquer parte de uma janela, lida ao vivo, com aviso quando mudar."
+            watchSummary: "Qualquer parte de uma janela, lida ao vivo, com aviso quando mudar.",
+            extensionSummary: "Uma página que uma extensão adiciona à ilha. As configurações dela ficam em Recursos."
         )
         case .es: return NotchEditorStrings(
             layout: "Diseño",
@@ -295,7 +300,8 @@ extension FeatureStrings {
             downloadsSummary: "Descargas en curso y las recién terminadas.",
             scratchpadSummary: "Notas rápidas que se guardan solas.",
             agentsSummary: "Uso, límites y costes de Claude Code, Codex, OpenCode y GitHub Copilot.",
-            watchSummary: "Cualquier parte de una ventana, leída en directo, con aviso cuando cambie."
+            watchSummary: "Cualquier parte de una ventana, leída en directo, con aviso cuando cambie.",
+            extensionSummary: "Una página que una extensión añade a la isla. Sus ajustes están en Funciones."
         )
         case .sk: return NotchEditorStrings(
             layout: "Rozloženie",
@@ -361,7 +367,8 @@ extension FeatureStrings {
             downloadsSummary: "Prebiehajúce a práve dokončené sťahovania.",
             scratchpadSummary: "Rýchle poznámky, ktoré sa ukladajú samy.",
             agentsSummary: "Využitie, limity a náklady Claude Code, Codexu, OpenCode a GitHub Copilot.",
-            watchSummary: "Ľubovoľná časť okna čítaná naživo s upozornením, keď sa zmení."
+            watchSummary: "Ľubovoľná časť okna čítaná naživo s upozornením, keď sa zmení.",
+            extensionSummary: "Stránka, ktorú do Dynamic Island pridáva rozšírenie. Jeho nastavenia sú vo Funkciách."
         )
         case .de: return NotchEditorStrings(
             layout: "Layout",
@@ -427,7 +434,8 @@ extension FeatureStrings {
             downloadsSummary: "Laufende und gerade fertige Downloads.",
             scratchpadSummary: "Schnelle Notizen, die sich selbst sichern.",
             agentsSummary: "Nutzung, Limits und Kosten von Claude Code, Codex, OpenCode und GitHub Copilot.",
-            watchSummary: "Ein beliebiger Teil eines Fensters, live gelesen, mit Hinweis bei Änderungen."
+            watchSummary: "Ein beliebiger Teil eines Fensters, live gelesen, mit Hinweis bei Änderungen.",
+            extensionSummary: "Eine Seite, die eine Erweiterung der Insel hinzufügt. Ihre Einstellungen findest du unter Funktionen."
         )
         case .fr: return NotchEditorStrings(
             layout: "Disposition",
@@ -493,7 +501,8 @@ extension FeatureStrings {
             downloadsSummary: "Les téléchargements en cours et ceux qui viennent de finir.",
             scratchpadSummary: "Des notes rapides qui s’enregistrent seules.",
             agentsSummary: "Utilisation, limites et coûts de Claude Code, Codex, OpenCode et GitHub Copilot.",
-            watchSummary: "N’importe quelle partie d’une fenêtre, lue en direct, avec une alerte quand elle change."
+            watchSummary: "N’importe quelle partie d’une fenêtre, lue en direct, avec une alerte quand elle change.",
+            extensionSummary: "Une page qu’une extension ajoute à l’îlot. Ses réglages se trouvent dans Fonctionnalités."
         )
         case .it: return NotchEditorStrings(
             layout: "Layout",
@@ -559,7 +568,8 @@ extension FeatureStrings {
             downloadsSummary: "Download in corso e appena completati.",
             scratchpadSummary: "Note veloci che si salvano da sole.",
             agentsSummary: "Uso, limiti e costi di Claude Code, Codex, OpenCode e GitHub Copilot.",
-            watchSummary: "Qualsiasi parte di una finestra, letta dal vivo, con un avviso quando cambia."
+            watchSummary: "Qualsiasi parte di una finestra, letta dal vivo, con un avviso quando cambia.",
+            extensionSummary: "Una pagina che un’estensione aggiunge all’isola. Le sue impostazioni sono in Funzioni."
         )
         case .ru: return NotchEditorStrings(
             layout: "Макет",
@@ -625,7 +635,8 @@ extension FeatureStrings {
             downloadsSummary: "Текущие и только что завершённые загрузки.",
             scratchpadSummary: "Быстрые заметки, которые сохраняются сами.",
             agentsSummary: "Использование, лимиты и стоимость Claude Code, Codex, OpenCode и GitHub Copilot.",
-            watchSummary: "Любая часть окна, читаемая вживую, с оповещением об изменениях."
+            watchSummary: "Любая часть окна, читаемая вживую, с оповещением об изменениях.",
+            extensionSummary: "Страница, которую расширение добавляет в остров. Его настройки находятся в разделе «Функции»."
         )
         case .tr: return NotchEditorStrings(
             layout: "Yerleşim",
@@ -691,7 +702,8 @@ extension FeatureStrings {
             downloadsSummary: "Süren ve yeni biten indirmeler.",
             scratchpadSummary: "Kendi kendine kaydedilen hızlı notlar.",
             agentsSummary: "Claude Code, Codex, GitHub Copilot ve OpenCode kullanımı, sınırları ve maliyetleri.",
-            watchSummary: "Bir pencerenin herhangi bir bölümü, canlı okunur ve değişince haber verilir."
+            watchSummary: "Bir pencerenin herhangi bir bölümü, canlı okunur ve değişince haber verilir.",
+            extensionSummary: "Bir uzantının adaya eklediği sayfa. Ayarları Özellikler’de."
         )
         case .ja: return NotchEditorStrings(
             layout: "レイアウト",
@@ -757,7 +769,8 @@ extension FeatureStrings {
             downloadsSummary: "進行中と完了したばかりのダウンロード。",
             scratchpadSummary: "自動で保存されるクイックメモ。",
             agentsSummary: "Claude Code、Codex、OpenCode、GitHub Copilotの使用量、上限、コスト。",
-            watchSummary: "ウインドウの好きな部分をライブで読み取り、変化したら知らせます。"
+            watchSummary: "ウインドウの好きな部分をライブで読み取り、変化したら知らせます。",
+            extensionSummary: "拡張機能が島に追加したページです。設定は「機能」にあります。"
         )
         case .ko: return NotchEditorStrings(
             layout: "레이아웃",
@@ -823,7 +836,8 @@ extension FeatureStrings {
             downloadsSummary: "진행 중이거나 방금 끝난 다운로드.",
             scratchpadSummary: "저절로 저장되는 빠른 메모.",
             agentsSummary: "Claude Code, Codex, OpenCode, GitHub Copilot의 사용량, 한도, 비용.",
-            watchSummary: "윈도우의 원하는 부분을 실시간으로 읽고 바뀌면 알려 줍니다."
+            watchSummary: "윈도우의 원하는 부분을 실시간으로 읽고 바뀌면 알려 줍니다.",
+            extensionSummary: "확장 프로그램이 섬에 추가한 페이지입니다. 설정은 기능에 있습니다."
         )
         case .zhHans: return NotchEditorStrings(
             layout: "布局",
@@ -889,7 +903,8 @@ extension FeatureStrings {
             downloadsSummary: "进行中和刚完成的下载。",
             scratchpadSummary: "自动保存的快速笔记。",
             agentsSummary: "Claude Code、Codex、OpenCode 和 GitHub Copilot 的用量、限额和费用。",
-            watchSummary: "实时读取窗口的任意部分，变化时提醒你。"
+            watchSummary: "实时读取窗口的任意部分，变化时提醒你。",
+            extensionSummary: "扩展添加到岛上的页面。其设置位于“功能”中。"
         )
         case .zhTW: return NotchEditorStrings(
             layout: "佈局",
@@ -955,7 +970,8 @@ extension FeatureStrings {
             downloadsSummary: "進行中和剛完成的下載。",
             scratchpadSummary: "自動儲存的快速筆記。",
             agentsSummary: "Claude Code、Codex、OpenCode 和 GitHub Copilot 的用量、限額和費用。",
-            watchSummary: "即時讀取視窗的任何部分，變化時提醒你。"
+            watchSummary: "即時讀取視窗的任何部分，變化時提醒你。",
+            extensionSummary: "延伸功能加入島上的頁面。其設定位於「功能」中。"
         )
         case .zhHK: return NotchEditorStrings(
             layout: "佈局",
@@ -1021,7 +1037,8 @@ extension FeatureStrings {
             downloadsSummary: "進行中和剛完成的下載。",
             scratchpadSummary: "自動儲存的快速筆記。",
             agentsSummary: "Claude Code、Codex、OpenCode 和 GitHub Copilot 的用量、限額和費用。",
-            watchSummary: "即時讀取視窗的任何部分，變化時提醒你。"
+            watchSummary: "即時讀取視窗的任何部分，變化時提醒你。",
+            extensionSummary: "延伸功能加入島上的頁面。其設定位於「功能」中。"
         )
         case .uk: return NotchEditorStrings(
             layout: "Розкладка",
@@ -1087,7 +1104,8 @@ extension FeatureStrings {
             downloadsSummary: "Завантаження, що тривають або щойно завершилися.",
             scratchpadSummary: "Швидкі нотатки, що зберігаються автоматично.",
             agentsSummary: "Використання Claude Code, Codex, OpenCode і GitHub Copilot, ліміти й витрати.",
-            watchSummary: "Будь-яка частина вікна, яку читають наживо, зі сповіщенням про зміни."
+            watchSummary: "Будь-яка частина вікна, яку читають наживо, зі сповіщенням про зміни.",
+            extensionSummary: "Сторінка, яку розширення додає до острівця. Його налаштування є в розділі «Функції»."
         )
         }
     }

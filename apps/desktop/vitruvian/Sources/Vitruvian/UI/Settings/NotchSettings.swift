@@ -13,6 +13,10 @@ package struct NotchSettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var notch = NotchService.shared
     @ObservedObject private var router = SettingsRouter.shared
+    /// Tools added, removed or switched, and their island pages shown or
+    /// hidden, change the section list and the reopening choices.
+    @ObservedObject private var registry = ToolRegistry.shared
+    @ObservedObject private var panels = ToolPanelHost.shared
     @AppStorage(Preferences.notchGesturesEnabled) private var gesturesEnabled: Bool
     @AppStorage(Preferences.notchKeyboardLight) private var keyboardLight: Bool
     @AppStorage(Preferences.notchNotificationsEnabled) private var notificationsEnabled: Bool
@@ -95,8 +99,8 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchHoverExpands) private var hoverExpand: Bool
     @AppStorage(Preferences.notchQuickAccessLayout) private var accessData: Data
     @State private var tab = NotchSettingsTab.layout
-    @State private var selectedModule = NotchModule.controls
-    @State private var draggingModule: NotchModule?
+    @State private var selectedSection = NotchSectionItem.module(.controls)
+    @State private var draggingSection: NotchSectionItem?
     @State private var draggingControl: NotchControlItem?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -125,10 +129,24 @@ package struct NotchSettings: View {
         Binding(get: { NotchQuickAccessConfiguration.stored() }, set: { accessData = $0.encoded })
     }
 
-    private var orderedModules: [NotchModule] {
-        let stored = order.split(separator: ",").compactMap { NotchModule(rawValue: String($0)) }
-        var seen = Set<NotchModule>()
-        return (stored + NotchModule.allCases).filter { seen.insert($0).inserted }
+    /// Each tool's island page there is, hidden ones too, with what its
+    /// tile shows: its title and symbol.
+    private var toolEntries: [ToolID: ToolIslandEntry] {
+        Dictionary(ToolIslandEntry.available(store: .shared, host: panels, language: l10n.language).map { ($0.key.tool, $0) },
+                   uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Every section, the island's own and tools' island pages, in the
+    /// island's order.
+    private var orderedSections: [NotchSectionItem] {
+        _ = registry.revision
+        return NotchSupport.editorSections(tools: ExternalToolStore.shared.availableIslandPanels().map(\.tool), order: order)
+    }
+
+    /// The section whose options show. A tool's page that went with its
+    /// tool leaves Controls chosen.
+    private var shownSection: NotchSectionItem {
+        orderedSections.contains(selectedSection) ? selectedSection : .module(.controls)
     }
 
     package var body: some View {
@@ -163,7 +181,7 @@ package struct NotchSettings: View {
         .padding(.horizontal, 22).padding(.top, 22)
         .onChange(of: configuration) { _, _ in sync() }
         .onChange(of: accessData) { _, _ in NotchService.shared.syncWithPreferences() }
-        .onChange(of: tab) { _, _ in draggingModule = nil; draggingControl = nil }
+        .onChange(of: tab) { _, _ in draggingSection = nil; draggingControl = nil }
         .onAppear(perform: consumeModuleHint)
         .onChange(of: router.notchModule) { _, _ in consumeModuleHint() }
         .onAppear(perform: consumeCompanionHint)
@@ -199,7 +217,7 @@ package struct NotchSettings: View {
     private func consumeModuleHint() {
         guard let module = router.notchModule else { return }
         router.notchModule = nil
-        selectedModule = module
+        selectedSection = .module(module)
         tab = .content
     }
 
@@ -213,7 +231,7 @@ package struct NotchSettings: View {
     private var layoutPage: some View {
         VStack(alignment: .leading, spacing: 20) {
             NotchLayoutEditor(configuration: access, size: $size, width: $customWidth, height: $customHeight) {
-                selectedModule = .controls; tab = .content
+                selectedSection = .module(.controls); tab = .content
             }
             SettingsCard(title: text.size) {
                 HStack(spacing: 10) {
@@ -300,38 +318,80 @@ package struct NotchSettings: View {
         let listWidth: CGFloat = wide ? 216 : 196
         let previewWidth = wide ? min(560, ((size.width - listWidth - 32) * 0.5).rounded()) : 0
         let detailWidth = max(0, size.width - listWidth - 16 - (wide ? previewWidth + 16 : 0))
+        let section = shownSection
         return HStack(alignment: .top, spacing: 16) {
             sectionList
                 .frame(width: listWidth, height: size.height, alignment: .top)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    let module = selectedModule
-                    let available = module.isAvailable()
-                    NotchSectionHeader(module: module, shown: isShown(module),
-                                       reason: available ? nil : moduleFeature(module).map { $0.enableReason(l10n) } ?? text.disabled) {
-                        SettingsRouter.shared.request(FeatureSettingsDestination(.features), targetFeature: moduleFeature(module))
-                    }
-                    if !wide { preview(width: detailWidth, limit: 280) }
-                    if available, hasOptions(module) {
-                        SettingsCard { moduleOptions(module) }
-                    } else if available {
-                        Text(editor.noOptions).font(.callout).foregroundStyle(.secondary)
+                    switch section {
+                    case .module(let module):
+                        let available = module.isAvailable()
+                        NotchSectionHeader(title: module.title(l10n.language), summary: editor.summary(module),
+                                           tile: NotchSectionTile(module: module, shown: isShown(module), side: 38),
+                                           reason: available ? nil : moduleFeature(module).map { $0.enableReason(l10n) } ?? text.disabled) {
+                            SettingsRouter.shared.request(FeatureSettingsDestination(.features), targetFeature: moduleFeature(module))
+                        }
+                        if !wide { preview(section, width: detailWidth, limit: 280) }
+                        if available, hasOptions(module) {
+                            SettingsCard { moduleOptions(module) }
+                        } else if available {
+                            Text(editor.noOptions).font(.callout).foregroundStyle(.secondary)
+                        }
+                    case .tool(let tool):
+                        // A tool's page has no options here: its own are in
+                        // its detail, under Features, where the header leads.
+                        NotchSectionHeader(title: sectionTitle(section), summary: editor.extensionSummary,
+                                           tile: NotchSectionTile(extensionSymbol: sectionSymbol(section),
+                                                                  shown: toolBinding(tool).wrappedValue, side: 38),
+                                           reason: nil) {
+                            SettingsRouter.shared.request(FeatureSettingsDestination(.features))
+                        }
+                        Button(editor.openFeatures) { SettingsRouter.shared.request(FeatureSettingsDestination(.features)) }
+                            .controlSize(.small)
+                        if !wide { preview(section, width: detailWidth, limit: 280) }
                     }
                 }
                 .padding(.bottom, 22)
             }
-            .id(selectedModule)
+            .id(section)
             .frame(width: detailWidth)
             if wide {
-                preview(width: previewWidth, limit: size.height)
+                preview(section, width: previewWidth, limit: size.height)
                     .frame(width: previewWidth)
             }
         }
     }
 
-    private func preview(width: CGFloat, limit: CGFloat) -> some View {
-        NotchIslandPreview(module: selectedModule, hidden: !isShown(selectedModule))
-            .frame(height: NotchIslandPreview.height(width: width, limit: limit))
+    @ViewBuilder private func preview(_ section: NotchSectionItem, width: CGFloat, limit: CGFloat) -> some View {
+        let height = NotchIslandPreview.height(width: width, limit: limit)
+        switch section {
+        case .module(let module):
+            NotchIslandPreview(module: module, hidden: !isShown(module))
+                .frame(height: height)
+        case .tool(let tool):
+            NotchExtensionPreview(title: sectionTitle(section), symbol: sectionSymbol(section),
+                                  hidden: !toolBinding(tool).wrappedValue)
+                .frame(height: height)
+        }
+    }
+
+    /// A section's name: the island's own, or the tool's words for its page.
+    private func sectionTitle(_ item: NotchSectionItem) -> String {
+        switch item {
+        case .module(let module): return module.title(l10n.language)
+        // A tool switched off has no page to name: its own name, else its id.
+        case .tool(let tool):
+            return toolEntries[tool]?.title
+                ?? ExternalToolStore.shared.listed.first { $0.id == tool }?.record.agreement.name ?? tool.rawValue
+        }
+    }
+
+    private func sectionSymbol(_ item: NotchSectionItem) -> String {
+        switch item {
+        case .module(let module): return module.symbol
+        case .tool(let tool): return toolEntries[tool]?.symbol ?? NotchExtensionActions.fallbackSymbol
+        }
     }
 
     /// Every section in the island's order, each with the switch that shows it.
@@ -346,26 +406,42 @@ package struct NotchSettings: View {
             ScrollViewReader { reader in
                 ScrollView {
                     VStack(spacing: 2) {
-                        ForEach(orderedModules) { module in
-                            NotchSectionListRow(module: module, included: moduleBinding(module), available: module.isAvailable(),
-                                                selected: selectedModule == module,
-                                                order: Binding(get: { orderedModules },
-                                                               set: { order = $0.map(\.rawValue).joined(separator: ",") }),
-                                                dragging: $draggingModule) { selectedModule = module }
-                                .id(module)
+                        let sections = orderedSections
+                        let selected = shownSection
+                        ForEach(sections) { item in
+                            sectionRow(item, selected: selected == item, sections: sections)
+                                .id(item)
                         }
                     }
                 }
                 .scrollIndicators(.automatic)
                 // A section chosen from the island itself may sit low in the list.
-                .onAppear { reader.scrollTo(selectedModule) }
-                .onChange(of: selectedModule) { _, module in
-                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { reader.scrollTo(module) }
+                .onAppear { reader.scrollTo(shownSection) }
+                .onChange(of: selectedSection) { _, item in
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { reader.scrollTo(item) }
                 }
             }
         }
         .padding(10)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// One row of the list: the island's own section, or a tool's island
+    /// page, each with the box that shows it.
+    private func sectionRow(_ item: NotchSectionItem, selected: Bool, sections: [NotchSectionItem]) -> some View {
+        let order = Binding(get: { sections }, set: { saveOrder($0) })
+        switch item {
+        case .module(let module):
+            return NotchSectionListRow(item: item, title: module.title(l10n.language), summary: editor.summary(module),
+                                       tile: NotchSectionTile(module: module, shown: true, side: 22),
+                                       included: moduleBinding(module), available: module.isAvailable(),
+                                       selected: selected, order: order, dragging: $draggingSection) { selectedSection = item }
+        case .tool(let tool):
+            return NotchSectionListRow(item: item, title: sectionTitle(item), summary: editor.extensionSummary,
+                                       tile: NotchSectionTile(extensionSymbol: sectionSymbol(item), shown: true, side: 22),
+                                       included: toolBinding(tool), available: true,
+                                       selected: selected, order: order, dragging: $draggingSection) { selectedSection = item }
+        }
     }
 
     private func isShown(_ module: NotchModule) -> Bool {
@@ -598,23 +674,23 @@ package struct NotchSettings: View {
                                          isOn: $gesturesEnabled, feature: .notchGestures)
                 switchRow("waveform.path", text.hapticFeedback, isOn: $hapticFeedback)
                 SettingsRow(symbol: "arrow.uturn.backward", title: editor.reopening) {
-                    Picker(editor.reopening, selection: Binding(get: {
-                        guard returnHome else { return "" }
-                        return NotchModule(rawValue: homeModule) != nil
-                            || NotchReopeningDestination(rawValue: homeModule) != nil
-                            ? homeModule : NotchModule.controls.rawValue
-                    }, set: { value in
+                    // What it shows is `NotchSupport.reopeningChoice`, by the
+                    // rule the island reopens with.
+                    let sections = visibleSections
+                    let choice = NotchSupport.reopeningChoice(returnHome: returnHome, saved: homeModule, sections: sections)
+                    Picker(editor.reopening, selection: Binding(get: { choice.selection }, set: { value in
                         returnHome = !value.isEmpty
                         if returnHome { homeModule = value }
                     })) {
                         Text(editor.lastPage).tag("")
                         Text(text.panel).tag(NotchReopeningDestination.appPanel.rawValue)
                         Text(text.sectionsTitle).tag(NotchReopeningDestination.explore.rawValue)
-                        ForEach(NotchSupport.modules()) { module in
-                            Text(module.title(l10n.language)).tag(module.rawValue)
+                        ForEach(sections) { item in
+                            Text(verbatim: sectionTitle(item)).tag(item.rawValue)
                         }
-                        if let saved = NotchModule(rawValue: homeModule), !NotchSupport.modules().contains(saved) {
-                            Text(saved.title(l10n.language)).tag(homeModule).disabled(true)
+                        // A saved section that is not showing stays chosen, dimmed.
+                        if let waiting = choice.waiting {
+                            Text(verbatim: sectionTitle(waiting)).tag(waiting.rawValue).disabled(true)
                         }
                     }
                     .pickerStyle(.menu)
@@ -651,6 +727,15 @@ package struct NotchSettings: View {
                 switchRow("camera.viewfinder", text.showInCaptures, isOn: $showInCaptures)
             }
         }
+    }
+
+    /// The sections the island shows now, its own and tools' pages, in its
+    /// order: what reopening can land on.
+    private var visibleSections: [NotchSectionItem] {
+        _ = registry.revision
+        return NotchSupport.sectionOrder(live: NotchSupport.modules().map(NotchSectionItem.module)
+                                            + ExternalToolStore.shared.islandPanels().map { .tool($0.tool) },
+                                         from: order)
     }
 
     private var hoverDelayControl: some View {
@@ -708,7 +793,7 @@ package struct NotchSettings: View {
     }
 
     private func showModule(_ module: NotchModule) {
-        selectedModule = module
+        selectedSection = .module(module)
         tab = .content
     }
 
@@ -916,22 +1001,31 @@ package struct NotchSettings: View {
         }
     }
 
+    /// Saves a reorder of the list through the island's own rule, so the
+    /// place of a tool that is switched off stays.
+    private func saveOrder(_ sections: [NotchSectionItem]) {
+        order = NotchSupport.savedSectionOrder(afterMoving: sections, previous: order,
+                                               installedTools: Set(ExternalToolStore.shared.listed.map(\.id)))
+    }
+
+    /// Whether the island lists a tool's page: the switch in its detail.
+    private func toolBinding(_ tool: ToolID) -> Binding<Bool> {
+        Binding {
+            // Read through the registry, so the list redraws when the switch changes.
+            _ = registry.revision
+            return ExternalToolStore.shared.showsInIsland(tool)
+        } set: { shown in
+            ExternalToolStore.shared.setShowsInIsland(tool, shown)
+        }
+    }
+
     private func moduleBinding(_ module: NotchModule) -> Binding<Bool> {
         Binding {
-            (module != .timer || timerEnabled) && (module != .camera || cameraEnabled)
-                && (module != .calendar || calendarEnabled) && (module != .notifications || notificationsEnabled)
-                && (module != .agents || agentsEnabled) && (module != .watch || watchEnabled)
-                && !hidden.split(separator: ",").contains(Substring(module.rawValue))
+            // Read through the stored values, so the list redraws when any of them changes.
+            _ = (hidden, timerEnabled, cameraEnabled, calendarEnabled, notificationsEnabled, agentsEnabled, watchEnabled)
+            return NotchSupport.isModuleShown(module)
         } set: { shown in
-            if module == .timer { timerEnabled = shown }
-            if module == .camera { cameraEnabled = shown }
-            if module == .calendar { calendarEnabled = shown }
-            if module == .notifications { notificationsEnabled = shown }
-            if module == .agents { agentsEnabled = shown }
-            if module == .watch { watchEnabled = shown }
-            var values = Set(hidden.split(separator: ",").map(String.init))
-            if shown { values.remove(module.rawValue) } else { values.insert(module.rawValue) }
-            hidden = values.sorted().joined(separator: ",")
+            NotchSupport.setModuleShown(module, shown)
         }
     }
 

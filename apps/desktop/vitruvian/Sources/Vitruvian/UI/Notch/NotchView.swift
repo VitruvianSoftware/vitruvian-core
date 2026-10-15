@@ -11,9 +11,6 @@ package struct NotchView: View {
     @ObservedObject package var service: NotchService
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var music = NotchMusicService.shared
-    /// A tool's own page on the Tools page hides the tiles' header actions,
-    /// as a hosted utility does.
-    @ObservedObject private var panels = ToolPanelHost.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
     @ObservedObject private var updates = UpdateService.shared
     @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass: Bool
@@ -345,10 +342,17 @@ package struct NotchView: View {
     private var contentOverflows: Bool { pageSize.height > service.contentSize.height }
 
     private var scrollsVertically: Bool {
-        guard !service.showingAppPanel else { return false }
+        // A tool's own page scrolls inside itself.
+        guard !service.showingAppPanel, toolPage == nil else { return false }
         return contentOverflows || service.selectedMetric != nil
             || (service.selected == .captures && service.captureContent != nil)
-            || (service.selected == .tools && launcher.isEditing && launcher.activeUtility == nil && panels.island == nil)
+            || (service.selected == .tools && launcher.isEditing && launcher.activeUtility == nil)
+    }
+
+    /// The tool's island page is the island's page: not a detail, the app
+    /// panel or Explore.
+    private var toolPage: ToolPanelHost.Key? {
+        showsDetail || service.showingSections ? nil : service.extensionPage
     }
 
     private var headerFeedback: NotchNotice? {
@@ -369,13 +373,23 @@ package struct NotchView: View {
                             .lineLimit(1)
                             .layoutPriority(-1)
                     }
-                    // Beside the camera the field takes the rest of its side,
-                    // stopping a little short of the cutout.
-                    NotchSectionSearch(service: service,
-                                       maximumFieldWidth: service.expandedGeometry.headerCameraGap > 0 ? .infinity : 150)
-                        .padding(.trailing, service.expandedGeometry.headerCameraGap > 0 ? 6 : 0)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if showsDetail || service.modules.isEmpty {
+                    if service.editingSections {
+                        // No search while the sections are moved; the header
+                        // says what the page is for instead.
+                        Text(text.customizeSections)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        // Beside the camera the field takes the rest of its side,
+                        // stopping a little short of the cutout.
+                        NotchSectionSearch(service: service,
+                                           maximumFieldWidth: service.expandedGeometry.headerCameraGap > 0 ? .infinity : 150)
+                            .padding(.trailing, service.expandedGeometry.headerCameraGap > 0 ? 6 : 0)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else if showsDetail || service.hasNoSections {
                     if showsDetail {
                         NotchIconButton(symbol: "chevron.left", title: l10n.s.obBack, action: service.goBack)
                     }
@@ -387,7 +401,8 @@ package struct NotchView: View {
                     if !quickActions.contains(.explore) {
                         NotchIconButton(symbol: "square.grid.2x2", title: text.sectionsTitle, action: service.toggleSections)
                     }
-                    Text(service.selected.title(l10n.language))
+                    // A tool's page carries the tool's own words.
+                    Text(verbatim: service.sectionTitle(service.currentSection))
                         .font(Font(NotchLayout.headerTitleFont as CTFont))
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -407,7 +422,7 @@ package struct NotchView: View {
                 Color.clear.frame(width: service.expandedGeometry.headerCameraGap)
             }
             HStack(spacing: 6) {
-                if service.selected == .captures, !showsDetail, !service.showingSections,
+                if service.selected == .captures, !showsDetail, !service.showingSections, service.extensionPage == nil,
                    let actions = service.captureActions {
                     actions.fixedSize()
                     overflowMenu(items: overflowItems(tools: false, clear: false))
@@ -442,13 +457,19 @@ package struct NotchView: View {
     /// sits in the header, where the panel's own header keeps it.
     private var showsCapturesClear: Bool {
         service.selected == .captures && service.captureContent == nil && !showsDetail
-            && !service.showingSections && !service.modules.isEmpty
+            && !service.showingSections && !service.hasNoSections && service.extensionPage == nil
     }
 
     /// Notifications show only cards too; every row of height is theirs.
     private var showsNotificationsClear: Bool {
         service.selected == .notifications && !showsDetail
-            && !service.showingSections && !service.modules.isEmpty
+            && !service.showingSections && !service.hasNoSections && service.extensionPage == nil
+    }
+
+    /// Explore's sections can be moved, hidden and shown, as the Tools
+    /// page's tiles are, while no search narrows them.
+    private var showsCustomizeSections: Bool {
+        service.showingSections && service.sectionQuery.isEmpty
     }
 
     private var cameraHeaderActions: some View {
@@ -463,18 +484,24 @@ package struct NotchView: View {
             NotchUpdateControl(action: service.showUpdate, compact: compactUpdate)
             overflowMenu(items: overflowItems(
                 tools: service.selected == .tools && !showsDetail && !service.showingSections && launcher.activeUtility == nil
-                    && panels.island == nil,
+                    && service.extensionPage == nil,
+                sections: showsCustomizeSections,
                 clear: showsCapturesClear, clearNotifications: showsNotificationsClear))
         }
     }
 
     /// The header's overflow entries, each with the glyph its own button
     /// wears when the pointer row shows them separately.
-    private func overflowItems(tools: Bool, clear: Bool, clearNotifications: Bool = false) -> [NotchMenuItem] {
+    private func overflowItems(tools: Bool, sections: Bool = false, clear: Bool,
+                               clearNotifications: Bool = false) -> [NotchMenuItem] {
         var items: [NotchMenuItem] = []
         if tools {
             items.append(NotchMenuItem(title: text.customizeTools, checked: launcher.isEditing,
                                        symbol: "slider.horizontal.3") { launcher.isEditing.toggle() })
+        }
+        if sections {
+            items.append(NotchMenuItem(title: text.customizeSections, checked: service.editingSections,
+                                       symbol: "slider.horizontal.3") { service.editingSections.toggle() })
         }
         if clear {
             // As the header draws, the pointer on its way to this menu included,
@@ -527,10 +554,17 @@ package struct NotchView: View {
         return HStack(spacing: 6) {
             NotchUpdateControl(action: service.showUpdate)
             if service.selected == .tools, !service.showingAppPanel, !service.showingSections, service.selectedMetric == nil,
-               !service.modules.isEmpty, launcher.activeUtility == nil, panels.island == nil {
+               !service.hasNoSections, launcher.activeUtility == nil, service.extensionPage == nil {
                 NotchIconButton(symbol: launcher.isEditing ? "checkmark" : "slider.horizontal.3",
                                 title: text.customizeTools, selected: launcher.isEditing) {
                     withAnimation(.easeOut(duration: 0.15)) { launcher.isEditing.toggle() }
+                }
+            }
+            if showsCustomizeSections {
+                NotchIconButton(symbol: service.editingSections ? "checkmark" : "slider.horizontal.3",
+                                title: service.editingSections ? text.doneCustomizing : text.customizeSections,
+                                selected: service.editingSections) {
+                    withAnimation(.easeOut(duration: 0.15)) { service.editingSections.toggle() }
                 }
             }
             if showsCapturesClear { NotchClearCapturesButton() }
@@ -577,6 +611,7 @@ package struct NotchView: View {
 
     private var navigationTitle: String {
         let destination = service.reopeningDestination
+        if let page = destination.toolPage { return service.sectionTitle(.tool(page.tool)) }
         return destination.appPanel || destination.sections
             ? text.sectionsTitle : destination.module.title(l10n.language)
     }
@@ -612,7 +647,9 @@ package struct NotchView: View {
             } else {
                 MetricDetailView(kind: metric)
             }
-        } else if service.modules.isEmpty {
+        } else if let key = toolPage {
+            hostedPanel(key, height: service.contentSize.height)
+        } else if service.hasNoSections {
             NotchEmptyView(symbol: "slider.horizontal.3", message: text.empty)
         } else {
             switch service.selected {
@@ -640,6 +677,20 @@ package struct NotchView: View {
             case .watch: NotchWatchView(size: pageSize)
             }
         }
+    }
+}
+
+extension NotchView {
+    /// A tool's island page as the island's page, in the room the page has;
+    /// a longer page scrolls in it.
+    fileprivate func hostedPanel(_ key: ToolPanelHost.Key, height: CGFloat) -> some View {
+        ScrollView(showsIndicators: false) {
+            ToolPanelView(key: key, size: .island)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.bottom, NotchLayout.scrollBottomPadding)
+        }
+        .frame(height: height)
+        .notchScrollEdgeFade()
     }
 }
 
@@ -845,6 +896,7 @@ package struct NotchRestingStrip: View {
 }
 
 extension NotchModule: PanelOrderItem {}
+extension NotchSectionItem: PanelOrderItem {}
 
 /// A page may draw into the island's own margins and behind its header, which
 /// the silhouette already bounds: the artwork's halo and hover growth fade out

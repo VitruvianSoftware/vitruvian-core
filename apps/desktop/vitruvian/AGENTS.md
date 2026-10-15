@@ -309,11 +309,20 @@ A tool can be a separate program the app starts and talks to
 All four stages of that work are built: the protocol, reading a tool's
 manifest, the runtime that starts a tool, talks to it and stops it, the
 screens, and what a tool's author works with. A person adds a tool in
-Settings, under Features, in the section "Tools from outside": they pick its
+Settings, under Features, in the section "Extensions & Tools": they pick its
 folder and agree on one sheet. Every build has that section. Beside "Add a
 Tool…", "Browse Tools…" lists the Vitruvian catalog: a curated list, kept in
 `catalog/` at the repository's root, that the person installs a tool from
 through the same sheet. There is no other store of tools.
+
+Each row of that section carries a pill, `ExternalToolRow.kind`: a package
+whose manifest has any `panels` (island, Settings or window) is an
+Extension, one with none is a Tool. The manifest's fields and the protocol
+keep the word "tool" for both. A package that is held back has no manifest
+the app reads, so it is badged Tool until it is updated. The catalog's
+sheet has no pill: `CatalogueEntry` carries no panels, so it cannot tell.
+The section's words name every place an extension's page may be, never the
+island alone, since some extensions only add a Settings part or a window.
 
 What a tool's author works with is all in `packages/vitruvian-sdk`: a Swift
 kit, the `vitruvian-tool` command, three samples and a guide
@@ -677,11 +686,34 @@ the app draws them (`docs/superpowers/specs/2026-10-12-vitruvian-tools-for-every
 section 8; the stage D plan). A tool of protocol 1 is read and run as
 before: the app offers both versions at `initialize`, and the tool picks.
 
-- A panel is in one of three places (`ToolPanelPlacement`): a tile and a
-  page in the island's Tools area, a part of the tool's detail in Settings,
-  or a window the app owns. At most one in the island and one in Settings.
-  The island's own list of pages (`NotchModule`) is not open to tools: a
-  tool's page is hosted on the Tools page, as a utility is.
+- A panel is in one of three places (`ToolPanelPlacement`): a section of
+  the island, a part of the tool's detail in Settings, or a window the app
+  owns. At most one in the island and one in Settings.
+- A tool's island page is one of the island's own sections
+  (`NotchSectionItem.tool`), beside the `NotchModule` pages in Explore and
+  in the saved order (`notchModuleOrder`); reopening can land on it, and a
+  quick-access button saved as `extension:<tool id>` opens it. The Tools
+  page lists only quick tools and commands.
+  `NotchService` owns which page shows (`currentSection`, `extensionPage`):
+  it opens one tool's page at a time, closing the last first, since
+  `ToolPanelHost.open` does neither; an island page of its own, the app
+  panel or a detail closes it; a refused page leaves the island on Explore;
+  and a page that goes with its tool, or is hidden, falls back to Explore.
+  Whether the island is empty, and shows its Explore button, is
+  `NotchService.hasNoSections`, over every section, never `modules` alone.
+  Showing a tool's page is `ExternalToolStore.setShowsInIsland`, the same
+  switch as its detail's; Explore's editor (`editingSections`) flips it and
+  `NotchSupport.setModuleShown` for the island's own.
+- Settings treats a tool's island page as a section too. The Content tab
+  lists `NotchSupport.editorSections` and saves a move through
+  `savedSectionOrder`. The island and the "When reopening" picker share one
+  rule, `NotchSupport.reopeningTarget`: a saved page that is not showing,
+  the island's own or a tool's, reopens the first section, and the picker
+  (`reopeningChoice`) keeps it chosen and dimmed rather than naming another
+  page. Core cannot see the tools, so a tool's quick-access button asks
+  `NotchExtensionActions` (Services) for its title, symbol and whether it
+  shows; the island draws it only while it lists the page
+  (`NotchService.quickAccess`).
 - `ToolPanelHost` (`Services/Platform/External/ToolPanelHost.swift`) is the
   one place that knows what a panel shows: for each open panel the last page
   its tool sent, read away from the main thread by `ToolPanelTree.read` and

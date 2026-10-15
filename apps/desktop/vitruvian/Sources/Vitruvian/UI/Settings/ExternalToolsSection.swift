@@ -23,6 +23,15 @@ package struct ExternalToolRow: Identifiable, Equatable {
         case changed
     }
 
+    /// What the row is badged as. A package that contributes panels, in any
+    /// place, is an extension; one that only adds commands is a tool. A
+    /// package that is held back has no manifest the app reads, so it reads
+    /// as a tool until it is updated.
+    package enum Kind: Equatable, Sendable {
+        case extensionPackage
+        case tool
+    }
+
     package let id: ToolID
     /// The tool's name in the person's language, as the tool wrote it. For
     /// a tool that is held back, the name the person agreed to.
@@ -30,6 +39,9 @@ package struct ExternalToolRow: Identifiable, Equatable {
     /// The publisher and the version, as the tool wrote them.
     package let byline: String
     package let symbol: String
+    package let kind: Kind
+    /// The pill beside the byline: "Extension" or "Tool", in the person's language.
+    package let kindBadge: String
     package let isOn: Bool
     package let status: Status
     /// The words beside the row for its status; nil when there are none.
@@ -53,6 +65,8 @@ package struct ExternalToolRow: Identifiable, Equatable {
         byline = "\(listed.tool?.publisher ?? agreed.publisher) · \(listed.tool?.version ?? agreed.version)"
         let wanted = listed.tool?.manifest.tool.symbol ?? ExternalToolManifest.defaultSymbol
         symbol = hasSymbol(wanted) ? wanted : ExternalToolManifest.defaultSymbol
+        kind = listed.tool?.panels.isEmpty == false ? .extensionPackage : .tool
+        kindBadge = kind == .extensionPackage ? strings.kindExtension : strings.kindTool
         isOn = listed.record.isOn
         if listed.isHeld {
             status = .changed
@@ -242,7 +256,7 @@ package struct ExternalToolDetail: Equatable {
     /// The tool's windows, each with the app's word Open. None for a tool
     /// that is switched off or held back: it has no program to ask.
     package let windows: [Window]
-    /// The switch that lists the tool's page in the island's Tools area,
+    /// The switch that lists the tool's page among the island's sections,
     /// as it stands; nil for a tool with no island page.
     package let showsInIsland: Bool?
     /// The words beside that switch.
@@ -753,7 +767,10 @@ private struct ExternalToolRowView: View {
                         Text(row.name)
                             .foregroundStyle(row.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                             .lineLimit(1)
-                        Text(row.byline).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(row.byline).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            ExternalToolKindBadge(text: row.kindBadge)
+                        }
                         if let status = row.statusText {
                             ExternalToolStatusLabel(status: row.status, text: status)
                         }
@@ -772,7 +789,7 @@ private struct ExternalToolRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel([row.name, row.byline, row.statusText, row.updateText].compactMap { $0 }
+            .accessibilityLabel([row.name, row.kindBadge, row.byline, row.statusText, row.updateText].compactMap { $0 }
                 .joined(separator: ". "))
             if row.status == .stopped(canStartAgain: true) {
                 Button(text.startAgain, action: startAgain).controlSize(.small)
@@ -818,6 +835,22 @@ private struct ExternalToolStatusLabel: View {
         case .changed: return .orange
         case .quiet: return .secondary
         }
+    }
+}
+
+/// "Extension" or "Tool", in a quiet pill beside the byline.
+private struct ExternalToolKindBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(Color.primary.opacity(0.06)))
     }
 }
 

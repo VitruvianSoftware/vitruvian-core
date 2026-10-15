@@ -36,7 +36,7 @@ enum CatalogueScreensTests {
         let before = content(empty).body
         empty.serve([])
         empty.watch.refresh()
-        suite.expect(before == .loading && content(empty).body == .message("There are no tools in the catalog yet.")
+        suite.expect(before == .loading && content(empty).body == .message("There are no extensions or tools in the catalog yet.")
                          && content(empty).title == "The Vitruvian catalog",
                      "before the list arrives the sheet waits; an empty list says so in one line")
         empty.fetcher.answers = [:]
