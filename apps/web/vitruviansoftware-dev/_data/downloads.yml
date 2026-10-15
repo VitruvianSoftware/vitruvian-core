@@ -47,7 +47,7 @@ categories:
 
       - id: vitruvian-desktop
         name: Vitruvian Desktop
-        version: "3.49.0"
+        version: "3.52.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
@@ -55,20 +55,20 @@ categories:
         brew_cask: VitruvianSoftware/tap/vitruvian
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.49.0/Vitruvian-3.49.0-universal.dmg
-            size: 82.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.52.0/Vitruvian-3.52.0-universal.dmg
+            size: 82.4 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.49.0/Vitruvian-3.49.0-arm64.dmg
-            size: 43.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.52.0/Vitruvian-3.52.0-arm64.dmg
+            size: 43.7 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.49.0/Vitruvian-3.49.0-x86_64.dmg
-            size: 45.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.52.0/Vitruvian-3.52.0-x86_64.dmg
+            size: 45.2 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.49.0/Vitruvian-3.49.0-universal.zip
-            size: 82.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.52.0/Vitruvian-3.52.0-universal.zip
+            size: 82.4 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
@@ -107,16 +107,16 @@ categories:
     items:
       - id: android-remote
         name: Vitruvian Remote
-        version: "0.1.2"
+        version: "0.1.3"
         summary: >-
           Android companion app for Vitruvian. Answer agent permission prompts, monitor
           coding sessions, and review status updates directly from your phone.
         platforms: ["Android (arm64-v8a, x86_64)"]
         downloads:
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.2/VitruvianRemote-0.1.2.apk
-            size: 7.9 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.2
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.3/VitruvianRemote-0.1.3.apk
+            size: 8.3 MB
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.3
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote
 
   - id: cli
