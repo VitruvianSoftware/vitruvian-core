@@ -190,8 +190,12 @@ public final class GitHubAPI {
                 if let identity, !Verdicts.concerns(candidate, in: repo, identity: identity) { continue }
                 candidates.append(candidate)
             }
+            let queuePositions = candidates.isEmpty
+                ? [:]
+                : mergeQueuePositions(repo: repo, branch: defaultBranch, token: token)
             candidates.sort { $0.number > $1.number }
             for (index, var candidate) in candidates.enumerated() {
+                candidate.mergeQueue = queuePositions[candidate.number]
                 let previous = known?.pullRequests[candidate.number]
                 let sameHead = previous?.headSHA == candidate.headSHA
                 if index < Self.maxDetailedPulls {
@@ -208,6 +212,59 @@ public final class GitHubAPI {
         }
         return RepoState(repo: repo, defaultBranch: defaultBranch, headSHA: headSHA, checks: checks,
                          pullRequests: pulls, updatedAt: now)
+    }
+
+    private func mergeQueuePositions(repo: RepoKey, branch: String, token: String) -> [Int: MergeQueueState] {
+        struct Query: Encodable {
+            let query: String
+            let variables: [String: String]
+        }
+        struct Response: Decodable {
+            struct DataField: Decodable {
+                struct Repository: Decodable {
+                    struct MergeQueue: Decodable {
+                        struct Entries: Decodable {
+                            struct Node: Decodable {
+                                struct Pull: Decodable { let number: Int }
+                                let position: Int?
+                                let pullRequest: Pull?
+                            }
+                            let nodes: [Node?]?
+                        }
+                        let entries: Entries?
+                    }
+                    let mergeQueue: MergeQueue?
+                }
+                let repository: Repository?
+            }
+            let data: DataField?
+        }
+        let query = """
+            query($owner: String!, $name: String!, $branch: String!) {
+              repository(owner: $owner, name: $name) {
+                mergeQueue(branch: $branch) {
+                  entries(first: 100) {
+                    nodes { position pullRequest { number } }
+                  }
+                }
+              }
+            }
+            """
+        guard let body = try? JSONEncoder().encode(Query(
+            query: query,
+            variables: ["owner": repo.owner, "name": repo.name, "branch": branch]
+        )),
+        let (data, response) = try? send(url: apiURL.appendingPathComponent("graphql"), token: token, method: "POST",
+                                         body: body),
+        response.statusCode == 200,
+        let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return [:] }
+        var positions: [Int: MergeQueueState] = [:]
+        for node in (decoded.data?.repository?.mergeQueue?.entries?.nodes ?? []).compactMap({ $0 }) {
+            if let number = node.pullRequest?.number {
+                positions[number] = MergeQueueState(position: node.position)
+            }
+        }
+        return positions
     }
 
     private func checkRuns(base: URL, sha: String, token: String) -> [String: CheckRun]? {
@@ -319,12 +376,16 @@ public final class GitHubAPI {
 
     // MARK: Plumbing
 
-    private func send(url: URL, token: String, method: String = "GET") throws -> (Data, HTTPURLResponse) {
+    private func send(url: URL, token: String, method: String = "GET", body: Data? = nil) throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
         if method == "GET", let entry = cached[url] {
             request.setValue(entry.etag, forHTTPHeaderField: "If-None-Match")
         }

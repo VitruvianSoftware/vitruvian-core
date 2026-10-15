@@ -79,10 +79,22 @@ final class PagesTests: XCTestCase {
     /// `repo:acme/web` and `pr:acme/web#2`: signed in, the island page was a
     /// spinner for ever, and no test read a page back.
     func testEveryPageIsOneTheAppWillRead() throws {
+        let pull = PullRequest(
+            number: 7, title: "Fix check list", author: "ana", headSHA: "p7", isDraft: false,
+            htmlURL: URL(string: "https://github.com/acme/web/pull/7"), requestedReviewers: [], requestedTeams: [],
+            reviews: ["bo": .approved],
+            checks: [
+                "check_run:1": CheckRun(key: "check_run:1", name: "lint", headSHA: "p7", status: .completed,
+                                        conclusion: .failure, htmlURL: URL(string: "https://github.com/acme/web/runs/1")),
+                "check_run:2": CheckRun(key: "check_run:2", name: "build", headSHA: "p7", status: .inProgress,
+                                        conclusion: nil, htmlURL: URL(string: "https://github.com/acme/web/runs/2")),
+            ],
+            mergeQueue: MergeQueueState(position: 2))
         let pages: [(String, UITree)] = [
             ("the island, signed in", Pages.island(summary: summary(red: true, pulls: 2, failedRun: true),
                                                    auth: .signedIn(login: "me"))),
             ("the island, signed out", Pages.island(summary: summary(), auth: .signedOut)),
+            ("the pull detail", Pages.pullDetail(repo: Self.repo, pull: pull)),
             ("the settings, signed in", Pages.settings(.init(auth: .signedIn(login: "me"), cliLogin: "me"))),
             ("the settings, signed out", Pages.settings(.init(auth: .signedOut))),
         ]
@@ -94,7 +106,8 @@ final class PagesTests: XCTestCase {
 
     func testARowsIdIsAWellFormedNameWhateverTheRepositoryIsCalled() {
         let odd = ["acme/web", "acme/.github", "acme/a.b", "acme/a_b", "acme/a__d", "a-b/c-d", "acme/x_dy",
-                   "acme/v1.2.3", "acme/a..b", "acme/trailing."]
+                   "acme/v1.2.3", "acme/a..b", "acme/trailing.", "acme/a_cy"]
+        let runKeys = ["check_run:70", "workflow_run:12", "check_run:a_b.c:d", "check_run:x_cy_dz"]
         for fullName in odd {
             guard let repo = RepoKey(fullName: fullName) else { return XCTFail(fullName) }
             let row = Pages.repoRow(repo)
@@ -104,8 +117,22 @@ final class PagesTests: XCTestCase {
             XCTAssertTrue(ManifestRules.isWellFormedName(pull), "\(fullName) gives \(pull)")
             XCTAssertEqual(Pages.pull(ofRow: pull)?.repo, repo, "\(fullName) comes back from \(pull)")
             XCTAssertEqual(Pages.pull(ofRow: pull)?.number, 42)
+            let detail = Pages.pullDetailRow(repo, 42)
+            XCTAssertTrue(ManifestRules.isWellFormedName(detail), "\(fullName) gives \(detail)")
+            XCTAssertEqual(Pages.pullDetail(ofRow: detail)?.repo, repo)
+            XCTAssertEqual(Pages.pullDetail(ofRow: detail)?.number, 42)
             XCTAssertNil(Pages.repo(ofRow: pull), "a pull request's row is not a repository's")
             XCTAssertNil(Pages.pull(ofRow: row), "a repository's row is not a pull request's")
+            XCTAssertNil(Pages.pull(ofRow: detail), "a detail row is not a pull request list row")
+            for runKey in runKeys {
+                let check = Pages.checkRow(repo, 42, runKey)
+                XCTAssertTrue(ManifestRules.isWellFormedName(check), "\(fullName) + \(runKey) gives \(check)")
+                let decoded = Pages.check(ofRow: check)
+                XCTAssertEqual(decoded?.repo, repo)
+                XCTAssertEqual(decoded?.number, 42)
+                XCTAssertEqual(decoded?.runID, runKey)
+                XCTAssertNil(Pages.pullDetail(ofRow: check))
+            }
         }
         // A name too long for an id still gives a page the app reads; its row
         // names nothing, so a tap on it does nothing.
@@ -114,7 +141,70 @@ final class PagesTests: XCTestCase {
         XCTAssertNil(Pages.repo(ofRow: Pages.repoRow(long)))
         XCTAssertTrue(ManifestRules.isWellFormedName(Pages.pullRow(long, 7)))
         XCTAssertNil(Pages.pull(ofRow: Pages.pullRow(long, 7)))
+        XCTAssertTrue(ManifestRules.isWellFormedName(Pages.pullDetailRow(long, 7)))
+        XCTAssertNil(Pages.pullDetail(ofRow: Pages.pullDetailRow(long, 7)))
+        XCTAssertTrue(ManifestRules.isWellFormedName(Pages.checkRow(long, 7, "check_run:1")))
+        XCTAssertNil(Pages.check(ofRow: Pages.checkRow(long, 7, "check_run:1")))
         XCTAssertNotEqual(Pages.pullRow(long, 7), Pages.pullRow(long, 8), "two rows of one list never share an id")
+        XCTAssertNotEqual(Pages.checkRow(long, 7, "check_run:1"), Pages.checkRow(long, 7, "check_run:2"))
+    }
+
+    func testPullDetailPageOrdersChecksAndShowsMergeQueueAndOverflow() throws {
+        let checks: [String: CheckRun] = [
+            "check_run:1": CheckRun(key: "check_run:1", name: "z-pass", headSHA: "h", status: .completed,
+                                    conclusion: .success, htmlURL: URL(string: "https://x/1")),
+            "check_run:2": CheckRun(key: "check_run:2", name: "b-fail", headSHA: "h", status: .completed,
+                                    conclusion: .failure, htmlURL: URL(string: "https://x/2")),
+            "check_run:3": CheckRun(key: "check_run:3", name: "a-run", headSHA: "h", status: .inProgress,
+                                    conclusion: nil, htmlURL: URL(string: "https://x/3")),
+            "check_run:4": CheckRun(key: "check_run:4", name: "a-fail", headSHA: "h", status: .completed,
+                                    conclusion: .timedOut, htmlURL: URL(string: "https://x/4")),
+            "check_run:5": CheckRun(key: "check_run:5", name: "c-unknown", headSHA: "h", status: .completed,
+                                    conclusion: .other("unknown"), htmlURL: URL(string: "https://x/5")),
+        ]
+        let queuedWithPos = PullRequest(
+            number: 12, title: "Drill down", author: "james", headSHA: "h", isDraft: false,
+            htmlURL: URL(string: "https://github.com/acme/web/pull/12"), requestedReviewers: [], requestedTeams: [],
+            reviews: ["ana": .approved], checks: checks, mergeQueue: MergeQueueState(position: 3))
+        let page = Pages.pullDetail(repo: Self.repo, pull: queuedWithPos)
+        XCTAssertEqual(page.kinds, ["button", "row", "row", "heading", "list"])
+        XCTAssertEqual(page.ids, ["back", "prdetail.acme.web.12", "checks"])
+        XCTAssertEqual(page.english(0), "Back")
+        XCTAssertEqual(page.english(1), "#12 Drill down")
+        XCTAssertEqual(page.english(2), "In merge queue (#3)")
+        guard case .list(let list) = page.blocks[4].content else { return XCTFail() }
+        XCTAssertEqual(list.rows.map { $0.title.text(for: "en") }, ["a-fail", "b-fail", "a-run", "z-pass", "c-unknown"],
+                       "failing checks first, then running, then passed, then grey")
+        XCTAssertEqual(list.rows.map { $0.trailing?.text(for: "en") }, ["Failed", "Failed", "Running", "Passed", nil],
+                       "a grey check shows no trailing label")
+
+        // Queued without a position shows "In merge queue", and empty checks shows "No checks yet".
+        let queuedNoPos = PullRequest(
+            number: 13, title: "Auto-merge", author: "james", headSHA: "h", isDraft: false,
+            htmlURL: nil, requestedReviewers: [], requestedTeams: [], mergeQueue: MergeQueueState())
+        let noChecksPage = Pages.pullDetail(repo: Self.repo, pull: queuedNoPos)
+        XCTAssertEqual(noChecksPage.kinds, ["button", "row", "row", "heading", "text"])
+        XCTAssertEqual(noChecksPage.english(2), "In merge queue")
+        XCTAssertEqual(noChecksPage.english(4), "No checks yet")
+
+        // 151 checks cap at 150 and add a "+1 more on GitHub" row linking to the PR.
+        var manyChecks: [String: CheckRun] = [:]
+        for i in 1...151 {
+            let key = "check_run:\(i)"
+            manyChecks[key] = CheckRun(key: key, name: String(format: "check-%03d", i), headSHA: "h",
+                                       status: .completed, conclusion: .success, htmlURL: nil)
+        }
+        let manyPull = PullRequest(
+            number: 14, title: "Many checks", author: "james", headSHA: "h", isDraft: false,
+            htmlURL: URL(string: "https://github.com/acme/web/pull/14"), requestedReviewers: [], requestedTeams: [],
+            checks: manyChecks)
+        let manyPage = Pages.pullDetail(repo: Self.repo, pull: manyPull)
+        guard case .list(let manyList) = manyPage.blocks[3].content else { return XCTFail() }
+        XCTAssertEqual(manyList.rows.count, Pages.maxCheckRows + 1)
+        XCTAssertEqual(manyList.rows.last?.id, "prdetail.acme.web.14")
+        XCTAssertEqual(manyList.rows.last?.title.text(for: "en"), "+1 more on GitHub")
+        let bytes = try JSONEncoder().encode(manyPage).count
+        XCTAssertLessThanOrEqual(bytes, UILimits.maxTreeBytes)
     }
 
     func testTheIslandPageWithoutPullRequestsOrFailures() {
@@ -188,6 +278,25 @@ final class PagesTests: XCTestCase {
             case .heading(let b): assertTranslated(b.text)
             case .button(let b): assertTranslated(b.title)
             case .text(let b): assertTranslated(b.text)
+            case .list(let b): for row in b.rows { assertTranslated(row.trailing) }
+            default: break
+            }
+        }
+        let detailPull = PullRequest(
+            number: 1, title: "Change", author: "ana", headSHA: "h", isDraft: false, htmlURL: nil,
+            requestedReviewers: [], requestedTeams: [],
+            checks: ["check_run:1": CheckRun(key: "check_run:1", name: "ci", headSHA: "h", status: .completed,
+                                             conclusion: .failure, htmlURL: nil)],
+            mergeQueue: MergeQueueState(position: 1))
+        let detail = Pages.pullDetail(repo: Self.repo, pull: detailPull)
+        for block in detail.blocks {
+            switch block.content {
+            case .heading(let b): assertTranslated(b.text)
+            case .button(let b): assertTranslated(b.title)
+            case .text(let b): assertTranslated(b.text)
+            case .row(let b):
+                if block.id == nil { assertTranslated(b.title) }
+                assertTranslated(b.trailing)
             case .list(let b): for row in b.rows { assertTranslated(row.trailing) }
             default: break
             }
