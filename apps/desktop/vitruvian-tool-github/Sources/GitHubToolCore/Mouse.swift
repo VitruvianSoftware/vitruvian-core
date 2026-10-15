@@ -169,6 +169,14 @@ public final class MouseDriver {
         executor(Self.arguments(verdict: verdict, awaitingApproval: awaitingApproval, settings: settings))
     }
 
+    /// Shows one test's light now, as Settings' test buttons ask, and
+    /// forgets what was shown, so the next snapshot writes the real state
+    /// back over it.
+    public func test(_ test: MouseTest, settings: MouseSettings) {
+        lastShown = nil
+        executor(test.arguments(settings: settings))
+    }
+
     /// Puts the person's own lighting back, and forgets what was shown.
     public func restore() {
         lastShown = nil
@@ -185,5 +193,43 @@ public final class MouseDriver {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try? process.run()
+    }
+}
+
+/// One of Settings' mouse test buttons: the light the mouse shows for one
+/// state, on demand. The raw value is the button's id.
+public enum MouseTest: String, CaseIterable, Sendable {
+    case approval = "testApproval"
+    case success = "testSuccess"
+    case running = "testRunning"
+    case failure = "testFailure"
+    case idle = "testIdle"
+
+    /// The verdict, and whether a check waits for approval, it stands for.
+    public var verdict: Verdict {
+        switch self {
+        case .approval, .success: return .green
+        case .running: return .amber
+        case .failure: return .red
+        case .idle: return .grey
+        }
+    }
+
+    public var awaitingApproval: Bool { self == .approval }
+
+    /// The words on its button, a key of `Words`.
+    public var wordKey: String {
+        switch self {
+        case .approval: return "awaitingApproval"
+        case .success: return "checkPassed"
+        case .running: return "checkRunning"
+        case .failure: return "checkFailed"
+        case .idle: return "idle"
+        }
+    }
+
+    /// The mouse command's arguments for it, from the person's settings.
+    public func arguments(settings: MouseSettings) -> [String] {
+        MouseDriver.arguments(verdict: verdict, awaitingApproval: awaitingApproval, settings: settings)
     }
 }

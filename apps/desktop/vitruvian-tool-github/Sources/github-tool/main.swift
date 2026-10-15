@@ -56,6 +56,21 @@ final class KitHost: ToolHost {
     func render(panel: String, _ tree: UITree) {
         panels[panel]?.render(tree)
     }
+
+    func supports(_ feature: ProtocolFeature) -> Bool {
+        app?.supports(feature) ?? false
+    }
+
+    /// Needs `clipboard.write` in the manifest's `uses`; the app refuses it
+    /// otherwise, and the refusal is read as false.
+    func copyText(_ text: String) -> Bool {
+        do {
+            return try app?.setClipboardText(text) ?? false
+        } catch {
+            app?.log("the app did not take the clipboard text: \(error)")
+            return false
+        }
+    }
 }
 
 let tool = Tool(version: ToolVersion.current)

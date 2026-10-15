@@ -164,6 +164,69 @@ public struct MergeQueueState: Sendable, Equatable {
     }
 }
 
+/// Where one entry of a merge queue stands, in GitHub's `MergeQueueEntryState`
+/// words, so a value the rules do not name survives as `.other`.
+public enum MergeQueueEntryState: Sendable, Equatable {
+    case queued, awaitingChecks, mergeable, unmergeable, locked
+    case other(String)
+
+    public init(raw: String) {
+        switch raw.uppercased() {
+        case "QUEUED": self = .queued
+        case "AWAITING_CHECKS": self = .awaitingChecks
+        case "MERGEABLE": self = .mergeable
+        case "UNMERGEABLE": self = .unmergeable
+        case "LOCKED": self = .locked
+        default: self = .other(raw)
+        }
+    }
+}
+
+/// One pull request in a repository's merge queue, whoever wrote it.
+public struct MergeQueueEntry: Sendable, Equatable {
+    /// 1-based; nil when GitHub gave none.
+    public var position: Int?
+    public var number: Int
+    public var title: String
+    public var author: String
+    public var state: MergeQueueEntryState
+    public var htmlURL: URL?
+
+    public init(position: Int?, number: Int, title: String, author: String = "", state: MergeQueueEntryState,
+                htmlURL: URL? = nil) {
+        self.position = position
+        self.number = number
+        self.title = title
+        self.author = author
+        self.state = state
+        self.htmlURL = htmlURL
+    }
+}
+
+/// The default branch's merge queue: every entry in it, in the order GitHub
+/// keeps them, and its page on GitHub.
+public struct MergeQueue: Sendable, Equatable {
+    public var entries: [MergeQueueEntry]
+    public var htmlURL: URL?
+
+    public init(entries: [MergeQueueEntry] = [], htmlURL: URL? = nil) {
+        self.entries = entries
+        self.htmlURL = htmlURL
+    }
+
+    /// By position, an entry without one last, then by number.
+    public var ordered: [MergeQueueEntry] {
+        entries.sorted { lhs, rhs in
+            switch (lhs.position, rhs.position) {
+            case let (left?, right?) where left != right: return left < right
+            case (nil, _?): return false
+            case (_?, nil): return true
+            default: return lhs.number < rhs.number
+            }
+        }
+    }
+}
+
 /// An open pull request the signed-in person wrote or was asked to review.
 public struct PullRequest: Sendable, Equatable {
     public let number: Int
@@ -223,17 +286,21 @@ public struct RepoState: Sendable, Equatable {
     /// The checks on `headSHA`, by `CheckRun.key`.
     public var checks: [String: CheckRun]
     public var pullRequests: [Int: PullRequest]
+    /// The default branch's merge queue; nil when the branch has none, or
+    /// GitHub did not say.
+    public var mergeQueue: MergeQueue?
     /// When the snapshot was taken, by the clock the caller gave.
     public var updatedAt: Date?
 
     public init(repo: RepoKey, defaultBranch: String, headSHA: String?,
                 checks: [String: CheckRun] = [:], pullRequests: [Int: PullRequest] = [:],
-                updatedAt: Date? = nil) {
+                mergeQueue: MergeQueue? = nil, updatedAt: Date? = nil) {
         self.repo = repo
         self.defaultBranch = defaultBranch
         self.headSHA = headSHA
         self.checks = checks
         self.pullRequests = pullRequests
+        self.mergeQueue = mergeQueue
         self.updatedAt = updatedAt
     }
 }
@@ -319,9 +386,16 @@ public struct GitHubSummary: Sendable, Equatable {
         public let updatedAt: Date?
         /// The ids of the workflow runs that failed, for re-running them.
         public let failedRunIDs: [Int64]
+        /// The default branch, and its head; nil until a snapshot names them.
+        public let defaultBranch: String?
+        public let headSHA: String?
+        /// The default branch's merge queue; nil when it has none, or it is
+        /// not known yet.
+        public let mergeQueue: MergeQueue?
 
         public init(repo: RepoKey, verdict: Verdict, passed: Int, failed: Int, running: Int, updatedAt: Date?,
-                    failedRunIDs: [Int64]) {
+                    failedRunIDs: [Int64], defaultBranch: String? = nil, headSHA: String? = nil,
+                    mergeQueue: MergeQueue? = nil) {
             self.repo = repo
             self.verdict = verdict
             self.passed = passed
@@ -329,6 +403,17 @@ public struct GitHubSummary: Sendable, Equatable {
             self.running = running
             self.updatedAt = updatedAt
             self.failedRunIDs = failedRunIDs
+            self.defaultBranch = defaultBranch
+            self.headSHA = headSHA
+            self.mergeQueue = mergeQueue
+        }
+
+        /// `main · a1b2c3d`: the branch and the head's first seven, or the
+        /// branch alone before the head is known; nil with no branch.
+        public var branchAndHead: String? {
+            guard let defaultBranch, !defaultBranch.isEmpty else { return nil }
+            guard let headSHA, !headSHA.isEmpty else { return defaultBranch }
+            return "\(defaultBranch) · \(headSHA.prefix(7))"
         }
     }
 
@@ -369,7 +454,8 @@ public struct GitHubSummary: Sendable, Equatable {
                 failed: checks.filter { $0.conclusion?.isFailing == true }.count,
                 running: checks.filter { $0.status.isRunning && $0.conclusion?.isFailing != true }.count,
                 updatedAt: state?.updatedAt,
-                failedRunIDs: checks.filter { $0.conclusion?.isFailing == true }.compactMap(\.workflowRunID).sorted()))
+                failedRunIDs: checks.filter { $0.conclusion?.isFailing == true }.compactMap(\.workflowRunID).sorted(),
+                defaultBranch: state?.defaultBranch, headSHA: state?.headSHA, mergeQueue: state?.mergeQueue))
             for pr in (state?.pullRequests.values.sorted { $0.number > $1.number } ?? []) {
                 rows.append(PullRequestRow(repo: repo, pullRequest: pr, verdict: Verdicts.verdict(for: pr)))
             }

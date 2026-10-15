@@ -53,11 +53,12 @@ final class PagesTests: XCTestCase {
 
     func testTheIslandPageListsRepositoriesThenPullRequestsThenButtons() {
         let page = Pages.island(summary: summary(red: true, pulls: 2, failedRun: true), auth: .signedIn(login: "me"))
-        XCTAssertEqual(page.kinds, ["row", "heading", "list", "button", "button"])
-        XCTAssertEqual(page.ids, ["repo.acme.web", "pulls", "refresh", "rerun"])
+        XCTAssertEqual(page.kinds, ["row", "heading", "list", "button", "button", "button"])
+        XCTAssertEqual(page.ids, ["repo.acme.web", "pulls", "refresh", "openRepo", "rerun"])
         XCTAssertEqual(page.english(0), "acme/web")
         guard case .row(let row) = page.blocks[0].content else { return XCTFail() }
         XCTAssertEqual(row.subtitle?.text(for: "en"), "1 passed, 1 failed, 0 running")
+        XCTAssertEqual(row.trailing, .plain("main · h"), "the default branch and its head")
         XCTAssertEqual(row.icon, "xmark.circle.fill")
         guard case .list(let list) = page.blocks[2].content else { return XCTFail() }
         XCTAssertEqual(list.rows.map(\.id), ["pr.acme.web.2", "pr.acme.web.1"], "newest first")
@@ -66,7 +67,8 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(list.rows[0].trailing?.text(for: "en"), "Approved")
         XCTAssertEqual(list.rows[1].trailing?.text(for: "en"), "Draft", "a draft says so before its review")
         XCTAssertEqual(list.rows[0].icon, "circle.dashed", "a pull request with no checks is grey")
-        guard case .button(let rerun) = page.blocks[4].content else { return XCTFail() }
+        XCTAssertEqual(page.english(4), "Open in GitHub")
+        guard case .button(let rerun) = page.blocks[5].content else { return XCTFail() }
         XCTAssertEqual(rerun.style, .destructive)
         XCTAssertEqual(Pages.pull(ofRow: "pr.acme.web.2")?.number, 2)
         XCTAssertEqual(Pages.pull(ofRow: "pr.acme.web.2")?.repo, Self.repo)
@@ -209,11 +211,12 @@ final class PagesTests: XCTestCase {
 
     func testTheIslandPageWithoutPullRequestsOrFailures() {
         let page = Pages.island(summary: summary(), auth: .signedIn(login: "me"))
-        XCTAssertEqual(page.kinds, ["row", "heading", "text", "button"])
+        XCTAssertEqual(page.kinds, ["row", "heading", "text", "button", "button"])
         XCTAssertEqual(page.english(2), "No pull requests need you.")
-        XCTAssertEqual(page.ids, ["repo.acme.web", "refresh"], "no re-run button without a failed run")
+        XCTAssertEqual(page.ids, ["repo.acme.web", "refresh", "openRepo"], "no re-run button without a failed run")
         let green = Pages.island(summary: summary(red: true), auth: .signedIn(login: "me"))
-        XCTAssertEqual(green.ids, ["repo.acme.web", "refresh"], "a failed check run, not a workflow run, cannot be re-run")
+        XCTAssertEqual(green.ids, ["repo.acme.web", "refresh", "openRepo"],
+                       "a failed check run, not a workflow run, cannot be re-run")
     }
 
     func testThePageStaysWithinTheProtocolsLimits() throws {
@@ -235,12 +238,14 @@ final class PagesTests: XCTestCase {
 
     func testTheSettingsPanelInEachState() {
         let out = Pages.settings(.init(auth: .signedOut, cliLogin: "james", mouseCommand: "/opt/homebrew/bin/gravastar-mouse"))
-        XCTAssertEqual(out.kinds, ["heading", "text", "button", "field", "button", "text", "divider", "text"])
-        XCTAssertEqual(out.ids, ["useCLI", "token", "useCode"])
+        XCTAssertEqual(out.kinds, ["heading", "text", "button", "field", "link", "button", "text", "divider", "text",
+                                   "text", "button", "button", "button", "button", "button"])
+        XCTAssertEqual(out.ids, ["useCLI", "token", "useCode", "testApproval", "testSuccess", "testRunning",
+                                 "testFailure", "testIdle"])
         XCTAssertEqual(out.english(2), "Use the GitHub CLI login (@james)")
         guard case .field(let field) = out.blocks[3].content else { return XCTFail() }
         XCTAssertEqual(field.kind, .secret)
-        XCTAssertEqual(out.english(7), "Mouse command: /opt/homebrew/bin/gravastar-mouse")
+        XCTAssertEqual(out.english(8), "Mouse command: /opt/homebrew/bin/gravastar-mouse")
 
         let noCLI = Pages.settings(.init(auth: .signedOut, mouseConfiguredIgnored: true))
         XCTAssertEqual(noCLI.ids, ["token", "useCode"])
@@ -252,10 +257,11 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(checking.kinds, ["heading", "text", "progress", "text", "divider", "text"])
 
         let code = Pages.settings(.init(auth: .deviceFlow(userCode: "ABCD-1234", verificationURL: URL(string: "https://github.com/login/device")!)))
-        XCTAssertEqual(code.kinds, ["heading", "text", "text", "link", "button", "text", "divider", "text"])
+        XCTAssertEqual(code.kinds, ["heading", "text", "text", "button", "link", "button", "text", "divider", "text"])
         XCTAssertEqual(code.english(2), "ABCD-1234")
-        XCTAssertEqual(code.ids, ["cancel"])
-        guard case .link(let link) = code.blocks[3].content else { return XCTFail() }
+        XCTAssertEqual(code.english(3), "Copy")
+        XCTAssertEqual(code.ids, ["copyCode", "cancel"])
+        guard case .link(let link) = code.blocks[4].content else { return XCTFail() }
         XCTAssertEqual(link.url, "https://github.com/login/device")
 
         let signedIn = Pages.settings(.init(auth: .signedIn(login: "james")))

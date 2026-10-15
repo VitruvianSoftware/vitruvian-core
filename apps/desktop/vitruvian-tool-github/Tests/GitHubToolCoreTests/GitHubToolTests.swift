@@ -18,6 +18,9 @@ final class FakeHost: ToolHost {
     var badges: [Int?] = []
     var statuses: [IslandStatus] = []
     var rendered: [(panel: String, tree: UITree)] = []
+    var features: Set<ProtocolFeature> = []
+    var copied: [String] = []
+    var clipboardTakes = true
 
     func value(_ key: String) -> JSONValue? { values[key] }
     func setValue(_ value: JSONValue, for key: String) { values[key] = value }
@@ -27,6 +30,12 @@ final class FakeHost: ToolHost {
     func badge(count: Int?, dot: Bool) { badges.append(count) }
     func status(_ status: IslandStatus) { statuses.append(status) }
     func render(panel: String, _ tree: UITree) { rendered.append((panel, tree)) }
+    func supports(_ feature: ProtocolFeature) -> Bool { features.contains(feature) }
+    func copyText(_ text: String) -> Bool {
+        guard clipboardTakes else { return false }
+        copied.append(text)
+        return true
+    }
 }
 
 final class GitHubToolTests: XCTestCase {
@@ -125,7 +134,7 @@ final class GitHubToolTests: XCTestCase {
         XCTAssertEqual(mouse, [["/usr/bin/gravastar-mouse", "breathe", "red"]], "the first snapshot writes the mouse")
         XCTAssertEqual(host.rendered.map(\.panel), ["settings", "status", "settings"],
                        "the Settings panel while checking, the island after the poll, then Settings signed in")
-        XCTAssertEqual(tool.islandPage().ids, ["repo.VitruvianSoftware.vitruvian-core", "pulls", "refresh", "rerun"])
+        XCTAssertEqual(tool.islandPage().ids, ["repo.VitruvianSoftware.vitruvian-core", "pulls", "refresh", "openRepo", "rerun"])
     }
 
     func testTheCLIsLoginSignsInWhenNothingIsSaved() throws {
@@ -434,15 +443,13 @@ final class GitHubToolTests: XCTestCase {
         XCTAssertNil(tool.selectedPull, "a pull request that closed or merged clears selectedPull on the next poll")
         XCTAssertEqual(tool.islandPage().ids.first, "repo.VitruvianSoftware.vitruvian-core")
 
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repo.VitruvianSoftware.vitruvian-core", kind: .tap)), .keep)
-        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/actions")
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: "rerun", kind: .tap)), .keep)
         XCTAssertEqual(host.messages.last, "Re-running 1 failed runs")
         XCTAssertEqual(tool.nextPollAt, now, "a poll is due after a re-run")
         guard case .page(let page) = tool.islandEvent(PanelEvent(block: "refresh", kind: .tap)) else { return XCTFail() }
         XCTAssertEqual(page.ids.first, "repo.VitruvianSoftware.vitruvian-core")
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: "pulls", kind: .tap, value: .string("pr.nobody.x.1"))), .keep)
-        XCTAssertEqual(host.opened.count, 2, "a row the tool does not know opens nothing")
+        XCTAssertEqual(host.opened.count, 1, "a row the tool does not know opens nothing")
         tool.openPulls()
         XCTAssertEqual(host.opened.last, "https://github.com/pulls")
     }
@@ -455,7 +462,7 @@ final class GitHubToolTests: XCTestCase {
             return XCTFail()
         }
         XCTAssertEqual(tool.auth, .signedIn(login: "james"))
-        XCTAssertEqual(page.ids, ["signOut"])
+        XCTAssertEqual(page.ids, ["signOut", "testApproval", "testSuccess", "testRunning", "testFailure", "testIdle"])
         XCTAssertEqual(secrets.token(), "gho_typed")
         XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "token", kind: .submit, value: .string("  "))), .keep,
                        "an empty token is nothing")
@@ -524,5 +531,186 @@ final class GitHubToolTests: XCTestCase {
         host.values[GitHubTool.Preference.mouseCommand] = .string("/nope")
         XCTAssertEqual(tool.settingsInput().mouseCommand, "/usr/bin/gravastar-mouse")
         XCTAssertTrue(tool.settingsInput().mouseConfiguredIgnored)
+    }
+
+    // MARK: What the app's own GitHub view had
+
+    func testTappingARepositoryOpensItsBranchChecksAndBackReturns() throws {
+        try secrets.save(token: "gho_saved")
+        answerGitHub(conclusion: "failure")
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/commits/h1/check-runs?per_page=100"] =
+            (200, #"{"check_runs": [{"id": 5, "name": "lint", "head_sha": "h1", "status": "completed", "conclusion": "success", "html_url": "https://github.com/VitruvianSoftware/vitruvian-core/runs/5"}]}"#)
+        tool.start()
+        guard case .page(let page) = tool.islandEvent(PanelEvent(block: "repo.VitruvianSoftware.vitruvian-core", kind: .tap))
+        else { return XCTFail("a repository row drills in") }
+        XCTAssertEqual(tool.selectedRepo, Watchlist.defaultRepository)
+        XCTAssertEqual(page.ids, ["back", "repodetail.VitruvianSoftware.vitruvian-core", "branchChecks"])
+        XCTAssertEqual(tool.islandPage(), page, "the page the next render draws too")
+        XCTAssertEqual(host.opened, [], "drilling in opens no browser tab")
+        guard case .list(let list) = page.blocks[3].content else { return XCTFail() }
+        XCTAssertEqual(list.rows.map { $0.title.text(for: "en") }, ["ci", "lint"], "the failed run first")
+
+        // A check with a page opens it; one without opens the Actions page.
+        _ = tool.islandEvent(PanelEvent(block: "branchChecks", kind: .tap,
+                                        value: .string("branchcheck.VitruvianSoftware.vitruvian-core.check__run_c5")))
+        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/runs/5")
+        _ = tool.islandEvent(PanelEvent(block: "branchChecks", kind: .tap,
+                                        value: .string("branchcheck.VitruvianSoftware.vitruvian-core.workflow__run_c9")))
+        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/actions")
+        host.opened.removeAll()
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repodetail.VitruvianSoftware.vitruvian-core", kind: .tap)), .keep)
+        XCTAssertEqual(host.opened, ["https://github.com/VitruvianSoftware/vitruvian-core/actions"],
+                       "the header row opens the repository's Actions page")
+        _ = tool.islandEvent(PanelEvent(block: "branchChecks", kind: .tap, value: .string("branchcheck.nobody.x.check__run_c1")))
+        XCTAssertEqual(host.opened.count, 1, "a row the tool does not know opens nothing")
+
+        // A poll keeps the page; Back returns to the main page.
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(host.rendered.last?.tree.ids.first, "back", "a poll redraws the repository's page")
+        guard case .page(let main) = tool.islandEvent(PanelEvent(block: "back", kind: .tap)) else { return XCTFail() }
+        XCTAssertNil(tool.selectedRepo)
+        XCTAssertEqual(main.ids.first, "repo.VitruvianSoftware.vitruvian-core")
+
+        // A pull request outranks a repository; a repository no longer watched closes its page.
+        _ = tool.islandEvent(PanelEvent(block: "repo.VitruvianSoftware.vitruvian-core", kind: .tap))
+        guard case .page(let pull) = tool.islandEvent(
+            PanelEvent(block: "pulls", kind: .tap, value: .string("pr.VitruvianSoftware.vitruvian-core.3"))) else {
+            return XCTFail()
+        }
+        XCTAssertEqual(pull.ids.first, "back")
+        XCTAssertNil(tool.selectedRepo, "opening a pull request leaves the repository's page")
+        _ = tool.islandEvent(PanelEvent(block: "back", kind: .tap))
+        _ = tool.islandEvent(PanelEvent(block: "repo.VitruvianSoftware.vitruvian-core", kind: .tap))
+        host.values[GitHubTool.Preference.watchlist] = .string("acme/web")
+        tool.preferencesChanged([GitHubTool.Preference.watchlist])
+        XCTAssertNil(tool.selectedRepo)
+        XCTAssertEqual(tool.islandPage().ids.first, "repo.acme.web")
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repo.nobody.x", kind: .tap)), .keep,
+                       "a repository not watched does not drill in")
+        tool.signOut()
+        XCTAssertNil(tool.selectedRepo)
+    }
+
+    func testThePickerFocusesARepositoryAndOpenInGitHubOpensIt() throws {
+        try secrets.save(token: "gho_saved")
+        host.values[GitHubTool.Preference.watchlist] = .string("VitruvianSoftware/vitruvian-core, acme/web")
+        transport.answers["/repos/acme/web"] = (404, "{}")
+        tool.start()
+        XCTAssertFalse(tool.islandPage().kinds.contains("choice"), "an app without choice is sent no picker")
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "openRepo", kind: .tap)), .keep)
+        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core", "the first, by default")
+
+        host.features = [.choice]
+        XCTAssertEqual(tool.islandPage().ids.first, "repoPicker")
+        guard case .page(let picked) = tool.islandEvent(PanelEvent(block: "repoPicker", kind: .change,
+                                                                    value: .string("acme/web"))) else { return XCTFail() }
+        XCTAssertEqual(tool.focusedRepository, RepoKey(owner: "acme", name: "web"))
+        guard case .choice(let choice) = picked.blocks[0].content else { return XCTFail() }
+        XCTAssertEqual(choice.value, "acme/web")
+        _ = tool.islandEvent(PanelEvent(block: "openRepo", kind: .tap))
+        XCTAssertEqual(host.opened.last, "https://github.com/acme/web")
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repoPicker", kind: .change, value: .string("not/watched"))), .keep)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "repoPicker", kind: .change, value: .string("nonsense"))), .keep)
+        XCTAssertEqual(tool.focusedRepository, RepoKey(owner: "acme", name: "web"), "a pick that is no repository changes nothing")
+
+        host.values[GitHubTool.Preference.watchlist] = .string("VitruvianSoftware/vitruvian-core")
+        tool.preferencesChanged([GitHubTool.Preference.watchlist])
+        XCTAssertEqual(tool.focusedRepository, Watchlist.defaultRepository, "a focus no longer watched falls back")
+        XCTAssertFalse(tool.islandPage().kinds.contains("choice"), "and one repository needs no picker")
+    }
+
+    func testTheIslandSaysWhenGitHubWasLastRead() throws {
+        tool = GitHubTool(parts: .init(host: host, api: GitHubAPI(transport: transport, apiURL: URL(string: "https://api.test")!,
+                                                                  webURL: URL(string: "https://web.test")!),
+                                       secrets: secrets, cliHosts: hosts, now: { [unowned self] in now },
+                                       environment: ["PATH": "/usr/bin"], home: "/Users/me",
+                                       isExecutable: { $0 == "/usr/bin/gravastar-mouse" },
+                                       runMouse: { _, _ in }, timeZone: TimeZone(identifier: "UTC")!))
+        host.language = "de"
+        XCTAssertNil(tool.lastUpdatedAt)
+        try secrets.save(token: "gho_saved")
+        tool.start()
+        XCTAssertEqual(tool.lastUpdatedAt, now)
+        let page = tool.islandPage()
+        XCTAssertEqual(page.kinds.last, "text")
+        guard case .text(let caption) = page.blocks.last?.content else { return XCTFail() }
+        XCTAssertEqual(caption.text.text(for: "de"), "Aktualisiert um 13:46:40")
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(tool.lastUpdatedAt, now, "each poll stamps it")
+        guard case .text(let later) = tool.islandPage().blocks.last?.content else { return XCTFail() }
+        XCTAssertEqual(later.text.text(for: "de"), "Aktualisiert um 13:47:11")
+        tool.signOut()
+        XCTAssertNil(tool.lastUpdatedAt, "signing out forgets it")
+    }
+
+    func testCopyPutsTheCodeOnTheClipboard() {
+        host.values[GitHubTool.Preference.clientID] = .string("Iv1.app")
+        transport.answers["/login/device/code"] = (200, #"{"device_code": "d", "user_code": "ABCD-1234", "verification_uri": "https://github.com/login/device", "expires_in": 900, "interval": 5}"#)
+        tool.start()
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "copyCode", kind: .tap)), .keep)
+        XCTAssertEqual(host.copied, [], "no code yet, nothing copied")
+        _ = tool.settingsEvent(PanelEvent(block: "useCode", kind: .tap))
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "copyCode", kind: .tap)), .keep, "the page stays as it is")
+        XCTAssertEqual(host.copied, ["ABCD-1234"])
+        XCTAssertEqual(host.messages.last, "Code copied")
+        host.language = "fr"
+        host.clipboardTakes = false
+        _ = tool.settingsEvent(PanelEvent(block: "copyCode", kind: .tap))
+        XCTAssertEqual(host.copied, ["ABCD-1234"])
+        XCTAssertEqual(host.messages, ["Code copied"], "no word of a copy that did not happen")
+        XCTAssertTrue(host.logs.contains { $0.contains("clipboard") })
+    }
+
+    func testTheMouseTestButtonsFireEachLightAndAPollPutsTheRealOneBack() throws {
+        try secrets.save(token: "gho_saved")
+        tool.start()
+        XCTAssertEqual(mouse, [["/usr/bin/gravastar-mouse", "color", "green"]])
+        XCTAssertEqual(tool.settingsPage().ids.suffix(5), ["testApproval", "testSuccess", "testRunning", "testFailure", "testIdle"])
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "testFailure", kind: .tap)), .keep)
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "breathe", "red"])
+        _ = tool.settingsEvent(PanelEvent(block: "testApproval", kind: .tap))
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "breathe", "blue", "--speed", "9"])
+        _ = tool.settingsEvent(PanelEvent(block: "testRunning", kind: .tap))
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "breathe", "orange"])
+        _ = tool.settingsEvent(PanelEvent(block: "testSuccess", kind: .tap))
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "color", "green"])
+        host.values[GitHubTool.Preference.mouseIdle] = .string("off")
+        _ = tool.settingsEvent(PanelEvent(block: "testIdle", kind: .tap))
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "off"], "the person's idle choice")
+        host.values[GitHubTool.Preference.mouseFailure] = .string("purple")
+        _ = tool.settingsEvent(PanelEvent(block: "testFailure", kind: .tap))
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "color", "purple"], "the person's red, not the default")
+        let tried = mouse.count
+        now = now.addingTimeInterval(31)
+        tool.tick()
+        XCTAssertEqual(mouse.count, tried + 1)
+        XCTAssertEqual(mouse.last, ["/usr/bin/gravastar-mouse", "color", "green"], "the next poll writes the real state back")
+
+        host.values[GitHubTool.Preference.mouseIndicator] = .bool(false)
+        XCTAssertFalse(tool.settingsPage().ids.contains("testFailure"), "hidden with the mouse not showing the status")
+        let before = mouse.count
+        _ = tool.settingsEvent(PanelEvent(block: "testFailure", kind: .tap))
+        XCTAssertEqual(mouse.count, before, "and a stale tap does nothing")
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "nothing", kind: .tap)), .keep)
+    }
+
+    func testTheMergeQueueIsOnTheIslandAndItsRowsOpenThePullRequest() throws {
+        try secrets.save(token: "gho_saved")
+        transport.answers["/graphql"] = (200, #"{"data": {"repository": {"mergeQueue": {"url": "https://github.com/VitruvianSoftware/vitruvian-core/queue/main", "entries": {"nodes": [{"position": 1, "state": "AWAITING_CHECKS", "pullRequest": {"number": 3, "title": "Fix", "url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/3", "author": {"login": "james"}}}, {"position": 2, "state": "QUEUED", "pullRequest": {"number": 40, "title": "Theirs", "url": null, "author": {"login": "bo"}}}]}}}}}"#)
+        tool.start()
+        let page = tool.islandPage()
+        XCTAssertEqual(page.ids, ["repo.VitruvianSoftware.vitruvian-core", "queue", "pulls", "refresh", "openRepo"])
+        XCTAssertEqual(tool.summary.pullRequests.first?.pullRequest.mergeQueue, MergeQueueState(position: 1))
+        _ = tool.islandEvent(PanelEvent(block: "queue", kind: .tap, value: .string("queue.VitruvianSoftware.vitruvian-core.3")))
+        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/pull/3")
+        _ = tool.islandEvent(PanelEvent(block: "queue", kind: .tap, value: .string("queue.VitruvianSoftware.vitruvian-core.40")))
+        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/pull/40",
+                       "an entry without a link opens the pull request's page")
+        _ = tool.islandEvent(PanelEvent(block: "queue", kind: .tap, value: .string("mergequeue.VitruvianSoftware.vitruvian-core")))
+        XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/queue/main")
+        _ = tool.islandEvent(PanelEvent(block: "queue", kind: .tap, value: .string("queue.VitruvianSoftware.vitruvian-core.99")))
+        XCTAssertEqual(host.opened.count, 3, "an entry no longer queued opens nothing")
     }
 }

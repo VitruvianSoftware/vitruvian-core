@@ -23,6 +23,13 @@ public protocol ToolHost: AnyObject {
     func status(_ status: IslandStatus)
     /// A new page for a panel, when it is open; nothing otherwise.
     func render(panel: String, _ tree: UITree)
+    /// Whether the app named this at hello. An app before 3.48 names
+    /// nothing, and draws a `choice` as words nobody can change.
+    func supports(_ feature: ProtocolFeature) -> Bool
+    /// Puts `text` on the clipboard (`clipboard.write`); false when the app
+    /// would not.
+    @discardableResult
+    func copyText(_ text: String) -> Bool
 }
 
 /// What the tool's mark on the closed island says: a state, the tool's
@@ -89,13 +96,16 @@ public final class GitHubTool {
         public var isExecutable: (String) -> Bool
         /// Runs the mouse command at a path with arguments.
         public var runMouse: (String, [String]) -> Void
+        /// The zone the island's "Updated at" time is written in.
+        public var timeZone: TimeZone
 
         public init(host: ToolHost, api: GitHubAPI, secrets: SecretStore, cliHosts: URL = CLIAccount.defaultHostsURL,
                     now: @escaping () -> Date = { Date() },
                     environment: [String: String] = ProcessInfo.processInfo.environment,
                     home: String = Paths.home,
                     isExecutable: @escaping (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) },
-                    runMouse: @escaping (String, [String]) -> Void = MouseDriver.run(binary:arguments:)) {
+                    runMouse: @escaping (String, [String]) -> Void = MouseDriver.run(binary:arguments:),
+                    timeZone: TimeZone = .current) {
             self.host = host
             self.api = api
             self.secrets = secrets
@@ -105,6 +115,7 @@ public final class GitHubTool {
             self.home = home
             self.isExecutable = isExecutable
             self.runMouse = runMouse
+            self.timeZone = timeZone
         }
     }
 
@@ -113,6 +124,14 @@ public final class GitHubTool {
     public private(set) var summary = GitHubSummary(states: [:], watched: [])
     /// The pull request open in the island panel, or nil on the main island page.
     public private(set) var selectedPull: (repo: RepoKey, number: Int)?
+    /// The repository whose default branch is open in the island panel, or
+    /// nil. A pull request open outranks it.
+    public private(set) var selectedRepo: RepoKey?
+    /// The repository picked on the island page; nil (or one no longer
+    /// watched) is the first watched.
+    public private(set) var focusedRepo: RepoKey?
+    /// When GitHub was last read, by `Parts.now`; nil until signed in and read.
+    public private(set) var lastUpdatedAt: Date?
     /// When the next poll is due; nil until signed in.
     public private(set) var nextPollAt: Date?
 
@@ -257,6 +276,8 @@ public final class GitHubTool {
         states = [:]
         summary = GitHubSummary(states: [:], watched: watched)
         selectedPull = nil
+        selectedRepo = nil
+        lastUpdatedAt = nil
         nextPollAt = nil
         host.badge(count: nil, dot: false)
         showStatus()
@@ -329,6 +350,7 @@ public final class GitHubTool {
                 parts.secrets.clear()
                 auth = .failed(.tokenRejected)
                 selectedPull = nil
+                selectedRepo = nil
                 nextPollAt = nil
                 renderIsland()
                 renderSettings()
@@ -339,6 +361,7 @@ public final class GitHubTool {
         }
         states = next.filter { watched.contains($0.key) }
         summary = GitHubSummary(states: states, watched: watched)
+        lastUpdatedAt = parts.now()
         clearGoneSelectedPull()
         let active = summary.repositories.contains { $0.running > 0 }
         let seconds = max(5, active ? int(Preference.pollActiveInterval, 10) : int(Preference.pollInterval, 30))
@@ -354,6 +377,7 @@ public final class GitHubTool {
     }
 
     private func clearGoneSelectedPull() {
+        if let repo = selectedRepo, !summary.repositories.contains(where: { $0.repo == repo }) { selectedRepo = nil }
         guard let selected = selectedPull else { return }
         if !summary.pullRequests.contains(where: { $0.repo == selected.repo && $0.pullRequest.number == selected.number }) {
             selectedPull = nil
@@ -436,16 +460,34 @@ public final class GitHubTool {
            summary.pullRequests.contains(where: { $0.repo == selected.repo && $0.pullRequest.number == selected.number }) {
             return Pages.pullDetail(repo: selected.repo, pull: pull)
         }
-        return Pages.island(summary: summary, auth: auth)
+        if auth.isSignedIn, let repo = selectedRepo, summary.repositories.contains(where: { $0.repo == repo }) {
+            return Pages.repoDetail(repo: repo, state: states[repo])
+        }
+        return Pages.island(summary: summary, auth: auth, focus: focusedRepo, offersPicker: host.supports(.choice),
+                            lastUpdated: lastUpdatedAt, timeZone: parts.timeZone)
+    }
+
+    /// The repository the island is about: the one picked, or the first.
+    public var focusedRepository: RepoKey? {
+        Pages.focused(summary, focus: focusedRepo)?.repo
     }
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
         switch (event.block, event.kind) {
         case (Pages.backButton?, .tap):
             selectedPull = nil
+            selectedRepo = nil
             return .page(islandPage())
         case (Pages.refreshButton?, .tap):
             refresh()
+            return .page(islandPage())
+        case (Pages.openRepoButton?, .tap):
+            if let repo = focusedRepository { host.open(Pages.webURL(repo)) }
+            return .keep
+        case (Pages.repoPicker?, .change):
+            guard let picked = event.text.flatMap(RepoKey.init(fullName:)),
+                  summary.repositories.contains(where: { $0.repo == picked }) else { return .keep }
+            focusedRepo = picked
             return .page(islandPage())
         case (Pages.rerunButton?, .tap):
             guard let token else { return .keep }
@@ -463,6 +505,7 @@ public final class GitHubTool {
                   summary.pullRequests.contains(where: { $0.repo == named.repo && $0.pullRequest.number == named.number })
             else { return .keep }
             selectedPull = named
+            selectedRepo = nil
             return .page(islandPage())
         case (Pages.checksList?, .tap):
             guard let id = event.row else { return .keep }
@@ -474,15 +517,41 @@ public final class GitHubTool {
                 host.open(url.absoluteString)
             }
             return .keep
+        case (Pages.branchChecksList?, .tap):
+            guard let id = event.row else { return .keep }
+            if let check = Pages.branchCheck(ofRow: id) {
+                // A check run without a page of its own opens the Actions page.
+                let url = states[check.repo]?.checks[check.runID]?.htmlURL?.absoluteString
+                    ?? (states[check.repo] != nil ? "\(Pages.webURL(check.repo))/actions" : nil)
+                if let url { host.open(url) }
+            } else if let repo = Pages.repoDetail(ofRow: id) {
+                host.open("\(Pages.webURL(repo))/actions")
+            }
+            return .keep
+        case (Pages.queueList?, .tap):
+            guard let id = event.row else { return .keep }
+            if let named = Pages.queueEntry(ofRow: id),
+               let entry = states[named.repo]?.mergeQueue?.entries.first(where: { $0.number == named.number }) {
+                host.open(entry.htmlURL?.absoluteString ?? "\(Pages.webURL(named.repo))/pull/\(named.number)")
+            } else if let repo = Pages.queuePage(ofRow: id), let state = states[repo], let queue = state.mergeQueue {
+                host.open(queue.htmlURL?.absoluteString ?? "\(Pages.webURL(repo))/queue/\(state.defaultBranch)")
+            }
+            return .keep
         case (let id?, .tap):
             if let detail = Pages.pullDetail(ofRow: id),
                let url = states[detail.repo]?.pullRequests[detail.number]?.htmlURL {
                 host.open(url.absoluteString)
                 return .keep
             }
-            guard let repo = Pages.repo(ofRow: id) else { return .keep }
-            host.open("https://github.com/\(repo.fullName)/actions")
-            return .keep
+            if let repo = Pages.repoDetail(ofRow: id) {
+                host.open("\(Pages.webURL(repo))/actions")
+                return .keep
+            }
+            guard let repo = Pages.repo(ofRow: id), summary.repositories.contains(where: { $0.repo == repo })
+            else { return .keep }
+            selectedPull = nil
+            selectedRepo = repo
+            return .page(islandPage())
         default:
             return .keep
         }
@@ -500,7 +569,8 @@ public final class GitHubTool {
             cliLogin: auth.isSignedIn ? nil : CLIAccount.read(hostsFile: parts.cliHosts)?.login,
             mouseCommand: mouseCommand(),
             mouseConfiguredIgnored: MouseCommand.configuredIsIgnored(configured: string(Preference.mouseCommand),
-                                                                     home: parts.home, isExecutable: parts.isExecutable))
+                                                                     home: parts.home, isExecutable: parts.isExecutable),
+            mouseIndicator: bool(Preference.mouseIndicator, true))
     }
 
     public func settingsPage() -> UITree {
@@ -524,10 +594,36 @@ public final class GitHubTool {
             auth = .signedOut
         case (Pages.signOutButton?, .tap):
             signOut()
+        case (Pages.copyCodeButton?, .tap):
+            copyCode()
+            return .keep
+        case (let id?, .tap):
+            guard let test = MouseTest(rawValue: id) else { return .keep }
+            testMouse(test)
+            return .keep
         default:
             return .keep
         }
         return .page(settingsPage())
+    }
+
+    /// Puts the code being shown on the clipboard, and says so.
+    public func copyCode() {
+        guard case .deviceFlow(let userCode, _) = auth else { return }
+        if host.copyText(userCode) {
+            host.showMessage(Words.plain("codeCopied", language: host.language), icon: "doc.on.doc")
+        } else {
+            host.log("the app did not take the code onto the clipboard")
+        }
+    }
+
+    /// Shows one state's light on the mouse now, from the person's settings.
+    /// Nothing without a mouse command, or with the mouse not showing the
+    /// status. The next poll puts the real state back.
+    public func testMouse(_ test: MouseTest) {
+        guard bool(Preference.mouseIndicator, true), let command = mouseCommand() else { return }
+        locateMouse(command)
+        mouse.test(test, settings: mouseSettings)
     }
 
     private func startCode() {
