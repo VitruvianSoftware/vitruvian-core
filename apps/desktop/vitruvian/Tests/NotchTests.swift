@@ -9,8 +9,265 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
+import VitruvianToolProtocol
 
 enum NotchTests {
+    private static let github = ToolID("dev.vitruvian.github")!
+    private static let other = ToolID("com.acme.other")!
+
+    private static func sectionItemContracts(_ suite: TestSuite) {
+        suite.expect(NotchModule.allCases.allSatisfy {
+            NotchSectionItem(rawValue: $0.rawValue) == .module($0) && NotchSectionItem.module($0).rawValue == $0.rawValue
+        }, "every module reads back as itself from its raw value")
+        let tool = NotchSectionItem(rawValue: "dev.vitruvian.github")
+        suite.expect(tool == .tool(github) && tool?.rawValue == "dev.vitruvian.github" && tool?.id == "dev.vitruvian.github",
+                     "a tool from outside reads back as its id")
+        suite.expect(["", "quickLauncher", "notch", ".dev.x", "dev.x.", "dev..x", "dev vitruvian.x", "a,b.c", "extension:a.b"]
+                        .allSatisfy { NotchSectionItem(rawValue: $0) == nil },
+                     "a built-in tool's id, an empty token and a malformed id are no section")
+    }
+
+    private static func sectionOrderContracts(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-section-order"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
+        let modules = NotchModule.allCases.map(NotchSectionItem.module)
+        for raw in ["", "system,music,music,unknown", "watch,agents,controls", "timer,dev.vitruvian.github,files"] {
+            defaults[Preferences.notchModuleOrder] = raw
+            let listed = NotchSupport.modules(in: defaults)
+            let live = NotchModule.allCases.filter(listed.contains).map(NotchSectionItem.module)
+            suite.expect(NotchSupport.sectionOrder(live: live, from: raw) == listed.map(NotchSectionItem.module),
+                         "a saved order is shown as the island lists its modules (\(raw))")
+        }
+        defaults[Preferences.notchHiddenModules] = "mixer,files"
+        defaults[Preferences.notchModuleOrder] = "files,system,music"
+        let shown = NotchSupport.modules(in: defaults).map(NotchSectionItem.module)
+        suite.expect(NotchSupport.sectionOrder(live: shown, from: "files,system,music") == shown,
+                     "with sections hidden, the modules that show keep the order they have today")
+
+        let live: [NotchSectionItem] = [.module(.controls), .module(.music), .tool(github), .tool(other)]
+        suite.expect(NotchSupport.sectionOrder(live: live, from: "music,dev.vitruvian.github,controls")
+                        == [.module(.music), .tool(github), .module(.controls), .tool(other)],
+                     "modules and tools take the places saved; a tool not saved comes last")
+        suite.expect(NotchSupport.sectionOrder(live: live, from: "dev.vitruvian.github")
+                        == [.tool(github), .module(.controls), .module(.music), .tool(other)],
+                     "modules the saved order does not name come after it, before a tool newly installed")
+
+        let previous = "controls,timer,dev.vitruvian.github,music"
+        let moved = NotchSupport.savedSectionOrder(afterMoving: [.module(.music), .module(.controls)], previous: previous,
+                                                   installedTools: [github]).split(separator: ",").map(String.init)
+        suite.expect(Array(moved.prefix(4)) == ["music", "timer", "dev.vitruvian.github", "controls"]
+                        && Set(moved).isSuperset(of: NotchModule.allCases.map(\.rawValue)),
+                     "a hidden module and a switched-off tool keep their slots when the others move")
+        var firstLive = NotchModule.allCases.filter { $0 != .timer && $0 != .music }.map(NotchSectionItem.module)
+        firstLive.insert(.module(.music), at: 0)
+        let first = NotchSupport.savedSectionOrder(afterMoving: firstLive, previous: "", installedTools: [])
+            .split(separator: ",").map(String.init)
+        suite.expect(first.count == NotchModule.allCases.count && Array(first.prefix(3)) == ["music", "controls", "mixer"]
+                        && first.firstIndex(of: "timer") == NotchModule.allCases.firstIndex(of: .timer),
+                     "the first save keeps a hidden module in its default slot")
+        let dropped = NotchSupport.savedSectionOrder(afterMoving: [.module(.controls)],
+                                                     previous: "dev.gone.tool,bogus,controls,dev.vitruvian.github",
+                                                     installedTools: [github]).split(separator: ",").map(String.init)
+        suite.expect(!dropped.contains("dev.gone.tool") && !dropped.contains("bogus")
+                        && Array(dropped.prefix(2)) == ["controls", "dev.vitruvian.github"],
+                     "an uninstalled tool and a malformed token lose their places; an installed tool keeps its")
+        let everything = [NotchSectionItem.tool(other)] + modules
+        let saved = NotchSupport.savedSectionOrder(afterMoving: everything, previous: "", installedTools: [other])
+        suite.expect(NotchSupport.sectionOrder(live: everything, from: saved) == everything,
+                     "what is saved after a move is shown in the order it was moved to")
+    }
+
+    private static func sectionVisibilityContracts(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-section-visibility"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
+        defaults[Preferences.notchTimerEnabled] = false
+        suite.expect(!NotchSupport.isModuleShown(.timer, in: defaults) && !NotchSupport.modules(in: defaults).contains(.timer),
+                     "a timer switched off is not shown")
+        NotchSupport.setModuleShown(.timer, true, in: defaults)
+        suite.expect(defaults[Preferences.notchTimerEnabled] && NotchSupport.isModuleShown(.timer, in: defaults)
+                        && NotchSupport.modules(in: defaults).contains(.timer),
+                     "showing the timer turns its own switch on, so it appears")
+        NotchSupport.setModuleShown(.timer, false, in: defaults)
+        suite.expect(!defaults[Preferences.notchTimerEnabled] && defaults[Preferences.notchHiddenModules] == "timer"
+                        && !NotchSupport.modules(in: defaults).contains(.timer),
+                     "hiding the timer turns off its switch and lists it as hidden")
+        NotchSupport.setModuleShown(.timer, true, in: defaults)
+        suite.expect(defaults[Preferences.notchTimerEnabled] && defaults[Preferences.notchHiddenModules].isEmpty
+                        && NotchSupport.modules(in: defaults).contains(.timer),
+                     "a timer hidden then shown is in the island again")
+        let switches: [(NotchModule, Preference<Bool>)] = [
+            (.camera, Preferences.notchCameraEnabled), (.calendar, Preferences.notchCalendarEnabled),
+            (.notifications, Preferences.notchNotificationsEnabled), (.agents, Preferences.notchAgentsEnabled),
+            (.watch, Preferences.notchWatchEnabled),
+        ]
+        for (module, preference) in switches {
+            NotchSupport.setModuleShown(module, false, in: defaults)
+            let hidden = !defaults[preference] && !NotchSupport.isModuleShown(module, in: defaults)
+            NotchSupport.setModuleShown(module, true, in: defaults)
+            suite.expect(hidden && defaults[preference] && NotchSupport.isModuleShown(module, in: defaults),
+                         "showing or hiding \(module.rawValue) flips its own switch too")
+        }
+        NotchSupport.setModuleShown(.music, false, in: defaults)
+        suite.expect(defaults[Preferences.notchHiddenModules] == "music" && !NotchSupport.modules(in: defaults).contains(.music),
+                     "a section with no switch of its own is only listed as hidden")
+        NotchSupport.setModuleShown(.music, true, in: defaults)
+        suite.expect(defaults[Preferences.notchHiddenModules].isEmpty && NotchSupport.modules(in: defaults).contains(.music),
+                     "and shown again, every section is back")
+
+        let items: [NotchSectionItem] = [.module(.controls), .tool(github), .module(.music)]
+        suite.expect(NotchSupport.filteredItems(items, query: "git", searchableText: { $0 == .tool(github) ? "GitHub" : $0.rawValue })
+                        == [.tool(github)]
+                        && NotchSupport.filteredItems(items, query: " ", searchableText: { $0.rawValue }) == items,
+                     "a search over sections finds a tool's by its title, and an empty one keeps them all")
+        suite.expect(NotchSupport.adjacentItem(to: .module(.music), items: items, backwards: false) == .module(.controls)
+                        && NotchSupport.adjacentItem(to: .module(.controls), items: items, backwards: true) == .module(.music)
+                        && NotchSupport.adjacentItem(to: .tool(other), items: items, backwards: false) == .module(.controls),
+                     "stepping through sections wraps, and starts at the first from one no longer listed")
+    }
+
+    private static func extensionQuickActionContracts(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-extension-action"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let action = NotchQuickAction.extensionPanel(github)
+        suite.expect(action.id == "extension:dev.vitruvian.github" && NotchQuickAction(id: action.id) == action,
+                     "an extension's button is saved as extension:<tool id> and reads back as itself")
+        suite.expect(NotchQuickAction(id: "control.unknown") == nil && NotchQuickAction(id: "control.volume") == .control(.volume)
+                        && NotchQuickAction(id: "dev.vitruvian.github") == nil,
+                     "an unknown control still reads back as nothing, and a bare tool id is no button")
+        suite.expect(["extension:", "extension:quickLauncher", "extension:dev..x", "extension:dev.x,y", "Extension:dev.x"]
+                        .allSatisfy { NotchQuickAction(id: $0) == nil },
+                     "an extension button with a built-in or malformed id reads back as nothing")
+        suite.expect(!action.isAvailable(in: defaults)
+                        && !NotchQuickAction.optionalActions.contains { if case .extensionPanel = $0 { return true }; return false },
+                     "the island alone cannot show an extension's button, and the fixed palette offers none")
+        let button = NotchQuickButton(action: action, side: .left)
+        suite.expect(NotchQuickAccessConfiguration(buttons: [button]).sanitized().buttons == [button],
+                     "a saved extension button is kept")
+    }
+
+    /// The Content tab lists every section, the island's own and each
+    /// tool's island page there is, in the island's order, and a move
+    /// there saves through the island's rule.
+    private static func editorSectionContracts(_ suite: TestSuite) {
+        let modules = NotchModule.allCases.map(NotchSectionItem.module)
+        suite.expect(NotchSupport.editorSections(tools: [], order: "") == modules,
+                     "with no tool and nothing saved, the list is the island's own sections in their default order")
+        let listed = NotchSupport.editorSections(tools: [github, other], order: "music,dev.vitruvian.github,controls")
+        let rest = modules.filter { $0 != .module(.music) && $0 != .module(.controls) }
+        suite.expect(listed == [.module(.music), .tool(github), .module(.controls)] + rest + [.tool(other)],
+                     "a tool's page takes its saved place among the island's own; one not placed yet comes last")
+        suite.expect(Set(NotchSupport.editorSections(tools: [github], order: "dev.gone.tool,timer")) == Set(modules + [.tool(github)]),
+                     "a saved tool that has no page now is not listed, and every one of the island's own is")
+
+        // Dragging the tool's page to the top, as the list's binding does.
+        var moved = listed
+        moved.removeAll { $0 == .tool(other) }
+        moved.insert(.tool(other), at: 0)
+        let saved = NotchSupport.savedSectionOrder(afterMoving: moved, previous: "music,dev.vitruvian.github,controls",
+                                                   installedTools: [github, other])
+        suite.expect(NotchSupport.editorSections(tools: [github, other], order: saved) == moved,
+                     "a section moved in the list, a tool's page too, is listed where it was dropped")
+        let switchedOff = NotchSupport.savedSectionOrder(afterMoving: moved.filter { $0 != .tool(github) }, previous: saved,
+                                                         installedTools: [github, other])
+        suite.expect(NotchSupport.editorSections(tools: [github, other], order: switchedOff) == moved,
+                     "a tool switched off while the others move keeps its place for when it is back")
+    }
+
+    /// The "When reopening" choice: where the island lands, and what the
+    /// picker in Settings shows, by one rule.
+    private static func reopeningChoiceContracts(_ suite: TestSuite) {
+        typealias Choice = NotchReopeningChoice
+        let showing: [NotchSectionItem] = [.module(.music), .tool(github), .module(.controls)]
+        func target(_ saved: String, _ sections: [NotchSectionItem] = showing, home: Bool = true) -> NotchReopeningTarget {
+            NotchSupport.reopeningTarget(returnHome: home, saved: saved, sections: sections)
+        }
+        func choice(_ saved: String, _ sections: [NotchSectionItem] = showing, home: Bool = true) -> Choice {
+            NotchSupport.reopeningChoice(returnHome: home, saved: saved, sections: sections)
+        }
+        suite.expect(target("music", home: false) == .lastPage && choice("dev.vitruvian.github", home: false) == Choice(selection: ""),
+                     "reopening where it was ignores the saved page, and the picker says Last page")
+        suite.expect(target("appPanel") == .appPanel && target("explore") == .explore
+                        && choice("appPanel") == Choice(selection: "appPanel") && choice("explore") == Choice(selection: "explore"),
+                     "the app panel and Explore are chosen as they are")
+        suite.expect(target("controls") == .section(.module(.controls)) && choice("controls") == Choice(selection: "controls"),
+                     "a section of the island's own that shows is where it reopens")
+        suite.expect(target("dev.vitruvian.github") == .section(.tool(github))
+                        && choice("dev.vitruvian.github") == Choice(selection: "dev.vitruvian.github"),
+                     "a tool's page that shows is where it reopens, and the picker names it, not Controls")
+
+        let hidden = showing.filter { $0 != .tool(github) }
+        suite.expect(target("dev.vitruvian.github", hidden) == .section(.module(.music))
+                        && choice("dev.vitruvian.github", hidden) == Choice(selection: "dev.vitruvian.github", waiting: .tool(github)),
+                     "a hidden tool's page reopens the first section, and the picker keeps it chosen, waiting")
+        suite.expect(target("com.acme.gone") == .section(.module(.music))
+                        && choice("com.acme.gone") == Choice(selection: "com.acme.gone", waiting: .tool(ToolID("com.acme.gone")!)),
+                     "a removed tool's page is handled as a hidden one")
+        suite.expect(target("timer") == .section(.module(.music))
+                        && choice("timer") == Choice(selection: "timer", waiting: .module(.timer)),
+                     "a hidden section of the island's own is handled the same way")
+        suite.expect(target("dev.vitruvian.github", []) == .explore,
+                     "with no section showing, a saved page that is not there reopens Explore")
+
+        suite.expect(target("unknown-page") == .section(.module(.controls)) && choice("unknown-page") == Choice(selection: "controls"),
+                     "a value that names nothing reopens Controls while it shows, and the picker says so")
+        suite.expect(target("quickLauncher", [.tool(github), .module(.music)]) == .section(.tool(github))
+                        && choice("quickLauncher", [.tool(github), .module(.music)]) == Choice(selection: "dev.vitruvian.github"),
+                     "with Controls hidden it falls back as a hidden page does, and the picker shows where it lands")
+        suite.expect(choice("unknown-page", []) == Choice(selection: "explore"),
+                     "with nothing showing, a value that names nothing shows Explore")
+    }
+
+    /// What a quick-access button that opens a tool's island page says and
+    /// whether the island shows it, from the page's declaration.
+    private static func extensionActionLookupContracts(_ suite: TestSuite) {
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-extension-lookup"
+        let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let deploys = ToolPanelHost.Key(tool: github, panel: "deploys")
+        let board = ToolPanelHost.Key(tool: other, panel: "board")
+        let gone = ToolID("com.acme.gone")!
+        let declared: [ToolPanelHost.Key: ToolPanelDescriptor] = [
+            deploys: ToolPanelDescriptor(id: "deploys", title: LocalizedText(["en": "Deploys", "fr": "Déploiements"]),
+                                         placement: .island, symbol: "shippingbox"),
+            board: ToolPanelDescriptor(id: "board", title: LocalizedText(["en": "Board"]), placement: .island,
+                                       symbol: "square.grid.3x3"),
+        ]
+        let lookup = NotchExtensionActions(available: [deploys, board], shown: [deploys], language: .fr) { declared[$0] }
+        suite.expect(lookup.actions == [.extensionPanel(github), .extensionPanel(other)],
+                     "the chooser offers a button for each tool's island page there is, in the tools' order")
+        suite.expect(lookup.title(.extensionPanel(github)) == "Déploiements" && lookup.symbol(.extensionPanel(github)) == "shippingbox"
+                        && lookup.title(.extensionPanel(other)) == "Board"
+                        && lookup.symbol(.extensionPanel(other)) == "square.grid.3x3",
+                     "a tool's button has its island page's title in the person's language, and its symbol")
+        suite.expect(lookup.isAvailable(.extensionPanel(github), in: defaults) && !lookup.isAvailable(.extensionPanel(other), in: defaults)
+                        && !lookup.isAvailable(.extensionPanel(gone), in: defaults),
+                     "the island shows a tool's button while it lists the page; not once it is hidden or gone")
+        suite.expect(lookup.title(.extensionPanel(gone)) == gone.rawValue
+                        && lookup.symbol(.extensionPanel(gone)) == NotchExtensionActions.fallbackSymbol,
+                     "a button whose tool has no page now still names its tool, with a puzzle piece")
+        suite.expect(lookup.title(.module(.music)) == nil && lookup.symbol(.settings) == nil
+                        && lookup.isAvailable(.settings, in: defaults) == NotchQuickAction.settings.isAvailable(in: defaults),
+                     "the island's own buttons are answered as before")
+
+        let buttons = [NotchQuickButton(action: .extensionPanel(github), side: .left),
+                       NotchQuickButton(action: .extensionPanel(other), side: .left),
+                       NotchQuickButton(action: .settings, side: .right)]
+        defaults[Preferences.notchQuickAccessLayout] = NotchQuickAccessConfiguration(buttons: buttons).encoded
+        suite.expect(NotchQuickAccessConfiguration.current(in: defaults, shownIslandTools: lookup.shownTools).actions
+                        == [.extensionPanel(github), .settings]
+                        && NotchQuickAccessConfiguration.current(in: defaults).actions == [.settings],
+                     "the island draws a tool's button only for a page it lists, and keeps the hidden one's place saved")
+    }
+
     private static func railContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-fan-only"
         let defaults = UserDefaults(suiteName: domain)!
@@ -1001,6 +1258,13 @@ enum NotchTests {
                "the strip stays black at every island height, tall or at the preview's")
 
         NotchMissionControlPollingTests.run(suite)
+        sectionItemContracts(suite)
+        sectionOrderContracts(suite)
+        sectionVisibilityContracts(suite)
+        extensionQuickActionContracts(suite)
+        editorSectionContracts(suite)
+        reopeningChoiceContracts(suite)
+        extensionActionLookupContracts(suite)
         activitySelectionContracts(suite)
         railContracts(suite)
         presentationSpacingContracts(suite)

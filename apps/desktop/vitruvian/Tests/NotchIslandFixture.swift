@@ -50,6 +50,9 @@ final class NotchIslandFixture {
     var restingStatus: String?
     /// Sent when a test changes `restingStatus`, as the app's services do.
     let restingStatusChanges = PassthroughSubject<Void, Never>()
+    /// Sent when a test opens, closes, shows or hides a tool's island page,
+    /// as the app's panel host and tool registry do.
+    let islandPanelChanges = PassthroughSubject<Void, Never>()
     var reducesMotion = false
     var currentSession = NotchSessionState()
     /// Each window the island built, the current one last.
@@ -185,6 +188,7 @@ final class NotchIslandFixture {
             hasBattery: { [unowned self] in self.hasBattery },
             restingStatus: { [unowned self] in self.restingStatus },
             restingStatusChanges: restingStatusChanges.eraseToAnyPublisher(),
+            islandPanelChanges: islandPanelChanges.eraseToAnyPublisher(),
             parts: parts)
     }
 
@@ -504,9 +508,16 @@ final class RecordingIslandServices: NotchIslandServices {
     var keepsCalendarPrompt = false
     var keepsCameraPrompt = false
     var activeUtility: QuickLauncherItem?
-    var showsToolPanel = false
+    var showsToolPanel: Bool { openToolPanel != nil }
     var editingTools = false
     var visibleToolCount = 0
+    var islandPanels: [ToolPanelHost.Key] = []
+    var availableIslandPanels: [ToolPanelHost.Key] = []
+    var openToolPanel: ToolPanelHost.Key?
+    /// The pages whose tools refuse to open them.
+    var refusedPanels: Set<ToolPanelHost.Key> = []
+    var panelTitles: [ToolPanelHost.Key: String] = [:]
+    func islandPanelTitle(_ key: ToolPanelHost.Key, language: AppLanguage) -> String { panelTitles[key] ?? key.panel }
     var mediaPresented = false
     var mediaContentHeight: CGFloat?
     var offersMediaDrop = false
@@ -556,7 +567,28 @@ final class RecordingIslandServices: NotchIslandServices {
 
     func rememberPasteTarget() { log("rememberPasteTarget") }
     func prepareTools() { log("prepareTools"); prepareToolsAction() }
-    func closeToolPanel() {}
+    func closeToolPanel() {
+        guard let open = openToolPanel else { return }
+        openToolPanel = nil
+        log("closeToolPanel \(open.tool.rawValue)")
+    }
+    func setIslandPanelShown(_ tool: ToolID, _ shown: Bool) {
+        log("setIslandPanelShown \(tool.rawValue) \(shown)")
+        if shown {
+            if let key = availableIslandPanels.first(where: { $0.tool == tool }), !islandPanels.contains(key) {
+                islandPanels.append(key)
+            }
+        } else {
+            islandPanels.removeAll { $0.tool == tool }
+            if openToolPanel?.tool == tool { openToolPanel = nil }
+        }
+    }
+    func openIslandToolPanel(_ key: ToolPanelHost.Key) -> Bool {
+        log("openToolPanel \(key.tool.rawValue)")
+        guard !refusedPanels.contains(key) else { return false }
+        openToolPanel = key
+        return true
+    }
     func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool { toolsKey(event, flow) }
     func createPad(defaultName: String) { log("createPad") }
     func showNormalMenuPanel() { log("showNormalMenuPanel") }

@@ -76,8 +76,8 @@ enum ByHandRulesTests {
     }
 
     static func rows(_ suite: TestSuite) {
-        let labels = ["Deploys. Example 0.1.0", "Deploys Pro. Example 2.0.0. Running", "Never, by hand. Example 0.1.0",
-                      "Hello"]
+        let labels = ["Deploys. Tool. Example 0.1.0", "Deploys Pro. Extension. Example 2.0.0. Running",
+                      "Never, by hand. Tool. Example 0.1.0", "Hello"]
         suite.expect(ByHandRules.toolRows("Deploys", among: labels) == [0]
                          && ByHandRules.toolRows("Deploys Pro", among: labels) == [1]
                          && ByHandRules.toolRows("Hello", among: labels) == [3]

@@ -62,7 +62,7 @@ package struct ToolRecord: Codable, Equatable, Sendable {
     /// one added from a folder. Left out of the file when nil, so the record
     /// of a tool added from a folder is written as before.
     package var catalogue: CatalogueOrigin?
-    /// Whether the island's Tools area lists the tool's page, for a tool
+    /// Whether the island lists the tool's page as a section, for a tool
     /// that has one. Nil is yes: it is written only once the person has
     /// turned it off, so a file from before it reads as it did.
     package var showsInIsland: Bool?

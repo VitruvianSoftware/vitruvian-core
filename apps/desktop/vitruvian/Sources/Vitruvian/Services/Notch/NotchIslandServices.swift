@@ -37,13 +37,22 @@ package protocol NotchIslandServices: AnyObject {
     var keepsCalendarPrompt: Bool { get }
     var keepsCameraPrompt: Bool { get }
     var activeUtility: QuickLauncherItem? { get }
-    /// True while the Tools page shows a tool's own page, as it does a
-    /// hosted utility.
+    /// True while a tool's island page is open, as one of the island's
+    /// sections.
     var showsToolPanel: Bool { get }
     var editingTools: Bool { get }
-    /// How many tiles the Tools page shows now, of any kind: the quick
-    /// tools, and a tile for each tool's island page.
+    /// How many tiles the Tools page shows now: its quick tools and
+    /// commands. Tools' island pages are sections of their own.
     var visibleToolCount: Int { get }
+    /// The island pages of tools the person shows, in the order the tools
+    /// were added.
+    var islandPanels: [ToolPanelHost.Key] { get }
+    /// Every island page there is, the ones the person hid as well.
+    var availableIslandPanels: [ToolPanelHost.Key] { get }
+    /// The tool's island page open now, if any.
+    var openToolPanel: ToolPanelHost.Key? { get }
+    /// A tool's island page's title, in the tool's own words.
+    func islandPanelTitle(_ key: ToolPanelHost.Key, language: AppLanguage) -> String
     var mediaPresented: Bool { get }
     var mediaContentHeight: CGFloat? { get }
     var offersMediaDrop: Bool { get }
@@ -91,9 +100,15 @@ package protocol NotchIslandServices: AnyObject {
 
     func rememberPasteTarget()
     func prepareTools()
-    /// The island collapsed: a tool's page open on the Tools page closes,
-    /// and its tool is told.
+    /// The island collapsed or moved to another page: a tool's island page
+    /// open closes, and its tool is told.
     func closeToolPanel()
+    /// Opens a tool's island page; false when the tool refused it.
+    @discardableResult
+    func openIslandToolPanel(_ key: ToolPanelHost.Key) -> Bool
+    /// Shows or hides a tool's island page among the sections, as its
+    /// detail's switch does; hidden, an open page closes.
+    func setIslandPanelShown(_ tool: ToolID, _ shown: Bool)
     /// Whether the tools page takes a key, after acting on it.
     func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool
     func createPad(defaultName: String)
@@ -154,8 +169,12 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var activeUtility: QuickLauncherItem? { QuickLauncherService.shared.activeUtility }
     package var showsToolPanel: Bool { ToolPanelHost.shared.island != nil }
     package var editingTools: Bool { QuickLauncherService.shared.isEditing }
-    package var visibleToolCount: Int {
-        QuickLauncherService.shared.visibleTiles.count + ExternalToolStore.shared.islandPanels().count
+    package var visibleToolCount: Int { QuickLauncherService.shared.visibleTiles.count }
+    package var islandPanels: [ToolPanelHost.Key] { ExternalToolStore.shared.islandPanels() }
+    package var availableIslandPanels: [ToolPanelHost.Key] { ExternalToolStore.shared.availableIslandPanels() }
+    package var openToolPanel: ToolPanelHost.Key? { ToolPanelHost.shared.island }
+    package func islandPanelTitle(_ key: ToolPanelHost.Key, language: AppLanguage) -> String {
+        ExternalToolStore.shared.installed[key.tool]?.tool.panel(key.panel)?.title.text(for: language.rawValue) ?? key.panel
     }
     package var mediaPresented: Bool { NotchFileToolsService.shared.mediaPresented }
     package var mediaContentHeight: CGFloat? { NotchFileToolsService.shared.mediaContentHeight }
@@ -205,6 +224,12 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package func prepareTools() { QuickLauncherService.shared.prepareForPresentation() }
     package func closeToolPanel() {
         if let island = ToolPanelHost.shared.island { ToolPanelHost.shared.close(island) }
+    }
+    package func setIslandPanelShown(_ tool: ToolID, _ shown: Bool) {
+        ExternalToolStore.shared.setShowsInIsland(tool, shown)
+    }
+    package func openIslandToolPanel(_ key: ToolPanelHost.Key) -> Bool {
+        ToolPanelHost.shared.open(key, in: .island) == nil && ToolPanelHost.shared.island == key
     }
     package func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool {
         QuickLauncherService.shared.takesPanelKey(event, flow: flow)

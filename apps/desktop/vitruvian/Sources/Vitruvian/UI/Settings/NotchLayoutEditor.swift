@@ -17,6 +17,10 @@ package struct NotchLayoutEditor: View {
     /// Redraws when a feature behind a button is installed or removed, which
     /// dims the button or brings it back.
     @ObservedObject private var features = FeatureRuntime.shared
+    /// Redraws when a tool is added, removed or switched, and when its
+    /// island page is shown or hidden, which brings its button back or dims it.
+    @ObservedObject private var registry = ToolRegistry.shared
+    @ObservedObject private var panels = ToolPanelHost.shared
     @AppStorage(Preferences.notchOutlineEnabled) private var outlineEnabled: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var addingSide: NotchQuickAccessSide?
@@ -205,9 +209,11 @@ package struct NotchLayoutEditor: View {
 
     private func bubble(_ button: NotchQuickButton) -> some View {
         let title = button.label.isEmpty ? button.action?.title(l10n) ?? editor.editButton : button.label
-        // The island leaves out a button whose section or feature is off. It
-        // stays here, dimmed, in the place it takes back once that is on.
-        let hidden = button.action?.isAvailable() != true
+        // The island leaves out a button whose section or feature is off, or
+        // whose tool's island page is hidden or gone. It stays here, dimmed,
+        // in the place it takes back once that is on.
+        let extensions = NotchExtensionActions.live(language: l10n.language)
+        let hidden = button.action.map { !extensions.isAvailable($0) } ?? true
         return Button { editingName = button.label; editingID = button.id } label: {
             Image(systemName: button.action?.symbol ?? "questionmark")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
@@ -402,6 +408,9 @@ package struct NotchActionChooser: View {
     package var selected: NotchQuickAction?
     package let choose: (NotchQuickAction) -> Void
     @ObservedObject private var l10n = L10n.shared
+    /// Tools' island pages come and go with their tools and switches.
+    @ObservedObject private var registry = ToolRegistry.shared
+    @ObservedObject private var panels = ToolPanelHost.shared
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
     @State private var query = ""
     @FocusState private var searching: Bool
@@ -412,26 +421,33 @@ package struct NotchActionChooser: View {
             TextField(editor.findAction, text: $query).textFieldStyle(.roundedBorder).focused($searching)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if !NotchQuickAction.optionalActions.contains(where: { matchesQuery($0) }) {
+                    let extensions = NotchExtensionActions.live(language: l10n.language)
+                    if !(NotchQuickAction.optionalActions + extensions.actions).contains(where: { matchesQuery($0, extensions) }) {
                         Text(FeatureStrings.clipboard(l10n.language).noResults)
                             .foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 120)
                     }
-                    group(editor.sectionActions, actions: [.explore, .settings] + NotchModule.allCases.map(NotchQuickAction.module))
-                    group(editor.quickActions, actions: [.pin] + NotchControlItem.allCases.filter { !$0.isLevel }.map(NotchQuickAction.control))
+                    // A tool's island page is a section like the island's own,
+                    // saved as `extension:<tool id>`.
+                    group(editor.sectionActions,
+                          actions: [.explore, .settings] + NotchModule.allCases.map(NotchQuickAction.module) + extensions.actions,
+                          extensions: extensions)
+                    group(editor.quickActions, actions: [.pin] + NotchControlItem.allCases.filter { !$0.isLevel }.map(NotchQuickAction.control),
+                          extensions: extensions)
                 }.padding(2)
             }.frame(height: 200)
         }.padding(title.isEmpty ? 0 : 16).frame(width: title.isEmpty ? nil : 340)
             .onAppear { searching = !title.isEmpty }
     }
 
-    private func matchesQuery(_ action: NotchQuickAction) -> Bool {
-        guard action.isAvailable() else { return false }
+    private func matchesQuery(_ action: NotchQuickAction, _ extensions: NotchExtensionActions) -> Bool {
+        guard extensions.isAvailable(action) else { return false }
         let term = CommandBarSearch.normalized(query)
         return term.isEmpty || CommandBarSearch.normalized(action.title(l10n) + " " + action.id).contains(term)
     }
 
-    @ViewBuilder private func group(_ title: String, actions: [NotchQuickAction]) -> some View {
-        let matches = actions.filter(matchesQuery)
+    @ViewBuilder private func group(_ title: String, actions: [NotchQuickAction],
+                                    extensions: NotchExtensionActions) -> some View {
+        let matches = actions.filter { matchesQuery($0, extensions) }
         if !matches.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title).font(.caption).foregroundStyle(.secondary)
@@ -442,7 +458,7 @@ package struct NotchActionChooser: View {
                                 .font(.system(size: 11)).lineLimit(2)
                                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading).padding(.horizontal, 8)
                                 .background(selected == action ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
-                        }.buttonStyle(.plain).disabled(!action.isAvailable())
+                        }.buttonStyle(.plain).disabled(!extensions.isAvailable(action))
                     }
                 }
             }

@@ -24,7 +24,7 @@ extension RestingStatus {
     /// The page a click on the closed island's wing opens, when the mark it
     /// shows is a tool's: that tool's island page, unless the mark says all
     /// is well, which asks for nothing. `pages` is the island pages the
-    /// Tools area lists, so a tool with no island page, or one whose page
+    /// island lists as sections, so a tool with no island page, or one whose page
     /// the person hid, gives nil. Nil too for no mark: the click then does
     /// what it always did. Nil while a Nexus session runs: the wings show
     /// the session then, not the tool's mark, so the click goes where the
@@ -94,7 +94,7 @@ package final class ToolPanelHost: ObservableObject {
         case notShown
     }
 
-    /// The tool's mark beside it in the island's Tools area.
+    /// The tool's mark on its section's tile in Explore.
     package enum Badge: Equatable, Sendable {
         case count(Int)
         case dot

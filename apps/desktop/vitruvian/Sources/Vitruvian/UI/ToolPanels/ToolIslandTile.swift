@@ -7,9 +7,9 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianToolProtocol
 
-/// A tool's page, as the island's Tools area lists it: a tile after the
-/// quick tools, with the tool's badge. Plain values, so the tests check
-/// what the tile says without drawing it.
+/// A tool's island page, as Explore lists it among the island's sections,
+/// with the tool's badge. Plain values, so the tests check what the tile
+/// says without drawing it.
 package struct ToolIslandEntry: Identifiable, Equatable, Sendable {
     package let key: ToolPanelHost.Key
     /// The page's title in the person's language, as the tool wrote it.
@@ -42,10 +42,23 @@ package struct ToolIslandEntry: Identifiable, Equatable, Sendable {
         }
     }
 
-    /// The island pages the Tools area lists, in the order the store keeps.
+    /// The island pages the person shows, in the order the store keeps.
     @MainActor
     package static func all(store: ExternalToolStore, host: ToolPanelHost, language: AppLanguage) -> [ToolIslandEntry] {
-        store.islandPanels().compactMap { key in
+        entries(store.islandPanels(), store: store, host: host, language: language)
+    }
+
+    /// Every island page there is, including those the person turned off:
+    /// what the island's editor offers to show or hide.
+    @MainActor
+    package static func available(store: ExternalToolStore, host: ToolPanelHost, language: AppLanguage) -> [ToolIslandEntry] {
+        entries(store.availableIslandPanels(), store: store, host: host, language: language)
+    }
+
+    @MainActor
+    private static func entries(_ keys: [ToolPanelHost.Key], store: ExternalToolStore, host: ToolPanelHost,
+                                language: AppLanguage) -> [ToolIslandEntry] {
+        keys.compactMap { key in
             guard let panel = store.installed[key.tool]?.tool.panel(key.panel) else { return nil }
             return ToolIslandEntry(key: key, title: panel.title.text(for: language.rawValue) ?? key.panel,
                                    symbol: panel.symbol, badge: host.badges[key.tool])
@@ -53,31 +66,35 @@ package struct ToolIslandEntry: Identifiable, Equatable, Sendable {
     }
 }
 
-/// One tool's page in the island's Tools area: its icon and title, as a
-/// quick tool's tile is drawn there, and its badge where a quick tool shows
-/// that it is on. Clicking it opens the page.
-package struct ToolIslandTile: View {
+/// A tool's island page drawn as one of the island's own sections in
+/// Explore: the same tile, size and states as `NotchSectionsView` draws for
+/// a module, with the tool's badge on its icon. A tool's page has no
+/// keyboard shortcut, so the tile has no shortcut line.
+package struct ToolSectionTile: View {
     package let entry: ToolIslandEntry
+    /// The page is the one the island has open.
+    package let current: Bool
+    /// The keyboard's highlight is on it.
+    package let highlighted: Bool
     package let open: () -> Void
-    @State private var hovering = false
+    @Environment(\.colorSchemeContrast) private var contrast
 
-    package init(entry: ToolIslandEntry, open: @escaping () -> Void) {
+    package init(entry: ToolIslandEntry, current: Bool, highlighted: Bool, open: @escaping () -> Void) {
         self.entry = entry
+        self.current = current
+        self.highlighted = highlighted
         self.open = open
     }
 
     package var body: some View {
-        Button(action: open) {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return Button(action: open) {
             VStack(spacing: 6) {
                 ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.white.opacity(hovering ? 0.16 : 0.1))
-                        .frame(width: 32, height: 32)
-                        .overlay(
-                            Image(systemName: entry.symbol)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white)
-                        )
+                    Image(systemName: entry.symbol)
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 25, height: 25)
                     if let count = entry.count {
                         Text(verbatim: count)
                             .font(.system(size: 9, weight: .bold))
@@ -86,37 +103,42 @@ package struct ToolIslandTile: View {
                             .padding(.horizontal, 4)
                             .frame(minWidth: 15, minHeight: 15)
                             .background(Color.red, in: Capsule())
-                            .offset(x: 6, y: -5)
+                            .offset(x: 10, y: -6)
                     } else if entry.dot {
-                        Circle().fill(Color.red).frame(width: 8, height: 8).offset(x: 3, y: -3)
+                        Circle().fill(Color.red).frame(width: 8, height: 8).offset(x: 4, y: -3)
                     }
                 }
                 // The tool's own words: plain text, two lines at most.
                 Text(verbatim: entry.title)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.center)
-                    .lineLimit(2, reservesSpace: true)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: 27)
+                // Where a module's tile has its shortcut, so the titles line up.
+                Color.clear.frame(height: 12)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .padding(.horizontal, 6)
+            .frame(minWidth: 0, idealWidth: NotchLayout.sectionTileWidth, maxWidth: .infinity)
+            .frame(height: NotchLayout.sectionTileHeight)
+            .background(.white.opacity(highlighted ? 0.12 : 0.045), in: shape)
+            .overlay {
+                shape.strokeBorder(.white.opacity(highlighted ? 0.55 : contrast == .increased ? 0.4 : 0.04), lineWidth: 1)
+            }
+            .overlay(alignment: .topTrailing) {
+                if current {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .padding(7)
+                }
+            }
+            .contentShape(shape)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .buttonStyle(NotchButtonStyle(cornerRadius: 16, lifts: false))
         .accessibilityLabel(Text(verbatim: entry.count.map { "\(entry.title), \($0)" } ?? entry.title))
-    }
-}
-
-/// A tile of the island's Tools area: a quick tool, or a tool's page.
-package enum ToolsRailItem: Identifiable, Equatable {
-    case tile(QuickLauncherTile)
-    case page(ToolIslandEntry)
-
-    package var id: String {
-        switch self {
-        case .tile(let tile): return "tile:" + tile.id
-        case .page(let entry): return "page:" + entry.id
-        }
+        .accessibilityAddTraits(current ? .isSelected : [])
+        .accessibilityIdentifier("notch.tool.\(entry.key.tool.rawValue)")
+        .help(entry.title)
     }
 }

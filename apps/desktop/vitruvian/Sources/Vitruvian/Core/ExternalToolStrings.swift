@@ -83,7 +83,7 @@ package struct ExternalToolStrings {
     /// Where a tool's panel would be: its web page did not load or left the tool's
     /// folder, or the tool did not answer.
     package let panelNotShown: String
-    /// The switch in a tool's detail that lists its page in the island's Tools area.
+    /// The switch in a tool's detail that lists its page among the island's sections.
     package let showInIsland: String
     /// The button beside "Add a Tool…" that opens the catalog.
     package let browseButton: String
@@ -124,6 +124,10 @@ package struct ExternalToolStrings {
     package let markAttention: String
     /// The same, for something that failed.
     package let markFailure: String
+    /// The pill beside an added package that contributes panels.
+    package let kindExtension: String
+    /// The pill beside an added package that contributes only commands.
+    package let kindTool: String
 
     package func agreeTitle(_ name: String) -> String {
         String(format: agreeTitleFormat, locale: Locale.current, name)
@@ -276,14 +280,16 @@ package struct ExternalToolStrings {
             ("markBusy", markBusy),
             ("markAttention", markAttention),
             ("markFailure", markFailure),
+            ("kindExtension", kindExtension),
+            ("kindTool", kindTool),
         ]
     }
 }
 
 extension ExternalToolStrings {
     package static let enUS = ExternalToolStrings(
-        sectionTitle: "Tools from outside",
-        sectionEmpty: "No tools added. A tool from outside is a separate program that adds commands to Vitruvian.",
+        sectionTitle: "Extensions & Tools",
+        sectionEmpty: "No extensions or tools added. Each is a separate program. An extension adds pages of its own, in the Dynamic Island, in Settings or in a window. A tool adds commands to Vitruvian.",
         addButton: "Add a Tool…",
         statusRunning: "Running",
         statusStopped: "Stopped working",
@@ -332,7 +338,7 @@ extension ExternalToolStrings {
         showInIsland: "Show in the Dynamic Island",
         browseButton: "Browse Tools…",
         catalogTitle: "The Vitruvian catalog",
-        catalogEmpty: "There are no tools in the catalog yet.",
+        catalogEmpty: "There are no extensions or tools in the catalog yet.",
         installButton: "Install",
         installedLabel: "Installed",
         updateAvailable: "Update available",
@@ -349,11 +355,13 @@ extension ExternalToolStrings {
         markOK: "OK",
         markBusy: "Working",
         markAttention: "Needs attention",
-        markFailure: "Failed")
+        markFailure: "Failed",
+        kindExtension: "Extension",
+        kindTool: "Tool")
 
     package static let ptBR = ExternalToolStrings(
-        sectionTitle: "Ferramentas de fora",
-        sectionEmpty: "Nenhuma ferramenta adicionada. Uma ferramenta de fora é um programa separado que adiciona comandos ao Vitruvian.",
+        sectionTitle: "Extensões e ferramentas",
+        sectionEmpty: "Nenhuma extensão ou ferramenta adicionada. Cada uma é um programa separado. Uma extensão adiciona páginas próprias, no Dynamic Island, em Ajustes ou em uma janela. Uma ferramenta adiciona comandos ao Vitruvian.",
         addButton: "Adicionar ferramenta…",
         statusRunning: "Em execução",
         statusStopped: "Parou de funcionar",
@@ -402,7 +410,7 @@ extension ExternalToolStrings {
         showInIsland: "Mostrar no Dynamic Island",
         browseButton: "Explorar ferramentas…",
         catalogTitle: "O catálogo do Vitruvian",
-        catalogEmpty: "Ainda não há ferramentas no catálogo.",
+        catalogEmpty: "Ainda não há extensões nem ferramentas no catálogo.",
         installButton: "Instalar",
         installedLabel: "Instalada",
         updateAvailable: "Atualização disponível",
@@ -419,11 +427,13 @@ extension ExternalToolStrings {
         markOK: "Tudo certo",
         markBusy: "Trabalhando",
         markAttention: "Precisa de atenção",
-        markFailure: "Falhou")
+        markFailure: "Falhou",
+        kindExtension: "Extensão",
+        kindTool: "Ferramenta")
 
     package static let tr = ExternalToolStrings(
-        sectionTitle: "Dışarıdan araçlar",
-        sectionEmpty: "Eklenmiş araç yok. Dışarıdan bir araç, Vitruvian’a komut ekleyen ayrı bir programdır.",
+        sectionTitle: "Uzantılar ve araçlar",
+        sectionEmpty: "Eklenmiş uzantı veya araç yok. Her biri ayrı bir programdır. Bir uzantı, Dynamic Island’da, Ayarlar’da ya da bir pencerede kendi sayfalarını ekler. Bir araç, Vitruvian’a komut ekler.",
         addButton: "Araç ekle…",
         statusRunning: "Çalışıyor",
         statusStopped: "Çalışmayı durdurdu",
@@ -472,7 +482,7 @@ extension ExternalToolStrings {
         showInIsland: "Dynamic Island’da göster",
         browseButton: "Araçlara göz at…",
         catalogTitle: "Vitruvian kataloğu",
-        catalogEmpty: "Katalogda henüz araç yok.",
+        catalogEmpty: "Katalogda henüz uzantı veya araç yok.",
         installButton: "Yükle",
         installedLabel: "Yüklendi",
         updateAvailable: "Güncelleme var",
@@ -489,11 +499,13 @@ extension ExternalToolStrings {
         markOK: "Sorun yok",
         markBusy: "İşlem sürüyor",
         markAttention: "Dikkat gerekiyor",
-        markFailure: "Başarısız oldu")
+        markFailure: "Başarısız oldu",
+        kindExtension: "Uzantı",
+        kindTool: "Araç")
 
     package static let ru = ExternalToolStrings(
-        sectionTitle: "Сторонние инструменты",
-        sectionEmpty: "Инструменты не добавлены. Сторонний инструмент является отдельной программой, которая добавляет команды в Vitruvian.",
+        sectionTitle: "Расширения и инструменты",
+        sectionEmpty: "Расширения и инструменты не добавлены. Каждое из них является отдельной программой. Расширение добавляет собственные страницы в Dynamic Island, в Настройки или в отдельное окно. Инструмент добавляет команды в Vitruvian.",
         addButton: "Добавить инструмент…",
         statusRunning: "Работает",
         statusStopped: "Перестал работать",
@@ -542,7 +554,7 @@ extension ExternalToolStrings {
         showInIsland: "Показывать в Dynamic Island",
         browseButton: "Обзор инструментов…",
         catalogTitle: "Каталог Vitruvian",
-        catalogEmpty: "В каталоге пока нет инструментов.",
+        catalogEmpty: "В каталоге пока нет расширений и инструментов.",
         installButton: "Установить",
         installedLabel: "Установлен",
         updateAvailable: "Доступно обновление",
@@ -559,11 +571,13 @@ extension ExternalToolStrings {
         markOK: "Всё в порядке",
         markBusy: "Выполняется",
         markAttention: "Требует внимания",
-        markFailure: "Сбой")
+        markFailure: "Сбой",
+        kindExtension: "Расширение",
+        kindTool: "Инструмент")
 
     package static let es = ExternalToolStrings(
-        sectionTitle: "Herramientas externas",
-        sectionEmpty: "No hay herramientas añadidas. Una herramienta externa es un programa aparte que añade comandos a Vitruvian.",
+        sectionTitle: "Extensiones y herramientas",
+        sectionEmpty: "No hay extensiones ni herramientas añadidas. Cada una es un programa aparte. Una extensión añade páginas propias, en el Dynamic Island, en Ajustes o en una ventana. Una herramienta añade comandos a Vitruvian.",
         addButton: "Añadir herramienta…",
         statusRunning: "En ejecución",
         statusStopped: "Dejó de funcionar",
@@ -612,7 +626,7 @@ extension ExternalToolStrings {
         showInIsland: "Mostrar en el Dynamic Island",
         browseButton: "Explorar herramientas…",
         catalogTitle: "El catálogo de Vitruvian",
-        catalogEmpty: "Todavía no hay herramientas en el catálogo.",
+        catalogEmpty: "Todavía no hay extensiones ni herramientas en el catálogo.",
         installButton: "Instalar",
         installedLabel: "Instalada",
         updateAvailable: "Actualización disponible",
@@ -629,11 +643,13 @@ extension ExternalToolStrings {
         markOK: "Todo bien",
         markBusy: "Trabajando",
         markAttention: "Requiere atención",
-        markFailure: "Falló")
+        markFailure: "Falló",
+        kindExtension: "Extensión",
+        kindTool: "Herramienta")
 
     package static let sk = ExternalToolStrings(
-        sectionTitle: "Nástroje zvonka",
-        sectionEmpty: "Žiadne nástroje nie sú pridané. Nástroj zvonka je samostatný program, ktorý pridáva príkazy do aplikácie Vitruvian.",
+        sectionTitle: "Rozšírenia a nástroje",
+        sectionEmpty: "Žiadne rozšírenia ani nástroje nie sú pridané. Každé z nich je samostatný program. Rozšírenie pridáva vlastné stránky, v Dynamic Island, v Nastaveniach alebo v okne. Nástroj pridáva príkazy do aplikácie Vitruvian.",
         addButton: "Pridať nástroj…",
         statusRunning: "Beží",
         statusStopped: "Prestal fungovať",
@@ -682,7 +698,7 @@ extension ExternalToolStrings {
         showInIsland: "Zobraziť v Dynamic Island",
         browseButton: "Prehľadávať nástroje…",
         catalogTitle: "Katalóg Vitruvian",
-        catalogEmpty: "V katalógu zatiaľ nie sú žiadne nástroje.",
+        catalogEmpty: "V katalógu zatiaľ nie sú žiadne rozšírenia ani nástroje.",
         installButton: "Inštalovať",
         installedLabel: "Nainštalovaný",
         updateAvailable: "K dispozícii je aktualizácia",
@@ -699,11 +715,13 @@ extension ExternalToolStrings {
         markOK: "V poriadku",
         markBusy: "Pracuje",
         markAttention: "Vyžaduje pozornosť",
-        markFailure: "Zlyhalo")
+        markFailure: "Zlyhalo",
+        kindExtension: "Rozšírenie",
+        kindTool: "Nástroj")
 
     package static let de = ExternalToolStrings(
-        sectionTitle: "Werkzeuge von außen",
-        sectionEmpty: "Keine Werkzeuge hinzugefügt. Ein Werkzeug von außen ist ein eigenes Programm, das Vitruvian um Befehle erweitert.",
+        sectionTitle: "Erweiterungen und Werkzeuge",
+        sectionEmpty: "Keine Erweiterungen oder Werkzeuge hinzugefügt. Beide sind eigene Programme. Eine Erweiterung fügt eigene Seiten hinzu, im Dynamic Island, in den Einstellungen oder in einem Fenster. Ein Werkzeug erweitert Vitruvian um Befehle.",
         addButton: "Werkzeug hinzufügen…",
         statusRunning: "Läuft",
         statusStopped: "Funktioniert nicht mehr",
@@ -752,7 +770,7 @@ extension ExternalToolStrings {
         showInIsland: "Im Dynamic Island anzeigen",
         browseButton: "Werkzeuge durchsuchen…",
         catalogTitle: "Der Vitruvian-Katalog",
-        catalogEmpty: "Im Katalog sind noch keine Werkzeuge.",
+        catalogEmpty: "Im Katalog sind noch keine Erweiterungen oder Werkzeuge.",
         installButton: "Installieren",
         installedLabel: "Installiert",
         updateAvailable: "Aktualisierung verfügbar",
@@ -769,11 +787,13 @@ extension ExternalToolStrings {
         markOK: "In Ordnung",
         markBusy: "Arbeitet",
         markAttention: "Braucht Aufmerksamkeit",
-        markFailure: "Fehlgeschlagen")
+        markFailure: "Fehlgeschlagen",
+        kindExtension: "Erweiterung",
+        kindTool: "Werkzeug")
 
     package static let fr = ExternalToolStrings(
-        sectionTitle: "Outils externes",
-        sectionEmpty: "Aucun outil ajouté. Un outil externe est un programme distinct qui ajoute des commandes à Vitruvian.",
+        sectionTitle: "Extensions et outils",
+        sectionEmpty: "Aucune extension ni aucun outil ajouté. Chacun est un programme distinct. Une extension ajoute ses propres pages, dans le Dynamic Island, dans les Réglages ou dans une fenêtre. Un outil ajoute des commandes à Vitruvian.",
         addButton: "Ajouter un outil…",
         statusRunning: "En cours d’exécution",
         statusStopped: "A cessé de fonctionner",
@@ -822,7 +842,7 @@ extension ExternalToolStrings {
         showInIsland: "Afficher dans le Dynamic Island",
         browseButton: "Parcourir les outils…",
         catalogTitle: "Le catalogue Vitruvian",
-        catalogEmpty: "Le catalogue ne contient encore aucun outil.",
+        catalogEmpty: "Le catalogue ne contient encore aucune extension ni aucun outil.",
         installButton: "Installer",
         installedLabel: "Installé",
         updateAvailable: "Mise à jour disponible",
@@ -839,11 +859,13 @@ extension ExternalToolStrings {
         markOK: "Tout va bien",
         markBusy: "En cours",
         markAttention: "Demande votre attention",
-        markFailure: "Échec")
+        markFailure: "Échec",
+        kindExtension: "Module d’extension",
+        kindTool: "Outil")
 
     package static let it = ExternalToolStrings(
-        sectionTitle: "Strumenti esterni",
-        sectionEmpty: "Nessuno strumento aggiunto. Uno strumento esterno è un programma separato che aggiunge comandi a Vitruvian.",
+        sectionTitle: "Estensioni e strumenti",
+        sectionEmpty: "Nessuna estensione o strumento aggiunto. Ognuno è un programma separato. Un’estensione aggiunge pagine proprie, nel Dynamic Island, nelle Impostazioni o in una finestra. Uno strumento aggiunge comandi a Vitruvian.",
         addButton: "Aggiungi strumento…",
         statusRunning: "In esecuzione",
         statusStopped: "Ha smesso di funzionare",
@@ -892,7 +914,7 @@ extension ExternalToolStrings {
         showInIsland: "Mostra nel Dynamic Island",
         browseButton: "Sfoglia strumenti…",
         catalogTitle: "Il catalogo di Vitruvian",
-        catalogEmpty: "Non ci sono ancora strumenti nel catalogo.",
+        catalogEmpty: "Non ci sono ancora estensioni o strumenti nel catalogo.",
         installButton: "Installa",
         installedLabel: "Installato",
         updateAvailable: "Aggiornamento disponibile",
@@ -909,11 +931,13 @@ extension ExternalToolStrings {
         markOK: "Tutto a posto",
         markBusy: "Al lavoro",
         markAttention: "Richiede attenzione",
-        markFailure: "Non riuscito")
+        markFailure: "Non riuscito",
+        kindExtension: "Estensione",
+        kindTool: "Strumento")
 
     package static let ja = ExternalToolStrings(
-        sectionTitle: "外部ツール",
-        sectionEmpty: "ツールは追加されていません。外部ツールは、Vitruvianにコマンドを追加する別のプログラムです。",
+        sectionTitle: "拡張機能とツール",
+        sectionEmpty: "拡張機能もツールも追加されていません。どちらも別のプログラムです。拡張機能は、Dynamic Island、「設定」、またはウインドウに独自のページを追加します。ツールは、Vitruvianにコマンドを追加します。",
         addButton: "ツールを追加…",
         statusRunning: "実行中",
         statusStopped: "動作を停止しました",
@@ -962,7 +986,7 @@ extension ExternalToolStrings {
         showInIsland: "Dynamic Islandに表示",
         browseButton: "ツールを参照…",
         catalogTitle: "Vitruvianカタログ",
-        catalogEmpty: "カタログにはまだツールがありません。",
+        catalogEmpty: "カタログにはまだ拡張機能もツールもありません。",
         installButton: "インストール",
         installedLabel: "インストール済み",
         updateAvailable: "アップデートがあります",
@@ -979,11 +1003,13 @@ extension ExternalToolStrings {
         markOK: "問題なし",
         markBusy: "処理中",
         markAttention: "確認が必要",
-        markFailure: "失敗")
+        markFailure: "失敗",
+        kindExtension: "拡張機能",
+        kindTool: "ツール")
 
     package static let ko = ExternalToolStrings(
-        sectionTitle: "외부 도구",
-        sectionEmpty: "추가된 도구가 없습니다. 외부 도구는 Vitruvian에 명령을 추가하는 별도의 프로그램입니다.",
+        sectionTitle: "확장 프로그램 및 도구",
+        sectionEmpty: "추가된 확장 프로그램이나 도구가 없습니다. 둘 다 별도의 프로그램입니다. 확장 프로그램은 Dynamic Island, 설정 또는 창에 자체 페이지를 추가합니다. 도구는 Vitruvian에 명령을 추가합니다.",
         addButton: "도구 추가…",
         statusRunning: "실행 중",
         statusStopped: "작동이 중지됨",
@@ -1032,7 +1058,7 @@ extension ExternalToolStrings {
         showInIsland: "Dynamic Island에 표시",
         browseButton: "도구 둘러보기…",
         catalogTitle: "Vitruvian 카탈로그",
-        catalogEmpty: "카탈로그에 아직 도구가 없습니다.",
+        catalogEmpty: "카탈로그에 아직 확장 프로그램이나 도구가 없습니다.",
         installButton: "설치",
         installedLabel: "설치됨",
         updateAvailable: "업데이트 있음",
@@ -1049,11 +1075,13 @@ extension ExternalToolStrings {
         markOK: "정상",
         markBusy: "작업 중",
         markAttention: "확인 필요",
-        markFailure: "실패")
+        markFailure: "실패",
+        kindExtension: "확장 프로그램",
+        kindTool: "도구")
 
     package static let uk = ExternalToolStrings(
-        sectionTitle: "Сторонні інструменти",
-        sectionEmpty: "Інструменти не додано. Сторонній інструмент є окремою програмою, яка додає команди до Vitruvian.",
+        sectionTitle: "Розширення та інструменти",
+        sectionEmpty: "Розширення та інструменти не додано. Кожне з них є окремою програмою. Розширення додає власні сторінки в Dynamic Island, у Параметри або в окреме вікно. Інструмент додає команди до Vitruvian.",
         addButton: "Додати інструмент…",
         statusRunning: "Працює",
         statusStopped: "Перестав працювати",
@@ -1102,7 +1130,7 @@ extension ExternalToolStrings {
         showInIsland: "Показувати в Dynamic Island",
         browseButton: "Огляд інструментів…",
         catalogTitle: "Каталог Vitruvian",
-        catalogEmpty: "У каталозі ще немає інструментів.",
+        catalogEmpty: "У каталозі ще немає розширень та інструментів.",
         installButton: "Встановити",
         installedLabel: "Встановлено",
         updateAvailable: "Доступне оновлення",
@@ -1119,11 +1147,13 @@ extension ExternalToolStrings {
         markOK: "Усе гаразд",
         markBusy: "Виконується",
         markAttention: "Потребує уваги",
-        markFailure: "Збій")
+        markFailure: "Збій",
+        kindExtension: "Розширення",
+        kindTool: "Інструмент")
 
     package static let zhHans = ExternalToolStrings(
-        sectionTitle: "外部工具",
-        sectionEmpty: "尚未添加工具。外部工具是为 Vitruvian 添加命令的独立程序。",
+        sectionTitle: "扩展与工具",
+        sectionEmpty: "尚未添加扩展或工具。两者都是独立程序。扩展会在 Dynamic Island、“设置”或窗口中添加自己的页面。工具为 Vitruvian 添加命令。",
         addButton: "添加工具…",
         statusRunning: "正在运行",
         statusStopped: "已停止工作",
@@ -1172,7 +1202,7 @@ extension ExternalToolStrings {
         showInIsland: "在 Dynamic Island 中显示",
         browseButton: "浏览工具…",
         catalogTitle: "Vitruvian 目录",
-        catalogEmpty: "目录中还没有工具。",
+        catalogEmpty: "目录中还没有扩展或工具。",
         installButton: "安装",
         installedLabel: "已安装",
         updateAvailable: "有可用更新",
@@ -1189,11 +1219,13 @@ extension ExternalToolStrings {
         markOK: "正常",
         markBusy: "进行中",
         markAttention: "需要留意",
-        markFailure: "失败")
+        markFailure: "失败",
+        kindExtension: "扩展",
+        kindTool: "工具")
 
     package static let zhTW = ExternalToolStrings(
-        sectionTitle: "外部工具",
-        sectionEmpty: "尚未加入工具。外部工具是為 Vitruvian 加入指令的獨立程式。",
+        sectionTitle: "擴充功能與工具",
+        sectionEmpty: "尚未加入擴充功能或工具。兩者都是獨立程式。擴充功能會在 Dynamic Island、「設定」或視窗中加入自己的頁面。工具為 Vitruvian 加入指令。",
         addButton: "加入工具…",
         statusRunning: "執行中",
         statusStopped: "已停止運作",
@@ -1242,7 +1274,7 @@ extension ExternalToolStrings {
         showInIsland: "在 Dynamic Island 中顯示",
         browseButton: "瀏覽工具…",
         catalogTitle: "Vitruvian 目錄",
-        catalogEmpty: "目錄中還沒有工具。",
+        catalogEmpty: "目錄中還沒有擴充功能或工具。",
         installButton: "安裝",
         installedLabel: "已安裝",
         updateAvailable: "有可用的更新",
@@ -1259,11 +1291,13 @@ extension ExternalToolStrings {
         markOK: "正常",
         markBusy: "進行中",
         markAttention: "需要留意",
-        markFailure: "失敗")
+        markFailure: "失敗",
+        kindExtension: "擴充功能",
+        kindTool: "工具")
 
     package static let zhHK = ExternalToolStrings(
-        sectionTitle: "外部工具",
-        sectionEmpty: "尚未加入工具。外部工具是為 Vitruvian 加入指令的獨立程式。",
+        sectionTitle: "擴充功能與工具",
+        sectionEmpty: "尚未加入擴充功能或工具。兩者都是獨立程式。擴充功能會在 Dynamic Island、「設定」或視窗中加入自己的頁面。工具為 Vitruvian 加入指令。",
         addButton: "加入工具…",
         statusRunning: "執行中",
         statusStopped: "已停止運作",
@@ -1312,7 +1346,7 @@ extension ExternalToolStrings {
         showInIsland: "在 Dynamic Island 中顯示",
         browseButton: "瀏覽工具…",
         catalogTitle: "Vitruvian 目錄",
-        catalogEmpty: "目錄中仍未有工具。",
+        catalogEmpty: "目錄中仍未有擴充功能或工具。",
         installButton: "安裝",
         installedLabel: "已安裝",
         updateAvailable: "有可用的更新",
@@ -1329,7 +1363,9 @@ extension ExternalToolStrings {
         markOK: "正常",
         markBusy: "進行中",
         markAttention: "需要留意",
-        markFailure: "失敗")
+        markFailure: "失敗",
+        kindExtension: "擴充功能",
+        kindTool: "工具")
 }
 
 extension FeatureStrings {

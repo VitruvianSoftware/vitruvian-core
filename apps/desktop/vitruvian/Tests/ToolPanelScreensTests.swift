@@ -20,6 +20,8 @@ enum ToolPanelScreensTests {
         detail(suite)
         islandSwitch(suite)
         islandTiles(suite)
+        availableIslandSections(suite)
+        islandQuickActions(suite)
         aChoiceIsAMenu(suite)
     }
 
@@ -221,7 +223,7 @@ enum ToolPanelScreensTests {
         let island = ToolPanelHost.Key(tool: id, panel: "deploys")
         suite.expect(tiles() == [ToolIslandEntry(key: island, title: "Deploys", symbol: "shippingbox", badge: nil)]
                          && bench.store.islandPanels() == [island],
-                     "the Tools area has a tile for each tool's island page, and none for a tool without one")
+                     "the island lists a section for each tool's island page, and none for a tool without one")
         bench.panels.badge(id, UIBadgeParams(count: 3))
         suite.expect(tiles().first?.count == "3" && tiles().first?.dot == false, "the tile carries the tool's count")
         bench.panels.badge(id, UIBadgeParams(count: 120))
@@ -237,6 +239,56 @@ enum ToolPanelScreensTests {
 }
 
 extension ToolPanelScreensTests {
+    /// What the island's editor offers: every island page there is, the
+    /// ones the person turned off too, and none for a tool without one.
+    static func availableIslandSections(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: drawing))
+        bench.add(bench.folder("other", manifest: ExternalToolManifestTests.file(#"{"id": "com.acme.other"}"#)))
+        let island = ToolPanelHost.Key(tool: id, panel: "deploys")
+        func available() -> [ToolIslandEntry] {
+            ToolIslandEntry.available(store: bench.store, host: bench.panels, language: .fr)
+        }
+        suite.expect(bench.store.availableIslandPanels() == [island] && bench.store.islandPanels() == [island],
+                     "a tool's island page is available and listed; a tool without one has neither")
+        bench.store.setShowsInIsland(id, false)
+        suite.expect(bench.store.availableIslandPanels() == [island] && bench.store.islandPanels().isEmpty,
+                     "a page the person turned off is still available to show again, though not listed")
+        bench.panels.badge(id, UIBadgeParams(count: 120))
+        suite.expect(available() == [ToolIslandEntry(key: island, title: "Deploys", symbol: "shippingbox",
+                                                     badge: .count(120))]
+                         && available().first?.count == "99+" && ToolIslandEntry.all(store: bench.store, host: bench.panels,
+                                                                                      language: .fr).isEmpty,
+                     "the editor's entry has the page's title, symbol and badge, whether or not it is shown")
+        bench.panels.badge(id, UIBadgeParams(dot: true))
+        suite.expect(available().first?.dot == true && available().first?.count == nil, "or its dot")
+        bench.store.setOn(id, false)
+        suite.expect(bench.store.availableIslandPanels().isEmpty && available().isEmpty,
+                     "a tool that is switched off has no page to offer")
+    }
+
+    /// A quick-access button for a tool's island page, read from the
+    /// tools added: the page's title and symbol, shown while the island
+    /// lists the page.
+    static func islandQuickActions(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        bench.add(bench.folder(manifest: drawing))
+        bench.add(bench.folder("other", manifest: ExternalToolManifestTests.file(#"{"id": "com.acme.other"}"#)))
+        let action = NotchQuickAction.extensionPanel(id)
+        func lookup() -> NotchExtensionActions { NotchExtensionActions.live(language: .fr, store: bench.store) }
+        suite.expect(lookup().actions == [action] && lookup().title(action) == "Deploys" && lookup().symbol(action) == "shippingbox"
+                         && lookup().isAvailable(action),
+                     "a tool's island page is offered as a button with its page's title and symbol; a tool without one is not")
+        bench.store.setShowsInIsland(id, false)
+        suite.expect(lookup().actions == [action] && !lookup().isAvailable(action),
+                     "hidden, the page is still there to choose, and the island leaves its button out")
+        bench.store.setOn(id, false)
+        suite.expect(lookup().actions.isEmpty && !lookup().isAvailable(action) && lookup().title(action) == id.rawValue,
+                     "switched off, the tool offers no button, and a saved one names its tool")
+    }
+
     static func aChoiceIsAMenu(_ suite: TestSuite) {
         typealias Choice = ExternalToolSetting.Choice
         let page = #"""

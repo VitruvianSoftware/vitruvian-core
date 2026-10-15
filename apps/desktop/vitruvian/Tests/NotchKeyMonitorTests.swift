@@ -43,6 +43,8 @@ enum NotchKeyMonitorTests {
         var showingSections = false
         var showingAppPanel = false
         var showingCommandBar = false
+        var editingSections = false
+        var showingToolPage = false
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1470, height: 956),
                                      safeAreaTop: 32, cameraWidth: 180)
         var tools = (editing: false, count: 3)
@@ -79,7 +81,10 @@ enum NotchKeyMonitorTests {
                 stepBack: { [unowned self] in self.actions.append("stepBack") },
                 collapse: { [unowned self] in self.actions.append("collapse") },
                 clickedInside: { [unowned self] in self.actions.append("clicked") },
-                showingCommandBar: { [unowned self] in self.showingCommandBar }))
+                showingCommandBar: { [unowned self] in self.showingCommandBar },
+                editingSections: { [unowned self] in self.editingSections },
+                stopEditingSections: { [unowned self] in self.actions.append("stopEditing") },
+                showingToolPage: { [unowned self] in self.showingToolPage }))
         }
 
         private func takes(_ handler: String) -> Bool {
@@ -103,6 +108,7 @@ enum NotchKeyMonitorTests {
     static func run(_ suite: TestSuite) {
         Event.nonKeyReads = 0
         escape(suite)
+        editing(suite)
         tools(suite)
         shortcuts(suite)
         clicks(suite)
@@ -157,6 +163,34 @@ enum NotchKeyMonitorTests {
         let islandEscape = bar.send(bar.key(53))
         suite.expect(islandEscape.taken && islandEscape.actions == ["stepBack"],
                      "without the bar, Escape steps back through the island again")
+    }
+
+    /// Customizing Explore: Escape ends it before it leaves Explore, and the
+    /// keys that pick and move sections reach nothing.
+    private static func editing(_ suite: TestSuite) {
+        let island = Island()
+        island.showingSections = true
+        island.editingSections = true
+        island.taken = ["section"]
+        let escaped = island.send(island.key(53))
+        suite.expect(escaped.taken && escaped.actions == ["stopEditing"],
+                     "Escape ends customizing Explore before it leaves Explore")
+        for code: UInt16 in [36, 76, 48, 123, 124, 125, 126] {
+            let held = island.send(island.key(code))
+            suite.expect(held.taken && held.actions.isEmpty, "while customizing, key \(code) picks and moves no section")
+        }
+        let shiftTab = island.send(island.key(48, .shift))
+        suite.expect(shiftTab.taken && shiftTab.actions.isEmpty, "while customizing, Shift-Tab moves no highlight")
+        island.editingSections = false
+        let leaves = island.send(island.key(53))
+        suite.expect(leaves.taken && leaves.actions == ["sections"], "out of customizing, Escape leaves Explore")
+        let picks = island.send(island.key(36))
+        suite.expect(picks.taken && picks.actions == ["section"], "out of customizing, Return reaches the gallery")
+        let page = Island()
+        page.selected = .tools
+        page.showingToolPage = true
+        let down = page.send(page.key(125))
+        suite.expect(!down.taken && page.flows.isEmpty, "a tool's page over the Tools page keeps the arrows from the rail")
     }
 
     /// A title too long to sit beside the camera takes a row below it, so a

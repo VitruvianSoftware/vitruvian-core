@@ -314,6 +314,34 @@ enum ExternalToolScreensTests {
                          && held[0].statusText == "Changed since you added it. Update it to use it again."
                          && held[1].status == .quiet,
                      "a tool whose copy is not what was agreed to says so, under the name and version agreed to")
+        suite.expect(held[0].kind == .tool && held[0].kindBadge == "Tool",
+                     "a tool that is held back has no manifest the app reads, so it is badged as a tool")
+        suite.expect(rows().allSatisfy { $0.kind == .tool && $0.kindBadge == "Tool" }
+                         && rows(.de).allSatisfy { $0.kindBadge == "Werkzeug" },
+                     "a package that only adds commands is badged Tool, in the person's language")
+
+        let kinds = ExternalToolStoreTests.Bench()
+        defer { kinds.close() }
+        kinds.add(kinds.folder("island", manifest: ExternalToolManifestTests.file(#"""
+            {"id": "com.acme.island", "name": {"en": "Island"}, "protocol": "2", "contributes": {
+              "commands": [{"id": "copyLatest", "title": {"en": "Copy"}}],
+              "panels": [{"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"}]}}
+            """#)))
+        kinds.add(kinds.folder("settingsOnly", manifest: ExternalToolManifestTests.file(#"""
+            {"id": "com.acme.settings", "name": {"en": "Settings only"}, "protocol": "2", "contributes": {
+              "panels": [{"id": "prefs", "title": {"en": "Preferences"}, "placement": "settings"}]}}
+            """#)))
+        kinds.add(kinds.folder("commandsOnly", manifest: ExternalToolManifestTests.file(#"""
+            {"id": "com.acme.commands", "name": {"en": "Commands only"}, "protocol": "2"}
+            """#)))
+        let badged = ExternalToolRow.all(store: kinds.store, language: .enUS, strings: english)
+        let french = ExternalToolRow.all(store: kinds.store, language: .fr, strings: FeatureStrings.externalTools(.fr))
+        suite.expect(badged.map(\.name) == ["Island", "Settings only", "Commands only"]
+                         && badged.map(\.kind) == [.extensionPackage, .extensionPackage, .tool]
+                         && badged.map(\.kindBadge) == ["Extension", "Extension", "Tool"]
+                         && french.map(\.kindBadge) == ["Module d’extension", "Module d’extension", "Outil"],
+                     "a package with panels, in the island or only in Settings, is badged Extension; "
+                         + "one of protocol 2 with commands alone is badged Tool")
     }
 
     /// A tool's detail view, and the question before it is removed.

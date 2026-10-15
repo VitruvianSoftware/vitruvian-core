@@ -73,6 +73,8 @@ enum NotchDestinationContract {
         defaults.set(true, forKey: DefaultsKey.notchEnabled)
         scratchpadContracts(defaults: defaults, suite: suite)
         reopeningContracts(defaults: defaults, suite: suite)
+        extensionSectionContracts(defaults: defaults, suite: suite)
+        sectionEditingContracts(defaults: defaults, suite: suite)
         countdownContracts(defaults: defaults, suite: suite)
         stepBackContracts(suite)
         // A page opened while the Command Bar is in the island takes its place.
@@ -341,6 +343,233 @@ enum NotchDestinationContract {
                      "an unavailable island hands Scratchpad opening back to its ordinary window")
     }
 
+    /// A tool's island page, as the island's services list it.
+    private static let helloPage = ToolPanelHost.Key(tool: ToolID("dev.example.hello")!, panel: "main")
+
+    /// A started island whose services list the hello tool's island page.
+    private static func islandWithHelloPage() -> NotchIslandFixture {
+        let fixture = island()
+        fixture.services.islandPanels = [helloPage]
+        fixture.services.availableIslandPanels = [helloPage]
+        fixture.services.panelTitles[helloPage] = "Hello"
+        return fixture
+    }
+
+    /// The preferences these contracts change, put back as they were.
+    private static func keepingSectionPreferences(_ defaults: UserDefaults, _ body: () -> Void) {
+        let keys = [DefaultsKey.notchReturnHome, DefaultsKey.notchHomeModule, DefaultsKey.notchOpensActivity,
+                    DefaultsKey.notchHiddenModules, DefaultsKey.notchModuleOrder, DefaultsKey.notchTimerEnabled,
+                    DefaultsKey.notchQuickAccessLayout]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+        defaults.set(false, forKey: DefaultsKey.notchOpensActivity)
+        body()
+    }
+
+    /// A tool's island page is one of the island's sections: opened from
+    /// Explore, a button, reopening, or by itself going away.
+    private static func extensionSectionContracts(defaults: UserDefaults, suite: TestSuite) {
+        keepingSectionPreferences(defaults) {
+            let hello = NotchSectionItem.tool(helloPage.tool)
+            let fixture = islandWithHelloPage()
+            let service = fixture.island
+            suite.expect(service.sections.contains(hello) && service.sections.first == .module(service.modules[0]),
+                         "a tool's island page is a section of its own, after the island's own pages")
+
+            service.open(.music)
+            service.toggleSections()
+            service.selectSection(hello)
+            suite.expect(service.expanded && !service.showingSections && service.currentSection == hello
+                            && service.extensionPage == helloPage && fixture.services.openToolPanel == helloPage
+                            && service.selected == .music,
+                         "picking a tool's section in Explore opens its page as the island's page")
+            suite.expect(service.expandedSize.height == service.expandedGeometry
+                            .expandedSize(module: .tools, toolCount: nil).height,
+                         "a tool's page fills the island's page height")
+
+            service.toggleSections()
+            suite.expect(service.showingSections && service.highlightedSection == hello
+                            && fixture.services.openToolPanel == helloPage,
+                         "Explore opens over a tool's page with its tile highlighted, and the page stays open")
+            service.toggleSections()
+            suite.expect(!service.showingSections && service.currentSection == hello,
+                         "leaving Explore goes back to the tool's page")
+
+            service.selectSection(.module(.music))
+            suite.expect(fixture.services.openToolPanel == nil && service.extensionPage == nil
+                            && service.currentSection == .module(.music) && service.selected == .music
+                            && fixture.services.count("closeToolPanel dev.example.hello") == 1,
+                         "picking one of the island's own sections closes a tool's page")
+
+            service.openExtensionSection(helloPage)
+            service.showMetric(.cpu)
+            suite.expect(fixture.services.openToolPanel == nil && service.extensionPage == nil,
+                         "a detail opening closes a tool's page")
+            service.goBack()
+
+            service.openExtensionSection(helloPage)
+            suite.expect(escape(fixture) && !service.expanded && fixture.services.openToolPanel == nil,
+                         "Escape on a tool's page closes the island, and the page with it")
+
+            // Refused by its tool, the page leaves the island on Explore.
+            fixture.services.refusedPanels = [helloPage]
+            service.open(.controls)
+            service.toggleSections()
+            service.selectSection(hello)
+            suite.expect(service.expanded && service.showingSections && service.extensionPage == nil
+                            && service.currentSection == .module(.controls) && service.highlightedSection == hello,
+                         "a tool refusing its page leaves the island on Explore")
+            service.collapse()
+            service.openExtensionSection(helloPage)
+            suite.expect(service.expanded && service.showingSections && service.extensionPage == nil,
+                         "a tool refusing its page from the closed island opens Explore instead")
+            fixture.services.refusedPanels = []
+            service.collapse()
+
+            // The quick-access button for a tool's page opens it.
+            service.activateQuickAction(.extensionPanel(helloPage.tool))
+            suite.expect(service.expanded && service.extensionPage == helloPage,
+                         "a tool's quick-access button opens its section")
+            defaults[Preferences.notchQuickAccessLayout] = NotchQuickAccessConfiguration(buttons: [
+                NotchQuickButton(action: .extensionPanel(helloPage.tool), side: .left),
+                NotchQuickButton(action: .settings, side: .right),
+            ]).encoded
+            suite.expect(service.quickAccess.actions == [.extensionPanel(helloPage.tool), .settings],
+                         "the island draws a tool's quick-access button while it lists the tool's page")
+            fixture.services.islandPanels = []
+            suite.expect(service.quickAccess.actions == [.settings],
+                         "and leaves it out once the page is hidden, keeping its place saved")
+            fixture.services.islandPanels = [helloPage]
+
+            // The tool's page going while it shows: Explore, or the empty page.
+            fixture.services.openToolPanel = nil
+            service.islandPanelsChanged()
+            suite.expect(service.expanded && service.showingSections && service.extensionPage == nil
+                            && service.currentSection == .module(service.selected),
+                         "a tool's page that goes while it shows leaves the island on Explore")
+            service.toggleSections()
+
+            let alone = islandWithHelloPage()
+            defaults.set(NotchModule.allCases.map(\.rawValue).joined(separator: ","), forKey: DefaultsKey.notchHiddenModules)
+            alone.island.syncWithPreferences()
+            suite.expect(alone.island.modules.isEmpty && alone.island.sections == [hello] && !alone.island.hasNoSections,
+                         "with only a tool's page showing, the island still has a section and its Explore button")
+            alone.island.openExtensionSection(helloPage)
+            suite.expect(alone.island.currentSection == hello, "a tool's page opens with none of the island's own showing")
+            alone.services.islandPanels = []
+            alone.services.openToolPanel = nil
+            alone.island.islandPanelsChanged()
+            suite.expect(alone.island.expanded && !alone.island.showingSections && alone.island.hasNoSections
+                            && alone.island.extensionPage == nil,
+                         "the last section going leaves the island's empty page, not an empty Explore")
+            defaults.removeObject(forKey: DefaultsKey.notchHiddenModules)
+            alone.island.syncWithPreferences()
+            alone.island.collapse()
+
+            // Reopening: a tool's page saved as the opening page, and its fallback.
+            defaults.set(true, forKey: DefaultsKey.notchReturnHome)
+            defaults.set(helloPage.tool.rawValue, forKey: DefaultsKey.notchHomeModule)
+            let home = islandWithHelloPage()
+            home.island.open()
+            suite.expect(home.island.extensionPage == helloPage && home.island.currentSection == hello
+                            && home.services.openToolPanel == helloPage,
+                         "a tool's page saved as the opening page opens it on reopening")
+            home.island.collapse()
+            suite.expect(home.services.openToolPanel == nil, "closing the island closes the tool's page")
+            home.services.islandPanels = []
+            home.island.open()
+            suite.expect(home.island.extensionPage == nil && !home.island.showingSections
+                            && home.island.selected == home.island.modules.first,
+                         "a saved tool's page the person hid reopens the first section instead")
+            home.island.collapse()
+
+            // The last page, when the island reopens where it was.
+            defaults.set(false, forKey: DefaultsKey.notchReturnHome)
+            let last = islandWithHelloPage()
+            last.island.openExtensionSection(helloPage)
+            last.island.collapse()
+            last.island.open()
+            suite.expect(last.island.extensionPage == helloPage && last.services.openToolPanel == helloPage,
+                         "reopening the last page opens the tool's page the island closed on")
+            last.island.open(.music)
+            last.island.collapse()
+            last.island.open()
+            suite.expect(last.island.extensionPage == nil && last.island.selected == .music,
+                         "a page of the island's own opened since is the last page instead")
+            last.island.collapse()
+        }
+    }
+
+    /// Explore's editor: moving, hiding and showing sections, and the keys,
+    /// wheel and search it holds while it is up.
+    private static func sectionEditingContracts(defaults: UserDefaults, suite: TestSuite) {
+        keepingSectionPreferences(defaults) {
+            let hello = NotchSectionItem.tool(helloPage.tool)
+            let fixture = islandWithHelloPage()
+            let service = fixture.island
+            service.open(.controls)
+            service.editingSections = true
+            suite.expect(!service.editingSections, "only Explore can be customized")
+            service.toggleSections()
+            let gallery = service.expandedSize
+            service.editingSections = true
+            suite.expect(service.editingSections && service.expandedSize.height
+                            == service.expandedGeometry.expandedSize(module: .tools, toolCount: nil).height
+                            && service.expandedSize.height >= gallery.height,
+                         "customizing Explore fills the island's page height")
+
+            let highlighted = service.highlightedSection
+            for key in [UInt16(kVK_RightArrow), UInt16(kVK_DownArrow), UInt16(kVK_Tab), UInt16(kVK_Return)] {
+                _ = fixture.press(keyCode: key)
+            }
+            suite.expect(service.showingSections && service.editingSections && service.highlightedSection == highlighted
+                            && service.selected == .controls,
+                         "while customizing, Return, Tab and the arrows pick and move nothing")
+            service.scrollSections(by: 1)
+            service.searchSections("mu")
+            suite.expect(service.sectionRow == 0 && service.sectionQuery.isEmpty,
+                         "while customizing, the wheel pages nothing and the search takes nothing")
+
+            suite.expect(escape(fixture) && service.expanded && service.showingSections && !service.editingSections,
+                         "Escape ends editing Explore's sections before it leaves Explore")
+            suite.expect(escape(fixture) && service.expanded && !service.showingSections,
+                         "a second Escape leaves Explore")
+
+            service.toggleSections()
+            _ = fixture.press(keyCode: UInt16(kVK_RightArrow))
+            suite.expect(service.highlightedSection != highlighted, "out of customizing, the arrows move the highlight again")
+            service.scrollSections(by: 1)
+            suite.expect(service.sectionRow == 1, "out of customizing, the wheel pages the gallery again")
+
+            service.editingSections = true
+            service.setSectionShown(.module(.timer), false)
+            service.setSectionShown(hello, false)
+            suite.expect(!service.sections.contains(.module(.timer)) && !service.sections.contains(hello)
+                            && service.availableSectionItems.contains(.module(.timer))
+                            && service.availableSectionItems.contains(hello)
+                            && !defaults.bool(forKey: DefaultsKey.notchTimerEnabled),
+                         "hiding a section in Explore's editor moves it to the hidden ones, with its own switch off")
+            service.setSectionShown(.module(.timer), true)
+            service.setSectionShown(hello, true)
+            suite.expect(service.sections.contains(.module(.timer)) && service.sections.contains(hello)
+                            && defaults.bool(forKey: DefaultsKey.notchTimerEnabled),
+                         "showing a hidden section brings it back with its own switch on")
+
+            let moved = [hello] + service.sections.filter { $0 != hello }
+            service.saveSectionOrder(moved, installedTools: [helloPage.tool])
+            suite.expect(service.sections.first == hello
+                            && defaults.string(forKey: DefaultsKey.notchModuleOrder)?.hasPrefix(helloPage.tool.rawValue) == true,
+                         "moving a tool's section first in the editor saves it there")
+
+            service.toggleSections()
+            suite.expect(!service.editingSections && !service.showingSections, "leaving Explore ends customizing")
+            service.toggleSections()
+            service.editingSections = true
+            service.collapse()
+            suite.expect(!service.editingSections, "closing the island ends customizing")
+        }
+    }
+
     private static func reopeningContracts(defaults: UserDefaults, suite: TestSuite) {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.notchReturnHome] as? Bool == false,
                "returning home is opt-in and preserves the existing opening behavior")
@@ -417,7 +646,7 @@ enum NotchDestinationContract {
                    && service.showingSections == (destination == .explore),
                    "reopening shows the selected app panel or Explore destination")
             if destination == .explore {
-                suite.expect(service.highlightedSection == .files && service.sectionQuery.isEmpty,
+                suite.expect(service.highlightedSection == .module(.files) && service.sectionQuery.isEmpty,
                        "reopening Explore highlights its current page for keyboard navigation")
             }
             suite.expect(fixture.services.count("showNormalMenuPanel") - focusRequests == (destination == .appPanel ? 1 : 0),

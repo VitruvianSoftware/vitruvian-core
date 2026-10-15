@@ -108,8 +108,61 @@ extension NotchModule {
     }
 }
 
+/// A top-level section of the island: one of its own pages, or the island
+/// page of a tool from outside. Saved in `notchModuleOrder` by its raw
+/// value. A module's has no dot and an outside tool's always has one, so
+/// the two never collide.
+package enum NotchSectionItem: Hashable, Identifiable, Sendable {
+    case module(NotchModule)
+    case tool(ToolID)
+
+    package var rawValue: String {
+        switch self {
+        case .module(let module): return module.rawValue
+        case .tool(let tool): return tool.rawValue
+        }
+    }
+
+    package var id: String { rawValue }
+
+    /// A module's raw value first; otherwise an outside tool's id. A
+    /// built-in tool's id (no dot) is refused: it names no island page.
+    package init?(rawValue: String) {
+        if let module = NotchModule(rawValue: rawValue) {
+            self = .module(module)
+        } else if let tool = ToolID(rawValue), !tool.isBundledForm {
+            self = .tool(tool)
+        } else {
+            return nil
+        }
+    }
+}
+
 package enum NotchReopeningDestination: String, CaseIterable {
     case appPanel, explore
+}
+
+/// Where the island opens by the saved "When reopening" choice, before an
+/// activity or an explicit page has its say.
+package enum NotchReopeningTarget: Equatable, Sendable {
+    /// Reopen where it was.
+    case lastPage
+    case appPanel
+    case explore
+    case section(NotchSectionItem)
+}
+
+/// What the "When reopening" picker shows: the tag it has chosen, and a
+/// saved section that is not showing now, which it lists dimmed so the
+/// choice stays visible and waits for the section to come back.
+package struct NotchReopeningChoice: Equatable, Sendable {
+    package let selection: String
+    package let waiting: NotchSectionItem?
+
+    package init(selection: String, waiting: NotchSectionItem? = nil) {
+        self.selection = selection
+        self.waiting = waiting
+    }
 }
 
 /// ⌘1 to ⌘9 on the island's clipboard page paste the entry at that place in
@@ -1227,6 +1280,12 @@ package enum NotchQuickAccessSide: String, CaseIterable, Codable {
 
 package enum NotchQuickAction: Hashable, Identifiable {
     case explore, settings, pin, module(NotchModule), control(NotchControlItem)
+    /// Opens a tool's island page. Saved as `extension:<tool id>`: a plain
+    /// tool id could read as a control (`control.volume` is a valid one),
+    /// and a colon is in neither a tool id nor a control's name.
+    case extensionPanel(ToolID)
+
+    private static let extensionPrefix = "extension:"
 
     package var id: String {
         switch self {
@@ -1235,6 +1294,7 @@ package enum NotchQuickAction: Hashable, Identifiable {
         case .pin: return "pin"
         case .module(let module): return module.rawValue
         case .control(let item): return "control." + item.rawValue
+        case .extensionPanel(let tool): return Self.extensionPrefix + tool.rawValue
         }
     }
 
@@ -1246,6 +1306,10 @@ package enum NotchQuickAction: Hashable, Identifiable {
         default:
             if id.hasPrefix("control."), let item = NotchControlItem(rawValue: String(id.dropFirst(8))) {
                 self = .control(item)
+            } else if id.hasPrefix(Self.extensionPrefix) {
+                guard let tool = ToolID(String(id.dropFirst(Self.extensionPrefix.count))), !tool.isBundledForm
+                else { return nil }
+                self = .extensionPanel(tool)
             } else if let module = NotchModule(rawValue: id) { self = .module(module) }
             else { return nil }
         }
@@ -1256,10 +1320,15 @@ package enum NotchQuickAction: Hashable, Identifiable {
             + NotchControlItem.allCases.filter { !$0.isLevel }.map(Self.control)
     }
 
-    package func isAvailable(in defaults: UserDefaults = .standard) -> Bool {
+    /// Whether the island shows the button now. Core cannot see the tools,
+    /// so an extension's button shows only while its tool's island page is
+    /// in `shownIslandTools`, the tools whose page the island lists; the
+    /// Services lookup (`NotchExtensionActions`) passes them.
+    package func isAvailable(in defaults: UserDefaults = .standard, shownIslandTools: Set<ToolID> = []) -> Bool {
         switch self {
         case .module(let module): return NotchSupport.modules(in: defaults).contains(module)
         case .control(let item): return item.isAvailable(in: defaults)
+        case .extensionPanel(let tool): return shownIslandTools.contains(tool)
         default: return true
         }
     }
@@ -1348,16 +1417,19 @@ package struct NotchQuickAccessConfiguration: Equatable, Codable {
         return Self(side: side, actions: actions)
     }
 
-    package static func current(in defaults: UserDefaults = .standard) -> Self {
+    /// The layout with only the buttons the island shows. `shownIslandTools`
+    /// are the tools whose island page the island lists, for the buttons
+    /// that open one.
+    package static func current(in defaults: UserDefaults = .standard, shownIslandTools: Set<ToolID> = []) -> Self {
         var configuration = stored(in: defaults)
-        configuration.buttons = configuration.shown(in: defaults)
+        configuration.buttons = configuration.shown(in: defaults, shownIslandTools: shownIslandTools)
         return configuration
     }
 
     /// The buttons the island shows. One whose section or feature is off
     /// keeps its place, so it comes back there once that is on again.
-    package func shown(in defaults: UserDefaults = .standard) -> [NotchQuickButton] {
-        buttons.filter { $0.action?.isAvailable(in: defaults) == true }
+    package func shown(in defaults: UserDefaults = .standard, shownIslandTools: Set<ToolID> = []) -> [NotchQuickButton] {
+        buttons.filter { $0.action?.isAvailable(in: defaults, shownIslandTools: shownIslandTools) == true }
     }
 
     /// Whether a side has a free place. A hidden button still holds its own.
@@ -1562,18 +1634,30 @@ package enum NotchSupport {
 
     package static func filteredModules(_ modules: [NotchModule], query: String,
                                 title: (NotchModule) -> String) -> [NotchModule] {
+        filteredItems(modules, query: query, searchableText: title)
+    }
+
+    /// The items whose text holds every word of the query, in their order;
+    /// all of them for an empty query.
+    package static func filteredItems<T>(_ items: [T], query: String, searchableText: (T) -> String) -> [T] {
         let terms = CommandBarSearch.normalized(query).split(separator: " ")
-        guard !terms.isEmpty else { return modules }
-        return modules.filter { module in
-            let name = CommandBarSearch.normalized(title(module))
+        guard !terms.isEmpty else { return items }
+        return items.filter { item in
+            let name = CommandBarSearch.normalized(searchableText(item))
             return terms.allSatisfy { name.contains($0) }
         }
     }
 
     package static func adjacentModule(to selected: NotchModule?, modules: [NotchModule], backwards: Bool) -> NotchModule? {
-        guard !modules.isEmpty else { return nil }
-        guard let selected, let index = modules.firstIndex(of: selected) else { return modules.first }
-        return modules[(index + (backwards ? modules.count - 1 : 1)) % modules.count]
+        adjacentItem(to: selected, items: modules, backwards: backwards)
+    }
+
+    /// The next item, or the one before, wrapping at either end; the first
+    /// when nothing, or something no longer listed, is selected.
+    package static func adjacentItem<T: Equatable>(to selected: T?, items: [T], backwards: Bool) -> T? {
+        guard !items.isEmpty else { return nil }
+        guard let selected, let index = items.firstIndex(of: selected) else { return items.first }
+        return items[(index + (backwards ? items.count - 1 : 1)) % items.count]
     }
 
     /// The arrow keys step through a searched list without wrapping; the
@@ -1660,19 +1744,130 @@ package enum NotchSupport {
     }
 
     package static func modules(in defaults: UserDefaults = .standard) -> [NotchModule] {
-        let hidden = Set((defaults[Preferences.notchHiddenModules])
-            .split(separator: ",").map(String.init))
+        let hidden = hiddenModules(in: defaults)
         let stored = (defaults[Preferences.notchModuleOrder])
             .split(separator: ",").compactMap { NotchModule(rawValue: String($0)) }
         var seen = Set<NotchModule>()
         return (stored + NotchModule.allCases).filter {
             seen.insert($0).inserted && !hidden.contains($0.rawValue) && $0.isAvailable(in: defaults)
-                && ($0 != .timer || defaults[Preferences.notchTimerEnabled])
-                && ($0 != .camera || defaults[Preferences.notchCameraEnabled])
-                && ($0 != .calendar || defaults[Preferences.notchCalendarEnabled])
-                && ($0 != .notifications || defaults[Preferences.notchNotificationsEnabled])
-                && ($0 != .agents || defaults[Preferences.notchAgentsEnabled])
-                && ($0 != .watch || defaults[Preferences.notchWatchEnabled])
+                && isSwitchedOn($0, in: defaults)
+        }
+    }
+
+    private static func hiddenModules(in defaults: UserDefaults) -> Set<String> {
+        Set(defaults[Preferences.notchHiddenModules].split(separator: ",").map(String.init))
+    }
+
+    /// The section's own switch, for the sections that have one besides
+    /// the list of hidden sections.
+    private static func sectionSwitch(_ module: NotchModule) -> Preference<Bool>? {
+        switch module {
+        case .timer: return Preferences.notchTimerEnabled
+        case .camera: return Preferences.notchCameraEnabled
+        case .calendar: return Preferences.notchCalendarEnabled
+        case .notifications: return Preferences.notchNotificationsEnabled
+        case .agents: return Preferences.notchAgentsEnabled
+        case .watch: return Preferences.notchWatchEnabled
+        default: return nil
+        }
+    }
+
+    private static func isSwitchedOn(_ module: NotchModule, in defaults: UserDefaults) -> Bool {
+        sectionSwitch(module).map { defaults[$0] } ?? true
+    }
+
+    /// Whether the person has the section showing: its own switch, where it
+    /// has one, is on and it is not in the hidden list. Whether its feature
+    /// is installed is `NotchModule.isAvailable(in:)`'s to say.
+    package static func isModuleShown(_ module: NotchModule, in defaults: UserDefaults = .standard) -> Bool {
+        isSwitchedOn(module, in: defaults) && !hiddenModules(in: defaults).contains(module.rawValue)
+    }
+
+    /// Shows or hides a section. Both the hidden list and the section's own
+    /// switch change, or a timer switched off would stay hidden when shown.
+    package static func setModuleShown(_ module: NotchModule, _ shown: Bool, in defaults: UserDefaults = .standard) {
+        if let preference = sectionSwitch(module) { defaults[preference] = shown }
+        var values = hiddenModules(in: defaults)
+        if shown { values.remove(module.rawValue) } else { values.insert(module.rawValue) }
+        defaults[Preferences.notchHiddenModules] = values.sorted().joined(separator: ",")
+    }
+
+    /// The saved order, with every module it does not name after it in the
+    /// order of their cases: what `modules(in:)` lists from, so a saved
+    /// order of modules alone gives them as it always did.
+    private static func savedSections(_ raw: String) -> [String] {
+        let saved = raw.split(separator: ",").map(String.init)
+        let named = Set(saved)
+        return saved + NotchModule.allCases.map(\.rawValue).filter { !named.contains($0) }
+    }
+
+    /// The order to show `live` sections in. A module or tool the saved
+    /// order does not place comes after those it does; with every module
+    /// placed, a tool newly installed comes after them all.
+    package static func sectionOrder(live: [NotchSectionItem], from raw: String) -> [NotchSectionItem] {
+        let byID = Dictionary(live.map { ($0.rawValue, $0) }, uniquingKeysWith: { first, _ in first })
+        return QuickToolsSupport.tileOrder(live: live.map(\.rawValue), saved: savedSections(raw))
+            .compactMap { byID[$0] }
+    }
+
+    /// The order to save after the person moved the sections that are
+    /// showing. A section not showing now (its feature is off, it is hidden,
+    /// or its tool is switched off) keeps its place. Nothing saved yet
+    /// counts as every module in its default place, hidden ones too. A tool
+    /// that is not installed any more loses its place.
+    package static func savedSectionOrder(afterMoving live: [NotchSectionItem], previous raw: String,
+                                          installedTools: Set<ToolID>) -> String {
+        QuickToolsSupport.savedTileOrder(afterMoving: live.map(\.rawValue), previous: savedSections(raw)) { id in
+            switch NotchSectionItem(rawValue: id) {
+            case .module?: return true
+            case .tool(let tool)?: return installedTools.contains(tool)
+            case nil: return false
+            }
+        }.joined(separator: ",")
+    }
+
+    /// Every section the Content tab lists, in the island's order: each of
+    /// the island's own, whether or not its feature is on, and each tool's
+    /// island page there is to show (`tools`), whether or not it is hidden.
+    package static func editorSections(tools: [ToolID], order raw: String) -> [NotchSectionItem] {
+        sectionOrder(live: NotchModule.allCases.map(NotchSectionItem.module) + tools.map(NotchSectionItem.tool),
+                     from: raw)
+    }
+
+    /// Where reopening lands by the saved choice, with `sections` the
+    /// sections showing now, in order. A saved section that is not showing,
+    /// one of the island's own or a tool's, gives the first section that
+    /// is, else Explore. A value that names nothing gives Controls while it
+    /// shows, as it always did, and otherwise falls back the same way.
+    package static func reopeningTarget(returnHome: Bool, saved: String,
+                                        sections: [NotchSectionItem]) -> NotchReopeningTarget {
+        guard returnHome else { return .lastPage }
+        switch NotchReopeningDestination(rawValue: saved) {
+        case .appPanel?: return .appPanel
+        case .explore?: return .explore
+        case nil: break
+        }
+        let wanted = NotchSectionItem(rawValue: saved) ?? .module(.controls)
+        if sections.contains(wanted) { return .section(wanted) }
+        return sections.first.map(NotchReopeningTarget.section) ?? .explore
+    }
+
+    /// What the "When reopening" picker shows for the saved choice. A saved
+    /// section that is not showing now, hidden, switched off or gone with
+    /// its tool, stays chosen and is listed as waiting, so the picker never
+    /// claims another page. A value that names nothing shows where the
+    /// island really lands.
+    package static func reopeningChoice(returnHome: Bool, saved: String,
+                                        sections: [NotchSectionItem]) -> NotchReopeningChoice {
+        guard returnHome else { return NotchReopeningChoice(selection: "") }
+        if NotchReopeningDestination(rawValue: saved) != nil { return NotchReopeningChoice(selection: saved) }
+        if let item = NotchSectionItem(rawValue: saved) {
+            return NotchReopeningChoice(selection: item.rawValue, waiting: sections.contains(item) ? nil : item)
+        }
+        switch reopeningTarget(returnHome: true, saved: saved, sections: sections) {
+        case .section(let item): return NotchReopeningChoice(selection: item.rawValue)
+        case .appPanel: return NotchReopeningChoice(selection: NotchReopeningDestination.appPanel.rawValue)
+        case .explore, .lastPage: return NotchReopeningChoice(selection: NotchReopeningDestination.explore.rawValue)
         }
     }
 

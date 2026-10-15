@@ -17,8 +17,6 @@ package struct QuickLauncherView: View {
     @ObservedObject private var keepAwake = KeepAwakeManager.shared
     @ObservedObject private var micMute = MicMuteService.shared
     @ObservedObject private var recorder = ScreenRecorderService.shared
-    /// The tools' own pages, and their badges.
-    @ObservedObject private var panels = ToolPanelHost.shared
     @State private var hoveredItem: QuickLauncherTile?
     @State private var draggingItem: QuickLauncherTile?
     /// Mirrors launcher.editingOptionsItem: the service owns it so Esc can
@@ -45,11 +43,9 @@ package struct QuickLauncherView: View {
             if notchSize != nil, launcher.activeUtility == nil, launcher.isEditing {
                 editHint
             }
-            if let island = panels.island, let notchSize, launcher.activeUtility == nil {
-                hostedPanel(island, height: notchSize.height)
-            } else if let utility = launcher.activeUtility, utility.feature.isAvailable {
+            if let utility = launcher.activeUtility, utility.feature.isAvailable {
                 hostedUtility(utility)
-            } else if launcher.visibleTiles.isEmpty && islandPages.isEmpty && !launcher.isEditing {
+            } else if launcher.visibleTiles.isEmpty && !launcher.isEditing {
                 emptyState
             } else {
                 grid
@@ -92,40 +88,6 @@ package struct QuickLauncherView: View {
         }
         .onChange(of: colorFormat) { _, _ in
             launcher.refreshPanelLayout()
-        }
-    }
-
-    /// The tools' own island pages, as tiles after the quick tools: only in
-    /// the island, and not while the grid is edited.
-    private var islandPages: [ToolIslandEntry] {
-        guard notchSize != nil, !launcher.isEditing else { return [] }
-        return ToolIslandEntry.all(store: .shared, host: panels, language: l10n.language)
-    }
-
-    /// A tool's own page, in the island, in place of the tiles: the back
-    /// button and Esc lead back to them.
-    private func hostedPanel(_ key: ToolPanelHost.Key, height: CGFloat) -> some View {
-        let title = ExternalToolStore.shared.installed[key.tool]?.tool.panel(key.panel)?.title
-            .text(for: l10n.language.rawValue) ?? ""
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Button { panels.close(key) } label: {
-                    Image(systemName: "chevron.backward.circle.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.plain)
-                .help(l10n.s.obBack)
-                .accessibilityLabel(l10n.s.obBack)
-                // The tool's own words: plain text, on one line.
-                Text(verbatim: title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-            }
-            ScrollView(showsIndicators: false) {
-                ToolPanelView(key: key, size: .island)
-                    .padding(.bottom, 4)
-            }
-            .frame(height: max(0, height - 40))
         }
     }
 
@@ -240,8 +202,8 @@ package struct QuickLauncherView: View {
     /// tile in view.
     @ViewBuilder private var grid: some View {
         if let notchSize, !launcher.isEditing {
-            // A tool's own page is a tile after the quick tools.
-            let items = launcher.visibleTiles.map(ToolsRailItem.tile) + islandPages.map(ToolsRailItem.page)
+            // Tools' island pages are sections of the island's own, in Explore.
+            let items = launcher.visibleTiles
             let rows = NotchLayout.railRows(count: items.count,
                                             perRow: NotchLayout.railCapacity(width: notchSize.width, itemWidth: NotchLayout.toolWidth,
                                                                              spacing: NotchLayout.toolSpacing),
@@ -249,15 +211,9 @@ package struct QuickLauncherView: View {
             NotchRail(items: items, rows: rows, itemWidth: NotchLayout.toolWidth, width: notchSize.width,
                       spacing: NotchLayout.toolSpacing, rowSpacing: NotchLayout.toolSpacing,
                       scrollTarget: launcher.keyboardIndex.flatMap { index in
-                          launcher.visibleTiles.indices.contains(index) ? ToolsRailItem.tile(launcher.visibleTiles[index]).id : nil
-                      }) { item in
-                switch item {
-                case .tile(let tile):
-                    cell(tile).frame(height: NotchLayout.toolHeight)
-                case .page(let entry):
-                    ToolIslandTile(entry: entry) { panels.open(entry.key, in: .island) }
-                        .frame(height: NotchLayout.toolHeight)
-                }
+                          launcher.visibleTiles.indices.contains(index) ? launcher.visibleTiles[index].id : nil
+                      }) { tile in
+                cell(tile).frame(height: NotchLayout.toolHeight)
             }
         } else {
             LazyVGrid(columns: columns, spacing: notchSize == nil ? 10 : 6) {

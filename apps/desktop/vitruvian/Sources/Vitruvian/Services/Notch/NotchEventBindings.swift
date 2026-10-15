@@ -141,8 +141,7 @@ package final class NotchEventBindings {
                     return launcher.$isEditing.dropFirst().map { _ in () }
                         .merge(with: launcher.$activeUtility.dropFirst().map { _ in () },
                                launcher.$hiddenItemsRaw.dropFirst().map { _ in () },
-                               ToolRegistry.shared.$revision.dropFirst().map { _ in () },
-                               ToolPanelHost.shared.$island.dropFirst().map { _ in () })
+                               ToolRegistry.shared.$revision.dropFirst().map { _ in () })
                         .receive(on: DispatchQueue.main).eraseToAnyPublisher()
                 },
                 fanCard: {

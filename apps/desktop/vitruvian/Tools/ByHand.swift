@@ -358,7 +358,7 @@ func showPage(_ title: String, in app: AXUIElement, step: String) {
 }
 
 /// Opens the Features page and scrolls it to its end. The page is lazy:
-/// the last card, "Tools from outside", is not there to find until it is.
+/// the last card, "Extensions & Tools", is not there to find until it is.
 func showToolsCard(_ app: AXUIElement, step: String) -> [Control] {
     showPage(Words.featuresPage, in: app, step: step)
     // The page fills in as it is scrolled, and more slowly when the Settings

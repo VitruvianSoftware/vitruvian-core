@@ -8,7 +8,7 @@ import VitruvianToolProtocol
 /// app's own, so that a placement the app does not have is a refusal that
 /// names it.
 package enum ToolPanelPlacement: String, CaseIterable, Sendable {
-    /// A page in the island's Tools area.
+    /// A section of the island, in Explore.
     case island
     /// A part of the tool's detail in Settings.
     case settings

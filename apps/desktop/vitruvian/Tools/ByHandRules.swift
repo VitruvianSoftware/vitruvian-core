@@ -29,7 +29,7 @@ enum ByHandRules {
     }
 
     /// The rows of the tools card that are one tool's. A row is labelled
-    /// with the tool's name, then its publisher and how it stands, joined
+    /// with the tool's name, then its badge, publisher and how it stands, joined
     /// by ". ", so the name is the whole label or everything before the
     /// first ". ". The caller presses a row only when exactly one is found.
     static func toolRows(_ name: String, among labels: [String]) -> [Int] {
@@ -145,7 +145,7 @@ enum ByHandRules {
         static let settingsMenuItem = "Settings…"
         static let quitMenuItem = "Quit Vitruvian"
         static let featuresPage = "Features"
-        static let toolsCard = "Tools from outside"
+        static let toolsCard = "Extensions & Tools"
         static let addTool = "Add a Tool…"
         static let agreeToAdd = "Add Tool"
         static let remove = "Remove"
@@ -193,7 +193,7 @@ enum ByHandRules {
           open-settings                 Settings…, from the app's menu
           page TITLE                    the Settings page with that sidebar title
           tools [--lines N]             the Features page, scrolled to its end,
-                                        and the "Tools from outside" card
+                                        and the "Extensions & Tools" card
           add-tool FOLDER [--agree | --agree-with BUTTON]
                                         Add a Tool…, pick FOLDER (its path is
                                         typed as it is, spaces and all), and
