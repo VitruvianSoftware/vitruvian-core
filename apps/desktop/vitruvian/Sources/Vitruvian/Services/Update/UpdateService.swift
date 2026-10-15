@@ -6,7 +6,7 @@ import Combine
 import VitruvianCore
 import VitruvianDesign
 
-/// Checks GitHub Releases for a newer version and, when asked, downloads the
+/// Checks Vitruvian's GitHub releases for a newer version and, when asked, downloads the
 /// release DMG and installs it over the running app. Self-update for an app
 /// distributed outside the App Store, with no third-party framework.
 @MainActor
@@ -79,9 +79,16 @@ package final class UpdateService: ObservableObject {
     private var notifiedVersion: String?   // last release we posted a notification for
     private var downloadSession: URLSession?
     private let adminInstall: AdminInstall
+    /// How the check reaches GitHub; tests and release_feed_check pass their own.
+    private let transport: VitruvianReleases.Transport
+    /// The notes last read for a version, so an offer that stands is not
+    /// re-read from the changelog on every hourly check.
+    private var notesHeld: (version: String, notes: String)?
 
-    package init(adminInstall: AdminInstall = .system) {
+    package init(adminInstall: AdminInstall = .system,
+                 transport: @escaping VitruvianReleases.Transport = VitruvianReleases.live) {
         self.adminInstall = adminInstall
+        self.transport = transport
     }
 
     package var autoCheckEnabled: Bool {
@@ -166,79 +173,44 @@ package final class UpdateService: ObservableObject {
         if case .installing = state { return }
         state = .checking
 
-        // Two requests: every Vitruvian release tag, then the newest one's
-        // release. The repository releases other products too, so neither
-        // "latest release" nor the first page of releases is Vitruvian's.
+        // The release tags from git, then a HEAD of the newest one's universal
+        // image, then (only for a release that will be offered) its notes.
+        // None of it is api.github.com, whose 60 requests an hour are shared
+        // by everything on the network (VitruvianReleases).
         let includeBetas = includeBetaUpdates
-        Self.fetch(VitruvianReleases.tagsURL) { [weak self] tags in
+        let transport = self.transport
+        Task { [weak self] in
+            let found = await VitruvianReleases.findNewest(includeBetas: includeBetas, transport: transport)
             guard let self else { return }
-            let tag: String
-            switch tags {
-            case let .failure(reason):
-                self.finishCheck(failed: reason)
-                return
-            case let .success(data):
-                guard let newest = VitruvianReleases.newestTag(refsJSON: data, includeBetas: includeBetas) else {
-                    self.finishCheck(failed: L10n.shared.s.updateNoReleaseFound)
-                    return
-                }
-                tag = newest
-            }
-            Self.fetch(VitruvianReleases.releaseURL(tag: tag)) { [weak self] release in
-                guard let self else { return }
-                switch release {
-                case let .failure(reason):
-                    self.finishCheck(failed: reason)
-                case let .success(data):
-                    guard let decoded = try? JSONDecoder().decode(VitruvianReleases.Release.self, from: data),
-                          let candidate = VitruvianReleases.candidate(from: decoded) else {
-                        self.finishCheck(failed: L10n.shared.s.updateNoReleaseFound)
-                        return
+            switch found {
+            case let .failure(failure):
+                self.finishCheck(failed: Self.reason(for: failure))
+            case let .success(release):
+                var notes: String?
+                if UpdateServiceSupport.selectUpdate(from: [release.candidate(notes: nil)],
+                                                     currentVersion: AppInfo.version,
+                                                     includeBetas: includeBetas) != nil {
+                    if let held = self.notesHeld, held.version == release.version {
+                        notes = held.notes
+                    } else {
+                        notes = await VitruvianReleases.releaseNotes(for: release, transport: transport)
+                        // Notes that could not be read are asked for again next time.
+                        if let notes { self.notesHeld = (release.version, notes) }
                     }
-                    self.finishCheck(candidate: candidate, includeBetas: includeBetas, manual: manual)
                 }
+                self.finishCheck(candidate: release.candidate(notes: notes), includeBetas: includeBetas, manual: manual)
             }
         }
     }
 
-    /// One GET to GitHub's API, answered on the main thread with the body, or
-    /// with the reason the check failed, written for the person.
-    private static func fetch(_ url: URL,
-                              completion: @escaping @MainActor @Sendable (Result<Data, CheckFailure>) -> Void) {
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("Vitruvian/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            let http = response as? HTTPURLResponse
-            let status = http?.statusCode ?? 0
-            let remaining = http?.value(forHTTPHeaderField: "x-ratelimit-remaining")
-            let errorText = error?.localizedDescription
-            DispatchQueue.main.async {
-                if let errorText {
-                    completion(.failure(CheckFailure(errorText)))
-                    return
-                }
-                switch VitruvianReleases.refusal(status: status, rateLimitRemaining: remaining) {
-                case .none:
-                    completion(.success(data ?? Data()))
-                case .rateLimited:
-                    completion(.failure(CheckFailure(L10n.shared.s.updateRateLimited)))
-                case let .status(code):
-                    completion(.failure(CheckFailure("HTTP \(code)")))
-                }
-            }
-        }.resume()
-    }
-
-    /// Why a check failed, already in words.
-    private struct CheckFailure: Error, Sendable {
-        let reason: String
-        init(_ reason: String) { self.reason = reason }
-    }
-
-    private func finishCheck(failed reason: CheckFailure) {
-        finishCheck(failed: reason.reason)
+    /// Why a check failed, written for the person.
+    private static func reason(for failure: VitruvianReleases.Failure) -> String {
+        switch failure {
+        case .rateLimited: return L10n.shared.s.updateRateLimited
+        case let .status(code): return "HTTP \(code)"
+        case let .unreachable(text): return text
+        case .noRelease: return L10n.shared.s.updateNoReleaseFound
+        }
     }
 
     private func finishCheck(failed reason: String) {
@@ -274,8 +246,8 @@ package final class UpdateService: ObservableObject {
     }
 
     /// Re-checks only if the last check is stale — called when the app reactivates
-    /// or the panel opens, so a new release surfaces promptly without hammering the
-    /// API. The hourly timer is the floor; this makes it feel immediate.
+    /// or the panel opens, so a new release surfaces promptly without hammering
+    /// GitHub. The hourly timer is the floor; this makes it feel immediate.
     package func checkIfStale(maxAge: TimeInterval = 15 * 60) {
         if AppInfo.isDeveloperBuild { return }
         guard autoCheckEnabled else { return }
