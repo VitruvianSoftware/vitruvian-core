@@ -197,7 +197,7 @@ Google.
 - **Claude Code** — *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `HomeSpeaker --claude-stop-hook`. Existing hooks are left alone; the entry is updated automatically if you move the app.
 - **Slack / Google Chat** — off by default. Turn on under *Settings → Chat & Slack*; polling runs inside the app. Google Chat can be read through the app's own Google login (a separate "Grant" from Home — Google will not combine the two) or, if you already have it, the `gws` command-line tool; *Automatic* picks whichever is ready.
 - **Open at Login** — a standard macOS login item, toggled under *Settings → General*.
-- **Command line** — `HomeSpeaker --say "dinner is ready"` announces from a script (exit 1 on failure); `HomeSpeaker --discover` lists what the signed-in account can see, for troubleshooting an empty speaker list. The binary is at `/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`.
+- **Command line** — `HomeSpeaker --say "dinner is ready"` announces from a script (exit 1 on failure); `HomeSpeaker --discover` lists what the signed-in account can see, for troubleshooting an empty speaker list; `HomeSpeaker --chat-monitor start|stop` asks the running app to start or stop reading chat. The binary is at `/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`.
 
 ---
 
@@ -208,6 +208,7 @@ Google.
 | `~/.gemini/speaker_broadcast.json` | Non-secret settings: speakers, default target, quiet hours, monitor toggles. Shared with the `speaker-broadcast` CLI and Gemini/Antigravity skills. |
 | `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, OAuth client override. Mode `0600`. |
 | `~/.gemini/speaker_history.json` | The last 30 announcements shown in the menu. |
+| `~/.gemini/speaker_monitor_status.json` | What the running chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the app's pid), written by the app for the Vitruvian tool. Not settings: a crashed app leaves it saying "running", so readers check the app is up. |
 
 Nothing leaves your Mac except requests to Google (Home API, OAuth, Chat API
 if enabled) and Slack (if enabled). The app has no telemetry.

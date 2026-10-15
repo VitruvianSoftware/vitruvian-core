@@ -110,12 +110,28 @@ public enum Pages {
         public var gwsPath: String?
         /// HomeSpeaker.app is running, and so can read messages.
         public var appRunning = false
+        /// What the app's monitor last wrote about itself
+        /// (`ChatMonitorStatusFile`), as far as it can be believed: with the
+        /// app not running it never reads as running, whatever the file says.
+        public var monitor: ChatMonitorStatus?
 
-        public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, appRunning: Bool = false) {
+        public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, appRunning: Bool = false,
+                    monitor: ChatMonitorStatus? = nil) {
             self.hasSlackToken = hasSlackToken
             self.hasChatAccess = hasChatAccess
             self.gwsPath = gwsPath
             self.appRunning = appRunning
+            self.monitor = monitor?.believed(appRunning: appRunning)
+        }
+
+        /// The monitor is polling: the app runs and says so.
+        public var monitorRunning: Bool { appRunning && monitor?.isRunning == true }
+
+        /// What went wrong while it ran, when it is running.
+        public var runtimeError: String? {
+            guard monitorRunning, let error = monitor?.lastError?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !error.isEmpty else { return nil }
+            return error
         }
     }
 
@@ -229,6 +245,8 @@ public enum Pages {
         public static let saveOAuthClient = "saveOAuthClient"
         public static let clearOAuthClient = "clearOAuthClient"
         public static let removeLegacyAgent = "removeLegacyAgent"
+        public static let startChatMonitor = "startChatMonitor"
+        public static let stopChatMonitor = "stopChatMonitor"
         // The island's first-run setup and its outputs. Their own ids, so
         // the island never answers to a settings control's.
         public static let setupSignIn = "setup.signIn"
@@ -393,8 +411,20 @@ public enum Pages {
     /// source is off.
     public static func chatWarnings(_ status: Status) -> [String] {
         guard status.config.effectiveChatMonitor.anySourceEnabled else { return [] }
-        var lines = monitorProblems(status).map(\.localizedDescription)
+        var lines = monitorProblemLines(status)
         if !status.chat.appRunning { lines.append(appNotReadingChat) }
+        return lines
+    }
+
+    /// The setup problems, then what went wrong while the monitor ran, as
+    /// the menu bar shows it. The running error is left out when it only
+    /// repeats a setup problem.
+    public static func monitorProblemLines(_ status: Status) -> [String] {
+        var lines = monitorProblems(status).map(\.localizedDescription)
+        if status.config.effectiveChatMonitor.anySourceEnabled, let error = status.chat.runtimeError,
+           !lines.contains(where: { error.contains($0) }) {
+            lines.append(error)
+        }
         return lines
     }
 
@@ -671,7 +701,8 @@ public enum Pages {
             if !chat.appRunning && monitor.anySourceEnabled {
                 text("Open HomeSpeaker to start: it is what reads the messages.", style: .caption)
             }
-            problemRows(monitorProblems(status).map(\.localizedDescription))
+            monitorRunBlocks(status)
+            problemRows(monitorProblemLines(status))
 
             heading("Slack")
             toggle(Block.slackEnabled, "Announce Slack messages", isOn: monitor.slackEnabled)
@@ -719,6 +750,53 @@ public enum Pages {
             toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: monitor.muteOwnMessages)
             field(Block.pollInterval, title: UIText.plain(pollIntervalTitle), value: String(monitor.clampedPollInterval), kind: .number)
         }.blocks
+    }
+
+    /// The monitor itself, as the app's Settings shows it: Running or
+    /// Stopped, Start or Stop while HomeSpeaker runs and a source is on, and
+    /// while it runs, when it last polled, who Slack says we are and how
+    /// Google Chat is read.
+    static func monitorRunBlocks(_ status: Status) -> [UIBlock] {
+        let chat = status.chat
+        let running = chat.monitorRunning
+        return UITree {
+            row(nil, running ? "Chat monitor running" : "Chat monitor stopped",
+                icon: running ? "dot.radiowaves.left.and.right" : "pause.circle")
+            if chat.appRunning && status.config.effectiveChatMonitor.anySourceEnabled {
+                if running {
+                    button(Block.stopChatMonitor, "Stop")
+                } else {
+                    button(Block.startChatMonitor, "Start", style: .prominent)
+                }
+            }
+            if running, let monitor = chat.monitor {
+                if let polled = monitor.lastPollDate {
+                    text(UIText.plain(polledLine(polled)), style: .caption)
+                }
+                if let who = monitor.slackIdentity, !who.isEmpty {
+                    row(nil, UIText.plain("Signed in as \(who)"), subtitle: "Slack", icon: "person.crop.circle")
+                }
+                if let via = monitor.activeGoogleChatBackend, !via.isEmpty {
+                    text(UIText.plain(readingViaLine(via)), style: .caption)
+                }
+            }
+        }.blocks
+    }
+
+    /// "Polled at 9:41 AM".
+    public static func polledLine(_ date: Date) -> String {
+        "Polled at \(date.formatted(date: .omitted, time: .shortened))"
+    }
+
+    /// "Currently reading via the Google API", in the app's words.
+    public static func readingViaLine(_ backend: String) -> String {
+        let name: String
+        switch backend {
+        case "api": name = "the Google API"
+        case "gws": name = "gws"
+        default: name = backend
+        }
+        return "Currently reading via \(name)"
     }
 
     /// What a hook says when it is there but HomeSpeaker, which it runs, is not.

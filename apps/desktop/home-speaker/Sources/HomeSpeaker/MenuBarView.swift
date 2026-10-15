@@ -484,6 +484,9 @@ public struct MenuBarView: View {
                 let failures = outcome.failureMessages
                 if failures.isEmpty {
                     viewModel.setFeedback("Sent to \(outcome.spokenLabel(homeName: homeName)).")
+                } else if case .announced(.failed(let why), .spoken) = outcome {
+                    // The same words `--say` prints, and so the tool shows.
+                    viewModel.setFeedback(AnnounceOutcome.spokeLocallyHomeFailed(why), isError: true, autoClearAfter: 6)
                 } else {
                     let heard = outcome.anySpoke ? "Sent to \(outcome.spokenLabel(homeName: homeName)). " : ""
                     viewModel.setFeedback(heard + "Error: " + failures.joined(separator: " "), isError: true, autoClearAfter: 6)

@@ -470,20 +470,23 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(toggle(tool.settingsPage(), Pages.Block.muteOwnMessages)?.value, false)
     }
 
-    func testThePollIntervalIsClampedToWhatTheMonitorAccepts() {
+    func testThePollIntervalTakesOnlyWhatTheMonitorAccepts() {
         let tool = opened()
         XCTAssertEqual(field(tool.settingsPage(), Pages.Block.pollInterval)?.title?.text(for: "en"),
                        "Poll interval (\(ChatMonitorConfig.minPollInterval) to \(ChatMonitorConfig.maxPollInterval) s)")
         event(tool, Pages.Block.pollInterval, .submit, .string(" 60 "))
         XCTAssertEqual(monitor.pollIntervalSeconds, 60)
-        event(tool, Pages.Block.pollInterval, .submit, .string("1"))
-        XCTAssertEqual(monitor.pollIntervalSeconds, ChatMonitorConfig.minPollInterval)
-        let tree = event(tool, Pages.Block.pollInterval, .change, .string("100000"))
-        XCTAssertEqual(monitor.pollIntervalSeconds, ChatMonitorConfig.maxPollInterval)
-        XCTAssertEqual(field(tree, Pages.Block.pollInterval)?.value, String(ChatMonitorConfig.maxPollInterval))
         let saves = store.saves
-        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.pollInterval, kind: .submit, value: .string("soon"))), .keep)
-        XCTAssertEqual(store.saves, saves, "not a number: nothing saved")
+        // Out of range or no number: refused and said, never quietly clamped.
+        for bad in ["1", "100000", "soon"] {
+            let tree = event(tool, Pages.Block.pollInterval, .change, .string(bad))
+            XCTAssertEqual(monitor.pollIntervalSeconds, 60, bad)
+            XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.pollInterval, bad)
+            XCTAssertEqual(field(tree, Pages.Block.pollInterval)?.value, "60", "\(bad): the field shows what is saved")
+        }
+        XCTAssertEqual(store.saves, saves, "nothing saved")
+        event(tool, Pages.Block.pollInterval, .submit, .string(String(ChatMonitorConfig.maxPollInterval)))
+        XCTAssertEqual(monitor.pollIntervalSeconds, ChatMonitorConfig.maxPollInterval)
         XCTAssertEqual(HomeSpeakerTool.clampedPollInterval(-5), ChatMonitorConfig.minPollInterval)
         XCTAssertEqual(HomeSpeakerTool.clampedPollInterval(30), 30)
     }

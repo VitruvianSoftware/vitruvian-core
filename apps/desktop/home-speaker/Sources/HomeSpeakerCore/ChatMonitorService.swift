@@ -382,7 +382,9 @@ public enum ChatMonitorReconciliation: Equatable, Sendable {
 /// messages. Nothing runs until the user switches a source on.
 @MainActor
 public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
-    public static let shared = ChatMonitorService()
+    /// The app's monitor, which tells other processes what it is doing
+    /// through `~/.gemini/speaker_monitor_status.json`.
+    public static let shared = ChatMonitorService(statusFile: ChatMonitorStatusFile(url: ChatMonitorStatusFile.defaultURL()))
 
     @Published public var isRunning: Bool = false
     @Published public var lastPollTime: Date?
@@ -400,6 +402,12 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     private let configManager: ConfigManager
     private let secrets: SecretStore
     private let announcer: Announcer
+    /// Where the running state is written for other processes; nil writes
+    /// nothing, which is what a test's monitor gets unless it asks.
+    private let statusFile: ChatMonitorStatusFile?
+    /// What went wrong while running, as `ChatMonitorStatus.lastError`
+    /// carries it: the last poll's errors and its failed announcements.
+    private var runtimeErrors: [String] = []
     private var loop: Task<Void, Never>?
 
     private var slack: SlackClient?
@@ -412,11 +420,28 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
 
     public init(
         configManager: ConfigManager? = nil, secrets: SecretStore = .shared,
-        home: GoogleHomeClient = .shared, announcer: Announcer? = nil
+        home: GoogleHomeClient = .shared, announcer: Announcer? = nil,
+        statusFile: ChatMonitorStatusFile? = nil
     ) {
         self.configManager = configManager ?? .shared
         self.secrets = secrets
         self.announcer = announcer ?? Announcer(home: home)
+        self.statusFile = statusFile
+    }
+
+    /// What the status file says right now.
+    public var statusSnapshot: ChatMonitorStatus {
+        ChatMonitorStatus(
+            isRunning: isRunning, lastPollDate: lastPollTime,
+            lastError: isRunning ? Self.combinedError(setup: [], poll: runtimeErrors) : nil,
+            slackIdentity: slackUser, activeGoogleChatBackend: googleChatVia)
+    }
+
+    /// Writes `statusSnapshot`, if this monitor has a file. A failed write
+    /// is not the monitor's failure: the next change writes again.
+    private func publishStatus() {
+        guard let statusFile else { return }
+        try? statusFile.write(statusSnapshot)
     }
 
     /// Launch-time entry point: starts only when the user previously opted in.
@@ -429,6 +454,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         let cfg = configManager.config.effectiveChatMonitor
         guard cfg.anySourceEnabled else {
             lastError = "Both sources are off. Turn on Slack or Google Chat to start monitoring."
+            publishStatus()
             return
         }
         let s = secrets.load()
@@ -443,6 +469,9 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         if cfg.slackEnabled, let slackToken {
             slack = SlackClient(token: slackToken)
         }
+        // Who Slack said we were is only true of the token it said it for.
+        slackUser = nil
+        runtimeErrors = []
         chat = nil
         googleChatVia = nil
         if cfg.googleChatEnabled {
@@ -462,12 +491,16 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         }
         startProblems = problems.map { $0.localizedDescription }
         lastError = Self.combinedError(setup: startProblems, poll: [])
-        guard slack != nil || chat != nil else { return }
+        guard slack != nil || chat != nil else {
+            publishStatus()
+            return
+        }
 
         slackAfter = Date().timeIntervalSince1970
         chatAfter = Date()
         seen.removeAll()
         isRunning = true
+        publishStatus()
         loop = Task { [weak self] in
             await self?.runLoop()
         }
@@ -487,6 +520,8 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         loop?.cancel()
         loop = nil
         isRunning = false
+        runtimeErrors = []
+        publishStatus()
     }
 
     /// Re-launches the poller so a changed toggle or interval takes effect.
@@ -502,6 +537,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             if let ident = try? await slack.identity() {
                 slackOwnId = ident.userId
                 slackUser = ident.name
+                publishStatus()
             }
         }
         while !Task.isCancelled {
@@ -537,6 +573,8 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
 
         lastPollTime = Date()
         lastError = Self.combinedError(setup: startProblems, poll: errors)
+        runtimeErrors = errors
+        defer { publishStatus() }
 
         let config = configManager.config
         guard config.enabled else { return }
@@ -556,6 +594,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             if !failures.isEmpty {
                 errors.append(contentsOf: failures)
                 lastError = Self.combinedError(setup: startProblems, poll: errors)
+                runtimeErrors = errors
             }
         }
         if seen.count > 500 { seen.removeAll() }

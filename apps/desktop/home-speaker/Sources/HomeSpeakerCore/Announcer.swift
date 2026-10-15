@@ -62,6 +62,29 @@ public enum AnnounceOutcome: Equatable, Sendable {
         return parts.joined(separator: " + ")
     }
 
+    /// Heard on this Mac while the home speaker failed: said in one line,
+    /// so a caller that shows only what was spoken (the Vitruvian tool
+    /// shows `--say`'s output) still says the speaker did not play it.
+    public static func spokeLocallyHomeFailed(_ why: String) -> String {
+        "Spoke on this Mac (Home speaker failed: \(why))"
+    }
+
+    /// What `HomeSpeaker --say` prints for what was heard, a line an
+    /// output. Failures alone go to standard error, as `failureMessages`.
+    public func spokenLines(homeName: String) -> [String] {
+        guard case .announced(let home, let local) = self else { return [] }
+        var lines: [String] = []
+        if home.didSpeak { lines.append("sent to \(homeName)") }
+        if local.didSpeak {
+            if case .failed(let why) = home {
+                lines.append(Self.spokeLocallyHomeFailed(why))
+            } else {
+                lines.append("spoke on this Mac")
+            }
+        }
+        return lines
+    }
+
     /// One line per failed output. Named only when both were selected, so
     /// a home-only failure reads exactly as it did before local speech.
     public var failureMessages: [String] {

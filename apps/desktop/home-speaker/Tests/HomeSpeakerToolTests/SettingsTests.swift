@@ -361,11 +361,16 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains { $0.contains("for 3 seconds") })
         _ = event(tool, Pages.Block.pauseExtra, .submit, .string(" 4 "))
         XCTAssertEqual(store.config?.pauseMediaExtraSeconds, 4)
-        _ = event(tool, Pages.Block.pauseExtra, .submit, .string("25"))
-        XCTAssertEqual(store.config?.pauseMediaExtraSeconds, 10, "held to 10")
-        _ = event(tool, Pages.Block.pauseExtra, .submit, .string("-3"))
-        XCTAssertEqual(store.config?.pauseMediaExtraSeconds, 0, "held to 0")
-        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.pauseExtra, kind: .submit, value: .string("soon"))), .keep)
+        _ = event(tool, Pages.Block.pauseExtra, .submit, .string("10"))
+        XCTAssertEqual(store.config?.pauseMediaExtraSeconds, 10)
+        _ = event(tool, Pages.Block.pauseExtra, .submit, .string("0"))
+        XCTAssertEqual(store.config?.pauseMediaExtraSeconds, 0)
+        // Out of range or no number: refused and said, the saved value kept.
+        for bad in ["25", "-3", "soon"] {
+            _ = event(tool, Pages.Block.pauseExtra, .submit, .string(bad))
+            XCTAssertEqual(store.config?.pauseMediaExtraSeconds, 0, bad)
+            XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.pauseExtra, bad)
+        }
 
         tree = event(tool, Pages.Block.testMediaPause, .tap)
         XCTAssertEqual(driver.jobs.last, .app(.testMediaPause))
@@ -392,10 +397,13 @@ final class SettingsTests: XCTestCase {
         _ = event(tool, Pages.Block.quiet, .toggle, .bool(true))
         _ = event(tool, Pages.Block.quietEnd, .submit, .string("06:30"))
         _ = event(tool, Pages.Block.announceVolume, .toggle, .bool(true))
-        _ = event(tool, Pages.Block.announceLevel, .submit, .string("140"))
+        _ = event(tool, Pages.Block.announceLevel, .submit, .string("75"))
         XCTAssertEqual(store.config?.quietHoursEnabled, true)
         XCTAssertEqual(store.config?.quietHoursEnd, "06:30")
-        XCTAssertEqual(store.config?.announceVolume, 100, "held to 0 to 100")
+        XCTAssertEqual(store.config?.announceVolume, 75)
+        _ = event(tool, Pages.Block.announceLevel, .submit, .string("140"))
+        XCTAssertEqual(store.config?.announceVolume, 75, "out of range: refused, not held to 100")
+        XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.announceLevel)
     }
 
     // MARK: - Speakers
