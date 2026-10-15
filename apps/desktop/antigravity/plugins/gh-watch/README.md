@@ -35,6 +35,11 @@ switch in Claude Code's desktop app.
   and mergeable but nothing is set to merge it.
 - When an agent runs `gh pr create`, the new pull request is watched
   automatically for the conversation that opened it.
+- When a subagent, a delegated CLI such as `claude -p`, or a script opens the
+  pull request instead, the hook cannot see it. The plugin's standing
+  instruction (`rules/AGENTS.md`) tells the agent to sign it up with one
+  command, `GH_WATCH=1 gh pr view <number or URL> --json url --jq .url`, and
+  it is then watched for that conversation.
 - A side panel lists the watched pull requests with their check counts. Each
   has switches for the wake-ups, for review comments and for GitHub's
   auto-merge.
@@ -138,7 +143,9 @@ To go back to following the newest code, check out `main` the same way.
 ## Use
 
 A pull request an agent opens with `gh pr create` is watched without you
-doing anything. To watch one yourself:
+doing anything. One opened for the agent by a subagent or a delegated CLI is
+watched once the agent signs it up, which the plugin's standing instruction
+asks it to do. To watch one yourself:
 
 1. Open the panel from the conversation that is working on the pull request.
 2. Leave the box blank to watch the pull request for the branch checked out
@@ -175,7 +182,8 @@ pull request until you turn it on.
 | `plugin.json` | Plugin manifest |
 | `sidecars/panel/sidecar.json` | Background process and panel manifest |
 | `sidecars/panel/main.mjs` | Panel backend: HTTP routes, starts the watcher |
-| `hooks.json`, `hooks/note-pr-create.sh` | The hook that notices `gh pr create` |
+| `hooks.json`, `hooks/note-pr-create.sh` | The hook that notices `gh pr create` and the sign-up command |
+| `rules/AGENTS.md` | Standing instruction: sign up pull requests a subagent opened |
 | `sidecars/panel/lib/decide.mjs` | When to wake and when to wait (pure logic) |
 | `sidecars/panel/lib/flakes.mjs` | Remembering flaky checks (pure logic) |
 | `sidecars/panel/lib/landing.mjs` | Green, queued, merged, landed (pure logic) |

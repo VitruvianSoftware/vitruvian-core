@@ -68,6 +68,20 @@ check "leaves no half-written file behind" "$?"
 rm -rf "${SANDBOX}"
 
 # A HOME that cannot be written to must not make the hook fail.
+SANDBOX="$(mktemp -d)"
+out=$(payload "GH_WATCH=1 gh pr view 12 --json url --jq .url" "antigravity" | run_hook)
+ok=1
+[ "${out}" = "{}" ] && [ "$(notes)" = "1" ] && ok=0
+check "leaves a note for the sign-up command" "${ok}"
+rm -rf "${SANDBOX}"
+
+SANDBOX="$(mktemp -d)"
+out=$(payload "gh pr view 12 --json url" "antigravity" | run_hook)
+ok=1
+[ "${out}" = "{}" ] && [ "$(notes)" = "0" ] && ok=0
+check "leaves no note for a plain gh pr view" "${ok}"
+rm -rf "${SANDBOX}"
+
 SANDBOX="/nonexistent/gh-watch-test"
 out=$(payload "gh pr create" "antigravity" | run_hook)
 rc=$?

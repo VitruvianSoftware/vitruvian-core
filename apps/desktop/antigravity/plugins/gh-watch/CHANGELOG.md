@@ -2,6 +2,15 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.5.0
+
+- Pull requests opened by a subagent, a delegated CLI such as `claude -p`, or
+  a script can now be watched. The hook never sees those, so the plugin ships
+  a standing instruction (`rules/AGENTS.md`) asking the agent to sign each one
+  up with `GH_WATCH=1 gh pr view <number or URL> --json url --jq .url`. The
+  hook recognises that command and the pull request is watched for the
+  conversation that ran it. The panel marks these "added by the agent".
+
 ## 0.4.0
 
 - Compact single-repo review list: when a single repository is selected in

@@ -112,7 +112,8 @@ Two things in the panel are about what is waiting on a person, not an agent:
 ## Automatic sign-up
 
 Antigravity runs `hooks/note-pr-create.sh` after every shell command an
-agent runs. For anything but `gh pr create` it does nothing. For that command
+agent runs. For anything but `gh pr create` and the sign-up command below it
+does nothing. For `gh pr create`
 it leaves a note in a fixed folder (`~/.gemini/antigravity/gh-watch-inbox`); the watcher looks up the pull
 request for the branch in the folder the command ran in, and starts watching
 it for the conversation that ran the command. It never takes over a pull
@@ -123,6 +124,31 @@ The message arrives in the conversation as a system notice, not as something
 the user typed. It says it comes from gh-watch, lists the failing checks with
 links, and asks the agent to fix the cause on the branch or to say so if the
 failure is not caused by the pull request.
+
+### Pull requests opened by a subagent
+
+The hook only sees commands Antigravity runs. When an agent hands work to
+something else, such as a subagent, `claude -p`, `agy -p` or a script, and
+that opens the pull request, the `gh pr create` happens out of sight and
+nothing is watched.
+
+For those, the plugin carries a standing instruction (`rules/AGENTS.md`,
+always on while the plugin is enabled). It tells the agent to sign the pull
+request up itself, once, with:
+
+```sh
+GH_WATCH=1 gh pr view <number or URL> --json url --jq .url
+```
+
+This is an ordinary `gh pr view`, so it needs nothing installed and prints the
+link back. The `GH_WATCH=1` prefix is what the hook looks for; a plain
+`gh pr view` is left alone. Several can be chained with `&&`. A pull request
+added this way shows "added by the agent" in the panel. Like any automatic
+sign-up it is skipped when "Watch pull requests automatically" is off, and it
+never takes over a pull request that is already watched.
+
+This relies on the agent following the instruction. A pull request it forgets
+can still be added from the panel.
 
 ## Limits
 
