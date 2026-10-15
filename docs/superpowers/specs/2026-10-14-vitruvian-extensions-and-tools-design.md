@@ -1,7 +1,7 @@
 # Vitruvian Extensions & Tools Coexistence and Unified Dynamic Island Sections
 
 - **Date:** 2026-10-14
-- **Status:** Gate 1 aligned (2026-10-14). The Gate 1 review's blockers and recommendations are folded in below; James approved every fix, including the `extension:<toolID>` save format for quick-access buttons.
+- **Status:** built and shipped by 2026-10-14 (`UPSTREAM.md`, 2026-10-14 entries for tasks 1–4). Gate 1 review blockers and recommendations were folded in below; James approved every fix, including the `extension:<toolID>` save format for quick-access buttons.
 - **Scope:** `apps/desktop/vitruvian`
 
 ## 1. Goal & Motivation
