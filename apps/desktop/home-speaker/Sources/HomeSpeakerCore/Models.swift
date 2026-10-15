@@ -289,6 +289,16 @@ public struct SpeakerConfig: Codable, Equatable {
         }
     }
 
+    /// Drops one alias. When it was the default, the first remaining
+    /// speaker by name (one alias per device, as `uniqueTargets` gives
+    /// them) becomes the default, or none when the list is now empty.
+    public mutating func removeTarget(_ key: String) {
+        targets.removeValue(forKey: key)
+        if defaultTarget == key {
+            defaultTarget = uniqueTargets().first?.key ?? ""
+        }
+    }
+
     // MARK: Quiet hours
 
     /// Parses "HH:mm" (24h, leading zero optional) into minutes since midnight.

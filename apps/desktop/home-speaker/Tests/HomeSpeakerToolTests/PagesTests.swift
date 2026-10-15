@@ -80,13 +80,16 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(ids(Pages.island(status)), ["say", "broadcasting", "quiet", "speakers"], "no speaker, no volume controls")
     }
 
-    func testTheSettingsPanelDrawsTheFileAsHomeSpeakersPageDoes() {
+    func testTheGeneralSectionDrawsTheFileAsHomeSpeakersPageDoes() {
         var status = Pages.Status()
         status.config = configured
         status.config.effectiveAnnounceVolumeEnabled = true
+        status.loginItem = .enabled
         let page = Pages.settings(status)
-        XCTAssertEqual(ids(page), ["speechLength", "speakHome", "speakLocal", "announceVolume", "announceLevel", "pauseMedia",
-                                   "quiet", "quietStart", "quietEnd"])
+        XCTAssertEqual(ids(page), ["section", "signIn", "broadcasting", "loginItem", "speechLength", "announceVolume", "announceLevel",
+                                   "pauseMedia", "quiet", "quietStart", "quietEnd"])
+        XCTAssertEqual(texts(page).filter { ["Google Home Account", "Broadcast Controls", "Quiet Hours"].contains($0) },
+                       ["Google Home Account", "Broadcast Controls", "Quiet Hours"])
         guard case .list(let lengths)? = page.blocks.first(where: { $0.id == "speechLength" })?.content else { return XCTFail("no list") }
         XCTAssertEqual(lengths.rows.map(\.id), ["headline", "summary", "full"])
         XCTAssertEqual(lengths.rows.map { $0.trailing?.text(for: "en") }, [nil, "✓", nil], "summary is the default")
@@ -94,6 +97,40 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(level.value, "60")
         status.config.effectiveAnnounceVolumeEnabled = false
         XCTAssertFalse(ids(Pages.settings(status)).contains("announceLevel"))
+        status.config.effectivePauseMedia = true
+        status.account = Pages.Account(isSignedIn: true, email: "me@example.com", hasOAuthClient: true)
+        status.offersChoice = true
+        let more = Pages.settings(status)
+        XCTAssertEqual(ids(more), ["section", "signOut", "broadcasting", "loginItem", "speechLength", "announceVolume", "pauseMedia",
+                                   "pauseExtra", "testMediaPause", "quiet", "quietStart", "quietEnd"])
+        guard case .choice(let choice)? = more.blocks.first(where: { $0.id == "speechLength" })?.content else { return XCTFail("no choice") }
+        XCTAssertEqual(choice.options.map { $0.title.text(for: "en") }, SpeechLength.allCases.map(\.label))
+    }
+
+    func testTheSpeakersSectionHasDiscoveryTheSpeakersAndWhereToSpeak() {
+        var status = Pages.Status()
+        status.config = configured
+        status.config.structureName = "Home"
+        status.section = .speakers
+        status.account = Pages.Account(isSignedIn: true)
+        let page = Pages.settings(status)
+        XCTAssertEqual(ids(page), ["section", "discover", "targets", "editSpeakers", "speakHome", "speakLocal"])
+        XCTAssertEqual(texts(page).filter { ["Discovery", "Speakers & Displays", "Where to speak"].contains($0) },
+                       ["Discovery", "Speakers & Displays", "Where to speak"])
+        status.config.effectiveSpeakLocal = true
+        status.homes = [HomeStructure(id: "s1", name: "Home"), HomeStructure(id: "s2", name: "Cabin")]
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "home", "discover", "targets", "editSpeakers", "speakHome", "speakLocal",
+                                                     "voice", "previewVoice"])
+        XCTAssertEqual(Pages.outputsFooter(status.config).contains("Both speak at the same time"), true)
+    }
+
+    func testEverySetupJobHasABusyLine() {
+        let jobs: [Job] = [.signIn(chatOnly: false), .app(.signOut(chatOnly: false)), .app(.discover(save: false, home: nil)),
+                           .app(.discover(save: true, home: "h")), .app(.loginItem(.status)), .app(.loginItem(.enable)),
+                           .app(.testMediaPause)]
+        XCTAssertEqual(Set(jobs.map(Pages.busyLine)).count, jobs.count)
+        XCTAssertTrue(jobs.allSatisfy(\.isSetup))
+        XCTAssertFalse([Job.say("x"), .volume, .setVolume(3), .mute, .unmute].contains(where: \.isSetup))
     }
 
     func testBothPagesAreWithinTheProtocolsLimits() throws {
@@ -104,11 +141,22 @@ final class PagesTests: XCTestCase {
                                                                       name: String(repeating: "n", count: 60), room: String(repeating: "r", count: 40))
         }
         status.notice = String(repeating: "x", count: 300)
-        for tree in [Pages.island(status), Pages.settings(status)] {
+        status.configProblem = String(repeating: "p", count: 300)
+        status.homes = (0..<80).map { HomeStructure(id: "home\($0)", name: String(repeating: "h", count: 60)) }
+        status.voices = (0..<100).map { LocalVoice(id: "com.apple.voice.v\($0)", name: "Voice \($0)", language: "en-US", quality: .enhanced) }
+        status.config.effectiveSpeakLocal = true
+        var speakers = status
+        speakers.section = .speakers
+        var choices = speakers
+        choices.offersChoice = true
+        for tree in [Pages.island(status), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices)] {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
         }
         guard case .list(let speakers)? = Pages.island(status).blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no list") }
         XCTAssertEqual(speakers.rows.count, Pages.maxSpeakerRows)
+        for block in Pages.settings(choices).blocks {
+            if case .choice(let choice) = block.content { XCTAssertLessThanOrEqual(choice.options.count, UILimits.maxChoiceOptions) }
+        }
     }
 }

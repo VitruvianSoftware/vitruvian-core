@@ -24,6 +24,7 @@
 
 import AppKit
 import Foundation
+import HomeSpeakerCore
 import HomeSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
@@ -38,6 +39,7 @@ final class KitLink: ToolLink {
     func showMessage(_ message: String, icon: String) { try? app?.showMessage(message, icon: icon) }
     func log(_ message: String) { app?.log(message) }
     func clipboardText() -> String? { (try? app?.clipboardText()) ?? nil }
+    func supports(_ feature: ProtocolFeature) -> Bool { app?.supports(feature) ?? false }
 }
 
 let tool = Tool(version: ToolVersion.current)
@@ -48,9 +50,17 @@ let binary = ProcessDriver.locate(
     home: NSHomeDirectory(),
     isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
 let waker = tool.waker
+// HomeSpeaker.app's own bundle, whose Info.plist may carry the OAuth client
+// it was packaged with; the program is its Contents/MacOS/HomeSpeaker.
+let appBundle = binary.flatMap { program in
+    Bundle(url: program.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent())
+}
 let speaker = HomeSpeakerTool(parts: .init(
     link: link, store: FileConfigStore(), driver: ProcessDriver(binary: binary),
-    later: { work in waker.later { _ in work() } }))
+    later: { work in waker.later { _ in work() } },
+    account: SecretStoreAccount(bundle: appBundle ?? .main),
+    voices: { LocalSpeaker.shared.englishVoices() },
+    previewVoice: { voice in try await LocalSpeaker.shared.speak(Pages.previewText, voiceID: voice) }))
 
 link.panels[HomeSpeakerTool.islandPanel] = tool.panel(HomeSpeakerTool.islandPanel, onOpen: { app, _ in
     link.app = app

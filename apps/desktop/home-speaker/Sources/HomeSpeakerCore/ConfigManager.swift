@@ -199,10 +199,7 @@ public class ConfigManager: ObservableObject {
     }
 
     public func removeTarget(_ key: String) {
-        config.targets.removeValue(forKey: key)
-        if config.defaultTarget == key {
-            config.defaultTarget = config.uniqueTargets().first?.key ?? ""
-        }
+        config.removeTarget(key)
         saveConfig()
     }
 
