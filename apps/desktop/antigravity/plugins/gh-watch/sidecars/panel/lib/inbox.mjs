@@ -23,7 +23,9 @@
 /* global console */
 
 // Notes left by the sign-up hook (../../hooks/note-pr-create.sh). Each one is
-// the hook's own payload for a `gh pr create` the agent ran.
+// the hook's own payload for a command the agent ran that either opened a pull
+// request (`gh pr create`) or asked for one to be watched (the sign-up
+// command below).
 
 import {
   existsSync,
@@ -47,18 +49,38 @@ const CREATE = /^gh\s+pr\s+create(\s|$)/;
 // request is worse than one wasted lookup.
 const NOT_A_CREATE = /\s(--help|--dry-run)(\s|$)/;
 
-// Splits a command line at the usual shell joiners and reports whether any
-// part of it is a `gh pr create`.
-function createsPr(command) {
-  return command
-    .split(/&&|\|\||[;|\n]/)
-    .map((part) => part.trim())
-    .some((part) => CREATE.test(part) && !NOT_A_CREATE.test(part));
+// The sign-up command. An agent runs it for a pull request that something
+// else opened on its behalf (a subagent, `claude -p`, a script), since the
+// hook never sees a `gh pr create` that ran outside Antigravity:
+//
+//   GH_WATCH=1 gh pr view <number or URL> --json url --jq .url
+//
+// It is an ordinary `gh pr view`, so it works with nothing installed and
+// prints the link back as confirmation. The GH_WATCH=1 prefix is what marks
+// it as a request to watch; a plain `gh pr view` is only someone reading.
+const SIGN_UP = /^GH_WATCH=1\s+gh\s+pr\s+view\s+([^\s-][^\s]*)/;
+
+// Splits a command line at the usual shell joiners into its parts.
+function partsOf(command) {
+  return command.split(/&&|\|\||[;|\n]/).map((part) => part.trim());
 }
 
-// Reads one note. Returns { conversationId, cwd } when it really is a
-// successful `gh pr create` with somewhere to look for the pull request, and
-// null for anything else.
+// Lists what the command asks to have watched: "" for a pull request opened
+// by `gh pr create` (found later from the folder it ran in), or the number or
+// URL given to the sign-up command. Empty when the command is neither.
+export function refsIn(command) {
+  const refs = [];
+  for (const part of partsOf(command)) {
+    if (CREATE.test(part) && !NOT_A_CREATE.test(part)) refs.push("");
+    const signUp = SIGN_UP.exec(part);
+    if (signUp) refs.push(signUp[1].replace(/^['"#]+|['"]+$/g, ""));
+  }
+  return [...new Set(refs)];
+}
+
+// Reads one note. Returns { conversationId, cwd, refs } when it really is a
+// successful `gh pr create` or sign-up command with somewhere to look for the
+// pull request, and null for anything else.
 export function parseNote(text) {
   let payload;
   try {
@@ -69,13 +91,14 @@ export function parseNote(text) {
   const call = payload?.toolCall;
   const command = call?.args?.CommandLine;
   if (call?.name !== "run_command" || typeof command !== "string") return null;
-  if (!createsPr(command)) return null;
+  const refs = refsIn(command);
+  if (refs.length === 0) return null;
   if (payload.error) return null;
   const conversationId = payload.conversationId;
   const cwd = call.args.Cwd || payload.workspacePaths?.[0];
   if (typeof conversationId !== "string" || !conversationId) return null;
   if (typeof cwd !== "string" || !cwd) return null;
-  return { conversationId, cwd };
+  return { conversationId, cwd, refs };
 }
 
 export class Inbox {

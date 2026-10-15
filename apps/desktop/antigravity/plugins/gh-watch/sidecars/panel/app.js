@@ -173,7 +173,7 @@ function card(watch) {
     el(
       "p",
       { class: "muted small" },
-      `Checked ${ago(watch.checkedAt)} · wakes ${mine ? "this conversation" : "another conversation"}${watch.addedBy === "hook" ? " · added automatically" : ""}`,
+      `Checked ${ago(watch.checkedAt)} · wakes ${mine ? "this conversation" : "another conversation"}${watch.addedBy === "hook" ? " · added automatically" : watch.addedBy === "agent" ? " · added by the agent" : ""}`,
     ),
   ];
   const failingList =

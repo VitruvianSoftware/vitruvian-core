@@ -115,32 +115,40 @@ export class Watcher {
         this.#inbox.remove(note.file);
         continue;
       }
-      let snap;
-      try {
-        snap = await this.#resolvePr("", parsed.cwd);
-      } catch {
-        if (this.#now() - note.at > NOTE_TTL_MS) this.#inbox.remove(note.file);
-        continue;
+      // A note can name several pull requests. It is kept while any of them
+      // cannot be found yet; the ones already added are skipped next time.
+      let missing = false;
+      for (const ref of parsed.refs) {
+        let snap;
+        try {
+          snap = await this.#resolvePr(ref, parsed.cwd);
+        } catch {
+          missing = true;
+          continue;
+        }
+        if (snap.state !== "OPEN") continue;
+        const key = `${snap.repo.toLowerCase()}#${snap.number}`;
+        // Never take over a pull request someone is already watching.
+        if (this.#store.get(key)) continue;
+        this.#store.put({
+          key,
+          repo: snap.repo,
+          number: snap.number,
+          conversationId: parsed.conversationId,
+          autoFix: true,
+          comments: false,
+          updates: true,
+          addedAt: this.#now(),
+          // "hook" for a `gh pr create` the hook saw, "agent" for one the
+          // agent signed up by hand.
+          addedBy: ref === "" ? "hook" : "agent",
+          closed: false,
+          readFailures: 0,
+        });
+        await this.check(key);
       }
-      this.#inbox.remove(note.file);
-      if (snap.state !== "OPEN") continue;
-      const key = `${snap.repo.toLowerCase()}#${snap.number}`;
-      // Never take over a pull request someone is already watching.
-      if (this.#store.get(key)) continue;
-      this.#store.put({
-        key,
-        repo: snap.repo,
-        number: snap.number,
-        conversationId: parsed.conversationId,
-        autoFix: true,
-        comments: false,
-        updates: true,
-        addedAt: this.#now(),
-        addedBy: "hook",
-        closed: false,
-        readFailures: 0,
-      });
-      await this.check(key);
+      if (!missing || this.#now() - note.at > NOTE_TTL_MS)
+        this.#inbox.remove(note.file);
     }
   }
 

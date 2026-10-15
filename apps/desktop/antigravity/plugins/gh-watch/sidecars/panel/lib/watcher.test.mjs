@@ -448,10 +448,12 @@ test("parseNote accepts a successful gh pr create and nothing else", () => {
   assert.deepEqual(parseNote(note("gh pr create --fill")), {
     conversationId: "conv-9",
     cwd: "/work/repo",
+    refs: [""],
   });
   assert.deepEqual(parseNote(note("git push && gh pr create --draft")), {
     conversationId: "conv-9",
     cwd: "/work/repo",
+    refs: [""],
   });
   assert.equal(parseNote(note("echo gh pr created")), null);
   assert.equal(parseNote(note("echo gh pr create")), null);
@@ -471,21 +473,68 @@ test("parseNote accepts a successful gh pr create and nothing else", () => {
   assert.equal(parseNote("not json"), null);
 });
 
-function signUpWorld() {
+test("parseNote accepts the sign-up command for a pull request opened elsewhere", () => {
+  const url = "https://github.com/o/r/pull/12";
+  assert.deepEqual(
+    parseNote(note(`GH_WATCH=1 gh pr view ${url} --json url --jq .url`)),
+    { conversationId: "conv-9", cwd: "/work/repo", refs: [url] },
+  );
+  assert.deepEqual(parseNote(note("GH_WATCH=1 gh pr view 12")).refs, ["12"]);
+  assert.deepEqual(parseNote(note("GH_WATCH=1 gh pr view '#12'")).refs, ["12"]);
+  // Several at once, and from inside another folder.
+  assert.deepEqual(
+    parseNote(
+      note(
+        "cd /w && GH_WATCH=1 gh pr view 12 --json url && GH_WATCH=1 gh pr view 13",
+      ),
+    ).refs,
+    ["12", "13"],
+  );
+  // Asked twice in one command, signed up once.
+  assert.deepEqual(
+    parseNote(note("GH_WATCH=1 gh pr view 12; GH_WATCH=1 gh pr view 12")).refs,
+    ["12"],
+  );
+  // A plain read is not a request to watch, and neither is a mention.
+  assert.equal(parseNote(note("gh pr view 12")), null);
+  assert.equal(parseNote(note("echo GH_WATCH=1 gh pr view 12")), null);
+  assert.equal(parseNote(note("GH_WATCH=1 gh pr view --json url")), null);
+  assert.equal(parseNote(note("GH_WATCH=0 gh pr view 12")), null);
+  // A failed lookup watches nothing.
+  assert.equal(
+    parseNote(note("GH_WATCH=1 gh pr view 99", { error: "exit status 1" })),
+    null,
+  );
+});
+
+// With `byRef`, a pull request number given to the sign-up command is the
+// number that comes back, and numbers in `world.missing` are not found yet.
+function signUpWorld({ byRef = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "gh-watch-inbox-"));
   const inboxDir = join(dir, "inbox");
   mkdirSync(inboxDir);
   const store = new Store(join(dir, "watches.json"));
-  const world = { clock: Date.now(), found: true, state: "OPEN", lookedIn: [] };
+  const world = {
+    clock: Date.now(),
+    found: true,
+    state: "OPEN",
+    lookedIn: [],
+    missing: new Set(),
+  };
+  const numbered = (number) => ({
+    ...snapshot("sha1", world.state, run("lint", "SUCCESS")),
+    ...(byRef && number ? { number: Number(number) } : {}),
+  });
   const watcher = new Watcher({
     store,
     inbox: new Inbox(inboxDir),
     now: () => world.clock,
-    fetchPr: async () => snapshot("sha1", world.state, run("lint", "SUCCESS")),
+    fetchPr: async (repo, number) => numbered(number),
     resolvePr: async (ref, cwd) => {
       world.lookedIn.push(cwd);
-      if (!world.found) throw new Error("no pull requests found");
-      return snapshot("sha1", world.state, run("lint", "SUCCESS"));
+      if (!world.found || world.missing.has(ref))
+        throw new Error("no pull requests found");
+      return numbered(ref);
     },
     sendMessage: async () => undefined,
   });
@@ -537,6 +586,50 @@ test("a note is retried until the pull request shows up, then given up on", asyn
   world.found = false;
   await watcher.signUp();
   assert.equal(inbox.list().length, 0);
+});
+
+test("a sign-up command watches each pull request it names, marked as added by the agent", async () => {
+  const { store, watcher, drop, inbox } = signUpWorld({ byRef: true });
+  drop(
+    "1.json",
+    note("GH_WATCH=1 gh pr view 21 && GH_WATCH=1 gh pr view 22 --json url"),
+  );
+  await watcher.signUp();
+  for (const number of [21, 22]) {
+    const watch = store.get(watchKey("o/r", number));
+    assert.equal(watch.conversationId, "conv-9");
+    assert.equal(watch.addedBy, "agent");
+    assert.equal(watch.comments, false);
+  }
+  assert.equal(inbox.list().length, 0);
+});
+
+test("a sign-up note is kept while one of its pull requests cannot be found", async () => {
+  const { store, world, watcher, drop, inbox } = signUpWorld({ byRef: true });
+  world.missing = new Set(["22"]);
+  drop("1.json", note("GH_WATCH=1 gh pr view 21 && GH_WATCH=1 gh pr view 22"));
+  await watcher.signUp();
+  assert.ok(store.get(watchKey("o/r", 21)));
+  assert.equal(store.get(watchKey("o/r", 22)), undefined);
+  assert.equal(inbox.list().length, 1);
+  world.missing = new Set();
+  await watcher.signUp();
+  assert.ok(store.get(watchKey("o/r", 22)));
+  assert.equal(inbox.list().length, 0);
+});
+
+test("a sign-up never takes over a pull request another conversation watches", async () => {
+  const { store, watcher, drop } = signUpWorld({ byRef: true });
+  store.put({
+    key: watchKey("o/r", 21),
+    repo: "o/r",
+    number: 21,
+    conversationId: "mine",
+    autoFix: false,
+  });
+  drop("1.json", note("GH_WATCH=1 gh pr view 21"));
+  await watcher.signUp();
+  assert.equal(store.get(watchKey("o/r", 21)).conversationId, "mine");
 });
 
 test("notes are discarded when automatic watching is switched off, or are not PR creations", async () => {
