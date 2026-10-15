@@ -235,7 +235,11 @@ final class HomeSpeakerToolTests: XCTestCase {
         _ = tool.settingsEvent(PanelEvent(block: "speechLength", kind: .tap, value: .string("full")))
         _ = tool.settingsEvent(PanelEvent(block: "speakLocal", kind: .toggle, value: .bool(true)))
         _ = tool.settingsEvent(PanelEvent(block: "quietStart", kind: .submit, value: .string("23:15")))
-        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "quietEnd", kind: .submit, value: .string("soon"))), .keep)
+        // A time that is not HH:mm is refused and said, not dropped.
+        guard case .page = tool.settingsEvent(PanelEvent(block: "quietEnd", kind: .submit, value: .string("soon"))) else {
+            return XCTFail("a refusal is drawn")
+        }
+        XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.quietHour)
         XCTAssertEqual(store.config?.effectiveSpeechLength, .full)
         XCTAssertEqual(store.config?.effectiveSpeakLocal, true)
         XCTAssertEqual(store.config?.quietHoursStart, "23:15")

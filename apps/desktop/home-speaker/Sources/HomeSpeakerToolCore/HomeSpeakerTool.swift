@@ -95,6 +95,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// lists: by default beside the settings file, so a test's
         /// temporary settings never read this Mac's history.
         public var historyURL: URL
+        /// What HomeSpeaker's chat monitor last wrote about itself
+        /// (`ChatMonitorStatusFile`): by default beside the settings file,
+        /// so a test's temporary settings never read this Mac's.
+        public var monitorStatusURL: URL
+        /// Asks a running HomeSpeaker to start or stop its chat monitor
+        /// (`ChatMonitorControlNotice.post`). The default asks nothing, so
+        /// a test never reaches a real running app.
+        public var controlChatMonitor: (ChatMonitorAction) -> Void
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
                     later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
@@ -106,7 +114,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     settingsURL: URL = ConfigManager.defaultConfigURL(), secretsURL: URL = SecretStore.defaultURL(),
                     homeSpeakerVersion: @escaping () -> String? = { nil },
                     launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
-                    historyURL: URL? = nil) {
+                    historyURL: URL? = nil, monitorStatusURL: URL? = nil,
+                    controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in }) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -125,6 +134,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.homeSpeakerVersion = homeSpeakerVersion
             self.launchctlBootout = launchctlBootout
             self.historyURL = historyURL ?? Self.historyURL(beside: settingsURL)
+            self.monitorStatusURL = monitorStatusURL ?? ChatMonitorStatusFile.url(beside: settingsURL)
+            self.controlChatMonitor = controlChatMonitor
         }
 
         /// `speaker_history.json` in the settings file's folder, where
@@ -167,6 +178,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private var askedHomes = false
     /// The island's setup lists the homes once each time it opens.
     private var askedIslandHomes = false
+    /// The chat monitor as last drawn, so a change the app writes is drawn
+    /// and an unchanged one is not (`refreshMonitorStatus`).
+    private var drawnChat: Pages.Chat?
 
     public init(parts: Parts) {
         self.parts = parts
@@ -377,6 +391,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 draftClientId = ""
                 draftClientSecret = ""
                 setupNotice = "OAuth client cleared"
+            case Pages.Block.startChatMonitor?:
+                try controlChatMonitor(.start)
+            case Pages.Block.stopChatMonitor?:
+                try controlChatMonitor(.stop)
             case Pages.Block.removeLegacyAgent?:
                 try agentStatusIntegration().removeLegacyLaunchAgent()
                 setupNotice = "Legacy launch agent removed"
@@ -416,9 +434,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?:
-                guard change(event, picked: picked) else { return .keep }
+                // A value out of range throws, and is said under the
+                // section instead of being dropped or quietly clamped.
+                guard try change(event, picked: picked) else { return .keep }
                 do {
                     try save()
+                    if let notice = setupNotice, Invalid.all.contains(notice) { setupNotice = nil }
                 } catch {
                     parts.link.log("the settings could not be saved: \(error)")
                     reload()
@@ -433,6 +454,30 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             setupNotice = Self.words(error)
         }
         return .page(settingsTree())
+    }
+
+    /// Asks the running HomeSpeaker to start or stop its monitor. The page
+    /// says Running once the app has written that it is; the request alone
+    /// changes nothing on it.
+    private func controlChatMonitor(_ action: ChatMonitorAction) throws {
+        guard parts.isAppRunning() else {
+            throw CommandRefused("HomeSpeaker isn't running: open it, then \(action.rawValue) the chat monitor")
+        }
+        if action == .start, !config.effectiveChatMonitor.anySourceEnabled {
+            throw CommandRefused("turn on Slack or Google Chat first")
+        }
+        parts.controlChatMonitor(action)
+        setupNotice = "Asked HomeSpeaker to \(action.rawValue) the chat monitor"
+    }
+
+    /// What a settings field that will not take a value says.
+    public enum Invalid {
+        public static let quietHour = "Quiet hours take a time as HH:mm, such as 22:00"
+        public static let announceLevel = "The announcement volume is a whole number from 0 to 100"
+        public static let pauseExtra = "Resume after is a number of seconds from 0 to 10"
+        public static let pollInterval =
+            "The poll interval is a whole number of seconds from \(ChatMonitorConfig.minPollInterval) to \(ChatMonitorConfig.maxPollInterval)"
+        public static let all = [quietHour, announceLevel, pauseExtra, pollInterval]
     }
 
     /// Saves the typed client in one write. A secret left untyped keeps
@@ -470,8 +515,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     /// Applies a settings change to `config`. False when the event changes
-    /// nothing, so nothing is saved.
-    private func change(_ event: PanelEvent, picked: String?) -> Bool {
+    /// nothing, so nothing is saved; throws, changing nothing, when a field
+    /// holds a value the setting cannot take.
+    private func change(_ event: PanelEvent, picked: String?) throws -> Bool {
         switch event.block {
         case Pages.Block.broadcasting?:
             guard let isOn = event.isOn else { return false }
@@ -489,23 +535,31 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             guard let isOn = event.isOn else { return false }
             config.effectiveAnnounceVolumeEnabled = isOn
         case Pages.Block.announceLevel?:
-            guard let text = event.text, let level = Int(text.trimmingCharacters(in: .whitespaces)) else { return false }
+            guard let text = event.text else { return false }
+            guard let level = Int(text.trimmingCharacters(in: .whitespaces)), (0...100).contains(level) else {
+                throw CommandRefused(Invalid.announceLevel)
+            }
             config.effectiveAnnounceVolume = level
         case Pages.Block.pauseMedia?:
             guard let isOn = event.isOn else { return false }
             config.effectivePauseMedia = isOn
         case Pages.Block.pauseExtra?:
-            guard let text = event.text, let seconds = Double(text.trimmingCharacters(in: .whitespaces)), seconds.isFinite else { return false }
+            guard let text = event.text else { return false }
+            guard let seconds = Double(text.trimmingCharacters(in: .whitespaces)), seconds.isFinite, (0...10).contains(seconds) else {
+                throw CommandRefused(Invalid.pauseExtra)
+            }
             config.effectivePauseMediaExtraSeconds = seconds.rounded()
         case Pages.Block.quiet?:
             guard let isOn = event.isOn else { return false }
             config.quietHoursEnabled = isOn
-        case Pages.Block.quietStart?:
-            guard let text = event.text, let hour = SpeakerConfig.quietHour(text) else { return false }
-            config.quietHoursStart = hour
-        case Pages.Block.quietEnd?:
-            guard let text = event.text, let hour = SpeakerConfig.quietHour(text) else { return false }
-            config.quietHoursEnd = hour
+        case Pages.Block.quietStart?, Pages.Block.quietEnd?:
+            guard let text = event.text else { return false }
+            guard let hour = SpeakerConfig.quietHour(text) else { throw CommandRefused(Invalid.quietHour) }
+            if event.block == Pages.Block.quietStart {
+                config.quietHoursStart = hour
+            } else {
+                config.quietHoursEnd = hour
+            }
         case Pages.Block.targets?:
             guard let key = event.row, config.targets[key] != nil else { return false }
             let before = config.defaultTarget
@@ -539,8 +593,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             guard let isOn = event.isOn else { return false }
             config.effectiveChatMonitor.muteOwnMessages = isOn
         case Pages.Block.pollInterval?:
-            guard let text = event.text, let seconds = Int(text.trimmingCharacters(in: .whitespaces)) else { return false }
-            config.effectiveChatMonitor.pollIntervalSeconds = Self.clampedPollInterval(seconds)
+            guard let text = event.text else { return false }
+            guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),
+                  (ChatMonitorConfig.minPollInterval...ChatMonitorConfig.maxPollInterval).contains(seconds) else {
+                throw CommandRefused(Invalid.pollInterval)
+            }
+            config.effectiveChatMonitor.pollIntervalSeconds = seconds
         default:
             return false
         }
@@ -549,6 +607,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     public func panelClosed(_ panel: String) {
         openPanels.remove(panel)
+    }
+
+    /// Draws the open pages again when what the chat monitor says about
+    /// itself has changed since they were drawn: a Start pressed here shows
+    /// Running once the app has started, without another tap. Asked on a
+    /// timer; reads nothing unless a page that shows the monitor is open.
+    public func refreshMonitorStatus() {
+        let settingsShowsIt = openPanels.contains(Self.settingsPanel) && section == .monitor
+        let islandShowsIt = openPanels.contains(Self.islandPanel) && config.effectiveChatMonitor.anySourceEnabled
+        guard settingsShowsIt || islandShowsIt else { return }
+        reload()
+        guard chatStatus() != drawnChat else { return }
+        refreshOpenPanels()
     }
 
     // MARK: - HomeSpeaker's program
@@ -664,7 +735,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             status.recentBroadcasts = BroadcastHistory(fileURL: parts.historyURL).load()
             // The island warns about the chat monitor only while it is on,
             // so nothing is looked for otherwise.
-            if config.effectiveChatMonitor.anySourceEnabled { status.chat = chatStatus() }
+            if config.effectiveChatMonitor.anySourceEnabled {
+                status.chat = chatStatus()
+                drawnChat = status.chat
+            }
         }
         if openPanels.contains(Self.settingsPanel) {
             if section == .googleCloud {
@@ -687,7 +761,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     }),
                     legacyLaunchAgent: integration.isLegacyLaunchAgentInstalled())
             }
-            if section == .monitor { status.chat = chatStatus() }
+            if section == .monitor {
+                status.chat = chatStatus()
+                drawnChat = status.chat
+            }
             if section == .speakers, config.effectiveSpeakLocal {
                 if voices == nil { voices = parts.voices() }
                 status.voices = voices ?? []
@@ -699,7 +776,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private func chatStatus() -> Pages.Chat {
         let chat = parts.chat
         return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
-                          gwsPath: parts.gwsLocation(), appRunning: parts.isAppRunning())
+                          gwsPath: parts.gwsLocation(), appRunning: parts.isAppRunning(),
+                          monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read())
     }
 
     /// The settings page, after starting what Settings reads by itself:

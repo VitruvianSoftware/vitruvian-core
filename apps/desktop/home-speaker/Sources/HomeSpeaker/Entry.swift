@@ -63,6 +63,21 @@ enum Entry {
             }
         }
 
+        // `--chat-monitor start|stop`: asks the running menu bar app, which
+        // is where the monitor lives, over a distributed notification. This
+        // copy only posts and exits.
+        if let parsed = ChatMonitorControlNotice.parse(Array(arguments)) {
+            switch parsed {
+            case .failure(let usage):
+                FileHandle.standardError.write(Data("error: \(usage.message)\nrun HomeSpeaker --help for usage\n".utf8))
+                exit(AppCommandParser.usageExitCode)
+            case .success(let action):
+                ChatMonitorControlNotice.post(action)
+                print(ChatMonitorControlNotice.askedLine(action))
+                exit(0)
+            }
+        }
+
         // Scriptable announcement: `HomeSpeaker --say "dinner is ready"`.
         // Deliberate, like Quick Announce, so it overrides quiet hours but
         // still honours the master switch. Exit 1 on failure so scripts can tell.
@@ -148,6 +163,8 @@ enum Entry {
               --set-volume <0-100> set it; --mute / --unmute likewise
               --sign-in [--chat]   sign in for Home (or Google Chat)
             \(AppCommandParser.usageLines)
+              --chat-monitor start|stop
+                                   start or stop the chat monitor in the running app
               --claude-stop-hook   Claude Code Stop hook; reads hook JSON on stdin
               --version            print the version
               --help               print this
@@ -238,9 +255,12 @@ enum Entry {
                 print(AnnounceOutcome.noOutputsMessage)
             case .nothingToSay:
                 FileHandle.standardError.write(Data("nothing to say after cleaning up the text\n".utf8))
-            case .announced(let home, let local):
-                if home.didSpeak { print("sent to \(config.defaultDevice?.name ?? "the home speakers")") }
-                if local.didSpeak { print("spoke on this Mac") }
+            case .announced:
+                // Heard here with the home speaker failed is one line that
+                // says both, so the tool, which shows this output, says it.
+                for line in outcome.spokenLines(homeName: config.defaultDevice?.name ?? "the home speakers") {
+                    print(line)
+                }
                 if outcome.anySpoke {
                     let heardOn = outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers")
                     do {

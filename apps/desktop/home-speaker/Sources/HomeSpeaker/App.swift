@@ -48,6 +48,14 @@ struct HomeSpeakerApp: App {
             // And `--sign-in`, or the Vitruvian tool saving a Slack token:
             // re-read the login and start or restart the monitor with it.
             _ = CredentialsChangedNotice.listen(config: ConfigManager.shared, monitor: ChatMonitorService.shared)
+            // Start and Stop from the Vitruvian tool or `--chat-monitor`.
+            _ = ChatMonitorControlNotice.listen(monitor: ChatMonitorService.shared)
+            // A quit says the monitor stopped, so the status file does not
+            // go on saying it runs. (A crash cannot; readers check the app.)
+            _ = NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { ChatMonitorService.shared.stop() }
+            }
         }
     }
 

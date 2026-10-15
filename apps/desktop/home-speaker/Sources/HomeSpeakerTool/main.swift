@@ -71,7 +71,9 @@ let speaker = HomeSpeakerTool(parts: .init(
         guard let bundle = appBundle else { return nil }
         let plist = bundle.bundleURL.appendingPathComponent("Contents/Info.plist")
         return NSDictionary(contentsOf: plist)?["CFBundleShortVersionString"] as? String
-    }))
+    },
+    // Start and Stop under Chat & Slack: the running app does it.
+    controlChatMonitor: { ChatMonitorControlNotice.post($0) }))
 
 link.panels[HomeSpeakerTool.islandPanel] = tool.panel(HomeSpeakerTool.islandPanel, onOpen: { app, _ in
     link.app = app
@@ -97,8 +99,10 @@ tool.onStart = { app in
     link.app = app
     speaker.start()
 }
-// A panel the app closed: the tool stops drawing it.
+// A panel the app closed: the tool stops drawing it. One still open that
+// shows the chat monitor is drawn again when the app says it changed.
 tool.every(seconds: 5) { _ in
     for (id, panel) in link.panels where !panel.isOpen { speaker.panelClosed(id) }
+    speaker.refreshMonitorStatus()
 }
 tool.run()

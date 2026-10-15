@@ -114,7 +114,11 @@ genrule(
 # The built folder through `vitruvian-tool validate` and the conformance
 # script, under a home of its own with no HomeSpeaker in it: the handshake,
 # a command, an unknown command, the island panel opened and tapped,
-# refusals, and a clean exit. It starts the real program.
+# refusals, and a clean exit. Then end to end over the same JSON-RPC, with
+# a stand-in HomeSpeaker program that never speaks: the island and all five
+# settings sections drawn within the protocol's limits, and changes read
+# back from the settings and secrets files in that home. It starts the real
+# program (bin/tool, from :tool-folder below).
 py_test(
     name = "tool_conformance_test",
     size = "medium",
