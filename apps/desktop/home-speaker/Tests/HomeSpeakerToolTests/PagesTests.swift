@@ -59,10 +59,11 @@ final class PagesTests: XCTestCase {
     func testTheIslandPageHasTheFieldTheSwitchesAndTheSpeaker() {
         var status = Pages.Status()
         status.config = configured
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
         status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
         status.quietNow = true
         let page = Pages.island(status)
-        XCTAssertEqual(ids(page), ["say", "broadcasting", "quiet", "mute", "volume", "refresh", "speakers"])
+        XCTAssertEqual(ids(page), ["say", "broadcasting", "quiet", "mute", "volume", "refresh", "speakers", "output.home", "output.local"])
         XCTAssertTrue(texts(page).contains("Kitchen · Volume 40 %"))
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
         guard case .list(let speakers)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no list") }
@@ -77,7 +78,8 @@ final class PagesTests: XCTestCase {
         status.notice = "Sent to Kitchen"
         XCTAssertTrue(texts(Pages.island(status)).contains("Speaking…") && texts(Pages.island(status)).contains("Sent to Kitchen"))
         status.config.defaultTarget = ""
-        XCTAssertEqual(ids(Pages.island(status)), ["say", "broadcasting", "quiet", "speakers"], "no speaker, no volume controls")
+        XCTAssertEqual(ids(Pages.island(status)), ["say", "broadcasting", "quiet", "speakers", "output.home", "output.local"],
+                       "no speaker, no volume controls")
     }
 
     func testTheGeneralSectionDrawsTheFileAsHomeSpeakersPageDoes() {
@@ -167,11 +169,17 @@ final class PagesTests: XCTestCase {
             status.config.targets["speaker\(index)"] = SpeakerDevice(id: "d\(index)", type: "SpeakerDevice",
                                                                       name: String(repeating: "n", count: 60), room: String(repeating: "r", count: 40))
         }
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
         status.notice = String(repeating: "x", count: 300)
         status.configProblem = String(repeating: "p", count: 300)
         status.homes = (0..<80).map { HomeStructure(id: "home\($0)", name: String(repeating: "h", count: 60)) }
         status.voices = (0..<100).map { LocalVoice(id: "com.apple.voice.v\($0)", name: "Voice \($0)", language: "en-US", quality: .enhanced) }
         status.config.effectiveSpeakLocal = true
+        status.recentBroadcasts = (0..<30).map { _ in BroadcastLogItem(text: String(repeating: "m", count: 2_000), targetName: "Kitchen", source: "Say") }
+        status.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true)
+        var setup = status
+        setup.config.targets = [:]
+        setup.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
         var speakers = status
         speakers.section = .speakers
         var choices = speakers
@@ -193,7 +201,7 @@ final class PagesTests: XCTestCase {
         cloud.draftClientId = String(repeating: "d", count: 300)
         cloud.files = Pages.Files(settings: String(repeating: "s", count: 1_000), secrets: String(repeating: "s", count: 1_000),
                                   homeSpeakerVersion: "1.14.0")
-        for tree in [Pages.island(status), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
+        for tree in [Pages.island(status), Pages.island(setup), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
                      Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)

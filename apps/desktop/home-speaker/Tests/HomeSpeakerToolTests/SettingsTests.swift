@@ -58,7 +58,8 @@ final class SettingsTests: XCTestCase {
     private func tool() -> HomeSpeakerTool {
         let voices = self.voices
         return HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: later, account: account,
-                                            voices: { voices }, previewVoice: previewVoice))
+                                            voices: { voices }, previewVoice: previewVoice,
+                                            historyURL: HomeSpeakerToolTests.noHistory))
     }
 
     /// Settings opened, and its one read of the login item answered.

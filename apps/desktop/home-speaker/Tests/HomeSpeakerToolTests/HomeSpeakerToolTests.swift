@@ -26,6 +26,10 @@ import VitruvianToolKit
 import VitruvianToolProtocol
 
 final class HomeSpeakerToolTests: XCTestCase {
+    /// A history file that is never there: the tests never read this
+    /// Mac's `~/.gemini/speaker_history.json`.
+    static let noHistory = URL(fileURLWithPath: "/nonexistent/homespeaker-tool-tests/speaker_history.json")
+
     final class Link: ToolLink {
         var rendered: [(panel: String, tree: UITree)] = []
         var messages: [String] = []
@@ -128,7 +132,8 @@ final class HomeSpeakerToolTests: XCTestCase {
     }
 
     private func tool() -> HomeSpeakerTool {
-        HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, now: { [now] in now }))
+        HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, now: { [now] in now },
+                                     historyURL: Self.noHistory))
     }
 
     func testStartReadsTheVolumeOnceAndSaysWhenHomeSpeakerIsMissing() {
