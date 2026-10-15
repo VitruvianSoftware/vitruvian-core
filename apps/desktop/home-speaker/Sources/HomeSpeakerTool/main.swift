@@ -60,7 +60,11 @@ let speaker = HomeSpeakerTool(parts: .init(
     later: { work in waker.later { _ in work() } },
     account: SecretStoreAccount(bundle: appBundle ?? .main),
     voices: { LocalSpeaker.shared.englishVoices() },
-    previewVoice: { voice in try await LocalSpeaker.shared.speak(Pages.previewText, voiceID: voice) }))
+    previewVoice: { voice in try await LocalSpeaker.shared.speak(Pages.previewText, voiceID: voice) },
+    chat: SecretStoreChatCredentials(),
+    gwsLocation: { GwsChatClient.locate() },
+    isAppRunning: { ProcessDriver.isAppRunning() },
+    credentialsChanged: { CredentialsChangedNotice.post() }))
 
 link.panels[HomeSpeakerTool.islandPanel] = tool.panel(HomeSpeakerTool.islandPanel, onOpen: { app, _ in
     link.app = app

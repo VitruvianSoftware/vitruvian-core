@@ -124,6 +124,33 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(Pages.outputsFooter(status.config).contains("Both speak at the same time"), true)
     }
 
+    func testTheChatAndSlackSectionDrawsEachBranch() {
+        var status = Pages.Status()
+        status.section = .monitor
+        // Nothing on, nothing saved, nothing installed.
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "googleChatEnabled", "chatSource",
+                                                    "grantChat", "muteOwnMessages", "pollInterval"])
+        // A token saved, Chat granted, gws there.
+        status.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", appRunning: true)
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "clearSlackToken", "googleChatEnabled",
+                                                    "chatSource", "disconnectChat", "gwsAccount", "muteOwnMessages", "pollInterval"])
+        XCTAssertTrue(texts(Pages.settings(status)).contains("Slack token saved · "))
+        XCTAssertTrue(texts(Pages.settings(status)).contains("HomeSpeaker is running · "))
+        // The API only, or gws only.
+        status.config.effectiveChatMonitor.googleChatSource = .api
+        XCTAssertFalse(ids(Pages.settings(status)).contains("gwsAccount"))
+        status.config.effectiveChatMonitor.googleChatSource = .gws
+        XCTAssertFalse(ids(Pages.settings(status)).contains("disconnectChat"))
+        XCTAssertTrue(ids(Pages.settings(status)).contains("gwsAccount"))
+        // Sources on with a problem: a warning row, with no id to tap.
+        status.chat.hasSlackToken = false
+        status.config.effectiveChatMonitor.slackEnabled = true
+        XCTAssertTrue(texts(Pages.settings(status)).contains("\(ChatMonitorError.slackTokenMissing.localizedDescription) · "))
+        XCTAssertEqual(Pages.chatSourceTitle(.auto), "Automatic")
+        XCTAssertEqual(Pages.chatSourceTitle(.api), "Google API (this app's login)")
+        XCTAssertEqual(Pages.chatSourceTitle(.gws), "gws command-line tool")
+    }
+
     func testEverySetupJobHasABusyLine() {
         let jobs: [Job] = [.signIn(chatOnly: false), .app(.signOut(chatOnly: false)), .app(.discover(save: false, home: nil)),
                            .app(.discover(save: true, home: "h")), .app(.loginItem(.status)), .app(.loginItem(.enable)),
@@ -133,7 +160,7 @@ final class PagesTests: XCTestCase {
         XCTAssertFalse([Job.say("x"), .volume, .setVolume(3), .mute, .unmute].contains(where: \.isSetup))
     }
 
-    func testBothPagesAreWithinTheProtocolsLimits() throws {
+    func testEveryPageAndSectionIsWithinTheProtocolsLimits() throws {
         var status = Pages.Status()
         status.config = configured
         for index in 0..<40 {
@@ -149,7 +176,11 @@ final class PagesTests: XCTestCase {
         speakers.section = .speakers
         var choices = speakers
         choices.offersChoice = true
-        for tree in [Pages.island(status), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices)] {
+        var monitor = choices
+        monitor.section = .monitor
+        monitor.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true)
+        for tree in [Pages.island(status), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
+                     Pages.settings(monitor)] {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
         }

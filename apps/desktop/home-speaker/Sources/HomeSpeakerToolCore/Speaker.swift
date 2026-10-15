@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import AppKit
 import Foundation
 import HomeSpeakerCore
 
@@ -100,6 +101,21 @@ public final class ProcessDriver: SpeakerDriver {
 
     public init(binary: URL?) {
         self.binary = binary
+    }
+
+    /// HomeSpeaker.app is running as an app: a process with its bundle id
+    /// whose activation policy is not `.prohibited`. The menu bar app is
+    /// `.accessory`; its short-lived command-line runs (`--say`, `--volume`,
+    /// the tool's own jobs) carry the same bundle id but never become apps,
+    /// and must not count, or a `--volume` read would say it is running.
+    public static func isAppRunning(_ apps: [(bundleIdentifier: String?, activationPolicy: NSApplication.ActivationPolicy)]) -> Bool {
+        apps.contains { $0.bundleIdentifier == bundleID && $0.activationPolicy != .prohibited }
+    }
+
+    /// `isAppRunning(_:)` over this Mac's running applications.
+    public static func isAppRunning() -> Bool {
+        isAppRunning(NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .map { ($0.bundleIdentifier, $0.activationPolicy) })
     }
 
     public var isInstalled: Bool { binary != nil }

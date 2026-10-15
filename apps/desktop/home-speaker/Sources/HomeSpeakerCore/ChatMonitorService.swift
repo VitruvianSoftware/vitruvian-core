@@ -333,6 +333,23 @@ extension ChatMonitorService {
             return .none(.noGoogleChatSource)
         }
     }
+
+    /// What stops a switched-on source from running, Slack first: the
+    /// rules `start()` applies, as a pure function, so the app and the
+    /// Vitruvian tool's Settings say the same thing. Empty when every source
+    /// that is on can run, and when every source is off.
+    nonisolated public static func setupProblems(
+        config: ChatMonitorConfig, hasSlackToken: Bool, hasChatScopes: Bool, gwsInstalled: Bool
+    ) -> [ChatMonitorError] {
+        var problems: [ChatMonitorError] = []
+        if config.slackEnabled, !hasSlackToken { problems.append(.slackTokenMissing) }
+        if config.googleChatEnabled,
+           case .none(let why) = chooseChatSource(
+               preference: config.googleChatSource, hasChatScopes: hasChatScopes, gwsInstalled: gwsInstalled) {
+            problems.append(why)
+        }
+        return problems
+    }
 }
 
 // MARK: - Service
@@ -375,7 +392,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     /// Kept apart from per-poll errors because they do not go away on their
     /// own: a clean Google Chat poll says nothing about a Slack token that
     /// was never saved.
-    private var setupProblems: [String] = []
+    private var startProblems: [String] = []
     @Published public var slackUser: String?
     /// Which Google Chat reader is active while running ("api" / "gws").
     @Published public var googleChatVia: String?
@@ -415,21 +432,20 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             return
         }
         let s = secrets.load()
-        var problems: [String] = []
+        let slackToken = s.slackToken.flatMap { $0.isEmpty ? nil : $0 }
+        let hasScopes = s.hasChatAccess
+        // Only looked for with Google Chat on, as before.
+        let gwsPath = cfg.googleChatEnabled ? GwsChatClient.locate() : nil
+        let problems = Self.setupProblems(
+            config: cfg, hasSlackToken: slackToken != nil, hasChatScopes: hasScopes, gwsInstalled: gwsPath != nil)
 
         slack = nil
-        if cfg.slackEnabled {
-            if let token = s.slackToken, !token.isEmpty {
-                slack = SlackClient(token: token)
-            } else {
-                problems.append(ChatMonitorError.slackTokenMissing.localizedDescription)
-            }
+        if cfg.slackEnabled, let slackToken {
+            slack = SlackClient(token: slackToken)
         }
         chat = nil
         googleChatVia = nil
         if cfg.googleChatEnabled {
-            let hasScopes = s.hasChatAccess
-            let gwsPath = GwsChatClient.locate()
             switch Self.chooseChatSource(preference: cfg.googleChatSource, hasChatScopes: hasScopes, gwsInstalled: gwsPath != nil) {
             case .api:
                 chat = GoogleChatClient()
@@ -437,15 +453,15 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             case .gws:
                 chat = GwsChatClient(executable: gwsPath ?? "gws", account: cfg.gwsAccount)
                 googleChatVia = "gws"
-            case .none(let why):
-                problems.append(why.localizedDescription)
+            case .none:
+                break // in `problems` already
             }
             // Own-message muting needs the Google user id, which only an API
             // sign-in provides; via gws alone it stays unknown.
             chatOwnId = (s.googleChat?.userId ?? s.google?.userId).map { "users/\($0)" }
         }
-        setupProblems = problems
-        lastError = Self.combinedError(setup: problems, poll: [])
+        startProblems = problems.map { $0.localizedDescription }
+        lastError = Self.combinedError(setup: startProblems, poll: [])
         guard slack != nil || chat != nil else { return }
 
         slackAfter = Date().timeIntervalSince1970
@@ -520,7 +536,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         }
 
         lastPollTime = Date()
-        lastError = Self.combinedError(setup: setupProblems, poll: errors)
+        lastError = Self.combinedError(setup: startProblems, poll: errors)
 
         let config = configManager.config
         guard config.enabled else { return }
@@ -539,7 +555,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             let failures = outcome.failureMessages
             if !failures.isEmpty {
                 errors.append(contentsOf: failures)
-                lastError = Self.combinedError(setup: setupProblems, poll: errors)
+                lastError = Self.combinedError(setup: startProblems, poll: errors)
             }
         }
         if seen.count > 500 { seen.removeAll() }

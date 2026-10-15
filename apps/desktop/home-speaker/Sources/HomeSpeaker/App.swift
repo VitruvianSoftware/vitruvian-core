@@ -45,6 +45,9 @@ struct HomeSpeakerApp: App {
             // `HomeSpeaker --sign-out` runs as another process; without
             // this the menu bar kept showing "Connected" and kept polling.
             _ = SignOutNotice.listen(config: ConfigManager.shared, monitor: ChatMonitorService.shared)
+            // And `--sign-in`, or the Vitruvian tool saving a Slack token:
+            // re-read the login and start or restart the monitor with it.
+            _ = CredentialsChangedNotice.listen(config: ConfigManager.shared, monitor: ChatMonitorService.shared)
         }
     }
 

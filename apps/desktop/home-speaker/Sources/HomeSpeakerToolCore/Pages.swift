@@ -28,12 +28,13 @@ import VitruvianToolProtocol
 public enum Pages {
     /// The parts of the settings panel, one shown at a time.
     public enum Section: String, CaseIterable, Sendable {
-        case general, speakers
+        case general, speakers, monitor
 
         public var title: String {
             switch self {
             case .general: return "General"
             case .speakers: return "Speakers"
+            case .monitor: return "Chat & Slack"
             }
         }
     }
@@ -50,6 +51,25 @@ public enum Pages {
             self.email = email
             self.hasOAuthClient = hasOAuthClient
             self.hasAntigravityTokens = hasAntigravityTokens
+        }
+    }
+
+    /// The Chat & Slack credentials and surroundings, as Settings shows
+    /// them: whether a Slack token is saved, never the token.
+    public struct Chat: Equatable, Sendable {
+        public var hasSlackToken = false
+        /// The Google Chat login exists with every Chat scope.
+        public var hasChatAccess = false
+        /// Where the `gws` command is; nil when it is not installed.
+        public var gwsPath: String?
+        /// HomeSpeaker.app is running, and so can read messages.
+        public var appRunning = false
+
+        public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, appRunning: Bool = false) {
+            self.hasSlackToken = hasSlackToken
+            self.hasChatAccess = hasChatAccess
+            self.gwsPath = gwsPath
+            self.appRunning = appRunning
         }
     }
 
@@ -85,6 +105,7 @@ public enum Pages {
         public var previewing = false
         /// A tap on a speaker removes it, rather than making it the default.
         public var removingSpeakers = false
+        public var chat = Chat()
 
         public init() {}
     }
@@ -124,6 +145,16 @@ public enum Pages {
         public static let editSpeakers = "editSpeakers"
         public static let voice = "voice"
         public static let previewVoice = "previewVoice"
+        public static let slackEnabled = "slackEnabled"
+        public static let slackToken = "slackToken"
+        public static let clearSlackToken = "clearSlackToken"
+        public static let googleChatEnabled = "googleChatEnabled"
+        public static let chatSource = "chatSource"
+        public static let grantChat = "grantChat"
+        public static let disconnectChat = "disconnectChat"
+        public static let gwsAccount = "gwsAccount"
+        public static let muteOwnMessages = "muteOwnMessages"
+        public static let pollInterval = "pollInterval"
     }
 
     // MARK: - The island page
@@ -218,6 +249,7 @@ public enum Pages {
             switch status.section {
             case .general: general(status)
             case .speakers: speakers(status)
+            case .monitor: monitor(status)
             }
         }
     }
@@ -287,7 +319,7 @@ public enum Pages {
             field(Block.quietStart, title: "From (HH:mm)", value: config.quietHoursStart ?? "22:00")
             field(Block.quietEnd, title: "Until (HH:mm)", value: config.quietHoursEnd ?? "07:00")
             text("Automated announcements are held during quiet hours. What you type yourself still plays.", style: .caption)
-            text("The Slack and Google Chat monitors and the coding-agent hooks are set up in HomeSpeaker.", style: .caption)
+            text("The coding-agent hooks and your own Google Cloud OAuth client are set up in HomeSpeaker.", style: .caption)
         }.blocks
     }
 
@@ -357,6 +389,100 @@ public enum Pages {
             }
             let footer = outputsFooter(config)
             if !footer.isEmpty { text(UIText.plain(footer), style: .caption) }
+        }.blocks
+    }
+
+    /// What "Read Google Chat via" offers, in the app's words.
+    public static func chatSourceTitle(_ source: ChatMonitorConfig.GoogleChatSource) -> String {
+        switch source {
+        case .auto: return "Automatic"
+        case .api: return "Google API (this app's login)"
+        case .gws: return "gws command-line tool"
+        }
+    }
+
+    public static var pollIntervalTitle: String {
+        "Poll interval (\(ChatMonitorConfig.minPollInterval) to \(ChatMonitorConfig.maxPollInterval) s)"
+    }
+
+    /// Why a source that is on cannot run, by the rules the chat monitor
+    /// starts by. Nothing while every source is off.
+    public static func monitorProblems(_ status: Status) -> [ChatMonitorError] {
+        let monitor = status.config.effectiveChatMonitor
+        guard monitor.anySourceEnabled else { return [] }
+        return ChatMonitorService.setupProblems(config: monitor, hasSlackToken: status.chat.hasSlackToken,
+                                                hasChatScopes: status.chat.hasChatAccess, gwsInstalled: status.chat.gwsPath != nil)
+    }
+
+    /// Chat & Slack, as HomeSpeaker's tab of that name: what reads the
+    /// messages, the two sources and their credentials, and the options.
+    /// The Slack token field is always empty: a token goes in, and only
+    /// whether one is saved comes back out.
+    static func monitor(_ status: Status) -> [UIBlock] {
+        let monitor = status.config.effectiveChatMonitor
+        let chat = status.chat
+        let canRun = status.installed && status.setupBusy == nil
+        return UITree {
+            heading("Background Monitoring")
+            if chat.appRunning {
+                row(nil, "HomeSpeaker is running", icon: "bolt.fill")
+            } else {
+                row(nil, "HomeSpeaker is not running", icon: "moon.fill")
+            }
+            text("HomeSpeaker reads new messages in the background while Slack or Google Chat is on, and announces them on your speakers. Nothing is sent anywhere except to Google Home.",
+                 style: .caption)
+            if !chat.appRunning && monitor.anySourceEnabled {
+                text("Open HomeSpeaker to start: it is what reads the messages.", style: .caption)
+            }
+            for problem in monitorProblems(status) {
+                row(nil, UIText.plain(problem.localizedDescription), icon: "exclamationmark.triangle.fill")
+            }
+
+            heading("Slack")
+            toggle(Block.slackEnabled, "Announce Slack messages", isOn: monitor.slackEnabled)
+            field(Block.slackToken, title: "User token (xoxp-…)", value: "",
+                  placeholder: chat.hasSlackToken ? "Paste a new token to replace it" : "Paste the token and press Return",
+                  kind: .secret)
+            if chat.hasSlackToken {
+                row(nil, "Slack token saved", icon: "checkmark.circle.fill")
+                button(Block.clearSlackToken, "Clear Slack Token")
+            } else {
+                row(nil, "No Slack token saved", icon: "exclamationmark.circle")
+            }
+            text("Create a Slack app with the search:read user scope and paste its user token. The token is stored only on this Mac.",
+                 style: .caption)
+
+            heading("Google Chat")
+            toggle(Block.googleChatEnabled, "Announce Google Chat messages", isOn: monitor.googleChatEnabled)
+            picker(Block.chatSource, title: "Read Google Chat via", value: monitor.googleChatSource.rawValue,
+                   options: ChatMonitorConfig.GoogleChatSource.allCases.map {
+                       UIChoiceOption(value: $0.rawValue, title: UIText.plain(chatSourceTitle($0)))
+                   },
+                   choice: status.offersChoice)
+            if monitor.googleChatSource != .gws {
+                if chat.hasChatAccess {
+                    row(nil, "Chat access granted", icon: "checkmark.circle.fill")
+                    button(Block.disconnectChat, "Disconnect", enabled: canRun)
+                } else {
+                    text("Google grants Chat access separately from Home — a second sign-in.", style: .caption)
+                    button(Block.grantChat, "Grant…", enabled: canRun)
+                }
+            }
+            if monitor.googleChatSource != .api {
+                if let path = chat.gwsPath {
+                    row(nil, "gws is installed", subtitle: UIText.plain(path), icon: "checkmark.circle.fill")
+                    text("gws must be signed in: run gws auth login in Terminal.", style: .caption)
+                    field(Block.gwsAccount, title: "gws account (optional, e.g. you@gmail.com)", value: monitor.gwsAccount)
+                } else {
+                    text("gws is not installed. Install the Google Workspace CLI and run gws auth login to use it.", style: .caption)
+                }
+            }
+            text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.",
+                 style: .caption)
+
+            heading("Options")
+            toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: monitor.muteOwnMessages)
+            field(Block.pollInterval, title: UIText.plain(pollIntervalTitle), value: String(monitor.clampedPollInterval), kind: .number)
         }.blocks
     }
 

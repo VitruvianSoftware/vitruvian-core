@@ -67,11 +67,26 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         public var voices: () -> [LocalVoice]
         /// Says `Pages.previewText` on this Mac in the voice with this id.
         public var previewVoice: @Sendable (String) async throws -> Void
+        /// The Slack token and Google Chat access: whether there are any,
+        /// never a token.
+        public var chat: ChatCredentials
+        /// Where the `gws` command is (`GwsChatClient.locate()`); nil when
+        /// it is not installed.
+        public var gwsLocation: () -> String?
+        /// HomeSpeaker.app is running as an app, so it reads messages
+        /// (`ProcessDriver.isAppRunning()`).
+        public var isAppRunning: () -> Bool
+        /// Tells a running HomeSpeaker that a login or token changed
+        /// (`CredentialsChangedNotice.post()`), so it re-reads them and
+        /// starts or restarts its chat monitor.
+        public var credentialsChanged: () -> Void
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
                     later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
                     account: GoogleAccount = NoGoogleAccount(), voices: @escaping () -> [LocalVoice] = { [] },
-                    previewVoice: @escaping @Sendable (String) async throws -> Void = { _ in }) {
+                    previewVoice: @escaping @Sendable (String) async throws -> Void = { _ in },
+                    chat: ChatCredentials = NoChatCredentials(), gwsLocation: @escaping () -> String? = { nil },
+                    isAppRunning: @escaping () -> Bool = { false }, credentialsChanged: @escaping () -> Void = {}) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -80,6 +95,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.account = account
             self.voices = voices
             self.previewVoice = previewVoice
+            self.chat = chat
+            self.gwsLocation = gwsLocation
+            self.isAppRunning = isAppRunning
+            self.credentialsChanged = credentialsChanged
         }
     }
 
@@ -236,6 +255,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 try setupJob(.app(.signOut(chatOnly: false)))
             case Pages.Block.importAntigravity?:
                 try importAntigravity()
+            case Pages.Block.slackToken?:
+                // Return only: leaving the field half-typed saves nothing.
+                guard event.kind == .submit, let text = event.text else { return .keep }
+                try saveSlackToken(text)
+            case Pages.Block.clearSlackToken?:
+                try saveSlackToken("")
+            case Pages.Block.grantChat?:
+                try setupJob(.signIn(chatOnly: true))
+            case Pages.Block.disconnectChat?:
+                try setupJob(.app(.signOut(chatOnly: true)))
             case Pages.Block.loginItem?:
                 guard let isOn = event.isOn else { return .keep }
                 try setupJob(.app(.loginItem(isOn ? .enable : .disable)))
@@ -253,7 +282,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 preview()
             case Pages.Block.broadcasting?, Pages.Block.speechLength?, Pages.Block.speakHome?, Pages.Block.speakLocal?,
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
-                 Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?:
+                 Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
+                 Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
+                 Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?:
                 guard change(event, picked: picked) else { return .keep }
                 do {
                     try save()
@@ -322,6 +353,26 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.voice?:
             guard let picked, !picked.isEmpty else { return false }
             config.effectiveLocalVoice = picked
+        // Chat & Slack: the app follows the file and starts, stops or
+        // restarts its monitor to match (ChatMonitorReconciliation).
+        case Pages.Block.slackEnabled?:
+            guard let isOn = event.isOn else { return false }
+            config.effectiveChatMonitor.slackEnabled = isOn
+        case Pages.Block.googleChatEnabled?:
+            guard let isOn = event.isOn else { return false }
+            config.effectiveChatMonitor.googleChatEnabled = isOn
+        case Pages.Block.chatSource?:
+            guard let picked, let source = ChatMonitorConfig.GoogleChatSource(rawValue: picked) else { return false }
+            config.effectiveChatMonitor.googleChatSource = source
+        case Pages.Block.gwsAccount?:
+            guard let text = event.text else { return false }
+            config.effectiveChatMonitor.gwsAccount = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        case Pages.Block.muteOwnMessages?:
+            guard let isOn = event.isOn else { return false }
+            config.effectiveChatMonitor.muteOwnMessages = isOn
+        case Pages.Block.pollInterval?:
+            guard let text = event.text, let seconds = Int(text.trimmingCharacters(in: .whitespaces)) else { return false }
+            config.effectiveChatMonitor.pollIntervalSeconds = Self.clampedPollInterval(seconds)
         default:
             return false
         }
@@ -379,6 +430,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case (_, .loginItem(let state, let problem)):
             loginItem = state
             if let problem { setupNotice = problem.capitalizingFirst }
+        case (.signIn(chatOnly: true), .done):
+            // HomeSpeaker's `--sign-in --chat` told the running app itself.
+            setupNotice = "Google Chat access granted"
+        case (.app(.signOut(chatOnly: true)), .done(let lines)):
+            setupNotice = lines.first?.capitalizingFirst ?? "Signed out of Google Chat"
         case (.signIn, .done):
             let email = parts.account.email
             setupNotice = "Signed in" + (email.map { " as \($0)" } ?? "")
@@ -434,6 +490,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             let account = parts.account
             status.account = Pages.Account(isSignedIn: account.isSignedIn, email: account.email,
                                            hasOAuthClient: account.hasOAuthClient, hasAntigravityTokens: account.hasAntigravityTokens)
+            if section == .monitor {
+                let chat = parts.chat
+                status.chat = Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
+                                         gwsPath: parts.gwsLocation(), appRunning: parts.isAppRunning())
+            }
             if section == .speakers, config.effectiveSpeakLocal {
                 if voices == nil { voices = parts.voices() }
                 status.voices = voices ?? []
@@ -469,9 +530,31 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             throw CommandRefused("no Google Home login found in the Antigravity token file")
         }
         setupNotice = "Imported the Antigravity Google Home login"
+        parts.credentialsChanged()
         homes = nil
         askedHomes = false
         if !config.hasSpeakers, parts.driver.isInstalled, setupBusy == nil { try discover() }
+    }
+
+    /// Saves the Slack token typed, trimmed; nothing typed clears it. The
+    /// token goes to the secrets file and nowhere else -- not the page, not
+    /// a notice -- and a running HomeSpeaker is told, so a monitor waiting
+    /// for a token starts.
+    private func saveSlackToken(_ typed: String) throws {
+        let token = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if token.isEmpty {
+            try parts.chat.clearSlackToken()
+            setupNotice = "Slack token cleared"
+        } else {
+            try parts.chat.saveSlackToken(token)
+            setupNotice = "Slack token saved"
+        }
+        parts.credentialsChanged()
+    }
+
+    /// A poll interval the chat monitor accepts.
+    public static func clampedPollInterval(_ seconds: Int) -> Int {
+        min(max(seconds, ChatMonitorConfig.minPollInterval), ChatMonitorConfig.maxPollInterval)
     }
 
     /// Speaks the preview on this Mac, in the tool's own process: it needs
