@@ -67,7 +67,11 @@ there, on every start ("Incorrect actor executor assumption"), because its
 main thread had left for `dispatchMain()`. Beeper is read from a stand-in
 Beeper Desktop this test serves on 127.0.0.1 at a port of its own (never
 Beeper's real 23373, which is checked), named by `HOMESPEAKER_BEEPER_URL` as
-`http://localhost:<port>`, with a made-up token. The program must still be
+`http://localhost:<port>`, with a made-up token. The stand-in serves 51
+made-up messages 20 a page, as Beeper does, so the program must page by
+cursor to reach them all, and must ask for no more than 20 at a time; the
+program handles every message (nothing is spoken: broadcasting is off). The
+program must still be
 running and answering after it has polled more than once, its monitor must
 have written that it runs, which Beeper networks it reads, and that it
 skips Beeper's Slack (Slack is on and its workspace unknown); the stand-in
@@ -83,6 +87,7 @@ settings and no Slack token exists, so nothing is spoken, and nothing is
 fetched but from the stand-in.
 """
 
+import datetime
 import http.server
 import importlib.util
 import json
@@ -93,6 +98,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import uuid
 
 # The five sections of the settings panel (Pages.Section), in order.
@@ -553,6 +559,78 @@ BEEPER_ACCOUNTS = [
 ]
 BEEPER_READS = ["Google Messages", "Signal", "WhatsApp"]
 BEEPER_SKIPS = ["Slack"]
+# The most messages a page holds, as Beeper serves them.
+BEEPER_PAGE = 20
+# The chats the made-up messages are in.
+BEEPER_CHATS = {
+    "wa-dm": {"id": "wa-dm", "type": "single", "title": "Alice", "network": "WhatsApp"},
+    "sig-family": {
+        "id": "sig-family",
+        "type": "group",
+        "title": "Family",
+        "network": "Signal",
+    },
+    "slack-dm": {
+        "id": "slack-dm",
+        "type": "single",
+        "title": "Dee",
+        "network": "Slack",
+    },
+}
+
+
+def beeper_messages(start):
+    """Made-up messages in the second after `start` (the first search's
+    `dateAfter`, which is when the monitor started): one WhatsApp DM, older
+    than a page of Slack (skipped, since Slack is on) and a page of group
+    chat without a mention, so it is only reached by paging."""
+
+    def message(mid, chat, account, sender, seconds_after, text):
+        stamp = start + datetime.timedelta(seconds=seconds_after)
+        return {
+            "id": mid,
+            "chatID": chat,
+            "accountID": account,
+            "senderID": f"@{sender.lower()}:fake.test",
+            "senderName": sender,
+            "timestamp": stamp.strftime("%Y-%m-%dT%H:%M:%S.")
+            + f"{stamp.microsecond // 1000:03d}Z",
+            "type": "TEXT",
+            "text": text,
+            "isSender": False,
+            "isHidden": False,
+            "isDeleted": False,
+            "mentions": None,
+        }
+
+    out = [
+        message(
+            "dm", "wa-dm", "local-whatsapp_ba_FAKE", "Alice", 0.01, "behind the others"
+        )
+    ]
+    out += [
+        message(
+            f"s{n}",
+            "slack-dm",
+            "slackgo.TFAKE-UFAKE",
+            "Dee",
+            0.5 + n / 100,
+            f"busy {n}",
+        )
+        for n in range(25)
+    ]
+    out += [
+        message(
+            f"g{n}",
+            "sig-family",
+            "local-signal_FAKE",
+            "Bob",
+            0.2 + n / 100,
+            f"chat {n}",
+        )
+        for n in range(25)
+    ]
+    return out
 
 
 class StandInBeeper:
@@ -564,6 +642,8 @@ class StandInBeeper:
     def __init__(self):
         self.requests = []
         self.lock = threading.Lock()
+        # Made at the first search, after the monitor started.
+        self.messages = None
         stand_in = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -572,21 +652,20 @@ class StandInBeeper:
 
             def answer(self):
                 auth = self.headers.get("Authorization", "")
+                path, _, query_text = self.path.partition("?")
+                query = dict(urllib.parse.parse_qsl(query_text))
                 with stand_in.lock:
-                    stand_in.requests.append(
-                        (self.command, self.path.split("?")[0], auth)
-                    )
+                    stand_in.requests.append((self.command, path, auth, query))
                 if self.command != "GET":
                     return self.send(405, {"message": "method not allowed"})
                 if auth != f"Bearer {FAKE_BEEPER_TOKEN}":
                     return self.send(
                         401, {"message": "Unauthorized", "code": "unauthorized"}
                     )
-                path = self.path.split("?")[0]
                 if path == "/v1/accounts":
                     return self.send(200, BEEPER_ACCOUNTS)
                 if path == "/v1/messages/search":
-                    return self.send(200, {"items": [], "hasMore": False, "chats": {}})
+                    return self.send(*stand_in.page(query))
                 return self.send(404, {"message": "not found"})
 
             def send(self, status, body):
@@ -612,6 +691,47 @@ class StandInBeeper:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
+    def page(self, query):
+        """One page of the messages after `dateAfter`, newest first, at
+        most `limit` (no more than 20), with `hasMore` and cursors: offsets
+        into that order, carried on with `direction=before`."""
+        try:
+            limit = int(query.get("limit", BEEPER_PAGE))
+        except ValueError:
+            limit = 0
+        if not 1 <= limit <= BEEPER_PAGE:
+            return 400, {"message": f"limit must be 1 to {BEEPER_PAGE}"}
+        with self.lock:
+            if self.messages is None:
+                start = datetime.datetime.strptime(
+                    query.get("dateAfter", ""), "%Y-%m-%dT%H:%M:%S.%fZ"
+                ).replace(tzinfo=datetime.timezone.utc)
+                self.messages = beeper_messages(start)
+            messages = list(self.messages)
+        after = query.get("dateAfter", "")
+        # ISO 8601 in UTC with milliseconds sorts as text.
+        matching = sorted(
+            (m for m in messages if m["timestamp"] > after),
+            key=lambda m: m["timestamp"],
+            reverse=True,
+        )
+        offset = 0
+        if "cursor" in query:
+            if query.get("direction") != "before" or not query["cursor"].startswith(
+                "c"
+            ):
+                return 400, {"message": "bad cursor"}
+            offset = int(query["cursor"][1:])
+        items = matching[offset : offset + limit]
+        end = offset + len(items)
+        return 200, {
+            "items": items,
+            "hasMore": end < len(matching),
+            "oldestCursor": f"c{end}",
+            "newestCursor": f"c{offset}",
+            "chats": BEEPER_CHATS,
+        }
+
     @property
     def url(self):
         # localhost, as HomeSpeaker writes Beeper's own address: App
@@ -624,6 +744,10 @@ class StandInBeeper:
 
     def searches(self):
         return [r for r in self.seen() if r[1] == "/v1/messages/search"]
+
+    def polls(self):
+        """The searches that began a poll: no cursor."""
+        return [r for r in self.searches() if "cursor" not in r[3]]
 
     def stop(self):
         self.server.shutdown()
@@ -726,10 +850,10 @@ def monitor_starts(conf, folder, scratch):
             errors,
             status,
             "with the stand-in Beeper",
-            lambda: len(beeper.searches()) >= 2,
+            lambda: len(beeper.polls()) >= 2,
             lambda: (
                 f"the monitor never polled the stand-in Beeper twice in {POLLS_WITHIN_SECONDS} s; "
-                f"it was asked {[(m, p) for m, p, _ in beeper.seen()]!r}"
+                f"it was asked {[(m, p) for m, p, _, _ in beeper.seen()]!r}"
             ),
         )
         with open(status, encoding="utf-8") as handle:
@@ -751,11 +875,24 @@ def monitor_starts(conf, folder, scratch):
         if wrong:
             raise E2EFailure(
                 "the stand-in Beeper was asked with another method or without the made-up "
-                f"token: {[(m, p) for m, p, _ in wrong]!r}"
+                f"token: {[(m, p) for m, p, _, _ in wrong]!r}"
+            )
+        searches = beeper.searches()
+        if any(q.get("limit") != str(BEEPER_PAGE) for _, _, _, q in searches):
+            raise E2EFailure(
+                f"a search asked for more than {BEEPER_PAGE}: {[q for _, _, _, q in searches]!r}"
+            )
+        # 51 messages, 20 a page: each poll reads three pages.
+        paged = [q for _, _, _, q in searches if "cursor" in q]
+        if len(paged) < 2:
+            raise E2EFailure(
+                "the monitor did not page through the stand-in's 51 messages: "
+                f"{[q for _, _, _, q in searches]!r}"
             )
         said.append(
             f"the stand-in Beeper was asked {len(asked)} times, every time a GET with the "
-            f"made-up token: {sorted({p for _, p, _ in asked})}; plain HTTP to localhost is allowed"
+            f"made-up token: {sorted({p for _, p, _, _ in asked})}; {len(beeper.polls())} polls, "
+            f"{len(paged)} further pages by cursor; plain HTTP to localhost is allowed"
         )
     finally:
         beeper.stop()
