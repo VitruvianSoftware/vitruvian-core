@@ -225,12 +225,29 @@ public enum AppCommandRunner {
     /// `notify` tells a running app (the command line posts `SignOutNotice`
     /// under its profile's names; the default does nothing, so tests never
     /// reach a real running app).
+    ///
+    /// `revoke` says, per login, whether signing out also ends it at
+    /// Google. It is false only for a login the other HomeSpeaker holds too
+    /// (`HomeSpeakerEngine.signOut`), so signing this one out never signs
+    /// the other out; every other login is revoked, as always. When every
+    /// login gets the same answer, it is one sign-out of all of them, as it
+    /// always was; otherwise one sign-out per login.
     public static func signOut(
-        chatOnly: Bool, auth: GoogleSigningOut, signedIn: @Sendable () -> Set<GoogleAuth.Purpose>,
+        chatOnly: Bool, revoke: @Sendable (GoogleAuth.Purpose) -> Bool = { _ in true },
+        auth: GoogleSigningOut, signedIn: @Sendable () -> Set<GoogleAuth.Purpose>,
         notify: @Sendable (_ chatOnly: Bool) -> Void = { _ in }
     ) async -> CLIOutput {
         let purposes: Set<GoogleAuth.Purpose> = chatOnly ? [.chat] : Set(GoogleAuth.Purpose.allCases)
-        await auth.signOut(purpose: chatOnly ? .chat : nil, revoke: true)
+        if chatOnly {
+            await auth.signOut(purpose: .chat, revoke: revoke(.chat))
+        } else {
+            let answers = GoogleAuth.Purpose.allCases.map { ($0, revoke($0)) }
+            if Set(answers.map(\.1)).count == 1 {
+                await auth.signOut(purpose: nil, revoke: answers[0].1)
+            } else {
+                for (purpose, revokes) in answers { await auth.signOut(purpose: purpose, revoke: revokes) }
+            }
+        }
         let left = signedIn().intersection(purposes)
         guard left.isEmpty else {
             return .failure("still signed in for \(left.map(\.rawValue).sorted().joined(separator: " and ")); the sign-in store could not be updated")

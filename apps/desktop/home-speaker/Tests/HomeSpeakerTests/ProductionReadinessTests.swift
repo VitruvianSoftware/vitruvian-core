@@ -873,3 +873,18 @@ private final class SentinelClass {}
         #expect(dict["CFBundleIdentifier"] as? String == "com.vitruviansoftware.homespeaker")
     }
 }
+
+@Suite struct TheAppIsNeverDeletedTests {
+    /// Closing the app moves it to the Trash and nothing else (design 7.4):
+    /// the person can always put it back. Its stand-in tests see each call
+    /// through the file manager they hand in; this catches a delete that
+    /// goes around it, by any of the ways a file can be removed.
+    @Test func closingTheAppHasNoWayToDelete() throws {
+        let file = packageRoot().appendingPathComponent("Sources/HomeSpeakerToolCore/OtherApp.swift")
+        let text = try String(contentsOf: file, encoding: .utf8)
+        for delete in ["removeItem", "unlink(", "rmdir(", "remove(", "removefile", "DestroyOperation", "emptyTrash", "rm -"] {
+            #expect(!text.contains(delete), "OtherApp.swift can delete (\(delete)); it must only move to the Trash")
+        }
+        #expect(text.contains("trashItem"), "the Trash is how the app is closed")
+    }
+}

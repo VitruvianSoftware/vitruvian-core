@@ -247,15 +247,16 @@ app's paths. After this change:
 The manifest declares `contributes.status: {"placement": "island"}`. Adding it changes the
 manifest, so Vitruvian shows the agreement sheet again on update, with "It shows a small status
 mark on the closed Dynamic Island". It is sent only to an app that names `ui.status`
-(`App.supports(.status)`). One pure function maps what the tool knows to a mark. The worst row
-that applies wins:
+(`App.supports(.status)`). One pure function maps what the tool knows to a mark. The rows are
+in the order they are tried and the first that applies wins, so the order is the precedence, and
+when the other one is chosen this HomeSpeaker shows nothing at all.
 
 | When | State | Icon | Words (tooltip) |
 |---|---|---|---|
 | The other one is chosen | `none` | | (quiet on purpose) |
-| Both installed, nobody has picked | `attention` | `exclamationmark.circle` | Pick which HomeSpeaker to use |
 | A sign-in stopped working | `failure` | `exclamationmark.triangle` | Sign in to Google again |
 | The chat monitor reports a problem (#3341's `ChatMonitorStatus.lastError`) | `failure` | `exclamationmark.triangle` | its words |
+| Both installed, nobody has picked | `attention` | `exclamationmark.circle` | Pick which HomeSpeaker to use |
 | Not set up: no sign-in, no speaker, and this Mac off | `attention` | `hifispeaker.2` | Set up HomeSpeaker |
 | Speaking now | `busy` | `waveform` | Speaking |
 | Quiet hours now | `ok` | `moon.zzz` | Quiet hours until 07:00 |
@@ -351,7 +352,7 @@ The same three steps in whichever one the person opens first.
      The Trash is `NSWorkspace.recycle`, never a delete. When the login item offer is left
      ticked, the extension runs the app's own `--login-item disable` (there since 1.13.2): a
      login item can only be switched off by its own app. An app older than 1.13.2 cannot be
-     told, so the extension says where to do it: System Settings > General > Login Items.
+     told, so the extension says where to do it: System Settings > General > Login Items & Extensions.
    - **App chosen.** The extension goes quiet by itself within five seconds (it reads the choice
      file on its five-second tick). The app then offers to remove it, but cannot do it itself:
      the protocol has no message for that. "To remove the extension: Vitruvian > Settings >

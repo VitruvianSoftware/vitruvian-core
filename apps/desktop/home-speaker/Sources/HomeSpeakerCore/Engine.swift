@@ -124,6 +124,74 @@ public final class HomeSpeakerEngine {
         ]
     }
 
+    /// Signs this HomeSpeaker out of every Google login, or only Google
+    /// Chat's, through the one sign-out path (`AppCommandRunner.signOut`).
+    ///
+    /// `otherSecrets` is the other HomeSpeaker's sign-ins, when it is
+    /// installed. Each login is decided on its own (design 7.7): one the
+    /// other side shares (`sharedLogins`) is removed here only and never
+    /// revoked at Google, because revoking it would end the other side's
+    /// sign-in; every other login is revoked, as it always was.
+    ///
+    /// `notify` is told on success; the default tells no one.
+    public func signOut(
+        chatOnly: Bool, otherSecrets: Secrets?,
+        notify: @Sendable (_ chatOnly: Bool) -> Void = { _ in }
+    ) async -> CLIOutput {
+        let purposes: [GoogleAuth.Purpose] = chatOnly ? [.chat] : GoogleAuth.Purpose.allCases
+        let shared = Self.sharedLogins(secrets.load(), purposes: purposes, with: otherSecrets)
+        let store = secrets
+        return await AppCommandRunner.signOut(
+            chatOnly: chatOnly, revoke: { !shared.contains($0) }, auth: auth,
+            signedIn: {
+                let stored = store.load()
+                return Set(GoogleAuth.Purpose.allCases.filter { stored.slot($0) != nil })
+            },
+            notify: notify)
+    }
+
+    /// Which of `purposes` sign `mine` in with a login the other side
+    /// shares, so it must not be revoked.
+    ///
+    /// Revoking at Google most likely ends the whole grant for that OAuth
+    /// client and Google account, not one token, and both sides ship the
+    /// same client. So a login here counts as shared when the other side
+    /// holds a login (either slot) with the same refresh token, or with the
+    /// same client id and an account that is the same or cannot be told
+    /// (not stored on either side). Only a login whose client differs, or
+    /// whose account is known to differ, is revoked.
+    nonisolated static func sharedLogins(
+        _ mine: Secrets, purposes: [GoogleAuth.Purpose], with other: Secrets?
+    ) -> Set<GoogleAuth.Purpose> {
+        guard let other else { return [] }
+        let theirs = [other.google, other.googleChat].compactMap { $0 }
+        return Set(purposes.filter { purpose in
+            guard let login = mine.slot(purpose) else { return false }
+            return theirs.contains { Self.sameGrant(login, $0) }
+        })
+    }
+
+    /// Might revoking `a` end `b`? See `sharedLogins`.
+    nonisolated static func sameGrant(_ a: GoogleCredentials, _ b: GoogleCredentials) -> Bool {
+        if !a.refreshToken.isEmpty, a.refreshToken == b.refreshToken { return true }
+        guard a.clientId == b.clientId else { return false }
+        return !knownDifferentAccounts(a, b)
+    }
+
+    /// True only when both logins name their account and the accounts
+    /// differ: by Google account id when both have one, else by email.
+    nonisolated static func knownDifferentAccounts(_ a: GoogleCredentials, _ b: GoogleCredentials) -> Bool {
+        func known(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let idA = known(a.userId), let idB = known(b.userId) { return idA != idB }
+        if let mailA = known(a.email), let mailB = known(b.email) {
+            return mailA.caseInsensitiveCompare(mailB) != .orderedSame
+        }
+        return false
+    }
+
     /// Takes the sign-out and credentials-changed notices on the profile's
     /// names: re-reads the login, then stops, starts or restarts `monitor`.
     /// The engine owns no chat monitor; whoever runs one passes it.

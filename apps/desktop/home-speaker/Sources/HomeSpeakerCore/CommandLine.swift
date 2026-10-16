@@ -201,22 +201,26 @@ public enum HomeSpeakerCommandLine {
         let auth = engine.auth
         let secrets = engine.secrets
         let standsAside = parts.standsAside
-        let timedOut = CLIOutput.failure("timed out")
+        // Read at once for --say and --announce only: their limit grows
+        // with this Mac's speech.
+        let limit = timeLimit(for: command, settings: { engine.config.config })
+        /// Runs `body` under the command's own time limit.
+        func headless(_ body: @escaping @Sendable () async -> CLIOutput) -> Action {
+            guard let limit else { preconditionFailure("\(command) runs later but has no time limit") }
+            return .headless(timeout: limit.seconds, timedOut: limit.timedOut, body: body)
+        }
 
         switch command {
         case .announce(let text):
             // Automated, so quiet hours hold.
-            return .headless(timeout: announceTimeout(text, config: engine.config.config), timedOut: timedOut) {
+            return headless {
                 let settings = await MainActor.run { engine.config.config }
                 return await announce(
                     text, config: settings, announcer: announcer, history: history, standsAside: standsAside())
             }
         case .claudeStopHook:
             let input = standardInput()
-            // Claude Code enforces its own hook timeout; this backstop means
-            // a hung network call can never wedge the agent. Output is always
-            // "{}" so Claude Code sees a well-formed, no-op hook result.
-            return .headless(timeout: 8, timedOut: CLIOutput(stdout: ["{}"])) {
+            return headless {
                 await claudeStopHook(
                     input: input, config: { engine.config }, history: history, standsAside: standsAside(),
                     broadcaster: ClaudeStopHook.broadcaster(for: home))
@@ -228,7 +232,7 @@ public enum HomeSpeakerCommandLine {
             case .loginItem(let action):
                 return .now(loginItem(action, item: parts.loginItem))
             case .signOut(let chatOnly):
-                return .headless(timeout: 30, timedOut: timedOut) {
+                return headless {
                     await signOut(
                         chatOnly: chatOnly, auth: auth,
                         signedIn: {
@@ -238,7 +242,7 @@ public enum HomeSpeakerCommandLine {
                         profile: profile, post: { SignOutNotice.post(chatOnly: $0, name: $1) })
                 }
             case .discover(let save, let wanted):
-                return .headless(timeout: 60, timedOut: timedOut) {
+                return headless {
                     let current = await MainActor.run { engine.config.config.structureId }
                     return await AppCommandRunner.discover(
                         save: save, home: wanted, client: home, currentStructureId: current,
@@ -249,7 +253,7 @@ public enum HomeSpeakerCommandLine {
                         })
                 }
             case .testMediaPause:
-                return .headless(timeout: 30, timedOut: timedOut) {
+                return headless {
                     await AppCommandRunner.testMediaPause(coordinator: MediaPauseCoordinator())
                 }
             }
@@ -258,7 +262,7 @@ public enum HomeSpeakerCommandLine {
         case .say(let text):
             // Deliberate, like Quick Announce: it overrides quiet hours but
             // still honours the master switch.
-            return .headless(timeout: announceTimeout(text, config: engine.config.config), timedOut: timedOut) {
+            return headless {
                 let settings = await MainActor.run { engine.config.config }
                 return await say(
                     text, config: settings, announcer: announcer, history: history,
@@ -267,14 +271,13 @@ public enum HomeSpeakerCommandLine {
         case .volume(.invalidLevel):
             return .now(volumeFailure(badLevelReason))
         case .volume(let request):
-            // Two 6 s confirm windows plus retries: 40 s, not --say's 20.
-            return .headless(timeout: 40, timedOut: volumeFailure("timed out")) {
+            return headless {
                 let settings = await MainActor.run { engine.config.config }
                 return await volume(request, config: settings, speaker: home)
             }
         case .signIn(let purpose):
             let openBrowser = parts.openBrowser
-            return .headless(timeout: 300, timedOut: timedOut) {
+            return headless {
                 await signIn(
                     purpose: purpose,
                     signIn: { try await auth.signIn(purpose: $0, openBrowser: $1) },
@@ -288,6 +291,51 @@ public enum HomeSpeakerCommandLine {
             return .now(version())
         case .location:
             return .now(dataFolder(of: profile))
+        }
+    }
+
+    // MARK: - Time limits
+
+    /// How long a command that runs later may take, and what it prints when
+    /// that runs out. The command line prints it and exits; the extension's
+    /// tool, which runs the same commands in its own process, answers with
+    /// the same words.
+    public struct TimeLimit: Equatable, Sendable {
+        public var seconds: TimeInterval
+        public var timedOut: CLIOutput
+
+        public init(seconds: TimeInterval, timedOut: CLIOutput) {
+            self.seconds = seconds
+            self.timedOut = timedOut
+        }
+    }
+
+    /// `command`'s time limit; nil for the commands that print at once.
+    /// `settings` is asked for only by `--say` and `--announce`, whose limit
+    /// grows with this Mac's speech; every other command reads none.
+    public static func timeLimit(for command: Command, settings: () -> SpeakerConfig) -> TimeLimit? {
+        let timedOut = CLIOutput.failure("timed out")
+        switch command {
+        case .announce(let text), .say(let text):
+            return TimeLimit(seconds: announceTimeout(text, config: settings()), timedOut: timedOut)
+        case .claudeStopHook:
+            // Claude Code enforces its own hook timeout; this backstop means
+            // a hung network call can never wedge the agent. Output is always
+            // "{}" so Claude Code sees a well-formed, no-op hook result.
+            return TimeLimit(seconds: 8, timedOut: CLIOutput(stdout: ["{}"]))
+        case .app(.success(.signOut)), .app(.success(.testMediaPause)):
+            return TimeLimit(seconds: 30, timedOut: timedOut)
+        case .app(.success(.discover)):
+            return TimeLimit(seconds: 60, timedOut: timedOut)
+        case .volume(.invalidLevel):
+            return nil
+        case .volume:
+            // Two 6 s confirm windows plus retries: 40 s, not --say's 20.
+            return TimeLimit(seconds: 40, timedOut: volumeFailure("timed out"))
+        case .signIn:
+            return TimeLimit(seconds: 300, timedOut: timedOut)
+        case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .help, .version, .location:
+            return nil
         }
     }
 
