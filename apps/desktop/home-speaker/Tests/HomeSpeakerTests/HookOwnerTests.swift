@@ -112,6 +112,28 @@ import Testing
         #expect(app.hookStatus() == .installed)
     }
 
+    /// The repair asks `extensionProgramExists`, and only it, whether the
+    /// extension's program is there: the program here is never on disk, so
+    /// the stand-in alone decides.
+    @Test(arguments: [true, false])
+    func theRepairAsksWhetherTheExtensionsProgramExists(exists: Bool) throws {
+        let (home, vitruvian) = try scratch()
+        let ext = try extensionProgram(in: vitruvian, exists: false)
+        let before = try writeHook(home: home, program: ext)
+        var asked: [String] = []
+
+        let app = AgentIntegration(home: home, executablePath: appProgram)
+        app.repairHookIfMoved(extensionProgramExists: { asked.append($0); return exists }, choice: nil)
+
+        #expect(asked == [ext], "asked about the hook's own program")
+        if exists {
+            #expect(try settingsBytes(home: home) == before, "present: the hook still runs the extension")
+        } else {
+            #expect(AgentIntegration.installedHookCommand(in: try settings(home: home)) == app.hookCommand,
+                    "absent: the app takes the hook")
+        }
+    }
+
     @Test func theAppRepairsAHookToAMissingProgram() throws {
         let (home, vitruvian) = try scratch()
         let gone = try extensionProgram(in: vitruvian, exists: false)
