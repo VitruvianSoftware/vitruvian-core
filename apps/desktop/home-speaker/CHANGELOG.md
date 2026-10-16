@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.20.0...home-speaker-v1.21.0) (2026-10-16)
+
+
+### Features
+
+* **home-speaker:** a tidier island panel ([#3403](https://github.com/VitruvianSoftware/vitruvian-core/issues/3403)) ([023b78c](https://github.com/VitruvianSoftware/vitruvian-core/commit/023b78ce9202c769f604fc56a20cd4d5dde3f5c9))
+
 ## [1.20.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.19.1...home-speaker-v1.20.0) (2026-10-16)
 
 
