@@ -156,6 +156,10 @@ jobs:
           case "$status" in
             bumped | current | refused) ;;
             not-ready | not-listed) status=skipped ;;
+            unavailable)
+              echo "::error::$(jq -r .message "$result"): GitHub did not hand it over. Not a refusal; the next hour tries again."
+              exit 1
+              ;;
             *)
               echo "::error::catalog:bump ended with exit ${code} and status '${status:-none}'."
               exit 1
