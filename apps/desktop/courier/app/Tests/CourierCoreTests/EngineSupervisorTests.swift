@@ -408,6 +408,55 @@ final class EngineSupervisorTests: XCTestCase {
         await supervisor.waitUntilStopped()
     }
 
+    /// Telegram's set-up saves the credentials and restarts the engine: the next engine starts at once, with no
+    /// back-off and no problem shown, and has them in its environment.
+    func testRestartStartsANewEngineWithTheNewCredentials() async throws {
+        let server = try makeServer()
+        let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
+        let time = FakeTime()
+        let keychain = InMemoryCredentialStore()
+        let supervisor = makeSupervisor(launcher, time: time, credentials: keychain)
+        let recorder = StateRecorder(supervisor)
+        supervisor.start()
+        try await waitUntil { recorder.last == .connected }
+        XCTAssertNil(launcher.specs.first?.environment["COURIER_TELEGRAM_API_ID"])
+
+        let madeUpHash = String(repeating: "0a", count: 16)
+        try TelegramCredentials(apiID: "1234567", apiHash: madeUpHash).save(to: keychain)
+        supervisor.restart()
+        try await waitUntil { launcher.count == 2 && recorder.last == .connected }
+
+        XCTAssertTrue(launcher.processes[0].terminated, "the old engine was asked to stop")
+        XCTAssertEqual(launcher.specs[1].environment["COURIER_TELEGRAM_API_ID"], "1234567")
+        XCTAssertEqual(launcher.specs[1].environment["COURIER_TELEGRAM_API_HASH"], madeUpHash)
+        XCTAssertEqual(time.sleeps, [], "a restart that was asked for does not back off")
+        XCTAssertFalse(recorder.states.contains { if case .reconnecting = $0 { true } else { false } },
+                       "nor does it read as a crash: \(recorder.states)")
+
+        // A crash after it is an ordinary crash again, from the first step.
+        launcher.processes[1].exit(1)
+        try await waitUntil { launcher.count == 3 && recorder.last == .connected }
+        XCTAssertEqual(time.sleeps, [1])
+
+        // A restart during a back-off starts the engine at once.
+        let slow = FakeTime()
+        let crashing = FakeLauncher { index, process in
+            if index == 0 { process.exit(1) } else { process.printReady(socket: server.path) }
+        }
+        let held = makeSupervisor(crashing, time: slow, timing: EngineSupervisor.Timing(
+            readyTimeout: 10, stopGrace: 2, sleep: { _ in try await Task.sleep(nanoseconds: 60_000_000_000) }))
+        let heldStates = StateRecorder(held)
+        held.start()
+        try await waitUntil { heldStates.last == .reconnecting(attempt: 1) }
+        held.restart()
+        try await waitUntil { crashing.count == 2 && heldStates.last == .connected }
+
+        supervisor.stop()
+        held.stop()
+        await supervisor.waitUntilStopped()
+        await held.waitUntilStopped()
+    }
+
     func testNoTelegramCredentialsMeansNoTelegramVariables() async throws {
         let server = try makeServer()
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }

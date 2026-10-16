@@ -10,6 +10,11 @@ struct InboxCommands: Commands {
     @ObservedObject var inbox: InboxModel
 
     var body: some Commands {
+        // The first-run window has its own button; once a network is linked, this is the way to add another.
+        CommandGroup(after: .newItem) {
+            Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
+                .disabled(inbox.accounts.isEmpty)
+        }
         CommandMenu(String(localized: "Chat")) {
             Button(String(localized: "Next Chat"), action: inbox.selectNext)
                 .keyboardShortcut("]", modifiers: .command)

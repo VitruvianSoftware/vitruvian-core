@@ -10,10 +10,14 @@ struct MainWindow: View {
     @ObservedObject var model: AppModel
     @ObservedObject var inbox: InboxModel
     @ObservedObject var conversation: ConversationModel
+    @ObservedObject var login: LoginFlowModel
 
     var body: some View {
         content
             .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+            .sheet(isPresented: addingNetwork) {
+                AddNetworkView(login: login)
+            }
             .navigationTitle("Courier")
             .navigationSubtitle(StatusText.subtitle(for: model.engineState))
     }
@@ -54,6 +58,11 @@ struct MainWindow: View {
                 .foregroundStyle(.secondary)
                 .padding(40)
         }
+    }
+
+    /// The sheet is up while a network is being added. Dismissing it (Esc) ends that, cancelling any sign-in.
+    private var addingNetwork: Binding<Bool> {
+        Binding(get: { login.screen != .closed }, set: { if !$0 { login.close() } })
     }
 
     private var panes: some View {

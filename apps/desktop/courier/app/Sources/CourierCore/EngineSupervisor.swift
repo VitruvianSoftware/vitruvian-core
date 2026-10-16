@@ -19,9 +19,11 @@ import Foundation
 ///   go away), and the state says why, with the engine's own message.
 /// - An engine that refuses hello as another protocol is not restarted: the app needs an update, and says so.
 /// - Stopping sends SIGTERM and closes the pipe, waits ten seconds, then sends SIGKILL.
+/// - `restart()` stops the engine the same way and starts the next one at once, with no back-off: the app asks
+///   for it after saving Telegram's credentials, which an engine reads only when it starts.
 public final class EngineSupervisor: @unchecked Sendable {
     public enum State: Equatable, Sendable {
-        /// Starting the engine for the first time.
+        /// Starting the engine: the first time, and after the app asked for a restart.
         case starting
         /// The engine is up and greeted; `client` talks to it.
         case connected
@@ -107,6 +109,8 @@ public final class EngineSupervisor: @unchecked Sendable {
     private var started = false
     private var looping = false
     private var stopping = false
+    /// The app asked for a restart: the engine that ends next is started again at once.
+    private var restartRequested = false
     private var runTask: Task<Void, Never>?
     private var backoffTask: Task<Void, Error>?
 
@@ -171,6 +175,26 @@ public final class EngineSupervisor: @unchecked Sendable {
         if idle { publish(.stopped) }
     }
 
+    /// Stops the engine that is up (or the back-off before the next one) and starts a new one at once. The new
+    /// engine reads the Telegram credentials again. Nothing happens before `start()` or after `stop()`.
+    public func restart() {
+        let (running, sleeper) = lock.withLock { () -> ((any LaunchedProcess)?, Task<Void, Error>?) in
+            guard looping, !stopping else { return (nil, nil) }
+            restartRequested = true
+            return (process, backoffTask)
+        }
+        sleeper?.cancel()
+        if let running { Task { await self.end(running) } }
+    }
+
+    /// Takes the restart request, if there is one.
+    private func takeRestartRequest() -> Bool {
+        lock.withLock {
+            defer { restartRequested = false }
+            return restartRequested
+        }
+    }
+
     /// Returns once supervision has ended and the engine is gone.
     public func waitUntilStopped() async {
         let task = lock.withLock { runTask }
@@ -198,11 +222,21 @@ public final class EngineSupervisor: @unchecked Sendable {
                 break loop
             case let .ended(connectedAt, status, errors):
                 if isStopping { break loop }
+                if takeRestartRequest() {
+                    attempt = 0
+                    publish(.starting)
+                    continue loop
+                }
                 if let connectedAt, timing.now() - connectedAt >= timing.resetAfter { attempt = 0 }
                 attempt += 1
                 publish(.reconnecting(attempt: attempt, problem: Self.problem(status: status, errors: errors,
                                                                               wasConnected: connectedAt != nil)))
                 await backOff(Self.backoff(attempt: attempt))
+                // Asked for during the back-off, which it cut short: the next engine starts now, as a first.
+                if takeRestartRequest() {
+                    attempt = 0
+                    if !isStopping { publish(.starting) }
+                }
             }
         }
         let wasStopped = lock.withLock { () -> Bool in
@@ -216,7 +250,7 @@ public final class EngineSupervisor: @unchecked Sendable {
         let sleep = timing.sleep
         let sleeper = Task { try await sleep(seconds) }
         let cancelled = lock.withLock { () -> Bool in
-            if stopping { return true }
+            if stopping || restartRequested { return true }
             backoffTask = sleeper
             return false
         }
@@ -251,7 +285,8 @@ public final class EngineSupervisor: @unchecked Sendable {
         }
         let stopNow = lock.withLock { () -> Bool in
             process = engine
-            return stopping
+            // A restart asked for while this one was being launched: it may have read the old credentials.
+            return stopping || restartRequested
         }
         defer { lock.withLock { process = nil } }
         let lines = engine.standardErrorLines

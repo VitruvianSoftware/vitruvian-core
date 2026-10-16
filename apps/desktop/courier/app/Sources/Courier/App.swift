@@ -10,7 +10,8 @@ struct CourierApp: App {
 
     var body: some Scene {
         Window("Courier", id: "main") {
-            MainWindow(model: delegate.model, inbox: delegate.inbox, conversation: delegate.conversation)
+            MainWindow(model: delegate.model, inbox: delegate.inbox, conversation: delegate.conversation,
+                       login: delegate.login)
         }
         .defaultSize(width: 960, height: 640)
         .commands {

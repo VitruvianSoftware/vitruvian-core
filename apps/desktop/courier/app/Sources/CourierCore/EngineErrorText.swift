@@ -29,6 +29,8 @@ public enum EngineErrorText {
         case .notConnected: String(localized: "The network isn’t connected yet.")
         case .notFailed: String(localized: "Only a message that was not sent can be sent again or deleted.")
         case .notFound: String(localized: "That chat or message is no longer there.")
+        case .badValue: String(localized: "That isn’t accepted. Check it and try again.")
+        case .unknownLogin: String(localized: "The sign-in ended before it was finished. Try again.")
         default: nil
         }
     }

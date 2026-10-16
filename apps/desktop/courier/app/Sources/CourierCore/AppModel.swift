@@ -103,6 +103,12 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Reads the accounts again from the engine that is up (after a sign-in completes, say).
+    public func refreshAccounts() async {
+        guard let client else { return }
+        await reloadAccounts(client)
+    }
+
     private func reloadAccounts(_ client: EngineClient) async {
         guard let result: AccountsResult = try? await client.call("accounts.list", Empty()),
               client === self.client else { return }

@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model: AppModel
     let inbox: InboxModel
     let conversation: ConversationModel
+    let login: LoginFlowModel
+    private var signInWindows: SignInWindowPresenter?
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
@@ -27,12 +29,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         conversation = ConversationModel(appModel: model, unreadCount: { id in
             inbox.rows.first { $0.roomID == id }?.unread ?? 0
         })
+        let login = LoginFlowModel(appModel: model)
+        self.login = login
+        // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
+        inbox.onAddNetwork = { login.showPicker() }
+        inbox.onReconnect = { network in login.begin(network: network) }
+        inbox.onSetUp = { _ in login.showTelegramSetup() }
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
+        signInWindows = SignInWindowPresenter(login: login)
         model.start()
     }
 
