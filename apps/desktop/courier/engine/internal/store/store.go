@@ -105,18 +105,51 @@ func (s *Store) publish(c Change) {
 // SubscriberBuffer is how many changes a subscriber's feed holds before changes for it are dropped.
 const SubscriberBuffer = 256
 
-// Subscribe returns a buffered change feed and a cancel function. A subscriber that falls more than
-// SubscriberBuffer changes behind loses changes, and is then given a ChangeResync before the next one it gets.
-func (s *Store) Subscribe() (<-chan Change, func()) {
+// Feed is one subscriber's change feed. C delivers the changes. A feed that falls more than SubscriberBuffer
+// changes behind loses changes; it learns that either in band (a ChangeResync before the next change it can take)
+// or by asking TakeDropped once it has caught up, whichever comes first. Each drop is reported once, one way.
+type Feed struct {
+	C  <-chan Change
+	s  *Store
+	ch chan Change
+}
+
+// Feed subscribes to the change feed. Close it when done.
+func (s *Store) Feed() *Feed {
 	ch := make(chan Change, SubscriberBuffer)
 	s.mu.Lock()
 	s.subs[ch] = &subscriber{}
 	s.mu.Unlock()
-	return ch, func() {
-		s.mu.Lock()
-		delete(s.subs, ch)
-		s.mu.Unlock()
+	return &Feed{C: ch, s: s, ch: ch}
+}
+
+// TakeDropped reports whether changes were dropped for this feed since it was last told, and clears that, but only
+// when nothing is waiting in C: a reader asks once it has read everything, and then re-reads all it shows. It is
+// false while changes are still queued, because the reader has not caught up yet.
+func (f *Feed) TakeDropped() bool {
+	f.s.mu.Lock()
+	defer f.s.mu.Unlock()
+	sub := f.s.subs[f.ch]
+	if sub == nil || !sub.dropped || len(f.ch) > 0 {
+		return false
 	}
+	sub.dropped = false
+	return true
+}
+
+// Close ends the subscription.
+func (f *Feed) Close() {
+	f.s.mu.Lock()
+	delete(f.s.subs, f.ch)
+	f.s.mu.Unlock()
+}
+
+// Subscribe returns a buffered change feed and a cancel function. A subscriber that falls more than
+// SubscriberBuffer changes behind loses changes, and is then given a ChangeResync before the next one it gets.
+// A reader that must hear about a drop even if nothing changes after it uses Feed and TakeDropped.
+func (s *Store) Subscribe() (<-chan Change, func()) {
+	f := s.Feed()
+	return f.C, f.Close
 }
 
 func b2i(b bool) int {

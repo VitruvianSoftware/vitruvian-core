@@ -40,24 +40,40 @@ func notification(c store.Change) changed {
 }
 
 // startFeed subscribes the connection to the store's change feed, once, after its hello. The feed waits for the
-// writer like any sender, so a client that stops reading backs up into the store's buffer; the store then drops
-// changes for it and, before the next one it can take, hands it a resync, which goes out like any other.
+// writer like any sender, so a client that stops reading backs up into the store's buffer, and the store drops
+// changes for it. The client hears about that as one resync, whichever way comes first: in band, before the next
+// change the store can hand over, or from here, as soon as the feed has caught up with what was kept. It is told
+// even if nothing changes after the drop.
 func (c *conn) startFeed() {
-	changes, unsubscribe := c.d.Store.Subscribe()
+	feed := c.d.Store.Feed()
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		defer unsubscribe()
+		defer feed.Close()
+		forward := func(ch store.Change) bool {
+			line, err := encodeLine(notificationLine{JSONRPC: "2.0", Method: "changed", Params: notification(ch)})
+			return err != nil || c.send(line)
+		}
 		for {
+			select { // first whatever is waiting
+			case ch := <-feed.C:
+				if !forward(ch) {
+					return
+				}
+				continue
+			default:
+			}
+			if feed.TakeDropped() { // caught up after a drop
+				if !forward(store.Change{Kind: store.ChangeResync}) {
+					return
+				}
+				continue
+			}
 			select {
 			case <-c.ctx.Done():
 				return
-			case ch := <-changes:
-				line, err := encodeLine(notificationLine{JSONRPC: "2.0", Method: "changed", Params: notification(ch)})
-				if err != nil {
-					continue
-				}
-				if !c.send(line) {
+			case ch := <-feed.C:
+				if !forward(ch) {
 					return
 				}
 			}

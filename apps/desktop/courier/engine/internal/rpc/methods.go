@@ -107,19 +107,25 @@ var sentinels = []struct {
 
 // toError turns any error into the one that goes on the wire. Anything unknown is an internal error, with no detail.
 func toError(err error) *Error {
+	e, _ := classify(err)
+	return e
+}
+
+// classify is toError, and says whether err was unknown: one with no code of its own, sent as a bare internal error.
+func classify(err error) (*Error, bool) {
 	var e *Error
 	if errors.As(err, &e) {
-		return e
+		return e, false
 	}
 	if errors.Is(err, actions.ErrEmpty) {
-		return invalidParams("there is nothing to send")
+		return invalidParams("there is nothing to send"), false
 	}
 	for _, s := range sentinels {
 		if errors.Is(err, s.err) {
-			return newError(s.code)
+			return newError(s.code), false
 		}
 	}
-	return newError(CodeInternal)
+	return newError(CodeInternal), true
 }
 
 type handler func(ctx context.Context, d *Deps, params json.RawMessage) (any, error)
@@ -238,7 +244,10 @@ type account struct {
 	NotStarted  string   `json:"not_started"`
 }
 
-func accountsList(ctx context.Context, d *Deps, _ json.RawMessage) (any, error) {
+func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	if err := decode(raw, &struct{}{}); err != nil {
+		return nil, err
+	}
 	out := make([]account, 0, len(d.Networks))
 	for _, n := range d.Networks {
 		a := account{Network: n.Name, DisplayName: n.DisplayName, Flows: append([]string{}, n.Flows...)}
@@ -290,7 +299,10 @@ type inboxRow struct {
 	Muted       bool   `json:"muted"`
 }
 
-func inboxList(ctx context.Context, d *Deps, _ json.RawMessage) (any, error) {
+func inboxList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	if err := decode(raw, &struct{}{}); err != nil {
+		return nil, err
+	}
 	rows, err := d.Store.Inbox(ctx)
 	if err != nil {
 		return nil, err
@@ -357,10 +369,14 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 	}
 	var url string
 	_ = json.Unmarshal(fields["url"], &url)
+	status := e.Status
+	if status == "" {
+		status = "sent" // stored without one (the column's default): the network has it
+	}
 	return eventJSON{
 		EventID: e.EventID, RoomID: e.RoomID, Sender: e.Sender, SenderName: who.name, SenderAvatarPath: who.avatarPath,
 		Mine: e.Sender == string(ids.Me), Type: e.Type, Content: content, TS: ms(e.TS), Seq: e.Seq,
-		Status: e.Status, StatusReason: e.StatusReason, MediaPath: d.path(url),
+		Status: status, StatusReason: e.StatusReason, MediaPath: d.path(url),
 	}, nil
 }
 

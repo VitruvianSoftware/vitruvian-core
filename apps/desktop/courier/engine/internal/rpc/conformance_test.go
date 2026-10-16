@@ -527,12 +527,14 @@ func TestEveryExampleRoundTrips(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, json.Unmarshal(b, &gotMap))
 				require.Equal(t, want["kind"], gotMap["kind"])
+				require.NoError(t, p.check(gotMap, "Changed", nil, "changed.params"), "the live notification fits protocol.json")
 				require.NoError(t, p.sameShape(want, gotMap, "Changed", "changed.params"))
 				return
 			}
 			req := deepCopy(t, ex.Request)
 			params, _ := req["params"].(map[string]any)
 			prepare(t, w, ex.name, params)
+			req = deepCopy(t, req) // as it goes on the wire
 			method := req["method"].(string)
 			wantErr, _ := ex.Response["error"].(map[string]any)
 			code, _ := wantErr["code"].(float64)
@@ -540,6 +542,8 @@ func TestEveryExampleRoundTrips(t *testing.T) {
 				c.hello()
 			}
 			got := c.rawCall(req)
+			require.NoError(t, p.checkExample(example{Request: req, Response: got}),
+				"the live response fits protocol.json (types, required fields, values): %v", got)
 			require.NoError(t, p.sameResponse(method, ex.Response, got), "engine sent %v", got)
 		})
 	}
@@ -663,20 +667,11 @@ func triggerNotification(t *testing.T, w *world, c *client, name string) changed
 		return c.changed(func(ch changed) bool { return ch.Kind == "bridge" && ch.Network == "conformance" })
 	case "changed-resync":
 		conn, r := rawHello(t, w.path)
-		overflow(t, w.s, conn, r)
-		require.NoError(t, w.s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(10*time.Second)))
-		for {
-			line, err := r.ReadBytes('\n')
-			require.NoError(t, err)
-			var m message
-			require.NoError(t, json.Unmarshal(line, &m))
-			var ch changed
-			require.NoError(t, json.Unmarshal(m.Params, &ch))
-			if ch.Kind == "resync" {
-				return ch
-			}
-		}
+		o := overflow(t, w.s, conn, r)
+		require.Len(t, o.resyncs, 1)
+		var ch changed
+		require.NoError(t, json.Unmarshal(o.resyncs[0], &ch))
+		return ch
 	}
 	t.Fatalf("notification example %s has no trigger: add one", name)
 	return changed{}

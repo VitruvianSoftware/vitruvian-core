@@ -260,6 +260,23 @@ func TestHelloIsRequiredAndVersioned(t *testing.T) {
 	c2.fails(-32002, "inbox.list", nil)
 }
 
+// A later hello, after one succeeded, changes nothing: the right protocol answers the same, the wrong one is
+// -32001, and either way the connection stays greeted with one change feed.
+func TestASecondHelloLeavesTheConnectionAsItWas(t *testing.T) {
+	s, path := storeOnly(t)
+	c := dial(t, path)
+	c.hello()
+	e := c.fails(CodeProtocolMismatch, "hello", map[string]any{"protocol": Protocol + 1, "client": "test/2"})
+	require.JSONEq(t, fmt.Sprintf(`{"engine": %d}`, Protocol), string(e.Data))
+	c.ok("inbox.list", nil, nil) // still greeted
+	c.hello()
+
+	require.NoError(t, s.SetBridgeState(context.Background(), "one", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetBridgeState(context.Background(), "two", json.RawMessage(`{}`)))
+	require.Equal(t, "one", c.changed(func(changed) bool { return true }).Network)
+	require.Equal(t, "two", c.changed(func(changed) bool { return true }).Network, "each change once: one feed")
+}
+
 func TestHelloThenARequestRightBehindIt(t *testing.T) {
 	_, path := storeOnly(t)
 	c := dial(t, path)
@@ -299,7 +316,7 @@ func TestOversizeFrameClosesConnection(t *testing.T) {
 	c := dial(t, path)
 	c.hello()
 	frame := func(size int) []byte {
-		head := `{"jsonrpc":"2.0","id":"big","method":"accounts.list","params":{"pad":"`
+		head := `{"jsonrpc":"2.0","id":"big","method":"message.send","params":{"text":"`
 		tail := `"}}`
 		return []byte(head + strings.Repeat("x", size-len(head)-len(tail)) + tail)
 	}
@@ -310,7 +327,10 @@ func TestOversizeFrameClosesConnection(t *testing.T) {
 	big := frame(MaxFrameBytes)
 	require.Len(t, big, MaxFrameBytes)
 	c.writeLine(big)
-	require.Nil(t, c.answer(ch).Error)
+	m := c.answer(ch) // read whole and parsed: it is refused for its missing room_id, not for its size
+	require.NotNil(t, m.Error)
+	require.Equal(t, CodeInvalidParams, m.Error.Code)
+	require.JSONEq(t, `{"reason":"room_id is required"}`, string(m.Error.Data))
 
 	// One byte more closes the connection, without an answer.
 	c2 := dial(t, path)
@@ -378,6 +398,36 @@ func TestBadRequestsAreAnsweredAndTheConnectionGoesOn(t *testing.T) {
 	c.ok("inbox.list", nil, nil)
 }
 
+// A key a method doesn't take is refused by name, so a misspelt parameter (replyTo for reply_to) can't be
+// silently dropped.
+func TestUnknownParametersAreRefusedByName(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	reason := func(e *wireError) string {
+		t.Helper()
+		var d struct {
+			Reason string `json:"reason"`
+		}
+		require.NoError(t, json.Unmarshal(e.Data, &d))
+		return d.Reason
+	}
+	e := c.fails(CodeInvalidParams, "hello", map[string]any{"protocol": Protocol, "client": "test/1", "clinet": "x"})
+	require.Equal(t, "unknown parameter clinet", reason(e))
+	c.hello()
+	e = c.fails(CodeInvalidParams, "message.send", map[string]any{"room_id": w.room, "text": "hi", "replyTo": w.events[0]})
+	require.Equal(t, "unknown parameter replyTo", reason(e))
+	select {
+	case got := <-w.wa.Sent:
+		t.Fatalf("nothing is sent when a parameter is refused, got %+v", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+	e = c.fails(CodeInvalidParams, "inbox.list", map[string]any{"filter": "unread"})
+	require.Equal(t, "unknown parameter filter", reason(e), "a method with no params takes none")
+	e = c.fails(CodeInvalidParams, "room.events", map[string]any{"room_id": w.room, "before": map[string]any{"ts": 1, "seq": 1, "id": "x"}})
+	require.Equal(t, "unknown parameter before.id", reason(e), "nested keys too")
+	c.ok("inbox.list", map[string]any{}, nil)
+}
+
 func TestUnknownMethodIsMethodNotFound(t *testing.T) {
 	_, path := storeOnly(t)
 	c := dial(t, path)
@@ -407,20 +457,30 @@ func TestChangesReachEveryClient(t *testing.T) {
 	}
 }
 
+// overflowed is what a client that read nothing got once it read again.
+type overflowed struct {
+	sent, got     int               // changes sent through the store, and changed notifications that arrived for them
+	resyncs       []json.RawMessage // the params of each resync that arrived, in order
+	lastWasResync bool
+	resyncAfter   time.Duration // from the end of the burst to the resync's arrival
+}
+
 // overflow sends changes through the store while conn, a connection that has said hello, reads nothing, so its
-// notifications back up through the socket and the server into the store, which drops them. Then it reads what
-// did arrive until the line goes quiet. The changes are bridge changes for networks n0, n1, ... in order. If
-// everything arrived (a host with unusually large socket buffers), it goes again with a bigger burst, until
-// something was dropped. It returns how many changes it sent and how many notifications arrived.
-func overflow(t *testing.T, s *store.Store, conn net.Conn, r *bufio.Reader) (sent, got int) {
+// notifications back up through the socket and the server into the store, which drops them. Then, with nothing
+// changing any more, it reads what arrives until the line goes quiet. The changes are bridge changes for networks
+// n0, n1, ... in order. If nothing was dropped (a host with unusually large socket buffers), it goes again with a
+// bigger burst.
+func overflow(t *testing.T, s *store.Store, conn net.Conn, r *bufio.Reader) overflowed {
 	t.Helper()
 	ctx := context.Background()
+	var o overflowed
 	for burst := overflowBurst; ; burst *= 4 {
 		require.Less(t, burst, 1<<20, "the store never dropped a change for a client that reads nothing")
 		for i := 0; i < burst; i++ {
-			require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", sent), json.RawMessage(`{}`)))
-			sent++
+			require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", o.sent), json.RawMessage(`{}`)))
+			o.sent++
 		}
+		ended := time.Now()
 		for {
 			require.NoError(t, conn.SetReadDeadline(time.Now().Add(500*time.Millisecond)))
 			line, err := r.ReadBytes('\n')
@@ -435,12 +495,18 @@ func overflow(t *testing.T, s *store.Store, conn net.Conn, r *bufio.Reader) (sen
 			require.Equal(t, "changed", m.Method)
 			var ch changed
 			require.NoError(t, json.Unmarshal(m.Params, &ch))
-			require.NotEqual(t, "resync", ch.Kind, "no resync until a change comes after the drop")
-			got++
+			o.lastWasResync = ch.Kind == "resync"
+			if o.lastWasResync {
+				o.resyncs = append(o.resyncs, m.Params)
+				o.resyncAfter = time.Since(ended)
+				continue
+			}
+			o.got++
 		}
-		if got < sent {
-			return sent, got
+		if o.got < o.sent {
+			return o
 		}
+		require.Empty(t, o.resyncs, "nothing was dropped, so there is no resync")
 	}
 }
 
@@ -469,35 +535,47 @@ func TestSlowClientIsToldToResync(t *testing.T) {
 	keepsUp := dial(t, path)
 	keepsUp.hello()
 
-	sent, got := overflow(t, s, conn, r)
-	require.Greater(t, got, store.SubscriberBuffer, "what fitted was delivered, the store's buffer and more")
-	require.Less(t, got, sent, "the client read nothing, so changes must have been dropped")
-	t.Logf("%d changes sent, %d reached the client that read nothing", sent, got)
+	o := overflow(t, s, conn, r)
+	require.Greater(t, o.got, store.SubscriberBuffer, "what fitted was delivered, the store's buffer and more")
+	require.Less(t, o.got, o.sent, "the client read nothing, so changes must have been dropped")
+	t.Logf("%d changes sent, %d reached the client that read nothing", o.sent, o.got)
+	require.Len(t, o.resyncs, 1, "one resync for one burst")
+	require.True(t, o.lastWasResync, "after everything that was kept")
+	require.JSONEq(t, `{"kind":"resync"}`, string(o.resyncs[0]), "a resync carries nothing else")
 
-	// The next change: first one resync, then the change itself.
+	// Later changes come as they are: the drop was already reported.
 	require.NoError(t, s.SetBridgeState(context.Background(), "after", json.RawMessage(`{}`)))
 	require.NoError(t, s.SetBridgeState(context.Background(), "later", json.RawMessage(`{}`)))
 	var kinds []string
 	require.NoError(t, conn.SetReadDeadline(time.Now().Add(10*time.Second)))
-	for len(kinds) < 3 {
+	for len(kinds) < 2 {
 		line, err := r.ReadBytes('\n')
 		require.NoError(t, err)
 		var m message
 		require.NoError(t, json.Unmarshal(line, &m))
 		var ch changed
 		require.NoError(t, json.Unmarshal(m.Params, &ch))
-		if ch.Kind == "resync" {
-			require.JSONEq(t, `{"kind":"resync"}`, string(m.Params), "a resync carries nothing else")
-		}
 		kinds = append(kinds, ch.Kind+":"+ch.Network)
 	}
-	require.Equal(t, []string{"resync:", "bridge:after", "bridge:later"}, kinds, "one resync, right before the first change after the drop")
+	require.Equal(t, []string{"bridge:after", "bridge:later"}, kinds, "no second resync")
 
 	// A client that kept up lost nothing and was never told to resync.
-	for i := 0; i < sent; i++ {
+	for i := 0; i < o.sent; i++ {
 		ch := keepsUp.changed(func(changed) bool { return true })
 		require.Equal(t, changed{Kind: "bridge", Network: fmt.Sprintf("n%d", i)}, ch)
 	}
+}
+
+// Review Focus 2: a drop is reported even when nothing changes after it, so the inbox can't go stale in a quiet
+// moment that follows a burst.
+func TestResyncArrivesEvenIfNothingChangesAfterTheDrop(t *testing.T) {
+	s, path := storeOnly(t)
+	conn, r := rawHello(t, path)
+	o := overflow(t, s, conn, r) // nothing changes once the burst ends
+	require.Less(t, o.got, o.sent)
+	require.Len(t, o.resyncs, 1)
+	require.True(t, o.lastWasResync)
+	require.Less(t, o.resyncAfter, 2*time.Second, "promptly, as soon as the client has read what was kept")
 }
 
 // world is an engine on the fake network over a real store, and the server over it. whatsapp is linked and has
@@ -804,6 +882,85 @@ func TestPathsAreAbsoluteAndOnlyForFilesThatExist(t *testing.T) {
 	require.Equal(t, "Contact", theirs.SenderName, "the profile's name")
 	require.Empty(t, theirs.SenderAvatarPath, "a picture the engine does not have is no path")
 	require.Empty(t, theirs.MediaPath, "a text message has no media")
+}
+
+// The store's status column defaults to "": an event stored without one is one the network has, so the wire
+// says sent, never an empty status.
+func TestAnEventStoredWithoutAStatusIsSent(t *testing.T) {
+	w := newWorld(t)
+	_, err := w.s.InsertEvent(context.Background(), store.Event{
+		RoomID: w.room, EventID: "$nostatus", Sender: "@whatsapp_contact:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"x"}`), TS: time.Now(),
+	})
+	require.NoError(t, err)
+	c := dial(t, w.path)
+	c.hello()
+	var page struct {
+		Events []struct {
+			EventID string `json:"event_id"`
+			Status  string `json:"status"`
+		} `json:"events"`
+	}
+	c.ok("room.events", map[string]any{"room_id": w.room, "limit": 1}, &page)
+	require.Equal(t, "$nostatus", page.Events[0].EventID)
+	require.Equal(t, "sent", page.Events[0].Status)
+}
+
+// syncBuffer is a log destination tests can read while the server writes to it.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.String()
+}
+
+// Only the engine's own failures are logged, with the method and the error, never the params. An error that maps
+// to a code of its own is the caller's business and is not logged: its text can carry a network, a flow or a path.
+func TestOnlyInternalErrorsAreLoggedAndNeverTheParams(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	var logs syncBuffer
+	path := serve(t, Deps{Store: s, Version: "test-1", Log: zerolog.New(&logs)})
+	c := dial(t, path)
+	c.hello()
+	const secret = "do-not-log-5e2b"
+
+	c.fails(CodeNotFound, "room.events", map[string]any{"room_id": "!" + secret + ":courier.local"})
+	c.fails(CodeInvalidParams, "room.events", map[string]any{"room_id": "!r:courier.local", "limit": 1000})
+	require.Empty(t, logs.String(), "errors with a code of their own are not logged")
+
+	c.fails(CodeInternal, "login.cancel", map[string]any{"login_id": secret}) // no login driver: an internal error
+	require.Eventually(t, func() bool { return strings.Contains(logs.String(), "login.cancel") }, 5*time.Second, 10*time.Millisecond)
+	line := logs.String()
+	require.Contains(t, line, `"level":"error"`)
+	require.Contains(t, line, errMissing.Error(), "the real cause is in the log")
+	require.NotContains(t, line, secret, "params are never logged")
+}
+
+func TestAPanicIsAnInternalErrorAndIsLoggedWithItsStack(t *testing.T) {
+	var logs syncBuffer
+	d := &Deps{Log: zerolog.New(&logs)}
+	res, err := run(context.Background(), d, "test.panic", func(context.Context, *Deps, json.RawMessage) (any, error) {
+		panic("boom")
+	}, nil)
+	require.Nil(t, res)
+	require.Equal(t, CodeInternal, toError(err).Code)
+	out := logs.String()
+	require.Contains(t, out, `"level":"error"`)
+	require.Contains(t, out, "test.panic")
+	require.Contains(t, out, "boom")
+	require.Contains(t, out, "goroutine", "the stack is logged")
 }
 
 func TestNotificationsMapEveryStoreChange(t *testing.T) {

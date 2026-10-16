@@ -16,6 +16,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
         "@net_maunium_go_mautrix//id",
     ],
 )

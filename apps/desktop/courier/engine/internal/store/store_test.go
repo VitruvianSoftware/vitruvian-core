@@ -294,6 +294,44 @@ func TestResyncWaitsForRoomForBoth(t *testing.T) {
 	require.Equal(t, "room-for-both", nextChange(t, ch).RoomID)
 }
 
+// A feed that has caught up after a drop can ask, so it is told even if nothing ever changes again. It is told
+// once: asking clears the mark, so no resync comes in band after it.
+func TestFeedSaysItDroppedOnceItHasCaughtUp(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	f := s.Feed()
+	defer f.Close()
+	require.False(t, f.TakeDropped(), "nothing dropped yet")
+	for i := 0; i <= SubscriberBuffer; i++ { // one more than fits
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	require.False(t, f.TakeDropped(), "not while changes are still waiting to be read")
+	for i := 0; i < SubscriberBuffer; i++ {
+		require.Equal(t, fmt.Sprintf("n%d", i), nextChange(t, f.C).RoomID)
+	}
+	require.True(t, f.TakeDropped(), "caught up after a drop")
+	require.False(t, f.TakeDropped(), "said once")
+
+	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "bridge", RoomID: "after"}, nextChange(t, f.C), "no second resync in band")
+}
+
+// When the resync went in band first, there is nothing left to take.
+func TestInBandResyncClearsTheDrop(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	f := s.Feed()
+	defer f.Close()
+	for i := 0; i <= SubscriberBuffer; i++ {
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	for i := 0; i < SubscriberBuffer; i++ {
+		nextChange(t, f.C)
+	}
+	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "resync"}, nextChange(t, f.C))
+	require.Equal(t, "after", nextChange(t, f.C).RoomID)
+	require.False(t, f.TakeDropped())
+}
+
 func TestProfileRoundTripAndPartialUpdate(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	_, _, ok, err := s.GetProfile(ctx, "@g:courier.local")

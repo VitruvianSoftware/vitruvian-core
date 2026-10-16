@@ -8,13 +8,13 @@
     "framing": "JSON-RPC 2.0. Each message is one UTF-8 JSON object on one line, ended by a single \\n. A line is at most max_frame_bytes bytes, not counting the \\n.",
     "max_frame_bytes": 4194304,
     "oversize": "A line longer than max_frame_bytes closes the connection. Nothing is answered.",
-    "requests": "Every request has \"jsonrpc\": \"2.0\", an \"id\" (a string or a number, echoed in the answer), a \"method\", and \"params\" (an object; it may be left out when the method takes none). Unknown keys in params are ignored. A message with no id is a notification; the engine defines none from the client, so it is ignored and not answered. A batch (a JSON array) is -32600.",
+    "requests": "Every request has \"jsonrpc\": \"2.0\", an \"id\" (a string or a number, echoed in the answer), a \"method\", and \"params\" (an object; it may be left out when the method takes none). A key in params that the method does not take is -32602, and data.reason names it (\"unknown parameter replyTo\"). A message with no id is a notification; the engine defines none from the client, so it is ignored and not answered. A batch (a JSON array) is -32600.",
     "concurrency": "Requests are answered as they finish, not in the order sent: some (message.send, login.wait) wait for a network. Match answers to requests by id. Notifications can arrive between any two answers.",
     "closing": "Closing the connection cancels everything it has in flight. A login.wait in flight is cancelled, and so is its sign-in."
   },
 
   "handshake": {
-    "doc": "The first request on a connection must be hello. Any other method before a successful hello is -32002. A hello with a different protocol number is -32001 with data {\"engine\": <the engine's protocol>}, and the app shows \"update needed\". Once a hello has succeeded, the connection receives changed notifications, the first of them after hello's answer. hello may be sent again and answers the same."
+    "doc": "The first request on a connection must be hello. Any other method before a successful hello is -32002. A hello with a different protocol number is -32001 with data {\"engine\": <the engine's protocol>}, and the app shows \"update needed\". Once a hello has succeeded, the connection receives changed notifications, the first of them after hello's answer. hello may be sent again: with the engine's protocol it answers the same; with another it is -32001; either way the connection stays as it was, greeted, with one feed."
   },
 
   "type_grammar": {
@@ -410,7 +410,7 @@
       }
     },
     "Changed": {
-      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. resync: changes were lost because the app read too slowly, so re-read everything.",
+      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
       "fields": {
         "kind": {
           "type": "string",
@@ -433,7 +433,7 @@
       "fields": {
         "reason": {
           "type": "string",
-          "doc": "What is wrong, for people. It names the parameter, never its value."
+          "doc": "What is wrong, for people. It names the parameter (a key the method does not take, too), never its value."
         }
       }
     }

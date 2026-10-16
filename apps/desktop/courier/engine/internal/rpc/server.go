@@ -18,7 +18,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"reflect"
+	"runtime/debug"
+	"sort"
+	"strings"
 	"sync"
+
+	"github.com/rs/zerolog"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
@@ -58,6 +64,9 @@ type Deps struct {
 	NotStarted map[string]string
 	// Version is the engine's version, sent in hello.
 	Version string
+	// Log gets the engine's own failures: an internal error (the method and the error) and a recovered panic
+	// (with its stack). Nothing else is logged, never params or values. The zero value logs nothing.
+	Log zerolog.Logger
 }
 
 // Serve answers connections on ln until ctx ends or ln fails, then closes ln and every connection, and returns
@@ -264,7 +273,14 @@ func (c *conn) handle(line []byte) {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		res, err := run(c.ctx, c.d, h, req.params)
+		res, err := run(c.ctx, c.d, req.method, h, req.params)
+		if err != nil {
+			if _, unknown := classify(err); unknown && c.ctx.Err() == nil {
+				// Only an error with no code of its own: a mapped error is the caller's to fix, and its text can
+				// carry a network, a flow or a path the request sent.
+				c.d.Log.Error().Str("method", req.method).Err(err).Msg("request failed inside the engine")
+			}
+		}
 		if c.ctx.Err() != nil {
 			return // the connection closed: nobody to answer
 		}
@@ -272,10 +288,12 @@ func (c *conn) handle(line []byte) {
 	}()
 }
 
-// run calls one method, turning a panic into an internal error so one bad request can't stop the engine.
-func run(ctx context.Context, d *Deps, h handler, params json.RawMessage) (res any, err error) {
+// run calls one method, turning a panic into an internal error so one bad request can't stop the engine. The
+// panic is logged with its stack.
+func run(ctx context.Context, d *Deps, method string, h handler, params json.RawMessage) (res any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			d.Log.Error().Str("method", method).Any("panic", r).Bytes("stack", debug.Stack()).Msg("request panicked")
 			res, err = nil, newError(CodeInternal)
 		}
 	}()
@@ -355,10 +373,18 @@ func encodeLine(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// decode reads params into v. Absent params decode as {}. A wrong type names the parameter, never its value.
+// decode reads params into v, a pointer to a struct. Absent params decode as {}. A key the struct doesn't have is
+// refused by name, so a misspelt parameter is never silently dropped. A wrong type names the parameter, never its
+// value.
 func decode(raw json.RawMessage, v any) error {
 	if len(raw) == 0 {
 		raw = json.RawMessage("{}")
+	}
+	if key := unknownKey(raw, reflect.TypeOf(v), ""); key != "" {
+		if r := []rune(key); len(r) > 64 {
+			key = string(r[:64]) + "…"
+		}
+		return invalidParams("unknown parameter " + key)
 	}
 	if err := json.Unmarshal(raw, v); err != nil {
 		var te *json.UnmarshalTypeError
@@ -368,4 +394,48 @@ func decode(raw json.RawMessage, v any) error {
 		return invalidParams("params don't fit this method")
 	}
 	return nil
+}
+
+var rawMessageType = reflect.TypeOf(json.RawMessage(nil))
+
+// unknownKey is the first key in raw, an object, that the struct t (or a struct inside it) has no field for, as a
+// dotted path; "" when there is none. Anything that is not an object where a struct is expected is left to
+// json.Unmarshal to refuse.
+func unknownKey(raw json.RawMessage, t reflect.Type, prefix string) string {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct || t == rawMessageType {
+		return ""
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(raw, &obj) != nil {
+		return ""
+	}
+	fields := map[string]reflect.Type{}
+	for i := range t.NumField() {
+		f := t.Field(i)
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "" {
+			name = f.Name
+		}
+		if name != "-" {
+			fields[name] = f.Type
+		}
+	}
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys) // the same answer every time
+	for _, k := range keys {
+		ft, ok := fields[k]
+		if !ok {
+			return prefix + k
+		}
+		if key := unknownKey(obj[k], ft, prefix+k+"."); key != "" {
+			return key
+		}
+	}
+	return ""
 }
