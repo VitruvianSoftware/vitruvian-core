@@ -1566,6 +1566,11 @@ MUTATIONS = [
      "        ExtensionsPageSupport.destination\n",
      "        FeatureSettingsDestination(.features)\n",
      "the tab's empty state leads to Settings' Extensions page, where every link to the extensions goes"),
+    ("a card of the Extensions tab lets go of every card's view", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+     "        guard var viewers = inMenuPanel[key], viewers.remove(viewer) != nil else { return }\n",
+     "        guard var viewers = inMenuPanel[key] else { return }\n        viewers = []\n",
+     "the old card going after the new card appeared leaves the new card's page open"),
 ]
 
 

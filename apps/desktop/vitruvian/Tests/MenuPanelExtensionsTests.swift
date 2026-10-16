@@ -20,6 +20,7 @@ enum MenuPanelExtensionsTests {
         theTabOpensAPageTheIslandDoesNotHave(suite)
         theIslandAndTheTabShareOnePage(suite)
         twoViewsOfTheTabShareOnePage(suite)
+        anOldCardGoingLateLeavesTheNewCardsPage(suite)
         whatThePersonDoesInTheTabReachesTheTool(suite)
         aPageEndsWithItsToolInTheTabToo(suite)
         theIslandKeepsAWebPage(suite)
@@ -185,6 +186,9 @@ enum MenuPanelExtensionsTests {
 
     static func key(_ panel: String) -> ToolPanelHost.Key { ToolPanelHostTests.key(panel) }
 
+    /// One card of the tab, as the host knows it.
+    static let card = UUID()
+
     /// How many times the tool was asked for a panel's page.
     static func opens(_ bench: Bench) -> Int {
         bench.runs.flatMap(\.sent).filter {
@@ -201,7 +205,7 @@ enum MenuPanelExtensionsTests {
     /// The tab opens the island page, which the tool answers.
     static func openedInTheTab() -> Bench {
         let bench = Bench()
-        bench.host.openInMenuPanel(key("deploys"))
+        bench.host.openInMenuPanel(key("deploys"), viewer: card)
         bench.current.greets()
         if let asked = bench.current.lastRequest {
             bench.current.answers(asked, #"{"tree":\#(ToolPanelHostTests.page("first"))}"#)
@@ -211,11 +215,11 @@ enum MenuPanelExtensionsTests {
 
     static func theTabOpensAPageTheIslandDoesNotHave(_ suite: TestSuite) {
         let bench = Bench()
-        suite.expect(bench.host.openInMenuPanel(key("settings")) == .wrongPlace("settings")
-                         && bench.host.openInMenuPanel(key("nothing")) == .unknownPanel("nothing")
+        suite.expect(bench.host.openInMenuPanel(key("settings"), viewer: card) == .wrongPlace("settings")
+                         && bench.host.openInMenuPanel(key("nothing"), viewer: card) == .unknownPanel("nothing")
                          && bench.host.shown.isEmpty && bench.runs.isEmpty,
                      "the tab shows only island pages: any other panel is refused, and nothing starts")
-        suite.expect(bench.host.openInMenuPanel(key("deploys")) == nil
+        suite.expect(bench.host.openInMenuPanel(key("deploys"), viewer: card) == nil
                          && bench.host.shown[key("deploys")] == .waiting && bench.host.island == nil,
                      "the tab opens an extension's island page, waiting for its first page, without making it the "
                          + "island's page")
@@ -225,7 +229,7 @@ enum MenuPanelExtensionsTests {
         }
         suite.expect(ToolPanelHostTests.text(bench.host.shown[key("deploys")]) == "Today" && opens(bench) == 1,
                      "the tool is asked once, as the island asks, and its page is drawn")
-        bench.host.closeInMenuPanel(key("deploys"))
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
         suite.expect(bench.host.shown[key("deploys")] == nil && closes(bench) == 1,
                      "when the tab lets go of it, the page closes and the tool is told")
     }
@@ -239,15 +243,15 @@ enum MenuPanelExtensionsTests {
         suite.expect(ToolPanelHostTests.text(bench.host.shown[key("deploys")]) == "first" && bench.host.island == nil
                          && closes(bench) == 0,
                      "the island letting go leaves the tab's page open, and the tool is not told")
-        bench.host.closeInMenuPanel(key("deploys"))
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
         suite.expect(bench.host.shown[key("deploys")] == nil && closes(bench) == 1,
                      "the tab letting go last closes the page and tells the tool once")
 
         let islandFirst = Bench.open()
-        islandFirst.host.openInMenuPanel(key("deploys"))
+        islandFirst.host.openInMenuPanel(key("deploys"), viewer: card)
         suite.expect(opens(islandFirst) == 1 && ToolPanelHostTests.text(islandFirst.host.shown[key("deploys")]) == "first",
                      "the tab shows the page the island has open as it is, asking nothing")
-        islandFirst.host.closeInMenuPanel(key("deploys"))
+        islandFirst.host.closeInMenuPanel(key("deploys"), viewer: card)
         suite.expect(islandFirst.host.island == key("deploys") && islandFirst.host.shown[key("deploys")] != nil
                          && closes(islandFirst) == 0,
                      "the tab letting go leaves the island's page open")
@@ -258,16 +262,41 @@ enum MenuPanelExtensionsTests {
 
     static func twoViewsOfTheTabShareOnePage(_ suite: TestSuite) {
         let bench = openedInTheTab()
-        bench.host.openInMenuPanel(key("deploys"))
-        suite.expect(opens(bench) == 1 && bench.host.inMenuPanel[key("deploys")] == 2,
+        let other = UUID()
+        bench.host.openInMenuPanel(key("deploys"), viewer: other)
+        suite.expect(opens(bench) == 1 && bench.host.inMenuPanel[key("deploys")] == [card, other],
                      "a second view of the tab, the popover's and the island's copy, shares the page")
-        bench.host.closeInMenuPanel(key("deploys"))
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
         suite.expect(bench.host.shown[key("deploys")] != nil && closes(bench) == 0,
-                     "one of them letting go leaves the page open for the other")
-        bench.host.closeInMenuPanel(key("deploys"))
-        bench.host.closeInMenuPanel(key("deploys"))
+                     "one of them letting go, even twice, leaves the page open for the other")
+        bench.host.closeInMenuPanel(key("deploys"), viewer: other)
+        bench.host.closeInMenuPanel(key("deploys"), viewer: other)
         suite.expect(bench.host.shown[key("deploys")] == nil && closes(bench) == 1,
                      "the last closes it, once, and a further let-go does nothing")
+    }
+
+    /// An extension is updated while the tab shows it: its page ends with
+    /// the old program, a new card appears for the new one, and the old card
+    /// goes. SwiftUI does not say which of the two comes first.
+    static func anOldCardGoingLateLeavesTheNewCardsPage(_ suite: TestSuite) {
+        let bench = openedInTheTab()
+        // What the store does to the old version's pages.
+        bench.host.forget(ToolPanelHostTests.id)
+        let newCard = UUID()
+        bench.host.openInMenuPanel(key("deploys"), viewer: newCard)
+        if let asked = bench.current.lastRequest {
+            bench.current.answers(asked, #"{"tree":\#(ToolPanelHostTests.page("new"))}"#)
+        }
+        let closed = closes(bench)
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
+        suite.expect(ToolPanelHostTests.text(bench.host.shown[key("deploys")]) == "new" && closes(bench) == closed
+                         && bench.host.inMenuPanel[key("deploys")] == [newCard],
+                     "the old card going after the new card appeared leaves the new card's page open, "
+                         + "and the tool is not told")
+        bench.host.closeInMenuPanel(key("deploys"), viewer: newCard)
+        suite.expect(bench.host.shown[key("deploys")] == nil && closes(bench) == closed + 1,
+                     "the new card going closes it, once")
     }
 
     static func whatThePersonDoesInTheTabReachesTheTool(_ suite: TestSuite) {
@@ -290,7 +319,7 @@ enum MenuPanelExtensionsTests {
         suite.expect(bench.host.shown[key("deploys")] == nil && bench.host.inMenuPanel.isEmpty,
                      "a page the tab shows ends with its tool's program")
         let sent = bench.runs.flatMap(\.sent).count
-        bench.host.closeInMenuPanel(key("deploys"))
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
         suite.expect(bench.runs.flatMap(\.sent).count == sent && bench.host.shown.isEmpty,
                      "and the tab letting go afterwards sends nothing")
     }
@@ -311,7 +340,7 @@ enum MenuPanelExtensionsTests {
                          && !ToolPanelHost.defersToIsland(deploys, shown: .waiting, island: deploys),
                      "a page of blocks shows in both places at once")
         let bench = Bench.open()
-        bench.host.openInMenuPanel(deploys)
+        bench.host.openInMenuPanel(deploys, viewer: card)
         suite.expect(!bench.host.defersToIsland(deploys),
                      "the host asks the rule with what it shows: a page of blocks the island has open")
     }
