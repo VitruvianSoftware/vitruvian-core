@@ -424,11 +424,44 @@ func TestMarkReadSendsReceiptAndClearsUnread(t *testing.T) {
 		"the receipt names the newest message, as the network knows it")
 	require.Equal(t, 0, w.unread(t, room), "the app's unread clears")
 
-	// Again with nothing new: harmless, and the network is told again (it is idempotent there).
+	// Again with nothing new: nothing to tell the network.
 	require.NoError(t, w.a.MarkRead(ctx, room))
-	recv(t, w.n.Receipts, "the second read receipt")
-	require.Equal(t, 0, w.unread(t, room))
+	none(t, w.n.Receipts, "a second receipt for the same message")
 
+	// A new message from the contact is new news.
+	w.n.Incoming(w.login, "chat1", "alice", "m2", "again")
+	require.Eventually(t, func() bool { return w.unread(t, room) == 1 }, 5*time.Second, 20*time.Millisecond)
+	require.NoError(t, w.a.MarkRead(ctx, room))
+	require.Equal(t, "m2", recv(t, w.n.Receipts, "the receipt for the new message").MessageID)
+	require.Equal(t, 0, w.unread(t, room))
+	none(t, w.n.Receipts, "an extra receipt")
+
+	t.Run("a reaction after the last message does not become the target", func(t *testing.T) {
+		w := startWorld(t, "fake", true)
+		room, target := w.chat(t, "chat1", "m1")
+		_, err := w.a.React(ctx, room, target, "👍")
+		require.NoError(t, err)
+		recv(t, w.n.Reactions, "the reaction")
+		w.waitStatus(t, w.lastEvent(t, room).EventID, "sent")
+		require.Equal(t, event.EventReaction.Type, w.lastEvent(t, room).Type, "fixture: the newest event is the reaction")
+
+		require.NoError(t, w.a.MarkRead(ctx, room))
+		require.Equal(t, fakenet.Receipt{PortalID: "chat1", MessageID: "m1"}, recv(t, w.n.Receipts, "the read receipt"))
+	})
+	t.Run("an edit after the last message does not become the target", func(t *testing.T) {
+		w := startWorld(t, "fake", true)
+		room, target := w.chat(t, "chat1", "m1")
+		edit := `{"msgtype":"m.text","body":"* edited","m.relates_to":{"rel_type":"m.replace","event_id":"` + target + `"}}`
+		_, err := w.s.InsertEvent(ctx, store.Event{
+			RoomID: room, EventID: "$edit", Sender: "@alice:courier.local", Type: event.EventMessage.Type,
+			Content: json.RawMessage(edit), TS: time.Now().Add(time.Second), Status: "sent",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "$edit", w.lastEvent(t, room).EventID, "fixture: the newest event is the edit")
+
+		require.NoError(t, w.a.MarkRead(ctx, room))
+		require.Equal(t, fakenet.Receipt{PortalID: "chat1", MessageID: "m1"}, recv(t, w.n.Receipts, "the read receipt"))
+	})
 	t.Run("the unread count clears even if the network never hears of it", func(t *testing.T) {
 		// A chat on a network that is not running: the receipt cannot go anywhere, but this device has read it.
 		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!tg:courier.local", Network: "telegram", Name: "Elsewhere"}))
@@ -450,6 +483,118 @@ func TestMarkReadSendsReceiptAndClearsUnread(t *testing.T) {
 		require.Error(t, w.a.MarkRead(ctx, "!nope:courier.local"))
 	})
 	none(t, w.n.Receipts, "a receipt nobody asked for")
+}
+
+func (w world) lastEvent(t *testing.T, room string) store.Event {
+	t.Helper()
+	evs, err := w.s.Events(context.Background(), room, 1)
+	require.NoError(t, err)
+	require.Len(t, evs, 1)
+	return evs[0]
+}
+
+func TestReactTwiceSendsOnce(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, target := w.chat(t, "chat1", "m1")
+
+	first, err := w.a.React(ctx, room, target, "👍")
+	require.NoError(t, err)
+	recv(t, w.n.Reactions, "the reaction")
+	w.waitStatus(t, first, "sent")
+
+	second, err := w.a.React(ctx, room, target, "👍")
+	require.NoError(t, err)
+	require.Equal(t, first, second, "the reaction I already have comes back")
+	none(t, w.n.Reactions, "a repeated reaction")
+	evs, err := w.s.Events(ctx, room, 10)
+	require.NoError(t, err)
+	require.Len(t, evs, 2, "the contact's message and one reaction")
+
+	t.Run("another emoji, or another message, is another reaction", func(t *testing.T) {
+		other, err := w.a.React(ctx, room, target, "❤️")
+		require.NoError(t, err)
+		require.NotEqual(t, first, other)
+		require.Equal(t, "❤️", recv(t, w.n.Reactions, "the second emoji").Emoji)
+	})
+}
+
+func TestReactConcurrentlySendsOnce(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, target := w.chat(t, "chat1", "m1")
+	w.n.Hold = make(chan struct{}) // the first one sits in the network while the rest arrive
+
+	const callers = 8
+	type result struct {
+		id  string
+		err error
+	}
+	results := make(chan result, callers)
+	for i := 0; i < callers; i++ {
+		go func() {
+			id, err := w.a.React(ctx, room, target, "👍")
+			results <- result{id, err}
+		}()
+	}
+	// All but the one in the network come back at once with its ID.
+	var ids []string
+	for i := 0; i < callers-1; i++ {
+		select {
+		case r := <-results:
+			require.NoError(t, r.err)
+			ids = append(ids, r.id)
+		case <-time.After(5 * time.Second):
+			t.Fatal("a repeated reaction waited for the first one to finish")
+		}
+	}
+	close(w.n.Hold)
+	select {
+	case r := <-results:
+		require.NoError(t, r.err)
+		ids = append(ids, r.id)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first reaction never returned")
+	}
+	for _, id := range ids {
+		require.Equal(t, ids[0], id, "every caller got the same reaction")
+	}
+	recv(t, w.n.Reactions, "the reaction")
+	none(t, w.n.Reactions, "a second reaction")
+	evs, err := w.s.Events(ctx, room, 20)
+	require.NoError(t, err)
+	require.Len(t, evs, 2, "the contact's message and one reaction")
+}
+
+func TestReactAgainAfterItFailed(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, target := w.chat(t, "chat1", "m1")
+
+	w.n.FailWith(errors.New("no"))
+	failed, err := w.a.React(ctx, room, target, "👍")
+	require.NoError(t, err)
+	w.waitStatus(t, failed, "failed")
+
+	w.n.FailWith(nil)
+	again, err := w.a.React(ctx, room, target, "👍")
+	require.NoError(t, err)
+	require.NotEqual(t, failed, again, "a failed reaction does not count: this is a new one")
+	recv(t, w.n.Reactions, "the new reaction")
+	w.waitStatus(t, again, "sent")
+
+	t.Run("a discarded reaction can be sent again too", func(t *testing.T) {
+		w.n.FailWith(errors.New("no"))
+		doomed, err := w.a.React(ctx, room, target, "🎉")
+		require.NoError(t, err)
+		w.waitStatus(t, doomed, "failed")
+		require.NoError(t, w.a.Discard(ctx, doomed))
+		w.n.FailWith(nil)
+		again, err := w.a.React(ctx, room, target, "🎉")
+		require.NoError(t, err)
+		require.NotEqual(t, doomed, again)
+		recv(t, w.n.Reactions, "the reaction after the discard")
+	})
 }
 
 func TestRetryRequeuesOnlyFailed(t *testing.T) {

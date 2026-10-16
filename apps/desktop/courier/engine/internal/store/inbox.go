@@ -169,6 +169,13 @@ func (s *Store) EventsBefore(ctx context.Context, roomID string, before *Cursor,
 // apart from SetRead, which is the network's own report; the unread count uses whichever is later. The local
 // marker only moves forward: an older (ts, seq) than the one already kept is ignored, and publishes nothing.
 func (s *Store) MarkReadLocal(ctx context.Context, roomID, eventID string, ts time.Time) error {
+	_, err := s.AdvanceReadLocal(ctx, roomID, eventID, ts)
+	return err
+}
+
+// AdvanceReadLocal is MarkReadLocal that also says whether the marker moved. It does not move when the chat was
+// already read up to that event or beyond it.
+func (s *Store) AdvanceReadLocal(ctx context.Context, roomID, eventID string, ts time.Time) (bool, error) {
 	moved := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		newSeq := int64(math.MaxInt64) // an event we do not have yet: compare on ts alone
@@ -195,7 +202,32 @@ func (s *Store) MarkReadLocal(ctx context.Context, roomID, eventID string, ts ti
 	if err == nil && moved {
 		s.publish(Change{Kind: "read", RoomID: roomID, EventID: eventID})
 	}
-	return err
+	return moved && err == nil, err
+}
+
+// LastMessage returns the chat's newest message-like event: the one its inbox row previews (rooms.last_event_id),
+// so a reaction, an edit or a state event never counts. ok is false for a chat with no message yet.
+func (s *Store) LastMessage(ctx context.Context, roomID string) (Event, bool, error) {
+	e, err := scanEvent(s.db.QueryRow(ctx, "SELECT "+eventCols+" FROM events WHERE event_id = (SELECT last_event_id FROM rooms WHERE room_id=$1)", roomID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Event{}, false, nil
+	}
+	return e, err == nil, err
+}
+
+// FindReaction returns the ID of sender's reaction with key to target in roomID, if there is one that has not
+// failed (pending or sent). A failed reaction does not count, so it can be sent again.
+func (s *Store) FindReaction(ctx context.Context, roomID, sender, target, key string) (string, bool, error) {
+	var id string
+	err := s.db.QueryRow(ctx, `SELECT event_id FROM events
+		WHERE room_id=$1 AND sender=$2 AND type='m.reaction' AND status <> 'failed'
+		  AND (CASE WHEN json_valid(content) THEN json_extract(content, '$."m.relates_to".event_id') END) = $3
+		  AND (CASE WHEN json_valid(content) THEN json_extract(content, '$."m.relates_to".key') END) = $4
+		ORDER BY ts, seq LIMIT 1`, roomID, sender, target, key).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return id, err == nil, err
 }
 
 // SetMuted sets whether the user muted roomID. It survives the bridge refreshing the room.

@@ -132,9 +132,9 @@ func (a *Actions) target(ctx context.Context, roomID, eventID, what string) erro
 	return nil
 }
 
-// submit stores an outgoing event as pending and hands it to the bridge. Callers have done every check that
-// could refuse it, so a refused action leaves no trace.
-func (a *Actions) submit(ctx context.Context, h *host.Host, roomID string, typ event.Type, parsed any) (string, error) {
+// stage stores an outgoing event as pending, ready to be handed to the bridge with h.Bridge.QueueMatrixEvent.
+// Callers have done every check that could refuse it, so a refused action leaves no trace.
+func (a *Actions) stage(ctx context.Context, roomID string, typ event.Type, parsed any) (*event.Event, error) {
 	now := time.Now()
 	evt := &event.Event{
 		Type: typ, RoomID: id.RoomID(roomID), Sender: ids.Me, ID: ids.RandomEventID(),
@@ -142,12 +142,21 @@ func (a *Actions) submit(ctx context.Context, h *host.Host, roomID string, typ e
 	}
 	raw, err := json.Marshal(&evt.Content)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if _, err = a.s.InsertEvent(ctx, store.Event{
 		RoomID: roomID, EventID: string(evt.ID), Sender: string(ids.Me),
 		Type: typ.Type, Content: raw, TS: now, Status: "pending",
 	}); err != nil {
+		return nil, err
+	}
+	return evt, nil
+}
+
+// submit stages an outgoing event and hands it to the bridge.
+func (a *Actions) submit(ctx context.Context, h *host.Host, roomID string, typ event.Type, parsed any) (string, error) {
+	evt, err := a.stage(ctx, roomID, typ, parsed)
+	if err != nil {
 		return "", err
 	}
 	h.Bridge.QueueMatrixEvent(ctx, evt)
@@ -268,6 +277,10 @@ func (a *Actions) SendFile(ctx context.Context, roomID, path, replyTo string) (s
 
 // React reacts to a message in a chat with key (an emoji). The message must be one the bridge knows: a message
 // that is itself still pending, say, makes the bridge refuse, and the reaction's row becomes failed.
+//
+// Reacting is idempotent: if I already have a reaction with this key on this message that has not failed, its ID
+// comes back and nothing is stored or sent. A failed (or discarded) reaction does not count, so it can be sent
+// again.
 func (a *Actions) React(ctx context.Context, roomID, targetEventID, key string) (string, error) {
 	if strings.TrimSpace(key) == "" {
 		return "", errors.New("a reaction needs an emoji")
@@ -279,24 +292,48 @@ func (a *Actions) React(ctx context.Context, roomID, targetEventID, key string) 
 	if err = a.target(ctx, roomID, targetEventID, "react to"); err != nil {
 		return "", err
 	}
+	if existing, ok, err := a.s.FindReaction(ctx, roomID, string(ids.Me), targetEventID, key); err != nil || ok {
+		return existing, err
+	}
 	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
 		return "", err
 	}
-	return a.submit(ctx, h, roomID, event.EventReaction, &event.ReactionEventContent{
+	// The wait can be long, so another React for the same reaction may have got in. Look again, and store the
+	// row, under the lock: of two at once only one stores it. Handing it to the bridge waits for the network, so
+	// that happens after the lock is let go.
+	a.mu.Lock()
+	existing, ok, err := a.s.FindReaction(ctx, roomID, string(ids.Me), targetEventID, key)
+	if err != nil || ok {
+		a.mu.Unlock()
+		return existing, err
+	}
+	evt, err := a.stage(ctx, roomID, event.EventReaction, &event.ReactionEventContent{
 		RelatesTo: event.RelatesTo{Type: event.RelAnnotation, EventID: id.EventID(targetEventID), Key: key},
 	})
+	a.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	h.Bridge.QueueMatrixEvent(ctx, evt)
+	return string(evt.ID), nil
 }
 
-// MarkRead marks a chat read up to its newest event. This device's unread count clears first, so it clears even
-// if the network cannot be told; then a read receipt goes to the network. The receipt is best effort: the bridge
-// drops it if the network is not logged in yet or takes no receipts, and reading is no reason to wait.
+// MarkRead marks a chat read up to its newest message (not a reaction, an edit or other event after it). This
+// device's unread count clears first, so it clears even if the network cannot be told. Then a read receipt for
+// that message goes to the network, unless this device had already read up to it: asking twice tells the
+// network once. The receipt is best effort: the bridge drops it if the network is not logged in yet or takes no
+// receipts, and reading is no reason to wait for a login.
+//
+// The receipt is handled in line by the chat's bridge, so MarkRead can wait behind a send that is still in
+// flight in the same chat. Callers run each request on its own goroutine.
 func (a *Actions) MarkRead(ctx context.Context, roomID string) error {
-	evs, err := a.s.Events(ctx, roomID, 1)
+	last, hasMessage, err := a.s.LastMessage(ctx, roomID)
 	if err != nil {
 		return err
 	}
-	if len(evs) > 0 {
-		if err = a.s.MarkReadLocal(ctx, roomID, evs[0].EventID, evs[0].TS); err != nil {
+	moved := false
+	if hasMessage {
+		if moved, err = a.s.AdvanceReadLocal(ctx, roomID, last.EventID, last.TS); err != nil {
 			return err
 		}
 	}
@@ -304,12 +341,11 @@ func (a *Actions) MarkRead(ctx context.Context, roomID string) error {
 	if err != nil {
 		return err
 	}
-	if len(evs) == 0 {
-		return nil
+	if !moved {
+		return nil // no message, or already read up to it
 	}
-	newest := evs[0]
 	receipt := event.ReceiptEventContent{}
-	receipt.Set(id.EventID(newest.EventID), event.ReceiptTypeRead, ids.Me, event.ReadReceipt{Timestamp: newest.TS})
+	receipt.Set(id.EventID(last.EventID), event.ReceiptTypeRead, ids.Me, event.ReadReceipt{Timestamp: last.TS})
 	// An ephemeral event with no sender or ID, the way bridgev2 receives a receipt from a Matrix server.
 	h.Bridge.QueueMatrixEvent(ctx, &event.Event{
 		Type: event.EphemeralEventReceipt, RoomID: id.RoomID(roomID),
@@ -336,6 +372,9 @@ func (a *Actions) failedEvent(ctx context.Context, eventID string) (store.Event,
 
 // Retry sends a failed message again, as the same message: its row goes back to pending and the bridge is given
 // the event again. Anything that is not failed is left alone and gives ErrNotFailed.
+//
+// A failure is not always a certain one (a handler that timed out may still have delivered), so retrying after an
+// uncertain failure can deliver the message twice.
 func (a *Actions) Retry(ctx context.Context, eventID string) error {
 	a.mu.Lock()
 	e, err := a.failedEvent(ctx, eventID)

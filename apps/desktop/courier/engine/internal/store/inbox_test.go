@@ -661,3 +661,68 @@ func TestDeleteEventOfAnOlderMessageLeavesTheChatRowAlone(t *testing.T) {
 	require.Equal(t, "$b", lastEventID(t, s, "!r"))
 	require.Equal(t, "b", inboxByID(t, s)["!r"].Preview)
 }
+
+func TestLastMessageIgnoresReactionsAndEdits(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	_, ok, err := s.LastMessage(ctx, "!r")
+	require.NoError(t, err)
+	require.False(t, ok, "a chat with no message has none")
+
+	mkMsg(t, s, "!r", "$m", ghost, "m.room.message", text("hi"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$react", me, "m.reaction", `{"m.relates_to":{"rel_type":"m.annotation","event_id":"$m","key":"x"}}`, time.Unix(20, 0))
+	mkMsg(t, s, "!r", "$edit", ghost, "m.room.message", editOf, time.Unix(30, 0))
+	e, ok, err := s.LastMessage(ctx, "!r")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "$m", e.EventID)
+	require.Equal(t, time.Unix(10, 0).UnixMilli(), e.TS.UnixMilli())
+}
+
+func TestAdvanceReadLocalSaysWhetherItMoved(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("a"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$b", ghost, "m.room.message", text("b"), time.Unix(20, 0))
+
+	moved, err := s.AdvanceReadLocal(ctx, "!r", "$b", time.Unix(20, 0))
+	require.NoError(t, err)
+	require.True(t, moved)
+	moved, err = s.AdvanceReadLocal(ctx, "!r", "$b", time.Unix(20, 0))
+	require.NoError(t, err)
+	require.False(t, moved, "already there")
+	moved, err = s.AdvanceReadLocal(ctx, "!r", "$a", time.Unix(10, 0))
+	require.NoError(t, err)
+	require.False(t, moved, "never backwards")
+}
+
+func TestFindReactionIgnoresFailedAndOtherPeople(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	react := func(id, sender, target, key, status string) {
+		t.Helper()
+		content := `{"m.relates_to":{"rel_type":"m.annotation","event_id":"` + target + `","key":"` + key + `"}}`
+		_, err := s.InsertEvent(ctx, Event{
+			RoomID: "!r", EventID: id, Sender: sender, Type: "m.reaction",
+			Content: json.RawMessage(content), TS: time.Unix(10, 0), Status: status,
+		})
+		require.NoError(t, err)
+	}
+	_, ok, err := s.FindReaction(ctx, "!r", me, "$m", "👍")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	react("$failed", me, "$m", "👍", "failed")
+	react("$theirs", ghost, "$m", "👍", "sent")
+	react("$otherkey", me, "$m", "❤️", "sent")
+	react("$othertarget", me, "$n", "👍", "sent")
+	_, ok, err = s.FindReaction(ctx, "!r", me, "$m", "👍")
+	require.NoError(t, err)
+	require.False(t, ok, "failed, someone else's, another key and another target do not count")
+
+	react("$pending", me, "$m", "👍", "pending")
+	id, ok, err := s.FindReaction(ctx, "!r", me, "$m", "👍")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "$pending", id)
+}
