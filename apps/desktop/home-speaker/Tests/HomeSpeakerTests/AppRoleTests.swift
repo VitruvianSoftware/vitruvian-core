@@ -465,7 +465,83 @@ private final class AppRig {
         #expect(AppRoleGoogle.revoked(alone.refreshToken), "the stand-in never saw a revoke, so the check above proves nothing")
     }
 
+    @Test func theCommandLineSignOutNeverRevokesASharedLogin() async throws {
+        let rig = try AppRig()
+        try rig.installExtension(chosen: .extension)
+        let id = UUID().uuidString
+        let shared = GoogleCredentials(
+            clientId: "shipped.apps.googleusercontent.test", clientSecret: "made-up-\(id)", // gitleaks:allow (made-up test token)
+            accessToken: "ya29.made-up-cli-\(id)", refreshToken: "1//made-up-cli-\(id)", // gitleaks:allow (made-up test token)
+            scopes: [GoogleAuth.homeScope], userId: "1234", email: "person@example.test")
+        let extensionProfile = try #require(AppStartup.extensionProfile(record: rig.door.read()))
+        try SecretStore(fileURL: extensionProfile.secretsURL).save(Secrets(google: shared))
+        let theirs = try Data(contentsOf: extensionProfile.secretsURL)
+        let engine = HomeSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
+        try engine.secrets.save(Secrets(google: shared))
+        var posted: [String] = []
+        let lock = NSLock()
+        let bundlePath = rig.bundlePath
+        let parts = AppStartup.commandLineParts(
+            check: rig.check, bundlePath: { bundlePath },
+            postSignedOut: { chatOnly, name in lock.withLock { posted.append("\(name.rawValue) \(chatOnly)") } })
+
+        func signOut() async -> CLIOutput {
+            guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(
+                for: ["--sign-out"], engine: engine, parts: parts) else {
+                Issue.record("--sign-out does not run headless")
+                return CLIOutput()
+            }
+            return await body()
+        }
+
+        // The app is quiet, the login is the extension's too: removed here only.
+        #expect(await signOut() == CLIOutput(stdout: ["signed out of Google (Home and Chat)"]))
+        #expect(engine.secrets.load().google == nil, "still signed in here")
+        #expect(!AppRoleGoogle.revoked(shared.refreshToken), "the app's --sign-out revoked the extension's login at Google")
+        #expect(try Data(contentsOf: extensionProfile.secretsURL) == theirs)
+        #expect(lock.withLock { posted } == ["\(rig.appProfile.messagePrefix).signed-out false"])
+
+        // Control: with no extension, the same lines, and the login revoked.
+        try FileManager.default.removeItem(at: rig.door.url)
+        var alone = shared
+        alone.refreshToken = "1//made-up-cli-alone-\(id)" // gitleaks:allow (made-up test token)
+        try engine.secrets.save(Secrets(google: alone))
+        #expect(await signOut() == CLIOutput(stdout: ["signed out of Google (Home and Chat)"]))
+        #expect(AppRoleGoogle.revoked(alone.refreshToken))
+    }
+
     // MARK: - In the Trash
+
+    @Test func sayInTheTrashSaysWhyItStandsAside() async throws {
+        let rig = try AppRig()
+        let trashed = rig.root.appendingPathComponent(".Trash/HomeSpeaker.app").path
+        let parts = AppStartup.commandLineParts(check: rig.check, bundlePath: { trashed })
+        let rigHistory = BroadcastHistory(fileURL: rig.appProfile.historyURL)
+        let announcer = Announcer(home: GoogleHomeClient(
+            auth: GoogleAuth(store: SecretStore(fileURL: rig.appProfile.secretsURL), session: AppRoleGoogle.session),
+            session: AppRoleGoogle.session), local: SilentMac())
+        var off = SpeakerConfig()
+        off.enabled = false
+        func say() async -> [String] {
+            await HomeSpeakerCommandLine.say(
+                "hello", config: off, announcer: announcer, history: rigHistory,
+                standsAside: parts.standsAside(), door: .app, note: parts.asideNote()).stderr
+        }
+
+        // In the Trash, no extension: not "the extension is in use".
+        #expect(parts.standsAside())
+        #expect(await say().first == "note: this copy of the HomeSpeaker app is in the Trash, so it stays quiet")
+        // An extension installed but not chosen: still only the Trash.
+        try rig.installExtension(chosen: nil)
+        #expect(await say().first == AppStartup.inTheTrashNote)
+        // The extension chosen and installed: that is why.
+        try rig.choose(.extension)
+        #expect(await say().first == "note: the HomeSpeaker extension is the one in use")
+        // Not in the Trash: the same.
+        let home = rig.bundlePath
+        let usual = AppStartup.commandLineParts(check: rig.check, bundlePath: { home })
+        #expect(usual.asideNote() == nil)
+    }
 
     @Test func anAppInTheTrashStaysQuietAndWritesNothing() throws {
         let rig = try AppRig()

@@ -106,14 +106,6 @@ private final class StandInVolume: VolumeAndMuteControlling, @unchecked Sendable
     }
 }
 
-/// Google's sign-out: signed in for both until asked.
-private final class StandInAuth: GoogleSigningOut, @unchecked Sendable {
-    var signedIn: Set<GoogleAuth.Purpose> = [.home, .chat]
-    func signOut(purpose: GoogleAuth.Purpose?, revoke: Bool) async {
-        if let purpose { signedIn.remove(purpose) } else { signedIn.removeAll() }
-    }
-}
-
 /// Two homes, one speaker each.
 private struct TwoHomes: HomeDiscovering {
     func listHomes() async throws -> [HomeStructure] {
@@ -169,6 +161,50 @@ private struct Rig {
         profile = scratchProfile(in: root)
         history = BroadcastHistory(fileURL: root.appendingPathComponent("history.json"))
     }
+}
+
+/// Answers Google's revoke address with 200, so a sign-out never leaves
+/// the process.
+private final class RevokeStandIn: URLProtocol {
+    static var session: URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RevokeStandIn.self]
+        return URLSession(configuration: configuration)
+    }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+    override func startLoading() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("{}".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+
+/// `--sign-out` as the program runs it (`action`), on an engine over the
+/// scratch profile, signed in for Home and Chat, with no other side. The
+/// signed-out notice is recorded, never posted.
+@MainActor
+private func signOutThroughTheCommandLine(_ arguments: [String], posts: String) async throws -> CLIOutput {
+    let rig = try Rig()
+    let engine = HomeSpeakerEngine(profile: rig.profile, session: RevokeStandIn.session, local: StandInLocal())
+    func login(_ refresh: String) -> GoogleCredentials {
+        GoogleCredentials(clientId: "client.apps.googleusercontent.test", clientSecret: "made-up", // gitleaks:allow (made-up test token)
+                          accessToken: "made-up", refreshToken: refresh) // gitleaks:allow (made-up test token)
+    }
+    try engine.secrets.save(Secrets(google: login("made-up-home"), googleChat: login("made-up-chat")))
+    let posted = Calls<String>()
+    let parts = HomeSpeakerCommandLine.Parts.app(postSignedOut: { chatOnly, name in
+        posted.add("\(name.rawValue) chatOnly=\(chatOnly)")
+    })
+    guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: parts) else {
+        Issue.record("\(arguments) does not run headless")
+        return CLIOutput()
+    }
+    let out = await body()
+    #expect(posted.all == ["\(rig.profile.messagePrefix).signed-out \(posts)"])
+    return out
 }
 
 // MARK: - The goldens
@@ -316,18 +352,10 @@ private let goldens: [Golden] = [
 
     // The app-identity commands.
     Golden(name: "--sign-out --chat", expected: CLIOutput(stdout: ["signed out of Google Chat"])) {
-        let rig = try Rig()
-        let auth = StandInAuth()
-        let posted = Calls<String>()
-        guard case .app(.success(.signOut(let chatOnly))) = try #require(HomeSpeakerCommandLine.parse(["--sign-out", "--chat"])) else {
-            Issue.record("--sign-out --chat did not parse")
-            return CLIOutput()
-        }
-        let out = await HomeSpeakerCommandLine.signOut(
-            chatOnly: chatOnly, auth: auth, signedIn: { auth.signedIn }, profile: rig.profile,
-            post: { chatOnly, name in posted.add("\(name.rawValue) chatOnly=\(chatOnly)") })
-        #expect(posted.all == ["\(rig.profile.messagePrefix).signed-out chatOnly=true"])
-        return out
+        try await signOutThroughTheCommandLine(["--sign-out", "--chat"], posts: "chatOnly=true")
+    },
+    Golden(name: "--sign-out", expected: CLIOutput(stdout: ["signed out of Google (Home and Chat)"])) {
+        try await signOutThroughTheCommandLine(["--sign-out"], posts: "chatOnly=false")
     },
     Golden(name: "--discover with two homes",
            expected: CLIOutput(stdout: [

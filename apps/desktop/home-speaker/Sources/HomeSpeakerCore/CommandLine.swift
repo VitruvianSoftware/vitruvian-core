@@ -129,15 +129,32 @@ public enum HomeSpeakerCommandLine {
         /// the Stop hook and its `--announce` then do nothing, so a stale
         /// hook entry never says a reply twice. `--say` still speaks.
         public var standsAside: @Sendable () -> Bool
+        /// What `--say` notes while this side stands aside; nil for the
+        /// usual "the other one is in use".
+        public var asideNote: @Sendable () -> String?
+        /// The other HomeSpeaker's sign-ins, while it is installed:
+        /// `--sign-out` never revokes a login it shares
+        /// (`HomeSpeakerEngine.signOut`). Nil when there is no other.
+        public var otherSecrets: @Sendable () -> Secrets?
+        /// Tells a running HomeSpeaker its login was removed.
+        public var postSignedOut: @Sendable (_ chatOnly: Bool, Notification.Name) -> Void
 
         public init(
             openBrowser: @escaping @Sendable (URL) -> Void,
             loginItem: LoginItem,
-            standsAside: @escaping @Sendable () -> Bool
+            standsAside: @escaping @Sendable () -> Bool,
+            asideNote: @escaping @Sendable () -> String? = { nil },
+            otherSecrets: @escaping @Sendable () -> Secrets? = { nil },
+            postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
+                SignOutNotice.post(chatOnly: $0, name: $1)
+            }
         ) {
             self.openBrowser = openBrowser
             self.loginItem = loginItem
             self.standsAside = standsAside
+            self.asideNote = asideNote
+            self.otherSecrets = otherSecrets
+            self.postSignedOut = postSignedOut
         }
 
         /// Why `--login-item` does nothing for the extension.
@@ -148,8 +165,16 @@ public enum HomeSpeakerCommandLine {
 
         /// The app's: its login item through the system. Nothing is chosen
         /// yet, so by default it never stands aside.
-        public static func app(standsAside: @escaping @Sendable () -> Bool = { false }) -> Parts {
-            Parts(openBrowser: browser, loginItem: .control(SystemLoginItem()), standsAside: standsAside)
+        public static func app(
+            standsAside: @escaping @Sendable () -> Bool = { false },
+            asideNote: @escaping @Sendable () -> String? = { nil },
+            otherSecrets: @escaping @Sendable () -> Secrets? = { nil },
+            postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
+                SignOutNotice.post(chatOnly: $0, name: $1)
+            }
+        ) -> Parts {
+            Parts(openBrowser: browser, loginItem: .control(SystemLoginItem()), standsAside: standsAside,
+                  asideNote: asideNote, otherSecrets: otherSecrets, postSignedOut: postSignedOut)
         }
 
         /// The extension's: no login item of its own.
@@ -199,8 +224,8 @@ public enum HomeSpeakerCommandLine {
         let announcer = engine.announcer
         let home = engine.home
         let auth = engine.auth
-        let secrets = engine.secrets
         let standsAside = parts.standsAside
+        let asideNote = parts.asideNote
         // Read at once for --say and --announce only: their limit grows
         // with this Mac's speech.
         let limit = timeLimit(for: command, settings: { engine.config.config })
@@ -232,14 +257,14 @@ public enum HomeSpeakerCommandLine {
             case .loginItem(let action):
                 return .now(loginItem(action, item: parts.loginItem))
             case .signOut(let chatOnly):
+                // The one sign-out rule (design 7.7): a login the other side
+                // shares is removed here only, never revoked at Google.
+                let otherSecrets = parts.otherSecrets
+                let post = parts.postSignedOut
+                let name = SignOutNotice.notificationName(for: profile)
                 return headless {
-                    await signOut(
-                        chatOnly: chatOnly, auth: auth,
-                        signedIn: {
-                            let stored = secrets.load()
-                            return Set(GoogleAuth.Purpose.allCases.filter { stored.slot($0) != nil })
-                        },
-                        profile: profile, post: { SignOutNotice.post(chatOnly: $0, name: $1) })
+                    await engine.signOut(
+                        chatOnly: chatOnly, otherSecrets: otherSecrets(), notify: { post($0, name) })
                 }
             case .discover(let save, let wanted):
                 return headless {
@@ -266,7 +291,7 @@ public enum HomeSpeakerCommandLine {
                 let settings = await MainActor.run { engine.config.config }
                 return await say(
                     text, config: settings, announcer: announcer, history: history,
-                    standsAside: standsAside(), door: profile.door)
+                    standsAside: standsAside(), door: profile.door, note: asideNote())
             }
         case .volume(.invalidLevel):
             return .now(volumeFailure(badLevelReason))
@@ -385,13 +410,13 @@ public enum HomeSpeakerCommandLine {
     /// so on standard error.
     public static func say(
         _ text: String, config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory,
-        standsAside: Bool, door: HomeSpeakerProfile.Door, at date: Date = Date()
+        standsAside: Bool, door: HomeSpeakerProfile.Door, note: String? = nil, at date: Date = Date()
     ) async -> CLIOutput {
         var out = await announcement(
             text, force: true, source: "Say", config: config, announcer: announcer, history: history, at: date)
         if standsAside {
             let other = door == .app ? "extension" : "app"
-            out.stderr.insert("note: the HomeSpeaker \(other) is the one in use", at: 0)
+            out.stderr.insert(note ?? "note: the HomeSpeaker \(other) is the one in use", at: 0)
         }
         return out
     }
@@ -550,17 +575,6 @@ public enum HomeSpeakerCommandLine {
         } catch {
             return CLIOutput(stderr: ["error: \(error.localizedDescription)"], exitCode: 1)
         }
-    }
-
-    /// `--sign-out [--chat]`, telling a running HomeSpeaker under
-    /// `profile`'s names.
-    public static func signOut(
-        chatOnly: Bool, auth: GoogleSigningOut, signedIn: @Sendable () -> Set<GoogleAuth.Purpose>,
-        profile: HomeSpeakerProfile, post: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void
-    ) async -> CLIOutput {
-        let name = SignOutNotice.notificationName(for: profile)
-        return await AppCommandRunner.signOut(
-            chatOnly: chatOnly, auth: auth, signedIn: signedIn, notify: { post($0, name) })
     }
 
     /// `--login-item`: the app's, or for the extension, why it has none.

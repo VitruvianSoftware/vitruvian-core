@@ -93,15 +93,49 @@ public enum AppStartup {
         plan(record: check.file.read(), fileExists: check.fileExists, bundlePath: bundlePath)
     }
 
-    /// The app's command line. Its Stop hook and `--announce` stand aside
-    /// while the extension is chosen and installed, or the app is in the
-    /// Trash, so a stale hook entry never says a reply twice. Asked afresh
-    /// on each run.
+    /// The app's command line, each answer asked afresh on each run:
+    /// - its Stop hook and `--announce` stand aside while the extension is
+    ///   chosen and installed, or the app is in the Trash, so a stale hook
+    ///   entry never says a reply twice;
+    /// - `--say` says why, accurately (`asideNote`);
+    /// - `--sign-out` never revokes a login the extension shares.
     public static func commandLineParts(
         check: DoorCheck = DoorCheck(appInstalled: { false }),
-        bundlePath: @escaping @Sendable () -> String = { Bundle.main.bundlePath }
+        bundlePath: @escaping @Sendable () -> String = { Bundle.main.bundlePath },
+        postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
+            SignOutNotice.post(chatOnly: $0, name: $1)
+        }
     ) -> HomeSpeakerCommandLine.Parts {
-        .app(standsAside: { plan(check: check, bundlePath: bundlePath()).role.isQuiet })
+        .app(
+            standsAside: { plan(check: check, bundlePath: bundlePath()).role.isQuiet },
+            asideNote: { asideNote(record: check.file.read(), fileExists: check.fileExists, bundlePath: bundlePath()) },
+            otherSecrets: { otherSecrets(check: check) },
+            postSignedOut: postSignedOut)
+    }
+
+    /// What `--say` notes when the app is in the Trash and the extension is
+    /// not the one in use (so "the extension is in use" would be untrue).
+    public static let inTheTrashNote = "note: this copy of the HomeSpeaker app is in the Trash, so it stays quiet"
+
+    /// `--say`'s note while the app stands aside: nil for the usual "the
+    /// HomeSpeaker extension is the one in use", which holds whenever the
+    /// extension is chosen and installed; `inTheTrashNote` when the app
+    /// stands aside only because it is in the Trash.
+    public static func asideNote(record: DoorRecord?, fileExists: (String) -> Bool, bundlePath: String) -> String? {
+        let plan = plan(record: record, fileExists: fileExists, bundlePath: bundlePath)
+        guard plan.inTrash else { return nil }
+        let installed = OtherDoorPresence.extensionInstalled(record: record, fileExists: fileExists)
+        let role = DoorRole.decide(me: .app, otherInstalled: installed, chosen: record?.chosen)
+        return role.isQuiet ? nil : inTheTrashNote
+    }
+
+    /// The extension's sign-ins, while it is installed and runs without the
+    /// app; nil otherwise. Read afresh.
+    public static func otherSecrets(check: DoorCheck) -> Secrets? {
+        let record = check.file.read()
+        guard OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists),
+              let profile = extensionProfile(record: record) else { return nil }
+        return SecretStore(fileURL: profile.secretsURL).load()
     }
 
     /// The extension's files, from its block in the choice file: its data
@@ -213,10 +247,7 @@ public final class AppDoor: ObservableObject {
     /// The extension's sign-ins, while it is installed: Sign Out never
     /// revokes a login it shares (design 7.7). Nil otherwise.
     public func otherSecrets() -> Secrets? {
-        let record = check.file.read()
-        guard OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists),
-              let profile = AppStartup.extensionProfile(record: record) else { return nil }
-        return SecretStore(fileURL: profile.secretsURL).load()
+        AppStartup.otherSecrets(check: check)
     }
 
     /// Signs the app out, by the one rule for both sides
