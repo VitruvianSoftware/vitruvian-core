@@ -670,6 +670,10 @@ package struct ExtensionsSettings: View {
                             }
                         }
                     }
+                    // Outside the switch, so it shows whatever the list is
+                    // doing: loading, empty, out of reach, refused or listed.
+                    Divider()
+                    CatalogueSDKLineView(line: catalogue.sdk)
                 }
             }
             .modifier(FeatureHubColumn())

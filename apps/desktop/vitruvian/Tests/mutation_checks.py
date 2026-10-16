@@ -1614,6 +1614,11 @@ MUTATIONS = [
      "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n"
      "        wing != nil\n",
      "the agent mark shows only while the right wing draws the allowance percent"),
+    ("the Extensions page's SDK link points at the website's /sdk/ page, which does not exist", "tool-runtime",
+     "Sources/Vitruvian/Core/AppInfo.swift",
+     "    package static let sdkURL = URL(string: \"https://github.com/VitruvianSoftware/vitruvian-sdk\")!\n",
+     "    package static let sdkURL = URL(string: \"https://vitruviansoftware.dev/sdk/\")!\n",
+     "the SDK link opens the vitruvian-sdk repository on GitHub"),
 ]
 
 
