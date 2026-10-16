@@ -52,37 +52,6 @@ export function cleanRepoList(value) {
   return out;
 }
 
-// Splits what GitHub returned into what the panel shows.
-//
-//   items   the review requests in repositories that are switched on
-//   repos   every repository the panel knows about, with how many requests
-//           it has and whether it is switched on; hidden ones are kept even
-//           at zero so they can be switched back on
-//   total   how many requests there are before filtering
-//   capped  true when GitHub may have more than were read
-export function summariseReviews(all, hidden = [], limit = REVIEW_LIMIT) {
-  const off = new Set(hidden.map((repo) => repo.toLowerCase()));
-  const isOff = (repo) => off.has(repo.toLowerCase());
-  const counts = new Map();
-  for (const pr of all) counts.set(pr.repo, (counts.get(pr.repo) ?? 0) + 1);
-  for (const repo of hidden) {
-    const known = [...counts.keys()].some(
-      (name) => name.toLowerCase() === repo.toLowerCase(),
-    );
-    if (!known) counts.set(repo, 0);
-  }
-  const repos = [...counts.entries()]
-    .map(([repo, count]) => ({ repo, count, shown: !isOff(repo) }))
-    .sort((a, b) => a.repo.localeCompare(b.repo));
-  return {
-    items: all.filter((pr) => !isOff(pr.repo)),
-    repos,
-    total: all.length,
-    capped: all.length >= limit,
-    singleRepo: repos.filter((row) => row.shown).length === 1,
-  };
-}
-
 // Formats the pull request link text for the "Waiting on your review" list.
 // When only a single repository is shown, omits the org/repo prefix so the
 // line stays compact alongside the workflow status badge.
@@ -171,6 +140,60 @@ export function readyForAction(pr) {
       counts.pass > 0
     );
   return (pr.rollup?.state ?? "").toUpperCase() === "SUCCESS";
+}
+
+// Lays the three lists the panel shows over the shared repository filter.
+//
+//   reviews  open pull requests waiting on the user's review
+//   mine     open pull requests the user opened
+//   all      every open pull request in the repositories that are switched on
+//   watched  "owner/name" of each watched pull request
+//   hidden   repositories the user switched off
+//
+// The tick boxes cover every repository seen in the first two lists or among
+// the watched pull requests, plus any switched off; `all` is read for the
+// switched-on ones, so it never adds a repository of its own. Each count is
+// the number of distinct open pull requests in that repository across the
+// lists.
+export function summariseLists(
+  { reviews = [], mine = [], all = [], watched = [] },
+  hidden = [],
+  limit = REVIEW_LIMIT,
+) {
+  const off = new Set(hidden.map((repo) => repo.toLowerCase()));
+  const isOff = (repo) => off.has(repo.toLowerCase());
+  const names = new Map(); // lower-case name -> name as GitHub gives it
+  const seen = new Map(); // lower-case name -> Set of numbers
+  const note = (repo, number) => {
+    if (!repo) return;
+    const key = repo.toLowerCase();
+    if (!names.has(key)) names.set(key, repo);
+    if (!seen.has(key)) seen.set(key, new Set());
+    if (number) seen.get(key).add(number);
+  };
+  for (const pr of [...reviews, ...mine, ...all]) note(pr.repo, pr.number);
+  for (const repo of watched) note(repo, null);
+  for (const repo of hidden) note(repo, null);
+  const repos = [...names.entries()]
+    .map(([key, repo]) => ({
+      repo,
+      count: seen.get(key).size,
+      shown: !isOff(repo),
+    }))
+    .sort((a, b) => a.repo.localeCompare(b.repo));
+  const list = (items) => ({
+    items: items.filter((pr) => !isOff(pr.repo)),
+    total: items.length,
+    capped: items.length >= limit,
+  });
+  return {
+    repos,
+    shownRepos: repos.filter((row) => row.shown).map((row) => row.repo),
+    singleRepo: repos.filter((row) => row.shown).length === 1,
+    reviews: list(reviews),
+    mine: list(mine),
+    all: list(all),
+  };
 }
 
 // The same test, made again on a freshly read pull request just before the

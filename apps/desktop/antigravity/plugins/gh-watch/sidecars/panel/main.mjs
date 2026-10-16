@@ -39,6 +39,8 @@ import {
   fetchFeedback,
   fetchPr,
   fetchQueue,
+  fetchMyPrs,
+  fetchRepoPrs,
   fetchReviewRequests,
   rerunFailedJobs,
   resolvePr,
@@ -48,7 +50,7 @@ import { extractFailureExcerpt, parseCheckUrl } from "./lib/logs.mjs";
 import { listFlaky } from "./lib/flakes.mjs";
 import { Inbox } from "./lib/inbox.mjs";
 import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
-import { summariseReviews } from "./lib/reviews.mjs";
+import { summariseLists } from "./lib/reviews.mjs";
 import { Store, watchKey } from "./lib/store.mjs";
 import { Watcher } from "./lib/watcher.mjs";
 
@@ -107,21 +109,38 @@ app.api(
   "GET",
 );
 
-// Pull requests waiting on the user's review. Read only while the panel is
-// being looked at (it is what calls /api/state), at most every two minutes,
-// and never in the way of a reply.
+// The three lists of open pull requests: waiting on the user's review, opened
+// by the user, and all of them in the repositories the user has ticked. Read
+// only while the panel is being looked at (it is what calls /api/state), at
+// most every two minutes, and never in the way of a reply. The last list is
+// read after the other two, since they decide which repositories exist.
 const REVIEWS_EVERY_MS = 120_000;
-let reviews = { at: 0, items: [], error: null, busy: false };
+let reviews = {
+  at: 0,
+  items: [],
+  mine: [],
+  all: [],
+  error: null,
+  busy: false,
+};
+const watchedRepos = () => store.list().map((w) => w.repo);
 function refreshReviews() {
   if (reviews.busy || Date.now() - reviews.at < REVIEWS_EVERY_MS) return;
   reviews.busy = true;
-  fetchReviewRequests()
-    .then((items) => {
-      reviews = { at: Date.now(), items, error: null, busy: false };
-    })
-    .catch((err) => {
-      reviews = { ...reviews, at: Date.now(), error: err.message, busy: false };
-    });
+  (async () => {
+    const [items, mine] = await Promise.all([
+      fetchReviewRequests(),
+      fetchMyPrs(),
+    ]);
+    const { shownRepos } = summariseLists(
+      { reviews: items, mine, watched: watchedRepos() },
+      store.settings().hiddenReviewRepos,
+    );
+    const all = await fetchRepoPrs(shownRepos);
+    reviews = { at: Date.now(), items, mine, all, error: null, busy: false };
+  })().catch((err) => {
+    reviews = { ...reviews, at: Date.now(), error: err.message, busy: false };
+  });
 }
 
 // GET /api/state: everything the panel shows.
@@ -136,8 +155,16 @@ app.api(
       mergeMethods: MERGE_METHODS,
       pace: watcher.status(),
       flaky: listFlaky(store.flakes(), Date.now()),
-      reviews: {
-        ...summariseReviews(reviews.items, store.settings().hiddenReviewRepos),
+      lists: {
+        ...summariseLists(
+          {
+            reviews: reviews.items,
+            mine: reviews.mine,
+            all: reviews.all,
+            watched: watchedRepos(),
+          },
+          store.settings().hiddenReviewRepos,
+        ),
         error: reviews.error,
       },
       version: VERSION,
@@ -185,10 +212,12 @@ app.api("/api/presence", async (data) => {
 // POST /api/settings {fastSeconds?, slowSeconds?, holdSeconds?, mergeMethod?,
 // autoWatch?, removeClosedHours?, hiddenReviewRepos?}
 // Out-of-range values are clamped; the reply is what was actually stored.
-app.api("/api/settings", (data) => ({
-  settings: store.updateSettings(data),
-  pace: watcher.status(),
-}));
+app.api("/api/settings", (data) => {
+  // Ticking a repository changes which ones "All open pull requests" covers,
+  // so read the lists again on the next look rather than in two minutes.
+  if (Array.isArray(data.hiddenReviewRepos)) reviews = { ...reviews, at: 0 };
+  return { settings: store.updateSettings(data), pace: watcher.status() };
+});
 
 // POST /api/automerge {key, enabled}: turns GitHub's own auto-merge on or
 // off. GitHub does the merging once the required checks and reviews are in.

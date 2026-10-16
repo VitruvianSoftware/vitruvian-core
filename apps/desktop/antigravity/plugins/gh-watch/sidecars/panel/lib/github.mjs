@@ -29,6 +29,7 @@ import { normaliseChecks } from "./decide.mjs";
 import { collectFeedback } from "./notices.mjs";
 import {
   REVIEW_LIMIT,
+  cleanRepoList,
   conflictBadge,
   readyForAction,
   reviewCheckStatus,
@@ -263,9 +264,9 @@ export async function fetchCommitChecks(repo, sha, run = gh) {
   );
 }
 
-const REVIEWS_QUERY = `
-query($limit: Int!) {
-  search(query: "is:pr is:open review-requested:@me", type: ISSUE, first: $limit) {
+const SEARCH_QUERY = `
+query($q: String!, $limit: Int!) {
+  search(query: $q, type: ISSUE, first: $limit) {
     nodes {
       ... on PullRequest {
         number
@@ -304,20 +305,23 @@ function formatAuthor(author) {
     : login;
 }
 
-// Open pull requests, anywhere on GitHub, where a review has been asked of
-// the signed-in account.
-export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
+// Open pull requests found by a GitHub search, each with its CI badge, its
+// conflict badge, and whether it is green enough to act on. One page, so one
+// request. `run` is injectable for tests.
+export async function searchPrs(q, { run = gh, limit = REVIEW_LIMIT } = {}) {
   const out = await run([
     "api",
     "graphql",
     "-f",
-    `query=${REVIEWS_QUERY}`,
+    `query=${SEARCH_QUERY}`,
+    "-f",
+    `q=${q}`,
     "-F",
     `limit=${limit}`,
   ]);
   const nodes = JSON.parse(out)?.data?.search?.nodes ?? [];
   return nodes
-    .filter((pr) => pr && pr.number && pr.isDraft !== true)
+    .filter((pr) => pr && pr.number)
     .map((pr) => {
       const rollup = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup ?? null;
       return {
@@ -327,6 +331,7 @@ export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
         url: pr.url,
         author: formatAuthor(pr.author),
         updatedAt: pr.updatedAt ?? null,
+        isDraft: pr.isDraft === true,
         status: reviewCheckStatus({
           queued: pr.isInMergeQueue === true,
           queuePosition: pr.mergeQueueEntry?.position ?? null,
@@ -336,11 +341,37 @@ export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
         // Fully green: the panel offers Approve and Approve & merge.
         ready: readyForAction({
           queued: pr.isInMergeQueue === true,
+          isDraft: pr.isDraft === true,
           mergeable: pr.mergeable,
           rollup,
         }),
       };
     });
+}
+
+// Open pull requests, anywhere on GitHub, where a review has been asked of
+// the signed-in account. Drafts are left out: nobody is waiting on those.
+export async function fetchReviewRequests(run = gh, limit = REVIEW_LIMIT) {
+  const items = await searchPrs("is:pr is:open review-requested:@me", {
+    run,
+    limit,
+  });
+  return items.filter((pr) => !pr.isDraft);
+}
+
+// Open pull requests the signed-in account opened, anywhere on GitHub,
+// drafts included.
+export async function fetchMyPrs(run = gh, limit = REVIEW_LIMIT) {
+  return searchPrs("is:pr is:open author:@me archived:false", { run, limit });
+}
+
+// Every open pull request in the given repositories, whoever opened it.
+// Nothing is read for an empty list.
+export async function fetchRepoPrs(repos, run = gh, limit = REVIEW_LIMIT) {
+  const clean = cleanRepoList(repos);
+  if (clean.length === 0) return [];
+  const scope = clean.map((repo) => `repo:${repo}`).join(" ");
+  return searchPrs(`is:pr is:open archived:false ${scope}`, { run, limit });
 }
 
 // Fetches the failed log for a workflow run.

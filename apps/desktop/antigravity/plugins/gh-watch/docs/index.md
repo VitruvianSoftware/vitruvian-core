@@ -120,6 +120,18 @@ Two things in the panel are about what is waiting on a person, not an agent:
   and elsewhere GitHub merges it with the merge method in Settings once its
   required reviews are in. It never bypasses branch protection or the queue.
   Approving clears your review request, so the row leaves the list.
+- **Your open pull requests** lists every open pull request you opened,
+  anywhere on GitHub, drafts included. These never appear under "Waiting on
+  your review", since nobody asks you to review your own.
+- **All open pull requests** lists everyone's open pull requests in the
+  repositories you have ticked.
+- One set of repository tick boxes, above the lists, applies to all three. It
+  covers every repository seen in your review requests, your own pull
+  requests and the watched ones; a repository seen for the first time is
+  ticked. Rows in the last two lists have a **Watch** button, which ties the
+  pull request to the conversation the panel is open in, or say "Watched
+  here" or "Watched elsewhere". All three are read only while the panel is
+  open, at most every two minutes, up to 100 each.
 - **Ready to merge** marks a watched pull request that is green and
   mergeable, but is not in the merge queue and has no auto-merge set, so it
   will sit there until someone merges it.

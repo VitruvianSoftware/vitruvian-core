@@ -29,8 +29,14 @@ import {
   formatReviewTitle,
   reviewCheckStatus,
   reviewStatus,
-  summariseReviews,
+  summariseLists,
 } from "./reviews.mjs";
+
+// The filter behaviour as seen from the review list alone.
+const summariseReviews = (all, hidden = [], limit) => {
+  const out = summariseLists({ reviews: all }, hidden, limit);
+  return { ...out.reviews, repos: out.repos, singleRepo: out.singleRepo };
+};
 
 const pr = (repo, number) => ({ repo, number, title: `t${number}` });
 const ALL = [pr("acme/api", 1), pr("acme/web", 2), pr("acme/api", 3)];
@@ -329,4 +335,56 @@ test("conflictBadge flags conflicts, and unknown until GitHub has checked", asyn
     text: "Checking for conflicts",
     tone: "wait",
   });
+});
+
+test("summariseLists shares one filter across the three lists", async () => {
+  const { summariseLists } = await import("./reviews.mjs");
+  const pr = (repo, number) => ({ repo, number });
+  const out = summariseLists(
+    {
+      reviews: [pr("acme/api", 1), pr("acme/web", 2)],
+      mine: [pr("me/tool", 3), pr("acme/api", 1)],
+      all: [pr("acme/api", 1), pr("acme/api", 4), pr("me/tool", 3)],
+      watched: ["acme/watched"],
+    },
+    ["acme/web", "old/gone"],
+  );
+  // Every repository from the lists, the watched ones and the switched-off
+  // ones, each counted once per pull request across the lists.
+  assert.deepEqual(out.repos, [
+    { repo: "acme/api", count: 2, shown: true },
+    { repo: "acme/watched", count: 0, shown: true },
+    { repo: "acme/web", count: 1, shown: false },
+    { repo: "me/tool", count: 1, shown: true },
+    { repo: "old/gone", count: 0, shown: false },
+  ]);
+  assert.deepEqual(out.shownRepos, ["acme/api", "acme/watched", "me/tool"]);
+  assert.equal(out.singleRepo, false);
+  assert.deepEqual(
+    out.reviews.items.map((p) => p.number),
+    [1],
+  );
+  assert.equal(out.reviews.total, 2);
+  assert.deepEqual(
+    out.mine.items.map((p) => p.number),
+    [3, 1],
+  );
+  assert.equal(out.all.items.length, 3);
+});
+
+test("summariseLists reports a full page as capped, and one ticked repository as single", async () => {
+  const { summariseLists } = await import("./reviews.mjs");
+  const out = summariseLists(
+    {
+      mine: [
+        { repo: "a/b", number: 1 },
+        { repo: "a/c", number: 2 },
+      ],
+    },
+    ["a/c"],
+    2,
+  );
+  assert.equal(out.mine.capped, true);
+  assert.equal(out.singleRepo, true);
+  assert.deepEqual(summariseLists({}).repos, []);
 });

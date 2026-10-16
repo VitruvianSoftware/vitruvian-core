@@ -48,16 +48,33 @@
     </section>
     <!-- Closed by default: these lists can be long, and the watched pull
          requests above are what the panel is for. -->
-    <details id="reviews" class="card" hidden>
-      <summary>Waiting on your review (<span id="reviews-count">0</span>)</summary>
-      <p id="reviews-error" class="error small" hidden></p>
-      <fieldset id="reviews-filter" class="filter" hidden>
+    <!-- One repository filter for the three lists below. -->
+    <section id="repos-card" class="card" hidden>
+      <fieldset id="reviews-filter" class="filter">
         <legend class="muted small">Repositories to list</legend>
         <div id="reviews-repos" class="filter-options"></div>
       </fieldset>
-      <p id="reviews-none" class="muted small" hidden>Nothing is waiting in the repositories you have ticked.</p>
+      <p id="lists-error" class="error small" hidden></p>
       <p id="reviews-result" class="muted small" role="status" hidden></p>
+    </section>
+
+    <details id="reviews" class="card" hidden>
+      <summary>Waiting on your review (<span id="reviews-count">0</span>)</summary>
+      <p id="reviews-none" class="muted small" hidden>Nothing is waiting in the repositories you have ticked.</p>
       <ul id="reviews-list" class="plain"></ul>
+    </details>
+
+    <details id="mine" class="card" hidden>
+      <summary>Your open pull requests (<span id="mine-count">0</span>)</summary>
+      <p id="mine-none" class="muted small" hidden>You have none open in the repositories you have ticked.</p>
+      <ul id="mine-list" class="plain"></ul>
+    </details>
+
+    <details id="everyone" class="card" hidden>
+      <summary>All open pull requests (<span id="everyone-count">0</span>)</summary>
+      <p class="muted small">Everyone's, in the repositories you have ticked.</p>
+      <p id="everyone-none" class="muted small" hidden>None open in the repositories you have ticked.</p>
+      <ul id="everyone-list" class="plain"></ul>
     </details>
 
     <details id="flaky" class="card" hidden>
