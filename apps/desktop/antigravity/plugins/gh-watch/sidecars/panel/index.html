@@ -48,15 +48,18 @@
     </section>
     <!-- Closed by default: these lists can be long, and the watched pull
          requests above are what the panel is for. -->
-    <!-- One repository filter for the three lists below. -->
-    <section id="repos-card" class="card" hidden>
+    <!-- One repository filter for the three lists below. Collapsible; the
+         heading says how many are ticked, so it is useful closed too. -->
+    <details id="repos-card" class="card" open hidden>
+      <summary>Repositories to list (<span id="repos-count">0</span>)</summary>
       <fieldset id="reviews-filter" class="filter">
-        <legend class="muted small">Repositories to list</legend>
+        <legend class="sr-only">Repositories to list</legend>
         <div id="reviews-repos" class="filter-options"></div>
       </fieldset>
-      <p id="lists-error" class="error small" hidden></p>
-      <p id="reviews-result" class="muted small" role="status" hidden></p>
-    </section>
+    </details>
+    <!-- Outside the collapsible card, so they show even when it is closed. -->
+    <p id="lists-error" class="error small" hidden></p>
+    <p id="reviews-result" class="muted small" role="status" hidden></p>
 
     <details id="reviews" class="card" hidden>
       <summary>Waiting on your review (<span id="reviews-count">0</span>)</summary>
