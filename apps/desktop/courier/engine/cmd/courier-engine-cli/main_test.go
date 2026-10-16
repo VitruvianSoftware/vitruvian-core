@@ -16,9 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -37,15 +39,43 @@ func TestParseArgsRejectsBlankSend(t *testing.T) {
 	require.Error(t, err, "a whitespace-only message must not be sent")
 }
 
-func TestParseArgsRejectsBridgeCommands(t *testing.T) {
-	for _, text := range []string{"!whatsapp logout", "  !WhatsApp   list-logins", "!whatsapp"} {
-		_, err := parseArgs([]string{"send", "!r:courier.local", text})
-		require.Error(t, err, "a body that is a bridge command must not be sent: %q", text)
-	}
-	// Ordinary text, even with a bang or the word later on, is fine.
-	for _, text := range []string{"hey !whatsapp is cool", "!important", "whatsapp !logout"} {
-		_, err := parseArgs([]string{"send", "!r:courier.local", text})
-		require.NoError(t, err, text)
+func TestParseArgsKeepsBridgeLookingTextForSend(t *testing.T) {
+	// Whether text is a bridge command depends on the room's network, which only send knows.
+	a, err := parseArgs([]string{"send", "!r:courier.local", "!telegram logout"})
+	require.NoError(t, err)
+	require.Equal(t, "!telegram logout", a.text)
+}
+
+func TestLinkRequiresNetwork(t *testing.T) {
+	_, err := parseArgs([]string{"link"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--network")
+}
+
+func TestParseArgsLinkNetworkAndFlow(t *testing.T) {
+	a, err := parseArgs([]string{"--data", "/tmp/x", "--network", "slack", "--flow", "token", "link"})
+	require.NoError(t, err)
+	require.Equal(t, args{data: "/tmp/x", network: "slack", flow: "token", cmd: "link"}, a)
+
+	a, err = parseArgs([]string{"--data", "/tmp/x", "--network", "whatsapp", "link"})
+	require.NoError(t, err)
+	require.Empty(t, a.flow, "no --flow means the network's first flow, chosen at link time")
+
+	_, err = parseArgs([]string{"--network", "nonesuch", "link"})
+	require.ErrorContains(t, err, "nonesuch")
+	_, err = parseArgs([]string{"--network", "slack", "--flow", "nonesuch", "link"})
+	require.ErrorContains(t, err, "nonesuch")
+	require.ErrorContains(t, err, "email", "the error lists the flows that do exist")
+}
+
+func TestNetworkAndFlowAreOnlyForLink(t *testing.T) {
+	for _, argv := range [][]string{
+		{"--network", "slack", "chats"},
+		{"--flow", "qr", "tail"},
+		{"--network", "slack", "send", "!r:courier.local", "hi"},
+	} {
+		_, err := parseArgs(argv)
+		require.Error(t, err, "%v", argv)
 	}
 }
 
@@ -124,89 +154,17 @@ func TestWaitStatusCancelIsDeliveryUnknown(t *testing.T) {
 	require.Contains(t, err.Error(), "event "+id+" left pending")
 }
 
-// fakeLogin is a scripted bridgev2 login process.
-type fakeLogin struct {
-	start     *bridgev2.LoginStep
-	startErr  error
-	waits     []*bridgev2.LoginStep
-	waitErr   error
-	cancelled int
+// world is an engine running the fake network under some network's name, over a real store.
+type world struct {
+	eng   *engine.Engine
+	s     *store.Store
+	n     *fakenet.Network
+	login *bridgev2.UserLogin // nil when the world is not linked
 }
 
-func (f *fakeLogin) Start(context.Context) (*bridgev2.LoginStep, error) { return f.start, f.startErr }
-func (f *fakeLogin) Cancel()                                            { f.cancelled++ }
-
-type fakeWaiter struct{ *fakeLogin }
-
-func (f fakeWaiter) Wait(context.Context) (*bridgev2.LoginStep, error) {
-	if f.waitErr != nil {
-		return nil, f.waitErr
-	}
-	next := f.waits[0]
-	f.waits = f.waits[1:]
-	return next, nil
-}
-
-func qrStep(data string) *bridgev2.LoginStep {
-	return &bridgev2.LoginStep{
-		Type: bridgev2.LoginStepTypeDisplayAndWait, StepID: "qr",
-		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{Type: bridgev2.LoginDisplayTypeQR, Data: data},
-	}
-}
-
-func TestRunLoginCompleteDoesNotCancel(t *testing.T) {
-	f := &fakeLogin{start: qrStep("code-1"), waits: []*bridgev2.LoginStep{qrStep("code-2"), {Type: bridgev2.LoginStepTypeComplete}}}
-	var out bytes.Buffer
-	require.NoError(t, runLogin(context.Background(), fakeWaiter{f}, &out))
-	require.Zero(t, f.cancelled, "a finished login must not be cancelled")
-	require.NotEmpty(t, out.String(), "the QR code must be drawn")
-}
-
-func TestRunLoginPasskeyStepCancelsWithClearMessage(t *testing.T) {
-	f := &fakeLogin{start: qrStep("code"), waits: []*bridgev2.LoginStep{{Type: bridgev2.LoginStepTypeWebAuthn, StepID: "passkey"}}}
-	err := runLogin(context.Background(), fakeWaiter{f}, &bytes.Buffer{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "WhatsApp asked for a passkey, which this test CLI can't do — link from a device without a passkey prompt, or try again")
-	require.Equal(t, 1, f.cancelled)
-}
-
-func TestRunLoginPasskeyOnFirstStepCancels(t *testing.T) {
-	f := &fakeLogin{start: &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeWebAuthn, StepID: "passkey"}}
-	err := runLogin(context.Background(), f, &bytes.Buffer{})
-	require.ErrorContains(t, err, "passkey")
-	require.Equal(t, 1, f.cancelled)
-}
-
-func TestRunLoginUnexpectedStepCancelsAndNamesIt(t *testing.T) {
-	f := &fakeLogin{start: &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeUserInput, StepID: "fi.mau.whatsapp.phone_number"}}
-	err := runLogin(context.Background(), f, &bytes.Buffer{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "user_input")
-	require.Contains(t, err.Error(), "fi.mau.whatsapp.phone_number")
-	require.Equal(t, 1, f.cancelled)
-}
-
-func TestRunLoginStartErrorCancels(t *testing.T) {
-	f := &fakeLogin{startErr: errors.New("boom")}
-	require.ErrorContains(t, runLogin(context.Background(), f, &bytes.Buffer{}), "boom")
-	require.Equal(t, 1, f.cancelled)
-}
-
-func TestRunLoginWaitErrorCancels(t *testing.T) {
-	f := &fakeLogin{start: qrStep("code"), waitErr: context.Canceled}
-	require.Error(t, runLogin(context.Background(), fakeWaiter{f}, &bytes.Buffer{}))
-	require.Equal(t, 1, f.cancelled)
-}
-
-func TestRunLoginCannotWaitCancels(t *testing.T) {
-	f := &fakeLogin{start: qrStep("code")}
-	require.Error(t, runLogin(context.Background(), f, &bytes.Buffer{}), "a QR step on a process that cannot wait is unusable")
-	require.Equal(t, 1, f.cancelled)
-}
-
-// startFake runs a host on the fake network, with one login whose client reports "logged in"
+// startWorld runs the fake network as `name`. With linked, it has one login whose client reports "logged in"
 // only loginDelay after Connect, the way WhatsApp does once the server's success message arrives.
-func startFake(t *testing.T, loginDelay time.Duration) (*host.Host, *store.Store, *fakenet.Network) {
+func startWorld(t *testing.T, name string, linked bool, loginDelay time.Duration) world {
 	t.Helper()
 	ctx, dir := context.Background(), t.TempDir()
 	s, err := store.Open(filepath.Join(dir, "courier.db"))
@@ -214,12 +172,44 @@ func startFake(t *testing.T, loginDelay time.Duration) (*host.Host, *store.Store
 	t.Cleanup(func() { s.Close() })
 	n := fakenet.New()
 	n.LoginDelay = loginDelay
-	h, err := host.Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, n, zerolog.Nop())
-	require.NoError(t, err)
-	t.Cleanup(h.Stop)
-	_, err = n.Login(ctx, h.Bridge)
-	require.NoError(t, err)
-	return h, s, n
+	eng, errs := engine.Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")},
+		[]engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(eng.Stop)
+	w := world{eng: eng, s: s, n: n}
+	if linked {
+		h, ok := eng.Host(name)
+		require.True(t, ok)
+		w.login, err = n.Login(ctx, h.Bridge)
+		require.NoError(t, err)
+	}
+	return w
+}
+
+// chat has the network deliver a message from a contact, which makes the bridge create a real room for it.
+func (w world) chat(t *testing.T) string {
+	t.Helper()
+	w.n.Incoming(w.login, "chat1", "alice", "m1", "hi")
+	var room string
+	require.Eventually(t, func() bool {
+		rooms, err := w.s.ListRooms(context.Background())
+		if err != nil || len(rooms) == 0 {
+			return false
+		}
+		room = rooms[0].ID
+		evs, err := w.s.Events(context.Background(), room, 10)
+		return err == nil && len(evs) > 0
+	}, 5*time.Second, 20*time.Millisecond, "the bridge never stored the contact's message")
+	return room
+}
+
+// startFake is startWorld for a single linked network called "fake", returning its host.
+func startFake(t *testing.T, loginDelay time.Duration) (*host.Host, *store.Store, *fakenet.Network) {
+	t.Helper()
+	w := startWorld(t, "fake", true, loginDelay)
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	return h, w.s, w.n
 }
 
 func TestWaitForLoginWaitsOutTheHandshake(t *testing.T) {
@@ -256,35 +246,218 @@ func TestWaitForLoginCancel(t *testing.T) {
 
 func TestSendBeforeLoginSendsNothing(t *testing.T) {
 	ctx := context.Background()
-	h, s, n := startFake(t, time.Hour)
-	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
+	w := startWorld(t, "fake", true, time.Hour)
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
 
-	err := send(ctx, h, s, args{cmd: "send", room: "!r:courier.local", text: "hello"}, 300*time.Millisecond)
+	err := send(ctx, w.eng, w.s, args{cmd: "send", room: "!r:courier.local", text: "hello"}, 300*time.Millisecond)
 	require.ErrorIs(t, err, errNotConnected)
-	require.EqualError(t, err, "not connected to WhatsApp yet — nothing was sent")
+	require.EqualError(t, err, "fake: not connected yet — nothing was sent")
 
-	evs, err := s.Events(ctx, "!r:courier.local", 10)
+	evs, err := w.s.Events(ctx, "!r:courier.local", 10)
 	require.NoError(t, err)
 	require.Empty(t, evs, "nothing may be stored when the send is refused")
 	select {
-	case got := <-n.Sent:
+	case got := <-w.n.Sent:
 		t.Fatalf("a message reached the network: %+v", got)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestSendToUnlinkedNetworkFailsFast(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", false, 0) // running, but never linked: no login at all
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
+
+	start := time.Now()
+	// A long wait: failing fast must not depend on the timeout.
+	err := send(ctx, w.eng, w.s, args{cmd: "send", room: "!r:courier.local", text: "hello"}, 30*time.Second)
+	require.Less(t, time.Since(start), time.Second, "an unlinked network must not make send wait for a login")
+	require.EqualError(t, err, "fake isn't linked — run link --network fake first")
+
+	evs, err := w.s.Events(ctx, "!r:courier.local", 10)
+	require.NoError(t, err)
+	require.Empty(t, evs, "nothing may be stored")
+	select {
+	case got := <-w.n.Sent:
+		t.Fatalf("a message reached the network: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestSendToANetworkThatIsNotRunningNeverFallsBack(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true, 0)
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!t:courier.local", Network: "telegram", Name: "Elsewhere"}))
+
+	err := send(ctx, w.eng, w.s, args{cmd: "send", room: "!t:courier.local", text: "hello"}, time.Second)
+	require.ErrorContains(t, err, "telegram")
+	require.ErrorContains(t, err, "not running")
+	select {
+	case got := <-w.n.Sent:
+		t.Fatalf("a message for a telegram room reached another network: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestBridgePrefixPerNetwork(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "telegram", true, 0)
+	room := w.chat(t)
+
+	// Telegram's bridge runs "!telegram ..." as an admin command: never send that as a chat message.
+	for _, text := range []string{"!telegram logout", "  !Telegram   list-logins", "!telegram"} {
+		err := send(ctx, w.eng, w.s, args{cmd: "send", room: room, text: text}, time.Second)
+		require.ErrorContains(t, err, "!telegram", text)
+		require.ErrorContains(t, err, "admin command", text)
+	}
+	before, err := w.s.Events(ctx, room, 50)
+	require.NoError(t, err)
+	require.Len(t, before, 1, "only the contact's message is stored: a refused command leaves no trace")
+	select {
+	case got := <-w.n.Sent:
+		t.Fatalf("a bridge command reached the network: %+v", got)
+	default:
+	}
+
+	// Another network's prefix is just text here.
+	require.NoError(t, send(ctx, w.eng, w.s, args{cmd: "send", room: room, text: "!whatsapp logout"}, time.Second))
+	select {
+	case got := <-w.n.Sent:
+		require.Equal(t, "!whatsapp logout", got.Body)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the message never reached the network")
+	}
+	// So is ordinary text with a bang or the network's name later on.
+	for _, text := range []string{"hey !telegram is cool", "!important", "telegram !logout"} {
+		require.NoError(t, send(ctx, w.eng, w.s, args{cmd: "send", room: room, text: text}, time.Second), text)
+		<-w.n.Sent
 	}
 }
 
 func TestEnsureNotLinked(t *testing.T) {
 	ctx := context.Background()
 	h, _, _ := startFake(t, 0)
-	err := ensureNotLinked(ctx, h)
-	require.EqualError(t, err, "already linked — unlink this device in WhatsApp → Linked devices first, or use a fresh --data dir")
+	err := ensureNotLinked(ctx, h, "Fake Chat")
+	require.EqualError(t, err, "already linked to Fake Chat — unlink this device in that app first, or use a fresh --data dir")
 
-	dir := t.TempDir()
+	w := startWorld(t, "fake", false, 0)
+	empty, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	require.NoError(t, ensureNotLinked(ctx, empty, "Fake Chat"), "a fresh data dir has no login, so link may proceed")
+}
+
+// loginCounter wraps the fake network to record CreateLogin calls and hand back a login that finishes at once.
+type loginCounter struct {
+	*fakenet.Network
+	flows []string
+	proc  *fakeProc
+}
+
+func (l *loginCounter) CreateLogin(_ context.Context, _ *bridgev2.User, flow string) (bridgev2.LoginProcess, error) {
+	l.flows = append(l.flows, flow)
+	return l.proc, nil
+}
+
+func startLinkable(t *testing.T, name string, linked bool) (*engine.Engine, *loginCounter) {
+	t.Helper()
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	lc := &loginCounter{Network: fakenet.New(), proc: &fakeProc{start: complete()}}
+	eng, errs := engine.Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")},
+		[]engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return lc, nil }}}, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(eng.Stop)
+	if linked {
+		h, _ := eng.Host(name)
+		_, err = lc.Network.Login(ctx, h.Bridge)
+		require.NoError(t, err)
+	}
+	return eng, lc
+}
+
+func TestGoogleMessagesLinkWarnsFirst(t *testing.T) {
+	gm := networks.Network{Name: "gmessages", DisplayName: "Google Messages", Flows: []string{"google"}}
+
+	t.Run("declining starts no login and is not an error", func(t *testing.T) {
+		eng, lc := startLinkable(t, "gmessages", false)
+		p := &scripted{confirms: []bool{false}}
+		var out bytes.Buffer
+		linked, err := link(context.Background(), eng, gm, "", p, &out)
+		require.NoError(t, err)
+		require.False(t, linked)
+		require.Equal(t, []string{"Google Messages allows one web session. Linking here disconnects it in Beeper. Continue?"}, p.askedWith("confirm"))
+		require.Empty(t, lc.flows, "no login may be created after the user says no")
+		require.Zero(t, lc.proc.cancelled)
+	})
+
+	t.Run("accepting links on the network's first flow", func(t *testing.T) {
+		eng, lc := startLinkable(t, "gmessages", false)
+		p := &scripted{confirms: []bool{true}}
+		linked, err := link(context.Background(), eng, gm, "", p, &bytes.Buffer{})
+		require.NoError(t, err)
+		require.True(t, linked)
+		require.Equal(t, []string{"google"}, lc.flows)
+	})
+}
+
+func TestLinkOtherNetworksDoNotAskForConfirmation(t *testing.T) {
+	eng, lc := startLinkable(t, "slack", false)
+	sl := networks.Network{Name: "slack", DisplayName: "Slack", Flows: []string{"email", "token", "app"}}
+	p := &scripted{} // any prompt would fail
+	linked, err := link(context.Background(), eng, sl, "token", p, &bytes.Buffer{})
+	require.NoError(t, err)
+	require.True(t, linked)
+	require.Equal(t, []string{"token"}, lc.flows, "--flow picks the flow")
+	require.Empty(t, p.asked)
+}
+
+func TestLinkRefusesWhenAlreadyLinked(t *testing.T) {
+	eng, lc := startLinkable(t, "slack", true)
+	sl := networks.Network{Name: "slack", DisplayName: "Slack", Flows: []string{"email"}}
+	linked, err := link(context.Background(), eng, sl, "", &scripted{}, &bytes.Buffer{})
+	require.ErrorContains(t, err, "already linked to Slack")
+	require.False(t, linked)
+	require.Empty(t, lc.flows)
+}
+
+func TestLinkNetworkThatDidNotStart(t *testing.T) {
+	eng, _ := startLinkable(t, "slack", false)
+	tg := networks.Network{Name: "telegram", DisplayName: "Telegram", Flows: []string{"qr"}}
+	_, err := link(context.Background(), eng, tg, "", &scripted{}, &bytes.Buffer{})
+	require.ErrorContains(t, err, "Telegram")
+	require.ErrorContains(t, err, "not running")
+}
+
+func TestStartNetworksCarriesOnPastAFailure(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
 	s, err := store.Open(filepath.Join(dir, "courier.db"))
 	require.NoError(t, err)
 	defer s.Close()
-	empty, err := host.Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop())
-	require.NoError(t, err)
-	defer empty.Stop()
-	require.NoError(t, ensureNotLinked(ctx, empty), "a fresh data dir has no login, so link may proceed")
+	nets := []networks.Network{
+		{Name: "telegram", DisplayName: "Telegram", Spec: func() (engine.Spec, error) {
+			return engine.Spec{}, errors.New("Telegram needs its own app credentials: set COURIER_TELEGRAM_API_ID")
+		}},
+		{Name: "fake", DisplayName: "Fake", Spec: func() (engine.Spec, error) {
+			return engine.Spec{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }}, nil
+		}},
+	}
+	eng, errs := startNetworks(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, nets, zerolog.Nop())
+	defer eng.Stop()
+	require.Equal(t, []string{"fake"}, eng.Names(), "the network that could start runs")
+	require.Len(t, errs, 1)
+	require.ErrorContains(t, errs["telegram"], "COURIER_TELEGRAM_API_ID")
+
+	var out bytes.Buffer
+	reportNotStarted(&out, errs)
+	require.Equal(t, "telegram: not started — Telegram needs its own app credentials: set COURIER_TELEGRAM_API_ID\n", out.String())
+}
+
+func TestReportNotStartedIsSortedAndSilentWhenEmpty(t *testing.T) {
+	var out bytes.Buffer
+	reportNotStarted(&out, nil)
+	require.Empty(t, out.String())
+	reportNotStarted(&out, map[string]error{"slack": errors.New("b"), "gmessages": errors.New("a")})
+	require.Equal(t, "gmessages: not started — a\nslack: not started — b\n", out.String())
 }
