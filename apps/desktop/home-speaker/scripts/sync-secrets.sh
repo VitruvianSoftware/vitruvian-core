@@ -25,12 +25,19 @@
 #
 #   bazel run //apps/desktop/home-speaker:sync-secrets
 #   bazel run //apps/desktop/home-speaker:sync-secrets -- --item "My Slack" --no-restart
+#   bazel run //apps/desktop/home-speaker:sync-secrets -- --extension
 #
 # Reads the Slack USER token (xoxp-) from a Bitwarden item -- its notes, custom
 # fields or password, wherever it is -- and writes it as `slackToken` into
 # HomeSpeaker's secrets file, keeping every other key. The user token, not the
 # bot token: HomeSpeaker polls `search.messages`, which Slack only allows with
 # a user token's `search:read` scope.
+#
+# --extension fills the HomeSpeaker Vitruvian extension's own secrets.json
+# instead of the app's. The extension keeps it in its data folder, which the
+# choice file (~/.gemini/speaker_door.json, "extension.data_folder") names. If
+# that file, its extension block or the folder is missing this stops and writes
+# nothing; it never falls back to the app's file. The app is not restarted.
 #
 # The Bitwarden session is the one //tools/sync-env-secrets caches; if the
 # vault is locked this stops and says to run :unlock rather than prompting.
@@ -42,6 +49,8 @@ set -euo pipefail
 ITEM="Abrial Slack MCP"
 RESTART=1
 DRY_RUN=0
+EXTENSION=0
+CHOICE_FILE="$HOME/.gemini/speaker_door.json"
 SECRETS="${HOMESPEAKER_SECRETS:-$HOME/Library/Application Support/HomeSpeaker/secrets.json}"
 SESS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vitruvian-core/bw-session"
 
@@ -64,8 +73,12 @@ while [ $# -gt 0 ]; do
 		DRY_RUN=1
 		shift
 		;;
+	--extension)
+		EXTENSION=1
+		shift
+		;;
 	-h | --help)
-		sed -n '22,40p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '22,46p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*) die "unknown argument: $1 (try --help)" ;;
@@ -74,6 +87,19 @@ done
 
 command -v bw >/dev/null || die "the Bitwarden CLI (bw) is not installed"
 command -v jq >/dev/null || die "jq is not installed"
+
+# --- which secrets file: the app's, or the extension's -------------------------
+if [ "$EXTENSION" -eq 1 ]; then
+	WHO="the HomeSpeaker extension"
+	[ -f "$CHOICE_FILE" ] || die "no choice file at $CHOICE_FILE -- open the HomeSpeaker extension in Vitruvian first (nothing written)"
+	DATA_FOLDER="$(jq -r '.extension.data_folder // ""' "$CHOICE_FILE" 2>/dev/null)" ||
+		die "$CHOICE_FILE is not readable JSON (nothing written)"
+	[ -n "$DATA_FOLDER" ] || die "$CHOICE_FILE has no extension.data_folder -- open the HomeSpeaker extension in Vitruvian first (nothing written)"
+	[ -d "$DATA_FOLDER" ] || die "the extension's data folder does not exist: $DATA_FOLDER (nothing written)"
+	SECRETS="$DATA_FOLDER/secrets.json"
+else
+	WHO="HomeSpeaker"
+fi
 
 # --- an unlocked session, without prompting -------------------------------
 bw_unlocked() { [ "$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null)" = unlocked ]; }
@@ -95,9 +121,15 @@ COUNT="$(printf '%s' "$TOKENS" | grep -c . || true)"
 export HS_SLACK_TOKEN="$TOKENS"
 unset TOKENS ITEM_JSON
 
-# --- merge into HomeSpeaker's secrets file ------------------------------------
-[ -f "$SECRETS" ] || die "no HomeSpeaker secrets file at $SECRETS -- open HomeSpeaker and sign in first"
-CURRENT="$(jq -r '.slackToken // ""' "$SECRETS")"
+# --- merge into the secrets file -----------------------------------------------
+# The app's file must already exist (sign in first). The extension has no
+# sign-in before this, so its file is created, 0600, when its folder has none.
+if [ ! -f "$SECRETS" ]; then
+	[ "$EXTENSION" -eq 1 ] || die "no HomeSpeaker secrets file at $SECRETS -- open HomeSpeaker and sign in first"
+	CURRENT=""
+else
+	CURRENT="$(jq -r '.slackToken // ""' "$SECRETS")"
+fi
 if [ "$CURRENT" = "$HS_SLACK_TOKEN" ]; then
 	unset CURRENT HS_SLACK_TOKEN
 	echo "Slack token already matches Bitwarden item \"$ITEM\" -- nothing to do."
@@ -113,13 +145,24 @@ TMP="$(dirname "$SECRETS")/.secrets.json.sync-$$"
 trap 'rm -f "$TMP"' EXIT
 (
 	umask 077
-	jq '.slackToken = env.HS_SLACK_TOKEN' "$SECRETS" >"$TMP"
+	if [ -f "$SECRETS" ]; then
+		jq '.slackToken = env.HS_SLACK_TOKEN' "$SECRETS" >"$TMP"
+	else
+		jq -n '{slackToken: env.HS_SLACK_TOKEN}' >"$TMP"
+	fi
 )
 chmod 600 "$TMP"
 mv -f "$TMP" "$SECRETS"
 trap - EXIT
 unset HS_SLACK_TOKEN
-echo "Slack user token from Bitwarden item \"$ITEM\" written to HomeSpeaker."
+echo "Slack user token from Bitwarden item \"$ITEM\" written to $WHO."
+
+# The extension is not a process this script can restart; its chat monitor, like
+# the app's, reads the token when it starts.
+if [ "$EXTENSION" -eq 1 ]; then
+	echo "Restart the extension's chat monitor if it is running, so it picks the token up."
+	exit 0
+fi
 
 # --- make the running app use it ---------------------------------------------
 # The chat monitor reads secrets when it starts, so a running app keeps the old
