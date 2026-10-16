@@ -33,7 +33,8 @@
       "repo": "VitruvianSoftware/vitruvian-core",
       "tagPrefix": "android-remote-v",
       "asset": "VitruvianRemote-{version}-tool.zip",
-      "uploader": "github-actions[bot]"
+      "uploader": "github-actions[bot]",
+      "universal": true
     }
   ],
   "manual": {
