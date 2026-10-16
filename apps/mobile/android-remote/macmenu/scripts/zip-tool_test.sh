@@ -22,24 +22,30 @@
 # zip-tool.sh writes the zip the catalog pins: the manifest at the top,
 # bin/tool and bin/vitruvian-remote-agent runnable, no folder of its own and
 # no links, under the name the release uploads; it refuses a version the
-# manifest does not say, and, when the release asks for universal programs,
-# either program that is not one. Run against stand-in programs and a
-# stand-in `lipo`; nothing is built and nothing real is run.
+# manifest does not say, and, when the release asks, either program that is
+# not universal or that any of its architectures says needs a newer macOS
+# than the extension supports. Run against stand-in programs and a stand-in
+# `lipo` and `vtool`; nothing is built and nothing real is run.
 set -euo pipefail
 
 here="$TEST_SRCDIR/$TEST_WORKSPACE/apps/mobile/android-remote/macmenu"
 version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$here/tool/vitruvian-tool.json" | head -1)"
 work="$TEST_TMPDIR/work"
 mkdir -p "$work/bin"
-# Each stand-in program says which it is, and, on its second line, the
-# architectures the stand-in lipo below reports for it.
+# Each stand-in program says which it is; its second line names the
+# architectures the stand-in lipo reports, and its third the oldest macOS
+# each architecture runs on, as the stand-in vtool reports it ("none": no
+# LC_BUILD_VERSION).
 stand_in() {
-	printf '#!/bin/sh\n# archs: %s\necho %s\n' "$2" "$1" >"$work/$1"
+	printf '#!/bin/sh\n# archs: %s\n# minos: %s\necho %s\n' "$2" "$3" "$1" >"$work/$1"
 	chmod 755 "$work/$1"
 }
-stand_in tool "x86_64 arm64"
-stand_in agent "x86_64 arm64"
-stand_in thin-agent "arm64"
+stand_in tool "x86_64 arm64" "x86_64=14.0 arm64=14.0"
+stand_in agent "x86_64 arm64" "x86_64=14.0 arm64=13.5"
+stand_in thin-agent "arm64" "arm64=14.0"
+stand_in new-agent "x86_64 arm64" "x86_64=27.0 arm64=14.0"
+stand_in patch-agent "x86_64 arm64" "x86_64=14.0 arm64=14.0.1"
+stand_in bare-agent "x86_64 arm64" "x86_64=14.0 arm64=none"
 cat >"$work/bin/lipo" <<'LIPO'
 #!/bin/sh
 # lipo -archs <file>: the architectures the stand-in's second line names.
@@ -47,6 +53,24 @@ cat >"$work/bin/lipo" <<'LIPO'
 sed -n '2s/^# archs: //p' "$2"
 LIPO
 chmod 755 "$work/bin/lipo"
+cat >"$work/bin/vtool" <<'VTOOL'
+#!/bin/bash
+# vtool -show-build <file>, in vtool's layout: a "<file> (architecture A):"
+# heading per architecture of a universal program ("<file>:" for one), then
+# its LC_BUILD_VERSION, from the stand-in's third line.
+[ "$1" = "-show-build" ] || exit 2
+read -r -a pairs <<<"$(sed -n '3s/^# minos: //p' "$2")"
+for pair in "${pairs[@]}"; do
+	if [ "${#pairs[@]}" -gt 1 ]; then
+		echo "$2 (architecture ${pair%%=*}):"
+	else
+		echo "$2:"
+	fi
+	[ "${pair#*=}" = "none" ] && continue
+	printf 'Load command 11\n      cmd LC_BUILD_VERSION\n  cmdsize 32\n platform MACOS\n    minos %s\n      sdk 27.0\n' "${pair#*=}"
+done
+VTOOL
+chmod 755 "$work/bin/vtool"
 
 out="$(bash "$here/scripts/zip-tool.sh" "$work/tool" "$work/agent" "$version" "$work/dist")"
 asset="$work/dist/VitruvianRemote-$version-tool.zip"
@@ -131,4 +155,54 @@ test ! -e "$work/dist-thin/VitruvianRemote-$version-tool.zip" || {
 	echo "a refused build still left a zip"
 	exit 1
 }
-echo "zip-tool: OK (VitruvianRemote-$version-tool.zip: the manifest at the top, bin/tool and bin/vitruvian-remote-agent)"
+# The release's macOS floor. Both programs run on 14.0 or older on every
+# architecture (13.5 is older): zipped. A program with one architecture is
+# read too.
+release() {
+	PATH="$work/bin:$PATH" REMOTE_TOOL_MAX_MINOS=14.0 \
+		bash "$here/scripts/zip-tool.sh" "$work/tool" "$work/$1" "$version" "$work/dist-$1"
+}
+release agent >/dev/null || {
+	echo "programs built for macOS 14.0 and 13.5 were refused"
+	exit 1
+}
+release thin-agent >/dev/null || {
+	echo "a one-architecture program built for macOS 14.0 was refused"
+	exit 1
+}
+# One architecture built for a newer macOS (as an unflagged Bazel build is,
+# for the SDK's 27.0), a newer patch release, or no build version at all:
+# refused, naming the program, the architecture and the macOS, and no zip.
+for bad in "new-agent:x86_64:27.0" "patch-agent:arm64:14.0.1" "bare-agent:arm64:none"; do
+	program="${bad%%:*}"
+	rest="${bad#*:}"
+	if err="$(release "$program" 2>&1 >/dev/null)"; then
+		echo "$program was accepted under a macOS 14.0 floor"
+		exit 1
+	fi
+	grep -qF "$program (${rest%%:*}) needs macOS ${rest#*:}" <<<"$err" || {
+		echo "the refusal of $program does not say which program, architecture and macOS: $err"
+		exit 1
+	}
+	test ! -e "$work/dist-$program/VitruvianRemote-$version-tool.zip" || {
+		echo "a refused $program still left a zip"
+		exit 1
+	}
+done
+
+# Bazel's outputs can be links. The zip holds the program, not a link to it.
+ln -s "$work/tool" "$work/tool-link"
+bash "$here/scripts/zip-tool.sh" "$work/tool-link" "$work/agent" "$version" "$work/dist-link" >/dev/null
+link_asset="$work/dist-link/VitruvianRemote-$version-tool.zip"
+if unzip -Z "$link_asset" | grep -q '^l'; then
+	echo "a linked program went into the zip as a link: $(unzip -Z "$link_asset")"
+	exit 1
+fi
+mkdir -p "$work/unpacked-link"
+unzip -q "$link_asset" -d "$work/unpacked-link"
+test ! -L "$work/unpacked-link/bin/tool" && test "$("$work/unpacked-link/bin/tool")" = "tool" || {
+	echo "a linked program did not go into the zip as the program itself"
+	exit 1
+}
+
+echo "zip-tool: OK (VitruvianRemote-$version-tool.zip: the manifest at the top, bin/tool and bin/vitruvian-remote-agent, both for macOS 14.0)"
