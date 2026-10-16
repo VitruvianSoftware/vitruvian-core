@@ -838,7 +838,10 @@ class ArmTest(unittest.TestCase):
     SHA = "d" * 40
 
     def setUp(self):
-        self.mine = {"commits": [WorkflowHelpersTest().workflows()]}
+        self.mine = {
+            "commits": [WorkflowHelpersTest().workflows()],
+            "files": [{"filename": f} for f in bump.BUMP_FILES],
+        }
 
     def pull(self, **changes):
         pull = {
@@ -954,6 +957,52 @@ class ActingGitHub:
             return False
         self.comments.append(mark + "\n" + text)
         return True
+
+
+class BumpFilesTest(unittest.TestCase):
+    """Round 4: a bump changes tools.json and the site's tools.yml, nothing
+    else. Even the workflow's own trailer commit is held if it changes more
+    (a session that amends it, say)."""
+
+    def setUp(self):
+        self.helper = ArmTest()
+        self.helper.setUp()
+        self.mine, self.pull, self.arm = (
+            self.helper.mine,
+            self.helper.pull,
+            self.helper.arm,
+        )
+
+    def changed(self, *names):
+        return dict(self.mine, files=[{"filename": n} for n in names])
+
+    def test_a_branch_that_changes_a_workflow_is_held(self):
+        compare = self.changed(*bump.BUMP_FILES, ".github/workflows/catalog-check.yaml")
+        verdict = self.arm(self.pull(), compare=compare)
+        self.assertTrue(verdict.startswith("hold: "), verdict)
+        self.assertIn("`.github/workflows/catalog-check.yaml`", verdict)
+        self.assertTrue(
+            self.arm(self.pull(), "pushed", compare=compare).startswith("hold: ")
+        )
+
+    def test_a_branch_that_changes_the_bump_code_is_held(self):
+        verdict = self.arm(
+            self.pull(), compare=self.changed(bump.CATALOG, "catalog/bump.py")
+        )
+        self.assertIn("`catalog/bump.py`", verdict)
+
+    def test_only_one_of_the_two_files_is_fine(self):
+        self.assertEqual(
+            self.arm(self.pull(), compare=self.changed(bump.CATALOG)), "arm"
+        )
+
+    def test_no_file_list_is_held(self):
+        verdict = self.arm(self.pull(), compare={"commits": self.mine["commits"]})
+        self.assertTrue(verdict.startswith("hold: "), verdict)
+
+    def test_too_many_files_to_list_is_held(self):
+        compare = self.changed(*([bump.CATALOG] * 300))
+        self.assertIn("300 files or more", self.arm(self.pull(), compare=compare))
 
 
 class AutomergeTest(unittest.TestCase):
