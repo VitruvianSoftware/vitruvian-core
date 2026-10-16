@@ -1142,3 +1142,20 @@ reason = "npm node-forge (1.4.0), via selfsigned 2.4.1, mockttp 3.17.2 and @back
 id = "GHSA-hp3w-g68c-fv3c"
 ignoreUntil = 2026-10-23
 reason = "npm sprintf-js (1.0.3 via argparse 1.0.10, 1.1.3 via roarr 2.15.4). Advisory published 2026-09-24. No fixed release: 1.1.3 is both the latest version and the advisory's last_affected. Time-boxed so the next review picks up the fix. Accepted until next quarter dependency update."
+
+# libsignal (third_party/libsignal/Cargo.lock, added 2026-10-16 for Courier's
+# Signal bridge). Signal's own crate graph pulls in three crates whose only
+# advisory is "unmaintained": no fixed version exists, and they go away only
+# when Signal drops them upstream. The fixable ones (rustls) were bumped.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0141"
+reason = "PERMANENT: no fixed version exists in any range ('bincode is unmaintained', a notice, not a flaw). crates.io bincode 1.3.3, a dependency of Signal's libsignal crates (third_party/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or third_party/libsignal is re-pinned."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+reason = "PERMANENT: no fixed version exists in any range ('paste - no longer maintained', a notice, not a flaw). crates.io paste 1.0.15, a dependency of Signal's libsignal crates (third_party/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or third_party/libsignal is re-pinned."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0173"
+reason = "PERMANENT: no fixed version exists in any range ('proc-macro-error2 is unmaintained', a notice, not a flaw). crates.io proc-macro-error2 2.0.1, a build-time proc macro in Signal's libsignal crate graph (third_party/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or third_party/libsignal is re-pinned."

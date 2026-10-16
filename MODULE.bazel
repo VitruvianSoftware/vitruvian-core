@@ -127,9 +127,22 @@ go_deps.module_override(
     path = "go.mau.fi/webp",
 )
 
+# go.mau.fi/mautrix-signal (Courier's Signal bridge): pkg/libsignalgo links
+# Signal's Rust library through cgo as a bare `-lsignal_ffi`, expecting a
+# prebuilt libsignal_ffi.a on the linker search path. The patch drops that
+# flag and adds //third_party/libsignal:signal_ffi (built from source) to the
+# gazelle-generated go_library's cdeps instead; it also links libc++, not
+# libstdc++, on darwin. go_repository applies patches after gazelle, so the
+# patch edits the generated BUILD.bazel.
+go_deps.module_override(
+    patch_strip = 1,
+    patches = ["//tools/go_deps:mautrix-signal-libsignal-ffi.patch"],
+    path = "go.mau.fi/mautrix-signal",
+)
+
 # All *direct* Go dependencies of the module have to be listed explicitly.
 # Run 'bazel mod tidy' to update this
-use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles", "com_github_charmbracelet_bubbletea", "com_github_charmbracelet_huh", "com_github_charmbracelet_lipgloss", "com_github_google_uuid", "com_github_hashicorp_yamux", "com_github_joho_godotenv", "com_github_magefile_mage", "com_github_mark3labs_mcp_go", "com_github_mdp_qrterminal_v3", "com_github_pelletier_go_toml_v2", "com_github_pulumi_pulumi_command_sdk", "com_github_pulumi_pulumi_gcp_sdk_v9", "com_github_pulumi_pulumi_random_sdk_v4", "com_github_pulumi_pulumi_sdk_v3", "com_github_rs_zerolog", "com_github_spf13_cobra", "com_github_stretchr_testify", "fi_mau_go_mautrix_whatsapp", "fi_mau_go_util", "in_gopkg_yaml_v3", "net_maunium_go_mautrix", "org_golang_x_crypto", "org_golang_x_sync")
+use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles", "com_github_charmbracelet_bubbletea", "com_github_charmbracelet_huh", "com_github_charmbracelet_lipgloss", "com_github_google_uuid", "com_github_hashicorp_yamux", "com_github_joho_godotenv", "com_github_magefile_mage", "com_github_mark3labs_mcp_go", "com_github_mdp_qrterminal_v3", "com_github_pelletier_go_toml_v2", "com_github_pulumi_pulumi_command_sdk", "com_github_pulumi_pulumi_gcp_sdk_v9", "com_github_pulumi_pulumi_random_sdk_v4", "com_github_pulumi_pulumi_sdk_v3", "com_github_rs_zerolog", "com_github_spf13_cobra", "com_github_stretchr_testify", "fi_mau_go_mautrix_signal", "fi_mau_go_mautrix_whatsapp", "fi_mau_go_util", "in_gopkg_yaml_v3", "net_maunium_go_mautrix", "org_golang_x_crypto", "org_golang_x_sync")
 
 # Bazel 9: Ensure transitives don't depend on rules_nodejs prior to
 # https://github.com/bazel-contrib/rules_nodejs/commit/1fc6b6b763c4f79994edc9edab10399f7446d8be
@@ -324,6 +337,172 @@ crate.from_cargo(
 )
 use_repo(crate, "crates")
 
+# --- libsignal (Courier's Signal bridge) -----------------------------------
+# mautrix-signal's libsignalgo links Signal's Rust library, libsignal_ffi.a,
+# through cgo. //third_party/libsignal builds it from source; README.md there
+# explains the moving parts and apps/desktop/courier/engine/docs/m2-libsignal.md
+# records why it is built this way.
+#
+# libsignal needs Rust 1.98.1 (its rust-toolchain file). The SDK above stays on
+# 1.75.0: these toolchains only match when
+# //third_party/libsignal:rust_1_98_1 is true, and only the libsignal targets
+# set that flag (by transition). They are registered below, ahead of rules_rust's
+# own registration, so they are considered first and skipped everywhere else.
+# rules_rust (0.68.1 declared above; the graph resolves 0.69.0) knows checksums
+# only up to 1.93.1, so 1.98.1's are pinned here (from
+# static.rust-lang.org/dist/*.sha256). The exec side is arm64 only: Apple
+# silicon is what builds this (developer Macs, the xcode-27 CI runners).
+_RUST_1_98_1_SHA256S = {
+    "cargo-1.98.1-aarch64-apple-darwin.tar.xz": "de51d4fade4f31ad8ec405261cc96bedc000d905f98980027610d6e288dbe21b",
+    "clippy-1.98.1-aarch64-apple-darwin.tar.xz": "1ad080040ff0f4f8af0751bd7fa1fb1901212f8d164cecaa3c47b0654e0916f2",
+    "llvm-tools-1.98.1-aarch64-apple-darwin.tar.xz": "9b68ac31be7c6d25a08ce34dbd2c1d026b8006905e74415b6d9576678379ecbc",
+    "rust-std-1.98.1-aarch64-apple-darwin.tar.xz": "2de831ef563ce772519a4d18ba2659f0f7428d497ef66dad24b5a35e8f8cd177",
+    "rust-std-1.98.1-x86_64-apple-darwin.tar.xz": "48b9835058a8baa4ff5e4387f3772c572a017a2b13393c46e151615c54e322e9",
+    "rustc-1.98.1-aarch64-apple-darwin.tar.xz": "738e3f60114b20550fcf4f8a57c9cea0544239f214709f45594ff3fde327f577",
+}
+
+rust.repository_set(
+    name = "rust_libsignal_darwin_aarch64",
+    edition = "2024",
+    exec_triple = "aarch64-apple-darwin",
+    sha256s = _RUST_1_98_1_SHA256S,
+    target_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:macos",
+    ],
+    target_settings = ["//third_party/libsignal:rust_1_98_1_enabled"],
+    target_triple = "aarch64-apple-darwin",
+    versions = ["1.98.1"],
+)
+rust.repository_set(
+    name = "rust_libsignal_darwin_aarch64",
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:macos",
+    ],
+    target_triple = "x86_64-apple-darwin",
+)
+use_repo(rust, "rust_toolchains")
+
+# Root registrations are considered before rules_rust's own
+# register_toolchains("@rust_toolchains//:all"), whose 1.75.0 toolchains match
+# any target; these two match only under the libsignal flag.
+register_toolchains(
+    "@rust_toolchains//:rust_libsignal_darwin_aarch64__aarch64-apple-darwin__stable",
+    "@rust_toolchains//:rust_libsignal_darwin_aarch64__x86_64-apple-darwin__stable",
+)
+
+# libsignal's crate graph. third_party/libsignal/Cargo.toml is a one-package
+# workspace that depends on libsignal's crates at the pinned commit, so rules_rs
+# generates every one of them (build scripts included) like any crates.io crate.
+crate.from_cargo(
+    name = "libsignal_crates",
+    cargo_lock = "//third_party/libsignal:Cargo.lock",
+    cargo_toml = "//third_party/libsignal:Cargo.toml",
+    platform_triples = [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+    ],
+)
+
+# rules_rs finds a git crate inside its repo through the workspace's
+# [workspace.dependencies] table; these four are not listed there, so say where
+# they live.
+[
+    crate.annotation(
+        crate = name,
+        repositories = ["libsignal_crates"],
+        strip_prefix = path,
+    )
+    for name, path in {
+        "libsignal-ffi": "rust/bridge/ffi",
+        "libsignal-ffi-impl": "rust/bridge/ffi/impl",
+        "libsignal-message-backup-macros": "rust/message-backup/macros",
+        "libsignal-net-infra": "rust/net/infra",
+    }.items()
+]
+
+# boring-sys (Signal's BoringSSL fork) normally runs CMake on a git submodule
+# that the GitHub source archive does not contain. Instead it is handed a
+# BoringSSL that Bazel built itself (@signal_boringssl, below, with the same
+# post-quantum patch boring-sys would apply), laid out as BORING_BSSL_PATH
+# expects. Its bindgen step loads libclang from the hermetic LLVM toolchain
+# and reads system headers from the same SDK llvm.sysroot pins (keep the two in
+# step). ASSUME_PATCHED only records that @signal_boringssl carries the patch;
+# with BORING_BSSL_PATH set, boring-sys skips patching anyway.
+crate.annotation(
+    build_script_data = ["@@//third_party/libsignal:boringssl_prefix"],
+    build_script_env = {
+        "BORING_BSSL_ASSUME_PATCHED": "1",
+        "BORING_BSSL_PATH": "$(execpath @@//third_party/libsignal:boringssl_prefix)",
+        "BORING_BSSL_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk",
+        "LIBCLANG_PATH": "$(execpath @@//third_party/libsignal:libclang)",
+    },
+    build_script_tools = [
+        "@@//third_party/libsignal:clang_headers",
+        "@@//third_party/libsignal:libclang",
+    ],
+    crate = "boring-sys",
+    repositories = ["libsignal_crates"],
+)
+
+# libsignal's protobuf build scripts run protoc: prost-build from $PROTOC,
+# protobuf-codegen from $PATH. //third_party/libsignal:protoc is the protobuf
+# module's protoc plus its well-known types.
+[
+    crate.annotation(
+        build_script_env = {
+            "PATH": "$(execpath @@//third_party/libsignal:protoc)/bin:/usr/bin:/bin",
+            "PROTOC": "$(execpath @@//third_party/libsignal:protoc)/bin/protoc",
+        },
+        build_script_tools = ["@@//third_party/libsignal:protoc"],
+        crate = name,
+        repositories = ["libsignal_crates"],
+    )
+    for name in [
+        "attest",
+        "libsignal-account-keys",
+        "libsignal-keytrans",
+        "libsignal-message-backup",
+        "libsignal-net",
+        "libsignal-net-grpc",
+        "libsignal-protocol",
+        "libsignal-svrb",
+        "spqr",
+        "usernames",
+    ]
+]
+
+# curve25519-dalek's build script picks its SIMD backend on x86_64 and sets a
+# custom cfg (curve25519_dalek_backend) that its Cargo.toml then keys the
+# curve25519-dalek-derive dependency on. rules_rs evaluates target cfgs before
+# any build script runs, so it drops that dependency and the x86_64 build fails
+# with "cannot find curve25519_dalek_derive". Add it back; on arm64 it is an
+# unused proc macro.
+crate.annotation(
+    crate = "curve25519-dalek",
+    repositories = ["libsignal_crates"],
+    deps = ["@libsignal_crates//:curve25519-dalek-derive-0.1.1"],
+)
+
+# ring's build script compiles C with cc-rs, which runs the compiler from the
+# build script's working directory. rules_rust hands it the LLVM toolchain's
+# CFLAGS, and some of those name files relative to the execroot
+# (-imacros external/.../redacted_dates.h), so they do not resolve there.
+# cc-rs prefers CC_<target> over CC: point it at a wrapper that cds to the
+# execroot ($${pwd}, filled in by rules_rust) and then runs the real $CC.
+crate.annotation(
+    build_script_env = {
+        "CC_aarch64_apple_darwin": "$(execpath @@//third_party/libsignal:cc_in_execroot)",
+        "CC_x86_64_apple_darwin": "$(execpath @@//third_party/libsignal:cc_in_execroot)",
+        "COURIER_BAZEL_EXECROOT": "$${pwd}",
+    },
+    build_script_tools = ["@@//third_party/libsignal:cc_in_execroot"],
+    crate = "ring",
+    repositories = ["libsignal_crates"],
+)
+use_repo(crate, "libsignal_crates")
+
 #########################
 # Support for Ruby, see https://github.com/bazel-contrib/rules_ruby
 bazel_dep(name = "rules_ruby", version = "0.27.0")
@@ -436,6 +615,22 @@ use_repo(
 )
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# @signal_boringssl's BUILD.bazel loads @rules_license (already in the graph).
+bazel_dep(name = "rules_license", version = "1.0.0")
+
+# Google BoringSSL at the commit Signal's boring fork (tag signal-v5.2.0,
+# boring-sys/deps/boringssl) pins, with the patch boring-sys always applies.
+# It has its own Bazel build; this is separate from the boringssl module grpc
+# pulls in, which is a different version.
+http_archive(
+    name = "signal_boringssl",
+    patch_args = ["-p1"],
+    patches = ["//third_party/libsignal:boring-pq.patch"],
+    sha256 = "c7bb28cc94b40dd0606507c5010008138193bc7773b86058756a26df1b957b6f",
+    strip_prefix = "boringssl-e2a57cfb4d915b4ba820585aef9fdee7bca13fe5",
+    url = "https://github.com/google/boringssl/archive/e2a57cfb4d915b4ba820585aef9fdee7bca13fe5.tar.gz",
+)
 
 http_archive(
     name = "net_sourceforge_pmd",

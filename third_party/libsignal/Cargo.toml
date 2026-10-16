@@ -1,0 +1,42 @@
+# Upstream: https://github.com/signalapp/libsignal (AGPL-3.0-only).
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# A one-package Cargo workspace whose only job is to describe libsignal's
+# crate graph to Bazel. MODULE.bazel reads it (crate.from_cargo, hub
+# @libsignal_crates); nothing here is built by cargo. It depends on libsignal's
+# own crates as git dependencies at the commit mautrix-signal v0.2609.0 pins
+# (libsignal v0.102.2), so every libsignal crate becomes an ordinary external
+# crate with a generated BUILD file, exactly as cargo would build
+# `cargo build -p libsignal-ffi`.
+#
+# Cargo.lock beside this file was made from libsignal's own Cargo.lock, so
+# every crates.io version matches upstream. See README.md before changing it.
+
+[workspace]
+resolver = "2"
+members = ["."]
+
+[package]
+name = "courier-libsignal-ffi"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+# libsignal-ffi is only a `staticlib` wrapper (its lib.rs is
+# `extern crate libsignal_ffi_impl;`). It is listed so its feature selection
+# is the same as upstream's; //third_party/libsignal:signal_ffi_rust rebuilds
+# that wrapper as a rust_static_library on top of libsignal-ffi-impl.
+libsignal-ffi = { git = "https://github.com/signalapp/libsignal", rev = "8fc2113bda042fc972a166a24b974b0d34155c6c" }
+libsignal-ffi-impl = { git = "https://github.com/signalapp/libsignal", rev = "8fc2113bda042fc972a166a24b974b0d34155c6c", features = ["ffi"] }
+log = "0.4.21"
+
+# Copied from libsignal's workspace Cargo.toml: libsignal builds against
+# Signal's BoringSSL fork, never the crates.io one.
+[patch.crates-io]
+boring = { git = "https://github.com/signalapp/boring", tag = "signal-v5.2.0" }
+boring-sys = { git = "https://github.com/signalapp/boring", tag = "signal-v5.2.0" }
