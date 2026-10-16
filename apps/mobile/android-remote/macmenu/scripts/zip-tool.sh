@@ -29,8 +29,11 @@
 #   scripts/zip-tool.sh <remote-tool binary> <vitruvian-remote-agent binary> <version> <dist dir>
 #
 # With REMOTE_TOOL_REQUIRE_UNIVERSAL=1 (the release sets it) both programs must
-# hold Apple silicon and Intel code. The version must be the one
-# tool/vitruvian-tool.json says.
+# hold Apple silicon and Intel code. With REMOTE_TOOL_MAX_MINOS=X.Y (the
+# release sets it to the macOS the extension supports) every architecture of
+# every program must say, in its LC_BUILD_VERSION, that it runs on macOS X.Y
+# or older: a program built for a newer macOS installs and then never starts.
+# The version must be the one tool/vitruvian-tool.json says.
 #
 # Prints the zip's size and SHA-256, which a catalog entry
 # (catalog/tools.json) pins.
@@ -52,6 +55,49 @@ if [[ "${REMOTE_TOOL_REQUIRE_UNIVERSAL:-0}" == "1" ]]; then
 			echo "error: expected a universal binary, ${binary} is: ${archs}" >&2
 			exit 1
 		fi
+	done
+fi
+
+# The oldest macOS each architecture of a program runs on, one
+# "<arch> <minos>" line each, from `vtool -show-build`. A program with no
+# LC_BUILD_VERSION gives "<arch> none".
+minos_per_arch() {
+	vtool -show-build "$1" | awk '
+		/ \(architecture [^)]*\):$/ {
+			if (arch != "") print arch, (minos == "" ? "none" : minos)
+			arch = $0; sub(/.*\(architecture /, "", arch); sub(/\):$/, "", arch); minos = ""; next
+		}
+		/:$/ && arch == "" && seen == 0 { arch = "thin"; seen = 1; next }
+		$1 == "minos" { minos = $2 }
+		END { if (arch != "") print arch, (minos == "" ? "none" : minos) }
+	'
+}
+
+# Whether version $1 is newer than $2, comparing X.Y.Z numerically.
+newer_than() {
+	awk -v a="$1" -v b="$2" 'BEGIN {
+		n = split(a, x, "."); m = split(b, y, ".")
+		for (i = 1; i <= (n > m ? n : m); i++) {
+			if ((x[i] + 0) > (y[i] + 0)) exit 0
+			if ((x[i] + 0) < (y[i] + 0)) exit 1
+		}
+		exit 1
+	}'
+}
+
+if [[ -n "${REMOTE_TOOL_MAX_MINOS:-}" ]]; then
+	for binary in "${TOOL}" "${AGENT}"; do
+		slices="$(minos_per_arch "${binary}")"
+		if [[ -z "${slices}" ]]; then
+			echo "error: vtool found no architecture in ${binary}" >&2
+			exit 1
+		fi
+		while read -r arch minos; do
+			if [[ "${minos}" == "none" ]] || newer_than "${minos}" "${REMOTE_TOOL_MAX_MINOS}"; then
+				echo "error: ${binary} (${arch}) needs macOS ${minos}; the extension supports macOS ${REMOTE_TOOL_MAX_MINOS}" >&2
+				exit 1
+			fi
+		done <<<"${slices}"
 	done
 fi
 

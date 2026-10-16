@@ -40,9 +40,14 @@ PKG="apps/mobile/android-remote/macmenu"
 
 DRY_RUN=false
 for arg in "$@"; do
-	if [[ "${arg}" == "--dry-run" ]]; then
-		DRY_RUN=true
-	fi
+	case "${arg}" in
+	--dry-run) DRY_RUN=true ;;
+	*)
+		# A misspelt --dry-run must not upload.
+		echo "error: unknown argument ${arg} (only --dry-run)" >&2
+		exit 2
+		;;
+	esac
 done
 
 TAG="${TAG:-}"
@@ -57,7 +62,18 @@ fi
 
 echo "==> Packaging the Vitruvian Remote extension v${VERSION}${TAG:+ (tag: ${TAG})}"
 
-flags=(--config=macos-app -c opt)
+# The oldest macOS the extension supports: the menu bar app's, which is the
+# Vitruvian app's (14.0). Without it Bazel builds for the SDK's own macOS
+# (Xcode 27's: 27.0), and the extension would install on macOS 14 to 26 and
+# then never start; no Intel Mac runs macOS 27 at all. zip-tool.sh checks
+# every architecture of both programs against it.
+MIN_MACOS="$(plutil -extract LSMinimumSystemVersion raw -o - "${MACMENU_DIR}/Resources/Info.plist")"
+if [[ ! "${MIN_MACOS}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+	echo "error: Resources/Info.plist's LSMinimumSystemVersion is '${MIN_MACOS}'" >&2
+	exit 1
+fi
+
+flags=(--config=macos-app -c opt "--macos_minimum_os=${MIN_MACOS}")
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
 	# Cache-only: reuse what the macOS lanes already built. Absent (a laptop,
 	# a fork), build locally.
@@ -75,9 +91,10 @@ for arch in arm64 x86_64; do
 	bazel build "${arch_flags[@]}" "//${PKG}:tool-folder"
 	# Both architectures build to the same output path, so each is copied out
 	# before the next build replaces it.
-	outputs="$(bazel cquery "${arch_flags[@]}" --output=files "//${PKG}:tool-folder" 2>/dev/null)"
+	outputs="$(bazel cquery "${arch_flags[@]}" --output=files "//${PKG}:tool-folder")"
 	for program in tool vitruvian-remote-agent; do
-		built="$(grep "/built/remote/bin/${program}\$" <<<"${outputs}" | head -1)"
+		# No match must reach the clear error below, not end the script here.
+		built="$({ grep "/built/remote/bin/${program}\$" <<<"${outputs}" || true; } | head -1)"
 		if [[ -z "${built}" || ! -f "${built}" ]]; then
 			echo "error: bazel left no bin/${program} for ${arch}" >&2
 			exit 1
@@ -102,7 +119,7 @@ for program in tool vitruvian-remote-agent; do
 	codesign --verify --strict "${WORK}/universal/${program}"
 done
 
-REMOTE_TOOL_REQUIRE_UNIVERSAL=1 bash "${SCRIPT_DIR}/zip-tool.sh" \
+REMOTE_TOOL_REQUIRE_UNIVERSAL=1 REMOTE_TOOL_MAX_MINOS="${MIN_MACOS}" bash "${SCRIPT_DIR}/zip-tool.sh" \
 	"${WORK}/universal/tool" "${WORK}/universal/vitruvian-remote-agent" \
 	"${VERSION}" "${WORK}/dist"
 
