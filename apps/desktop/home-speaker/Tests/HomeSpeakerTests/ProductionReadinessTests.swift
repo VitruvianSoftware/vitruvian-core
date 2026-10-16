@@ -105,6 +105,24 @@ private func json(_ text: String) -> [String: Any] {
     }
 }
 
+@Suite struct NoKeychainTests {
+    /// Sign-ins live in a 0600 file (`SecretStore`), never the Keychain: the
+    /// app is ad-hoc signed, so a Keychain item would ask for permission after
+    /// every update, and the extension has no such prompt to give. This scans
+    /// every source file of every target, the way the home-directory scan does.
+    @Test func noSourceTouchesTheKeychain() throws {
+        let sources = packageRoot().appendingPathComponent("Sources")
+        let files = try FileManager.default.subpathsOfDirectory(atPath: sources.path).filter { $0.hasSuffix(".swift") }
+        #expect(!files.isEmpty)
+        for f in files {
+            let text = try String(contentsOf: sources.appendingPathComponent(f), encoding: .utf8)
+            #expect(!text.contains("SecItem"), "\(f) calls the Keychain (SecItem)")
+            #expect(text.range(of: #"import\s+Security\b"#, options: .regularExpression) == nil,
+                    "\(f) imports Security, the Keychain's framework")
+        }
+    }
+}
+
 @Suite struct AliasTests {
     @Test func aliasIsSafeAndStable() {
         #expect(SpeakerDevice.alias(for: "Lake Office display") == "lake_office_display")
@@ -261,7 +279,7 @@ private func json(_ text: String) -> [String: Any] {
         #expect(s.slot(.home)?.accessToken == "a")
         s.setSlot(.home, nil)
         #expect(s.hasChatAccess, "signing out of Home leaves Chat alone")
-        #expect(OAuthClient.resolve(secrets: s, bundle: Bundle(for: SentinelClass.self))?.clientId == "c", "the chat login can supply the client too")
+        #expect(OAuthClient.resolve(secrets: s, shipped: nil)?.clientId == "c", "the chat login can supply the client too")
     }
 
     @Test func callbackParsing() {
@@ -284,10 +302,10 @@ private func json(_ text: String) -> [String: Any] {
     }
 
     @Test func oauthClientResolutionOrder() {
-        #expect(OAuthClient.resolve(secrets: Secrets(), bundle: Bundle(for: SentinelClass.self)) == nil,
+        #expect(OAuthClient.resolve(secrets: Secrets(), shipped: nil) == nil,
                 "no override and no plist key means no client — sign-in must say so, not crash")
         let override = Secrets(oauthClientIdOverride: "mine", oauthClientSecretOverride: "s")
-        #expect(OAuthClient.resolve(secrets: override, bundle: Bundle(for: SentinelClass.self)) == OAuthClient(clientId: "mine", clientSecret: "s"))
+        #expect(OAuthClient.resolve(secrets: override, shipped: nil) == OAuthClient(clientId: "mine", clientSecret: "s"))
     }
 
     @Test func animportedLoginSuppliesItsOwnClient() {
@@ -297,17 +315,17 @@ private func json(_ text: String) -> [String: Any] {
         let imported = Secrets(google: GoogleCredentials(
             clientId: "292687603462-x.apps.googleusercontent.com", clientSecret: "GOCSPX-x",
             accessToken: "a", refreshToken: "r"))
-        #expect(OAuthClient.resolve(secrets: imported, bundle: Bundle(for: SentinelClass.self))
+        #expect(OAuthClient.resolve(secrets: imported, shipped: nil)
                 == OAuthClient(clientId: "292687603462-x.apps.googleusercontent.com", clientSecret: "GOCSPX-x"))
 
         // An explicit override still wins over the imported one.
         var both = imported
         both.oauthClientIdOverride = "mine"
         both.oauthClientSecretOverride = "s"
-        #expect(OAuthClient.resolve(secrets: both, bundle: Bundle(for: SentinelClass.self))?.clientId == "mine")
+        #expect(OAuthClient.resolve(secrets: both, shipped: nil)?.clientId == "mine")
 
         // A signed-out store with no client anywhere still resolves to nil.
-        #expect(OAuthClient.resolve(secrets: Secrets(google: nil), bundle: Bundle(for: SentinelClass.self)) == nil)
+        #expect(OAuthClient.resolve(secrets: Secrets(google: nil), shipped: nil) == nil)
     }
 
     @Test func weeklyExpiryGetsAnActionableHint() {
@@ -427,7 +445,7 @@ private final class SentinelClass {}
 
         let moved = AgentIntegration(home: dir, executablePath: "/opt/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
         #expect(moved.hookStatus() == .stale(here.hookCommand))
-        moved.repairHookIfMoved()
+        moved.repairHookIfMoved(choice: nil)
         #expect(moved.hookStatus() == .installed)
         #expect(here.hookStatus() == .stale(moved.hookCommand))
 
@@ -518,7 +536,7 @@ private final class SentinelClass {}
         try JSONSerialization.data(withJSONObject: stale).write(to: settings)
         let a = AgentIntegration(home: home, executablePath: exe)
         #expect(a.status(of: .antigravity).hook == .stale("\"/old/HomeSpeaker\" --antigravity-hook"), "the fixture must be visible to the code under test")
-        a.repairHookIfMoved()
+        a.repairHookIfMoved(choice: nil)
         let after = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
         #expect(AgentIntegration.installedHookCommand(in: after ?? [:], agent: .antigravity) == "\"/old/HomeSpeaker\" --antigravity-hook", "left alone")
     }

@@ -74,11 +74,11 @@ private final class RecordingMonitor: ChatMonitorControlling {
     /// is gone must never believe it.
     @Test func aStatusFromAnAppThatIsNotRunningNeverReadsAsRunning() {
         let left = ChatMonitorStatus(isRunning: true, lastError: "Slack: boom", slackIdentity: "alice", pid: 7)
-        let believed = left.believed(appRunning: false)
+        let believed = left.believed(ownerRunning: false)
         #expect(!believed.isRunning)
         #expect(believed.lastError == nil)
         #expect(believed.slackIdentity == "alice")
-        #expect(left.believed(appRunning: true) == left)
+        #expect(left.believed(ownerRunning: true) == left)
     }
 }
 

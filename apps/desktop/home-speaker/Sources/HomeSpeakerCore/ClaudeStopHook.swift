@@ -168,33 +168,57 @@ public enum ClaudeStopHook {
     }
 
     /// Sends one announcement to a speaker; true when it was sent. The real
-    /// one is `GoogleHomeClient.shared.broadcast`; tests pass their own.
+    /// one is an engine's `GoogleHomeClient.broadcast`; tests pass their own.
     public typealias Broadcaster = @Sendable (
         _ text: String, _ target: SpeakerDevice, _ structureId: String, _ config: SpeakerConfig
     ) async throws -> Bool
 
-    public static let googleHomeBroadcaster: Broadcaster = { text, target, structureId, config in
-        try await GoogleHomeClient.shared.broadcast(
-            text: text, target: target, structureId: structureId, config: config, force: false)
+    /// `home`'s broadcast: an engine passes its own speakers.
+    public static func broadcaster(for home: GoogleHomeClient) -> Broadcaster {
+        { text, target, structureId, config in
+            try await home.broadcast(text: text, target: target, structureId: structureId, config: config, force: false)
+        }
     }
+
+    /// The app's speakers (`HomeSpeakerEngine.app`'s).
+    public static let googleHomeBroadcaster: Broadcaster = broadcaster(for: .shared)
 
     /// Entry point for `HomeSpeaker --claude-stop-hook`. Reads the hook JSON
     /// from `input`, speaks if appropriate, and always returns normally.
     ///
     /// A broadcast it sends itself goes into `history`. One it hands to the
-    /// detached `--announce` is recorded by that process, not here, so it is
-    /// never listed twice.
+    /// detached `--announce` (`launchDetached`) is recorded by that process,
+    /// not here, so it is never listed twice. The de-duplication lock is in
+    /// `lockDirectory`.
     public static func run(
         input: Data,
         configManager: ConfigManager? = nil,
         history: BroadcastHistory = .shared,
+        lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
+        broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
+    ) async {
+        await run(
+            input: input, config: { configManager ?? .shared }, history: history, lockDirectory: lockDirectory,
+            launchDetached: launchDetached, broadcaster: broadcaster)
+    }
+
+    /// The same, with the settings asked for only once the transcript
+    /// reads: reading them can write the default settings file or print a
+    /// problem, which a hook run on bad input must not do.
+    public static func run(
+        input: Data,
+        config makeConfig: @MainActor @Sendable () -> ConfigManager,
+        history: BroadcastHistory = .shared,
+        lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
         broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
               let transcriptPath = payload["transcript_path"] as? String,
               let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
 
-        let config = await MainActor.run { (configManager ?? ConfigManager.shared).config }
+        let config = await MainActor.run { makeConfig().config }
         guard config.enabled else { return }
         let local = config.effectiveSpeakLocal
         let homeReady = config.effectiveSpeakHome && config.defaultDevice != nil && !config.structureId.isEmpty
@@ -204,14 +228,14 @@ public enum ClaudeStopHook {
         let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
         guard let text = textToSpeak(entries: parseTranscript(tail)) else { return }
         let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
-        guard !spoken.isEmpty, !isDuplicate(spoken: spoken) else { return }
+        guard !spoken.isEmpty, !isDuplicate(spoken: spoken, directory: lockDirectory) else { return }
 
         // Claude Code stops the hook after 10 s, and this Mac speaking a
         // summary takes longer. So when the Mac speaks, a detached copy of
         // this binary makes the whole announcement (both outputs, one media
         // pause) and outlives the hook.
         if local {
-            DetachedAnnouncement.launch(text: spoken)
+            launchDetached(spoken)
             return
         }
         guard let target = config.defaultDevice else { return }
@@ -222,12 +246,30 @@ public enum ClaudeStopHook {
     }
 }
 
-/// Starts `HomeSpeaker --announce <text>` in its own session with no
+/// Starts `<this program> --announce <text>` in its own session with no
 /// terminal, so ending (or killing) the hook's process does not end it.
 public enum DetachedAnnouncement {
+    /// This process's own program: the app's `HomeSpeaker`, or for the
+    /// extension, its `bin/tool`. Either runs `--announce` on its own
+    /// engine, so the announcement is made by the side the hook ran for.
+    public static var defaultExecutable: String? { Bundle.main.executablePath }
+
+    /// Starts one program, detached: `arguments[0]` is the program itself.
+    public typealias Spawner = (_ executable: String, _ arguments: [String]) -> Bool
+
+    /// Starts `executable --announce text`. True when it started. Tests pass
+    /// their own `spawn`, so nothing is started.
     @discardableResult
-    public static func launch(text: String, executable: String? = Bundle.main.executablePath) -> Bool {
+    public static func launch(
+        text: String, executable: String? = DetachedAnnouncement.defaultExecutable,
+        spawn: Spawner = DetachedAnnouncement.spawnDetached
+    ) -> Bool {
         guard let executable else { return false }
+        return spawn(executable, [executable, ClaudeStopHook.announceArgument, text])
+    }
+
+    /// `posix_spawn` in a session of its own, with no terminal.
+    public static func spawnDetached(_ executable: String, _ strings: [String]) -> Bool {
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
@@ -243,7 +285,6 @@ public enum DetachedAnnouncement {
         // Typed explicitly: CI's toolchain (Xcode's Swift) could not infer the
         // element type of `map { strdup($0) } + [nil]` and failed the build;
         // the local Command Line Tools compiler accepted it.
-        let strings: [String] = [executable, ClaudeStopHook.announceArgument, text]
         var argv: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
         argv.append(nil)
         defer { argv.forEach { free($0) } }

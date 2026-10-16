@@ -120,13 +120,17 @@ public protocol MediaPausing: Sendable {
     func resumeNow() async
 }
 
-/// The real pause: the menu bar app's coordinator, in process or over a
-/// distributed notification.
+/// The real pause: the long-lived process's coordinator (the menu bar
+/// app's, or the extension's), in process or over a distributed
+/// notification under `profile`'s names. A nil profile is the process's
+/// (`HomeSpeakerProfile.current`), read at each call.
 public struct SharedMediaPause: MediaPausing {
-    public init() {}
-    public func pause(seconds: Double) async { await MediaPauseRequest.pause(seconds: seconds) }
-    public func extend(seconds: Double) async { await MediaPauseRequest.extend(seconds: seconds) }
-    public func resumeNow() async { await MediaPauseRequest.resumeNow() }
+    public let profile: HomeSpeakerProfile?
+    public init(profile: HomeSpeakerProfile? = nil) { self.profile = profile }
+    private var messages: HomeSpeakerProfile { profile ?? .current }
+    public func pause(seconds: Double) async { await MediaPauseRequest.pause(seconds: seconds, profile: messages) }
+    public func extend(seconds: Double) async { await MediaPauseRequest.extend(seconds: seconds, profile: messages) }
+    public func resumeNow() async { await MediaPauseRequest.resumeNow(profile: messages) }
 }
 
 // MARK: - The announcer

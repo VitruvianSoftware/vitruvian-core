@@ -84,7 +84,7 @@ final class ChatSlackTests: XCTestCase {
         HomeSpeakerTool(parts: .init(
             link: link, store: store, driver: driver, later: { $0() }, account: account, chat: chat,
             gwsLocation: { [unowned self] in gwsAsked += 1; return gwsPath },
-            isAppRunning: { [unowned self] in runningAsked += 1; return appRunning },
+            ownerRunning: { [unowned self] in runningAsked += 1; return appRunning },
             credentialsChanged: { [unowned self] in posted += 1 }, historyURL: HomeSpeakerToolTests.noHistory))
     }
 

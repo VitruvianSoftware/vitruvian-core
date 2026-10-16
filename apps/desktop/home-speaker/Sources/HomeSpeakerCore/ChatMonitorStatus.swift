@@ -64,9 +64,10 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
     }
 
     /// What a reader should believe: a status that says "running" from an
-    /// app that is not running is a crash or a kill, never a monitor.
-    public func believed(appRunning: Bool) -> ChatMonitorStatus {
-        guard !appRunning else { return self }
+    /// owner (the app, or the extension's process) that is not running is a
+    /// crash or a kill, never a monitor.
+    public func believed(ownerRunning: Bool) -> ChatMonitorStatus {
+        guard !ownerRunning else { return self }
         var status = self
         status.isRunning = false
         status.lastError = nil
@@ -131,12 +132,16 @@ public enum ChatMonitorAction: String, CaseIterable, Sendable {
 /// The request, over a distributed notification: from the Vitruvian tool,
 /// or from `HomeSpeaker --chat-monitor start|stop`.
 public enum ChatMonitorControlNotice {
-    public static let notificationName = Notification.Name("com.vitruviansoftware.homespeaker.chat-monitor-control")
+    /// The name the request travels under for `profile`.
+    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+        profile.messageName(.chatMonitorControl)
+    }
+
     public static let flag = "--chat-monitor"
 
-    /// The other process's side. `name` is for tests, so they never reach
-    /// a real running app.
-    public static func post(_ action: ChatMonitorAction, name: Notification.Name = notificationName) {
+    /// The other process's side. `name` is the process's profile's unless
+    /// given; tests give their own, so they never reach a real running app.
+    public static func post(_ action: ChatMonitorAction, name: Notification.Name = notificationName(for: .current)) {
         DistributedNotificationCenter.default().postNotificationName(
             name, object: nil, userInfo: ["action": action.rawValue], deliverImmediately: true)
     }
@@ -144,7 +149,7 @@ public enum ChatMonitorControlNotice {
     /// The app's side: run `handle` on the main actor for each request
     /// that names an action. Anything else is ignored.
     @MainActor public static func listen(
-        name: Notification.Name = notificationName,
+        name: Notification.Name = notificationName(for: .current),
         handle: @escaping @MainActor @Sendable (ChatMonitorAction) -> Void
     ) -> NSObjectProtocol {
         DistributedNotificationCenter.default().addObserver(forName: name, object: nil, queue: .main) { note in
@@ -155,7 +160,7 @@ public enum ChatMonitorControlNotice {
 
     /// The app's side, wired to the chat monitor.
     @MainActor public static func listen(
-        name: Notification.Name = notificationName, monitor: any ChatMonitorControlling
+        name: Notification.Name = notificationName(for: .current), monitor: any ChatMonitorControlling
     ) -> NSObjectProtocol {
         listen(name: name) { [weak monitor] action in
             guard let monitor else { return }

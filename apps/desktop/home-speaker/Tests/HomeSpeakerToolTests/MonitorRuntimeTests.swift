@@ -62,7 +62,7 @@ final class MonitorRuntimeTests: XCTestCase {
     private func tool() -> HomeSpeakerTool {
         HomeSpeakerTool(parts: .init(
             link: link, store: store, driver: driver, later: { $0() }, chat: chat,
-            isAppRunning: { [unowned self] in appRunning }, historyURL: HomeSpeakerToolTests.noHistory,
+            ownerRunning: { [unowned self] in appRunning }, historyURL: HomeSpeakerToolTests.noHistory,
             monitorStatusURL: statusFile.url, controlChatMonitor: { [unowned self] in asked.append($0) }))
     }
 
@@ -162,12 +162,12 @@ final class MonitorRuntimeTests: XCTestCase {
     func testAStatusFromAnAppThatIsNotRunningIsReadAsStopped() {
         let left = ChatMonitorStatus(isRunning: true, lastPollDate: Date(), lastError: "Slack: invalid_auth",
                                      slackIdentity: "james", activeGoogleChatBackend: "gws")
-        let crashed = Pages.Chat(hasSlackToken: true, appRunning: false, monitor: left)
+        let crashed = Pages.Chat(hasSlackToken: true, ownerRunning: false, monitor: left)
         XCTAssertEqual(crashed.monitor?.isRunning, false)
         XCTAssertNil(crashed.monitor?.lastError)
         XCTAssertFalse(crashed.monitorRunning)
         XCTAssertNil(crashed.runtimeError)
-        let live = Pages.Chat(hasSlackToken: true, appRunning: true, monitor: left)
+        let live = Pages.Chat(hasSlackToken: true, ownerRunning: true, monitor: left)
         XCTAssertEqual(live.monitor, left)
     }
 
@@ -194,7 +194,7 @@ final class MonitorRuntimeTests: XCTestCase {
     func testChatWarningsListSetupProblemsThenTheRuntimeError() {
         var status = Pages.Status()
         status.config.effectiveChatMonitor.slackEnabled = true
-        status.chat = Pages.Chat(hasSlackToken: false, appRunning: true,
+        status.chat = Pages.Chat(hasSlackToken: false, ownerRunning: true,
                                  monitor: ChatMonitorStatus(isRunning: true, lastError: "Slack: ratelimited"))
         XCTAssertEqual(Pages.chatWarnings(status), [ChatMonitorError.slackTokenMissing.localizedDescription, "Slack: ratelimited"])
         status.config.effectiveChatMonitor.slackEnabled = false

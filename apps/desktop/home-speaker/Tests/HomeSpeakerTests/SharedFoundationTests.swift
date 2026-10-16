@@ -330,7 +330,7 @@ private func scratchHome() -> URL {
     @Test func repairFromAnotherProgramLeavesTheAppsHookAlone() throws {
         let home = scratchHome()
         try AgentIntegration(home: home, executablePath: app).installHook(for: .claudeCode)
-        AgentIntegration(home: home, executablePath: tool).repairHookIfMoved()
+        AgentIntegration(home: home, executablePath: tool).repairHookIfMoved(choice: nil)
         #expect(AgentIntegration(home: home, executablePath: app).hookStatus() == .installed, "still the app's hook")
     }
 

@@ -73,9 +73,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// Where the `gws` command is (`GwsChatClient.locate()`); nil when
         /// it is not installed.
         public var gwsLocation: () -> String?
-        /// HomeSpeaker.app is running as an app, so it reads messages
+        /// The process that runs this side's chat monitor is alive, so it
+        /// reads messages: for the app, HomeSpeaker.app is running as an app
         /// (`ProcessDriver.isAppRunning()`).
-        public var isAppRunning: () -> Bool
+        public var ownerRunning: () -> Bool
         /// Tells a running HomeSpeaker that a login or token changed
         /// (`CredentialsChangedNotice.post()`), so it re-reads them and
         /// starts or restarts its chat monitor.
@@ -109,7 +110,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     account: GoogleAccount = NoGoogleAccount(), voices: @escaping () -> [LocalVoice] = { [] },
                     previewVoice: @escaping @Sendable (String) async throws -> Void = { _ in },
                     chat: ChatCredentials = NoChatCredentials(), gwsLocation: @escaping () -> String? = { nil },
-                    isAppRunning: @escaping () -> Bool = { false }, credentialsChanged: @escaping () -> Void = {},
+                    ownerRunning: @escaping () -> Bool = { false }, credentialsChanged: @escaping () -> Void = {},
                     home: URL = FileManager.default.homeDirectoryForCurrentUser,
                     settingsURL: URL = ConfigManager.defaultConfigURL(), secretsURL: URL = SecretStore.defaultURL(),
                     homeSpeakerVersion: @escaping () -> String? = { nil },
@@ -126,7 +127,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.previewVoice = previewVoice
             self.chat = chat
             self.gwsLocation = gwsLocation
-            self.isAppRunning = isAppRunning
+            self.ownerRunning = ownerRunning
             self.credentialsChanged = credentialsChanged
             self.home = home
             self.settingsURL = settingsURL
@@ -460,7 +461,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// says Running once the app has written that it is; the request alone
     /// changes nothing on it.
     private func controlChatMonitor(_ action: ChatMonitorAction) throws {
-        guard parts.isAppRunning() else {
+        guard parts.ownerRunning() else {
             throw CommandRefused("HomeSpeaker isn't running: open it, then \(action.rawValue) the chat monitor")
         }
         if action == .start, !config.effectiveChatMonitor.anySourceEnabled {
@@ -776,7 +777,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private func chatStatus() -> Pages.Chat {
         let chat = parts.chat
         return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
-                          gwsPath: parts.gwsLocation(), appRunning: parts.isAppRunning(),
+                          gwsPath: parts.gwsLocation(), ownerRunning: parts.ownerRunning(),
                           monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read())
     }
 
