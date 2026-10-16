@@ -161,7 +161,7 @@ func TestInsertEventPublishesEventChange(t *testing.T) {
 		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0),
 	})
 	require.NoError(t, err)
-	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a", Seq: 1}, nextChange(t, ch))
 }
 
 func TestDuplicateInsertEventPublishesNothing(t *testing.T) {
@@ -175,7 +175,7 @@ func TestDuplicateInsertEventPublishesNothing(t *testing.T) {
 	}
 	_, err := s.InsertEvent(ctx, e)
 	require.NoError(t, err)
-	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a", Seq: 1}, nextChange(t, ch))
 	ins, err := s.InsertEvent(ctx, e)
 	require.NoError(t, err)
 	require.False(t, ins)
@@ -197,7 +197,7 @@ func TestSetStatusPublishesStatusChange(t *testing.T) {
 	ch, cancel := s.Subscribe()
 	defer cancel()
 	require.NoError(t, s.SetStatus(ctx, "$a", "sent", ""))
-	require.Equal(t, Change{Kind: "status", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "status", RoomID: "!r:courier.local", EventID: "$a", Seq: 1}, nextChange(t, ch))
 }
 
 func TestUnreadSubscriberDoesNotBlockWriters(t *testing.T) {

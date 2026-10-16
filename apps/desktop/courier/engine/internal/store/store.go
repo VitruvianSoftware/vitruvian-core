@@ -33,9 +33,14 @@ type Event struct {
 	Content                       json.RawMessage
 	TS                            time.Time
 	Status, StatusReason          string
+	Seq                           int64 // arrival order in this store; breaks ties between equal timestamps
 }
 
-type Change struct{ Kind, RoomID, EventID string }
+// Change is one entry of the change feed. Seq is set on "event" and "status" changes: it is the event's seq.
+type Change struct {
+	Kind, RoomID, EventID string
+	Seq                   int64
+}
 
 type Store struct {
 	db   *dbutil.Database
@@ -50,6 +55,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if _, err = db.Exec(context.Background(), schema); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err = migrate(context.Background(), db); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -226,26 +235,45 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	s.seq++
 	seq := s.seq
 	s.mu.Unlock()
-	res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(event_id) DO NOTHING`,
-		e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq)
+	var inserted bool
+	// The event and the room's last_ts / last_event_id change together or not at all.
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(event_id) DO NOTHING`,
+			e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		inserted = n == 1
+		if inserted && isMessageLike(e.Type) {
+			// Only a message newer than the current newest moves the room: a backfilled older one must not.
+			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
+				e.RoomID, e.TS.UnixMilli(), e.EventID)
+		}
+		return err
+	})
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	if n == 1 {
-		s.publish(Change{Kind: "event", RoomID: e.RoomID, EventID: e.EventID})
+	if inserted {
+		s.publish(Change{Kind: "event", RoomID: e.RoomID, EventID: e.EventID, Seq: seq})
 	}
-	return n == 1, nil
+	return inserted, nil
 }
 
-const eventCols = "room_id, event_id, sender, type, state_key, content, ts, status, status_reason"
+// isMessageLike reports whether an event of this type can be a room's latest message.
+func isMessageLike(typ string) bool {
+	return typ == "m.room.message" || typ == "m.sticker" || typ == "m.room.encrypted"
+}
+
+const eventCols = "room_id, event_id, sender, type, state_key, content, ts, status, status_reason, seq"
 
 func scanEvent(row dbutil.Scannable) (Event, error) {
 	var e Event
 	var c string
 	var ts int64
-	err := row.Scan(&e.RoomID, &e.EventID, &e.Sender, &e.Type, &e.StateKey, &c, &ts, &e.Status, &e.StatusReason)
+	err := row.Scan(&e.RoomID, &e.EventID, &e.Sender, &e.Type, &e.StateKey, &c, &ts, &e.Status, &e.StatusReason, &e.Seq)
 	e.Content, e.TS = json.RawMessage(c), time.UnixMilli(ts)
 	return e, err
 }
@@ -277,9 +305,10 @@ func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, 
 
 func (s *Store) SetStatus(ctx context.Context, eventID, status, reason string) error {
 	var roomID string
-	err := s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3 WHERE event_id=$1 RETURNING room_id", eventID, status, reason).Scan(&roomID)
+	var seq int64
+	err := s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3 WHERE event_id=$1 RETURNING room_id, seq", eventID, status, reason).Scan(&roomID, &seq)
 	if err == nil {
-		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID})
+		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID, Seq: seq})
 	}
 	return err
 }

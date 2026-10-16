@@ -1,6 +1,10 @@
 -- Copyright 2026 VitruvianSoftware
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 
+-- The version-0 baseline: courier.db as milestone 2 shipped it. Never edit this file. Every later change to
+-- the shape of the database is a numbered migration in migrate.go (tracked by PRAGMA user_version), so that
+-- databases already on a user's disk keep opening. testdata/m2.sql is a copy of this plus dummy rows.
+
 CREATE TABLE IF NOT EXISTS rooms (
   room_id TEXT PRIMARY KEY, network TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', topic TEXT NOT NULL DEFAULT '',
   avatar_uri TEXT NOT NULL DEFAULT '', is_direct INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
