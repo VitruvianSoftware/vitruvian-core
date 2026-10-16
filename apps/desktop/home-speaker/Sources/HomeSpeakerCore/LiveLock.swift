@@ -43,18 +43,31 @@ public final class LiveLock: @unchecked Sendable {
 
     deinit { release() }
 
+    /// How many more times `hold` tries, and how long it waits between.
+    /// `isHeld` takes the lock for a moment to look; a process starting in
+    /// that moment would otherwise be refused. A real holder keeps it, so
+    /// it is still refused, about a quarter of a second later.
+    static let retries = 10
+    static let retryWait: useconds_t = 25_000
+
     /// Takes the lock at `url`, creating its folder and the file (0600) if
     /// need be. Throws `EWOULDBLOCK` when another holder has it: there is
-    /// one live process per side.
+    /// one live process per side. A lock taken only for a look is waited
+    /// out (`retries`).
     public static func hold(at url: URL) throws -> LiveLock {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let fd = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        guard tryLock(fd) else {
+        var tries = 0
+        while !tryLock(fd) {
             let code = errno
-            close(fd)
-            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EWOULDBLOCK)
+            guard code == EWOULDBLOCK, tries < retries else {
+                close(fd)
+                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EWOULDBLOCK)
+            }
+            tries += 1
+            usleep(retryWait)
         }
         return LiveLock(url: url, fd: fd)
     }

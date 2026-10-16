@@ -118,6 +118,35 @@ private struct SilentLocal: LocalSpeaking {
         again.release()
     }
 
+    /// `isHeld` takes the lock for a moment to look. A process starting at
+    /// that moment must still get it: `hold` waits a moment and tries again.
+    @Test func aProcessStartingWhileSomeoneLooksStillHoldsIt() throws {
+        let url = try scratchDir().appendingPathComponent("running.lock")
+        _ = try LiveLock.hold(at: url).release()
+        // Someone looking: the lock taken on a file description of its own,
+        // as `isHeld` takes it, and let go a little later.
+        let looker = open(url.path, O_RDONLY | O_CLOEXEC)
+        try #require(looker >= 0)
+        try #require(flock(looker, LOCK_EX | LOCK_NB) == 0)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+            flock(looker, LOCK_UN)
+            close(looker)
+        }
+        let lock = try LiveLock.hold(at: url)
+        #expect(LiveLock.isHeld(at: url))
+        lock.release()
+    }
+
+    /// The wait is short: a real holder still refuses a second one, soon.
+    @Test func aRealHolderStillRefusesASecondOneSoon() throws {
+        let url = try scratchDir().appendingPathComponent("running.lock")
+        let holder = try LiveLock.hold(at: url)
+        let started = Date()
+        #expect(throws: (any Error).self) { try LiveLock.hold(at: url) }
+        #expect(Date().timeIntervalSince(started) < 2, "a real holder is refused within moments")
+        holder.release()
+    }
+
     @Test func canRestoreAsksTheLockForTheExtension() async throws {
         let profile = testProfile(in: try scratchDir())
         let lockURL = try #require(profile.liveLockURL)
