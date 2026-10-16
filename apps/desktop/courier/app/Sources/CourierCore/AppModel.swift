@@ -1,0 +1,96 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import Combine
+import Foundation
+
+/// The app's state, for its views: the engine's state, the client of the engine that is up, and its accounts.
+///
+/// Every time an engine is greeted (the first time and after every restart) and every time the engine says
+/// `resync`, the model reads again what the app shows: the accounts here, and whatever the hooks given to
+/// `onConnect` read (the inbox, the open chat). It never keeps what an earlier engine said, so a message that was
+/// pending when the engine died shows as the new engine's store has it.
+@MainActor
+public final class AppModel: ObservableObject {
+    @Published public private(set) var engineState: EngineSupervisor.State = .starting
+    @Published public private(set) var accounts: [Account] = []
+    /// The client of the engine that is up; nil while it is not.
+    @Published public private(set) var client: EngineClient?
+
+    public let supervisor: EngineSupervisor
+    private var hooks: [@MainActor (EngineClient) async -> Void] = []
+    private var watcher: Task<Void, Never>?
+    private var feed: Task<Void, Never>?
+
+    public init(supervisor: EngineSupervisor) {
+        self.supervisor = supervisor
+    }
+
+    /// Runs `hook` with the new client every time the app must read everything again: after each connect, and
+    /// on resync.
+    public func onConnect(_ hook: @escaping @MainActor (EngineClient) async -> Void) {
+        hooks.append(hook)
+    }
+
+    public func start() {
+        guard watcher == nil else { return }
+        let states = supervisor.state
+        watcher = Task { [weak self] in
+            for await state in states {
+                await self?.apply(state)
+            }
+        }
+        supervisor.start()
+    }
+
+    /// Stops the engine and returns once it is gone.
+    public func stop() async {
+        supervisor.stop()
+        await supervisor.waitUntilStopped()
+    }
+
+    private func apply(_ state: EngineSupervisor.State) async {
+        engineState = state
+        guard state == .connected, let client = supervisor.client else {
+            feed?.cancel()
+            feed = nil
+            client = nil
+            return
+        }
+        self.client = client
+        // Subscribe before reading, so nothing that changes in between is missed.
+        let changes = await client.changes
+        feed?.cancel()
+        feed = Task { [weak self] in
+            for await change in changes {
+                await self?.handle(change, from: client)
+            }
+        }
+        await reload(client)
+    }
+
+    private func handle(_ change: Change, from client: EngineClient) async {
+        guard client === self.client else { return }
+        switch change {
+        case .resync:
+            await reload(client)
+        case .bridge:
+            await reloadAccounts(client)
+        default:
+            break
+        }
+    }
+
+    private func reload(_ client: EngineClient) async {
+        await reloadAccounts(client)
+        for hook in hooks {
+            await hook(client)
+        }
+    }
+
+    private func reloadAccounts(_ client: EngineClient) async {
+        guard let result: AccountsResult = try? await client.call("accounts.list", Empty()),
+              client === self.client else { return }
+        accounts = result.accounts
+    }
+}

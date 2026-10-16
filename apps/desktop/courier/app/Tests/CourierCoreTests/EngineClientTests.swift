@@ -1,0 +1,201 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import XCTest
+
+@testable import CourierCore
+
+/// The client against a stand-in engine on a Unix socket: the handshake, the change feed, typed errors, and
+/// answers matched to requests by id.
+final class EngineClientTests: XCTestCase {
+    private var server: TestEngineServer!
+
+    override func setUpWithError() throws {
+        server = try TestEngineServer()
+    }
+
+    override func tearDown() {
+        server.stop()
+    }
+
+    func testHelloSendsOnlyTheDocumentedParams() async throws {
+        let client = EngineClient(socketPath: server.path, client: "Courier/9.9.9")
+        let hello = try await client.connect()
+        XCTAssertEqual(hello, HelloResult(protocol: 1, engine: "test", networks: ["whatsapp", "signal"]))
+        let request = try XCTUnwrap(server.received.first)
+        XCTAssertEqual(request["method"] as? String, "hello")
+        XCTAssertEqual(request["jsonrpc"] as? String, "2.0")
+        XCTAssertEqual(request["params"] as? NSDictionary, ["protocol": 1, "client": "Courier/9.9.9"] as NSDictionary)
+        await client.close()
+    }
+
+    func testHelloMismatchSurfacesUpdateNeeded() async throws {
+        server.setHandler { method, _ in
+            method == "hello" ? .error(code: -32001, message: "protocol mismatch", data: ["engine": 2]) : .result([:])
+        }
+        let client = EngineClient(socketPath: server.path)
+        do {
+            _ = try await client.connect()
+            XCTFail("connect() succeeded against an engine that speaks protocol 2")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .protocolMismatch(engine: 2))
+            XCTAssertTrue(error.isUpdateNeeded)
+        }
+        // Nothing else is sent to an engine that refused the handshake.
+        do {
+            let _: AccountsResult = try await client.call("accounts.list", Empty())
+            XCTFail("a call went through after a refused handshake")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .notConnected)
+        }
+        XCTAssertEqual(server.receivedMethods(), ["hello"])
+    }
+
+    func testChangesStream() async throws {
+        let client = EngineClient(socketPath: server.path)
+        _ = try await client.connect()
+        let changes = await client.changes
+        server.notify(["kind": "room", "room_id": "!a:courier.local"])
+        server.notify(["kind": "room"])
+        server.notify(["kind": "event", "room_id": "!a:courier.local", "event_id": "$1"])
+        server.notify(["kind": "status", "room_id": "!a:courier.local", "event_id": "$1"])
+        server.notify(["kind": "read", "room_id": "!a:courier.local", "event_id": "$1"])
+        server.notify(["kind": "bridge", "network": "signal"])
+        server.notify(["kind": "resync"])
+        // A kind this app does not know is a resync: re-reading is never wrong.
+        server.notify(["kind": "something-new"])
+
+        var seen: [Change] = []
+        for await change in changes {
+            seen.append(change)
+            if seen.count == 8 { break }
+        }
+        XCTAssertEqual(seen, [
+            .room(roomID: "!a:courier.local"),
+            .room(roomID: nil),
+            .event(roomID: "!a:courier.local", eventID: "$1"),
+            .status(roomID: "!a:courier.local", eventID: "$1"),
+            .read(roomID: "!a:courier.local", eventID: "$1"),
+            .bridge(network: "signal"),
+            .resync,
+            .resync,
+        ])
+        await client.close()
+    }
+
+    func testChangesStreamEndsWhenTheEngineGoes() async throws {
+        let client = EngineClient(socketPath: server.path)
+        _ = try await client.connect()
+        let changes = await client.changes
+        server.dropConnections()
+        for await _ in changes {}
+        let closed = await client.isClosed
+        XCTAssertTrue(closed)
+    }
+
+    func testCallErrorsMapToTypedErrors() async throws {
+        server.setHandler { method, _ in
+            switch method {
+            case "hello": return TestEngineServer.helloOK
+            case "message.send": return .error(code: -32010, message: "this network isn't linked")
+            case "room.events":
+                return .error(code: -32602, message: "invalid params", data: ["reason": "limit must be 1 to 100"])
+            case "room.markRead": return .error(code: -32020, message: "no such chat or message")
+            default: return .error(code: -32099, message: "something new")
+            }
+        }
+        let client = EngineClient(socketPath: server.path)
+
+        // Before the handshake nothing is sent.
+        await assertThrows(.notConnected) { let _: Empty = try await client.call("room.markRead", RoomParams(roomID: "!a")) }
+        _ = try await client.connect()
+
+        await assertThrows(.rpc(.notLinked, message: "this network isn't linked", reason: nil)) {
+            let _: Sent = try await client.call("message.send", SendParams(roomID: "!a", text: "hi"))
+        }
+        await assertThrows(.rpc(.invalidParams, message: "invalid params", reason: "limit must be 1 to 100")) {
+            let _: EventsPage = try await client.call("room.events", RoomEventsParams(roomID: "!a", limit: 500))
+        }
+        await assertThrows(.rpc(.notFound, message: "no such chat or message", reason: nil)) {
+            let _: Empty = try await client.call("room.markRead", RoomParams(roomID: "!a"))
+        }
+        await assertThrows(.rpc(.other(-32099), message: "something new", reason: nil)) {
+            let _: InboxResult = try await client.call("inbox.list", Empty())
+        }
+        // Optional params the caller left out are not on the wire (strict params refuse unknown keys, and a null
+        // is not "left out").
+        let send = try XCTUnwrap(server.received.first { $0["method"] as? String == "message.send" })
+        XCTAssertEqual(send["params"] as? NSDictionary, ["room_id": "!a", "text": "hi"] as NSDictionary)
+        await client.close()
+    }
+
+    func testAnswersAreMatchedByIDNotOrder() async throws {
+        server.setHandler { method, _ in
+            switch method {
+            case "hello": return TestEngineServer.helloOK
+            case "message.send": return .later
+            default: return .result(["accounts": []])
+            }
+        }
+        let client = EngineClient(socketPath: server.path)
+        _ = try await client.connect()
+        async let sent: Sent = client.call("message.send", SendParams(roomID: "!a", text: "slow"))
+        // The send waits on its network; a later request is answered first.
+        try await waitUntil { self.server.receivedMethods().contains("message.send") }
+        let accounts: AccountsResult = try await client.call("accounts.list", Empty())
+        XCTAssertEqual(accounts.accounts, [])
+        let id = try XCTUnwrap(server.received.first { $0["method"] as? String == "message.send" }?["id"] as? Int)
+        server.reply(to: id, with: ["event_id": "$sent"])
+        let answer = try await sent
+        XCTAssertEqual(answer.eventID, "$sent")
+        await client.close()
+    }
+
+    func testEngineGoingFailsCallsInFlight() async throws {
+        server.setHandler { method, _ in method == "hello" ? TestEngineServer.helloOK : .later }
+        let client = EngineClient(socketPath: server.path)
+        _ = try await client.connect()
+        async let waiting: LoginStep = client.call("login.wait", LoginParams(loginID: "x"))
+        try await waitUntil { self.server.receivedMethods().contains("login.wait") }
+        server.dropConnections()
+        do {
+            _ = try await waiting
+            XCTFail("a call in flight outlived the connection")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .disconnected)
+        }
+    }
+
+    func testConnectToNothingFails() async {
+        let client = EngineClient(socketPath: "/tmp/courier-test-nothing-\(UUID().uuidString.prefix(8)).sock")
+        do {
+            _ = try await client.connect()
+            XCTFail("connected to a socket that does not exist")
+        } catch {}
+    }
+
+    // MARK: -
+
+    private func assertThrows(_ expected: EngineError, file: StaticString = #filePath, line: UInt = #line,
+                              _ body: () async throws -> Void) async {
+        do {
+            try await body()
+            XCTFail("did not throw \(expected)", file: file, line: line)
+        } catch let error as EngineError {
+            XCTAssertEqual(error, expected, file: file, line: line)
+        } catch {
+            XCTFail("threw \(error), not \(expected)", file: file, line: line)
+        }
+    }
+}
+
+/// Polls until the condition holds, for at most `timeout` seconds.
+func waitUntil(timeout: TimeInterval = 5, _ condition: @escaping () async -> Bool) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if await condition() { return }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    XCTFail("timed out waiting")
+    throw CancellationError()
+}

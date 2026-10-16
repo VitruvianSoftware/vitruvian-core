@@ -1,0 +1,25 @@
+/* Copyright 2026 VitruvianSoftware. SPDX-License-Identifier: AGPL-3.0-or-later. */
+
+/* The window's subtitle while the engine starts. */
+"Connecting…" = "Connecting…";
+
+/* The window's subtitle after the engine stopped unexpectedly, while it is started again. */
+"Reconnecting…" = "Reconnecting…";
+
+/* The window's subtitle when the engine speaks another protocol version than the app. */
+"Update needed" = "Update needed";
+
+/* The window's subtitle when the engine is up. */
+"Connected" = "Connected";
+
+/* The window's subtitle once the engine has been stopped. */
+"Stopped" = "Stopped";
+
+/* The placeholder in the main window once the engine is up. The inbox replaces it. */
+"Courier is running. Your chats will appear here." = "Courier is running. Your chats will appear here.";
+
+/* The main window while the engine starts or restarts. */
+"Starting Courier’s engine…" = "Starting Courier’s engine…";
+
+/* The main window when the engine is a different version from the app. */
+"This copy of Courier and its engine don’t match. Reinstall Courier to update it." = "This copy of Courier and its engine don’t match. Reinstall Courier to update it.";
