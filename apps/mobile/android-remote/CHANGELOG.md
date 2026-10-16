@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.3...android-remote-v0.1.4) (2026-10-16)
+
+
+### Features
+
+* **android-remote:** add self-contained Vitruvian Remote extension and standalone coexistence ([#3348](https://github.com/VitruvianSoftware/vitruvian-core/issues/3348)) ([b0a22bd](https://github.com/VitruvianSoftware/vitruvian-core/commit/b0a22bda06aab485c502ff818bc9151c516e7e95))
+
 ## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.2...android-remote-v0.1.3) (2026-10-14)
 
 
