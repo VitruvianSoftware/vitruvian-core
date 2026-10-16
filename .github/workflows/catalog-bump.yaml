@@ -39,13 +39,17 @@
 # runs the bump job (Bazel). An open pull request for that version is left
 # alone, unless it no longer merges, when it is rebuilt from main.
 #
-# A pull request that only moves the tool to a new version arms auto-merge and
-# merges through the queue once its checks pass. One where the tool asks for a
-# new service, offers a new command, or changes the words or protocol the app
-# shows is labelled needs-human and never armed: the body names each change.
-# A pull request a person closed is not opened again, and a branch a person
-# pushed to is never overwritten. After the merge, catalog-publish signs the
-# list.
+# Who merges it: catalog-check arms auto-merge once it passes on the pull
+# request (its bump-automerge job), and only when this workflow marked the
+# body as one that may merge itself. It does not when anything changes in
+# what the tool asks for (uses), its commands, panels, protocol or publisher:
+# then the pull request is labelled needs-human and the body names each.
+#
+# What it leaves alone: a version whose pull request a person closed; a
+# branch holding a commit this workflow did not write (it comments once); a
+# release it refused, while the issue "catalog-bump refused <id> <version>"
+# that the refusal opened stays open. After the merge, catalog-publish signs
+# the list.
 name: catalog-bump
 
 on:
@@ -74,9 +78,11 @@ jobs:
   plan:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
+    # pull-requests: write only to say, once, why a branch is left alone.
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
+      issues: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -111,6 +117,10 @@ jobs:
     if: needs.plan.outputs.matrix != '[]'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    # issues: write only to record a refusal.
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -127,7 +137,8 @@ jobs:
 
       # The result's status decides, not the exit status: Bazel and argparse
       # also exit 2 for a usage error. not-ready (no zip yet) and not-listed
-      # are a notice; refused, or no result at all, fails the job.
+      # are a notice; refused is recorded below; no result at all (an API
+      # blip, a crash) fails the job, and the next hour tries again.
       - name: Update ${{ matrix.id }} from ${{ matrix.tag }}
         id: bump
         env:
@@ -143,7 +154,7 @@ jobs:
           set -e
           status="$(jq -r '.status // empty' "$result" 2>/dev/null || true)"
           case "$status" in
-            bumped | current) ;;
+            bumped | current | refused) ;;
             not-ready | not-listed) status=skipped ;;
             *)
               echo "::error::catalog:bump ended with exit ${code} and status '${status:-none}'."
@@ -151,6 +162,28 @@ jobs:
               ;;
           esac
           echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      # One issue per refused version. While it is open the plan skips that
+      # version, so a refusal is one red run, not one an hour. Closing the
+      # issue lets the next hour try again.
+      - name: Record the refusal
+        if: steps.bump.outputs.status == 'refused'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/result.json"
+          title="$(jq -r .issue_title "$result")"
+          jq -r .issue_body "$result" > "$RUNNER_TEMP/issue.md"
+          open="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" \
+            --json number,title --jq "[.[] | select(.title == \"$title\")][0].number // empty")"
+          if [ -n "$open" ]; then
+            echo "Issue #$open already records this refusal."
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/issue.md"
+          fi
+          echo "::error::$(jq -r .message "$result")"
+          exit 1
 
       - name: Mint App token for PR operations
         if: steps.bump.outputs.status == 'bumped'
@@ -189,8 +222,10 @@ jobs:
 
           existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
 
-          # A rebuild must not erase a commit a person pushed to the branch
-          # (to raise minimumAppVersion, say). Then it only says so.
+          # The branch holds one commit, this workflow's, marked with the
+          # trailer below. Anything else is a person's (agent sessions share
+          # the bot's email, so the email proves nothing): leave it. The plan
+          # normally catches this first and comments once.
           set +e
           git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null
           found=$?
@@ -198,13 +233,9 @@ jobs:
           case "$found" in
             0)
               gh api "repos/$GITHUB_REPOSITORY/compare/main...$branch" > "$RUNNER_TEMP/compare.json"
-              others="$(python3 catalog/bump.py foreign --compare "$RUNNER_TEMP/compare.json")"
+              others="$(python3 catalog/bump.py foreign --compare "$RUNNER_TEMP/compare.json" --id "$ID" --version "$version")"
               if [ -n "$others" ]; then
-                message="catalog-bump would rebuild this branch from main, but it holds commits the catalog-bump workflow did not write, so the workflow left it alone. Rebase it by hand, or close it and run catalog-bump with the tag ${TAG}. Commits: ${others//$'\n'/, }"
-                echo "::notice::$branch: $message"
-                if [ -n "$existing" ]; then
-                  gh pr comment "$existing" --body "$message"
-                fi
+                echo "::notice::$branch holds commits catalog-bump did not write (${others//$'\n'/, }); left alone."
                 exit 0
               fi
               ;;
@@ -215,9 +246,19 @@ jobs:
               ;;
           esac
 
+          # Off before the push, every time: catalog-check arms it again only
+          # if it passes on the new commit and the new body allows it.
+          if [ -n "$existing" ] && [ "$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            gh pr merge "$existing" --disable-auto
+          fi
+          if [ -n "$existing" ] && [ "$automerge" != "true" ]; then
+            gh pr edit "$existing" --add-label needs-human
+          fi
+
           git checkout -B "$branch"
           git add catalog/tools.json apps/web/vitruviansoftware-dev/_data/tools.yml
-          git commit -m "$title" -m "Written by the catalog-bump workflow from the release $TAG."
+          git commit -m "$title" -m "Written by the catalog-bump workflow from the release $TAG." \
+            -m "Catalog-Bump: $ID@$version"
           git push -f origin "$branch"
 
           if [ -n "$existing" ]; then
@@ -225,36 +266,17 @@ jobs:
             number="$existing"
             echo "PR #${number} already open for $branch: updated."
           else
-            gh pr create --title "$title" --body-file "$RUNNER_TEMP/body.md" --base main --head "$branch"
+            labels=()
+            if [ "$automerge" != "true" ]; then
+              labels=(--label needs-human)
+            fi
+            gh pr create --title "$title" --body-file "$RUNNER_TEMP/body.md" --base main --head "$branch" "${labels[@]}"
             number="$(gh pr view "$branch" --json number --jq .number)"
           fi
-
-          # Merges itself only when nothing it asks for or shows changed, and
-          # nobody has held it.
-          labels="$(gh pr view "$number" --json labels --jq '[.labels[].name] | join(",")')"
           if [ "$automerge" = "true" ]; then
-            case ",$labels," in
-              *,needs-human,* | *,do-not-automerge,*)
-                echo "PR #$number is held ($labels); auto-merge left off."
-                ;;
-              *)
-                gh pr merge "$number" --squash --auto
-                echo "PR #$number merges through the queue once its checks pass."
-                ;;
-            esac
+            echo "PR #$number: catalog-check arms auto-merge when it passes."
           else
-            # A herestring, not a pipe: grep -q under pipefail can fail the
-            # pipe when it stops reading early.
-            known="$(gh label list --limit 500 --json name --jq '.[].name')"
-            if ! grep -qx needs-human <<<"$known"; then
-              gh label create needs-human --color D93F0B \
-                --description "Waits for a person to read it before it merges"
-            fi
-            gh pr edit "$number" --add-label needs-human
-            if [ "$(gh pr view "$number" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
-              gh pr merge "$number" --disable-auto
-            fi
-            echo "::notice::PR #$number waits for a person: see its description."
+            echo "::notice::PR #$number waits for a person (needs-human): see its description."
           fi
 
           # A pull request for an older version of the same tool is replaced;

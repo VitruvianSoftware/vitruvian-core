@@ -25,9 +25,14 @@
 # which the build-test lane runs.
 #
 # It runs nothing the download holds: validate reads the manifest and the
-# folder. The token is read-only and no secret is passed in. It is not a
-# required check: the catalog's README asks the reviewer to merge only with
-# it green.
+# folder. The downloads job's token is read-only and no secret is passed to
+# it. It is not a required check: the catalog's README asks the reviewer to
+# merge only with it green.
+#
+# For a pull request catalog-bump opened (catalog/bump-*), the job
+# bump-automerge then arms auto-merge, or turns it off. This is the only
+# place a bump is armed, so none merges while this check fails or before it
+# has run: the merge queue does not wait for it, as it is not required.
 name: catalog-check
 
 on:
@@ -82,3 +87,52 @@ jobs:
           fi
           python3 catalog/check_downloads.py --base "$base" --head catalog/tools.json \
             --validate "$(bazel cquery --config=macos-app --output=files //packages/vitruvian-sdk:vitruvian-tool 2>/dev/null)"
+
+  # Arms auto-merge on a catalog-bump pull request once the downloads passed
+  # on the commit the branch still holds, when catalog-bump marked it as one
+  # that may merge itself and nobody has held it (needs-human,
+  # do-not-automerge, a draft). When the downloads did not pass, it turns
+  # auto-merge off. `catalog/bump.py arm` decides; its tests are in
+  # //catalog:bump_test. Only a branch of this repository: a fork's pull
+  # request gets no secret.
+  bump-automerge:
+    needs: downloads
+    if: >-
+      always() &&
+      startsWith(github.event.pull_request.head.ref, 'catalog/bump-') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      # main's bump.py, not the pull request's.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.base_ref }}
+          persist-credentials: false
+
+      - name: Mint App token
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+
+      - name: Arm auto-merge, or turn it off
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+          TESTED: ${{ github.event.pull_request.head.sha }}
+          CHECK: ${{ needs.downloads.result }}
+        run: |
+          set -euo pipefail
+          # Read the pull request now, not as it was when the event fired.
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+            --json state,isDraft,headRefName,headRefOid,author,labels,body,autoMergeRequest \
+            > "$RUNNER_TEMP/pull.json"
+          decision="$(python3 catalog/bump.py arm --pull "$RUNNER_TEMP/pull.json" --tested-sha "$TESTED" --check "$CHECK")"
+          echo "PR #$PR: $decision"
+          case "$decision" in
+            arm) gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --auto ;;
+            disarm) gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --disable-auto ;;
+          esac
