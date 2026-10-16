@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	telegram "go.mau.fi/mautrix-telegram/pkg/connector"
 	"gopkg.in/yaml.v3"
 )
 
@@ -100,6 +101,25 @@ func TestTelegramCredentialsReachTheConnectorConfig(t *testing.T) {
 	cfg := fmtConfig(t, data)
 	require.Contains(t, cfg, "424242")
 	require.Contains(t, cfg, "0123456789abcdef0123456789abcdef")
+}
+
+// YAML reads a number with a leading zero as octal, so the id has to reach the config as the decimal number the
+// user typed: 0042 is 42, never 34.
+func TestTelegramAPIIDWithLeadingZerosIsDecimal(t *testing.T) {
+	for in, want := range map[string]int{"0042": 42, "000000424242": 424242, "010": 10, "424242": 424242} {
+		t.Run(in, func(t *testing.T) {
+			t.Setenv("COURIER_TELEGRAM_API_ID", in)
+			t.Setenv("COURIER_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef")
+			tg, _ := Get("telegram")
+			spec, err := tg.Spec()
+			require.NoError(t, err)
+			nc, err := spec.Connector()
+			require.NoError(t, err)
+			_, data, _ := nc.GetConfig()
+			require.NoError(t, spec.Configure(data))
+			require.Equal(t, want, nc.(*telegram.TelegramConnector).Config.APIID)
+		})
+	}
 }
 
 // Credentials are secrets: a malformed one is rejected, and the message must not repeat what was typed.

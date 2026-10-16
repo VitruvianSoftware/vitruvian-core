@@ -142,6 +142,48 @@ pin.
 - **Not in CI yet.** No presubmit lane runs the courier engine's tests today.
   The test is ready for one; it needs a macOS (xcode-27) lane.
 
+## Signal in the engine (Task 5)
+
+Signal is the fifth network in `internal/networks`. Because `libsignal_ffi.a`
+exists only on macOS, Signal is registered from
+`networks_signal_darwin.go`, a file only macOS builds. On Linux
+`networks.All()` simply has no Signal, and nothing compiled there imports
+mautrix-signal. The Linux CI lane that runs every `go_test` therefore never
+looks for a library that does not exist.
+
+- Login flow: `qr` (the only one mautrix-signal v0.2609.0 offers). Scan it
+  from Signal on your phone, under Settings, Linked devices.
+- Starting with nobody linked touches only the local database
+  (`Connector.Start` in mautrix-signal, `pkg/connector/connector.go`), so the
+  offline start test covers Signal like the other four.
+
+### Running the tests
+
+The authoritative run is Bazel, which links the library for you:
+
+```sh
+bazel test //apps/desktop/courier/engine/...
+```
+
+Plain `go test` works too, but cgo then looks for `-lsignal_ffi` on the
+normal library path and finds nothing. Build the archive with Bazel once, then
+point cgo at the directory it landed in:
+
+```sh
+bazel build //third_party/libsignal:signal_ffi
+LIBDIR=$(dirname "$(bazel info execution_root)/$(bazel cquery --output=files \
+  'deps(//third_party/libsignal:signal_ffi, 2)' 2>/dev/null | grep '/libsignal_ffi\.a$')")
+cd apps/desktop/courier/engine
+CGO_LDFLAGS="-L$LIBDIR" go test ./internal/networks/
+```
+
+The directory has a build-configuration hash in its name
+(`bazel-out/darwin_arm64-fastbuild-ST-<hash>/bin/third_party/libsignal`), so
+look it up each time rather than writing it down. Without `CGO_LDFLAGS` the
+link fails with `ld: library 'signal_ffi' not found`. The `go.mod` entries for
+mautrix-signal's own dependencies come from `go mod tidy` in this directory,
+then `bazel mod tidy`.
+
 ## What it would cost to switch to Option B later
 
 Only if this build ever becomes a burden. A manually run GitHub workflow

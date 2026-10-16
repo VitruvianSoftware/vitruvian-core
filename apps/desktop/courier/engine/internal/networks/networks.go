@@ -33,7 +33,7 @@ type Network struct {
 // All lists the networks in the order the CLI shows them. Names are lowercase letters only: they become
 // ghost-ID prefixes, where an underscore would break parsing.
 func All() []Network {
-	return []Network{
+	return append([]Network{
 		{
 			Name: "whatsapp", DisplayName: "WhatsApp",
 			Flows: []string{"qr"},
@@ -59,7 +59,7 @@ func All() []Network {
 			Flows: []string{"email", "token", "app"},
 			Spec:  simpleSpec("slack", func() bridgev2.NetworkConnector { return &slack.SlackConnector{} }),
 		},
-	}
+	}, platformNetworks()...)
 }
 
 // Get finds a network by name.
@@ -98,7 +98,8 @@ func telegramSpec() (engine.Spec, error) {
 		return engine.Spec{}, errors.New("Telegram needs its own app credentials: create an app at https://my.telegram.org " +
 			"and set " + telegramIDEnv + " and " + telegramHashEnv)
 	}
-	if n, err := strconv.ParseUint(id, 10, 31); err != nil || n == 0 {
+	n, err := strconv.ParseUint(id, 10, 31)
+	if err != nil || n == 0 {
 		return engine.Spec{}, errors.New(telegramIDEnv + " must be the positive whole number shown as \"App api_id\" at https://my.telegram.org")
 	}
 	if !telegramHashRE.MatchString(hash) {
@@ -109,8 +110,10 @@ func telegramSpec() (engine.Spec, error) {
 		Connector: func() (bridgev2.NetworkConnector, error) { return &telegram.TelegramConnector{}, nil },
 		// Unmarshalling into the already decoded example config changes only these two keys; every other
 		// field keeps the default the example gave it. The hash is quoted so YAML never reads it as a number.
+		// The id is written from the parsed number: YAML reads a raw "0042" as octal, which would silently
+		// become a different (wrong) credential.
 		Configure: func(data any) error {
-			return yaml.Unmarshal([]byte(fmt.Sprintf("api_id: %s\napi_hash: %q\n", id, hash)), data)
+			return yaml.Unmarshal([]byte(fmt.Sprintf("api_id: %s\napi_hash: %q\n", strconv.FormatUint(n, 10), hash)), data)
 		},
 	}, nil
 }

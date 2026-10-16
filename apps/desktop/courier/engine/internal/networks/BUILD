@@ -5,7 +5,9 @@ go_test(
     srcs = [
         "networks_test.go",
         "offline_test.go",
+        "signal_absent_other_test.go",
         "signal_link_test.go",
+        "signal_registered_darwin_test.go",
     ],
     embed = [":networks"],
     deps = [
@@ -30,7 +32,11 @@ go_test(
 
 go_library(
     name = "networks",
-    srcs = ["networks.go"],
+    srcs = [
+        "networks.go",
+        "networks_signal_darwin.go",
+        "networks_signal_other.go",
+    ],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/networks",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
@@ -41,5 +47,13 @@ go_library(
         "@fi_mau_go_mautrix_whatsapp//pkg/connector",
         "@in_gopkg_yaml_v3//:yaml_v3",
         "@net_maunium_go_mautrix//bridgev2",
-    ],
+    ] + select({
+        "@rules_go//go/platform:darwin": [
+            "@fi_mau_go_mautrix_signal//pkg/connector",
+        ],
+        "@rules_go//go/platform:ios": [
+            "@fi_mau_go_mautrix_signal//pkg/connector",
+        ],
+        "//conditions:default": [],
+    }),
 )

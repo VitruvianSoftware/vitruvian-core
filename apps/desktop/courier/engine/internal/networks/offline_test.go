@@ -25,7 +25,9 @@ import (
 //
 // Every connector's Start was read at its pinned version and touches only the local database without a login
 // (WhatsApp: whatsmeow and bridge schema upgrades plus a database-only DM migration; Telegram: Store.Upgrade;
-// Google Messages: DB.Upgrade plus a database-only portal-ID revert; Slack: DB.Upgrade), so no network is skipped.
+// Google Messages: DB.Upgrade plus a database-only portal-ID revert; Slack: DB.Upgrade; Signal, on macOS:
+// ResetHTTPTransport only builds a local HTTP client, then Store.Upgrade, connector.go:78-85 of mautrix-signal
+// v0.2609.0), so no network is skipped.
 func TestEveryNetworkStartsOfflineTwice(t *testing.T) {
 	t.Setenv("COURIER_TELEGRAM_API_ID", "424242")
 	t.Setenv("COURIER_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef")
