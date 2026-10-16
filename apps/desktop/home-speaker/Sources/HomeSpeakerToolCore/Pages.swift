@@ -103,9 +103,10 @@ public enum Pages {
     }
 
     /// The Chat & Slack credentials and surroundings, as Settings shows
-    /// them: whether a Slack token is saved, never the token.
+    /// them: whether a Slack or Beeper token is saved, never the token.
     public struct Chat: Equatable, Sendable {
         public var hasSlackToken = false
+        public var hasBeeperToken = false
         /// The Google Chat login exists with every Chat scope.
         public var hasChatAccess = false
         /// Where the `gws` command is; nil when it is not installed.
@@ -119,8 +120,9 @@ public enum Pages {
         public var monitor: ChatMonitorStatus?
 
         public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, ownerRunning: Bool = false,
-                    monitor: ChatMonitorStatus? = nil) {
+                    monitor: ChatMonitorStatus? = nil, hasBeeperToken: Bool = false) {
             self.hasSlackToken = hasSlackToken
+            self.hasBeeperToken = hasBeeperToken
             self.hasChatAccess = hasChatAccess
             self.gwsPath = gwsPath
             self.ownerRunning = ownerRunning
@@ -671,7 +673,8 @@ public enum Pages {
         let monitor = status.config.effectiveChatMonitor
         guard monitor.anySourceEnabled else { return [] }
         return ChatMonitorService.setupProblems(config: monitor, hasSlackToken: status.chat.hasSlackToken,
-                                                hasChatScopes: status.chat.hasChatAccess, gwsInstalled: status.chat.gwsPath != nil)
+                                                hasChatScopes: status.chat.hasChatAccess, gwsInstalled: status.chat.gwsPath != nil,
+                                                hasBeeperToken: status.chat.hasBeeperToken)
     }
 
     /// Chat & Slack, as HomeSpeaker's tab of that name: what reads the

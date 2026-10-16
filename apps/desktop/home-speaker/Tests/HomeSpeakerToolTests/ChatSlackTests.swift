@@ -238,7 +238,7 @@ final class ChatSlackTests: XCTestCase {
                 status.chat = Pages.Chat(hasSlackToken: token, hasChatAccess: access, gwsPath: gws ? "/usr/local/bin/gws" : nil)
                 XCTAssertEqual(Pages.monitorProblems(status),
                                ChatMonitorService.setupProblems(config: status.config.effectiveChatMonitor, hasSlackToken: token,
-                                                                hasChatScopes: access, gwsInstalled: gws))
+                                                                hasChatScopes: access, gwsInstalled: gws, hasBeeperToken: false))
             }
         }
         XCTAssertEqual(Pages.monitorProblems(Pages.Status()), [])
