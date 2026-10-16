@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.19.1...home-speaker-v1.20.0) (2026-10-16)
+
+
+### Features
+
+* **home-speaker:** announce Beeper messages ([#3376](https://github.com/VitruvianSoftware/vitruvian-core/issues/3376)) ([2e1766f](https://github.com/VitruvianSoftware/vitruvian-core/commit/2e1766f585b4b713de28a9a38ab5575c12bd62b6))
+
 ## [1.19.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.19.0...home-speaker-v1.19.1) (2026-10-16)
 
 
