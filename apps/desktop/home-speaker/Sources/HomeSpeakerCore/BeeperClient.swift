@@ -112,6 +112,35 @@ public struct BeeperMessage: Equatable, Sendable {
 public struct BeeperSearch: Equatable, Sendable {
     public var messages: [BeeperMessage]
     public var chats: [String: BeeperChat]
+    /// More messages match than this page holds.
+    public var hasMore = false
+    /// Where the next page starts, older or newer than this one.
+    public var oldestCursor: String?
+    public var newestCursor: String?
+    /// Beeper sent this page newest first (its order is not documented,
+    /// so it is read from the page itself).
+    public var newestFirst = true
+
+    public init(messages: [BeeperMessage], chats: [String: BeeperChat], hasMore: Bool = false,
+                oldestCursor: String? = nil, newestCursor: String? = nil, newestFirst: Bool = true) {
+        self.messages = messages
+        self.chats = chats
+        self.hasMore = hasMore
+        self.oldestCursor = oldestCursor
+        self.newestCursor = newestCursor
+        self.newestFirst = newestFirst
+    }
+}
+
+/// Every page a poll read, merged.
+public struct BeeperPages: Equatable, Sendable {
+    public var messages: [BeeperMessage]
+    public var chats: [String: BeeperChat]
+    /// Pages read.
+    public var pages: Int
+    /// The window held more than `BeeperClient.maxPages` pages: some
+    /// messages were not read.
+    public var truncated: Bool
 }
 
 public struct BeeperClient: Sendable {
@@ -126,6 +155,8 @@ public struct BeeperClient: Sendable {
     public static let lookBack: TimeInterval = 5 * 60
     /// The most one search returns (the API's own limit).
     public static let pageLimit = 20
+    /// The most pages one poll reads: 200 messages in the window.
+    public static let maxPages = 10
 
     let token: String
     public let baseURL: URL
@@ -180,7 +211,9 @@ public struct BeeperClient: Sendable {
 
     /// Messages strictly after `after`, at most `pageLimit`, from chats that
     /// are not muted or low priority; only other people's when `othersOnly`.
-    public func messages(after: Date, othersOnly: Bool) async throws -> BeeperSearch {
+    /// One page: `cursor` and `direction` ("before" for older, "after" for
+    /// newer) carry on from the page before.
+    public func messages(after: Date, othersOnly: Bool, cursor: String? = nil, direction: String? = nil) async throws -> BeeperSearch {
         var query = [
             URLQueryItem(name: "dateAfter", value: ISO8601DateFormatter.fractional.string(from: after)),
             URLQueryItem(name: "limit", value: String(Self.pageLimit)),
@@ -188,8 +221,45 @@ public struct BeeperClient: Sendable {
             URLQueryItem(name: "excludeLowPriority", value: "true"),
         ]
         if othersOnly { query.append(URLQueryItem(name: "sender", value: "others")) }
+        if let cursor, let direction {
+            query.append(URLQueryItem(name: "cursor", value: cursor))
+            query.append(URLQueryItem(name: "direction", value: direction))
+        }
         let json = try await get("v1/messages/search", query: query)
         return Self.parseSearch((json as? [String: Any]) ?? [:])
+    }
+
+    /// Every message after `after`, page by page, up to `maxPages` pages.
+    /// Each page carries on from the last in the order Beeper sent it:
+    /// older when it came newest first, newer when oldest first. Stops at a
+    /// page with nothing new, or a cursor already used.
+    public func allMessages(after: Date, othersOnly: Bool, maxPages: Int = BeeperClient.maxPages) async throws -> BeeperPages {
+        var messages: [String: BeeperMessage] = [:]
+        var chats: [String: BeeperChat] = [:]
+        var cursor: String?
+        var direction: String?
+        var used: Set<String> = []
+        var pages = 0
+        while true {
+            let page = try await self.messages(after: after, othersOnly: othersOnly, cursor: cursor, direction: direction)
+            pages += 1
+            let before = messages.count
+            for message in page.messages { messages[message.key] = message }
+            chats.merge(page.chats) { _, new in new }
+            let next = page.newestFirst ? page.oldestCursor : page.newestCursor
+            guard page.hasMore, messages.count > before, let next, !used.contains(next) else { break }
+            guard pages < maxPages else {
+                return BeeperPages(messages: Self.sorted(messages.values), chats: chats, pages: pages, truncated: true)
+            }
+            used.insert(next)
+            cursor = next
+            direction = page.newestFirst ? "before" : "after"
+        }
+        return BeeperPages(messages: Self.sorted(messages.values), chats: chats, pages: pages, truncated: false)
+    }
+
+    static func sorted<S: Sequence>(_ messages: S) -> [BeeperMessage] where S.Element == BeeperMessage {
+        messages.sorted { ($0.timestamp, $0.key) < ($1.timestamp, $1.key) }
     }
 
     /// The one way a request is made: GET, with the token, to this Mac.
@@ -206,7 +276,7 @@ public struct BeeperClient: Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: RefuseRedirects())
         } catch let error as URLError {
             throw Self.mapped(error)
         }
@@ -216,6 +286,7 @@ public struct BeeperClient: Sendable {
         case 200: return json ?? [:]
         case 401: throw ChatMonitorError.beeperTokenRefused
         case 429: throw ChatMonitorError.beeperSlowDown
+        case 300..<400: throw ChatMonitorError.beeper("Beeper Desktop answered with a redirect, which HomeSpeaker does not follow")
         default:
             let message = ((json as? [String: Any])?["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             throw ChatMonitorError.beeper(message ?? "HTTP \(status)")
@@ -272,7 +343,7 @@ public struct BeeperClient: Sendable {
                 network: chat["network"] as? String, isMuted: (chat["isMuted"] as? Bool) ?? false,
                 isLowPriority: (chat["isLowPriority"] as? Bool) ?? false)
         }
-        let messages = ((json["items"] as? [[String: Any]]) ?? []).compactMap { m -> BeeperMessage? in
+        let inOrder = ((json["items"] as? [[String: Any]]) ?? []).compactMap { m -> BeeperMessage? in
             guard let id = m["id"] as? String, let chatID = m["chatID"] as? String,
                   let stamp = m["timestamp"] as? String, let date = parseDate(stamp) else { return nil }
             return BeeperMessage(
@@ -281,8 +352,12 @@ public struct BeeperClient: Sendable {
                 timestamp: date, type: ((m["type"] as? String) ?? "TEXT").uppercased(), text: (m["text"] as? String) ?? "",
                 isSender: (m["isSender"] as? Bool) ?? false, isHidden: (m["isHidden"] as? Bool) ?? false,
                 isDeleted: (m["isDeleted"] as? Bool) ?? false, mentions: (m["mentions"] as? [String]) ?? [])
-        }.sorted { $0.timestamp < $1.timestamp }
-        return BeeperSearch(messages: messages, chats: chats)
+        }
+        let newestFirst = (inOrder.first?.timestamp ?? .distantFuture) >= (inOrder.last?.timestamp ?? .distantPast)
+        return BeeperSearch(
+            messages: sorted(inOrder), chats: chats, hasMore: (json["hasMore"] as? Bool) ?? false,
+            oldestCursor: json["oldestCursor"] as? String, newestCursor: json["newestCursor"] as? String,
+            newestFirst: newestFirst)
     }
 
     static func parseDate(_ text: String) -> Date? {
@@ -316,6 +391,13 @@ public struct BeeperClient: Sendable {
         return .other
     }
 
+    /// `slackgo.T0123-U0456` → `U0456`; nil for any other shape.
+    public static func slackUser(accountID: String) -> String? {
+        guard accountID.lowercased().hasPrefix("slackgo."), let dash = accountID.firstIndex(of: "-") else { return nil }
+        let user = String(accountID[accountID.index(after: dash)...])
+        return user.isEmpty ? nil : user
+    }
+
     /// `slackgo.T0123-U0456` → `T0123`; nil for any other shape, which
     /// the duplicates rule treats as the workspace HomeSpeaker reads.
     public static func slackTeam(accountID: String) -> String? {
@@ -331,11 +413,17 @@ public struct BeeperClient: Sendable {
     /// spoken twice: while its Slack switch is on, Beeper's Slack accounts
     /// for the workspace the Slack token reads (`nativeSlackTeam`), or every
     /// Slack account when that workspace is not known; while its Google
-    /// Chat switch is on, Beeper's Google Chat accounts.
-    public static func isSkipped(_ account: BeeperAccount, config: ChatMonitorConfig, nativeSlackTeam: String?) -> Bool {
+    /// Chat switch is on, Beeper's Google Chat accounts. The Slack user id
+    /// (`nativeSlackUser`, from the same `auth.test`) matching counts too:
+    /// Slack user ids are a workspace's own, and an Enterprise Grid account
+    /// may carry its grid's id where the team goes.
+    public static func isSkipped(
+        _ account: BeeperAccount, config: ChatMonitorConfig, nativeSlackTeam: String?, nativeSlackUser: String? = nil
+    ) -> Bool {
         switch classify(account) {
         case .slack(let team):
             guard config.slackEnabled else { return false }
+            if let nativeSlackUser, slackUser(accountID: account.accountID) == nativeSlackUser { return true }
             guard let nativeSlackTeam, let team else { return true }
             return team == nativeSlackTeam
         case .googleChat:
@@ -391,5 +479,14 @@ public struct BeeperClient: Sendable {
             source: .beeper, id: "beeper/\(message.key)", timestamp: message.timestamp,
             senderId: message.senderID, senderName: message.senderName,
             channel: chat?.isDirect == true ? "" : (chat?.title ?? ""), text: text, network: network)
+    }
+}
+
+/// Answers every redirect with "no": the token goes to this Mac's Beeper
+/// and is never carried on to wherever a redirect points.
+final class RefuseRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest) async -> URLRequest? {
+        nil
     }
 }

@@ -32,6 +32,8 @@ swift_test(
     # ProductionReadinessTests reads these: no source ships a home-directory
     # path, and Info.plist tracks Version.swift.
     data = glob(["Sources/**/*.swift"]) + ["Resources/Info.plist"],
+    # Never the real Beeper Desktop (23373): see scripts/test.sh.
+    env = {"HOMESPEAKER_BEEPER_URL": "http://localhost:9"},
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":HomeSpeakerCore"],
@@ -63,6 +65,8 @@ swift_test(
     name = "HomeSpeakerToolTests",
     size = "small",
     srcs = glob(["Tests/HomeSpeakerToolTests/**/*.swift"]),
+    # Never the real Beeper Desktop (23373): see scripts/test.sh.
+    env = {"HOMESPEAKER_BEEPER_URL": "http://localhost:9"},
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [

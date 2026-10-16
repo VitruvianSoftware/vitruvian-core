@@ -315,6 +315,7 @@ public enum ChatMonitorError: LocalizedError, Equatable {
     case beeperNotRunning
     case beeperTokenRefused
     case beeperSlowDown
+    case beeperTooMany
 
     public var errorDescription: String? {
         switch self {
@@ -332,6 +333,8 @@ public enum ChatMonitorError: LocalizedError, Equatable {
         case .beeperTokenRefused:
             return "Beeper: the saved token was refused. Create a new one in Beeper Desktop under Settings › Integrations › Approved connections."
         case .beeperSlowDown: return "Beeper: asked to slow down; skipping the next poll."
+        case .beeperTooMany:
+            return "Beeper: too many messages at once; some may be missed. Mute busy chats in Beeper."
         }
     }
 }
@@ -481,6 +484,11 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     /// window again.
     private var beeperSeen: [String: Date] = [:]
     private var beeperSkipsNextPoll = false
+    /// Unknown account ids that already made the accounts be listed again.
+    private var beeperAccountsAskedFor: Set<String> = []
+    /// Counts starts and stops: a poll begun under another run writes
+    /// nothing of Beeper's when it resumes.
+    private var beeperRun = 0
     /// The workspace the Slack token reads, from `auth.test`.
     private var slackTeamId: String?
     private var slackTeamName: String?
@@ -558,6 +566,8 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         beeperLastPollStart = nil
         beeperSeen = [:]
         beeperSkipsNextPoll = false
+        beeperAccountsAskedFor = []
+        beeperRun += 1
         if cfg.beeperEnabled, let beeperToken {
             switch beeperBaseURL.map({ Result<URL, ChatMonitorError>.success($0) })
                 ?? BeeperClient.baseURL(environment: ProcessInfo.processInfo.environment) {
@@ -617,6 +627,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     public func stop() {
         loop?.cancel()
         loop = nil
+        beeperRun += 1
         isRunning = false
         runtimeErrors = []
         publishStatus()
@@ -631,7 +642,6 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     }
 
     private func runLoop() async {
-        await readSlackIdentity()
         while !Task.isCancelled {
             await pollOnce()
             let seconds = configManager.config.effectiveChatMonitor.clampedPollInterval
@@ -639,19 +649,22 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         }
     }
 
-    /// Who the Slack token is, and which workspace it reads. Asked once,
-    /// before the first poll; a failure leaves both unknown, and then every
-    /// Slack account in Beeper is skipped while Slack is on.
+    /// Who the Slack token is, and which workspace it reads. Asked before
+    /// each poll until Slack has answered; until then every Slack account
+    /// in Beeper is skipped while Slack is on. Once it answers, Beeper's
+    /// accounts are listed again so the page says what is skipped.
     func readSlackIdentity() async {
         guard let slack, let ident = try? await slack.identity() else { return }
         slackOwnId = ident.userId
         slackUser = ident.name
         slackTeamId = ident.teamId
         slackTeamName = ident.team
+        beeperAccounts = nil
         publishStatus()
     }
 
     func pollOnce() async {
+        if slack != nil, slackOwnId == nil { await readSlackIdentity() }
         let monitorConfig = configManager.config.effectiveChatMonitor
         let mute = monitorConfig.muteOwnMessages
         var fresh: [IncomingMessage] = []
@@ -679,11 +692,16 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             if beeperSkipsNextPoll {
                 beeperSkipsNextPoll = false
             } else {
+                let run = beeperRun
                 do {
-                    fresh += try await pollBeeper(beeper, config: monitorConfig)
-                } catch {
+                    let polled = try await pollBeeper(beeper, config: monitorConfig, run: run)
+                    fresh += polled.messages
+                    if polled.truncated { errors.append(ChatMonitorError.beeperTooMany.localizedDescription) }
+                } catch where run == beeperRun {
                     if (error as? ChatMonitorError) == .beeperSlowDown { beeperSkipsNextPoll = true }
                     errors.append(error.localizedDescription)
+                } catch {
+                    // Stopped or restarted meanwhile: nothing to say.
                 }
             }
         }
@@ -719,18 +737,41 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
 
     // MARK: Beeper
 
-    /// One poll of Beeper: the messages after the window's start, less the
-    /// ones handled already, the accounts HomeSpeaker reads itself, and
-    /// anything not to be spoken. Each is handled once, spoken or not.
-    private func pollBeeper(_ beeper: BeeperClient, config: ChatMonitorConfig) async throws -> [IncomingMessage] {
+    /// A poll begun under an earlier run of the monitor.
+    private struct BeeperRunEnded: Error {}
+
+    private func stillRun(_ run: Int) throws {
+        if run != beeperRun { throw BeeperRunEnded() }
+    }
+
+    /// One poll of Beeper: every page of messages after the window's start
+    /// (up to `BeeperClient.maxPages`), less the ones handled already, the
+    /// accounts HomeSpeaker reads itself, and anything not to be spoken.
+    /// Each is handled once, spoken or not. `truncated`: the window held
+    /// more than the pages read.
+    private func pollBeeper(
+        _ beeper: BeeperClient, config: ChatMonitorConfig, run: Int
+    ) async throws -> (messages: [IncomingMessage], truncated: Bool) {
         let pollStart = now()
-        if beeperAccounts == nil { try await readBeeperAccounts(beeper, config: config) }
-        let after = max(beeperStart, (beeperLastPollStart ?? beeperStart).addingTimeInterval(-BeeperClient.lookBack))
-        let found = try await beeper.messages(after: after, othersOnly: config.muteOwnMessages)
+        if beeperAccounts == nil { try await readBeeperAccounts(beeper, config: config, run: run) }
+        // To the millisecond, as it is sent: the window pruned by is the
+        // window asked for.
+        let from = max(beeperStart, (beeperLastPollStart ?? beeperStart).addingTimeInterval(-BeeperClient.lookBack))
+        let after = Date(timeIntervalSince1970: (from.timeIntervalSince1970 * 1000).rounded(.down) / 1000)
+        let found = try await beeper.allMessages(after: after, othersOnly: config.muteOwnMessages)
+        try stillRun(run)
         beeperLastPollStart = pollStart
-        // An account Beeper has added since: list them again, once.
-        if found.messages.contains(where: { !$0.accountID.isEmpty && beeperAccounts?[$0.accountID] == nil }) {
-            try? await readBeeperAccounts(beeper, config: config)
+        // An account Beeper has added since: list them again, once for
+        // each id it did not know. An id never listed is classified by its
+        // own shape and, failing that, its chat's network: display-only in
+        // Beeper's words, but it errs towards skipping.
+        let unknown = Set(found.messages.map(\.accountID)).filter {
+            !$0.isEmpty && beeperAccounts?[$0] == nil && !beeperAccountsAskedFor.contains($0)
+        }
+        if !unknown.isEmpty {
+            beeperAccountsAskedFor.formUnion(unknown)
+            try? await readBeeperAccounts(beeper, config: config, run: run)
+            try stillRun(run)
         }
         // Out of the window now: such a message is never asked for again.
         beeperSeen = beeperSeen.filter { $0.value > after }
@@ -743,25 +784,26 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             let chat = found.chats[message.chatID]
             let account = accounts[message.accountID]
                 ?? BeeperAccount(accountID: message.accountID, network: chat?.network ?? "")
-            guard !BeeperClient.isSkipped(account, config: config, nativeSlackTeam: slackTeamId),
+            guard !BeeperClient.isSkipped(account, config: config, nativeSlackTeam: slackTeamId, nativeSlackUser: slackOwnId),
                   BeeperClient.shouldAnnounce(message, chat: chat, ownUserIDs: ownIDs, mode: config.beeperAnnounce,
                                               muteOwn: config.muteOwnMessages),
                   let text = BeeperClient.spokenText(message) else { continue }
             out.append(BeeperClient.incoming(message, chat: chat, account: accounts[message.accountID], text: text))
         }
-        return out
+        return (out, found.truncated)
     }
 
     /// Lists Beeper's accounts and says which networks are read and which
     /// are left to HomeSpeaker's own Slack or Google Chat reader.
-    private func readBeeperAccounts(_ beeper: BeeperClient, config: ChatMonitorConfig) async throws {
+    private func readBeeperAccounts(_ beeper: BeeperClient, config: ChatMonitorConfig, run: Int) async throws {
         let list = try await beeper.accounts()
+        try stillRun(run)
         beeperAccounts = Dictionary(list.map { ($0.accountID, $0) }, uniquingKeysWith: { first, _ in first })
         var reading: [String] = []
         var skipped: [String] = []
         for account in list {
             let name = account.network.isEmpty ? account.accountID : account.network
-            if BeeperClient.isSkipped(account, config: config, nativeSlackTeam: slackTeamId) {
+            if BeeperClient.isSkipped(account, config: config, nativeSlackTeam: slackTeamId, nativeSlackUser: slackOwnId) {
                 var label = name
                 if case .slack(let team) = BeeperClient.classify(account), let team, team == slackTeamId,
                    let teamName = slackTeamName, !teamName.isEmpty {

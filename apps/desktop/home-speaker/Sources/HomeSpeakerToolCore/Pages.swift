@@ -658,14 +658,6 @@ public enum Pages {
         }.blocks
     }
 
-    /// What Beeper's "Announce" offers.
-    public static func beeperAnnounceTitle(_ mode: ChatMonitorConfig.BeeperAnnounce) -> String {
-        switch mode {
-        case .directAndMentions: return "Direct messages and mentions"
-        case .all: return "Every message"
-        }
-    }
-
     /// Where the token comes from, and what is skipped.
     public static let beeperHelp = "In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. "
         + "Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. "
@@ -763,7 +755,7 @@ public enum Pages {
             toggle(Block.beeperEnabled, "Announce Beeper messages", isOn: monitor.beeperEnabled)
             picker(Block.beeperAnnounce, title: "Announce", value: monitor.beeperAnnounce.rawValue,
                    options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
-                       UIChoiceOption(value: $0.rawValue, title: UIText.plain(beeperAnnounceTitle($0)))
+                       UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
                    },
                    choice: status.offersChoice)
             field(Block.beeperToken, title: "Access token", value: "",

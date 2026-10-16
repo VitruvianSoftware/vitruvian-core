@@ -114,17 +114,29 @@ private final class StandInBeeper: URLProtocol {
     }
 
     enum Answer {
+        /// The body, as it is: no paging, no date filter (a Beeper that
+        /// ignores what it is asked).
         case body(String)
+        /// These messages, as Beeper serves them: after `dateAfter` only, at
+        /// most `limit` (20) a page, newest first unless `newestFirst` is
+        /// false, with `hasMore` and cursors to the next page.
+        case messages([String], newestFirst: Bool = true)
         case status(Int, String)
         case refused
+        /// A 302 to `location`.
+        case redirect(String)
+        /// `answer`, after `seconds`.
+        indirect case delayed(Double, Answer)
     }
 
-    /// What one test's Beeper says. Each search takes the next answer; the
-    /// last one repeats.
+    /// What one test's Beeper says. Each poll's first search takes the
+    /// next answer (the last one repeats); a search carrying a cursor
+    /// continues the same answer's pages.
     final class Scenario: @unchecked Sendable {
         private let lock = NSLock()
         private var accountsAnswers: [Answer]
         private var searchAnswers: [Answer]
+        private var current: Answer?
         private var seen: [Request] = []
 
         init(accounts: [Answer] = [.body(accountsBody)], searches: [Answer]) {
@@ -134,8 +146,8 @@ private final class StandInBeeper: URLProtocol {
 
         var requests: [Request] { lock.withLock { seen } }
         var searches: [Request] { requests.filter { $0.path == "/v1/messages/search" } }
-
-        func setSearches(_ answers: [Answer]) { lock.withLock { searchAnswers = answers } }
+        /// The searches that began a poll (no cursor).
+        var polls: [Request] { searches.filter { $0.query["cursor"] == nil } }
 
         func answer(_ request: Request) -> Answer {
             lock.withLock {
@@ -147,11 +159,41 @@ private final class StandInBeeper: URLProtocol {
                 }
                 switch request.path {
                 case "/v1/accounts": return next(&accountsAnswers)
-                case "/v1/messages/search": return next(&searchAnswers)
+                case "/v1/messages/search":
+                    if request.query["cursor"] == nil || current == nil { current = next(&searchAnswers) }
+                    return current!
                 default: return .status(404, #"{"message":"not found"}"#)
                 }
             }
         }
+    }
+
+    /// One page of `items` for `query`, as `Answer.messages` describes.
+    static func page(_ items: [String], newestFirst: Bool, query: [String: String]) -> (Int, String) {
+        let limit = Int(query["limit"] ?? "") ?? 20
+        guard limit >= 1, limit <= 20 else { return (400, #"{"message":"limit must be 1 to 20"}"#) }
+        let after = query["dateAfter"].flatMap { ISO8601DateFormatter.fractional.date(from: $0) } ?? .distantPast
+        let dated: [(Date, String)] = items.compactMap { item in
+            guard let json = try? JSONSerialization.jsonObject(with: Data(item.utf8)) as? [String: Any],
+                  let stamp = (json["timestamp"] as? String).flatMap({ ISO8601DateFormatter.fractional.date(from: $0) }),
+                  stamp > after else { return nil }
+            return (stamp, item)
+        }
+        let ordered = dated.sorted { newestFirst ? $0.0 > $1.0 : $0.0 < $1.0 }.map(\.1)
+        // Cursors are offsets into that order; going on is "before" when
+        // newest first and "after" when oldest first.
+        var offset = 0
+        if let cursor = query["cursor"] {
+            guard query["direction"] == (newestFirst ? "before" : "after"),
+                  let n = Int(cursor.dropFirst("c".count)) else { return (400, #"{"message":"bad cursor"}"#) }
+            offset = n
+        }
+        let slice = Array(ordered.dropFirst(offset).prefix(limit))
+        let end = offset + slice.count
+        let (oldest, newest) = newestFirst ? ("c\(end)", "c\(offset)") : ("c\(offset)", "c\(end)")
+        let body = #"{"items": ["# + slice.joined(separator: ",") + #"], "hasMore": "# + (end < ordered.count ? "true" : "false")
+            + #", "oldestCursor": ""# + oldest + #"", "newestCursor": ""# + newest + #"", "chats": "# + chatsBody + "}"
+        return (200, body)
     }
 
     private static let lock = NSLock()
@@ -194,8 +236,22 @@ private final class StandInBeeper: URLProtocol {
             finish(status: 418, body: "{}")
             return
         }
-        switch scenario.answer(seen) {
+        respond(scenario.answer(seen), to: seen)
+    }
+
+    private func respond(_ answer: Answer, to seen: Request) {
+        switch answer {
+        case .delayed(let seconds, let later):
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { self.respond(later, to: seen) }
+        case .redirect(let location):
+            let response = HTTPURLResponse(url: request.url!, statusCode: 302, httpVersion: "HTTP/1.1",
+                                           headerFields: ["Location": location])!
+            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: URL(string: location)!), redirectResponse: response)
+            finish(status: 302, body: "{}")
         case .body(let body): finish(status: 200, body: body)
+        case .messages(let items, let newestFirst):
+            let (status, body) = Self.page(items, newestFirst: newestFirst, query: seen.query)
+            finish(status: status, body: body)
         case .status(let code, let body): finish(status: code, body: body)
         case .refused: client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
         }
@@ -211,7 +267,11 @@ private final class StandInBeeper: URLProtocol {
 }
 
 /// Slack, for `auth.test` (the workspace the token reads) and an empty search.
+/// A token starting `fake-slack-flaky` fails its first `auth.test`.
 private final class StandInSlack: URLProtocol {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var failedOnce: Set<String> = []
+
     static var session: URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StandInSlack.self]
@@ -225,7 +285,10 @@ private final class StandInSlack: URLProtocol {
     override func startLoading() {
         let url = request.url!
         let body: String
+        let bearer = request.value(forHTTPHeaderField: "Authorization") ?? ""
+        let flaky = bearer.hasPrefix("Bearer fake-slack-flaky") && Self.lock.withLock { Self.failedOnce.insert(bearer).inserted }
         switch url.path {
+        case "/api/auth.test" where flaky: body = #"{"ok":false,"error":"fatal_error"}"#
         case "/api/auth.test": body = #"{"ok":true,"user_id":"UME1","user":"me","team_id":"TNATIVE","team":"acme"}"#
         case "/api/search.messages": body = #"{"ok":true,"messages":{"matches":[]}}"#
         default: body = #"{"ok":false,"error":"unknown_method"}"#
@@ -376,6 +439,14 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         // Slack on, workspace unknown: every Slack account.
         #expect(skipped(native, slack: true, chatOn: false, team: nil))
         #expect(skipped(other, slack: true, chatOn: false, team: nil))
+        // An Enterprise Grid account may carry the grid's id: the same
+        // Slack user is the same workspace, whatever the team says.
+        #expect(BeeperClient.isSkipped(BeeperAccount(accountID: "slackgo.E0GRID-UME1", network: "Slack"),
+                                       config: ChatMonitorConfig(slackEnabled: true), nativeSlackTeam: "TNATIVE", nativeSlackUser: "UME1"))
+        #expect(!BeeperClient.isSkipped(BeeperAccount(accountID: "slackgo.E0GRID-UOTHER", network: "Slack"),
+                                        config: ChatMonitorConfig(slackEnabled: true), nativeSlackTeam: "TNATIVE", nativeSlackUser: "UME1"))
+        #expect(BeeperClient.slackUser(accountID: "slackgo.T0ABC-U0DEF") == "U0DEF")
+        #expect(BeeperClient.slackUser(accountID: "local-slack_T0-U0") == nil)
         // Slack off: none.
         #expect(!skipped(native, slack: false, chatOn: false, team: "TNATIVE"))
         #expect(!skipped(other, slack: false, chatOn: false, team: nil))
@@ -464,6 +535,15 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
                 continue
             }
         }
+    }
+
+    /// Every test run names a Beeper on this Mac that nothing listens on
+    /// (scripts/test.sh, and the Bazel test targets' env), so a test that
+    /// forgets its stand-in can never reach the real Beeper Desktop.
+    @Test func testRunsNeverPointAtTheRealBeeper() throws {
+        let url = try BeeperClient.baseURL(environment: ProcessInfo.processInfo.environment).get()
+        #expect(url.port != 23373, "run the tests with scripts/test.sh, which sets HOMESPEAKER_BEEPER_URL")
+        #expect(url != BeeperClient.defaultBaseURL)
     }
 
     @Test func accountsReadAsAListOrUnderItems() {
@@ -582,7 +662,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// reads workspace TNATIVE, "acme"), Google Chat on, Beeper in its
     /// default mode, own messages skipped.
     @Test func everyCaseInOnePoll() async throws {
-        let scenario = StandInBeeper.Scenario(searches: [.body(searchBody(everyCase))])
+        let scenario = StandInBeeper.Scenario(searches: [.messages(everyCase)])
         var rig = try Rig(
             monitorConfig: ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true, googleChatSource: .api,
                                              beeperEnabled: true),
@@ -619,7 +699,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// Slack on with no token: the workspace is not known, so every Slack
     /// account in Beeper is skipped. Google Chat off: its messages speak.
     @Test func slackOnWithAnUnknownWorkspaceSkipsEverySlack() async throws {
-        let scenario = StandInBeeper.Scenario(searches: [.body(searchBody(everyCase))])
+        let scenario = StandInBeeper.Scenario(searches: [.messages(everyCase)])
         var rig = try Rig(monitorConfig: ChatMonitorConfig(slackEnabled: true, beeperEnabled: true, beeperAnnounce: .all),
                           beeperToken: fakeToken(), beeper: scenario)
         defer { rig.finish() }
@@ -641,7 +721,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         let late = message("late", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 995, text: "late one")
         let old = message("old", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: -5, text: "before start")
         let scenario = StandInBeeper.Scenario(searches: [
-            .body(searchBody([a, old])), .body(searchBody([a, late, old])), .body(searchBody([a, late])),
+            .messages([a, old]), .messages([a, late, old]), .messages([a, late]),
         ])
         var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
         defer { rig.finish() }
@@ -650,7 +730,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         await rig.poll(at: 1060)
         await rig.poll(at: 1120)
         #expect(rig.spoken == ["WhatsApp message from Alice: first", "WhatsApp message from Alice: late one"])
-        let after = rig.beeper.searches.map { $0.query["dateAfter"] }
+        let after = rig.beeper.polls.map { $0.query["dateAfter"] }
         #expect(after == [
             ISO8601DateFormatter.fractional.string(from: start),
             ISO8601DateFormatter.fractional.string(from: start.addingTimeInterval(1000 - 300)),
@@ -661,26 +741,164 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
 
     /// The window never empties its memory wholesale: after more than 500
     /// messages (where the monitor's other memory starts again), the ones
-    /// still in the window are not spoken again.
+    /// still in the window are not spoken again. Six polls 400 s apart, 90
+    /// messages in the minute before each: each window holds the last
+    /// poll's 90 and the new 90, under the 200 a poll reads.
     @Test func manyMessagesAreNotSpokenAgain() async throws {
-        let many = (0..<520).map {
-            message("n\($0)", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 900 + Double($0) / 10, text: "n\($0)")
+        var all: [String] = []
+        var answers: [StandInBeeper.Answer] = []
+        for poll in 1...6 {
+            let at = Double(poll * 400)
+            all += (0..<90).map {
+                message("p\(poll)n\($0)", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice",
+                        at: at - 60 + Double($0) / 2, text: "p\(poll)n\($0)")
+            }
+            answers.append(.messages(all))
         }
-        let scenario = StandInBeeper.Scenario(searches: [.body(searchBody(many))])
+        let scenario = StandInBeeper.Scenario(searches: answers)
         var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
         defer { rig.finish() }
         await rig.startMonitor()
-        await rig.poll(at: 1000)
-        #expect(rig.local.spoken.count == 520)
-        await rig.poll(at: 1010)
-        #expect(rig.local.spoken.count == 520, "\(rig.local.spoken.count - 520) spoken again")
+        for poll in 1...6 { await rig.poll(at: Double(poll * 400)) }
+        #expect(rig.local.spoken.count == 540)
+        #expect(Set(rig.local.spoken).count == 540)
+        await rig.poll(at: 2410)
+        #expect(rig.local.spoken.count == 540, "\(rig.local.spoken.count - 540) spoken again")
+        #expect(rig.monitor.lastError == nil, "\(rig.monitor.lastError ?? "")")
+    }
+
+    // MARK: Paging
+
+    /// The wanted DM is on the second page, behind a page of Slack that is
+    /// skipped (it is read directly) and a page of group chat without a
+    /// mention: it is spoken, once.
+    @Test(arguments: [true, false])
+    func aMessageOnALaterPageIsSpokenOnce(newestFirst: Bool) async throws {
+        let dm = message("dm", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: newestFirst ? 5 : 40,
+                         text: "behind the others")
+        let noise = (0..<25).map {
+            message("s\($0)", chat: "slack-native-dm", account: "slackgo.TNATIVE-UME1", from: "Dee", at: 10 + Double($0) / 10,
+                    text: "busy \($0)")
+        } + (0..<25).map {
+            message("g\($0)", chat: "sig-family", account: "local-signal_FAKE", from: "Bob", at: 20 + Double($0) / 10, text: "chat \($0)")
+        }
+        let scenario = StandInBeeper.Scenario(searches: [.messages(noise + [dm], newestFirst: newestFirst)])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(slackEnabled: true, beeperEnabled: true),
+                          beeperToken: fakeToken(), slackToken: "fake-slack-token", beeper: scenario) // gitleaks:allow (made-up test token)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 60)
+        await rig.poll(at: 90)
+        #expect(rig.spoken == ["WhatsApp message from Alice: behind the others"])
+        #expect(rig.beeper.polls.count == 2)
+        #expect(rig.beeper.searches.count == 6, "three pages a poll: \(rig.beeper.searches.count)")
+        let next = rig.beeper.searches.dropFirst()
+        #expect(next.first?.query["cursor"] == "c20")
+        #expect(next.first?.query["direction"] == (newestFirst ? "before" : "after"))
+        #expect(rig.beeper.searches.allSatisfy { $0.query["limit"] == "20" })
+        #expect(rig.monitor.lastError == nil, "\(rig.monitor.lastError ?? "")")
+        rig.expectOnlyGoodGETs()
+    }
+
+    /// More than 200 messages in the window: 200 are read, and the page and
+    /// the status file say some may be missed.
+    @Test func tooManyMessagesSaySo() async throws {
+        let many = (0..<230).map {
+            message("m\($0)", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 10 + Double($0) / 10, text: "m\($0)")
+        }
+        let scenario = StandInBeeper.Scenario(searches: [.messages(many)])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 60)
+        #expect(rig.beeper.searches.count == BeeperClient.maxPages)
+        #expect(rig.local.spoken.count == 200)
+        let said = ChatMonitorError.beeperTooMany.localizedDescription
+        #expect(said == "Beeper: too many messages at once; some may be missed. Mute busy chats in Beeper.")
+        #expect(rig.monitor.lastError == said)
+        #expect(ChatMonitorStatusFile(url: rig.engine.profile.monitorStatusURL).read()?.lastError == said)
+        rig.expectOnlyGoodGETs()
+    }
+
+    /// A Beeper that sends messages older than asked for (or one that
+    /// ignores `dateAfter`): nothing from before the monitor started is
+    /// spoken.
+    @Test func nothingFromBeforeTheStartIsSpoken() async throws {
+        let old = message("old", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: -5, text: "before start")
+        let new = message("new", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 5, text: "after start")
+        let scenario = StandInBeeper.Scenario(searches: [.body(searchBody([old, new]))])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 30)
+        #expect(rig.spoken == ["WhatsApp message from Alice: after start"])
+    }
+
+    /// An account id Beeper never lists makes the accounts be listed again
+    /// once, not on every poll.
+    @Test func anUnknownAccountIsListedForOnce() async throws {
+        let stray = message("x", chat: "wa-dm", account: "local-unknown_FAKE", from: "Zed", at: 5, text: "who")
+        let scenario = StandInBeeper.Scenario(searches: [.messages([stray])])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        for at in [30.0, 60, 90] { await rig.poll(at: at) }
+        #expect(rig.beeper.requests.filter { $0.path == "/v1/accounts" }.count == 2)
+        // Its chat's network names it.
+        #expect(rig.spoken == ["WhatsApp message from Zed: who"])
+    }
+
+    /// A redirect is not followed: the token stays on this Mac.
+    @Test func aRedirectIsNotFollowed() async throws {
+        let scenario = StandInBeeper.Scenario(searches: [.redirect("https://example.com/steal")])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 30)
+        #expect(rig.monitor.lastError?.contains("redirect") == true, "\(rig.monitor.lastError ?? "")")
+        #expect(StandInBeeper.badRequests.allSatisfy { $0.host != "example.com" })
+        rig.expectOnlyGoodGETs()
+    }
+
+    /// Slack's `auth.test` failing at start is asked again at the next
+    /// poll; once it answers, only that workspace is skipped.
+    @Test func theSlackWorkspaceIsAskedAgainUntilKnown() async throws {
+        let scenario = StandInBeeper.Scenario(searches: [.messages([])])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(slackEnabled: true, beeperEnabled: true),
+                          beeperToken: fakeToken(), slackToken: "fake-slack-flaky-\(UUID().uuidString)", // gitleaks:allow (made-up test token)
+                          beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        #expect(rig.monitor.slackUser == nil, "auth.test failed at start")
+        await rig.poll(at: 30)
+        #expect(rig.monitor.slackUser == "me")
+        #expect(rig.monitor.beeperSkippedNetworks == ["Slack (acme)"])
+        #expect(rig.monitor.beeperNetworks?.contains("Slack") == true, "the other workspace is read")
+    }
+
+    /// A poll still waiting on Beeper when the monitor restarts writes
+    /// nothing when it resumes: no old labels, no "cancelled".
+    @Test func aPollFromBeforeARestartWritesNothing() async throws {
+        let scenario = StandInBeeper.Scenario(accounts: [.delayed(0.4, .body(accountsBody)), .body(accountsBody)],
+                                              searches: [.messages([])])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        let monitor = rig.monitor
+        let stale = Task { @MainActor in await monitor.pollOnce() }
+        try await Task.sleep(for: .milliseconds(100))
+        monitor.stop()
+        monitor.start()
+        await stale.value
+        #expect(monitor.beeperNetworks == nil, "\(monitor.beeperNetworks ?? [])")
+        #expect(monitor.lastError == nil, "\(monitor.lastError ?? "")")
     }
 
     /// Messages that came while broadcasting was off are not spoken once it
     /// is back on, as with Slack.
     @Test func messagesWhileBroadcastingIsOffAreNotSpokenLater() async throws {
         let wa = message("wa", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 20, text: "while off")
-        let scenario = StandInBeeper.Scenario(searches: [.body(searchBody([wa]))])
+        let scenario = StandInBeeper.Scenario(searches: [.messages([wa])])
         var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
         defer { rig.finish() }
         var config = rig.engine.config.config
@@ -698,7 +916,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// at the next poll once it is.
     @Test func beeperNotRunningSaysSoAndRecovers() async throws {
         let wa = message("wa", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 50, text: "back")
-        let scenario = StandInBeeper.Scenario(accounts: [.refused, .body(accountsBody)], searches: [.body(searchBody([wa]))])
+        let scenario = StandInBeeper.Scenario(accounts: [.refused, .body(accountsBody)], searches: [.messages([wa])])
         var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
         defer { rig.finish() }
         await rig.startMonitor()
@@ -727,7 +945,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
 
     /// 429: the next poll leaves Beeper alone; the one after asks again.
     @Test func askedToSlowDownSkipsOnePoll() async throws {
-        let scenario = StandInBeeper.Scenario(searches: [.status(429, "{}"), .body(searchBody([]))])
+        let scenario = StandInBeeper.Scenario(searches: [.status(429, "{}"), .messages([])])
         var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
         defer { rig.finish() }
         await rig.startMonitor()
@@ -753,7 +971,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// Beeper on with no token: a setup problem, no monitor, and nothing
     /// asked of Beeper at all.
     @Test func noTokenAsksNothing() async throws {
-        let scenario = StandInBeeper.Scenario(searches: [.body(searchBody(everyCase))])
+        let scenario = StandInBeeper.Scenario(searches: [.messages(everyCase)])
         let token = fakeToken()
         StandInBeeper.register(scenario, token: token)
         var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: nil, beeper: scenario)
@@ -769,7 +987,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// monitor; with "Skip messages I sent" off, they are asked for.
     @Test func ownMessagesFollowTheSwitch() async throws {
         let own = message("own", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Me", at: 20, text: "mine", isSender: true)
-        let scenario = StandInBeeper.Scenario(searches: [.body(searchBody([own]))])
+        let scenario = StandInBeeper.Scenario(searches: [.messages([own])])
         var rig = try Rig(monitorConfig: ChatMonitorConfig(muteOwnMessages: false, beeperEnabled: true),
                           beeperToken: fakeToken(), beeper: scenario)
         defer { rig.finish() }

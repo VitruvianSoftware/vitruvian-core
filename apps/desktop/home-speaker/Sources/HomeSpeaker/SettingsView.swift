@@ -628,7 +628,7 @@ public struct SettingsView: View {
                     .accessibilityHint("Announces new messages from Beeper Desktop aloud")
                 Picker("Announce", selection: monitorBinding(\.beeperAnnounce)) {
                     ForEach(ChatMonitorConfig.BeeperAnnounce.allCases, id: \.self) { mode in
-                        Text(Self.beeperAnnounceTitle(mode)).tag(mode)
+                        Text(mode.title).tag(mode)
                     }
                 }
                 SecureField("Access token", text: $viewModel.beeperToken)
@@ -666,14 +666,6 @@ public struct SettingsView: View {
     }
 
     private var hasChatScopes: Bool { SecretStore.shared.load().hasChatAccess }
-
-    /// The same words as the Vitruvian tool's Settings.
-    static func beeperAnnounceTitle(_ mode: ChatMonitorConfig.BeeperAnnounce) -> String {
-        switch mode {
-        case .directAndMentions: return "Direct messages and mentions"
-        case .all: return "Every message"
-        }
-    }
 
     // MARK: - AI Agents Tab
 

@@ -391,6 +391,14 @@ public struct ChatMonitorConfig: Codable, Equatable {
     public enum BeeperAnnounce: String, Codable, CaseIterable, Sendable {
         case directAndMentions = "direct_and_mentions"
         case all
+
+        /// What the app's and the Vitruvian tool's Settings call it.
+        public var title: String {
+            switch self {
+            case .directAndMentions: return "Direct messages and mentions"
+            case .all: return "Every message"
+            }
+        }
     }
 
     public var slackEnabled: Bool
