@@ -95,31 +95,57 @@ the change once that pull request merges and the site is deployed.
 
 Nobody needs to write this pull request by hand. Each hour the workflow
 **catalog-bump** compares the newest release of each tool in
-`sources.json` with its entry. When the release is newer it runs
+`sources.json` with its entry. When the release is newer, and has its zip, it
+runs
 
 ```sh
 bazel run //catalog:bump -- --id dev.vitruvian.homespeaker --tag home-speaker-v1.20.0
 ```
 
 and opens a pull request on `catalog/bump-<id>-<version>`. The command
-refuses, and writes nothing, unless the zip's size and SHA-256 are the ones
-GitHub records for the file and the SHA-256 is the one in the release's
-`.sha256`, the zip is safe to unpack, and its manifest has the entry's id and
-the tag's version. It sets the version and the download, copies what an
-entry copies from the manifest, sets `generated`, and regenerates the
-website's page. It never changes `minimumAppVersion`: when the manifest
-declares something only newer apps draw, the pull request says so, and the
-reviewer decides. A release with no zip yet, a draft, or a tool not listed
-yet is skipped with a notice.
+refuses, and writes nothing, unless:
+
+- the zip and its `.sha256` were uploaded by the account `sources.json`
+  names for the tool (the release workflow's);
+- the zip's size and SHA-256 are the ones GitHub records for the file, and
+  the SHA-256 is the one in the `.sha256`;
+- the zip is safe to unpack;
+- every program in it runs on the oldest macOS the app runs on
+  (`LSMinimumSystemVersion` in the app's `Info.plist`), and the tool's
+  program holds both Intel and Apple silicon when `sources.json` says it has;
+- its manifest has the entry's id and the tag's version.
+
+These prove the file is the one the release's workflow uploaded, and that it
+runs on every Mac the app does. They do not prove the release's code is
+safe: the pull request links the release and the source's changes for that.
+
+It sets the version and the download, copies what an entry copies from the
+manifest, sets `generated`, and regenerates the website's page. It never
+changes `minimumAppVersion`: when the manifest declares something only newer
+apps draw, the pull request says so.
+
+**Who merges it.** When only the version, the download and the fields that
+did not change are different, the pull request merges itself through the
+queue once its checks pass. When the tool asks for a new service in `uses`,
+offers a new command, or changes the words, panels or protocol the app
+shows, it is labelled `needs-human`, does not merge itself, and its
+description names each change.
+
+**Skipped, not failed:** a release with no zip yet, a draft or pre-release, a
+tool not listed yet, a version whose pull request is still open, and a
+version whose pull request a person closed. Reopen that pull request, or run
+the workflow by hand, to bring it back. A branch a person pushed to is never
+overwritten: the workflow comments on its pull request instead.
 
 `sources.json` says, for each tool, the repository its release is in, the
-tag's prefix and the zip's name. An entry kept by hand is named under
-`manual` with the reason; `//catalog:bump_test` fails for an entry in
-neither. The reviewer reads the pull request as any other: the checklist
-above still holds, and **catalog-check** still runs.
+tag's prefix, the zip's name, its uploader, and whether its program is
+universal. An entry kept by hand is named under `manual` with the reason;
+`//catalog:bump_test` fails for an entry in neither.
 
 Run it by hand, for one release, from the workflow's page (**Run workflow**,
-with the id and the tag) or with the command above.
+with the id and the tag) or with the command above. One run goes at a time;
+GitHub drops a run that waits behind another when a third arrives, so if the
+hourly run starts while yours waits, run yours again.
 
 ## The signature
 

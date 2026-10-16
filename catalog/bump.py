@@ -27,24 +27,33 @@
 
 `bump` reads the release through `gh` (or, with --release-dir, from a folder
 holding release.json and the files, which is how the tests run it). It
-refuses, and writes nothing, unless the zip's size and SHA-256 are the ones
-GitHub records for the file, its SHA-256 is the one the release's .sha256
-says, the zip is safe to unpack, and its manifest has the entry's id and the
-tag's version. Then it writes the new version, download, size and SHA-256,
-copies what the README says an entry copies from the manifest (the summary,
-the name, what it uses, its commands...), sets `generated`, and rewrites
-the website's _data/tools.yml as //tools/sync-site-tools:sync does. It never
-touches minimumAppVersion: when the manifest declares something only newer
-apps draw, it says so in the pull request's text for a person to decide. It
-never touches the signed copy the website serves; catalog-publish writes that
-after the merge.
+refuses, and writes nothing, unless: the zip and its .sha256 were uploaded by
+the account sources.json names for the tool; the zip's size and SHA-256 are
+the ones GitHub records for the file, and the SHA-256 is the one the .sha256
+says; the zip is safe to unpack; every Mach-O in it runs on the oldest macOS
+the app runs on (LSMinimumSystemVersion in the app's Info.plist), and the
+tool's program is universal when sources.json says it has been; and its
+manifest has the entry's id and the tag's version. Then it writes the new
+version, download, size and SHA-256, copies what the README says an entry
+copies from the manifest (the summary, the name, what it uses, its
+commands...), sets `generated`, and rewrites the website's _data/tools.yml as
+//tools/sync-site-tools:sync does. It never touches minimumAppVersion: when
+the manifest declares something only newer apps draw, it says so in the pull
+request's text. It never touches the signed copy the website serves;
+catalog-publish writes that after the merge.
+
+Its result (--result-out) says whether the pull request may merge itself:
+not when the tool asks for a new service, offers a new command, or changes
+the words or the protocol the app shows; then it names each.
 
 `plan` asks GitHub for the newest release of each row of sources.json and
 prints the ones that are newer than the catalog: what the hourly workflow
-bumps. Standard library and `gh` only, so it runs without Bazel.
+bumps. `foreign` and `older` help the workflow decide what it may push and
+close. Standard library only, apart from `gh`, so they run without Bazel.
 
-Exit status: 0 done (or nothing to do), 1 refused, 2 the release has no zip
-yet, 3 the tool is not listed yet.
+Exit status: 0 done or nothing to do, 1 refused, 10 the release is not ready
+(no zip yet, a draft), 11 the tool is not listed yet. The workflow reads the
+result's `status`, not the exit status.
 """
 
 import argparse
@@ -52,7 +61,9 @@ import copy
 import hashlib
 import json
 import os
+import plistlib
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -62,12 +73,15 @@ from pathlib import Path
 
 import catalog_rules
 
-OK, REFUSED, NOT_READY, NOT_LISTED = 0, 1, 2, 3
+OK, REFUSED, NOT_READY, NOT_LISTED = 0, 1, 10, 11
 
 CATALOG = "catalog/tools.json"
 SCHEMA = "catalog/catalog.schema.json"
 SOURCES = "catalog/sources.json"
+APP_INFO = "apps/desktop/vitruvian/Resources/Info.plist"
 HOME_REPO = "VitruvianSoftware/vitruvian-core"
+BOT_EMAIL = "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
+BRANCH = re.compile(r"^catalog/bump-[a-z0-9.-]+-[0-9]+\.[0-9]+\.[0-9]+$")
 
 # What a manifest may declare that an app older than the version given does
 # not draw, from packages/vitruvian-sdk/protocol/README.md and the app's
@@ -129,11 +143,15 @@ def load_sources(path):
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     rows = data.get("sources", [])
     for row in rows:
-        for key in ("id", "repo", "tagPrefix", "asset"):
+        for key in ("id", "repo", "tagPrefix", "asset", "uploader"):
             if not isinstance(row.get(key), str) or not row[key]:
                 raise SystemExit(f"sources.json: a row has no {key}: {row}")
         if "{version}" not in row["asset"]:
             raise SystemExit(f"sources.json: {row['id']}'s asset has no {{version}}")
+        if not isinstance(row.get("universal", False), bool):
+            raise SystemExit(
+                f"sources.json: {row['id']}'s universal is not true or false"
+            )
     return data
 
 
@@ -152,6 +170,10 @@ def version_of(row, tag):
         return None
     version = tag[len(row["tagPrefix"]) :]
     return version if catalog_rules.semver(version) else None
+
+
+def is_prerelease(version):
+    return catalog_rules.semver(version)[3] == 0
 
 
 def asset_name(row, version):
@@ -185,8 +207,7 @@ class GhRelease:
         self.repo, self.tag = repo, tag
 
     def metadata(self):
-        out = gh(["api", f"repos/{self.repo}/releases/tags/{self.tag}"])
-        return json.loads(out) if out else None
+        return gh_release(self.repo, self.tag)
 
     def fetch(self, asset):
         """The bytes of one asset, by its id, so no name is read as a pattern."""
@@ -218,14 +239,131 @@ class FolderRelease:
         return path.read_bytes() if path.exists() else None
 
 
+# --- Mach-O: which Macs a program runs on --------------------------------------
+
+FAT_MAGIC, FAT_MAGIC_64 = 0xCAFEBABE, 0xCAFEBABF
+MH_MAGIC, MH_MAGIC_64 = 0xFEEDFACE, 0xFEEDFACF
+LC_VERSION_MIN_MACOSX, LC_BUILD_VERSION = 0x24, 0x32
+PLATFORM_MACOS = 1
+CPU = {0x01000007: "x86_64", 0x0100000C: "arm64", 7: "i386", 12: "arm"}
+
+
+def version_text(version):
+    """14.0, 15.4, 13.5.1: as vtool -show-build says it."""
+    major, minor, patch = version
+    return f"{major}.{minor}" + (f".{patch}" if patch else "")
+
+
+def macho_slices(data):
+    """[(architecture, oldest macOS as (major, minor, patch) or None)] for a
+    Mach-O, one per architecture; None when `data` is not a Mach-O. Raises
+    ValueError for one that cannot be read."""
+    if len(data) < 8:
+        return None
+    (big,) = struct.unpack(">I", data[:4])
+    if big in (FAT_MAGIC, FAT_MAGIC_64):
+        (count,) = struct.unpack(">I", data[4:8])
+        if count == 0 or count > 32:
+            return None  # 0xCAFEBABE is also a Java class file.
+        size = 20 if big == FAT_MAGIC else 32
+        slices = []
+        for index in range(count):
+            at = 8 + index * size
+            if big == FAT_MAGIC:
+                _, _, offset, length, _ = struct.unpack(">iiIII", data[at : at + 20])
+            else:
+                _, _, offset, length, _, _ = struct.unpack(
+                    ">iiQQII", data[at : at + 32]
+                )
+            thin = thin_slice(data[offset : offset + length])
+            if thin is None:
+                raise ValueError(f"architecture {index} is not a Mach-O")
+            slices.append(thin)
+        return slices
+    thin = thin_slice(data)
+    return [thin] if thin else None
+
+
+def thin_slice(data):
+    """(architecture, oldest macOS) of one architecture's Mach-O, or None."""
+    if len(data) < 28:
+        return None
+    (magic,) = struct.unpack("<I", data[:4])
+    if magic not in (MH_MAGIC, MH_MAGIC_64):
+        return None
+    cputype, _, _, ncmds, _, _ = struct.unpack("<iiIIII", data[4:28])
+    at = 32 if magic == MH_MAGIC_64 else 28
+    oldest = None
+    for _ in range(ncmds):
+        if at + 8 > len(data):
+            raise ValueError("its load commands run past its end")
+        cmd, cmdsize = struct.unpack("<II", data[at : at + 8])
+        if cmdsize < 8 or at + cmdsize > len(data):
+            raise ValueError("a load command has a bad size")
+        if cmd == LC_BUILD_VERSION and cmdsize >= 16:
+            platform, raw = struct.unpack("<II", data[at + 8 : at + 16])
+            if platform == PLATFORM_MACOS:
+                oldest = (raw >> 16, (raw >> 8) & 0xFF, raw & 0xFF)
+        elif cmd == LC_VERSION_MIN_MACOSX and cmdsize >= 12 and oldest is None:
+            (raw,) = struct.unpack("<I", data[at + 8 : at + 12])
+            oldest = (raw >> 16, (raw >> 8) & 0xFF, raw & 0xFF)
+        at += cmdsize
+    return CPU.get(cputype, hex(cputype)), oldest
+
+
+def app_oldest_macos(root):
+    """The oldest macOS the app runs on, from its Info.plist."""
+    with open(root / APP_INFO, "rb") as handle:
+        text = plistlib.load(handle).get("LSMinimumSystemVersion", "")
+    parts = text.split(".")
+    if not 1 <= len(parts) <= 3 or not all(p.isdigit() for p in parts):
+        raise SystemExit(f"{APP_INFO}: LSMinimumSystemVersion is {text!r}")
+    return tuple(int(p) for p in (parts + ["0", "0"])[:3])
+
+
+def binary_problems(row, archive, manifest, oldest):
+    """Every Mach-O in the zip must run on `oldest`; the tool's program must
+    be x86_64 and arm64 when the row says it has been."""
+    found, programs = [], {}
+    for info in archive.infolist():
+        if info.is_dir():
+            continue
+        try:
+            slices = macho_slices(archive.read(info))
+        except ValueError as error:
+            found.append(f"{info.filename} is a Mach-O that cannot be read: {error}")
+            continue
+        if slices:
+            programs[info.filename] = slices
+    for name, slices in sorted(programs.items()):
+        for arch, needs in slices:
+            if needs is None:
+                found.append(f"{name} ({arch}) names no oldest macOS")
+            elif needs > oldest:
+                found.append(
+                    f"{name} ({arch}) needs macOS {version_text(needs)}; the app runs "
+                    f"on macOS {version_text(oldest)}, where it would install and fail"
+                )
+    if row.get("universal"):
+        program = manifest.get("runtime", {}).get("exec", "")
+        archs = sorted({arch for arch, _ in programs.get(program, [])})
+        if not {"x86_64", "arm64"} <= set(archs):
+            found.append(
+                f"{program or 'its program'} is {', '.join(archs) or 'not a Mach-O'}, "
+                f"not universal (x86_64 and arm64), as {row['id']}'s has been"
+            )
+    return found
+
+
 # --- The checks ---------------------------------------------------------------
 
 SIDECAR = re.compile(r"^([0-9a-f]{64})\s+\*?(\S.*?)\s*$")
 
 
-def checked_zip(row, tag, version, release, work):
-    """The release's zip, written into `work`, once every check passed: its
-    path, SHA-256, size and manifest. Raises NotReady or Refused."""
+def checked_zip(row, tag, version, release, work, oldest):
+    """The release, and its zip written into `work`, once every check passed:
+    the release's metadata, the zip's SHA-256, size and manifest. Raises
+    NotReady or Refused."""
     meta = release.metadata()
     if meta is None:
         raise NotReady(f"{row['repo']} has no release tagged {tag}")
@@ -240,6 +378,13 @@ def checked_zip(row, tag, version, release, work):
     sidecar = assets.get(name + ".sha256")
     if sidecar is None:
         reasons.append(f"{tag} has {name} but no {name}.sha256 to check it against")
+    for each in (asset, sidecar):
+        who = ((each or {}).get("uploader") or {}).get("login")
+        if each is not None and who != row["uploader"]:
+            reasons.append(
+                f"{each['name']} was uploaded by {who or 'nobody GitHub names'}, "
+                f"not {row['uploader']}, who uploads {row['id']}'s releases"
+            )
     digest = asset.get("digest") or ""
     if not digest.startswith("sha256:"):
         reasons.append(f"GitHub records no SHA-256 for {name} ({digest or 'none'})")
@@ -276,15 +421,18 @@ def checked_zip(row, tag, version, release, work):
             manifest = json.loads(archive.read("vitruvian-tool.json"))
         except (KeyError, ValueError) as error:
             raise Refused([f"{name}'s vitruvian-tool.json cannot be read: {error}"])
-    if manifest.get("id") != row["id"]:
-        reasons.append(f"the manifest's id is {manifest.get('id')}, not {row['id']}")
-    if manifest.get("version") != version:
-        reasons.append(
-            f"the manifest's version is {manifest.get('version')}, the tag's is {version}"
-        )
+        if manifest.get("id") != row["id"]:
+            reasons.append(
+                f"the manifest's id is {manifest.get('id')}, not {row['id']}"
+            )
+        if manifest.get("version") != version:
+            reasons.append(
+                f"the manifest's version is {manifest.get('version')}, the tag's is {version}"
+            )
+        reasons += binary_problems(row, archive, manifest, oldest)
     if reasons:
         raise Refused(reasons)
-    return path, sha, len(data), manifest
+    return meta, sha, len(data), manifest
 
 
 # --- The entry ----------------------------------------------------------------
@@ -324,6 +472,51 @@ def from_manifest(entry, manifest):
             entry[field] = value
             changed.append(field)
     return changed
+
+
+def for_a_person(old, new, manifest):
+    """Why the pull request must wait for a person, if it must: what the tool
+    newly asks for or offers, or words and a protocol the app shows that
+    changed. Taking something away, or a new version alone, is not a reason."""
+    reasons = []
+    added_uses = [u for u in new.get("uses", []) if u not in old.get("uses", [])]
+    if added_uses:
+        reasons.append(
+            "It asks for a service it did not ask for before: "
+            + ", ".join(f"`{u}`" for u in added_uses)
+            + ". Read what its source does with it."
+        )
+    old_commands = {c["id"]: c for c in old.get("commands", [])}
+    added = [c["id"] for c in new.get("commands", []) if c["id"] not in old_commands]
+    if added:
+        reasons.append(
+            "It offers new commands: " + ", ".join(f"`{c}`" for c in added) + "."
+        )
+    retitled = [
+        c["id"]
+        for c in new.get("commands", [])
+        if c["id"] in old_commands and old_commands[c["id"]]["title"] != c["title"]
+    ]
+    words = [f for f in ("name", "publisher", "summary") if old.get(f) != new.get(f)]
+    words += [f"the title of `{c}`" for c in retitled]
+    if old.get("panels") != new.get("panels") and "panels" in old:
+        added_panels = [p for p in new["panels"] if p not in old["panels"]]
+        if added_panels:
+            words.append("its panels")
+    if words:
+        reasons.append(
+            "The words or panels the app shows changed: " + ", ".join(words) + "."
+        )
+    if old.get("protocol") != new.get("protocol"):
+        reasons.append(
+            f"Its protocol changed from {old.get('protocol')} to {new.get('protocol')}."
+        )
+    if "panels" not in old and manifest.get("contributes", {}).get("panels"):
+        reasons.append(
+            "The manifest draws panels the entry does not list; add `panels` by hand "
+            "if the catalog should show them."
+        )
+    return reasons
 
 
 def floor_notes(manifest, floor):
@@ -403,33 +596,37 @@ def short(sha):
     return f"{sha[:8]}…{sha[-4:]}"
 
 
-def body_for(row, tag, entry, previous, size, sha, changed, notes, added_uses):
+def body_for(row, tag, entry, previous, size, sha, changed, notes, waits, links):
     name = entry["name"]["en"]
-    where = "" if row["repo"] == HOME_REPO else f" in {row['repo']}"
+    release_url, compare_url = links
     lines = [
-        f"The tool catalog now offers {name} {entry['version']}, released as "
-        f"`{tag}`{where}. It offered {previous}.",
+        f"The tool catalog now offers {name} {entry['version']}. It offered {previous}.",
         "",
+    ]
+    if waits:
+        lines += ["**This one waits for a person** (label `needs-human`):", ""]
+        lines += [f"- {reason}" for reason in waits]
+        lines.append("")
+    else:
+        lines += [
+            "Nothing it asks for or shows changed, so it merges itself once its "
+            "checks pass.",
+            "",
+        ]
+    lines += [
+        f"- **The release:** [{tag}]({release_url}). **What changed in the "
+        f"source:** [{row['tagPrefix']}{previous}...{tag}]({compare_url}).",
         f"- **The download:** `{asset_name(row, entry['version'])}`, {size} bytes, "
-        f"SHA-256 `{short(sha)}`.",
+        f"SHA-256 `{short(sha)}`, uploaded by `{row['uploader']}`.",
     ]
     if changed:
         lines.append(
             "- **Also copied from the tool's manifest**, as an entry says what its "
             f"manifest says: {', '.join(f'`{f}`' for f in changed)}."
         )
-    if added_uses:
-        lines.append(
-            "- **Please read:** the tool now asks for "
-            + ", ".join(f"`{u}`" for u in added_uses)
-            + ". Check its source uses it for what the release says."
-        )
     floor = entry["minimumAppVersion"]
     if notes:
-        lines.append(
-            f"- **Oldest app version stays {floor}; a person decides whether to "
-            "raise it.** " + " ".join(notes)
-        )
+        lines.append(f"- **Oldest app version stays {floor}.** " + " ".join(notes))
     else:
         lines.append(
             f"- **Oldest app version stays {floor}:** the manifest declares nothing "
@@ -439,18 +636,20 @@ def body_for(row, tag, entry, previous, size, sha, changed, notes, added_uses):
         "- **Website data:** `_data/tools.yml` is regenerated, as "
         "`bazel run //tools/sync-site-tools:sync` writes it.",
         "",
-        "**Checked before this pull request opened** (`bazel run //catalog:bump`): "
-        "the zip's size and SHA-256 are the ones GitHub records for the file, and "
-        "the SHA-256 is the one in the release's `.sha256`; the zip unpacks safely "
-        "(no links, nothing outside its folder, within the size limits); its "
-        f"manifest's id is `{entry['id']}` and its version is the tag's; the "
-        "catalog passes its schema and rules. **catalog-check** downloads it again "
-        "here and runs `vitruvian-tool validate` on it.",
+        "**What the checks prove, and what they don't:** they prove this is the "
+        "file the release's own workflow uploaded, unchanged, and that it is a "
+        "tool for every Mac the app runs on; they do not prove the release's code "
+        "is safe, which is what the source link above is for.",
+        "",
+        "Checked by `bazel run //catalog:bump` before this opened: the uploader; "
+        "the zip's size and SHA-256 against GitHub's record and the release's "
+        "`.sha256`; a zip that unpacks safely; each program's oldest macOS and "
+        "its architectures; the manifest's id and version; the catalog's schema "
+        "and rules. **catalog-check** downloads it again and runs "
+        "`vitruvian-tool validate`.",
         "",
         "After the merge, catalog-publish signs the list and opens the pull request "
-        "for the website.",
-        "",
-        "Opened by the catalog-bump workflow. It does not merge itself.",
+        "for the website. Opened by the catalog-bump workflow.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -477,11 +676,20 @@ def bump(root, sources, tool_id, tag, release, now):
         )
     entry = catalog["tools"][index]
     previous = entry["version"]
+    if not BRANCH.match(branch_for(tool_id, version)):
+        raise Refused(
+            [
+                f"{branch_for(tool_id, version)} is not a bump branch: X.Y.Z releases only"
+            ]
+        )
     if catalog_rules.semver(version) < catalog_rules.semver(previous):
         raise Refused([f"the catalog lists {previous}, newer than {version}"])
 
+    oldest = app_oldest_macos(root)
     with tempfile.TemporaryDirectory() as work:
-        _, sha, size, manifest = checked_zip(row, tag, version, release, work)
+        meta, sha, size, manifest = checked_zip(
+            row, tag, version, release, work, oldest
+        )
 
     url = download_url(row, tag, version)
     if version == previous:
@@ -498,7 +706,6 @@ def bump(root, sources, tool_id, tag, release, now):
     new["version"] = version
     new["download"] = {"url": url, "sha256": sha, "size": size}
     changed = from_manifest(new, manifest)
-    added_uses = sorted(set(new.get("uses", [])) - set(entry.get("uses", [])))
     catalog["tools"][index] = new
     catalog["generated"] = next_generated(catalog["generated"], now)
 
@@ -513,6 +720,11 @@ def bump(root, sources, tool_id, tag, release, now):
     (root / CATALOG).write_text(dumps(catalog) + "\n", encoding="utf-8")
     print(f"wrote {CATALOG}: {tool_id} {previous} -> {version}")
     write_site(root)
+    waits = for_a_person(entry, new, manifest)
+    links = (
+        meta.get("html_url") or f"https://github.com/{row['repo']}/releases/tag/{tag}",
+        f"https://github.com/{row['repo']}/compare/{row['tagPrefix']}{previous}...{tag}",
+    )
     notes = floor_notes(manifest, new["minimumAppVersion"])
     return {
         "status": "bumped",
@@ -522,8 +734,9 @@ def bump(root, sources, tool_id, tag, release, now):
         "tag": tag,
         "branch": branch_for(tool_id, version),
         "title": f"feat(catalog): {new['name']['en']} {version}",
+        "automerge": not waits,
         "body": body_for(
-            row, tag, new, previous, size, sha, changed, notes, added_uses
+            row, tag, new, previous, size, sha, changed, notes, waits, links
         ),
     }
 
@@ -531,26 +744,12 @@ def bump(root, sources, tool_id, tag, release, now):
 # --- plan ---------------------------------------------------------------------
 
 
-def newest_release(row, releases):
-    """The newest published release of a row: (tag, version), or None."""
-    best = None
-    for release in releases:
-        if release.get("draft") or release.get("prerelease"):
-            continue
-        version = version_of(row, release.get("tag_name", ""))
-        if version and (
-            best is None
-            or catalog_rules.semver(version) > catalog_rules.semver(best[1])
-        ):
-            best = (release["tag_name"], version)
-    return best
-
-
-def plan(catalog, sources, list_releases, open_pull):
-    """The rows whose newest release is newer than their entry and that have
-    no pull request open for it (one that no longer merges is redone)."""
+def plan(catalog, sources, list_tags, get_release, find_pull):
+    """The rows whose newest published release is newer than their entry,
+    has its zip, and has no pull request for it: none open that still merges
+    (one that no longer merges is rebuilt), and none closed (a person said
+    no; reopening it, or a run by hand, brings it back)."""
     listed = {t["id"]: t for t in catalog["tools"]}
-    asked = {}
     found = []
     for row in sources["sources"]:
         entry = listed.get(row["id"])
@@ -559,37 +758,88 @@ def plan(catalog, sources, list_releases, open_pull):
                 f"{row['id']} is not in the catalog yet: the first listing is by hand."
             )
             continue
-        if row["repo"] not in asked:
-            asked[row["repo"]] = list_releases(row["repo"])
-        newest = newest_release(row, asked[row["repo"]])
+        floor = catalog_rules.semver(entry["version"])
+        versions = sorted(
+            (
+                (catalog_rules.semver(v), v, tag)
+                for tag in list_tags(row["repo"], row["tagPrefix"])
+                for v in [version_of(row, tag)]
+                if v and not is_prerelease(v)
+            ),
+            reverse=True,
+        )
+        newest = None
+        for key, version, tag in versions:
+            if key <= floor:
+                break
+            release = get_release(row["repo"], tag)
+            if release and not release.get("draft") and not release.get("prerelease"):
+                newest = (tag, version, release)
+                break
         if newest is None:
-            notice(
-                f"{row['id']}: {row['repo']} has no release tagged {row['tagPrefix']}<version>."
-            )
-            continue
-        tag, version = newest
-        if catalog_rules.semver(version) <= catalog_rules.semver(entry["version"]):
             print(
                 f"{row['id']}: the catalog lists {entry['version']}, the newest release."
             )
             continue
-        pull = open_pull(branch_for(row["id"], version))
-        if pull and pull.get("mergeable") != "CONFLICTING":
+        tag, version, release = newest
+        if asset_name(row, version) not in {
+            a.get("name") for a in release.get("assets", [])
+        }:
+            notice(
+                f"{row['id']}: {tag} has no {asset_name(row, version)} yet; skipped."
+            )
+            continue
+        pull = find_pull(branch_for(row["id"], version))
+        state = (pull or {}).get("state")
+        if state == "OPEN" and pull.get("mergeable") != "CONFLICTING":
             print(f"{row['id']} {version}: pull request #{pull['number']} is open.")
+            continue
+        if state in ("CLOSED", "MERGED"):
+            notice(
+                f"{row['id']} {version}: pull request #{pull['number']} was "
+                f"{'closed without merging' if state == 'CLOSED' else 'merged'}; "
+                "skipped. Reopen it, or run catalog-bump by hand with the tag."
+            )
             continue
         print(f"{row['id']}: {tag} is newer than the catalog's {entry['version']}.")
         found.append({"id": row["id"], "tag": tag})
     return found
 
 
-def gh_releases(repo):
-    out = gh(["api", f"repos/{repo}/releases?per_page=100"])
+def gh_tags(repo, prefix):
+    out = gh(
+        [
+            "api",
+            "--paginate",
+            "--jq",
+            ".[].ref",
+            f"repos/{repo}/git/matching-refs/tags/{prefix}",
+        ]
+    )
     if out is None:
-        raise SystemExit(f"could not list the releases of {repo}")
-    return json.loads(out)
+        raise SystemExit(f"could not list the tags of {repo}")
+    return [
+        line.removeprefix("refs/tags/")
+        for line in out.decode("utf-8").split()
+        if line.startswith("refs/tags/")
+    ]
 
 
-def gh_open_pull(branch):
+def gh_release(repo, tag):
+    """A release's metadata, or None when the tag has no release."""
+    done = subprocess.run(
+        ["gh", "api", f"repos/{repo}/releases/tags/{tag}"], capture_output=True
+    )
+    if done.returncode == 0:
+        return json.loads(done.stdout)
+    if b"Not Found" in done.stdout + done.stderr:
+        return None
+    sys.stderr.write(done.stderr.decode("utf-8", "replace"))
+    raise SystemExit(f"could not read the release {tag} of {repo}")
+
+
+def gh_pull(branch):
+    """The newest pull request from `branch`, open, closed or merged."""
     repo = os.environ.get("GITHUB_REPOSITORY", HOME_REPO)
     out = gh(
         [
@@ -600,15 +850,45 @@ def gh_open_pull(branch):
             "--head",
             branch,
             "--state",
-            "open",
+            "all",
             "--json",
-            "number,mergeable",
+            "number,state,mergeable",
         ]
     )
     if out is None:
         raise SystemExit(f"could not list the pull requests of {repo}")
-    pulls = json.loads(out)
+    pulls = sorted(json.loads(out), key=lambda p: p["number"], reverse=True)
     return pulls[0] if pulls else None
+
+
+# --- What the workflow may push and close -------------------------------------
+
+
+def foreign(compare, bot_email=BOT_EMAIL):
+    """The commits on a bump branch (GitHub's compare of main...branch) that
+    the workflow did not write: a person's, which a rebuild must not erase."""
+    return [
+        f"{c['sha'][:12]} by {c['commit']['author']['name']}"
+        for c in compare.get("commits", [])
+        if c["commit"]["author"]["email"] != bot_email
+    ]
+
+
+def older(pulls, tool_id, version):
+    """The open bump pull requests for an older version of the same tool."""
+    prefix = f"catalog/bump-{tool_id}-"
+    mine = catalog_rules.semver(version)
+    found = []
+    for pull in pulls:
+        head = pull["headRefName"]
+        theirs = (
+            catalog_rules.semver(head[len(prefix) :])
+            if head.startswith(prefix)
+            else None
+        )
+        if theirs is not None and theirs < mine:
+            found.append(pull["number"])
+    return found
 
 
 # --- The command --------------------------------------------------------------
@@ -622,9 +902,9 @@ def workspace(given):
     return Path(__file__).resolve().parent.parent
 
 
-def main(argv=None, list_releases=gh_releases, open_pull=gh_open_pull):
+def main(argv=None, list_tags=gh_tags, get_release=gh_release, find_pull=gh_pull):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0] not in ("bump", "plan"):
+    if not argv or argv[0] not in ("bump", "plan", "foreign", "older"):
         argv.insert(0, "bump")
     parser = argparse.ArgumentParser(
         description="Updates one tool's catalog entry from one of its releases."
@@ -648,14 +928,32 @@ def main(argv=None, list_releases=gh_releases, open_pull=gh_open_pull):
     many = commands.add_parser("plan", help="which releases are newer than the catalog")
     many.add_argument("--out", help="write the list here, as JSON")
     many.add_argument("--root", help="the repository (default: this file's)")
+    mine = commands.add_parser("foreign", help="commits on a branch a person wrote")
+    mine.add_argument("--compare", required=True, help="GitHub's compare, as JSON")
+    old = commands.add_parser("older", help="open bump PRs for older versions")
+    old.add_argument(
+        "--pulls", required=True, help="gh pr list --json number,headRefName"
+    )
+    old.add_argument("--id", required=True)
+    old.add_argument("--version", required=True)
     args = parser.parse_args(argv)
+
+    if args.command == "foreign":
+        for line in foreign(json.loads(Path(args.compare).read_text(encoding="utf-8"))):
+            print(line)
+        return OK
+    if args.command == "older":
+        pulls = json.loads(Path(args.pulls).read_text(encoding="utf-8"))
+        for number in older(pulls, args.id, args.version):
+            print(number)
+        return OK
 
     root = workspace(args.root)
     sources = load_sources(root / SOURCES)
 
     if args.command == "plan":
         _, catalog = catalog_rules.load(root / CATALOG)
-        found = plan(catalog, sources, list_releases, open_pull)
+        found = plan(catalog, sources, list_tags, get_release, find_pull)
         if args.out:
             Path(args.out).write_text(json.dumps(found) + "\n", encoding="utf-8")
         print(json.dumps(found))

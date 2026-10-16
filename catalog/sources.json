@@ -5,6 +5,9 @@
     "is newer than its entry, it opens a pull request that lists it.",
     "repo: where the release and its zip are. tagPrefix: the tag is this",
     "followed by the version. asset: the zip's name, {version} filled in.",
+    "uploader: the only account whose upload of the zip and its .sha256 is",
+    "listed (the release workflow's; checked on the real releases 2026-10-16).",
+    "universal: the tool's program must hold x86_64 and arm64, as it has.",
     "manual: entries that are only ever changed by hand, and why.",
     "//catalog:bump_test fails when an entry is in neither list."
   ],
@@ -13,19 +16,24 @@
       "id": "dev.vitruvian.homespeaker",
       "repo": "VitruvianSoftware/vitruvian-core",
       "tagPrefix": "home-speaker-v",
-      "asset": "HomeSpeaker-{version}-tool.zip"
+      "asset": "HomeSpeaker-{version}-tool.zip",
+      "uploader": "github-actions[bot]",
+      "universal": true
     },
     {
       "id": "dev.vitruvian.github",
       "repo": "VitruvianSoftware/vitruvian-tool-github",
       "tagPrefix": "v",
-      "asset": "github-tool-{version}.zip"
+      "asset": "github-tool-{version}.zip",
+      "uploader": "github-actions[bot]",
+      "universal": true
     },
     {
       "id": "dev.vitruvian.remote",
       "repo": "VitruvianSoftware/vitruvian-core",
       "tagPrefix": "android-remote-v",
-      "asset": "VitruvianRemote-{version}-tool.zip"
+      "asset": "VitruvianRemote-{version}-tool.zip",
+      "uploader": "github-actions[bot]"
     }
   ],
   "manual": {
