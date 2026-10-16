@@ -13,6 +13,26 @@ Home API over HTTPS, and needs nothing else installed.
 
 ---
 
+## Two ways to run HomeSpeaker
+
+You can use HomeSpeaker as this menu bar app, as a Vitruvian extension, or
+both installed, though only one of them speaks.
+
+| | The app | The Vitruvian extension |
+|---|---|---|
+| What you see | A menu bar icon with a volume slider and a quiet-hours time picker | A card in Vitruvian's closed island and its Settings |
+| Needs the app installed | Yes, it is the app | No. It runs on its own and never looks at the app's files |
+| Keeps its files in | `~/.gemini/` and `~/Library/Application Support/HomeSpeaker/` | The extension's own data folder (see [What's stored where](#whats-stored-where)) |
+
+With only one installed, nothing changes. With both installed, whichever you
+open first asks which to use. It can copy your settings and sign-ins across,
+quits the other one, and offers to turn off its Open at Login and to move
+the app to the Trash. Until you answer, the app keeps working as before. You
+can change your mind from either one's Settings. The one you did not pick
+stays quiet, so nothing is announced twice.
+
+---
+
 ## Before you start
 
 You need all three of these. The app cannot work without them.
@@ -208,7 +228,20 @@ Google.
 | `~/.gemini/speaker_broadcast.json` | Non-secret settings: speakers, default target, quiet hours, monitor toggles. Shared with the `speaker-broadcast` CLI and Gemini/Antigravity skills. |
 | `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, OAuth client override. Mode `0600`. |
 | `~/.gemini/speaker_history.json` | The last 30 announcements shown in the menu. |
+| `~/.gemini/speaker_door.json` | Which of the two, app or extension, you chose to use, and where the extension keeps its files. The one file both read. |
 | `~/.gemini/speaker_monitor_status.json` | What the running chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the app's pid), written by the app for the Vitruvian tool. Not settings: a crashed app leaves it saying "running", so readers check the app is up. |
+
+The extension keeps the same four things in its own data folder instead,
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`:
+`settings.json`, `secrets.json` (mode `0600`), `history.json` and
+`speaker_monitor_status.json`. The formats are the same as the app's, so
+copying between the two is a plain copy.
+
+To put the Slack token on this Mac from Bitwarden, run
+`bazel run //apps/desktop/home-speaker:sync-secrets` for the app, or add
+`-- --extension` for the extension. `--extension` finds the extension's folder
+in `speaker_door.json`, and stops without writing anything if the extension
+has not recorded itself there yet.
 
 Nothing leaves your Mac except requests to Google (Home API, OAuth, Chat API
 if enabled) and Slack (if enabled). The app has no telemetry.

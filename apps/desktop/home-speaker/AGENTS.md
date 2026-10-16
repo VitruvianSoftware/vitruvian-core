@@ -30,7 +30,9 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
   sweep proves nothing about this app.
 - **Release package exactly as CI does:** `./scripts/publish.sh --dry-run` (universal .app,
   zip, sha256). Slack token onto this Mac from Bitwarden:
-  `bazel run //apps/desktop/home-speaker:sync-secrets`.
+  `bazel run //apps/desktop/home-speaker:sync-secrets` for the app, or
+  `bazel run //apps/desktop/home-speaker:sync-secrets -- --extension` for the extension's
+  `secrets.json` (found through `speaker_door.json`; it stops and writes nothing if that is missing).
 
 ## Conventions & landmines
 
@@ -42,9 +44,19 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 - **Secrets never in git.** `HOMESPEAKER_GOOGLE_CLIENT_ID` / `HOMESPEAKER_GOOGLE_CLIENT_SECRET`
   come from the environment locally and from repository secrets in CI; the Slack token lives
   only in the Bitwarden vault and in this Mac's secrets file.
-- **`~/.gemini/speaker_broadcast.json` is a shared contract.** This app watches it, the Android
-  remote's HomeSpeaker module rewrites it through `macagent`, and local tooling reads it.
-  Changing its schema touches all of them; keep old keys readable.
+- **`~/.gemini/speaker_broadcast.json` is the app's settings, and a shared contract.** This app
+  watches it, the Android remote's HomeSpeaker module rewrites it through `macagent`, and local
+  tooling reads it. Changing its schema touches all of them; keep old keys readable. The Vitruvian
+  extension does not use it: it has its own `settings.json` with exactly the same schema.
+- **The extension's files are in its data folder**, not under `~/.gemini/`:
+  `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`
+  holds `settings.json`, `secrets.json` (0600), `history.json` and `speaker_monitor_status.json`,
+  in the same formats as the app's files. The same engine reads both, told which set of files to
+  use (`Profile`). Never point the extension at the app's files, or the app at the extension's.
+- **`~/.gemini/speaker_door.json` is the one file both read.** It records which of the app and the
+  extension the person chose (`chosen`), and the extension's program, data folder and version
+  (the `extension` block, written by the extension each time it starts). Writers merge under its
+  own lock; never replace it blind. Only the chosen one speaks on its own.
 - **`~/.gemini/speaker_monitor_status.json` is the app's to write.** The running app reports its
   chat monitor there (`ChatMonitorStatusFile`) and takes Start/Stop over a distributed notification
   (`ChatMonitorControlNotice`, also `HomeSpeaker --chat-monitor start|stop`). A reader must treat
