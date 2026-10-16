@@ -324,8 +324,14 @@ extension ToolStatusTests {
         for state in states {
             let wing = RestingStatus.rightWing(tools: [(first, status(state, text: "Deploying"))], nexusRunning: false,
                                                language: .enUS)
-            suite.expect(wing == .allowance && !RestingStatus.ticksEverySecond(wing),
+            suite.expect(wing == .allowance && !RestingStatus.ticksEverySecond(wing)
+                             && RestingStatus.showsAgentMark(wing),
                          "a mark without words leaves the percent, and the wing's clock its six seconds (\(state))")
         }
+        suite.expect(RestingStatus.showsAgentMark(.allowance)
+                         && !RestingStatus.showsAgentMark(.words("24"))
+                         && !RestingStatus.showsAgentMark(.seconds(since: start))
+                         && !RestingStatus.showsAgentMark(nil),
+                     "the agent mark shows only while the right wing draws the allowance percent")
     }
 }

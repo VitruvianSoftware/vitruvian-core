@@ -2941,6 +2941,10 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Platform/External/ToolFolders.swift` (written by VitruvianSoftware): in the app's copy the person may read, write and enter every folder and read and write every file; no other bit of a mode changes, and a link is neither followed nor changed. Whatever the app deletes there (what an earlier copy left, the copy an update replaces, a removed tool's copy and what it saved) is opened up first when it cannot be deleted as it is.
   - `Tests/ToolFoldersReadOnlyTests.swift` (new, in the `tool-runtime` suite). Three older checks stood a read-only data folder in for one that cannot be deleted; it can be now, so they use a folder macOS holds as it is (`UF_IMMUTABLE`, Finder's Locked) and expect what they did.
   - `Tests/mutation_checks.py` (upstream file): eight mutations for the above, and the one that quotes the delete follows the reworded line.
+- **2026-10-15**: The closed island's left-hand resting wing hides the cycling agent allowance ring (`NotchAgentMark`) when a tool's own words or elapsed seconds replace the agent allowance percentage on the right-hand wing (`RestingStatus.showsAgentMark`).
+  - `Core/Platform/ToolStatus.swift` (written by VitruvianSoftware): `RestingStatus.showsAgentMark(_:)` returns `true` only when the right-hand wing is `.allowance`.
+  - `UI/Notch/NotchAgentStrip.swift` (upstream file): `NotchAgentRestingWing` draws `NotchAgentMark` only while `RestingStatus.showsAgentMark(restingWing)` is `true`, so a tool's status mark stands alone beside its own words or timer.
+  - `Tests/ToolStatusTests.swift` and `Tests/mutation_checks.py` (upstream file): verify `RestingStatus.showsAgentMark` across `.allowance`, `.words`, `.seconds`, and `nil`, plus a mutation check in the `platform` suite.
 
 ## Tracking and porting upstream
 

@@ -162,6 +162,13 @@ package enum RestingStatus {
         return true
     }
 
+    /// Whether the left-hand wing draws the agent mark: only while the
+    /// right-hand wing draws the allowance percent. When a tool's words or
+    /// seconds take the right-hand wing, its mark stands alone on the left.
+    package static func showsAgentMark(_ wing: RightWing?) -> Bool {
+        wing == .allowance
+    }
+
     /// What stands between the tool's name and its words. The app's
     /// strings write a colon the way each language does; this is the same
     /// rule, for a label made of two of the tool's own texts.

@@ -239,7 +239,9 @@ package struct NotchAgentRestingWing: View {
             let tint = agentLimitTint(provider, usedFraction: used)
             if leading {
                 HStack(spacing: 3) {
-                    NotchAgentMark(provider: provider, size: 10, tint: tint)
+                    if RestingStatus.showsAgentMark(restingWing) {
+                        NotchAgentMark(provider: provider, size: 10, tint: tint)
+                    }
                     NotchRestingStatusMark(mark: statusMark, language: l10n.language)
                 }
             } else {

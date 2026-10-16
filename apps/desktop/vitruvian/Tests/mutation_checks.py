@@ -1571,6 +1571,13 @@ MUTATIONS = [
      "        guard var viewers = inMenuPanel[key], viewers.remove(viewer) != nil else { return }\n",
      "        guard var viewers = inMenuPanel[key] else { return }\n        viewers = []\n",
      "the old card going after the new card appeared leaves the new card's page open"),
+    ("the agent mark stays beside a tool's words", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n"
+     "        wing == .allowance\n",
+     "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n"
+     "        wing != nil\n",
+     "the agent mark shows only while the right wing draws the allowance percent"),
 ]
 
 
