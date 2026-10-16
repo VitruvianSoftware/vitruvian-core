@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.58.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.57.0...vitruvian-v3.58.0) (2026-10-16)
+
+
+### Features
+
+* **desktop:** a tool can open its own settings page ([#3405](https://github.com/VitruvianSoftware/vitruvian-core/issues/3405)) ([2c5a613](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c5a613cf6ce284f99912b38dac883e557870bfc))
+
 ## [3.57.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.56.0...vitruvian-v3.57.0) (2026-10-16)
 
 
