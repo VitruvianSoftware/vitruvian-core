@@ -227,16 +227,34 @@ enum ExtensionsPageTests {
         rig.watch.refresh()
         let same = ExtensionsPageContent.updates(store: rig.bench.store, watch: rig.watch)
 
-        let byHand = CatalogueWatchTests.Rig()
-        defer { byHand.close() }
-        byHand.install(fromCatalog: false)
-        byHand.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
-        byHand.watch.refresh()
-        suite.expect(unfetched == 0 && newer == 1 && row?.updateText == "Update available" && same == 0
-                         && ExtensionsPageContent.updates(store: byHand.bench.store, watch: byHand.watch) == 0,
+        suite.expect(unfetched == 0 && newer == 1 && row?.updateText == "Update available" && same == 0,
                      "the sidebar counts the tools installed from the catalog that it lists a newer version of, "
-                         + "the ones whose rows say Update available; none before the list is fetched, and never "
-                         + "one added from a folder")
+                         + "the ones whose rows say Update available; none before the list is fetched")
+
+        // Two tools: one from the catalog, one added from a folder, both with
+        // a newer version listed.
+        let both = CatalogueWatchTests.Rig()
+        defer { both.close() }
+        both.install()
+        let other = both.bench.folder("other", manifest: ExternalToolManifestTests.file(#"{"id": "com.acme.other"}"#))
+        both.bench.add(other)
+        let entries = { (deploys: String, other: String) -> [[String: Any]] in
+            [CatalogueFixtures.entry(["version": deploys]),
+             CatalogueFixtures.entry(["id": "com.acme.other", "version": other])]
+        }
+        both.serve(entries("1.3.0", "1.3.0"))
+        both.watch.refresh()
+        let two = ExtensionsPageContent.updates(store: both.bench.store, watch: both.watch)
+        both.serve(entries("1.3.0", "1.2.0"), generated: "2026-11-03T10:00:00Z", etag: "\"b\"")
+        both.watch.refresh()
+        let sameFolder = ExtensionsPageContent.updates(store: both.bench.store, watch: both.watch)
+        both.serve(entries("1.2.0", "1.1.0"), generated: "2026-11-04T10:00:00Z", etag: "\"c\"")
+        both.watch.refresh()
+        let none = ExtensionsPageContent.updates(store: both.bench.store, watch: both.watch)
+        suite.expect(both.bench.store.listed.map { $0.record.catalogue == nil } == [false, true]
+                         && two == 2 && sameFolder == 1 && none == 0,
+                     "the sidebar counts a tool added from a folder whose newer version the catalog lists too, "
+                         + "and not one at the same or an older version")
     }
 
     static func waysIn(_ suite: TestSuite) {

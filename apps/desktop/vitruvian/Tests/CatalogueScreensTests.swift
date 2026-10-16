@@ -73,10 +73,15 @@ enum CatalogueScreensTests {
         byHand.install(fromCatalog: false)
         byHand.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
         byHand.watch.refresh()
-        suite.expect(rows(content(byHand)).map(\.action) == [.installed]
+        let newer = rows(content(byHand))
+        byHand.serve([CatalogueFixtures.entry()], generated: "2026-11-03T10:00:00Z", etag: "\"s\"")
+        byHand.watch.refresh()
+        suite.expect(newer.map(\.action) == [.update] && newer.first?.actionText == "Update from the catalog"
+                         && rows(content(byHand)).map(\.action) == [.installed]
                          && rows(content(byHand)).first?.actionText == "Installed",
-                     "a tool added from a folder with the same id is shown as installed, and never offered as an update")
-        byHand.serve([CatalogueFixtures.entry()], signer: .init(), etag: "\"x\"")
+                     "a tool added from a folder with the same id is offered the catalog's newer version as "
+                         + "\"Update from the catalog\", and at the same version is shown as installed")
+        byHand.serve([CatalogueFixtures.entry()], generated: "2026-11-04T10:00:00Z", signer: .init(), etag: "\"x\"")
         byHand.watch.refresh()
         suite.expect(content(byHand).body == .message(english.catalogNotOurs),
                      "a list that is not ours is one sentence, and no tool is offered")
@@ -101,7 +106,32 @@ enum CatalogueScreensTests {
                          + "where it is from, and Cancel still the default")
         suite.expect(fromFolder.catalogue == nil && fromFolder.from == "From ~/picked",
                      "a folder the person picked is asked about as before")
+        suite.expect(fromCatalog.movesToCatalogue == nil && fromFolder.movesToCatalogue == nil,
+                     "a first install from the catalog, and a folder, say nothing of a move to the catalog")
         rig.installer.finished(with: offer)
+
+        // A tool added from a folder, then offered from the catalog.
+        let moving = CatalogueInstallerTests.Rig()
+        defer { moving.close() }
+        let added = moving.bench.folder("Remote")
+        moving.bench.add(added)
+        guard case .success(let move)? = moving.prepare(moving.entry(TestZip.tool(version: "1.3.0"), version: "1.3.0")) else {
+            suite.expect(false, "a tool added from a folder is offered its newer version from the catalog")
+            return
+        }
+        let sheet = ToolAgreementContent(offer: move, language: .enUS, strings: english, cancel: "Cancel",
+                                         home: moving.bench.root.path)
+        suite.expect(sheet.isUpdate && sheet.title == "Update “Deploys”?" && sheet.agree == "Update Tool"
+                         && sheet.movesToCatalogue
+                         == "You added it from the folder ~/Remote; from now on it comes from the Vitruvian catalog."
+                         && sheet.catalogue == english.agreeCatalog && sheet.from == "From github.com/acme/deploys"
+                         && sheet.versions == "You have version 1.2.0. This folder has version 1.3.0."
+                         && sheet.keepsData == english.updateKeepsData && sheet.initialFocus == .cancel,
+                     "updating from the catalog a tool added from a folder is asked on the usual sheet, which says "
+                         + "in one sentence that it moves from its folder to the catalog, and that what it saved is kept")
+        suite.expect(sheet.changed == english.updateChanged,
+                     "and when what the tool says about itself changed, the sheet still asks the person to read it again")
+        moving.installer.finished(with: move)
     }
 
     static func refusals(_ suite: TestSuite) {
@@ -139,5 +169,26 @@ enum CatalogueScreensTests {
                          && detail.initialFocus == .close,
                      "a tool from the catalog with a newer version says Update available in its row and its detail, "
                          + "which offers Update; the detail still opens on Close")
+        suite.expect(row?.updateButton == "Update" && row?.updateSpoken == "Update, Deploys",
+                     "a tool from the catalog's row offers Update")
+
+        let byHand = CatalogueWatchTests.Rig()
+        defer { byHand.close() }
+        byHand.install(fromCatalog: false)
+        byHand.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
+        byHand.watch.refresh()
+        let listed = byHand.bench.store.listed[0]
+        let folderRow = ExternalToolRow.all(store: byHand.bench.store, language: .enUS, strings: english,
+                                            watch: byHand.watch).first
+        let folderDetail = ExternalToolDetail(listed, files: nil, language: .enUS, strings: english,
+                                              updateAvailable: byHand.watch.update(for: listed) != nil)
+        let french = ExternalToolRow(listed, language: .fr, strings: FeatureStrings.externalTools(.fr),
+                                     updateAvailable: true)
+        suite.expect(folderRow?.updateText == "Update available" && folderRow?.updateButton == "Update from the catalog"
+                         && folderRow?.updateSpoken == "Update from the catalog, Deploys"
+                         && folderDetail.updateNow == "Update from the catalog"
+                         && french.updateButton == "Mettre à jour depuis le catalogue",
+                     "a tool added from a folder whose newer version the catalog lists says Update available, and "
+                         + "its row and detail offer \"Update from the catalog\"")
     }
 }

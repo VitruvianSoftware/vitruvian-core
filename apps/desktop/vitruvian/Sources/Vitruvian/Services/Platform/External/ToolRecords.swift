@@ -31,8 +31,9 @@ package struct ToolAgreement: Codable, Equatable, Sendable {
 }
 
 /// Where a tool installed from the catalog came from: the entry it was
-/// installed from. Only a tool with one is ever compared with the catalog
-/// for a newer version.
+/// installed from. A tool with one is compared with the catalog at this
+/// version; one added from a folder, at the version the person agreed to
+/// (`CatalogueWatch.update(for:)`).
 package struct CatalogueOrigin: Codable, Equatable, Sendable {
     /// The entry's id, which is the tool's.
     package let id: String

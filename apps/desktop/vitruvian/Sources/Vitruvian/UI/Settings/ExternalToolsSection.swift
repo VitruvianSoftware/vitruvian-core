@@ -46,9 +46,13 @@ package struct ExternalToolRow: Identifiable, Equatable {
     package let status: Status
     /// The words beside the row for its status; nil when there are none.
     package let statusText: String?
-    /// "Update available", for a tool from the catalog with a newer version
-    /// listed; nil otherwise.
+    /// "Update available", for a tool the catalog lists a newer version
+    /// of; nil otherwise.
     package let updateText: String?
+    /// The words on the row's Update button: "Update" for a tool from the
+    /// catalog, "Update from the catalog" for one added from a folder, which
+    /// the update moves onto the catalog; nil when the row has none.
+    package let updateButton: String?
     /// What VoiceOver says for the row's Update button: the button and the
     /// tool's name, so a list of them is not read as "Update" each time; nil
     /// when the row has no Update button.
@@ -65,8 +69,11 @@ package struct ExternalToolRow: Identifiable, Equatable {
         let agreed = listed.record.agreement
         id = listed.id
         updateText = updateAvailable ? strings.updateAvailable : nil
-        name = listed.tool?.name.text(for: language.rawValue) ?? agreed.name
-        updateSpoken = updateAvailable ? ExtensionsPageContent.spoken(strings.updateNow, name: name) : nil
+        let button = updateAvailable ? Self.updateWords(listed, strings: strings) : nil
+        updateButton = button
+        let name = listed.tool?.name.text(for: language.rawValue) ?? agreed.name
+        self.name = name
+        updateSpoken = button.map { ExtensionsPageContent.spoken($0, name: name) }
         byline = "\(listed.tool?.publisher ?? agreed.publisher) · \(listed.tool?.version ?? agreed.version)"
         let wanted = listed.tool?.manifest.tool.symbol ?? ExternalToolManifest.defaultSymbol
         symbol = hasSymbol(wanted) ? wanted : ExternalToolManifest.defaultSymbol
@@ -92,6 +99,14 @@ package struct ExternalToolRow: Identifiable, Equatable {
                 statusText = nil
             }
         }
+    }
+
+    /// The words on the button that installs the newer version from the
+    /// catalog: "Update" for a tool from the catalog, and for one added from
+    /// a folder, which the update moves onto the catalog, "Update from the
+    /// catalog".
+    package static func updateWords(_ listed: ExternalToolStore.Listed, strings: ExternalToolStrings) -> String {
+        listed.record.catalogue == nil ? strings.updateFromCatalog : strings.updateNow
     }
 
     /// A row for each tool the person added, in the order they added them.
@@ -346,7 +361,7 @@ package struct ExternalToolDetail: Equatable {
             .filter { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty }
         row = ExternalToolRow(listed, language: language, strings: strings, updateAvailable: updateAvailable,
                               hasSymbol: hasSymbol)
-        updateNow = updateAvailable ? strings.updateNow : nil
+        updateNow = updateAvailable ? ExternalToolRow.updateWords(listed, strings: strings) : nil
         summary = listed.tool?.summary?.text(for: tag)
         commandsTitle = strings.commandsTitle
         let declared = listed.tool?.manifest.tool.commands ?? []
@@ -488,10 +503,10 @@ package enum ToolPicked: Equatable {
 /// What the Extensions page counts, as plain values.
 package enum ExtensionsPageContent {
     /// How many added tools the catalog lists a newer version of: the count
-    /// on the page's row in the sidebar. Only a tool installed from the
-    /// catalog is ever compared (`CatalogueWatch.update(for:)`), so the
-    /// count is 0 until the list has been fetched, and for a Mac with no
-    /// tool from the catalog.
+    /// on the page's row in the sidebar. A tool installed from the catalog
+    /// and one added from a folder with a catalog entry's id both count
+    /// (`CatalogueWatch.update(for:)`), so the count is 0 until the list
+    /// has been fetched, and for a Mac with no tool the catalog lists.
     @MainActor package static func updates(store: ExternalToolStore, watch: CatalogueWatch) -> Int {
         store.listed.filter { watch.update(for: $0) != nil }.count
     }
@@ -898,14 +913,14 @@ private struct ExternalToolRowView: View {
             if row.status == .stopped(canStartAgain: true) {
                 Button(text.startAgain, action: startAgain).controlSize(.small)
             }
-            if let update, row.updateText != nil {
+            if let update, let words = row.updateButton {
                 if updateButton == .progress {
                     ProgressView().controlSize(.small)
                 } else {
-                    Button(text.updateNow, action: update)
+                    Button(words, action: update)
                         .controlSize(.small)
                         .disabled(updateButton == .disabled)
-                        .accessibilityLabel(row.updateSpoken ?? text.updateNow)
+                        .accessibilityLabel(row.updateSpoken ?? words)
                 }
             }
             Toggle(row.name, isOn: Binding(get: { row.isOn }, set: setOn))

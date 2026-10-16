@@ -33,8 +33,10 @@ package struct ToolAgreementContent: Equatable {
     package static let rowsDrawnWhole = 6
     /// The height of that region, in points. The rest of the sheet is at
     /// most about 575 points with every line of the tool's own words at
-    /// its limit, so the sheet stays under 800: what is left of a 13-inch
-    /// display 900 points high under the menu bar and above the Dock.
+    /// its limit, and about 630 for an update that moves a tool from its
+    /// folder onto the catalog (three more lines at most), so the sheet
+    /// stays under 800: what is left of a 13-inch display 900 points high
+    /// under the menu bar and above the Dock.
     package static let listsHeight: CGFloat = 200
 
     /// True when a tool with this id is added already, so that agreeing
@@ -59,6 +61,9 @@ package struct ToolAgreementContent: Equatable {
     package let versions: String?
     /// For an update whose manifest is not the bytes agreed to before.
     package let changed: String?
+    /// For an update from the catalog of a tool added from a folder: that
+    /// it came from that folder and comes from the catalog from now on.
+    package let movesToCatalogue: String?
     /// For an update: that what the tool saved is kept.
     package let keepsData: String?
     /// The one sentence the sheet exists to say.
@@ -118,6 +123,7 @@ package struct ToolAgreementContent: Equatable {
             strings.updateVersions(agreed: ToolOwnWords.oneLine($0.version), offered: ToolOwnWords.oneLine(tool.version))
         }
         changed = offer.manifestChanged ? strings.updateChanged : nil
+        movesToCatalogue = offer.movesFromFolder.map { strings.updateMovesToCatalog(Self.abbreviated($0, home: home)) }
         keepsData = isUpdate ? strings.updateKeepsData : nil
         headline = strings.agreeHeadline
         detail = strings.agreeDetail
@@ -321,6 +327,11 @@ package struct ToolAgreementSheet: View {
         VStack(alignment: .leading, spacing: 4) {
             // The two versions are the tool's own words too.
             if let versions = content.versions { Text(versions).lineLimit(3) }
+            if let movesToCatalogue = content.movesToCatalogue {
+                // The folder's path can be any length: the sentence keeps
+                // to three lines, cut in the middle of the path.
+                Text(movesToCatalogue).lineLimit(3).truncationMode(.middle)
+            }
             if let changed = content.changed {
                 Text(changed).fontWeight(.semibold)
             }

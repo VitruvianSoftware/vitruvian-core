@@ -25,6 +25,10 @@ package struct ToolOffer: Equatable, Sendable {
     /// For a tool from the catalog, the entry it was fetched for. The folder
     /// is then the installer's own, not one the person picked.
     package let catalogue: CatalogueOrigin?
+    /// For a tool from the catalog that replaces one the person added from a
+    /// folder: that folder, as the agreement remembers it. Agreeing moves the
+    /// tool onto the catalog, so the sheet says so. Nil otherwise.
+    package let movesFromFolder: String?
 
     /// True when this would replace a tool whose manifest was not these
     /// bytes when the person agreed to it. That is all "changed" means: one

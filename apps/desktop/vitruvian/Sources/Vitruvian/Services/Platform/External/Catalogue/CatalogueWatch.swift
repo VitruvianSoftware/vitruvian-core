@@ -118,12 +118,28 @@ package final class CatalogueWatch: ObservableObject {
         return catalogue.installable(appVersion: parts.appVersion)
     }
 
-    /// The newer version of a tool the person installed from the catalog,
-    /// or nil. A tool added from a folder is never matched by its id alone:
-    /// only a record that says it came from the catalog is compared.
+    /// The newer version the catalog lists of a tool the person added, or
+    /// nil. A tool installed from the catalog is compared at the version it
+    /// was installed at (`ToolRecord.catalogue`). One added from a folder is
+    /// matched by its id and compared at the version the person agreed to:
+    /// updating it from the catalog moves it onto the catalog. The same
+    /// version, or an older one, is never offered.
     package func update(for listed: ExternalToolStore.Listed) -> CatalogueEntry? {
-        guard let origin = listed.record.catalogue, origin.id == listed.id.rawValue else { return nil }
-        return entries.first { $0.id == listed.id && Catalogue.isNewer($0.version, than: origin.version) }
+        guard let installed = Self.comparedVersion(of: listed) else { return nil }
+        return entries.first { $0.id == listed.id && Catalogue.isNewer($0.version, than: installed) }
+    }
+
+    /// The version an added tool is compared with the catalog at; nil for
+    /// one that is never compared. A tool from the catalog is compared at
+    /// the entry it came from, when that entry is its own id. One added from
+    /// a folder is compared at the version the person agreed to, unless it
+    /// is held back: its copy is then no version they agreed to, and only
+    /// its folder brings it back.
+    package static func comparedVersion(of listed: ExternalToolStore.Listed) -> String? {
+        guard let origin = listed.record.catalogue else {
+            return listed.isHeld ? nil : listed.record.agreement.version
+        }
+        return origin.id == listed.id.rawValue ? origin.version : nil
     }
 
     // MARK: - Fetching
