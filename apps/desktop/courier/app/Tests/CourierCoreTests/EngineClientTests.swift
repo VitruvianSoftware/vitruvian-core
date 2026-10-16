@@ -83,6 +83,63 @@ final class EngineClientTests: XCTestCase {
         await client.close()
     }
 
+    func testUnreadableChangeIsAResync() async throws {
+        let client = EngineClient(socketPath: server.path)
+        _ = try await client.connect()
+        let changes = await client.changes
+        server.notify(["kind": 5])
+        server.notify(["room_id": "!a:courier.local"])
+        server.notify(["kind": "event", "room_id": "!a:courier.local", "event_id": "$1"])
+        // Up to the last one sent, so a dropped notification fails the test rather than hanging it.
+        var seen: [Change] = []
+        for await change in changes {
+            seen.append(change)
+            if case .event = change { break }
+        }
+        XCTAssertEqual(seen, [.resync, .resync, .event(roomID: "!a:courier.local", eventID: "$1")])
+        await client.close()
+    }
+
+    func testCallsTimeOutButLoginWaitDoesNot() async throws {
+        server.setHandler { method, _ in method == "hello" ? TestEngineServer.helloOK : .later }
+        let client = EngineClient(socketPath: server.path, callTimeout: 0.2)
+        _ = try await client.connect()
+
+        // login.wait waits for a phone, so it has no time limit.
+        async let scanned: LoginStep = client.call("login.wait", LoginParams(loginID: "x"))
+        let started = Date()
+        do {
+            let _: Empty = try await client.call("room.markRead", RoomParams(roomID: "!a"))
+            XCTFail("a call the engine never answered returned")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .timedOut)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        // A caller can still give a call its own limit.
+        do {
+            let _: LoginStep = try await client.call("login.wait", LoginParams(loginID: "y"), timeout: 0.1)
+            XCTFail("a call past its own limit returned")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .timedOut)
+        }
+
+        try await Task.sleep(nanoseconds: 300_000_000) // past the default limit
+        let wait = try XCTUnwrap(server.received.first {
+            ($0["params"] as? [String: Any])?["login_id"] as? String == "x"
+        }?["id"] as? Int)
+        server.reply(to: wait, with: ["login_id": "x", "step_id": "s", "type": "complete"])
+        let step = try await scanned
+        XCTAssertEqual(step.type, .complete)
+
+        // An answer that comes after its call timed out is dropped; the connection carries on.
+        let markRead = try XCTUnwrap(server.received.first { $0["method"] as? String == "room.markRead" }?["id"] as? Int)
+        server.reply(to: markRead, with: [String: Any]())
+        server.setHandler { _, _ in .result(["accounts": []]) }
+        let accounts: AccountsResult = try await client.call("accounts.list", Empty())
+        XCTAssertEqual(accounts.accounts, [])
+        await client.close()
+    }
+
     func testChangesStreamEndsWhenTheEngineGoes() async throws {
         let client = EngineClient(socketPath: server.path)
         _ = try await client.connect()

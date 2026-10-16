@@ -15,6 +15,8 @@ import Foundation
 /// - Any exit the app did not ask for is a crash, whatever its status (a Go panic exits 2, as a usage error does).
 ///   The wait before each restart is 1, 2, 4, 8, 16, then 30 seconds; it starts again from 1 after an engine that
 ///   stayed connected for a minute.
+/// - An engine that exits 3 found its data directory locked by another engine: the restarts go on (the other may
+///   go away), and the state says why, with the engine's own message.
 /// - An engine that refuses hello as another protocol is not restarted: the app needs an update, and says so.
 /// - Stopping sends SIGTERM and closes the pipe, waits ten seconds, then sends SIGKILL.
 public final class EngineSupervisor: @unchecked Sendable {
@@ -23,12 +25,28 @@ public final class EngineSupervisor: @unchecked Sendable {
         case starting
         /// The engine is up and greeted; `client` talks to it.
         case connected
-        /// The engine went away; this is the attempt to start it again.
-        case reconnecting(attempt: Int)
+        /// The engine went away; this is the attempt to start it again. `problem` says why, when the app knows
+        /// something the person can act on.
+        case reconnecting(attempt: Int, problem: Problem? = nil)
         /// The engine speaks another protocol. Nothing is restarted.
         case updateNeeded
         case stopped
     }
+
+    /// Why the engine cannot run, when the person can do something about it.
+    public enum Problem: Equatable, Sendable {
+        /// Another engine holds the data directory (exit 3): another copy of Courier, or the CLI, on the same
+        /// folder. `message` is the engine's own line ("another Courier engine is using DIR"), nil when it said
+        /// nothing the app could read.
+        case dataDirectoryInUse(message: String?)
+    }
+
+    /// The engine's exit status when another engine holds its data directory.
+    public static let lockedExitStatus: Int32 = 3
+
+    /// How long a gone engine's standard error has to reach its end, so its last words are read before the app
+    /// decides what its exit means.
+    static let errorDrainWait: TimeInterval = 1
 
     /// How long things take. Tests shorten the waits and make the back-off sleep instant.
     public struct Timing: Sendable {
@@ -160,8 +178,9 @@ public final class EngineSupervisor: @unchecked Sendable {
 
     private enum Outcome {
         case updateNeeded
-        /// The engine is gone. `connectedAt` is when it was greeted, if it was.
-        case ended(connectedAt: TimeInterval?)
+        /// The engine is gone. `connectedAt` is when it was greeted, if it was; `status` its exit status, nil
+        /// when it never started; `errors` what it wrote to standard error.
+        case ended(connectedAt: TimeInterval?, status: Int32?, errors: [String])
     }
 
     private var isStopping: Bool { lock.withLock { stopping } }
@@ -174,11 +193,11 @@ public final class EngineSupervisor: @unchecked Sendable {
             case .updateNeeded:
                 publish(.updateNeeded)
                 break loop
-            case let .ended(connectedAt):
+            case let .ended(connectedAt, status, errors):
                 if isStopping { break loop }
                 if let connectedAt, timing.now() - connectedAt >= timing.resetAfter { attempt = 0 }
                 attempt += 1
-                publish(.reconnecting(attempt: attempt))
+                publish(.reconnecting(attempt: attempt, problem: Self.problem(status: status, errors: errors)))
                 await backOff(Self.backoff(attempt: attempt))
             }
         }
@@ -202,6 +221,15 @@ public final class EngineSupervisor: @unchecked Sendable {
         lock.withLock { backoffTask = nil }
     }
 
+    /// What an exit means for the person, if anything.
+    static func problem(status: Int32?, errors: [String]) -> Problem? {
+        guard status == lockedExitStatus else { return nil }
+        // Fatal start-up errors are plain text, "courier-engine: <message>"; warnings before them are JSON.
+        let prefix = "courier-engine: "
+        let message = errors.last { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+        return .dataDirectoryInUse(message: message)
+    }
+
     /// One engine, from launch to its exit.
     private func runOnce() async -> Outcome {
         let spec = LaunchSpec(executable: URL(fileURLWithPath: enginePath),
@@ -212,23 +240,41 @@ public final class EngineSupervisor: @unchecked Sendable {
             engine = try launcher.launch(spec)
         } catch {
             record("Courier could not start its engine: \(error.localizedDescription)")
-            return .ended(connectedAt: nil)
+            return .ended(connectedAt: nil, status: nil, errors: [])
         }
         let stopNow = lock.withLock { () -> Bool in
             process = engine
             return stopping
         }
         defer { lock.withLock { process = nil } }
-        let errors = engine.standardErrorLines
-        Task { for await line in errors { self.record(line) } }
+        let lines = engine.standardErrorLines
+        let errors = RunErrors()
+        let drained = Task {
+            for await line in lines {
+                self.record(line)
+                errors.append(line)
+            }
+        }
+        /// After the engine is gone: its status, and its standard error once read to the end (within a bound).
+        func ended(connectedAt: TimeInterval?) async -> Outcome {
+            let status = await engine.waitForExit()
+            _ = await Race.first(
+                { await drained.value; return true },
+                {
+                    try? await EngineSupervisor.sleep(EngineSupervisor.errorDrainWait)
+                    return false
+                }
+            )
+            return .ended(connectedAt: connectedAt, status: status, errors: errors.lines)
+        }
         if stopNow {
             await end(engine)
-            return .ended(connectedAt: nil)
+            return await ended(connectedAt: nil)
         }
 
         guard let socket = await readyLine(of: engine) else {
             await end(engine)
-            return .ended(connectedAt: nil)
+            return await ended(connectedAt: nil)
         }
         let client = EngineClient(socketPath: socket, client: clientName)
         do {
@@ -239,7 +285,7 @@ public final class EngineSupervisor: @unchecked Sendable {
         } catch {
             record("Courier could not connect to its engine: \(error.localizedDescription)")
             await end(engine)
-            return .ended(connectedAt: nil)
+            return await ended(connectedAt: nil)
         }
         let connectedAt = timing.now()
         let stoppedMeanwhile = lock.withLock { () -> Bool in
@@ -257,8 +303,7 @@ public final class EngineSupervisor: @unchecked Sendable {
         lock.withLock { currentClient = nil }
         await client.close()
         if connectionEnded || stoppedMeanwhile { await end(engine) }
-        _ = await engine.waitForExit()
-        return .ended(connectedAt: connectedAt)
+        return await ended(connectedAt: connectedAt)
     }
 
     private enum Ready: Sendable {
@@ -337,6 +382,21 @@ public final class EngineSupervisor: @unchecked Sendable {
             for subscriber in subscribers.values { subscriber.yield(state) }
         }
     }
+}
+
+/// One engine's standard error, for deciding what its exit means.
+private final class RunErrors: @unchecked Sendable {
+    private let lock = NSLock()
+    private var all: [String] = []
+
+    func append(_ line: String) {
+        lock.withLock {
+            all.append(line)
+            if all.count > EngineSupervisor.errorLineLimit { all.removeFirst() }
+        }
+    }
+
+    var lines: [String] { lock.withLock { all } }
 }
 
 /// Runs operations side by side and returns the first one's answer. The others are cancelled, and an operation

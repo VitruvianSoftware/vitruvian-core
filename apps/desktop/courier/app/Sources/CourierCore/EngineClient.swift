@@ -18,6 +18,8 @@ public enum EngineError: Error, Equatable, Sendable {
     case frameTooLarge
     /// An answer that is not what the protocol says it is.
     case badResponse
+    /// No answer within the call's time limit. The engine may still do what was asked.
+    case timedOut
 
     /// Only a refused handshake means the app and engine are of different versions.
     public var isUpdateNeeded: Bool {
@@ -32,7 +34,15 @@ public enum EngineError: Error, Equatable, Sendable {
 /// requests by id, so slow calls (message.send, login.wait) do not hold up others. When the connection ends, every
 /// call in flight throws `.disconnected` and every `changes` stream finishes; a client is not reused after that
 /// (the supervisor makes a new one for the restarted engine).
+///
+/// Every call has a time limit, 30 seconds unless the caller gives another, so a view never waits forever on an
+/// engine that stopped answering. `login.wait` has none: it waits for a person to scan a code on their phone.
 public actor EngineClient {
+    /// The time limit of a call that names none.
+    public static let defaultCallTimeout: TimeInterval = 30
+    /// Methods that wait on a person, and so have no time limit unless the caller gives one.
+    public static let untimedMethods: Set<String> = ["login.wait"]
+
     /// `Courier/<the app's version>`, the client name hello sends.
     public static var defaultClientName: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -49,10 +59,14 @@ public actor EngineClient {
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var subscribers: [UUID: AsyncStream<Change>.Continuation] = [:]
     private var closeWaiters: [CheckedContinuation<Void, Never>] = []
+    private var timers: [Int: Task<Void, Never>] = [:]
+    private let callTimeout: TimeInterval
 
-    public init(socketPath: String, client: String = EngineClient.defaultClientName) {
+    public init(socketPath: String, client: String = EngineClient.defaultClientName,
+                callTimeout: TimeInterval = EngineClient.defaultCallTimeout) {
         self.socketPath = socketPath
         self.clientName = client
+        self.callTimeout = callTimeout
     }
 
     /// True once the connection has ended (or was never made and `close()` was called).
@@ -72,7 +86,7 @@ public actor EngineClient {
         }
         Task { await self.receiveLoop(connection) }
         do {
-            let hello: HelloResult = try await send("hello", HelloParams(client: clientName))
+            let hello: HelloResult = try await send("hello", HelloParams(client: clientName), timeout: callTimeout)
             greeted = true
             return hello
         } catch {
@@ -84,9 +98,14 @@ public actor EngineClient {
 
     /// Calls a method once hello has succeeded. Params are encoded as given: leave optional keys nil, and they are
     /// left out (the engine refuses keys a method does not take).
-    public func call<P: Encodable, R: Decodable>(_ method: String, _ params: P) async throws -> R {
+    ///
+    /// `timeout` is the call's time limit in seconds; nil means the client's (30 s by default), or none for the
+    /// methods in `untimedMethods`. Past it the call throws `.timedOut`, and a late answer is dropped.
+    public func call<P: Encodable, R: Decodable>(_ method: String, _ params: P,
+                                                 timeout: TimeInterval? = nil) async throws -> R {
         guard greeted, !closed else { throw EngineError.notConnected }
-        return try await send(method, params)
+        let limit = timeout ?? (Self.untimedMethods.contains(method) ? nil : callTimeout)
+        return try await send(method, params, timeout: limit)
     }
 
     /// The engine's changed notifications, from now on. Each access is a stream of its own; subscribe before you
@@ -113,6 +132,8 @@ public actor EngineClient {
         connection?.cancel()
         let calls = pending
         pending = [:]
+        for timer in timers.values { timer.cancel() }
+        timers = [:]
         for call in calls.values { call.resume(throwing: EngineError.disconnected) }
         for subscriber in subscribers.values { subscriber.finish() }
         subscribers = [:]
@@ -147,7 +168,8 @@ public actor EngineClient {
         let data: JSONValue?
     }
 
-    private func send<P: Encodable, R: Decodable>(_ method: String, _ params: P) async throws -> R {
+    private func send<P: Encodable, R: Decodable>(_ method: String, _ params: P,
+                                                  timeout: TimeInterval? = nil) async throws -> R {
         guard let connection, !closed else { throw EngineError.notConnected }
         let id = nextID
         nextID += 1
@@ -157,6 +179,13 @@ public actor EngineClient {
 
         let answer = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             pending[id] = continuation
+            if let timeout {
+                timers[id] = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    await self?.expire(id)
+                }
+            }
             connection.send(content: line, completion: .contentProcessed { error in
                 guard error != nil else { return }
                 Task { await self.close() }
@@ -171,6 +200,12 @@ public actor EngineClient {
         if let error = response.error { throw Self.engineError(error) }
         guard let result = response.result else { throw EngineError.badResponse }
         return result
+    }
+
+    /// The call's time is up: it throws `.timedOut`, and its answer, if one comes, is dropped.
+    private func expire(_ id: Int) {
+        timers[id] = nil
+        pending.removeValue(forKey: id)?.resume(throwing: EngineError.timedOut)
     }
 
     private static func engineError(_ error: ErrorObject) -> EngineError {
@@ -214,10 +249,12 @@ public actor EngineClient {
     private func handle(_ line: Data) {
         guard let header = try? JSONDecoder().decode(Header.self, from: line) else { return }
         if let id = header.id {
+            timers.removeValue(forKey: id)?.cancel()
             pending.removeValue(forKey: id)?.resume(returning: line)
-        } else if header.method == ProtocolMethods.changedNotification,
-                  let notification = try? JSONDecoder().decode(Notification.self, from: line) {
-            let change = Change(notification.params)
+        } else if header.method == ProtocolMethods.changedNotification {
+            // A change the app cannot read is still a change: re-reading everything is never wrong.
+            let notification = try? JSONDecoder().decode(Notification.self, from: line)
+            let change = notification.map { Change($0.params) } ?? .resync
             for subscriber in subscribers.values { subscriber.yield(change) }
         }
     }

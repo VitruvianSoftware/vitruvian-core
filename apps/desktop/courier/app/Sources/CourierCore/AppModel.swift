@@ -20,7 +20,9 @@ public final class AppModel: ObservableObject {
     public let supervisor: EngineSupervisor
     private var hooks: [@MainActor (EngineClient) async -> Void] = []
     private var watcher: Task<Void, Never>?
-    private var feed: Task<Void, Never>?
+    /// Reads and follows the connected engine: subscribes to its changes, reads everything, then re-reads as they
+    /// say. A task of its own, so a slow read never holds up a state change.
+    private var connection: Task<Void, Never>?
 
     public init(supervisor: EngineSupervisor) {
         self.supervisor = supervisor
@@ -37,7 +39,7 @@ public final class AppModel: ObservableObject {
         let states = supervisor.state
         watcher = Task { [weak self] in
             for await state in states {
-                await self?.apply(state)
+                self?.apply(state)
             }
         }
         supervisor.start()
@@ -49,24 +51,25 @@ public final class AppModel: ObservableObject {
         await supervisor.waitUntilStopped()
     }
 
-    private func apply(_ state: EngineSupervisor.State) async {
+    /// Takes a new state at once; whatever has to be read for it is read on `connection`.
+    private func apply(_ state: EngineSupervisor.State) {
         engineState = state
+        connection?.cancel()
+        connection = nil
         guard state == .connected, let client = supervisor.client else {
-            feed?.cancel()
-            feed = nil
-            client = nil
+            self.client = nil
             return
         }
         self.client = client
-        // Subscribe before reading, so nothing that changes in between is missed.
-        let changes = await client.changes
-        feed?.cancel()
-        feed = Task { [weak self] in
+        connection = Task { [weak self] in
+            // Subscribe before reading, so nothing that changes in between is missed.
+            let changes = await client.changes
+            guard !Task.isCancelled else { return }
+            await self?.reload(client)
             for await change in changes {
                 await self?.handle(change, from: client)
             }
         }
-        await reload(client)
     }
 
     private func handle(_ change: Change, from client: EngineClient) async {

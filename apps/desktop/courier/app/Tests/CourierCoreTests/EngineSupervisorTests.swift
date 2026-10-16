@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import Combine
 import XCTest
 
 @testable import CourierCore
@@ -184,6 +185,72 @@ final class EngineSupervisorTests: XCTestCase {
         await model.stop()
     }
 
+    func testLockedDataDirectorySaysWhyAndKeepsTrying() async throws {
+        let server = try makeServer()
+        let message = "another Courier engine is using /tmp/courier-test-data"
+        let launcher = FakeLauncher { index, process in
+            guard index < 2 else {
+                process.printReady(socket: server.path)
+                return
+            }
+            // As the engine does: JSON warnings, then the fatal error as plain text, then exit 3.
+            process.printError(#"{"level":"warn","message":"example warning"}"#)
+            process.printError("courier-engine: \(message)")
+            process.exit(3)
+        }
+        let time = FakeTime()
+        let supervisor = makeSupervisor(launcher, time: time)
+        let recorder = StateRecorder(supervisor)
+        supervisor.start()
+        try await waitUntil { recorder.last == .connected }
+
+        let problem = EngineSupervisor.Problem.dataDirectoryInUse(message: message)
+        XCTAssertEqual(recorder.states, [
+            .starting,
+            .reconnecting(attempt: 1, problem: problem),
+            .reconnecting(attempt: 2, problem: problem),
+            .connected,
+        ])
+        // The other engine may go away, so the restarts went on, on the usual schedule.
+        XCTAssertEqual(launcher.count, 3)
+        XCTAssertEqual(time.sleeps, [1, 2])
+        supervisor.stop()
+        await supervisor.waitUntilStopped()
+    }
+
+    func testOnlyExit3IsAProblem() {
+        let line = "courier-engine: another Courier engine is using /tmp/x"
+        XCTAssertEqual(EngineSupervisor.problem(status: 3, errors: ["{}", line]),
+                       .dataDirectoryInUse(message: "another Courier engine is using /tmp/x"))
+        XCTAssertEqual(EngineSupervisor.problem(status: 3, errors: []), .dataDirectoryInUse(message: nil))
+        XCTAssertNil(EngineSupervisor.problem(status: 1, errors: [line]))
+        XCTAssertNil(EngineSupervisor.problem(status: 2, errors: [line]))
+        XCTAssertNil(EngineSupervisor.problem(status: nil, errors: []))
+    }
+
+    func testSlowReadDoesNotHoldUpStateChanges() async throws {
+        let server = try makeServer()
+        let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
+        let supervisor = makeSupervisor(launcher, time: FakeTime())
+        let model = await AppModel(supervisor: supervisor)
+        let seen = await StatesSeen(model)
+        let gate = Gate()
+        let reads = Reads()
+        await model.onConnect { _ in
+            reads.append([])
+            if reads.all.count == 1 { await gate.wait() } // the first read hangs
+        }
+        await model.start()
+        try await waitUntil { reads.all.count == 1 }
+
+        // The engine dies while the model is still reading from it: the model must hear at once.
+        launcher.processes[0].exit(1)
+        try await waitUntil { await seen.all.contains(.reconnecting(attempt: 1)) }
+        try await waitUntil { await seen.all.last == .connected && reads.all.count == 2 }
+        await gate.open()
+        await model.stop()
+    }
+
     func testHandshakeMismatchStopsWithUpdateNeeded() async throws {
         let server = try makeServer { method, _ in
             method == "hello" ? .error(code: -32001, message: "protocol mismatch", data: ["engine": 2]) : .result([:])
@@ -322,6 +389,34 @@ final class EngineSupervisorTests: XCTestCase {
     private static func account(_ state: String) -> [String: Any] {
         ["network": "whatsapp", "display_name": "WhatsApp", "flows": ["qr"], "state": state, "error": "",
          "remote_name": "", "not_started": ""]
+    }
+}
+
+/// Every engineState the model published, in order.
+@MainActor
+final class StatesSeen {
+    private(set) var all: [EngineSupervisor.State] = []
+    private var subscription: AnyCancellable?
+
+    init(_ model: AppModel) {
+        subscription = model.$engineState.sink { [weak self] in self?.all.append($0) }
+    }
+}
+
+/// Holds a task until the test opens it.
+actor Gate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for waiter in waiters { waiter.resume() }
+        waiters = []
     }
 }
 

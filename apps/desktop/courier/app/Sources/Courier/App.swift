@@ -32,9 +32,19 @@ struct MainWindow: View {
                     .foregroundStyle(.secondary)
                 Text(String(localized: "This copy of Courier and its engine don’t match. Reinstall Courier to update it."))
                     .multilineTextAlignment(.center)
-            case .starting, .reconnecting, .stopped:
+            case let .reconnecting(_, problem?):
+                // The restarts go on; this says why they have not worked yet.
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundStyle(.secondary)
+                Text(StatusText.explanation(of: problem))
+                    .multilineTextAlignment(.center)
+            case .starting, .reconnecting:
                 ProgressView()
                 Text(String(localized: "Starting Courier’s engine…"))
+                    .foregroundStyle(.secondary)
+            case .stopped:
+                Text(String(localized: "Courier’s engine is stopped."))
                     .foregroundStyle(.secondary)
             }
         }
@@ -54,6 +64,16 @@ enum StatusText {
         case .updateNeeded: String(localized: "Update needed")
         case .connected: String(localized: "Connected")
         case .stopped: String(localized: "Stopped")
+        }
+    }
+
+    /// What the person can do about a problem.
+    static func explanation(of problem: EngineSupervisor.Problem) -> String {
+        switch problem {
+        case let .dataDirectoryInUse(message?):
+            String(localized: "Courier can’t start its engine: \(message). Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying.")
+        case .dataDirectoryInUse(nil):
+            String(localized: "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying.")
         }
     }
 }

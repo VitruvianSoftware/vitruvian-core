@@ -21,5 +21,14 @@
 /* The main window while the engine starts or restarts. */
 "Starting Courier’s engine…" = "Starting Courier’s engine…";
 
+/* The main window once the engine has been stopped (while the app quits). */
+"Courier’s engine is stopped." = "Courier’s engine is stopped.";
+
+/* The main window when another engine holds the data folder (the engine exits 3). The argument is the engine's own message, which names the folder. The restarts go on. */
+"Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying." = "Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying.";
+
+/* As above, when the engine said nothing the app could read. */
+"Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying." = "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying.";
+
 /* The main window when the engine is a different version from the app. */
 "This copy of Courier and its engine don’t match. Reinstall Courier to update it." = "This copy of Courier and its engine don’t match. Reinstall Courier to update it.";
