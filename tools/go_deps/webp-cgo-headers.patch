@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/BUILD.bazel
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,55 @@
 +# Hand-written BUILD for go.mau.fi/webp (see MODULE.bazel). Gazelle's
 +# generated BUILD lists the vendored libwebp sources only as `embedsrcs`
 +# (the module has `//go:embed internal` so `go mod vendor` keeps them), and

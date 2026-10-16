@@ -1,3 +1,6 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package localmatrix lets stock mautrix bridges run with courier's local store in place of a Matrix server.
 package localmatrix
 

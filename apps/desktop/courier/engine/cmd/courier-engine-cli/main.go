@@ -1,3 +1,6 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // courier-engine-cli drives the milestone-1 engine by hand: link WhatsApp, list chats, watch and send.
 package main
 
@@ -7,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -30,12 +34,35 @@ const usage = "usage: courier-engine-cli [--data DIR] link|chats|tail|send <room
 
 type args struct{ data, cmd, room, text string }
 
+// bridgeCommandPrefix is the host's bridge command prefix ("!" + network name).
+// A message body starting with it would be run as a bridge admin command.
+const bridgeCommandPrefix = "!whatsapp"
+
+func defaultDataDir(home string, homeErr error) (string, error) {
+	if homeErr != nil || home == "" {
+		return "", fmt.Errorf("cannot find your home directory (%v): pass --data DIR", homeErr)
+	}
+	return filepath.Join(home, "Library", "Application Support", "Courier-m1"), nil
+}
+
 func parseArgs(argv []string) (args, error) {
-	home, _ := os.UserHomeDir()
 	fs := flag.NewFlagSet("courier-engine-cli", flag.ContinueOnError)
-	data := fs.String("data", filepath.Join(home, "Library", "Application Support", "Courier-m1"), "data directory")
+	data := fs.String("data", "", "data directory (default ~/Library/Application Support/Courier-m1)")
 	if err := fs.Parse(argv); err != nil {
 		return args{}, err
+	}
+	dataSet := false
+	fs.Visit(func(f *flag.Flag) { dataSet = dataSet || f.Name == "data" })
+	if dataSet && *data == "" {
+		return args{}, errors.New("--data must not be empty")
+	}
+	if !dataSet {
+		home, herr := os.UserHomeDir()
+		dir, err := defaultDataDir(home, herr)
+		if err != nil {
+			return args{}, err
+		}
+		*data = dir
 	}
 	rest := fs.Args()
 	if len(rest) == 0 {
@@ -51,6 +78,9 @@ func parseArgs(argv []string) (args, error) {
 		a.room, a.text = rest[1], strings.Join(rest[2:], " ")
 		if strings.TrimSpace(a.text) == "" {
 			return args{}, errors.New("send needs non-empty text")
+		}
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.text)), bridgeCommandPrefix) {
+			return args{}, fmt.Errorf("refusing to send text starting with %s: the bridge would run it as an admin command", bridgeCommandPrefix)
 		}
 	default:
 		return args{}, fmt.Errorf("unknown command %q", a.cmd)
@@ -79,6 +109,11 @@ func run(ctx context.Context, a args) error {
 	if err := os.MkdirAll(a.data, 0o700); err != nil {
 		return err
 	}
+	unlock, err := lockDataDir(a.data)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(zerolog.WarnLevel).With().Timestamp().Logger()
 	s, err := store.Open(filepath.Join(a.data, "courier.db"))
 	if err != nil {
@@ -120,7 +155,7 @@ func send(ctx context.Context, h *host.Host, s *store.Store, a args) error {
 		return err
 	}
 	h.Bridge.QueueMatrixEvent(ctx, evt)
-	return waitStatus(ctx, s, string(evt.ID))
+	return waitStatus(ctx, s, string(evt.ID), 30*time.Second)
 }
 
 func link(ctx context.Context, h *host.Host) error {
@@ -132,27 +167,47 @@ func link(ctx context.Context, h *host.Host) error {
 	if err != nil {
 		return fmt.Errorf("start QR login: %w", err)
 	}
-	step, err := proc.Start(ctx)
-	for err == nil && step.Type == bridgev2.LoginStepTypeDisplayAndWait {
-		if p := step.DisplayAndWaitParams; p != nil && p.Type == bridgev2.LoginDisplayTypeQR {
-			fmt.Println("Scan with WhatsApp → Settings → Linked devices → Link a device:")
-			qrterminal.GenerateHalfBlock(p.Data, qrterminal.L, os.Stdout)
-		}
-		waiter, ok := proc.(bridgev2.LoginProcessDisplayAndWait)
-		if !ok {
-			return errors.New("login process cannot wait for the QR scan")
-		}
-		step, err = waiter.Wait(ctx)
-	}
-	if err != nil {
+	if err = runLogin(ctx, proc, os.Stdout); err != nil {
 		return err
-	}
-	if step.Type != bridgev2.LoginStepTypeComplete {
-		return fmt.Errorf("unexpected login step %s", step.Type)
 	}
 	fmt.Println("Linked. Leave this running a minute so history backfills, then Ctrl-C.")
 	<-ctx.Done()
 	return nil
+}
+
+// runLogin walks a QR login to completion, drawing each QR code to out. On every
+// path except a completed login it cancels the process so no half-open pairing
+// is left behind.
+func runLogin(ctx context.Context, proc bridgev2.LoginProcess, out io.Writer) (err error) {
+	completed := false
+	defer func() {
+		if !completed {
+			proc.Cancel()
+		}
+	}()
+	step, err := proc.Start(ctx)
+	for err == nil {
+		switch step.Type {
+		case bridgev2.LoginStepTypeComplete:
+			completed = true
+			return nil
+		case bridgev2.LoginStepTypeWebAuthn:
+			return errors.New("WhatsApp asked for a passkey, which this test CLI can't do — link from a device without a passkey prompt, or try again")
+		case bridgev2.LoginStepTypeDisplayAndWait:
+			if p := step.DisplayAndWaitParams; p != nil && p.Type == bridgev2.LoginDisplayTypeQR {
+				fmt.Fprintln(out, "Scan with WhatsApp → Settings → Linked devices → Link a device:")
+				qrterminal.GenerateHalfBlock(p.Data, qrterminal.L, out)
+			}
+			waiter, ok := proc.(bridgev2.LoginProcessDisplayAndWait)
+			if !ok {
+				return errors.New("login process cannot wait for the QR scan")
+			}
+			step, err = waiter.Wait(ctx)
+		default:
+			return fmt.Errorf("unexpected login step %q (id %q)", step.Type, step.StepID)
+		}
+	}
+	return err
 }
 
 func tail(ctx context.Context, s *store.Store) error {
@@ -180,25 +235,30 @@ func tail(ctx context.Context, s *store.Store) error {
 	}
 }
 
-func waitStatus(ctx context.Context, s *store.Store, eventID string) error {
-	deadline := time.After(30 * time.Second)
+// waitStatus waits for the bridge to report what happened to a queued message.
+// The message was already handed to the bridge, so if we stop waiting (timeout
+// or Ctrl-C) it may still reach the contact: say so, and leave it pending.
+func waitStatus(ctx context.Context, s *store.Store, eventID string, timeout time.Duration) error {
+	unknown := fmt.Errorf("delivery unknown — check your phone before resending (event %s left pending)", eventID)
+	deadline := time.After(timeout)
 	for {
-		e, _, err := s.GetEvent(ctx, eventID)
+		// Read with an uncancelled context so a status that already landed is not lost to Ctrl-C.
+		e, _, err := s.GetEvent(context.WithoutCancel(ctx), eventID)
 		if err != nil {
 			return err
 		}
-		if e.Status == "sent" || e.Status == "failed" {
-			fmt.Println("status:", e.Status, e.StatusReason)
-			if e.Status == "failed" {
-				return errors.New("message was not delivered")
-			}
+		switch e.Status {
+		case "sent":
+			fmt.Println("status: sent")
 			return nil
+		case "failed":
+			return fmt.Errorf("message failed: %s", e.StatusReason)
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return unknown
 		case <-deadline:
-			return errors.New("no delivery status within 30 s")
+			return unknown
 		case <-time.After(200 * time.Millisecond):
 		}
 	}

@@ -1,3 +1,6 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package store is courier.db: the single source of truth that stands in for a Matrix server.
 package store
 

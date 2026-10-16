@@ -1,3 +1,6 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package fakenet is an in-memory chat network so the bridge-to-store glue is tested in CI without real accounts.
 package fakenet
 

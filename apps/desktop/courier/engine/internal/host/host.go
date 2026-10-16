@@ -1,3 +1,6 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package host runs one network connector against courier's local store, with its own bridge database.
 package host
 

@@ -1,3 +1,6 @@
+-- Copyright 2026 VitruvianSoftware
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+
 CREATE TABLE IF NOT EXISTS rooms (
   room_id TEXT PRIMARY KEY, network TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', topic TEXT NOT NULL DEFAULT '',
   avatar_uri TEXT NOT NULL DEFAULT '', is_direct INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
