@@ -43,13 +43,15 @@ request's text. It never touches the signed copy the website serves;
 catalog-publish writes that after the merge.
 
 Its result (--result-out) says whether the pull request may merge itself:
-not when the tool asks for a new service, offers a new command, or changes
-the words or the protocol the app shows; then it names each.
+not when anything changes in what the tool asks for (`uses`), its commands,
+its panels, its protocol or its publisher; then it names each. A refusal's
+result carries the issue that records it.
 
 `plan` asks GitHub for the newest release of each row of sources.json and
 prints the ones that are newer than the catalog: what the hourly workflow
-bumps. `foreign` and `older` help the workflow decide what it may push and
-close. Standard library only, apart from `gh`, so they run without Bazel.
+bumps. `foreign`, `older` and `arm` tell the workflows what they may push
+over, close, and arm auto-merge on. Standard library only, apart from `gh`,
+so they run without Bazel.
 
 Exit status: 0 done or nothing to do, 1 refused, 10 the release is not ready
 (no zip yet, a draft), 11 the tool is not listed yet. The workflow reads the
@@ -80,7 +82,14 @@ SCHEMA = "catalog/catalog.schema.json"
 SOURCES = "catalog/sources.json"
 APP_INFO = "apps/desktop/vitruvian/Resources/Info.plist"
 HOME_REPO = "VitruvianSoftware/vitruvian-core"
-BOT_EMAIL = "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
+# In the body of a pull request that may merge itself: catalog-check arms
+# auto-merge only when it finds this, and finds no hold.
+AUTOMERGE_MARK = "<!-- catalog-bump: may merge itself -->"
+# The comment plan leaves, once, on a branch it will not rebuild.
+FOREIGN_MARK = "<!-- catalog-bump: foreign commits -->"
+# The trailer of the one commit the workflow writes on a bump branch.
+TRAILER = "Catalog-Bump"
+HOLDS = ("needs-human", "do-not-automerge")
 BRANCH = re.compile(r"^catalog/bump-[a-z0-9.-]+-[0-9]+\.[0-9]+\.[0-9]+$")
 
 # What a manifest may declare that an app older than the version given does
@@ -266,6 +275,8 @@ def macho_slices(data):
         if count == 0 or count > 32:
             return None  # 0xCAFEBABE is also a Java class file.
         size = 20 if big == FAT_MAGIC else 32
+        if 8 + count * size > len(data):
+            raise ValueError("its list of architectures runs past its end")
         slices = []
         for index in range(count):
             at = 8 + index * size
@@ -322,15 +333,16 @@ def app_oldest_macos(root):
 
 
 def binary_problems(row, archive, manifest, oldest):
-    """Every Mach-O in the zip must run on `oldest`; the tool's program must
-    be x86_64 and arm64 when the row says it has been."""
+    """Every Mach-O in the zip must run on `oldest`, and, when the row says
+    the tool has been universal, hold x86_64 and arm64; its program must be
+    one of them."""
     found, programs = [], {}
     for info in archive.infolist():
         if info.is_dir():
             continue
         try:
             slices = macho_slices(archive.read(info))
-        except ValueError as error:
+        except (ValueError, struct.error) as error:
             found.append(f"{info.filename} is a Mach-O that cannot be read: {error}")
             continue
         if slices:
@@ -346,12 +358,18 @@ def binary_problems(row, archive, manifest, oldest):
                 )
     if row.get("universal"):
         program = manifest.get("runtime", {}).get("exec", "")
-        archs = sorted({arch for arch, _ in programs.get(program, [])})
-        if not {"x86_64", "arm64"} <= set(archs):
+        if program not in programs:
             found.append(
-                f"{program or 'its program'} is {', '.join(archs) or 'not a Mach-O'}, "
-                f"not universal (x86_64 and arm64), as {row['id']}'s has been"
+                f"{program or 'its program'} is not a Mach-O, not universal "
+                f"(x86_64 and arm64), as {row['id']}'s has been"
             )
+        for name, slices in sorted(programs.items()):
+            archs = sorted({arch for arch, _ in slices})
+            if not {"x86_64", "arm64"} <= set(archs):
+                found.append(
+                    f"{name} is {', '.join(archs)}, not universal (x86_64 and "
+                    f"arm64), as {row['id']}'s programs have been"
+                )
     return found
 
 
@@ -475,41 +493,49 @@ def from_manifest(entry, manifest):
 
 
 def for_a_person(old, new, manifest):
-    """Why the pull request must wait for a person, if it must: what the tool
-    newly asks for or offers, or words and a protocol the app shows that
-    changed. Taking something away, or a new version alone, is not a reason."""
+    """Why the pull request must wait for a person, if it must: any change to
+    what the tool asks for (`uses`), the commands it offers, its panels, its
+    protocol, or who it says it comes from (`publisher`). A new version, and
+    new words in its name, summary or command titles, are not reasons."""
     reasons = []
-    added_uses = [u for u in new.get("uses", []) if u not in old.get("uses", [])]
-    if added_uses:
+    old_uses, new_uses = old.get("uses", []), new.get("uses", [])
+    added = [u for u in new_uses if u not in old_uses]
+    removed = [u for u in old_uses if u not in new_uses]
+    if added:
         reasons.append(
             "It asks for a service it did not ask for before: "
-            + ", ".join(f"`{u}`" for u in added_uses)
+            + ", ".join(f"`{u}`" for u in added)
             + ". Read what its source does with it."
         )
-    old_commands = {c["id"]: c for c in old.get("commands", [])}
-    added = [c["id"] for c in new.get("commands", []) if c["id"] not in old_commands]
+    if removed:
+        reasons.append(
+            "It no longer asks for " + ", ".join(f"`{u}`" for u in removed) + "."
+        )
+    old_ids = [c["id"] for c in old.get("commands", [])]
+    new_ids = [c["id"] for c in new.get("commands", [])]
+    added = [c for c in new_ids if c not in old_ids]
+    removed = [c for c in old_ids if c not in new_ids]
     if added:
         reasons.append(
             "It offers new commands: " + ", ".join(f"`{c}`" for c in added) + "."
         )
-    retitled = [
-        c["id"]
-        for c in new.get("commands", [])
-        if c["id"] in old_commands and old_commands[c["id"]]["title"] != c["title"]
-    ]
-    words = [f for f in ("name", "publisher", "summary") if old.get(f) != new.get(f)]
-    words += [f"the title of `{c}`" for c in retitled]
-    if old.get("panels") != new.get("panels") and "panels" in old:
-        added_panels = [p for p in new["panels"] if p not in old["panels"]]
-        if added_panels:
-            words.append("its panels")
-    if words:
+    if removed:
         reasons.append(
-            "The words or panels the app shows changed: " + ", ".join(words) + "."
+            "It no longer offers " + ", ".join(f"`{c}`" for c in removed) + "."
+        )
+    if "panels" in old and old["panels"] != new.get("panels"):
+        reasons.append(
+            f"Its panels changed from {json.dumps(old['panels'])} to "
+            f"{json.dumps(new.get('panels'))}."
         )
     if old.get("protocol") != new.get("protocol"):
         reasons.append(
             f"Its protocol changed from {old.get('protocol')} to {new.get('protocol')}."
+        )
+    if old.get("publisher") != new.get("publisher"):
+        reasons.append(
+            f"It says it comes from {new.get('publisher')!r}, not "
+            f"{old.get('publisher')!r}. Check that is who made it."
         )
     if "panels" not in old and manifest.get("contributes", {}).get("panels"):
         reasons.append(
@@ -609,8 +635,10 @@ def body_for(row, tag, entry, previous, size, sha, changed, notes, waits, links)
         lines.append("")
     else:
         lines += [
-            "Nothing it asks for or shows changed, so it merges itself once its "
-            "checks pass.",
+            "Nothing a person must read changed, so it merges itself once "
+            "**catalog-check** passes on it and its other checks are green.",
+            "",
+            AUTOMERGE_MARK,
             "",
         ]
     lines += [
@@ -646,7 +674,7 @@ def body_for(row, tag, entry, previous, size, sha, changed, notes, waits, links)
         "`.sha256`; a zip that unpacks safely; each program's oldest macOS and "
         "its architectures; the manifest's id and version; the catalog's schema "
         "and rules. **catalog-check** downloads it again and runs "
-        "`vitruvian-tool validate`.",
+        "`vitruvian-tool validate`; auto-merge is armed only once that passes.",
         "",
         "After the merge, catalog-publish signs the list and opens the pull request "
         "for the website. Opened by the catalog-bump workflow.",
@@ -744,10 +772,16 @@ def bump(root, sources, tool_id, tag, release, now):
 # --- plan ---------------------------------------------------------------------
 
 
-def plan(catalog, sources, list_tags, get_release, find_pull):
+def refused_title(tool_id, version):
+    """The issue a refusal opens. While it is open, plan skips the version."""
+    return f"catalog-bump refused {tool_id} {version}"
+
+
+def plan(catalog, sources, github):
     """The rows whose newest published release is newer than their entry,
-    has its zip, and has no pull request for it: none open that still merges
-    (one that no longer merges is rebuilt), and none closed (a person said
+    has its zip, was not refused (no open refusal issue), and has no pull
+    request for it: none open that still merges (one that no longer merges is
+    rebuilt, unless a person pushed to it), and none closed (a person said
     no; reopening it, or a run by hand, brings it back)."""
     listed = {t["id"]: t for t in catalog["tools"]}
     found = []
@@ -762,7 +796,7 @@ def plan(catalog, sources, list_tags, get_release, find_pull):
         versions = sorted(
             (
                 (catalog_rules.semver(v), v, tag)
-                for tag in list_tags(row["repo"], row["tagPrefix"])
+                for tag in github.tags(row["repo"], row["tagPrefix"])
                 for v in [version_of(row, tag)]
                 if v and not is_prerelease(v)
             ),
@@ -772,7 +806,7 @@ def plan(catalog, sources, list_tags, get_release, find_pull):
         for key, version, tag in versions:
             if key <= floor:
                 break
-            release = get_release(row["repo"], tag)
+            release = github.release(row["repo"], tag)
             if release and not release.get("draft") and not release.get("prerelease"):
                 newest = (tag, version, release)
                 break
@@ -782,14 +816,19 @@ def plan(catalog, sources, list_tags, get_release, find_pull):
             )
             continue
         tag, version, release = newest
-        if asset_name(row, version) not in {
-            a.get("name") for a in release.get("assets", [])
-        }:
+        zip_name = asset_name(row, version)
+        if zip_name not in {a.get("name") for a in release.get("assets", [])}:
+            notice(f"{row['id']}: {tag} has no {zip_name} yet; skipped.")
+            continue
+        if github.refused_open(refused_title(row["id"], version)):
             notice(
-                f"{row['id']}: {tag} has no {asset_name(row, version)} yet; skipped."
+                f"{row['id']} {version}: refused before, and its issue "
+                f"'{refused_title(row['id'], version)}' is open; skipped. Close the "
+                "issue to try again."
             )
             continue
-        pull = find_pull(branch_for(row["id"], version))
+        branch = branch_for(row["id"], version)
+        pull = github.pull(branch)
         state = (pull or {}).get("state")
         if state == "OPEN" and pull.get("mergeable") != "CONFLICTING":
             print(f"{row['id']} {version}: pull request #{pull['number']} is open.")
@@ -801,6 +840,23 @@ def plan(catalog, sources, list_tags, get_release, find_pull):
                 "skipped. Reopen it, or run catalog-bump by hand with the tag."
             )
             continue
+        if state == "OPEN":
+            others = foreign(github.compare(branch), row["id"], version)
+            if others:
+                github.comment_once(
+                    pull["number"],
+                    FOREIGN_MARK,
+                    "This pull request no longer merges with main, and its branch "
+                    "holds commits catalog-bump did not write: "
+                    + ", ".join(others)
+                    + ". catalog-bump will not rebuild it over them. Rebase it by "
+                    f"hand, or close it and run catalog-bump with the tag {tag}.",
+                )
+                notice(
+                    f"{row['id']} {version}: #{pull['number']} has a person's "
+                    "commits and no longer merges; left for a person."
+                )
+                continue
         print(f"{row['id']}: {tag} is newer than the catalog's {entry['version']}.")
         found.append({"id": row["id"], "tag": tag})
     return found
@@ -838,39 +894,113 @@ def gh_release(repo, tag):
     raise SystemExit(f"could not read the release {tag} of {repo}")
 
 
-def gh_pull(branch):
-    """The newest pull request from `branch`, open, closed or merged."""
-    repo = os.environ.get("GITHUB_REPOSITORY", HOME_REPO)
-    out = gh(
-        [
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--head",
-            branch,
-            "--state",
-            "all",
-            "--json",
-            "number,state,mergeable",
-        ]
-    )
+def home():
+    return os.environ.get("GITHUB_REPOSITORY", HOME_REPO)
+
+
+def gh_json(args, what):
+    out = gh(args)
     if out is None:
-        raise SystemExit(f"could not list the pull requests of {repo}")
-    pulls = sorted(json.loads(out), key=lambda p: p["number"], reverse=True)
-    return pulls[0] if pulls else None
+        raise SystemExit(f"could not {what}")
+    return json.loads(out)
 
 
-# --- What the workflow may push and close -------------------------------------
+class GitHub:
+    """What plan asks GitHub, through `gh`. The tests pass a fake."""
+
+    tags = staticmethod(gh_tags)
+    release = staticmethod(gh_release)
+
+    def pull(self, branch):
+        """The newest pull request from `branch`, open, closed or merged."""
+        pulls = gh_json(
+            [
+                "pr",
+                "list",
+                "--repo",
+                home(),
+                "--head",
+                branch,
+                "--state",
+                "all",
+                "--json",
+                "number,state,mergeable",
+            ],
+            f"list the pull requests from {branch}",
+        )
+        pulls = sorted(pulls, key=lambda p: p["number"], reverse=True)
+        return pulls[0] if pulls else None
+
+    def compare(self, branch):
+        return gh_json(
+            ["api", f"repos/{home()}/compare/main...{branch}"], f"compare {branch}"
+        )
+
+    def refused_open(self, title):
+        issues = gh_json(
+            [
+                "issue",
+                "list",
+                "--repo",
+                home(),
+                "--state",
+                "open",
+                "--search",
+                f'in:title "{title}"',
+                "--json",
+                "title",
+            ],
+            "list the open issues",
+        )
+        return any(issue["title"] == title for issue in issues)
+
+    def comment_once(self, number, mark, text):
+        """Comments unless a comment with `mark` is already there."""
+        pull = gh_json(
+            ["pr", "view", str(number), "--repo", home(), "--json", "comments"],
+            f"read #{number}",
+        )
+        if any(mark in c.get("body", "") for c in pull.get("comments", [])):
+            return False
+        if (
+            gh(
+                [
+                    "pr",
+                    "comment",
+                    str(number),
+                    "--repo",
+                    home(),
+                    "--body",
+                    f"{mark}\n{text}",
+                ]
+            )
+            is None
+        ):
+            raise SystemExit(f"could not comment on #{number}")
+        return True
 
 
-def foreign(compare, bot_email=BOT_EMAIL):
-    """The commits on a bump branch (GitHub's compare of main...branch) that
-    the workflow did not write: a person's, which a rebuild must not erase."""
+# --- What the workflow may push, close and merge ------------------------------
+
+
+def trailer(tool_id, version):
+    return f"{TRAILER}: {tool_id}@{version}"
+
+
+def foreign(compare, tool_id, version):
+    """What on a bump branch (GitHub's compare of main...branch) the workflow
+    did not write. Its branch holds one commit, carrying the trailer
+    `Catalog-Bump: <id>@<version>`; any other commit, or a second one, is a
+    person's, whatever email it names (agent sessions share the bot's)."""
+    commits = compare.get("commits", [])
+    mine = trailer(tool_id, version)
+    marked = [c for c in commits if mine in c["commit"]["message"].splitlines()]
+    if len(commits) <= 1 and len(marked) == len(commits):
+        return []
     return [
         f"{c['sha'][:12]} by {c['commit']['author']['name']}"
-        for c in compare.get("commits", [])
-        if c["commit"]["author"]["email"] != bot_email
+        for c in commits
+        if c not in marked[:1]
     ]
 
 
@@ -891,6 +1021,39 @@ def older(pulls, tool_id, version):
     return found
 
 
+APP_AUTHORS = ("app/vitruvian-copybara-sync", "vitruvian-copybara-sync[bot]")
+
+
+def arm(pull, tested_sha, check):
+    """What catalog-check does with auto-merge on a bump pull request once it
+    has run: "arm", "disarm", or "leave: <why>". It arms only when it passed
+    on the commit the branch still holds, the workflow opened the pull
+    request, the body carries the mark, and nobody held it."""
+    armed = pull.get("autoMergeRequest") is not None
+    labels = {label["name"] for label in pull.get("labels", [])}
+
+    def stop(why):
+        return "disarm" if armed else f"leave: {why}"
+
+    if check != "success":
+        return stop(f"catalog-check ended {check}")
+    if pull.get("state") != "OPEN" or pull.get("isDraft"):
+        return stop("it is not an open, ready pull request")
+    if pull.get("headRefOid") != tested_sha:
+        return "leave: the branch moved since catalog-check ran; that run decides"
+    if not BRANCH.match(pull.get("headRefName", "")):
+        return stop("it is not a catalog/bump-<id>-<version> branch")
+    if (pull.get("author") or {}).get("login") not in APP_AUTHORS:
+        return stop("catalog-bump did not open it")
+    if labels & set(HOLDS):
+        return stop("it is held: " + ", ".join(sorted(labels & set(HOLDS))))
+    if AUTOMERGE_MARK not in (pull.get("body") or ""):
+        return stop("catalog-bump did not mark it as one that may merge itself")
+    if armed:
+        return "leave: auto-merge is already on"
+    return "arm"
+
+
 # --- The command --------------------------------------------------------------
 
 
@@ -902,9 +1065,9 @@ def workspace(given):
     return Path(__file__).resolve().parent.parent
 
 
-def main(argv=None, list_tags=gh_tags, get_release=gh_release, find_pull=gh_pull):
+def main(argv=None, github=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0] not in ("bump", "plan", "foreign", "older"):
+    if not argv or argv[0] not in ("bump", "plan", "foreign", "older", "arm"):
         argv.insert(0, "bump")
     parser = argparse.ArgumentParser(
         description="Updates one tool's catalog entry from one of its releases."
@@ -930,6 +1093,12 @@ def main(argv=None, list_tags=gh_tags, get_release=gh_release, find_pull=gh_pull
     many.add_argument("--root", help="the repository (default: this file's)")
     mine = commands.add_parser("foreign", help="commits on a branch a person wrote")
     mine.add_argument("--compare", required=True, help="GitHub's compare, as JSON")
+    mine.add_argument("--id", required=True)
+    mine.add_argument("--version", required=True)
+    gate = commands.add_parser("arm", help="what catalog-check does with auto-merge")
+    gate.add_argument("--pull", required=True, help="gh pr view --json ..., as JSON")
+    gate.add_argument("--tested-sha", required=True)
+    gate.add_argument("--check", required=True, help="catalog-check's result")
     old = commands.add_parser("older", help="open bump PRs for older versions")
     old.add_argument(
         "--pulls", required=True, help="gh pr list --json number,headRefName"
@@ -939,8 +1108,13 @@ def main(argv=None, list_tags=gh_tags, get_release=gh_release, find_pull=gh_pull
     args = parser.parse_args(argv)
 
     if args.command == "foreign":
-        for line in foreign(json.loads(Path(args.compare).read_text(encoding="utf-8"))):
+        compare = json.loads(Path(args.compare).read_text(encoding="utf-8"))
+        for line in foreign(compare, args.id, args.version):
             print(line)
+        return OK
+    if args.command == "arm":
+        pull = json.loads(Path(args.pull).read_text(encoding="utf-8"))
+        print(arm(pull, args.tested_sha, args.check))
         return OK
     if args.command == "older":
         pulls = json.loads(Path(args.pulls).read_text(encoding="utf-8"))
@@ -953,7 +1127,7 @@ def main(argv=None, list_tags=gh_tags, get_release=gh_release, find_pull=gh_pull
 
     if args.command == "plan":
         _, catalog = catalog_rules.load(root / CATALOG)
-        found = plan(catalog, sources, list_tags, get_release, find_pull)
+        found = plan(catalog, sources, github or GitHub())
         if args.out:
             Path(args.out).write_text(json.dumps(found) + "\n", encoding="utf-8")
         print(json.dumps(found))
@@ -982,7 +1156,7 @@ def main(argv=None, list_tags=gh_tags, get_release=gh_release, find_pull=gh_pull
         for reason in why.reasons:
             print(f"NOT OK   {args.id} {args.tag}: {reason}", file=sys.stderr)
         print("Nothing was written.", file=sys.stderr)
-        result, status = {"status": "refused", "message": str(why)}, REFUSED
+        result, status = refusal(sources, args.id, args.tag, why.reasons), REFUSED
     if result.get("status") == "current":
         print(f"{args.id}: the catalog already lists {args.tag}. Nothing to do.")
     if args.result_out:
@@ -990,6 +1164,35 @@ def main(argv=None, list_tags=gh_tags, get_release=gh_release, find_pull=gh_pull
             json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
     return status
+
+
+def refusal(sources, tool_id, tag, reasons):
+    """The result of a refused bump, with the issue that records it."""
+    try:
+        version = version_of(row_for(sources, tool_id), tag) or tag
+    except Refused:
+        version = tag
+    body = "\n".join(
+        [
+            f"catalog-bump refused to list `{tool_id}` from the release `{tag}`:",
+            "",
+            *[f"- {reason}" for reason in reasons],
+            "",
+            "While this issue is open, the hourly run skips this version, and no "
+            "pull request is opened for it. Close the issue to let it try again "
+            "(for example once the release's files are fixed).",
+        ]
+    )
+    return {
+        "status": "refused",
+        "id": tool_id,
+        "tag": tag,
+        "version": version,
+        "message": "; ".join(reasons),
+        "reasons": list(reasons),
+        "issue_title": refused_title(tool_id, version),
+        "issue_body": body + "\n",
+    }
 
 
 def row_for_or_exit(sources, tool_id):

@@ -124,18 +124,28 @@ manifest, sets `generated`, and regenerates the website's page. It never
 changes `minimumAppVersion`: when the manifest declares something only newer
 apps draw, the pull request says so.
 
-**Who merges it.** When only the version, the download and the fields that
-did not change are different, the pull request merges itself through the
-queue once its checks pass. When the tool asks for a new service in `uses`,
-offers a new command, or changes the words, panels or protocol the app
-shows, it is labelled `needs-human`, does not merge itself, and its
-description names each change.
+**Who merges it.** When nothing changed in what the tool asks for (`uses`),
+its commands, its panels, its protocol or its publisher, the pull request may
+merge itself: **catalog-check** arms auto-merge once it passes on the pull
+request, and turns it off if it fails. Otherwise the pull request is labelled
+`needs-human`, never armed, and its description names each change. New words
+in the name, the summary or a command's title do not hold it.
 
 **Skipped, not failed:** a release with no zip yet, a draft or pre-release, a
 tool not listed yet, a version whose pull request is still open, and a
 version whose pull request a person closed. Reopen that pull request, or run
-the workflow by hand, to bring it back. A branch a person pushed to is never
-overwritten: the workflow comments on its pull request instead.
+the workflow by hand, to bring it back.
+
+**A person's commit is kept.** The workflow's commit on a bump branch carries
+the trailer `Catalog-Bump: <id>@<version>`, and the branch holds only that
+one. When a branch holds anything else, the workflow never rebuilds it over
+them, even when it no longer merges; it says so once, in a comment.
+
+**A refusal is recorded once.** The run that refuses a release fails and
+opens the issue `catalog-bump refused <id> <version>` with the reasons. While
+that issue is open the hourly run skips the version; close it to try again.
+A run that fails with no result (GitHub did not answer, say) stays red and
+tries again the next hour.
 
 `sources.json` says, for each tool, the repository its release is in, the
 tag's prefix, the zip's name, its uploader, and whether its program is
