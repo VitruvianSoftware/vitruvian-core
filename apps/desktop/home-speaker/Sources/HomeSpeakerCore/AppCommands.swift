@@ -225,12 +225,17 @@ public enum AppCommandRunner {
     /// `notify` tells a running app (the command line posts `SignOutNotice`
     /// under its profile's names; the default does nothing, so tests never
     /// reach a real running app).
+    ///
+    /// `revoke` also ends the login at Google. It is false only when the
+    /// other HomeSpeaker holds the same login (`HomeSpeakerEngine.signOut`),
+    /// so signing this one out never signs the other out.
     public static func signOut(
-        chatOnly: Bool, auth: GoogleSigningOut, signedIn: @Sendable () -> Set<GoogleAuth.Purpose>,
+        chatOnly: Bool, revoke: Bool = true, auth: GoogleSigningOut,
+        signedIn: @Sendable () -> Set<GoogleAuth.Purpose>,
         notify: @Sendable (_ chatOnly: Bool) -> Void = { _ in }
     ) async -> CLIOutput {
         let purposes: Set<GoogleAuth.Purpose> = chatOnly ? [.chat] : Set(GoogleAuth.Purpose.allCases)
-        await auth.signOut(purpose: chatOnly ? .chat : nil, revoke: true)
+        await auth.signOut(purpose: chatOnly ? .chat : nil, revoke: revoke)
         let left = signedIn().intersection(purposes)
         guard left.isEmpty else {
             return .failure("still signed in for \(left.map(\.rawValue).sorted().joined(separator: " and ")); the sign-in store could not be updated")
