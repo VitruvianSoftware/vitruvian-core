@@ -194,6 +194,23 @@ sh_test(
     ],
 )
 
+# The release's zip of the extension (scripts/zip-tool.sh), against stand-in
+# programs and a stand-in lipo: what it holds, what it is called, the version
+# it refuses, and the half-universal build it refuses. macOS-only (zip, BSD
+# stat) and `manual`, like the Swift tests; the remote-mac-menu pipeline unit
+# below runs it by explicit label.
+sh_test(
+    name = "zip_tool_test",
+    size = "small",
+    srcs = ["scripts/zip-tool_test.sh"],
+    data = [
+        "scripts/zip-tool.sh",
+        "tool/vitruvian-tool.json",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 # bazel-bin/apps/mobile/android-remote/macmenu/VitruvianRemote.zip. `manual`
 # for the same reason as NexusAgent: macos_application transitions to a darwin
 # platform, so target_compatible_with cannot keep it out of a Linux `//...`.
@@ -236,6 +253,7 @@ pipeline_unit(
         ":paths_match_installer_test",
         ":tool_conformance_test",
         ":tool_version_test",
+        ":zip_tool_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

@@ -453,6 +453,12 @@ jobs:
           # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build
           # it by label. Its tests run in the generated remote-mac-menu unit.
           bazel build "${cache[@]}" --config=macos-app //apps/mobile/android-remote/macmenu:VitruvianRemote
+          # The release's tool zip for the Vitruvian catalog, short of
+          # uploading: both architectures built, joined, signed ad hoc and
+          # zipped, as android-remote-release.yaml does. Otherwise the Intel
+          # build would first run on release day. Uses the job's BuildBuddy
+          # key itself, like the release.
+          bash apps/mobile/android-remote/macmenu/scripts/publish-tool.sh --dry-run
 
           # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian): build only.
           # Changes to the app itself are built AND tested by the generated
