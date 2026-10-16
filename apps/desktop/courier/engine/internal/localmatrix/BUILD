@@ -34,6 +34,7 @@ go_test(
         "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
         "@net_maunium_go_mautrix//:mautrix",
         "@net_maunium_go_mautrix//bridgev2",

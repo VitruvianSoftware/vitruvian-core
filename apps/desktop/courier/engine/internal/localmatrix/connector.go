@@ -84,16 +84,35 @@ func (c *Connector) SendBridgeStatus(ctx context.Context, st *status.BridgeState
 }
 
 func (c *Connector) SendMessageStatus(ctx context.Context, ms *bridgev2.MessageStatus, info *bridgev2.MessageStatusEventInfo) {
-	st := "sent"
+	var st string
 	switch ms.Status {
+	case event.MessageStatusSuccess:
+		st = "sent"
 	case event.MessageStatusFail, event.MessageStatusRetriable:
 		st = "failed"
 	case event.MessageStatusPending:
 		st = "pending"
+	default:
+		// A status we do not know must never be shown as "sent": leave the row as it is.
+		c.log.Warn().Str("status", string(ms.Status)).Str("event_id", string(info.SourceEventID)).
+			Msg("ignoring unknown message status")
+		return
 	}
-	if err := c.store.SetStatus(ctx, string(info.SourceEventID), st, ms.Message); err != nil {
+	if err := c.store.SetStatus(ctx, string(info.SourceEventID), st, statusReason(ms)); err != nil {
 		c.log.Warn().Err(err).Str("event_id", string(info.SourceEventID)).Msg("failed to store message status")
 	}
+}
+
+// statusReason picks the text a user sees for a message status. Most errors reach bridgev2's
+// WrapErrorInStatus, which leaves Message empty and puts the detail in InternalError.
+func statusReason(ms *bridgev2.MessageStatus) string {
+	if ms.InternalError != nil && (ms.Message == "" || ms.ErrorAsMessage) {
+		return ms.InternalError.Error()
+	}
+	if ms.Message != "" {
+		return ms.Message
+	}
+	return string(ms.ErrorReason)
 }
 
 func (c *Connector) GenerateContentURI(_ context.Context, mediaID networkid.MediaID) (id.ContentURIString, error) {
