@@ -93,6 +93,8 @@ HELD_MARK = "<!-- catalog-bump: held for a person -->"
 # The trailer of the one commit the workflow writes on a bump branch.
 TRAILER = "Catalog-Bump"
 HOLDS = ("needs-human", "do-not-automerge")
+# All a bump pull request ever changes. Anything else on its branch holds it.
+BUMP_FILES = (CATALOG, "apps/web/vitruviansoftware-dev/_data/tools.yml")
 BRANCH = re.compile(
     r"^catalog/bump-(?P<id>[a-z0-9.-]+)-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$"
 )
@@ -1089,7 +1091,8 @@ def arm(pull, compare, tested_sha, check):
 
     It arms only when catalog-check passed on the commit the branch still
     holds, the workflow opened the pull request and wrote its only commit,
-    the body carries the mark, and nobody held it."""
+    the branch changes nothing but tools.json and the site's tools.yml, the
+    body carries the mark, and nobody held it."""
     armed = pull.get("autoMergeRequest") is not None
     labels = {label["name"] for label in pull.get("labels", [])}
 
@@ -1108,6 +1111,20 @@ def arm(pull, compare, tested_sha, check):
         return (
             "hold: its branch holds commits catalog-bump did not write: "
             + ", ".join(others)
+        )
+    if "files" not in compare:
+        return "hold: GitHub did not say which files the branch changes"
+    outside = sorted(
+        f.get("filename", "?")
+        for f in compare["files"]
+        if f.get("filename") not in BUMP_FILES
+    )
+    if outside or len(compare["files"]) >= 300:
+        return (
+            "hold: a bump changes only "
+            + " and ".join(f"`{f}`" for f in BUMP_FILES)
+            + "; this branch also changes "
+            + (", ".join(f"`{f}`" for f in outside[:20]) or "300 files or more")
         )
     if check == "pushed":
         return "leave: catalog-bump's own commit; catalog-check decides"
