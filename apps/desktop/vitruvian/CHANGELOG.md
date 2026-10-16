@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.55.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.55.0...vitruvian-v3.55.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **vitruvian:** hide resting agent mark when a tool's words or timer own the right wing ([#3373](https://github.com/VitruvianSoftware/vitruvian-core/issues/3373)) ([85e9170](https://github.com/VitruvianSoftware/vitruvian-core/commit/85e9170fbf699cc5909b5ebd358f27399378c582))
+* **vitruvian:** notch voice test waits for the status update instead of a fixed 50 ms ([#3379](https://github.com/VitruvianSoftware/vitruvian-core/issues/3379)) ([4702a04](https://github.com/VitruvianSoftware/vitruvian-core/commit/4702a04d0c5e8ca36e289e3756e2516654df95cf))
+
 ## [3.55.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.54.0...vitruvian-v3.55.0) (2026-10-16)
 
 
