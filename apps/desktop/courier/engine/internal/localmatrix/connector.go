@@ -154,7 +154,9 @@ func (c *Connector) GenerateDeterministicEventID(roomID id.RoomID, key networkid
 	return ids.EventID(roomID, key, msg, part)
 }
 func (c *Connector) GenerateReactionEventID(roomID id.RoomID, target *database.Message, sender networkid.UserID, emoji networkid.EmojiID) id.EventID {
-	return ids.ReactionEventID(roomID, target.ID, target.PartID, sender, emoji)
+	// The interface passes no emoji text, so on networks without emoji IDs this ID cannot tell two emoji apart.
+	// Reactions arriving from the network are unaffected: Intent.SendMessage hashes the emoji text itself.
+	return ids.ReactionEventID(roomID, target.ID, target.PartID, sender, emoji, "")
 }
 
 func (c *Connector) ServerName() string { return ids.ServerName }

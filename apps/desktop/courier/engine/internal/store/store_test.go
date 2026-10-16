@@ -207,3 +207,58 @@ func TestUnreadSubscriberDoesNotBlockWriters(t *testing.T) {
 		t.Fatal("writers blocked by an unread subscriber")
 	}
 }
+
+func TestProfileRoundTripAndPartialUpdate(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	_, _, ok, err := s.GetProfile(ctx, "@g:courier.local")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	name, avatar := "Gia đình 👨‍👩‍👧", "mxc://courier.local/abc"
+	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", &name, nil))
+	n, a, ok, err := s.GetProfile(ctx, "@g:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, name, n)
+	require.Equal(t, "", a)
+
+	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", nil, &avatar))
+	n, a, _, err = s.GetProfile(ctx, "@g:courier.local")
+	require.NoError(t, err)
+	require.Equal(t, name, n, "a nil name leaves the name unchanged")
+	require.Equal(t, avatar, a)
+
+	empty := ""
+	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", &empty, nil))
+	n, a, _, err = s.GetProfile(ctx, "@g:courier.local")
+	require.NoError(t, err)
+	require.Equal(t, "", n, "a pointer to an empty string clears the name")
+	require.Equal(t, avatar, a)
+}
+
+func TestSetProfilePublishesProfileChange(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	name := "Mum"
+	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", &name, nil))
+	select {
+	case c := <-ch:
+		require.Equal(t, Change{Kind: "profile"}, c)
+	case <-time.After(time.Second):
+		t.Fatal("no profile change published")
+	}
+}
+
+func TestDeleteMemberRemovesOnlyThatMember(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r", Network: "whatsapp"}))
+	require.NoError(t, s.SetMember(ctx, "!r", "@a", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetMember(ctx, "!r", "@b", json.RawMessage(`{}`)))
+	require.NoError(t, s.DeleteMember(ctx, "!r", "@a"))
+	m, err := s.Members(ctx, "!r")
+	require.NoError(t, err)
+	require.NotContains(t, m, "@a")
+	require.Contains(t, m, "@b")
+	require.NoError(t, s.DeleteMember(ctx, "!r", "@nobody"), "deleting an absent member is not an error")
+}

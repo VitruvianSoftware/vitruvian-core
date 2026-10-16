@@ -48,8 +48,13 @@ func EventID(roomID id.RoomID, key networkid.PortalKey, msg networkid.MessageID,
 	return id.EventID("$" + h("evt", string(roomID), string(key.ID), string(msg), string(part)))
 }
 
-func ReactionEventID(roomID id.RoomID, msg networkid.MessageID, part networkid.PartID, sender networkid.UserID, emoji networkid.EmojiID) id.EventID {
-	return id.EventID("$" + h("react", string(roomID), string(msg), string(part), string(sender), string(emoji)))
+// ReactionEventID identifies one reaction. Networks that allow a single reaction per person give no emoji ID,
+// so the emoji text itself must be part of the hash; otherwise swapping one emoji for another would collide.
+func ReactionEventID(roomID id.RoomID, msg networkid.MessageID, part networkid.PartID, sender networkid.UserID, emojiID networkid.EmojiID, emoji string) id.EventID {
+	if emojiID != "" {
+		emoji = ""
+	}
+	return id.EventID("$" + h("react", string(roomID), string(msg), string(part), string(sender), string(emojiID), emoji))
 }
 
 func RandomEventID() id.EventID {

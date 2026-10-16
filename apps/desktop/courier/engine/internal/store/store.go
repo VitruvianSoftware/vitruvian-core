@@ -175,6 +175,34 @@ func (s *Store) Members(ctx context.Context, roomID string) (map[string]json.Raw
 	return out, rows.Err()
 }
 
+func (s *Store) DeleteMember(ctx context.Context, roomID, userID string) error {
+	_, err := s.db.Exec(ctx, "DELETE FROM members WHERE room_id=$1 AND user_id=$2", roomID, userID)
+	if err == nil {
+		s.publish(Change{Kind: "member", RoomID: roomID})
+	}
+	return err
+}
+
+// SetProfile records a user's global display name and avatar. A nil argument leaves that field unchanged;
+// a pointer to an empty string clears it.
+func (s *Store) SetProfile(ctx context.Context, userID string, displayName, avatarURI *string) error {
+	_, err := s.db.Exec(ctx, `INSERT INTO profiles (user_id, display_name, avatar_uri) VALUES ($1, COALESCE($2,''), COALESCE($3,''))
+		ON CONFLICT(user_id) DO UPDATE SET display_name=COALESCE($2, display_name), avatar_uri=COALESCE($3, avatar_uri)`,
+		userID, displayName, avatarURI)
+	if err == nil {
+		s.publish(Change{Kind: "profile"})
+	}
+	return err
+}
+
+func (s *Store) GetProfile(ctx context.Context, userID string) (displayName, avatarURI string, ok bool, err error) {
+	err = s.db.QueryRow(ctx, "SELECT display_name, avatar_uri FROM profiles WHERE user_id=$1", userID).Scan(&displayName, &avatarURI)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", false, nil
+	}
+	return displayName, avatarURI, err == nil, err
+}
+
 func (s *Store) SetState(ctx context.Context, roomID, evType, stateKey string, content json.RawMessage) error {
 	_, err := s.db.Exec(ctx, `INSERT INTO state (room_id, type, state_key, content) VALUES ($1,$2,$3,$4)
 		ON CONFLICT(room_id, type, state_key) DO UPDATE SET content=excluded.content`, roomID, evType, stateKey, string(content))

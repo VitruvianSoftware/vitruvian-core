@@ -2,6 +2,7 @@ package localmatrix
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -92,10 +93,99 @@ func TestReactionEventIDMatchesConnector(t *testing.T) {
 	c, ctx := newTestConnector(t), context.Background()
 	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
 	require.NoError(t, err)
-	r := &database.Reaction{MessageID: "m1", MessagePartID: "p", SenderID: "u1", EmojiID: "👍"}
+	r := &database.Reaction{MessageID: "m1", MessagePartID: "p", SenderID: "u1", EmojiID: "👍", Emoji: "👍"}
 	resp, err := c.GhostIntent("u1").SendMessage(ctx, roomID, event.EventReaction, textContent("👍"), &bridgev2.MatrixSendExtra{ReactionMeta: r})
 	require.NoError(t, err)
 	require.Equal(t, c.GenerateReactionEventID(roomID, &database.Message{ID: "m1", PartID: "p"}, "u1", "👍"), resp.EventID)
+}
+
+func countEvents(t *testing.T, c *Connector, roomID id.RoomID, typ string) int {
+	t.Helper()
+	evs, err := c.store.Events(context.Background(), string(roomID), 100)
+	require.NoError(t, err)
+	n := 0
+	for _, e := range evs {
+		if e.Type == typ {
+			n++
+		}
+	}
+	return n
+}
+
+func TestEditCreatesASecondEvent(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	ghost := c.GhostIntent("u1")
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	key := networkid.PortalKey{ID: "c"}
+	orig, err := ghost.SendMessage(ctx, roomID, event.EventMessage, textContent("a"),
+		&bridgev2.MatrixSendExtra{MessageMeta: &database.Message{ID: "m1", Room: key}})
+	require.NoError(t, err)
+	// bridgev2 passes the ORIGINAL message (with its MXID set) when it edits.
+	edit, err := ghost.SendMessage(ctx, roomID, event.EventMessage, textContent("* b"),
+		&bridgev2.MatrixSendExtra{MessageMeta: &database.Message{ID: "m1", Room: key, MXID: orig.EventID}})
+	require.NoError(t, err)
+	require.NotEqual(t, orig.EventID, edit.EventID)
+	require.Equal(t, 2, countEvents(t, c, roomID, event.EventMessage.Type))
+	got, err := ghost.GetEvent(ctx, roomID, edit.EventID)
+	require.NoError(t, err)
+	require.Equal(t, "* b", got.Content.AsMessage().Body)
+}
+
+func TestRedactionCreatesItsOwnEvent(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	ghost := c.GhostIntent("u1")
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	key := networkid.PortalKey{ID: "c"}
+	orig, err := ghost.SendMessage(ctx, roomID, event.EventMessage, textContent("a"),
+		&bridgev2.MatrixSendExtra{MessageMeta: &database.Message{ID: "m1", Room: key}})
+	require.NoError(t, err)
+	// Even when the message has no MXID in the meta, a redaction is never deterministic.
+	for _, mxid := range []id.EventID{orig.EventID, ""} {
+		red, err := ghost.SendMessage(ctx, roomID, event.EventRedaction,
+			&event.Content{Parsed: &event.RedactionEventContent{Redacts: orig.EventID}},
+			&bridgev2.MatrixSendExtra{MessageMeta: &database.Message{ID: "m1", Room: key, MXID: mxid}})
+		require.NoError(t, err)
+		require.NotEqual(t, orig.EventID, red.EventID)
+	}
+	require.Equal(t, 2, countEvents(t, c, roomID, event.EventRedaction.Type))
+	require.Equal(t, 1, countEvents(t, c, roomID, event.EventMessage.Type))
+}
+
+func TestReactionRemovalCreatesItsOwnEvent(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	ghost := c.GhostIntent("u1")
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	r := &database.Reaction{MessageID: "m1", SenderID: "u1", EmojiID: "👍"}
+	added, err := ghost.SendMessage(ctx, roomID, event.EventReaction, textContent("👍"), &bridgev2.MatrixSendExtra{ReactionMeta: r})
+	require.NoError(t, err)
+	removed := *r
+	removed.MXID = added.EventID
+	red, err := ghost.SendMessage(ctx, roomID, event.EventRedaction,
+		&event.Content{Parsed: &event.RedactionEventContent{Redacts: added.EventID}},
+		&bridgev2.MatrixSendExtra{ReactionMeta: &removed})
+	require.NoError(t, err)
+	require.NotEqual(t, added.EventID, red.EventID)
+	require.Equal(t, 1, countEvents(t, c, roomID, event.EventRedaction.Type))
+}
+
+func TestReactionSwapWithoutEmojiIDKeepsBothEvents(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	ghost := c.GhostIntent("u1")
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	send := func(emoji string) id.EventID {
+		r := &database.Reaction{MessageID: "m1", SenderID: "u1", Emoji: emoji}
+		resp, err := ghost.SendMessage(ctx, roomID, event.EventReaction, textContent(emoji), &bridgev2.MatrixSendExtra{ReactionMeta: r})
+		require.NoError(t, err)
+		return resp.EventID
+	}
+	thumbs, heart := send("👍"), send("❤️")
+	require.NotEqual(t, thumbs, heart)
+	require.Equal(t, thumbs, send("👍"), "re-sending the same reaction stays idempotent")
+	require.Equal(t, 2, countEvents(t, c, roomID, event.EventReaction.Type))
 }
 
 func TestSendStateMirrorsRoomAndMembers(t *testing.T) {
@@ -232,3 +322,104 @@ func TestMarkReadAndDeleteRoom(t *testing.T) {
 }
 
 func mustMXC(hash string) id.ContentURIString { return ids.ContentURI(hash) }
+
+func TestUploadMediaStreamHandsTheCallbackARealFile(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	uri, _, err := c.BotIntent().UploadMediaStream(ctx, "", 0, true, func(w io.Writer) (*bridgev2.FileStreamResult, error) {
+		f, ok := w.(*os.File)
+		require.True(t, ok, "requireFile must give the callback an *os.File, got %T", w)
+		if _, err := f.Write([]byte("ABCDEFGH")); err != nil {
+			return nil, err
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		_, err := f.Write([]byte("XXXX")) // rewrite the start, as a bridge fixing up a header would
+		return &bridgev2.FileStreamResult{}, err
+	})
+	require.NoError(t, err)
+	got, err := c.BotIntent().DownloadMedia(ctx, uri, nil)
+	require.NoError(t, err)
+	require.Equal(t, "XXXXEFGH", string(got))
+	left, err := filepath.Glob(filepath.Join(c.media.Dir, ".*"))
+	require.NoError(t, err)
+	require.Empty(t, left, "no temp files may be left behind")
+}
+
+func TestDeleteRoomPuppetsOnlyKeepsHistory(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	roomID, err := c.GhostIntent("u1").CreateRoom(ctx, &mautrix.ReqCreateRoom{Invite: []id.UserID{ids.Me}})
+	require.NoError(t, err)
+	_, err = c.GhostIntent("u1").SendMessage(ctx, roomID, event.EventMessage, textContent("keep me"), nil)
+	require.NoError(t, err)
+
+	require.NoError(t, c.BotIntent().DeleteRoom(ctx, roomID, true))
+
+	_, ok, err := c.store.GetRoom(ctx, string(roomID))
+	require.NoError(t, err)
+	require.True(t, ok, "room must survive")
+	require.Equal(t, 1, countEvents(t, c, roomID, event.EventMessage.Type), "history must survive")
+	m, err := c.GetMembers(ctx, roomID)
+	require.NoError(t, err)
+	require.NotContains(t, m, c.FormatGhostMXID("u1"))
+	require.Contains(t, m, ids.Me)
+
+	require.NoError(t, c.BotIntent().DeleteRoom(ctx, roomID, false))
+	_, ok, err = c.store.GetRoom(ctx, string(roomID))
+	require.NoError(t, err)
+	require.False(t, ok, "puppetsOnly=false still deletes the room")
+}
+
+func TestCreateRoomStoresPowerLevelOverride(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{
+		PowerLevelOverride: &event.PowerLevelsEventContent{UsersDefault: 9},
+	})
+	require.NoError(t, err)
+	pl, err := c.GetPowerLevels(ctx, roomID)
+	require.NoError(t, err)
+	require.Equal(t, 9, pl.UsersDefault)
+}
+
+func TestInitialStateNameRoundTripsUnicode(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	const name = "Gia đình 👨‍👩‍👧"
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{
+		InitialState: []*event.Event{{Type: event.StateRoomName, StateKey: ptr(""),
+			Content: event.Content{Parsed: &event.RoomNameEventContent{Name: name}}}},
+	})
+	require.NoError(t, err)
+	room, ok, err := c.store.GetRoom(ctx, string(roomID))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, name, room.Name)
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestGhostProfileReachesTheStore(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	ghost := c.GhostIntent("u1")
+	mxid := string(c.FormatGhostMXID("u1"))
+	require.NoError(t, ghost.SetDisplayName(ctx, "Gia đình 👨‍👩‍👧"))
+	require.NoError(t, ghost.SetAvatarURL(ctx, mustMXC("abc")))
+	name, avatar, ok, err := c.store.GetProfile(ctx, mxid)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Gia đình 👨‍👩‍👧", name)
+	require.Equal(t, string(mustMXC("abc")), avatar)
+
+	// A full-profile write that carries a name and avatar updates both; extra keys are ignored.
+	require.NoError(t, ghost.SetProfile(ctx, json.RawMessage(`{"displayname":"New","avatar_url":"mxc://courier.local/def","com.beeper.bridge.service":"wa"}`)))
+	name, avatar, _, err = c.store.GetProfile(ctx, mxid)
+	require.NoError(t, err)
+	require.Equal(t, "New", name)
+	require.Equal(t, "mxc://courier.local/def", avatar)
+
+	// Data without a name or avatar leaves the profile alone.
+	require.NoError(t, ghost.SetExtraProfileMeta(ctx, &event.BeeperProfileExtra{RemoteID: "u1"}))
+	name, avatar, _, err = c.store.GetProfile(ctx, mxid)
+	require.NoError(t, err)
+	require.Equal(t, "New", name)
+	require.Equal(t, "mxc://courier.local/def", avatar)
+}

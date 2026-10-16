@@ -44,13 +44,17 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 		if !extra.Timestamp.IsZero() {
 			ts = extra.Timestamp
 		}
-		switch {
-		case extra.MessageMeta != nil:
-			m := extra.MessageMeta
-			evtID = ids.EventID(roomID, m.Room, m.ID, m.PartID)
-		case extra.ReactionMeta != nil:
-			r := extra.ReactionMeta
-			evtID = ids.ReactionEventID(roomID, r.MessageID, r.MessagePartID, r.SenderID, r.EmojiID)
+		// The deterministic ID is only for NEW events. For edits, redactions and reaction removals bridgev2 passes
+		// the ORIGINAL message or reaction (MXID set) as meta; reusing its ID would make the store drop the new event.
+		if evtType != event.EventRedaction {
+			switch {
+			case extra.MessageMeta != nil && extra.MessageMeta.MXID == "":
+				m := extra.MessageMeta
+				evtID = ids.EventID(roomID, m.Room, m.ID, m.PartID)
+			case extra.ReactionMeta != nil && extra.ReactionMeta.MXID == "":
+				r := extra.ReactionMeta
+				evtID = ids.ReactionEventID(roomID, r.MessageID, r.MessagePartID, r.SenderID, r.EmojiID, r.Emoji)
+			}
 		}
 	}
 	raw, err := json.Marshal(content)
@@ -131,39 +135,73 @@ func (in *Intent) UploadMedia(_ context.Context, _ id.RoomID, data []byte, _, _ 
 	return ids.ContentURI(hash), nil, nil
 }
 
+// UploadMediaStream always gives the callback a real *os.File, which satisfies requireFile: bridges may seek,
+// rewrite at offsets or hand the path to ffmpeg. The file is hashed and stored once the callback returns.
 func (in *Intent) UploadMediaStream(_ context.Context, _ id.RoomID, _ int64, _ bool, cb bridgev2.FileStreamCallback) (id.ContentURIString, *event.EncryptedFileInfo, error) {
-	var res *bridgev2.FileStreamResult
-	hash, err := in.c.media.PutStream(func(w io.Writer) error {
-		var cbErr error
-		if res, cbErr = cb(w); cbErr != nil {
-			return bridgev2.CallbackError{Type: "write", Wrapped: cbErr}
-		}
-		return nil
-	})
+	if err := os.MkdirAll(in.c.media.Dir, 0o700); err != nil {
+		return "", nil, err
+	}
+	tmp, err := os.CreateTemp(in.c.media.Dir, ".stream-*")
 	if err != nil {
 		return "", nil, err
 	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	res, err := cb(tmp)
+	if err != nil {
+		return "", nil, bridgev2.CallbackError{Type: "write", Wrapped: err}
+	}
+	src := tmp
 	if res != nil && res.ReplacementFile != "" {
 		// The bridge hands the replacement file over to us (the Matrix connector deletes it too).
-		// The first blob stays on disk, unreferenced: other events may already point at it.
 		defer os.Remove(res.ReplacementFile)
-		f, err := os.Open(res.ReplacementFile)
-		if err != nil {
+		if src, err = os.Open(res.ReplacementFile); err != nil {
 			return "", nil, fmt.Errorf("failed to open replacement file: %w", err)
 		}
-		defer f.Close()
-		if hash, err = in.c.media.PutStream(func(w io.Writer) error { _, err := io.Copy(w, f); return err }); err != nil {
-			return "", nil, err
-		}
+		defer src.Close()
+	} else if _, err = src.Seek(0, io.SeekStart); err != nil {
+		return "", nil, err
+	}
+	hash, err := in.c.media.PutStream(func(w io.Writer) error { _, err := io.Copy(w, src); return err })
+	if err != nil {
+		return "", nil, err
 	}
 	return ids.ContentURI(hash), nil, nil
 }
 
-// Profiles live on member events, written through SendState; the store needs no separate profile table.
-func (in *Intent) SetDisplayName(context.Context, string) error            { return nil }
-func (in *Intent) SetAvatarURL(context.Context, id.ContentURIString) error { return nil }
-func (in *Intent) SetExtraProfileMeta(context.Context, any) error          { return nil }
-func (in *Intent) SetProfile(context.Context, any) error                   { return nil }
+// bridgev2 sets ghost profiles globally, not per room, so name and avatar go to the profiles table.
+func (in *Intent) SetDisplayName(ctx context.Context, name string) error {
+	return in.c.store.SetProfile(ctx, string(in.mxid), &name, nil)
+}
+func (in *Intent) SetAvatarURL(ctx context.Context, avatarURL id.ContentURIString) error {
+	avatar := string(avatarURL)
+	return in.c.store.SetProfile(ctx, string(in.mxid), nil, &avatar)
+}
+
+// SetExtraProfileMeta and SetProfile carry bridge bookkeeping (remote ID, identifiers, bot flags) that the
+// app has no use for; the connector reports ExtraProfileMeta=false so bridgev2 rarely sends them. If the data
+// does carry a display name or avatar, those are stored; everything else is dropped.
+func (in *Intent) SetExtraProfileMeta(ctx context.Context, data any) error {
+	return in.storeProfileFields(ctx, data)
+}
+func (in *Intent) SetProfile(ctx context.Context, data any) error {
+	return in.storeProfileFields(ctx, data)
+}
+
+func (in *Intent) storeProfileFields(ctx context.Context, data any) error {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	var fields struct {
+		DisplayName *string `json:"displayname"`
+		AvatarURL   *string `json:"avatar_url"`
+	}
+	if err = json.Unmarshal(raw, &fields); err != nil || (fields.DisplayName == nil && fields.AvatarURL == nil) {
+		return nil // not a profile-shaped value, or nothing we store
+	}
+	return in.c.store.SetProfile(ctx, string(in.mxid), fields.DisplayName, fields.AvatarURL)
+}
 
 func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (id.RoomID, error) {
 	roomID := req.BeeperLocalRoomID
@@ -186,6 +224,11 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 			return "", err
 		}
 	}
+	if req.PowerLevelOverride != nil {
+		if _, err := in.SendState(ctx, roomID, event.StatePowerLevels, "", &event.Content{Parsed: req.PowerLevelOverride}, time.Now()); err != nil {
+			return "", err
+		}
+	}
 	for _, st := range req.InitialState {
 		sk := ""
 		if st.StateKey != nil {
@@ -198,8 +241,25 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 	return roomID, nil
 }
 
-func (in *Intent) DeleteRoom(ctx context.Context, roomID id.RoomID, _ bool) error {
-	return in.c.store.DeleteRoom(ctx, string(roomID))
+// DeleteRoom with puppetsOnly=true removes just the ghosts. bridgev2 does that when portals merge or move, and
+// there is no server copy of the history, so the room, its events and its state must stay.
+func (in *Intent) DeleteRoom(ctx context.Context, roomID id.RoomID, puppetsOnly bool) error {
+	if !puppetsOnly {
+		return in.c.store.DeleteRoom(ctx, string(roomID))
+	}
+	members, err := in.c.store.Members(ctx, string(roomID))
+	if err != nil {
+		return err
+	}
+	for userID := range members {
+		if _, isGhost := ids.ParseGhostMXID(in.c.network, id.UserID(userID)); !isGhost {
+			continue
+		}
+		if err = in.c.store.DeleteMember(ctx, string(roomID), userID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (in *Intent) EnsureJoined(ctx context.Context, roomID id.RoomID, _ ...bridgev2.EnsureJoinedParams) error {

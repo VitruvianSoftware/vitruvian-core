@@ -28,6 +28,17 @@ func TestDeterministicIDs(t *testing.T) {
 	require.NotEqual(t, EventID(r1, key, "m1", ""), EventID(r1, key, "m1", "p2"))
 }
 
+func TestReactionEventIDs(t *testing.T) {
+	room := RoomID("whatsapp", networkid.PortalKey{ID: "c"})
+	// With an emoji ID the emoji text is irrelevant.
+	require.Equal(t, ReactionEventID(room, "m1", "", "u1", "thumbs", "x"), ReactionEventID(room, "m1", "", "u1", "thumbs", "y"))
+	require.NotEqual(t, ReactionEventID(room, "m1", "", "u1", "a", ""), ReactionEventID(room, "m1", "", "u1", "b", ""))
+	// Networks with one reaction per person have no emoji ID: the emoji text must tell reactions apart.
+	thumbs := ReactionEventID(room, "m1", "", "u1", "", "👍")
+	require.NotEqual(t, thumbs, ReactionEventID(room, "m1", "", "u1", "", "❤️"))
+	require.Equal(t, thumbs, ReactionEventID(room, "m1", "", "u1", "", "👍"))
+}
+
 const testHash = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 
 func TestContentURIRoundTrip(t *testing.T) {
