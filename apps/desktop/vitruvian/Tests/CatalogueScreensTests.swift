@@ -22,7 +22,7 @@ enum CatalogueScreensTests {
     static func content(_ rig: CatalogueWatchTests.Rig, language: AppLanguage = .enUS) -> CatalogueSheetContent {
         CatalogueSheetContent(state: rig.watch.state, entries: rig.watch.entries, listed: rig.bench.store.listed,
                               update: rig.watch.update(for:), language: language,
-                              strings: FeatureStrings.externalTools(language), close: "Close")
+                              strings: FeatureStrings.externalTools(language))
     }
 
     static func rows(_ content: CatalogueSheetContent) -> [CatalogueRow] {

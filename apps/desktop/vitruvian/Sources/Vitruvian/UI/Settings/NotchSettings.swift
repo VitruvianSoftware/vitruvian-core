@@ -342,14 +342,17 @@ package struct NotchSettings: View {
                         }
                     case .tool(let tool):
                         // A tool's page has no options here: its own are in
-                        // its detail, under Features, where the header leads.
+                        // its detail, on the Extensions page, where the
+                        // header leads.
                         NotchSectionHeader(title: sectionTitle(section), summary: editor.extensionSummary,
                                            tile: NotchSectionTile(extensionSymbol: sectionSymbol(section),
                                                                   shown: toolBinding(tool).wrappedValue, side: 38),
                                            reason: nil) {
-                            SettingsRouter.shared.request(FeatureSettingsDestination(.features))
+                            SettingsRouter.shared.request(ExtensionsPageSupport.destination)
                         }
-                        Button(editor.openFeatures) { SettingsRouter.shared.request(FeatureSettingsDestination(.features)) }
+                        Button(FeatureStrings.externalTools(l10n.language).openExtensions) {
+                            SettingsRouter.shared.request(ExtensionsPageSupport.destination)
+                        }
                             .controlSize(.small)
                         if !wide { preview(section, width: detailWidth, limit: 280) }
                     }

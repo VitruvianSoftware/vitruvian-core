@@ -8,8 +8,8 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianToolProtocol
 
-/// One tool of the catalog, as the sheet lists it. Every word but the
-/// button's is the catalog's copy of the tool's own.
+/// One tool of the catalog, as the Extensions page lists it. Every word but
+/// the button's is the catalog's copy of the tool's own.
 package struct CatalogueRow: Identifiable, Equatable {
     package enum Action: Equatable, Sendable {
         case install
@@ -35,7 +35,9 @@ package struct CatalogueRow: Identifiable, Equatable {
     package let actionText: String
 }
 
-/// Everything the catalog's sheet says, as plain values.
+/// Everything the catalog says, as plain values: on the Extensions page
+/// since it has one (before, on the sheet "Browse Tools…" opened, hence the
+/// name).
 package struct CatalogueSheetContent: Equatable {
     package enum Body: Equatable {
         /// The list is on its way and there is none to show yet.
@@ -48,18 +50,18 @@ package struct CatalogueSheetContent: Equatable {
 
     package let title: String
     package let body: Body
-    package let close: String
     /// The heading over what a tool says it uses, and the note under it.
     package let usesTitle: String
+    /// The one line in place of the rows when every tool listed is added.
+    private let allInstalled: String
 
-    /// `update` says which added tool has a newer version listed; `close`
-    /// is the app's existing word for Close.
+    /// `update` says which added tool has a newer version listed.
     package init(state: CatalogueWatch.State, entries: [CatalogueEntry], listed: [ExternalToolStore.Listed],
                  update: (ExternalToolStore.Listed) -> CatalogueEntry?, language: AppLanguage,
-                 strings: ExternalToolStrings, close: String) {
+                 strings: ExternalToolStrings) {
         title = strings.catalogTitle
-        self.close = close
         usesTitle = strings.usesTitle
+        allInstalled = strings.catalogAllInstalled
         switch state {
         case .unknown, .loading:
             body = .loading
@@ -88,6 +90,17 @@ package struct CatalogueSheetContent: Equatable {
             })
         }
     }
+
+    /// The catalog as the Extensions page lists it, under what is installed:
+    /// only the tools that are not added. One that is, from the catalog or
+    /// from a folder, is in the Installed list, which offers its update.
+    /// When the catalog lists nothing else, one line says so; waiting, an
+    /// empty catalog and a refusal are as they are.
+    package var notInstalled: Body {
+        guard case .rows(let rows) = body else { return body }
+        let left = rows.filter { $0.action == .install }
+        return left.isEmpty ? .message(allInstalled) : .rows(left)
+    }
 }
 
 extension ToolRefusalMessage {
@@ -108,69 +121,18 @@ extension ToolRefusalMessage {
     }
 }
 
-/// The catalog: each tool it lists, with Install, Installed or Update.
-/// Installing closes nothing by itself: the section takes the offer to the
-/// agreement sheet, which is the one place a tool is agreed to.
-package struct ExternalToolCatalogueSheet: View {
-    @ObservedObject private var watch: CatalogueWatch
-    private let content: (CatalogueWatch.State) -> CatalogueSheetContent
+/// One tool of the catalog: its name, publisher and version, kind pill,
+/// summary and what it says it uses, and its button. Installing closes
+/// nothing by itself: the page takes the offer to the agreement sheet, which
+/// is the one place a tool is agreed to.
+struct CatalogueRowView: View {
+    let row: CatalogueRow
+    let usesTitle: String
     /// The tool being fetched, if any. Every button waits while one is.
-    private let installing: ToolID?
-    @Binding private var refusal: ToolRefusalMessage?
-    private let install: (CatalogueEntry) -> Void
-    private let close: () -> Void
+    let installing: ToolID?
+    let install: (CatalogueEntry) -> Void
 
-    package init(watch: CatalogueWatch, content: @escaping (CatalogueWatch.State) -> CatalogueSheetContent,
-                 installing: ToolID?, refusal: Binding<ToolRefusalMessage?>,
-                 install: @escaping (CatalogueEntry) -> Void, close: @escaping () -> Void) {
-        self.watch = watch
-        self.content = content
-        self.installing = installing
-        _refusal = refusal
-        self.install = install
-        self.close = close
-    }
-
-    package var body: some View {
-        let content = content(watch.state)
-        VStack(alignment: .leading, spacing: 16) {
-            Text(content.title).font(.title3.bold())
-            switch content.body {
-            case .loading:
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 80)
-            case .message(let message):
-                Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            case .rows(let rows):
-                ScrollView(.vertical) {
-                    VStack(spacing: 0) {
-                        ForEach(rows) { row in
-                            rowView(row, usesTitle: content.usesTitle)
-                            if row.id != rows.last?.id { Divider().padding(.leading, 8) }
-                        }
-                    }
-                }
-                .frame(maxHeight: 420)
-            }
-            HStack {
-                Spacer()
-                Button(content.close, action: close).keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(22)
-        .frame(width: 480)
-        .onExitCommand(perform: close)
-        .alert(refusal?.title ?? "", isPresented: Binding(get: { refusal != nil }, set: { if !$0 { refusal = nil } }),
-               presenting: refusal) { _ in
-            Button(content.close, role: .cancel) {}
-        } message: { refusal in
-            Text(refusal.command.map { refusal.message + "\n\n" + $0 } ?? refusal.message)
-        }
-    }
-
-    private func rowView(_ row: CatalogueRow, usesTitle: String) -> some View {
+    var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: ExternalToolManifest.defaultSymbol)
                 .font(.system(size: 12, weight: .semibold))

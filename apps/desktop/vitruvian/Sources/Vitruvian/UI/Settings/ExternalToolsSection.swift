@@ -8,7 +8,7 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianToolProtocol
 
-/// One tool from outside, as its row in the Features hub shows it. Plain
+/// One tool from outside, as its row on the Extensions page shows it. Plain
 /// values, so the row can be checked without drawing it.
 package struct ExternalToolRow: Identifiable, Equatable {
     package enum Status: Equatable, Sendable {
@@ -480,11 +480,57 @@ package enum ToolPicked: Equatable {
     }
 }
 
-/// The tools from outside, in the Features hub: one quiet line and a button
-/// when there are none, a row for each when there are. Adding one opens a
-/// folder picker and then the agreement sheet; nothing is copied or run
-/// before the person agrees there.
-package struct ExternalToolsSection: View {
+/// What the Extensions page counts, as plain values.
+package enum ExtensionsPageContent {
+    /// How many added tools the catalog lists a newer version of: the count
+    /// on the page's row in the sidebar. Only a tool installed from the
+    /// catalog is ever compared (`CatalogueWatch.update(for:)`), so the
+    /// count is 0 until the list has been fetched, and for a Mac with no
+    /// tool from the catalog.
+    @MainActor package static func updates(store: ExternalToolStore, watch: CatalogueWatch) -> Int {
+        store.listed.filter { watch.update(for: $0) != nil }.count
+    }
+
+    /// The line the Features page shows for what the person added.
+    @MainActor package static func summary(store: ExternalToolStore, language: AppLanguage) -> ExtensionsPageSupport.Summary {
+        ExtensionsPageSupport.summary(installed: store.listed.count, strings: FeatureStrings.externalTools(language))
+    }
+}
+
+/// The Features page's one line for the tools from outside, where their card
+/// was: how many are added, and a link to the Extensions page.
+package struct ExtensionsSummaryLine: View {
+    @ObservedObject private var l10n = L10n.shared
+    /// Bumped whenever a tool is added or removed, so the count is read again.
+    @ObservedObject private var registry = ToolRegistry.shared
+
+    package init() {}
+
+    package var body: some View {
+        let summary = ExtensionsPageContent.summary(store: .shared, language: l10n.language)
+        HStack(spacing: 8) {
+            Image(systemName: ExternalToolManifest.defaultSymbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
+            Text(summary.text)
+            Text(verbatim: "·").foregroundStyle(.tertiary).accessibilityHidden(true)
+            Button(summary.link) { SettingsRouter.shared.request(summary.destination) }
+                .buttonStyle(.link)
+                .accessibilityLabel(summary.spoken)
+            Spacer(minLength: 0)
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    }
+}
+
+/// The Extensions page: what the person added, each with its switch and its
+/// detail, then what the catalog lists that is not added, each with
+/// Install. Adding from a folder opens a folder picker and then the
+/// agreement sheet; installing from the catalog fetches the tool and opens
+/// the same sheet. Nothing is copied or run before the person agrees there.
+package struct ExtensionsSettings: View {
     private struct Asked: Identifiable {
         let id = UUID()
         let offer: ToolOffer
@@ -499,19 +545,15 @@ package struct ExternalToolsSection: View {
     /// Bumped whenever a tool is added, removed, switched, or stands
     /// differently, so the rows are read again.
     @ObservedObject private var registry = ToolRegistry.shared
-    /// Read again when the list of tools changes, so that "Update available"
-    /// comes and goes with it.
+    /// The catalog, and which added tool has a newer version listed.
     @ObservedObject private var watch = CatalogueWatch.shared
     @State private var asked: Asked?
-    /// True while the catalog's sheet is open.
-    @State private var browsing = false
-    /// The tool from the catalog being fetched, and why one was not offered.
+    /// The tool from the catalog being fetched.
     @State private var installing: ToolID?
     /// The tools the person agreed to that are not added yet: an add waits
     /// for whatever the app hands the tool to be ready, never on the main
     /// thread (`ExternalToolStore.add(_:then:)`).
     @State private var adding: Set<ToolID> = []
-    @State private var catalogueRefusal: ToolRefusalMessage?
     @State private var refusal: ToolRefusalMessage?
     @State private var shown: Shown?
     /// What to tell the person about the tool they just removed. It waits
@@ -528,42 +570,63 @@ package struct ExternalToolsSection: View {
 
     package var body: some View {
         let rows = ExternalToolRow.all(store: store, language: l10n.language, strings: text, watch: watch)
-        SettingsCard {
-            HStack(spacing: 10) {
-                Image(systemName: ExternalToolManifest.defaultSymbol)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 26, height: 26)
-                    .background(Color.accentColor.opacity(0.12),
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    .accessibilityHidden(true)
-                Text(text.sectionTitle).font(.headline)
-                Spacer(minLength: 12)
-                if !adding.isEmpty { ProgressView().controlSize(.small) }
-                Button(text.browseButton) { browse() }
-                    .controlSize(.small)
-                Button(text.addButton) { chooseFolder() }
-                    .controlSize(.small)
-            }
-            if rows.isEmpty {
-                Text(text.sectionEmpty)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(rows) { row in
-                        ExternalToolRowView(row: row, text: text,
-                                            setOn: { store.setOn(row.id, $0) },
-                                            startAgain: { store.startAgain(row.id) },
-                                            open: { shown = Shown(tool: row.id) })
-                        if row.id != rows.last?.id {
-                            Divider().padding(.leading, 8)
+        let catalogue = CatalogueSheetContent(state: watch.state, entries: watch.entries, listed: store.listed,
+                                              update: watch.update(for:), language: l10n.language, strings: text)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(text.pageTitle).font(.title2.bold())
+                    Spacer(minLength: 12)
+                    if !adding.isEmpty { ProgressView().controlSize(.small) }
+                    Button(text.addButton) { chooseFolder() }
+                }
+                SettingsCard(title: text.installedTitle) {
+                    if rows.isEmpty {
+                        Text(text.sectionEmpty)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(rows) { row in
+                                ExternalToolRowView(row: row, text: text,
+                                                    setOn: { store.setOn(row.id, $0) },
+                                                    startAgain: { store.startAgain(row.id) },
+                                                    update: updateAction(for: row.id),
+                                                    open: { shown = Shown(tool: row.id) })
+                                if row.id != rows.last?.id {
+                                    Divider().padding(.leading, 8)
+                                }
+                            }
+                        }
+                    }
+                }
+                SettingsCard(title: catalogue.title) {
+                    switch catalogue.notInstalled {
+                    case .loading:
+                        ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 60)
+                    case .message(let message):
+                        Text(message)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    case .rows(let entries):
+                        VStack(spacing: 0) {
+                            ForEach(entries) { row in
+                                CatalogueRowView(row: row, usesTitle: catalogue.usesTitle,
+                                                 installing: installing ?? adding.first,
+                                                 install: { install($0) })
+                                if row.id != entries.last?.id { Divider().padding(.leading, 8) }
+                            }
                         }
                     }
                 }
             }
+            .modifier(FeatureHubColumn())
         }
+        // The list is asked for each time the page opens, as the catalog's
+        // sheet did when it opened, with the ETag of the one kept.
+        .onAppear { watch.refresh() }
         .sheet(item: $asked) { asked in
             ToolAgreementSheet(
                 offer: asked.offer,
@@ -574,7 +637,7 @@ package struct ExternalToolsSection: View {
                     let offer = consent.offer
                     let id = offer.tool.manifest.id
                     // Usually done before this returns. Never a wait on the
-                    // main thread: the card shows the tool is being added.
+                    // main thread: the page shows the tool is being added.
                     adding.insert(id)
                     store.add(consent) { result in
                         adding.remove(id)
@@ -591,7 +654,7 @@ package struct ExternalToolsSection: View {
         }
         .background {
             // A second sheet and the alert hang on a view of their own, so
-            // neither competes with the agreement sheet for the card.
+            // neither competes with the agreement sheet for the page.
             Color.clear
                 .sheet(item: $shown, onDismiss: {
                     kept = removed
@@ -612,19 +675,6 @@ package struct ExternalToolsSection: View {
                 }
         }
         .background {
-            Color.clear.sheet(isPresented: $browsing) {
-                ExternalToolCatalogueSheet(
-                    watch: watch,
-                    content: { state in
-                        CatalogueSheetContent(state: state, entries: watch.entries, listed: store.listed,
-                                              update: watch.update(for:), language: l10n.language, strings: text,
-                                              close: l10n.s.menuClose)
-                    },
-                    installing: installing ?? adding.first, refusal: $catalogueRefusal,
-                    install: { install($0) }, close: { browsing = false })
-            }
-        }
-        .background {
             // Said once, after the row has gone: what the tool saved was to
             // be deleted and was kept, because its program would not stop,
             // or a folder that was to go could not be deleted.
@@ -641,6 +691,15 @@ package struct ExternalToolsSection: View {
                     Text(kept.text)
                 }
         }
+    }
+
+    /// The row's Update button: installs the newer version the catalog
+    /// lists, through the agreement sheet. Nil when it lists none.
+    private func updateAction(for id: ToolID) -> (() -> Void)? {
+        guard let listed = store.listed.first(where: { $0.id == id }), let newer = watch.update(for: listed) else {
+            return nil
+        }
+        return { install(newer) }
     }
 
     @ViewBuilder
@@ -673,7 +732,7 @@ package struct ExternalToolsSection: View {
                 },
                 update: {
                     // The detail closes first: the agreement sheet is the
-                    // card's, and one sheet shows at a time.
+                    // page's, and one sheet shows at a time.
                     shown = nil
                     DispatchQueue.main.async { chooseFolder() }
                 },
@@ -710,13 +769,6 @@ package struct ExternalToolsSection: View {
         refusal = ToolRefusalMessage(refused, language: l10n.language, strings: text, installing: name)
     }
 
-    /// Opens the catalog, and asks for the list again.
-    private func browse() {
-        catalogueRefusal = nil
-        browsing = true
-        watch.refresh()
-    }
-
     /// Fetches a tool from the catalog, then shows the agreement sheet for
     /// it, as for a folder. Nothing is installed here.
     private func install(_ entry: CatalogueEntry) {
@@ -726,27 +778,28 @@ package struct ExternalToolsSection: View {
             installing = nil
             switch result {
             case .success(let offer):
-                // The catalog's sheet closes first: one sheet at a time.
-                browsing = false
+                // One sheet at a time: the detail may still be closing.
                 DispatchQueue.main.async { asked = Asked(offer: offer) }
             case .failure(let refused):
-                let message = ToolRefusalMessage(catalogue: refused,
-                                                 name: entry.name.text(for: l10n.language.rawValue) ?? entry.id.rawValue,
-                                                 language: l10n.language, strings: text)
-                if browsing { catalogueRefusal = message } else { refusal = message }
+                refusal = ToolRefusalMessage(catalogue: refused,
+                                             name: entry.name.text(for: l10n.language.rawValue) ?? entry.id.rawValue,
+                                             language: l10n.language, strings: text)
             }
         }
     }
 }
 
 /// One tool's row: its icon, name, publisher and version, how it stands, a
-/// button when only the person can start it again, its switch, and the way
+/// button when only the person can start it again, one that installs a
+/// newer version from the catalog when there is one, its switch, and the way
 /// into its detail.
 private struct ExternalToolRowView: View {
     let row: ExternalToolRow
     let text: ExternalToolStrings
     let setOn: (Bool) -> Void
     let startAgain: () -> Void
+    /// Installs the newer version the catalog lists; nil when it lists none.
+    let update: (() -> Void)?
     let open: () -> Void
     @State private var hovering = false
 
@@ -793,6 +846,9 @@ private struct ExternalToolRowView: View {
                 .joined(separator: ". "))
             if row.status == .stopped(canStartAgain: true) {
                 Button(text.startAgain, action: startAgain).controlSize(.small)
+            }
+            if let update, row.updateText != nil {
+                Button(text.updateNow, action: update).controlSize(.small)
             }
             Toggle(row.name, isOn: Binding(get: { row.isOn }, set: setOn))
                 .labelsHidden()

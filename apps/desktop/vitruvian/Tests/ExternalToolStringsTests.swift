@@ -11,7 +11,7 @@ import VitruvianCore
 enum ExternalToolStringsTests {
     /// How many texts the screens for tools from outside add. A text added
     /// or taken away changes this number on purpose, with the plan's table.
-    static let count = 70
+    static let count = 78
 
     static func run(_ suite: TestSuite) {
         let english = FeatureStrings.externalTools(.enUS).all
@@ -72,9 +72,14 @@ enum ExternalToolStringsTests {
                          == "«\u{00A0}Deploys\u{00A0}» n’a pas été installé"
                          && FeatureStrings.externalTools(.ja).installRefused("Deploys") == "「Deploys」はインストールされませんでした",
                      "a tool's name is quoted the way each language quotes")
-        suite.expect(strings.sectionTitle == "Extensions & Tools"
+        suite.expect(strings.pageTitle == "Extensions" && strings.sectionTitle == "Extensions & Tools"
+                         && strings.addButton == "Add from Folder…"
                          && strings.kindExtension == "Extension" && strings.kindTool == "Tool",
-                     "the card is called Extensions & Tools, and its rows are badged Extension or Tool")
+                     "the page is called Extensions, the old card's name is still a word for it, and its rows are "
+                         + "badged Extension or Tool")
+        suite.expect(strings.summaryCount(3) == "3 extensions installed"
+                         && FeatureStrings.externalTools(.ru).summaryCount(12) == "Установлено расширений: 12",
+                     "the Features page's count is filled with how many are added")
         // Some extensions add only a Settings part or a window, so the card's
         // words name every place a page can go, not the island alone.
         suite.expect(["Dynamic Island", "Settings", "window", "commands"].allSatisfy(strings.sectionEmpty.contains),
