@@ -706,7 +706,7 @@ private final class AppRig {
         #expect(rig.calls.contains("startMonitor"))
         #expect(side.step == .appChosen)
         #expect(DoorWords.appChosen ==
-                "The extension is quiet now. To remove it: Vitruvian > Settings > Features > Tools from outside > HomeSpeaker > Remove.")
+                "The extension is quiet now. To remove it: Vitruvian > Settings > Extensions > HomeSpeaker > Remove.")
         side.openVitruvian()
         #expect(rig.calls.last == "openVitruvian")
         #expect(!rig.calls.contains("quit"))
