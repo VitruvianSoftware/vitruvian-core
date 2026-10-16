@@ -32,4 +32,4 @@ path = "src/main.rs"
 # The kit beside it, in this repository and in the published mirror. A tool
 # of your own names a released version instead: vitruvian-tool init
 # --template rust writes that.
-vitruvian-tool-kit = { version = "1.5.0", path = "../../kits/rust" }
+vitruvian-tool-kit = { version = "1.6.0", path = "../../kits/rust" }

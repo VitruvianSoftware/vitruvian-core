@@ -1,1 +1,1 @@
-vitruvian-tool-kit==1.5.0  # x-release-please-version
+vitruvian-tool-kit==1.6.0  # x-release-please-version
