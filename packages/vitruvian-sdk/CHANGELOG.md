@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.5.0...vitruvian-sdk-v1.6.0) (2026-10-16)
+
+
+### Features
+
+* **desktop:** a tool can open its own settings page ([#3405](https://github.com/VitruvianSoftware/vitruvian-core/issues/3405)) ([2c5a613](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c5a613cf6ce284f99912b38dac883e557870bfc))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.4.1...vitruvian-sdk-v1.5.0) (2026-10-16)
 
 
