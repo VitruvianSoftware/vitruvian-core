@@ -56,7 +56,7 @@ flowchart TB
 Notes:
 - **No Matrix server and no Matrix encryption between app and engine.** Nothing leaves the Mac except through each network's own encryption.
 - **Signal** links the Rust `libsignal` through cgo. Building it under Bazel for both CPU types is the hardest build task.
-- **Slack** logs in through a web sign-in page. Courier needs a small built-in browser window (WKWebView) that captures the Slack session, as Beeper does. The other four use QR codes or phone numbers.
+- **Slack and Google Messages** log in through a web sign-in page. Courier needs a small built-in browser window (WKWebView) that captures the session, as Beeper does. Google Messages then also asks you to match an emoji on your phone; Google ended its QR-code sign-in, and mautrix-gmessages v0.2609.0 no longer offers it. The other three (WhatsApp, Signal, Telegram) use QR codes or phone numbers.
 - **One process for all bridges.** A panic in one bridge is recovered and confined to that network.
 
 ## 3. Interface scope
