@@ -104,8 +104,10 @@ struct ComposerView: View {
         switch notice {
         case let .attachmentTooLarge(name):
             String(localized: "Could not attach \(name) — total size would exceed 90 MB.")
-        case let .cannotAttach(name):
+        case let .notAFile(name):
             String(localized: "Could not attach \(name). Courier can send files, not folders.")
+        case let .cannotRead(name):
+            String(localized: "Could not read \(name). It may have moved, or Courier may not be allowed to open it.")
         case .noAnswer:
             String(localized: "Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.")
         case let .sendFailed(reason):
@@ -281,6 +283,8 @@ struct ComposerTextView: NSViewRepresentable {
             case #selector(NSResponder.insertNewline(_:)),
                  #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
                  #selector(NSResponder.insertLineBreak(_:)):
+                // While a character is still being composed, Return belongs to the input method.
+                guard !textView.hasMarkedText() else { return false }
                 // The key's modifiers decide: Return sends, with Shift, Option or Control it adds a line. The
                 // system maps some of those to the other two commands itself, which are always a line.
                 let flags = NSApp.currentEvent?.modifierFlags ?? []
@@ -295,7 +299,10 @@ struct ComposerTextView: NSViewRepresentable {
                 }
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
-                return parent.onEscape()
+                // Esc clears a reply if there is one. Either way it is handled here: left to the text view, it
+                // would open the word-completion list.
+                _ = parent.onEscape()
+                return true
             default:
                 return false
             }
@@ -321,10 +328,28 @@ final class PlainTextView: NSTextView {
         ])
     }
 
+    private static func files(on pasteboard: NSPasteboard) -> [URL] {
+        (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+    }
+
+    /// Files dropped on the box are attached; left to the text view, their paths would be typed into the text.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        Self.files(on: sender.draggingPasteboard).isEmpty ? super.draggingEntered(sender) : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        Self.files(on: sender.draggingPasteboard).isEmpty ? super.draggingUpdated(sender) : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let files = Self.files(on: sender.draggingPasteboard)
+        if !files.isEmpty, onPasteFiles(files) { return true }
+        return super.performDragOperation(sender)
+    }
+
     override func paste(_ sender: Any?) {
-        let pasteboard = NSPasteboard.general
-        let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
-        if let files, !files.isEmpty, onPasteFiles(files) { return }
+        let files = Self.files(on: NSPasteboard.general)
+        if !files.isEmpty, onPasteFiles(files) { return }
         // Plain text only: formatting from the other app is left behind.
         pasteAsPlainText(sender)
     }

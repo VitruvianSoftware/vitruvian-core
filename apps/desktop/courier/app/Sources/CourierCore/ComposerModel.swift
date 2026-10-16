@@ -45,8 +45,10 @@ public struct ComposerAttachment: Equatable, Identifiable, Sendable {
 public enum ComposerNotice: Equatable, Sendable {
     /// Adding the file would take the attachments past 90 MB.
     case attachmentTooLarge(fileName: String)
-    /// The file is a folder, or could not be read.
-    case cannotAttach(fileName: String)
+    /// What was given is a folder, which cannot be sent.
+    case notAFile(fileName: String)
+    /// The file could not be read (it is gone, or Courier may not open it).
+    case cannotRead(fileName: String)
     /// The engine did not answer a send. It may have taken the message: the chat shows what it has.
     case noAnswer
     /// The engine refused a send. Nothing was sent, and what was typed is back in the composer.
@@ -71,7 +73,7 @@ public protocol MessageSending: AnyObject, Sendable {
 @MainActor
 public final class ComposerModel: ObservableObject {
     /// The total size of the files in one send: 90 MB.
-    public static let maxAttachmentBytes: Int64 = 90 * 1024 * 1024
+    public nonisolated static let maxAttachmentBytes: Int64 = 90 * 1024 * 1024
 
     /// The text of the open chat's draft. The text view writes it.
     @Published public var text = ""
@@ -93,13 +95,24 @@ public final class ComposerModel: ObservableObject {
 
         var isEmpty: Bool { text.isEmpty && attachments.isEmpty && reply == nil }
 
-        /// What was refused, back above what has been typed since.
-        func restored(into current: Draft) -> Draft {
+        /// What was refused, back above what has been typed since. The files that were refused come first; any
+        /// added since that would take the total past 90 MB are left out, and their names are returned.
+        func restored(into current: Draft) -> (draft: Draft, leftOut: [String]) {
             var merged = current
             merged.text = text.isEmpty ? current.text : (current.text.isEmpty ? text : text + "\n\n" + current.text)
-            merged.attachments = attachments + current.attachments
             merged.reply = current.reply ?? reply
-            return merged
+            var total = attachments.reduce(Int64(0)) { $0 + $1.size }
+            merged.attachments = attachments
+            var leftOut: [String] = []
+            for file in current.attachments {
+                if total + file.size <= ComposerModel.maxAttachmentBytes {
+                    merged.attachments.append(file)
+                    total += file.size
+                } else {
+                    leftOut.append(file.fileName)
+                }
+            }
+            return (merged, leftOut)
         }
     }
 
@@ -174,8 +187,12 @@ public final class ComposerModel: ObservableObject {
         for url in urls {
             let name = url.lastPathComponent
             if attachments.contains(where: { $0.url == url }) { continue }
-            guard let info = fileInfo(url), info.isRegularFile else {
-                notice = .cannotAttach(fileName: name)
+            guard let info = fileInfo(url) else {
+                notice = .cannotRead(fileName: name)
+                continue
+            }
+            guard info.isRegularFile else {
+                notice = .notAFile(fileName: name)
                 continue
             }
             let total = attachments.reduce(Int64(0)) { $0 + $1.size }
@@ -266,12 +283,13 @@ public final class ComposerModel: ObservableObject {
                 switch Self.classify(error) {
                 case .refused(let reason):
                     // Nothing of this was sent: it, and what came after, goes back.
-                    putBack(items[index...], reply: reply, in: room)
-                    show(.sendFailed(reason: reason), in: room)
+                    let leftOut = putBack(items[index...], reply: reply, in: room)
+                    // A file that no longer fits is the news: the refusal's own words come second.
+                    show(leftOut.map { .attachmentTooLarge(fileName: $0) } ?? .sendFailed(reason: reason), in: room)
                 case .unanswered:
                     // This one may have gone: it is not put back, and not sent again. The rest was never tried.
-                    putBack(items[(index + 1)...], reply: nil, in: room)
-                    show(.noAnswer, in: room)
+                    let leftOut = putBack(items[(index + 1)...], reply: nil, in: room)
+                    show(leftOut.map { .attachmentTooLarge(fileName: $0) } ?? .noAnswer, in: room)
                 }
                 onSettled()
                 return
@@ -280,7 +298,9 @@ public final class ComposerModel: ObservableObject {
         onSettled()
     }
 
-    private func putBack(_ items: ArraySlice<Outgoing>, reply: QuotedMessage?, in room: String) {
+    /// Puts what was not sent back into the chat's draft. Returns the name of the first file left out because the
+    /// total would pass 90 MB, if any.
+    private func putBack(_ items: ArraySlice<Outgoing>, reply: QuotedMessage?, in room: String) -> String? {
         var unsent = Draft(text: "", attachments: [], reply: reply)
         for item in items {
             switch item {
@@ -288,15 +308,17 @@ public final class ComposerModel: ObservableObject {
             case let .file(file): unsent.attachments.append(file)
             }
         }
-        guard !unsent.isEmpty else { return }
+        guard !unsent.isEmpty else { return nil }
         if room == roomID {
             let merged = unsent.restored(into: currentDraft)
-            text = merged.text
-            attachments = merged.attachments
-            replyTarget = merged.reply
-        } else {
-            drafts[room] = unsent.restored(into: drafts[room] ?? Draft())
+            text = merged.draft.text
+            attachments = merged.draft.attachments
+            replyTarget = merged.draft.reply
+            return merged.leftOut.first
         }
+        let merged = unsent.restored(into: drafts[room] ?? Draft())
+        drafts[room] = merged.draft
+        return merged.leftOut.first
     }
 
     private func show(_ notice: ComposerNotice, in room: String) {
@@ -313,13 +335,8 @@ public final class ComposerModel: ObservableObject {
         switch error as? EngineError {
         case .timedOut, .disconnected, .badResponse:
             return .unanswered
-        case let .rpc(code, message, _):
-            if code == .tooLarge { return .refused(String(localized: "A file is over 90 MB.")) }
-            return .refused(message)
-        case .notConnected:
-            return .refused(String(localized: "Courier’s engine is not connected."))
         default:
-            return .refused(String(localized: "The message could not be sent."))
+            return .refused(EngineErrorText.text(for: error, fallback: String(localized: "The message could not be sent.")))
         }
     }
 }

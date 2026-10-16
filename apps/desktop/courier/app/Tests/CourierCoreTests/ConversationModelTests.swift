@@ -225,6 +225,52 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testAResyncDropsOlderPagesEvenWhenAnotherReadLandsFirst() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 100 }
+
+        // The resync's own read is held; another read (a send settling, "Try again"), started after it, answers
+        // first. (The engine's changes wait behind the resync, so this is how one gets ahead.)
+        let reads = h.count("room.events")
+        h.script.hold("!a")
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { h.count("room.events") == reads + 1 }
+        h.script.add("!a", textEvent(id: "$121", room: "!a", at: 121))
+        h.conversation.reload()
+        try await waitUntil { h.messageIDs().last == "$121" }
+        XCTAssertEqual(h.messageIDs().count, 50, "the older pages are gone, whichever answer came first")
+        XCTAssertTrue(h.conversation.hasOlder)
+
+        // The held answer, late, changes nothing.
+        h.server.releaseHeld(method: "room.events", room: "!a",
+                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull()])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.messageIDs().count, 50)
+        await stop(h)
+    }
+
+    func testAFailedOlderPageIsOfferedAgainAndCanBeLoaded() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+
+        h.script.failOlder = true
+        h.conversation.loadOlder()
+        try await waitUntil { h.conversation.olderFailed }
+        XCTAssertFalse(h.conversation.isLoadingOlder)
+        XCTAssertTrue(h.conversation.hasOlder)
+        XCTAssertEqual(h.messageIDs().count, 50)
+
+        h.script.failOlder = false
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 100 }
+        XCTAssertFalse(h.conversation.olderFailed)
+        await stop(h)
+    }
+
     // MARK: - Answers that are not today's
 
     func testAnAnswerForAChatThatIsNoLongerOpenIsDropped() async throws {
@@ -428,11 +474,18 @@ final class ConversationScript: @unchecked Sendable {
     private let lock = NSLock()
     private var events: [String: [[String: Any]]]
     private var held: Set<String> = []
+    private var _failOlder = false
 
     init(events: [String: [[String: Any]]]) { self.events = events }
 
     /// Minute n of an October afternoon, in milliseconds.
     static func timestamp(_ n: Int64) -> Int64 { 1_760_600_000_000 + n * 60_000 }
+
+    /// room.events with a cursor fails while set.
+    var failOlder: Bool {
+        get { lock.withLock { _failOlder } }
+        set { lock.withLock { _failOlder = newValue } }
+    }
 
     func add(_ room: String, _ event: [String: Any]) { lock.withLock { events[room, default: []].append(event) } }
 
@@ -467,6 +520,7 @@ final class ConversationScript: @unchecked Sendable {
         case "room.events":
             guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
             if lock.withLock({ held.remove(room) != nil }) { return .later }
+            if params?["before"] != nil, failOlder { return .error(code: -32603, message: "internal error") }
             let limit = params?["limit"] as? Int ?? 50
             var all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) > Self.key($1) }
             if let before = params?["before"] as? [String: Any],

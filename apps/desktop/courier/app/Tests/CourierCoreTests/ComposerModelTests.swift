@@ -114,9 +114,9 @@ final class ComposerModelTests: XCTestCase {
         let (composer, _) = make(sizes: ["note.txt": 10])
         composer.open("!a")
         composer.attach([file("folder")])
-        XCTAssertEqual(composer.notice, .cannotAttach(fileName: "folder"))
+        XCTAssertEqual(composer.notice, .notAFile(fileName: "folder"))
         composer.attach([file("missing.txt")])
-        XCTAssertEqual(composer.notice, .cannotAttach(fileName: "missing.txt"))
+        XCTAssertEqual(composer.notice, .cannotRead(fileName: "missing.txt"), "a file it cannot read is not a folder")
         XCTAssertTrue(composer.attachments.isEmpty)
 
         composer.attach([file("note.txt"), file("note.txt")])
@@ -279,7 +279,8 @@ final class ComposerModelTests: XCTestCase {
 
         XCTAssertEqual(composer.text, "Hello", "the engine refused it, so it was not sent")
         XCTAssertEqual(composer.replyTarget?.eventID, "$1")
-        XCTAssertEqual(composer.notice, .sendFailed(reason: "that network isn't linked"))
+        XCTAssertEqual(composer.notice, .sendFailed(reason: "This chat’s network isn’t linked."),
+                       "the engine's own English is not shown")
 
         // Typing something new meanwhile is not overwritten.
         sender.failures = [.rpc(.notLinked, message: "no", reason: nil)]
@@ -288,6 +289,32 @@ final class ComposerModelTests: XCTestCase {
         composer.text = "second"
         await task?.value
         XCTAssertEqual(composer.text, "first\n\nsecond", "the refused text goes back above what was typed since")
+    }
+
+    func testARefusalWithACodeTheAppDoesNotKnowGivesGeneralWords() async {
+        let (composer, sender) = make()
+        sender.failures = [.rpc(.other(-32099), message: "something only the engine understands", reason: nil)]
+        composer.open("!a")
+        composer.text = "Hello"
+        await composer.submit()?.value
+        XCTAssertEqual(composer.notice, .sendFailed(reason: "The message could not be sent."))
+
+        sender.failures = [.rpc(.tooLarge, message: "the file is too large to send (the limit is 90 MB)", reason: nil)]
+        await composer.submit()?.value
+        XCTAssertEqual(composer.notice, .sendFailed(reason: "A file is over 90 MB."))
+    }
+
+    func testFilesPutBackAfterARefusalNeverTakeTheTotalPast90MB() async {
+        let (composer, sender) = make(sizes: ["a.bin": 60 * Self.megabyte, "b.bin": 50 * Self.megabyte])
+        sender.failures = [.rpc(.notLinked, message: "x", reason: nil)]
+        composer.open("!a")
+        composer.attach([file("a.bin")])
+        let task = composer.submit()
+        composer.attach([file("b.bin")]) // typed in while the send was out: 60 + 50 would be too much
+        await task?.value
+        XCTAssertEqual(composer.attachments.map(\.fileName), ["a.bin"], "what was refused comes back; what no longer fits does not")
+        XCTAssertEqual(composer.notice, .attachmentTooLarge(fileName: "b.bin"))
+        XCTAssertLessThanOrEqual(composer.attachments.reduce(Int64(0)) { $0 + $1.size }, ComposerModel.maxAttachmentBytes)
     }
 
     func testARefusalIsPutBackIntoThatChatsDraftEvenIfAnotherIsOpen() async {

@@ -5,7 +5,7 @@ import CourierCore
 import SwiftUI
 
 /// The Message menu: the keys that work in an open chat, even while typing (⌘↓ jumps to the newest message
-/// from the box too, as it does in Beeper).
+/// from the box too).
 struct ConversationCommands: Commands {
     @ObservedObject var conversation: ConversationModel
 

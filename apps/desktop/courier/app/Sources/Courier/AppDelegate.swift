@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Copies made to open received files last until the next launch.
+        OpenFileCache.shared.clear()
         model.start()
     }
 

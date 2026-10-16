@@ -15,6 +15,7 @@ struct ConversationView: View {
     @State private var isDropTargeted = false
     /// The message that was first when older ones were asked for: the view returns to it once they are in.
     @State private var restoreAnchor: String?
+    @State private var topInView = false
     @State private var composerTextHeight: CGFloat = ComposerTextView.minimumHeight
     /// Leaving the bottom is told a moment late: new content below pushes the end out of sight for an instant
     /// before the view scrolls to it, and that is not the person scrolling up.
@@ -58,14 +59,21 @@ struct ConversationView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     if conversation.hasOlder {
-                        // Reaching the top asks for the next page.
-                        ProgressView()
-                            .controlSize(.small)
-                            .padding(10)
-                            .onAppear {
-                                restoreAnchor = firstMessageID
-                                conversation.loadOlder()
-                            }
+                        if conversation.olderFailed {
+                            Button(String(localized: "Load older messages"), action: requestOlder)
+                                .padding(10)
+                        } else {
+                            // Reaching the top asks for the next page; and when a page is in and this is still
+                            // in view (it was a short one), the next.
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(10)
+                                .onAppear {
+                                    topInView = true
+                                    requestOlder()
+                                }
+                                .onDisappear { topInView = false }
+                        }
                     }
                     ForEach(conversation.items) { item in
                         TimelineItemView(item: item, isSelected: conversation.selectedMessageID == item.id,
@@ -92,6 +100,9 @@ struct ConversationView: View {
             }
             .defaultScrollAnchor(.bottom)
             .overlay(alignment: .bottomTrailing) { jumpButton }
+            .onChange(of: conversation.isLoadingOlder) { _, loading in
+                if !loading, topInView, !conversation.olderFailed { requestOlder() }
+            }
             .onChange(of: conversation.jumpToBottomRequest) { _, _ in
                 scrollToBottom(proxy, animated: true)
             }
@@ -116,6 +127,12 @@ struct ConversationView: View {
     private var bottomBarSignature: [String] {
         [composer.replyTarget?.eventID ?? "", String(composer.attachments.count), composer.notice == nil ? "" : "notice",
          conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight)]
+    }
+
+    private func requestOlder() {
+        guard conversation.hasOlder, !conversation.isLoadingOlder else { return }
+        restoreAnchor = firstMessageID
+        conversation.loadOlder()
     }
 
     private static let bottomID = "conversation-bottom"

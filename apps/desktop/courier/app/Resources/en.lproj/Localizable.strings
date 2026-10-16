@@ -308,3 +308,27 @@
 
 /* Menu item: scroll the chat to its newest message. */
 "Jump to Newest Message" = "Jump to Newest Message";
+
+/* Under the composer when a file could not be read. The argument is its name. */
+"Could not read %@. It may have moved, or Courier may not be allowed to open it." = "Could not read %@. It may have moved, or Courier may not be allowed to open it.";
+
+/* Button at the top of a chat when older messages could not be read: try again. */
+"Load older messages" = "Load older messages";
+
+/* A send or reaction was refused: the chat's network has no account. */
+"This chat’s network isn’t linked." = "This chat’s network isn’t linked.";
+
+/* A send was refused: the text starts with the network's bridge command prefix. */
+"The network would take this as a command, so it was not sent." = "The network would take this as a command, so it was not sent.";
+
+/* A send or reaction was refused: the network did not start. */
+"This chat’s network isn’t running." = "This chat’s network isn’t running.";
+
+/* A send was refused: the network is not connected yet. */
+"The network isn’t connected yet." = "The network isn’t connected yet.";
+
+/* Retry or Delete was refused: the message had not failed. */
+"Only a message that was not sent can be sent again or deleted." = "Only a message that was not sent can be sent again or deleted.";
+
+/* An action was refused: the chat or message is gone. */
+"That chat or message is no longer there." = "That chat or message is no longer there.";

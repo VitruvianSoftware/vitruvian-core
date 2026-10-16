@@ -33,6 +33,8 @@ public final class ConversationModel: ObservableObject {
     /// There are older messages than the ones loaded.
     @Published public private(set) var hasOlder = false
     @Published public private(set) var isLoadingOlder = false
+    /// The last read of an older page failed: the view offers a button instead of trying again by itself.
+    @Published public private(set) var olderFailed = false
     @Published public private(set) var problem: ConversationProblem?
     /// Messages from others that came while the chat was scrolled up: the jump-to-bottom button's count.
     @Published public private(set) var newMessageCount = 0
@@ -67,6 +69,9 @@ public final class ConversationModel: ObservableObject {
     private var appliedSerial = 0
     private var refetching = false
     private var refetchAgain = false
+    /// A resync (or a new engine) asked for the older pages to be dropped, and no answer has done it yet. Whichever
+    /// answer lands first does it, so a refetch that overtakes the resync's own read cannot keep them.
+    private var dropPending = false
 
     // Reading.
     private var windowIsKey = false
@@ -75,7 +80,7 @@ public final class ConversationModel: ObservableObject {
     /// - Parameter unreadCount: a chat's unread count as the inbox has it, read when the chat is opened (the
     ///   "New" divider goes above that many of the newest messages from others).
     public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
-                calendar: Calendar = .current) {
+                calendar: Calendar = .autoupdatingCurrent) {
         self.appModel = appModel
         self.unreadCount = unreadCount
         self.calendar = calendar
@@ -102,6 +107,7 @@ public final class ConversationModel: ObservableObject {
         unreadAtOpen = room.map { unreadCount($0) } ?? 0
         refetching = false
         refetchAgain = false
+        dropPending = false
         needsRead = room != nil
 
         roomID = room
@@ -110,6 +116,7 @@ public final class ConversationModel: ObservableObject {
         isLoaded = false
         hasOlder = false
         isLoadingOlder = false
+        olderFailed = false
         problem = nil
         newMessageCount = 0
         isAtBottom = true
@@ -124,7 +131,8 @@ public final class ConversationModel: ObservableObject {
     /// The engine was greeted, or said `resync`: read the newest page, and forget the older ones.
     private func reload(from client: EngineClient) async {
         guard roomID != nil, client === appModel.client else { return }
-        await fetchNewest(dropOlder: true)
+        dropPending = true
+        await fetchNewest()
     }
 
     /// "Try again" on the bar: read the newest page again.
@@ -161,14 +169,14 @@ public final class ConversationModel: ObservableObject {
         var again = true
         while again {
             refetchAgain = false
-            await fetchNewest(dropOlder: false)
+            await fetchNewest()
             guard owner == generation else { return } // another chat is open: it owns the flags now
             again = refetchAgain
         }
         refetching = false
     }
 
-    private func fetchNewest(dropOlder: Bool) async {
+    private func fetchNewest() async {
         guard let room = roomID, let client = appModel.client else { return }
         let owner = generation
         fetchSerial += 1
@@ -185,7 +193,9 @@ public final class ConversationModel: ObservableObject {
         // already shown.
         guard owner == generation, client === appModel.client, serial > appliedSerial else { return }
         appliedSerial = serial
-        apply(page, dropOlder: dropOlder)
+        let drop = dropPending
+        dropPending = false
+        apply(page, dropOlder: drop)
     }
 
     private func apply(_ page: EventsPage, dropOlder: Bool) {
@@ -261,6 +271,7 @@ public final class ConversationModel: ObservableObject {
     public func loadOlder() {
         guard let room = roomID, let cursor = olderCursor, !isLoadingOlder, let client = appModel.client else { return }
         isLoadingOlder = true
+        olderFailed = false
         let owner = generation
         let epoch = pageEpoch
         Task { [weak self] in
@@ -274,7 +285,11 @@ public final class ConversationModel: ObservableObject {
             guard let self, owner == self.generation else { return }
             self.isLoadingOlder = false
             // The pages may have been dropped (a resync) while this was out: then it joins nothing.
-            guard client === self.appModel.client, epoch == self.pageEpoch, let page else { return }
+            guard client === self.appModel.client, epoch == self.pageEpoch else { return }
+            guard let page else {
+                self.olderFailed = true
+                return
+            }
             for event in page.events {
                 self.events[event.eventID] = event
                 self.seenIDs.insert(event.eventID)
@@ -367,10 +382,6 @@ public final class ConversationModel: ObservableObject {
     }
 
     static func describe(_ error: Error) -> String {
-        switch error as? EngineError {
-        case let .rpc(_, message, _): message
-        case .timedOut: String(localized: "Courier’s engine did not answer in time.")
-        default: String(localized: "Courier’s engine could not do that.")
-        }
+        EngineErrorText.text(for: error, fallback: String(localized: "Courier’s engine could not do that."))
     }
 }

@@ -4,11 +4,40 @@
 import AppKit
 import CourierCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// How big a file is, for people.
 enum FileSize {
     static func text(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+/// Opens a received file in the app meant for it. The engine's copy has no name or extension, so a copy under its
+/// real name is made first (see OpenFileCache) and that is opened.
+enum ReceivedFile {
+    @MainActor
+    static func open(_ message: TimelineMessage) {
+        guard !message.mediaPath.isEmpty else { return }
+        let source = URL(fileURLWithPath: message.mediaPath)
+        let name = message.fileName
+        let mime = message.mimeType
+        Task.detached(priority: .userInitiated) {
+            do {
+                let copy = try OpenFileCache.shared.prepare(source: source, fileName: name, mimeType: mime)
+                await MainActor.run { _ = NSWorkspace.shared.open(copy) }
+            } catch {
+                await MainActor.run { NSSound.beep() }
+            }
+        }
+    }
+
+    /// The icon of the kind of file this is, from its mime type or the extension of its name.
+    static func icon(for message: TimelineMessage) -> NSImage {
+        let type = UTType(mimeType: message.mimeType)
+            ?? UTType(filenameExtension: (message.fileName as NSString).pathExtension)
+            ?? .data
+        return NSWorkspace.shared.icon(for: type)
     }
 }
 
@@ -59,7 +88,7 @@ struct FileAttachmentChip: View {
 
     var body: some View {
         Button {
-            if let url { NSWorkspace.shared.open(url) }
+            ReceivedFile.open(message)
         } label: {
             HStack(spacing: 10) {
                 icon
@@ -88,8 +117,8 @@ struct FileAttachmentChip: View {
 
     @ViewBuilder
     private var icon: some View {
-        if let url {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+        if url != nil {
+            Image(nsImage: ReceivedFile.icon(for: message))
                 .resizable()
         } else {
             Image(systemName: symbol)
@@ -163,8 +192,7 @@ struct InlineImage: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture {
-            guard !message.mediaPath.isEmpty else { return }
-            NSWorkspace.shared.open(URL(fileURLWithPath: message.mediaPath))
+            ReceivedFile.open(message)
         }
         .task(id: message.mediaPath) {
             image = nil

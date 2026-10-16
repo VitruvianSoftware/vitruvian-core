@@ -96,6 +96,9 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// The file on disk, when the engine has it; empty when not.
     public let mediaPath: String
     public let statusLine: StatusLine?
+    /// The engine counts this kind of event as unread when it is from someone else: a message or a sticker, not
+    /// a message that could not be decrypted (or one that has since been deleted and was something else).
+    public let countsAsUnread: Bool
     public internal(set) var reply: ReplyPreview?
     public internal(set) var reactions: [ReactionChip]
     /// The first message of a run from one sender: it shows the name and the picture, and the others do not.
@@ -149,7 +152,7 @@ public enum Timeline {
     /// The items to show, oldest first. `events` can be in any order, and can hold events a message needs from
     /// more than one page. `firstUnreadID` is the message the "New" divider goes above.
     public static func build(events: [Event], me: String, firstUnreadID: String? = nil,
-                             calendar: Calendar = .current) -> [TimelineItem] {
+                             calendar: Calendar = .autoupdatingCurrent) -> [TimelineItem] {
         var items: [TimelineItem] = []
         var previous: TimelineMessage?
         var previousDay: Date?
@@ -173,11 +176,11 @@ public enum Timeline {
         return items
     }
 
-    /// The oldest of the `unread` newest messages from others: where the "New" divider goes when a chat is opened
-    /// with that many unread. More unread than are loaded puts it above everything loaded. Nil with none unread.
+    /// The oldest of the `unread` newest messages from others (the engine counts messages and stickers only): where
+    /// the "New" divider goes when a chat is opened with that many unread. More unread than are loaded puts it above everything loaded. Nil with none unread.
     public static func firstUnreadID(events: [Event], me: String, unread: Int) -> String? {
         guard unread > 0 else { return nil }
-        let incoming = messages(events: events, me: me).filter { !$0.mine }
+        let incoming = messages(events: events, me: me).filter { !$0.mine && $0.countsAsUnread }
         guard !incoming.isEmpty else { return nil }
         return incoming[max(0, incoming.count - unread)].id
     }
@@ -245,7 +248,8 @@ public enum Timeline {
                 fileName: isDeleted ? "" : shown.fileName, mimeType: isDeleted ? "" : shown.mimeType,
                 byteSize: isDeleted ? nil : shown.byteSize, width: isDeleted ? nil : shown.width,
                 height: isDeleted ? nil : shown.height, mediaPath: isDeleted ? "" : base.mediaPath,
-                statusLine: statusLine(of: base, me: me), reply: nil, reactions: chips, startsGroup: false))
+                statusLine: statusLine(of: base, me: me),
+                countsAsUnread: base.type == "m.room.message" || base.type == "m.sticker", reply: nil, reactions: chips, startsGroup: false))
         }
 
         // Replies are resolved last, so a quote shows the text the quoted message has now.

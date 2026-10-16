@@ -287,6 +287,18 @@ final class TimelineTests: XCTestCase {
                        "more unread than loaded: everything loaded is new")
     }
 
+    func testOnlyMessagesAndStickersCountAsUnread() {
+        let locked = Event(eventID: "$e", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
+                           type: "m.room.encrypted", content: json("{}"), ts: at(14, 10, 3), seq: 0, status: .sent)
+        let sticker = Event(eventID: "$s", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
+                            type: "m.sticker", content: json(#"{"body":"wave"}"#), ts: at(14, 10, 4), seq: 0, status: .sent)
+        let events = [message("$1", ts: at(14, 10, 0)), message("$2", ts: at(14, 10, 1)), locked, sticker]
+        // Two unread: the sticker and $2. The message that could not be decrypted is not one of them, as the
+        // engine's count does not have it.
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 2), "$2")
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 3), "$1")
+    }
+
     // MARK: - Kinds, media and status
 
     func testKindsAndMedia() {
