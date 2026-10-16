@@ -15,7 +15,10 @@ package protocol PanelOrderItem: RawRepresentable, Hashable where RawValue == St
 /// renaming a case would orphan a user's stored layout — keep them stable.
 package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
     case keepAwake, brightness, mixer, system, network, disk, power, fanControl, utilities, controls,
-         toggles, wallpaper
+         toggles, wallpaper,
+         // Each extension's island page (added 2026-10-15). It has no hub
+         // feature, so it is always available; see `shownByDefault`.
+         extensions
 
     package var id: String { rawValue }
 
@@ -34,6 +37,7 @@ package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
         case .controls: return s.quickControlsSection
         case .toggles: return FeatureStrings.quickToggles(L10n.shared.language).pageTitle
         case .wallpaper: return FeatureStrings.wallpaper(L10n.shared.language).pageTitle
+        case .extensions: return FeatureStrings.menuPanelExtensions(L10n.shared.language).title
         }
     }
 
@@ -51,6 +55,7 @@ package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
         case .controls: return "switch.2"
         case .toggles: return "togglepower"
         case .wallpaper: return "photo.on.rectangle"
+        case .extensions: return ExternalToolManifest.defaultSymbol
         }
     }
 
@@ -71,11 +76,21 @@ package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
         case .controls: return DefaultsKey.panelShowControls
         case .toggles: return DefaultsKey.panelShowToggles
         case .wallpaper: return DefaultsKey.panelShowWallpaper
+        case .extensions: return DefaultsKey.panelShowExtensions
         }
     }
 
     /// Installed sections show by default and remain individually hideable.
-    package var shownByDefault: Bool { true }
+    /// Extensions shows by default only while an extension has an island
+    /// page to put in it, so a Mac with none gets no empty tab.
+    @MainActor package var shownByDefault: Bool {
+        self != .extensions || shownByDefault(anyIslandPanel: ExternalToolStore.shared.hasIslandPanels)
+    }
+
+    /// `shownByDefault`, given whether any extension has an island page.
+    package func shownByDefault(anyIslandPanel: Bool) -> Bool {
+        self == .extensions ? MenuPanelExtensionsSupport.shownByDefault(anyIslandPanel: anyIslandPanel) : true
+    }
 
     /// Hub features that keep this section alive: with all of them off, the
     /// section leaves the panel, the section navigation and the layout
@@ -102,10 +117,13 @@ package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
                                 .middleClick, .textSnippets, .superKey, .radialMenu, .mouseClickDebounce, .notch]
         case .toggles: return [.quickToggles, .micMute]
         case .wallpaper: return [.wallpaper]
+        // No hub feature keeps it: an extension is added in Settings, not
+        // installed from the hub.
+        case .extensions: return []
         }
     }
 
-    package var isAvailable: Bool { featureGate.contains(where: \.isAvailable) }
+    package var isAvailable: Bool { self == .extensions || featureGate.contains(where: \.isAvailable) }
 }
 
 /// Persisted panel layout: the order the sections appear in and which ones are
@@ -118,7 +136,10 @@ package enum PanelLayout {
 
     /// The sections in display order: the user's saved order first, then any not
     /// yet listed, in their canonical order.
-    package static var order: [PanelSectionID] {
+    package static var order: [PanelSectionID] { order(in: defaults) }
+
+    /// `order`, from the given preferences.
+    package static func order(in defaults: UserDefaults) -> [PanelSectionID] {
         let saved = (defaults.string(forKey: DefaultsKey.panelSectionOrder) ?? "")
             .split(separator: ",")
             .compactMap { PanelSectionID(rawValue: String($0)) }
@@ -169,8 +190,16 @@ package enum PanelLayout {
         defaults.set(ids.joined(separator: ","), forKey: key)
     }
 
-    package static func isShown(_ id: PanelSectionID) -> Bool {
-        defaults.object(forKey: id.visibilityKey) as? Bool ?? id.shownByDefault
+    @MainActor package static func isShown(_ id: PanelSectionID) -> Bool {
+        isShown(id, in: defaults, shownByDefault: id.shownByDefault)
+    }
+
+    /// `isShown`, from the given preferences, with the section's default
+    /// given: the person's choice when they made one, else the default,
+    /// worked out only then.
+    package static func isShown(_ id: PanelSectionID, in defaults: UserDefaults,
+                                shownByDefault: @autoclosure () -> Bool) -> Bool {
+        defaults.object(forKey: id.visibilityKey) as? Bool ?? shownByDefault()
     }
 
     package static func setShown(_ shown: Bool, for id: PanelSectionID) {
@@ -181,13 +210,18 @@ package enum PanelLayout {
     /// shown, and for brightness also switched on, since that tab is enabled
     /// from Settings rather than from an empty panel screen. The one rule the
     /// live panel and its preview in Settings both read.
-    package static func isVisibleInPanel(_ id: PanelSectionID) -> Bool {
+    @MainActor package static func isVisibleInPanel(_ id: PanelSectionID) -> Bool {
         guard id.isAvailable, isShown(id) else { return false }
         return id != .brightness || defaults[Preferences.brightnessControlEnabled]
     }
 
     package static func isCollapsed(_ id: PanelSectionID) -> Bool {
-        collapsedSet().contains(id.rawValue)
+        isCollapsed(id, in: defaults)
+    }
+
+    /// `isCollapsed`, from the given preferences.
+    package static func isCollapsed(_ id: PanelSectionID, in defaults: UserDefaults) -> Bool {
+        collapsedSet(in: defaults).contains(id.rawValue)
     }
 
     package static func setCollapsed(_ collapsed: Bool, for id: PanelSectionID) {
@@ -202,7 +236,7 @@ package enum PanelLayout {
         defaults.set(version, forKey: DefaultsKey.panelCollapsedResetVersion)
     }
 
-    private static func collapsedSet() -> Set<String> {
+    private static func collapsedSet(in defaults: UserDefaults = .standard) -> Set<String> {
         Set((defaults.string(forKey: DefaultsKey.panelCollapsedSections) ?? "")
             .split(separator: ",").map(String.init))
     }

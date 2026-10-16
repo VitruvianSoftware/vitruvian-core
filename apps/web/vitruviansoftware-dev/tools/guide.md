@@ -1790,9 +1790,8 @@ output and dependencies you do not ship out of it.
 
 ## Adding it to the app
 
-1. Open Vitruvian's Settings, then Features, and scroll to **Tools from
-   outside**.
-2. Click **Add a Tool…** and choose the tool's folder.
+1. Open Vitruvian's Settings, then **Extensions**.
+2. Click **Add from Folder…**, at the top right, and choose the tool's folder.
 3. Read the sheet. It names the tool, its publisher and its commands, and
    says that the tool can do anything Vitruvian can. Click **Add Tool**.
 

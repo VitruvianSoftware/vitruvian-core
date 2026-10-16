@@ -16,6 +16,9 @@ package struct MenuPanelView: View {
     @ObservedObject private var updates = UpdateService.shared
     @ObservedObject private var panelFocus = MenuPanelFocus.shared
     @ObservedObject private var features = FeatureRuntime.shared
+    /// The Extensions tab shows by default once an extension has an island
+    /// page; the store bumps the registry when one is added or goes.
+    @ObservedObject private var tools = ToolRegistry.shared
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(Preferences.monitorShowMixer) private var showMixer: Bool
     @AppStorage(Preferences.monitorShowSystem) private var showSystem: Bool
@@ -30,6 +33,9 @@ package struct MenuPanelView: View {
     @AppStorage(Preferences.panelShowControls) private var showControls: Bool
     @AppStorage(Preferences.panelShowToggles) private var showToggles: Bool
     @AppStorage(Preferences.panelShowWallpaper) private var showWallpaper: Bool
+    /// Unregistered: absent means the tab follows whether an extension has
+    /// an island page (`PanelSectionID.shownByDefault`).
+    @AppStorage(DefaultsKey.panelShowExtensions) private var showExtensions: Bool?
     @AppStorage(DefaultsKey.panelSectionOrder) private var sectionOrderRaw = ""
     @State private var navigableContentHeight: CGFloat = 0
     @State private var metricContentHeight: CGFloat = 0
@@ -290,6 +296,7 @@ package struct MenuPanelView: View {
         case .controls: return 360
         case .toggles: return 420
         case .wallpaper: return 480
+        case .extensions: return 300
         }
     }
 
@@ -333,6 +340,13 @@ package struct MenuPanelView: View {
         case .controls: QuickControlsSection(collapsible: collapsible)
         case .toggles: QuickTogglesSection(collapsible: collapsible)
         case .wallpaper: if showWallpaper { WallpaperSection(collapsible: collapsible) }
+        case .extensions:
+            // Each extension's page stays open while its card is up, and the
+            // popover keeps its host after closing: detach the tab then, so
+            // every page closes and its tool is told.
+            if notchSize != nil || panelFocus.popoverIsVisible {
+                ExtensionsSection(collapsible: collapsible)
+            }
         }
     }
 
@@ -350,7 +364,8 @@ package struct MenuPanelView: View {
     /// what keeps the tabs refreshing when Settings flips one of them.
     private func isSectionVisible(_ id: PanelSectionID) -> Bool {
         _ = (showKeepAwake, showBrightness, brightnessEnabled, showMixer, showSystem, showNetwork,
-             showDisk, showPower, showFanControl, showUtilities, showControls, showToggles, showWallpaper)
+             showDisk, showPower, showFanControl, showUtilities, showControls, showToggles, showWallpaper,
+             showExtensions, tools.revision)
         return PanelLayout.isVisibleInPanel(id)
     }
 

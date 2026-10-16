@@ -289,6 +289,26 @@ package final class ExternalToolStore {
         installed[id] != nil
     }
 
+    /// How many times each tool was handed to the host in this run of the
+    /// app: switched on, updated or added again, each is a new count. A view
+    /// that keeps what it showed for a tool knows by it that the tool is
+    /// another now.
+    package private(set) var activations: [ToolID: Int] = [:]
+
+    /// Whether any tool that is switched on and is what the person agreed
+    /// to has an island page: `availableIslandPanels()` is not empty. Worked
+    /// out once for each change of the registry, which the store bumps
+    /// whenever a tool is added, removed, switched or held back.
+    package var hasIslandPanels: Bool {
+        let revision = parts.registry().revision
+        if let known = islandPanelsKnown, known.revision == revision { return known.any }
+        let any = !availableIslandPanels().isEmpty
+        islandPanelsKnown = (revision, any)
+        return any
+    }
+
+    private var islandPanelsKnown: (revision: Int, any: Bool)?
+
     /// The live tool with this id, for its log and how it stands.
     package func tool(_ id: ToolID) -> ExternalTool? {
         tools[id]
@@ -788,6 +808,7 @@ package final class ExternalToolStore {
         }
         installed[id] = entry
         tools[id] = hosted
+        activations[id, default: 0] += 1
         parts.host().sync(id)
         return true
     }

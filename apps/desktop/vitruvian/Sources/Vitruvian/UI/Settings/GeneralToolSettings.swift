@@ -26,6 +26,9 @@ package struct GeneralToolSettings: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         PanelLayoutEditor()
+                        // Which extensions the Extensions tab shows, with a
+                        // divider of its own: nothing at all without one.
+                        MenuPanelExtensionsSettings()
                         Divider()
                         MenuBarIconSymbolRow()
                         Divider()

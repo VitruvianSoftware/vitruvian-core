@@ -205,6 +205,12 @@ package final class ToolPanelHost: ObservableObject {
     @Published package private(set) var windows: [Key] = []
     /// The island page that is open, when one is.
     @Published package private(set) var island: Key?
+    /// The island pages the menu bar panel shows too, each with the views
+    /// that show it, one token for each: the popover's card and the card in
+    /// the copy of the panel inside the island can both be up, and an
+    /// extension's new card can appear before its old one goes. A page here
+    /// stays open while the island lets go of it, and the other way round.
+    package private(set) var inMenuPanel: [Key: Set<UUID>] = [:]
     /// Each tool's status, the last it set, as shown: a change is published
     /// at most once a second for each tool. A tool with none is not here.
     /// Whether a tool's is drawn is the store's to say (`statusTools`).
@@ -259,8 +265,23 @@ package final class ToolPanelHost: ObservableObject {
     package func open(_ key: Key, in place: ToolPanelPlacement) -> Refusal? {
         guard let panel = parts.described(key.tool)?.panel(key.panel) else { return .unknownPanel(key.panel) }
         guard panel.placement == place else { return .wrongPlace(key.panel) }
-        guard shown[key] == nil else { return nil }
+        guard shown[key] == nil else {
+            // Open already, for the menu bar panel: the island shows the
+            // same page, and the tool is asked nothing.
+            if place == .island { island = key }
+            return nil
+        }
         guard let tool = parts.tool(key.tool) else { return .notOpen(key.panel) }
+        begin(key, panel)
+        if place == .window, !windows.contains(key) { windows.append(key) }
+        if place == .island { island = key }
+        tool.open(panel: key.panel) { [weak self] answer in self?.opened(key, answer) }
+        return nil
+    }
+
+    /// What every opening shows first: a web panel's page, or a wait for
+    /// the tool's first page.
+    private func begin(_ key: Key, _ panel: ToolPanelDescriptor) {
         if let entry = panel.entry {
             if let folder = parts.folder(key.tool), let page = ToolWebPolicy.entry(entry, in: folder) {
                 shown[key] = .web(page: page, folder: folder)
@@ -272,18 +293,74 @@ package final class ToolPanelHost: ObservableObject {
             shown[key] = .waiting
         }
         drawing[key] = Drawing()
-        if place == .window, !windows.contains(key) { windows.append(key) }
-        if place == .island { island = key }
+    }
+
+    /// Closes an open panel and tells its tool. Its page goes, and any page
+    /// still waiting to be drawn with it. An island page the menu bar panel
+    /// shows too stays open for it: only the island lets go.
+    package func close(_ key: Key) {
+        guard shown[key] != nil else { return }
+        guard inMenuPanel[key] == nil else {
+            if island == key { island = nil }
+            return
+        }
+        forgetPanel(key)
+        parts.tool(key.tool)?.close(panel: key.panel)
+    }
+
+    // MARK: - The menu bar panel
+
+    /// Shows a tool's island page in the menu bar panel's Extensions tab
+    /// too. Whichever place shows it, there is one page and one session:
+    /// a page the island has open is shown as it is, and the tool is asked
+    /// nothing; one that is not is asked for as the island asks, without
+    /// becoming the island's page. Each view that shows it opens it with a
+    /// token of its own, and lets go of that token alone
+    /// (`closeInMenuPanel`), so the order views come and go in does not
+    /// matter.
+    @discardableResult
+    package func openInMenuPanel(_ key: Key, viewer: UUID) -> Refusal? {
+        guard let panel = parts.described(key.tool)?.panel(key.panel) else { return .unknownPanel(key.panel) }
+        guard panel.placement == .island else { return .wrongPlace(key.panel) }
+        guard shown[key] == nil else {
+            inMenuPanel[key, default: []].insert(viewer)
+            return nil
+        }
+        guard let tool = parts.tool(key.tool) else { return .notOpen(key.panel) }
+        begin(key, panel)
+        inMenuPanel[key, default: []].insert(viewer)
         tool.open(panel: key.panel) { [weak self] answer in self?.opened(key, answer) }
         return nil
     }
 
-    /// Closes an open panel and tells its tool. Its page goes, and any page
-    /// still waiting to be drawn with it.
-    package func close(_ key: Key) {
-        guard shown[key] != nil else { return }
-        forgetPanel(key)
-        parts.tool(key.tool)?.close(panel: key.panel)
+    /// Whether the menu bar panel's tab draws a line in place of the page:
+    /// a web page the island shows. A web page is one web view, which only
+    /// one place can hold, and the island keeps it. The tab draws the page
+    /// again when the island lets go.
+    nonisolated package static func defersToIsland(_ key: Key, shown: Shown?, island: Key?) -> Bool {
+        guard case .web? = shown else { return false }
+        return island == key
+    }
+
+    /// `defersToIsland` for an open panel, as the host stands now.
+    package func defersToIsland(_ key: Key) -> Bool {
+        Self.defersToIsland(key, shown: shown[key], island: island)
+    }
+
+    /// One view of the menu bar panel no longer shows the page: only its own
+    /// token goes. A token the host does not hold, of a view whose page
+    /// already ended with its tool, does nothing. When no view is left, and
+    /// the island does not show the page either, the page closes and the
+    /// tool is told, as when the island closes it.
+    package func closeInMenuPanel(_ key: Key, viewer: UUID) {
+        guard var viewers = inMenuPanel[key], viewers.remove(viewer) != nil else { return }
+        guard viewers.isEmpty else {
+            inMenuPanel[key] = viewers
+            return
+        }
+        inMenuPanel[key] = nil
+        guard island != key else { return }
+        close(key)
     }
 
     private func opened(_ key: Key, _ answer: Result<JSONValue, ToolLink.Failure>) {
@@ -616,6 +693,7 @@ package final class ToolPanelHost: ObservableObject {
 
     private func forgetPanel(_ key: Key) {
         shown[key] = nil
+        inMenuPanel[key] = nil
         drawing[key]?.timer?.cancel()
         drawing[key] = nil
         calls[key] = nil
