@@ -76,7 +76,13 @@ NEEDS_ID = ("button", "toggle", "field", "list", "choice")
 VERSIONS = ["1", "2"]
 # What this app says it has beyond the first release of the protocol version,
 # in the hello. An app before 3.48 says nothing.
-FEATURES = ["ui.status", "ui.choice", "preferences.options", "ui.status.activity"]
+FEATURES = [
+    "ui.status",
+    "ui.choice",
+    "preferences.options",
+    "ui.status.activity",
+    "ui.open.settings",
+]
 STATES = ("none", "ok", "busy", "attention", "failure")
 MAX_CHOICE_OPTIONS = 64
 MAX_CHOICE_VALUE = 128
@@ -590,13 +596,49 @@ class Run:
                 raise Failure(
                     f"a tap was answered with something that is not a page: {result!r}"
                 )
-            if result.get("keep") is not True and (nxt is None or nxt == first):
+            opened = self.opened(result)
+            if opened:
+                said += f", and {opened} after a tap on {buttons[0]}"
+            elif result.get("keep") is not True and (nxt is None or nxt == first):
                 raise Failure(f"a tap on {buttons[0]} was answered with the same page")
-            said += f", and a new page after a tap on {buttons[0]}"
+            else:
+                said += f", and a new page after a tap on {buttons[0]}"
         self.link.send(
             {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": panel}}
         )
         return said
+
+    def opened(self, result):
+        """What a tap's answer opens with `open`: one of the tool's window
+        panels, or its settings panel on an app that names ui.open.settings.
+        None when it opens nothing. An id the manifest does not declare, or
+        one the app would not open, fails the run: the app would open
+        nothing and only the tool's log would say so."""
+        if "open" not in result:
+            return None
+        name = result["open"]
+        if not is_text(name):
+            raise Failure(f"a tap's open is not a panel's id: {result!r}")
+        placement = next(
+            (p.get("placement") for p in self.panels if p.get("id") == name), None
+        )
+        if placement is None:
+            raise Failure(
+                f"a tap's open names {name}, a panel the manifest does not declare"
+            )
+        if placement == "window":
+            return f"the window {name}"
+        if placement == "settings":
+            if "ui.open.settings" not in (self.features or []):
+                raise Failure(
+                    f"a tap's open names the settings panel {name}, which an app "
+                    "without ui.open.settings does not open: ask supports first"
+                )
+            return f"the settings panel {name}"
+        raise Failure(
+            f"a tap's open names {name}, a panel of the {placement}, which the app "
+            "does not open: only a window or the tool's settings panel opens"
+        )
 
     def refusals(self):
         if not self.commands:

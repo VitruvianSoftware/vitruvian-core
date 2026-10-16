@@ -79,7 +79,9 @@ export class PanelEvent {
 /**
  * How a handler answers what the person did: the next page, the page as it
  * is, one of the tool's window panels to open by its id, or what a web
- * panel's `window.vitruvian.call` gets back.
+ * panel's `window.vitruvian.call` gets back. On an app that has
+ * `Feature.openSettings`, `open` may name the tool's settings panel, and the
+ * app opens Settings on the tool's detail.
  */
 export type PanelAnswer =
   { page: UITree } | { keep: true } | { open: string } | { reply: JSONValue };

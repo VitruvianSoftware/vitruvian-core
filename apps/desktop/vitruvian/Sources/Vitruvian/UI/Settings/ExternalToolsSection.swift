@@ -598,6 +598,8 @@ package struct ExtensionsSettings: View {
     /// The tool from the catalog being fetched, and what it came to. Kept
     /// outside the page, so leaving it loses neither.
     @ObservedObject private var installs = CatalogueInstalls.shared
+    /// A tool's request, from one of its panels, to show its own detail.
+    @ObservedObject private var router = SettingsRouter.shared
     @State private var asked: Asked?
     /// The tools the person agreed to that are not added yet: an add waits
     /// for whatever the app hands the tool to be ready, never on the main
@@ -685,6 +687,12 @@ package struct ExtensionsSettings: View {
         // is next opened if the person had left it, once no other sheet is up.
         .onChange(of: installs.waiting, initial: true) { _, _ in showWaiting() }
         .onChange(of: asked == nil && shown == nil) { _, _ in showWaiting() }
+        // A tool asked for its own settings: its detail opens now, or once
+        // the page is free.
+        .onChange(of: router.extensionTool, initial: true) { _, _ in showAsked() }
+        .onChange(of: asked == nil && shown == nil && refusal == nil && removed == nil && kept == nil) { _, _ in
+            showAsked()
+        }
         .sheet(item: $asked) { asked in
             ToolAgreementSheet(
                 offer: asked.offer,
@@ -754,6 +762,23 @@ package struct ExtensionsSettings: View {
     private func button(for id: ToolID) -> ExtensionsPageContent.InstallButton {
         ExtensionsPageContent.installButton(for: id, fetching: installs.fetching, waiting: installs.waiting != nil,
                                             adding: adding)
+    }
+
+    /// Shows the detail a tool asked for from one of its panels, or keeps
+    /// the request until no other sheet or alert is up
+    /// (`ExtensionsPageSupport.askedDetail`).
+    private func showAsked() {
+        let busy = asked != nil || refusal != nil || removed != nil || kept != nil
+        switch ExtensionsPageSupport.askedDetail(router.extensionTool, listed: store.listed.map(\.id),
+                                                 showing: shown?.tool, busy: busy) {
+        case .show(let id)?:
+            router.extensionTool = nil
+            shown = Shown(tool: id)
+        case .drop?:
+            router.extensionTool = nil
+        case .wait?, nil:
+            break
+        }
     }
 
     /// Shows what a fetch from the catalog came to: the agreement sheet, or

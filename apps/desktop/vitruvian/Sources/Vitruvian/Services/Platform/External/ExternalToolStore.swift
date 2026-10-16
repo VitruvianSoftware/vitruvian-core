@@ -22,7 +22,7 @@ package final class ExternalToolStore {
     /// protocol has: a name added to the protocol is claimed only once the
     /// app draws it.
     nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions,
-                                                                  .statusActivity]
+                                                                  .statusActivity, .openSettings]
 
     /// Why a folder was not added.
     package enum Refusal: Error, Equatable, Sendable {

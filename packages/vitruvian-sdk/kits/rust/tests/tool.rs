@@ -1038,13 +1038,15 @@ fn supports_is_true_only_for_what_the_hello_listed() {
             features::STATUS,
             features::CHOICE,
             features::PREFERENCE_OPTIONS,
-            features::STATUS_ACTIVITY
+            features::STATUS_ACTIVITY,
+            features::OPEN_SETTINGS
         ],
         [
             "ui.status",
             "ui.choice",
             "preferences.options",
-            "ui.status.activity"
+            "ui.status.activity",
+            "ui.open.settings"
         ]
     );
     assert_eq!(

@@ -502,7 +502,8 @@ enum ExternalToolStoreTests {
                                       "dataFolder": .string(bench.data.path),
                                       "features": .array([.string("ui.status"), .string("ui.choice"),
                                                           .string("preferences.options"),
-                                                          .string("ui.status.activity")])])
+                                                          .string("ui.status.activity"),
+                                                          .string("ui.open.settings")])])
         suite.expect(bench.current.sent == [.request(id: .number(1), method: "initialize", params: hello)],
                      "it is greeted with the versions the app speaks, the app's language, its data folder, and "
                          + "what the app has beyond the first release of the version")
@@ -1793,10 +1794,10 @@ extension ExternalToolStoreTests {
         if case .request(_, "initialize", let params)? = bench.current.sent.first {
             said = params?["features"]?.arrayValue?.compactMap(\.stringValue) ?? []
         }
-        suite.expect(said == ["ui.status", "ui.choice", "preferences.options", "ui.status.activity"]
+        suite.expect(said == ["ui.status", "ui.choice", "preferences.options", "ui.status.activity", "ui.open.settings"]
                          && said == ExternalToolStore.features.map(\.rawValue),
-                     "the hello names what this app has: a status, a choice block, options on a preference and a "
-                         + "status's words")
+                     "the hello names what this app has: a status, a choice block, options on a preference, a "
+                         + "status's words and a tool's own settings opened from its panel")
         let example = ExternalToolSettingsTests.example(of: "initialize")
         suite.expect(example == nil || example?["params"]?.objectValue?.keys.sorted()
                          == ["dataFolder", "language", "protocolVersions"],

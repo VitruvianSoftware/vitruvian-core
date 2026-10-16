@@ -1752,6 +1752,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             // moment the window reopens, on this page or any other.
             SecureInputMonitor.shared.setSettingsWindowOpen(false)
             SettingsWindowVisibility.shared.set(false)
+            SettingsRouter.shared.settingsWindowClosed()
             return
         }
         if window === onboardingWindow {

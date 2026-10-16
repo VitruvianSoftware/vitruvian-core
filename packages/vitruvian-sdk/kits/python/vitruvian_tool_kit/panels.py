@@ -93,7 +93,9 @@ class PanelAnswer:
     constructors: `PanelAnswer.page(tree)`, the next page;
     `PanelAnswer.keep()`, the page stays as it is; `PanelAnswer.open(panel)`,
     one of the tool's window panels opens, by its id; `PanelAnswer.reply(value)`,
-    what a web panel's `window.vitruvian.call` gets back."""
+    what a web panel's `window.vitruvian.call` gets back. On an app that has
+    `Feature.OPEN_SETTINGS`, `open` may name the tool's settings panel, and the
+    app opens Settings on the tool's detail."""
 
     result: Dict[str, Any]
     """The answer as the wire carries it."""

@@ -579,17 +579,18 @@ with `{}`.
 have ten seconds; for everything after it, two.
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options","ui.status.activity"]}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":["1","2"],"language":"en-US","dataFolder":"/Users/you/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/com.acme.deploys","features":["ui.status","ui.choice","preferences.options","ui.status.activity","ui.open.settings"]}}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","toolVersion":"1.2.0"}}
 ```
 
 `features` names what this app has beyond the first release of the protocol
 version: `ui.status` (the `ui/status` request), `ui.choice` (the `choice`
 block), `preferences.options` (a preference's `options`, drawn as a
-menu) and `ui.status.activity` (a status's `activity` and `since`, drawn
-beside the mark). Vitruvian 3.48 and later send it; 3.48 and 3.49 name the
-first three. An older app sends no `features` at all, and has none of them.
-Ignore a name you do not know.
+menu), `ui.status.activity` (a status's `activity` and `since`, drawn
+beside the mark) and `ui.open.settings` (an answer's `open` may name your
+settings panel). Vitruvian 3.48 and later send it; 3.48 and 3.49 name the
+first three, 3.50 to 3.57 the first four. An older app sends no `features`
+at all, and has none of them. Ignore a name you do not know.
 
 `command/run` runs a command, named by the id the manifest gives it. Answer
 `{}` when it ran, or failure -32010 when you will not run it.
@@ -829,6 +830,21 @@ is open your program is not stopped for being idle. What the person does is
 a `ui/event`, answered with the next page; `ui/close` says the panel went
 away. To change an open page by yourself, send `ui/render`. "What version 2
 adds", above, shows each message.
+
+**Your settings, from another panel.** On an app that names
+`ui.open.settings`, an answer's `open` may name your own settings panel: the
+app brings Settings to the front on your tool's detail, where that panel is
+drawn. A "More settings…" button on your island page is the usual way in. It
+opens only your own: the id is looked up in your manifest, and an id it does
+not declare opens nothing. Ask `supports("ui.open.settings")` first. An app
+without it opens nothing for that answer and writes a line in your tool's
+log, so show the person where to look instead, such as "More in Settings ›
+Extensions".
+
+```json
+{"jsonrpc":"2.0","id":16,"method":"ui/event","params":{"panel":"deploys","block":"moreSettings","event":"tap"}}
+{"jsonrpc":"2.0","id":16,"result":{"open":"settings"}}
+```
 
 ### The thirteen kinds of block
 
@@ -1745,6 +1761,14 @@ read the new key and fields and ignore them, so the mark is drawn there:
 | It sends a `since` below 0, or not a number, with no kit | Failure -32601. | `{}`. Ignored. | Failure -32602, and the status stays as it was. |
 | It asks `supports("ui.status.activity")` | false | false | true |
 
+Opening your own settings came in Vitruvian 3.58, with no new version and
+no new field: only what the app does with `open` changed.
+
+| What your tool does | Vitruvian 3.57 and before | Vitruvian 3.58 and later |
+|---|---|---|
+| An answer's `open` names your settings panel | Nothing opens. Your tool's log says the window was not opened. A `tree` in the same answer is still drawn. | Settings comes to the front on your tool's detail. |
+| It asks `supports("ui.open.settings")` | false | true |
+
 - **Never write a preference `type` the manifest's table does not list**,
   such as `"type": "choice"`. Every app refuses the whole tool for a type it
   does not know, and tells the person the tool's author made a mistake. A
@@ -1753,7 +1777,7 @@ read the new key and fields and ignore them, so the mark is drawn there:
   activation**: a name the app does not know refuses the tool. A key it does
   not know is ignored. That is why a status is a key under `contributes` and
   not an entry of `uses`.
-- **`vitruvian-tool run` and the conformance script say hello as 3.50 does.**
+- **`vitruvian-tool run` and the conformance script say hello as 3.58 does.**
   The script then starts your tool once more as an older app would, with no
   `features`, and answers `ui/status` with -32601. A tool that stops there,
   or keeps asking, fails that step.

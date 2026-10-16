@@ -51,7 +51,9 @@ public enum PanelAnswer: Equatable, Sendable {
     case page(UITree)
     /// The page stays as it is.
     case keep
-    /// One of the tool's window panels opens, by its id.
+    /// One of the tool's window panels opens, by its id. On an app that
+    /// has `.openSettings`, the id of the tool's settings panel opens
+    /// Settings on the tool's detail.
     case open(String)
     /// What a web panel's `window.vitruvian.call` gets back.
     case reply(JSONValue)

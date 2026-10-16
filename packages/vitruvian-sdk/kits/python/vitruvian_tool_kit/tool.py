@@ -87,6 +87,9 @@ class Feature:
     STATUS_ACTIVITY = "ui.status.activity"
     """`activity` and `since` on `ui/status`: a few words, or a count of
     seconds, beside the mark. From 3.50."""
+    OPEN_SETTINGS = "ui.open.settings"
+    """`open(panel)` may name the tool's own settings panel: the app opens
+    Settings on the tool's detail. From 3.58."""
 
 
 class CommandRefused(Exception):

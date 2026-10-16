@@ -79,6 +79,8 @@ export const Feature = {
   preferenceOptions: "preferences.options",
   /** `activity` and `since` on `ui/status`: a few words, or a count of seconds, beside the mark. From 3.50. */
   statusActivity: "ui.status.activity",
+  /** `{ open }` may name the tool's own settings panel: the app opens Settings on the tool's detail. From 3.58. */
+  openSettings: "ui.open.settings",
 } as const;
 
 /** A command that will not run. Throw it from a handler; the app is answered with -32010 and `message`. */

@@ -150,9 +150,9 @@ type InitializeParams struct {
 
 	// What this app has beyond the first release of the protocol version,
 	// by name: ui.status, ui.choice, preferences.options,
-	// ui.status.activity. A name the tool does not know is ignored. An
-	// app before 3.48 sends none, and has none of them; 3.48 and 3.49
-	// send the first three.
+	// ui.status.activity, ui.open.settings. A name the tool does not know
+	// is ignored. An app before 3.48 sends none, and has none of them;
+	// 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four.
 	Features []string `json:"features,omitempty"`
 }
 
@@ -409,8 +409,11 @@ type UIEventResult struct {
 	// For bridge: what the page's call gets back.
 	Reply any `json:"reply,omitempty"`
 
-	// A window panel of the same tool to open, in answer to what the
-	// person did. A tool cannot open a window at any other time.
+	// A panel of the same tool to open, in answer to what the person did:
+	// a window panel, or, on an app that names ui.open.settings, the
+	// tool's settings panel, which opens Settings on the tool's detail. A
+	// panel the tool does not declare, or one of another place, opens
+	// nothing. A tool cannot open either at any other time.
 	Open *string `json:"open,omitempty"`
 }
 

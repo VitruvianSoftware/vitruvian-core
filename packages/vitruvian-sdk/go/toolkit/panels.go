@@ -88,6 +88,8 @@ func Keep() PanelAnswer {
 }
 
 // OpenWindow answers that one of the tool's window panels opens, by its id.
+// On an app that has FeatureOpenSettings, the id of the tool's settings panel
+// opens Settings on the tool's detail.
 func OpenWindow(panel string) PanelAnswer {
 	return PanelAnswer{UIEventResult{Open: &panel}}
 }

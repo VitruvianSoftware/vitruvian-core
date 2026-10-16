@@ -598,7 +598,7 @@ final class PanelTests: XCTestCase {
             tool.command("ask") { app in none = ProtocolFeature.allCases.map(app.supports) }
         }
         XCTAssertEqual(before.serve(), 0)
-        XCTAssertEqual(none, [false, false, false, false], "an app that says nothing has none of them")
+        XCTAssertEqual(none, [false, false, false, false, false], "an app that says nothing has none of them")
     }
 
     func testAChoiceIsBuiltAsTheProtocolsExample() throws {

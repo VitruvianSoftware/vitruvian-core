@@ -87,6 +87,9 @@ const (
 	// FeatureStatusActivity is activity and since on ui/status: a few
 	// words, or a count of seconds, beside the mark. From 3.50.
 	FeatureStatusActivity = "ui.status.activity"
+	// FeatureOpenSettings is OpenWindow naming the tool's own settings
+	// panel: the app opens Settings on the tool's detail. From 3.58.
+	FeatureOpenSettings = "ui.open.settings"
 )
 
 // Supports is whether this app has something a later release added to the

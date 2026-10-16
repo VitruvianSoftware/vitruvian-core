@@ -157,6 +157,7 @@ package final class SettingsRouter: ObservableObject {
             sidebarFeature = nil
             pendingDestinationRequest = nil
             pendingFeatureTarget = nil
+            extensionTool = nil
             if !isTraversingHistory {
                 history.removeSubrange((historyIndex + 1)..<history.count)
                 history.append(HistoryEntry(destination: destination, sidebarFeature: nil))
@@ -182,6 +183,10 @@ package final class SettingsRouter: ObservableObject {
     /// One-shot hint for the Dynamic Island page to show the companion's tab,
     /// where its settings live. Consumed and cleared on arrival.
     @Published package var notchCompanion = false
+    /// One-shot hint for the Extensions page: the tool whose detail to show,
+    /// because the tool asked for its own settings (`request(extension:)`).
+    /// Consumed and cleared by the page; any other request or page drops it.
+    @Published package var extensionTool: ToolID?
 
     private var history = [HistoryEntry(destination: FeatureSettingsDestination(.general),
                                         sidebarFeature: nil)]
@@ -203,6 +208,7 @@ package final class SettingsRouter: ObservableObject {
         }
         // Any other request, history included, drops a hint nobody took.
         notchCompanion = false
+        extensionTool = nil
         let requestID = UUID()
         let samePage = page == destination.page
         page = destination.page
@@ -227,6 +233,20 @@ package final class SettingsRouter: ObservableObject {
             SettingsFeatureTargetRequest(id: requestID, feature: $0)
         }
         self.requestID = requestID
+    }
+
+    /// The Extensions page, showing one tool's detail: a tool asked, from
+    /// one of its panels, for its own settings.
+    package func request(extension tool: ToolID) {
+        request(ExtensionsPageSupport.destination)
+        extensionTool = tool
+    }
+
+    /// The Settings window closed. A tool's request that was still waiting
+    /// for the page to be free goes with it, so reopening Settings later
+    /// never shows a detail nobody asked for then.
+    package func settingsWindowClosed() {
+        extensionTool = nil
     }
 
     private static func anchorSelectsTool(on page: SettingsPage) -> Bool {

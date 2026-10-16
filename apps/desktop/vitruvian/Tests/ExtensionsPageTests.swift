@@ -17,6 +17,7 @@ enum ExtensionsPageTests {
         catalog(suite)
         updateCount(suite)
         waysIn(suite)
+        aToolAsksForItsSettings(suite)
         installButtons(suite)
         installsOutliveThePage(suite)
         spokenButtons(suite)
@@ -46,6 +47,49 @@ enum ExtensionsPageTests {
                          work: { $0() }, toMain: { work in held.work.append(work) }),
             store: { bench.store })
         return (installer, CatalogueInstalls(installer: installer))
+    }
+
+    /// A tool's "More settings…": the router lands on the Extensions page
+    /// with a one-shot hint naming the tool, and the page shows that tool's
+    /// detail now, or once no other sheet or alert is up.
+    static func aToolAsksForItsSettings(_ suite: TestSuite) {
+        guard let deploys = ToolID("com.acme.deploys"), let other = ToolID("com.acme.other") else {
+            suite.expect(false, "two tool ids")
+            return
+        }
+        let router = SettingsRouter()
+        router.request(FeatureSettingsDestination(.notch))
+        router.request(extension: deploys)
+        suite.expect(router.page == .extensions && router.destination == ExtensionsPageSupport.destination
+                         && router.extensionTool == deploys,
+                     "a tool's request opens the Extensions page with a hint naming the tool")
+        router.request(ExtensionsPageSupport.destination)
+        suite.expect(router.extensionTool == nil,
+                     "any other request drops a hint nobody took, one for the Extensions page itself included")
+        router.request(extension: deploys)
+        router.request(FeatureSettingsDestination(.general))
+        suite.expect(router.extensionTool == nil, "so does a request for another page")
+        router.request(extension: deploys)
+        router.page = .shortcuts
+        suite.expect(router.extensionTool == nil, "so does going to another page")
+        router.request(extension: other)
+        router.request(extension: deploys)
+        suite.expect(router.extensionTool == deploys, "the newest request is the one kept")
+        router.settingsWindowClosed()
+        suite.expect(router.extensionTool == nil && router.page == .extensions,
+                     "closing the Settings window drops a request still waiting, and keeps the page")
+
+        typealias Asked = ExtensionsPageSupport.AskedDetail
+        func asked(_ tool: ToolID?, listed: [ToolID] = [deploys, other], showing: ToolID? = nil,
+                   busy: Bool = false) -> Asked? {
+            ExtensionsPageSupport.askedDetail(tool, listed: listed, showing: showing, busy: busy)
+        }
+        suite.expect(asked(nil) == nil && asked(deploys) == .show(deploys),
+                     "with nothing else up, the asked tool's detail shows")
+        suite.expect(asked(deploys, showing: other) == .wait && asked(deploys, busy: true) == .wait,
+                     "another tool's detail, the agreement sheet or an alert is never taken away: the request waits")
+        suite.expect(asked(deploys, showing: deploys) == .drop && asked(deploys, listed: [other]) == .drop,
+                     "a detail already up, or a tool no longer added, drops the request and leaves the page as it is")
     }
 
     static func installButtons(_ suite: TestSuite) {
