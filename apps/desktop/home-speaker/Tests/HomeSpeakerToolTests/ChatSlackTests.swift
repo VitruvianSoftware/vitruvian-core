@@ -52,6 +52,20 @@ final class ChatSlackTests: XCTestCase {
             cleared += 1
             token = nil
         }
+        var beeperToken: String?
+        var beeperSaved: [String] = []
+        var beeperCleared = 0
+        var hasBeeperToken: Bool { beeperToken != nil }
+        func saveBeeperToken(_ token: String) throws {
+            if refuses { throw CocoaError(.fileWriteNoPermission) }
+            beeperSaved.append(token)
+            beeperToken = token
+        }
+        func clearBeeperToken() throws {
+            if refuses { throw CocoaError(.fileWriteNoPermission) }
+            beeperCleared += 1
+            beeperToken = nil
+        }
     }
 
     private var link: Link!
@@ -159,15 +173,15 @@ final class ChatSlackTests: XCTestCase {
 
     // MARK: - The section
 
-    func testTheSectionHasMonitoringSlackGoogleChatAndOptions() {
+    func testTheSectionHasMonitoringSlackGoogleChatBeeperAndOptions() {
         let tool = opened()
         let tree = tool.settingsPage()
-        XCTAssertEqual(texts(tree).filter { ["Background Monitoring", "Slack", "Google Chat", "Options"].contains($0) },
-                       ["Background Monitoring", "Slack", "Google Chat", "Options"])
-        // Defaults: both sources off, Automatic, no token, no Chat access,
+        XCTAssertEqual(texts(tree).filter { ["Background Monitoring", "Slack", "Google Chat", "Beeper", "Options"].contains($0) },
+                       ["Background Monitoring", "Slack", "Google Chat", "Beeper", "Options"])
+        // Defaults: every source off, Automatic, no tokens, no Chat access,
         // no gws.
         XCTAssertEqual(ids(tree), ["section", "slackEnabled", "slackToken", "googleChatEnabled", "chatSource", "grantChat",
-                                   "muteOwnMessages", "pollInterval"])
+                                   "beeperEnabled", "beeperAnnounce", "beeperToken", "muteOwnMessages", "pollInterval"])
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.title.text(for: "en"), "Announce Slack messages")
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.value, false)
         XCTAssertEqual(toggle(tree, Pages.Block.googleChatEnabled)?.title.text(for: "en"), "Announce Google Chat messages")
@@ -197,7 +211,7 @@ final class ChatSlackTests: XCTestCase {
         var tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("HomeSpeaker is running · "))
         XCTAssertEqual(icons(tree)["HomeSpeaker is running"], "bolt.fill")
-        XCTAssertTrue(texts(tree).contains { $0.hasPrefix("HomeSpeaker reads new messages in the background while Slack or Google Chat is on") })
+        XCTAssertTrue(texts(tree).contains { $0.hasPrefix("HomeSpeaker reads new messages in the background while Slack, Google Chat or Beeper is on") })
         appRunning = false
         tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("HomeSpeaker is not running · "))
@@ -337,6 +351,68 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(posted, 0)
         XCTAssertNotNil(tool.setupNotice)
         XCTAssertNotEqual(tool.setupNotice, "Slack token saved")
+    }
+
+    // MARK: - Beeper
+
+    func testTheBeeperControlsAreDrawnAndSaved() {
+        let tool = opened(choice: true)
+        var tree = tool.settingsPage()
+        XCTAssertEqual(toggle(tree, Pages.Block.beeperEnabled)?.title.text(for: "en"), "Announce Beeper messages")
+        XCTAssertEqual(toggle(tree, Pages.Block.beeperEnabled)?.value, false)
+        XCTAssertEqual(field(tree, Pages.Block.beeperToken)?.title?.text(for: "en"), "Access token")
+        XCTAssertEqual(field(tree, Pages.Block.beeperToken)?.kind, .secret)
+        XCTAssertTrue(texts(tree).contains("No Beeper token saved · "))
+        XCTAssertTrue(texts(tree).contains(Pages.beeperHelp))
+        guard case .choice(let announce)? = content(tree, Pages.Block.beeperAnnounce) else { return XCTFail("no choice") }
+        XCTAssertEqual(announce.title?.text(for: "en"), "Announce")
+        XCTAssertEqual(announce.value, "direct_and_mentions")
+        XCTAssertEqual(announce.options.map(\.value), ["direct_and_mentions", "all"])
+        XCTAssertEqual(announce.options.map { $0.title.text(for: "en") }, ["Direct messages and mentions", "Every message"])
+
+        tree = event(tool, Pages.Block.beeperEnabled, .toggle, .bool(true))
+        XCTAssertTrue(monitor.beeperEnabled)
+        XCTAssertEqual(toggle(tree, Pages.Block.beeperEnabled)?.value, true)
+        event(tool, Pages.Block.beeperAnnounce, .change, .string("all"))
+        XCTAssertEqual(monitor.beeperAnnounce, .all)
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.beeperAnnounce, kind: .change, value: .string("vips"))), .keep)
+        XCTAssertEqual(monitor.beeperAnnounce, .all)
+        XCTAssertEqual(store.saves, 2)
+        XCTAssertEqual(posted, 0, "a settings change reaches HomeSpeaker through the file, not the notice")
+        // On with no token: the monitor's own setup problem.
+        XCTAssertTrue(texts(tool.settingsPage()).contains { $0.hasPrefix(ChatMonitorError.beeperTokenMissing.localizedDescription) })
+    }
+
+    func testABeeperTokenIsSavedTrimmedNeverShownAndTheMonitorIsTold() throws {
+        let secret = "fake-beeper-token-for-the-tool-test" // gitleaks:allow (made-up test token)
+        let tool = opened()
+        var tree = event(tool, Pages.Block.beeperToken, .submit, .string("  \(secret) \n"))
+        XCTAssertEqual(chat.beeperSaved, [secret])
+        XCTAssertEqual(posted, 1)
+        XCTAssertEqual(tool.setupNotice, "Beeper token saved")
+        XCTAssertTrue(texts(tree).contains("Beeper token saved · "))
+        XCTAssertEqual(button(tree, Pages.Block.clearBeeperToken)?.title.text(for: "en"), "Clear Beeper Token")
+        XCTAssertEqual(field(tree, Pages.Block.beeperToken)?.value, "", "the field is always empty")
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(tree), as: UTF8.self).contains(secret))
+        XCTAssertFalse(link.logged.contains { $0.contains(secret) })
+        XCTAssertEqual(store.saves, 0, "the token never goes in the settings file")
+
+        tree = event(tool, Pages.Block.clearBeeperToken, .tap)
+        XCTAssertEqual(chat.beeperCleared, 1)
+        XCTAssertEqual(posted, 2)
+        XCTAssertNil(content(tree, Pages.Block.clearBeeperToken))
+        // Empty clears; leaving the field half-typed saves nothing.
+        chat.beeperToken = "old"
+        event(tool, Pages.Block.beeperToken, .submit, .string("  "))
+        XCTAssertEqual(chat.beeperCleared, 2)
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.beeperToken, kind: .change, value: .string("half"))), .keep)
+        XCTAssertEqual(chat.beeperSaved, [secret])
+    }
+
+    func testStartIsOfferedWithOnlyBeeperOn() {
+        appRunning = true
+        setMonitor { $0.beeperEnabled = true }
+        XCTAssertTrue(ids(opened().settingsPage()).contains(Pages.Block.startChatMonitor))
     }
 
     // MARK: - Google Chat
@@ -542,8 +618,16 @@ final class ChatSlackTests: XCTestCase {
         var status = Pages.Status()
         status.section = .monitor
         status.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true,
-                                                               gwsAccount: String(repeating: "a", count: 300))
-        status.chat = Pages.Chat(gwsPath: "/" + String(repeating: "p", count: 1000))
+                                                               gwsAccount: String(repeating: "a", count: 300), beeperEnabled: true)
+        // Every line the section can draw: tokens saved, running, every
+        // network Beeper has read and skipped, a long error.
+        let networks = (0..<30).map { "Network \($0) " + String(repeating: "n", count: 40) }
+        status.chat = Pages.Chat(
+            hasSlackToken: true, hasChatAccess: true, gwsPath: "/" + String(repeating: "p", count: 1000), ownerRunning: true,
+            monitor: ChatMonitorStatus(isRunning: true, lastPollDate: Date(), lastError: String(repeating: "e", count: 2000),
+                                       slackIdentity: "alice", activeGoogleChatBackend: "api", beeperNetworks: networks,
+                                       beeperSkippedNetworks: networks),
+            hasBeeperToken: true)
         status.configProblem = String(repeating: "x", count: 300)
         for choice in [false, true] {
             status.offersChoice = choice
@@ -592,6 +676,22 @@ final class ChatCredentialsSeamTests: XCTestCase {
         XCTAssertTrue(chat.hasChatAccess)
         try store.update { $0.googleChat?.scopes = Array(GoogleAuth.chatScopes.dropLast()) }
         XCTAssertFalse(chat.hasChatAccess, "every Chat scope, or none")
+    }
+
+    func testTheSecretsFileSeamSavesAndClearsTheBeeperTokenAndKeepsTheRest() throws {
+        let store = try store()
+        try store.save(Secrets(slackToken: "xoxp-1")) // gitleaks:allow (made-up test token)
+        let chat = SecretStoreChatCredentials(store: store)
+        XCTAssertFalse(chat.hasBeeperToken)
+        try chat.saveBeeperToken("fake-beeper") // gitleaks:allow (made-up test token)
+        XCTAssertTrue(chat.hasBeeperToken)
+        XCTAssertEqual(store.load().beeperToken, "fake-beeper")
+        XCTAssertEqual(store.load().slackToken, "xoxp-1", "the Slack token is kept")
+        try chat.clearBeeperToken()
+        XCTAssertNil(store.load().beeperToken)
+        try chat.saveBeeperToken("")
+        XCTAssertNil(store.load().beeperToken, "an empty token is no token")
+        XCTAssertFalse(NoChatCredentials().hasBeeperToken)
     }
 
     func testNoCredentialsHaveNothing() throws {

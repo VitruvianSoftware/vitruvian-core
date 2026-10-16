@@ -5,8 +5,9 @@
 </p>
 
 A macOS menu bar app that reads things aloud on your Google Home speakers and
-Nest displays: a one-line summary of each Claude Code reply, new Slack or
-Google Chat messages, or anything you type into the Quick Announcement box.
+Nest displays: a one-line summary of each Claude Code reply, new Slack,
+Google Chat or Beeper messages, or anything you type into the Quick
+Announcement box.
 
 It lives in the menu bar (no Dock icon), talks straight to Google's hosted
 Home API over HTTPS, and needs nothing else installed.
@@ -56,6 +57,7 @@ Optional, only for the features you turn on:
 - **Claude Code** — for spoken summaries of each reply.
 - **A Slack user token** with the `search:read` scope — for Slack announcements.
 - **Google Chat access** — for Google Chat announcements. Either a second Google sign-in from the app (Google refuses to grant Home and Chat in one consent, so they are separate logins), or the `gws` CLI already installed and signed in.
+- **Beeper Desktop**, running on the same Mac with its Desktop API on — for WhatsApp, Signal, Telegram, Google Messages and the other chats Beeper bridges. Make an access token in Beeper Desktop under *Settings → Integrations*, with **+** next to *Approved connections*.
 
 ---
 
@@ -224,6 +226,7 @@ Google.
 - **Master switch + quiet hours** — automated announcements are held during quiet hours; things you type yourself still play.
 - **Claude Code** — *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `HomeSpeaker --claude-stop-hook`. Existing hooks are left alone; the entry is updated automatically if you move the app.
 - **Slack / Google Chat** — off by default. Turn on under *Settings → Chat & Slack*; polling runs inside the app. Google Chat can be read through the app's own Google login (a separate "Grant" from Home — Google will not combine the two) or, if you already have it, the `gws` command-line tool; *Automatic* picks whichever is ready.
+- **Beeper** — off by default, under the same tab. HomeSpeaker asks Beeper Desktop on this Mac (`http://localhost:23373`, read only) for new messages each poll and speaks direct messages and messages that mention you ("WhatsApp message from Alice: …"), or every message if you pick *Every message*. Muted and low-priority chats, reactions and your own messages are left out. So nothing is said twice, Beeper's Slack chats for the workspace HomeSpeaker's own Slack token reads are skipped while the Slack switch is on (every Beeper Slack account, if that workspace is not known yet), and Beeper's Google Chat while the Google Chat switch is on; Google Messages (texts) is never skipped. If Beeper Desktop is not running the monitor says so and picks it up when it is.
 - **Open at Login** — a standard macOS login item, toggled under *Settings → General*.
 - **Command line** — `HomeSpeaker --say "dinner is ready"` announces from a script (exit 1 on failure); `HomeSpeaker --discover` lists what the signed-in account can see, for troubleshooting an empty speaker list; `HomeSpeaker --chat-monitor start|stop` asks the running app to start or stop reading chat. The binary is at `/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`.
 
@@ -234,10 +237,10 @@ Google.
 | File | Contents |
 |---|---|
 | `~/.gemini/speaker_broadcast.json` | The app's non-secret settings: speakers, default target, quiet hours, monitor toggles (the extension keeps its own, below). Shared with the `speaker-broadcast` CLI and Gemini/Antigravity skills. |
-| `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, OAuth client override. Mode `0600`. |
+| `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, Beeper token, OAuth client override. Mode `0600`. |
 | `~/.gemini/speaker_history.json` | The last 30 announcements shown in the menu. |
 | `~/.gemini/speaker_door.json` | Which of the two, app or extension, you chose to use, and where the extension keeps its files. The one file both read. |
-| `~/.gemini/speaker_monitor_status.json` | What the app's chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the app's pid), written by the app. The extension writes its own, below, and its Vitruvian tool reads that one. Not settings: a crashed app leaves it saying "running", so a reader checks the app is up. |
+| `~/.gemini/speaker_monitor_status.json` | What the app's chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the Beeper networks read and skipped, the app's pid), written by the app. The extension writes its own, below, and its Vitruvian tool reads that one. Not settings: a crashed app leaves it saying "running", so a reader checks the app is up. |
 
 The extension keeps the same four things in its own data folder instead,
 `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`:
@@ -251,10 +254,13 @@ To put the Slack token on this Mac from Bitwarden, run
 `bazel run //apps/desktop/home-speaker:sync-secrets` for the app, or add
 `-- --extension` for the extension. `--extension` finds the extension's folder
 in `speaker_door.json`, and stops without writing anything if the extension
-has not recorded itself there yet.
+has not recorded itself there yet. Add `--beeper` (with or without
+`--extension`) to put the Beeper token there instead, from the Bitwarden item
+"Beeper Desktop API" (its custom field `token`, or its password).
 
 Nothing leaves your Mac except requests to Google (Home API, OAuth, Chat API
-if enabled) and Slack (if enabled). The app has no telemetry.
+if enabled) and Slack (if enabled). Beeper is read on this Mac only: the
+token is sent to `localhost` and nowhere else. The app has no telemetry.
 
 Why a file and not the Keychain: an app without a Developer ID has no stable
 code identity, so Keychain items would trigger an "allow access?" prompt after

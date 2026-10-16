@@ -36,6 +36,7 @@ public class SettingsViewModel: ObservableObject {
     @Published public var homes: [HomeStructure] = []
     @Published public var selectedHomeId: String = ""
     @Published public var slackToken: String = ""
+    @Published public var beeperToken: String = ""
     @Published public var oauthClientId: String = ""
     @Published public var oauthClientSecret: String = ""
     @Published public var hasBundledOAuthClient: Bool = false
@@ -57,6 +58,7 @@ public class SettingsViewModel: ObservableObject {
         launchAtLogin = LoginItem.isEnabled
         let s = secrets.load()
         slackToken = s.slackToken ?? ""
+        beeperToken = s.beeperToken ?? ""
         oauthClientId = s.oauthClientIdOverride ?? ""
         oauthClientSecret = s.oauthClientSecretOverride ?? ""
         hasBundledOAuthClient = HomeSpeakerProfile.current.shippedClient != nil
@@ -621,6 +623,30 @@ public struct SettingsView: View {
                 Text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.")
             }
 
+            Section {
+                Toggle("Announce Beeper messages", isOn: monitorBinding(\.beeperEnabled))
+                    .accessibilityHint("Announces new messages from Beeper Desktop aloud")
+                Picker("Announce", selection: monitorBinding(\.beeperAnnounce)) {
+                    ForEach(ChatMonitorConfig.BeeperAnnounce.allCases, id: \.self) { mode in
+                        Text(Self.beeperAnnounceTitle(mode)).tag(mode)
+                    }
+                }
+                SecureField("Access token", text: $viewModel.beeperToken)
+                    .onSubmit { saveBeeperToken() }
+                HStack {
+                    Button("Save Token") { saveBeeperToken() }
+                        .controlSize(.small)
+                    if monitorService.isRunning, let line = ChatMonitorService.beeperReadingLine(
+                        networks: monitorService.beeperNetworks, skipped: monitorService.beeperSkippedNetworks) {
+                        Text(line).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Beeper")
+            } footer: {
+                Text("In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. Slack and Google Chat chats in Beeper are skipped while their own switches above are on.")
+            }
+
             Section("Options") {
                 Toggle("Skip messages I sent", isOn: monitorBinding(\.muteOwnMessages))
                 Stepper(
@@ -640,6 +666,14 @@ public struct SettingsView: View {
     }
 
     private var hasChatScopes: Bool { SecretStore.shared.load().hasChatAccess }
+
+    /// The same words as the Vitruvian tool's Settings.
+    static func beeperAnnounceTitle(_ mode: ChatMonitorConfig.BeeperAnnounce) -> String {
+        switch mode {
+        case .directAndMentions: return "Direct messages and mentions"
+        case .all: return "Every message"
+        }
+    }
 
     // MARK: - AI Agents Tab
 
@@ -910,6 +944,15 @@ public struct SettingsView: View {
             let token = viewModel.slackToken.trimmingCharacters(in: .whitespacesAndNewlines)
             try SecretStore.shared.update { $0.slackToken = token.isEmpty ? nil : token }
             status(token.isEmpty ? "Slack token cleared." : "Slack token saved.")
+            monitorService.restartIfRunning()
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    private func saveBeeperToken() {
+        do {
+            let token = viewModel.beeperToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            try SecretStore.shared.update { $0.beeperToken = token.isEmpty ? nil : token }
+            status(token.isEmpty ? "Beeper token cleared." : "Beeper token saved.")
             monitorService.restartIfRunning()
         } catch { status(error.localizedDescription, isError: true) }
     }

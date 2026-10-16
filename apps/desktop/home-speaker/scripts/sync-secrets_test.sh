@@ -27,6 +27,8 @@
 # HomeSpeaker extension's own secrets.json (the data folder the choice file,
 # ~/.gemini/speaker_door.json, names) and never into the app's; without a
 # usable choice file it fails and writes nothing, never falling back to the app.
+# With --beeper the Beeper Desktop API token (custom field `token`, else the
+# password) goes in as beeperToken, beside the Slack token, under the same rules.
 set -euo pipefail
 
 SCRIPT="${TEST_SRCDIR:-}/${TEST_WORKSPACE:-_main}/apps/desktop/home-speaker/scripts/sync-secrets.sh"
@@ -68,6 +70,18 @@ JSON
 cat >"$FAKE_ITEMS/In A Field.json" <<JSON
 {"name":"In A Field","fields":[{"name":"user","value":"$USER_TOK"}]}
 JSON
+# Made-up Beeper tokens. # gitleaks:allow (made-up test tokens)
+BEEPER_TOK="fake-beeper-field-token-0001"   # gitleaks:allow (made-up test token)
+BEEPER_PW="fake-beeper-password-token-0002" # gitleaks:allow (made-up test token)
+cat >"$FAKE_ITEMS/Beeper Desktop API.json" <<JSON
+{"name":"Beeper Desktop API","fields":[{"name":"other","value":"nope"},{"name":"token","value":"$BEEPER_TOK"}],"login":{"password":"$BEEPER_PW"}}
+JSON
+cat >"$FAKE_ITEMS/Beeper Password.json" <<JSON
+{"name":"Beeper Password","login":{"password":"$BEEPER_PW"}}
+JSON
+cat >"$FAKE_ITEMS/Beeper Empty.json" <<JSON
+{"name":"Beeper Empty","fields":[{"name":"token","value":""}],"login":{"password":""}}
+JSON
 
 fail() {
 	echo "FAIL: $*" >&2
@@ -79,7 +93,7 @@ reset() {
 }
 run() { bash "$SCRIPT" "$@" >"$WORK/out" 2>&1; }
 no_leak() {
-	grep -q -e "$USER_TOK" -e "$BOT_TOK" "$WORK/out" && fail "$1: a token value was printed" || true
+	grep -q -e "$USER_TOK" -e "$BOT_TOK" -e "$BEEPER_TOK" -e "$BEEPER_PW" "$WORK/out" && fail "$1: a token value was printed" || true
 }
 
 # 1. the user token wins, other keys survive, mode stays 0600
@@ -205,5 +219,66 @@ ext_before="$(shasum "$EXT_SECRETS")"
 run || fail "default run failed with a choice file present"
 [ "$(jq -r .slackToken "$HOMESPEAKER_SECRETS")" = "$USER_TOK" ] || fail "default run did not write the app's file"
 [ "$(shasum "$EXT_SECRETS")" = "$ext_before" ] || fail "default run touched the extension's file"
+
+# --- --beeper: the Beeper token, beside the Slack one --------------------------
+# 9. the item's `token` field wins over its password; Slack and the rest survive
+reset
+jq '.slackToken = "xoxp-kept"' "$HOMESPEAKER_SECRETS" >"$WORK/s" && mv "$WORK/s" "$HOMESPEAKER_SECRETS"
+chmod 600 "$HOMESPEAKER_SECRETS"
+run --beeper || {
+	cat "$WORK/out"
+	fail "--beeper run failed"
+}
+no_leak "--beeper write"
+[ "$(jq -r .beeperToken "$HOMESPEAKER_SECRETS")" = "$BEEPER_TOK" ] || fail "--beeper did not write the token field"
+[ "$(jq -r .slackToken "$HOMESPEAKER_SECRETS")" = xoxp-kept ] || fail "--beeper dropped the Slack token"
+[ "$(jq -r .google.refreshToken "$HOMESPEAKER_SECRETS")" = g ] || fail "--beeper dropped the google login"
+[ "$(stat -f %Lp "$HOMESPEAKER_SECRETS" 2>/dev/null || stat -c %a "$HOMESPEAKER_SECRETS")" = 600 ] || fail "--beeper: secrets file is not 0600"
+grep -q "Beeper token from Bitwarden item \"Beeper Desktop API\"" "$WORK/out" || fail "--beeper did not say what it wrote"
+
+# 9b. a second --beeper run is a no-op
+before="$(shasum "$HOMESPEAKER_SECRETS")"
+run --beeper || fail "second --beeper run failed"
+grep -q "Beeper token already matches" "$WORK/out" || fail "second --beeper run did not say it was a no-op"
+[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$before" ] || fail "second --beeper run rewrote the file"
+
+# 9c. no token field: the password
+reset
+run --beeper --item "Beeper Password" || fail "--beeper with only a password failed"
+[ "$(jq -r .beeperToken "$HOMESPEAKER_SECRETS")" = "$BEEPER_PW" ] || fail "--beeper did not fall back to the password"
+
+# 9d. nothing usable, or no such item: refused, file untouched
+for item in "Beeper Empty" "No Such Item"; do
+	reset
+	before="$(shasum "$HOMESPEAKER_SECRETS")"
+	if run --beeper --item "$item"; then fail "--beeper \"$item\" should have been refused"; fi
+	no_leak "--beeper $item"
+	[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$before" ] || fail "--beeper \"$item\" changed the secrets file"
+done
+
+# 9e. --beeper --dry-run writes nothing
+reset
+before="$(shasum "$HOMESPEAKER_SECRETS")"
+run --beeper --dry-run || fail "--beeper dry run failed"
+[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$before" ] || fail "--beeper dry run wrote the file"
+
+# 9f. --beeper --extension: the extension's file, never the app's
+write_door "$EXT_DIR"
+reset
+reset_ext
+app_before="$(shasum "$HOMESPEAKER_SECRETS")"
+run --beeper --extension || {
+	cat "$WORK/out"
+	fail "--beeper --extension run failed"
+}
+no_leak "--beeper --extension"
+[ "$(jq -r .beeperToken "$EXT_SECRETS")" = "$BEEPER_TOK" ] || fail "--beeper --extension did not write the extension's file"
+[ "$(jq -r .google.refreshToken "$EXT_SECRETS")" = ext-g ] || fail "--beeper --extension dropped the extension's other keys"
+[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$app_before" ] || fail "--beeper --extension touched the app's secrets file"
+
+# 9g. without --beeper nothing of Beeper's is touched
+reset
+run || fail "default run failed"
+[ "$(jq -r '.beeperToken // "none"' "$HOMESPEAKER_SECRETS")" = none ] || fail "a Slack run wrote a Beeper token"
 
 echo "PASS"

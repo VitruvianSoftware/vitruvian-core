@@ -84,9 +84,10 @@ private struct Planted {
     var chatAccess: String { "ya29.secret-chat-access-\(id)" }
     var clientSecret: String { "GOCSPX-secret-\(id)" }
     var ownClientSecret: String { "GOCSPX-own-secret-\(id)" }
+    var beeper: String { "fake-beeper-secret-\(id)" } // gitleaks:allow (made-up test token)
 
     var all: [String] {
-        [slack, homeRefresh, chatRefresh, homeAccess, chatAccess, clientSecret, ownClientSecret, "xoxp-secret-123", "1//secret"] // gitleaks:allow (made-up test tokens)
+        [slack, homeRefresh, chatRefresh, homeAccess, chatAccess, clientSecret, ownClientSecret, beeper, "xoxp-secret-123", "1//secret"] // gitleaks:allow (made-up test tokens)
     }
 
     var secrets: Secrets {
@@ -102,7 +103,8 @@ private struct Planted {
                 expiry: Date(timeIntervalSince1970: 2_000_000_000), scopes: GoogleAuth.chatScopes,
                 userId: account, email: email),
             slackToken: slack,
-            oauthClientIdOverride: "own-client-\(id)", oauthClientSecretOverride: ownClientSecret)
+            oauthClientIdOverride: "own-client-\(id)", oauthClientSecretOverride: ownClientSecret,
+            beeperToken: beeper)
     }
 }
 
@@ -223,7 +225,7 @@ private struct QuietLocal: LocalSpeaking {
         let expected: [(String, String)] = [
             ("settingsRead", "ConfigFileRead"), ("settingsChanged", "Optional<Date>"),
             ("googleEmail", "Optional<String>"), ("hasHomeLogin", "Bool"), ("hasChatLogin", "Bool"),
-            ("hasSlackToken", "Bool"), ("hasOwnClient", "Bool"),
+            ("hasSlackToken", "Bool"), ("hasBeeperToken", "Bool"), ("hasOwnClient", "Bool"),
             ("homeName", "Optional<String>"), ("speakerCount", "Int"), ("defaultSpeaker", "Optional<String>"),
             ("outputs", "Outputs"), ("quietHours", "Optional<String>"), ("chatSources", "Array<String>"),
             ("historyCount", "Int"),
@@ -241,6 +243,8 @@ private struct QuietLocal: LocalSpeaking {
         // And what it does say.
         #expect(snapshot.googleEmail == "person@example.test")
         #expect(snapshot.hasHomeLogin && snapshot.hasChatLogin && snapshot.hasSlackToken && snapshot.hasOwnClient)
+        #expect(snapshot.hasBeeperToken)
+        #expect(DoorSummary.facts.first { $0.title == "Beeper" }?.value(snapshot) == "Token saved")
         #expect(snapshot.homeName == "Lake House")
         #expect(snapshot.speakerCount == 2, "the whole-home group is not a speaker")
         #expect(snapshot.defaultSpeaker == "Kitchen")
@@ -458,6 +462,7 @@ private struct QuietLocal: LocalSpeaking {
         // It says what came, in words.
         #expect(report.lines.contains { $0.contains("Google Home") && $0.contains("person@example.test") })
         #expect(report.lines.contains { $0.contains("Slack") })
+        #expect(report.lines.contains { $0.contains("a Beeper token") })
         #expect(report.lines.contains(DoorCopy.copyNote))
     }
 

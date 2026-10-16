@@ -26,6 +26,12 @@
 #   bazel run //apps/desktop/home-speaker:sync-secrets
 #   bazel run //apps/desktop/home-speaker:sync-secrets -- --item "My Slack" --no-restart
 #   bazel run //apps/desktop/home-speaker:sync-secrets -- --extension
+#   bazel run //apps/desktop/home-speaker:sync-secrets -- --beeper [--extension]
+#
+# --beeper puts the Beeper Desktop API token there instead, as `beeperToken`:
+# from the item "Beeper Desktop API" (or --item), its custom field `token`, or
+# else its password. Make the token in Beeper Desktop under Settings >
+# Integrations > Approved connections.
 #
 # Reads the Slack USER token (xoxp-) from a Bitwarden item -- its notes, custom
 # fields or password, wherever it is -- and writes it as `slackToken` into
@@ -46,7 +52,8 @@
 # it travels in an environment variable to jq and lands in a 0600 file.
 set -euo pipefail
 
-ITEM="Abrial Slack MCP"
+ITEM=""
+BEEPER=0
 RESTART=1
 DRY_RUN=0
 EXTENSION=0
@@ -77,13 +84,28 @@ while [ $# -gt 0 ]; do
 		EXTENSION=1
 		shift
 		;;
+	--beeper)
+		BEEPER=1
+		shift
+		;;
 	-h | --help)
-		sed -n '22,46p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '22,52p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*) die "unknown argument: $1 (try --help)" ;;
 	esac
 done
+
+# Which token: Slack's user token, or Beeper's.
+if [ "$BEEPER" -eq 1 ]; then
+	KEY=beeperToken
+	WHAT="Beeper token"
+	[ -n "$ITEM" ] || ITEM="Beeper Desktop API"
+else
+	KEY=slackToken
+	WHAT="Slack user token"
+	[ -n "$ITEM" ] || ITEM="Abrial Slack MCP"
+fi
 
 command -v bw >/dev/null || die "the Bitwarden CLI (bw) is not installed"
 command -v jq >/dev/null || die "jq is not installed"
@@ -111,14 +133,21 @@ if ! { [ -n "${BW_SESSION:-}" ] && bw_unlocked; }; then
 	bw_unlocked || die "Bitwarden is locked. Run: bazel run //tools/sync-env-secrets:unlock"
 fi
 
-# --- the user token, from wherever the item keeps it ------------------------
+# --- the token, from wherever the item keeps it -----------------------------
 ITEM_JSON="$(bw get item "$ITEM" 2>/dev/null)" || die "no Bitwarden item named \"$ITEM\" (pass --item)"
-# One distinct xoxp- token, across notes, custom fields and the password.
-TOKENS="$(jq -r '[.notes // "", (.fields // [] | map(.value // "") | .[]), (.login.password // "")]
-	| join("\n")' <<<"$ITEM_JSON" | grep -oE 'xoxp-[A-Za-z0-9-]+' | sort -u || true)"
-COUNT="$(printf '%s' "$TOKENS" | grep -c . || true)"
-[ "$COUNT" -eq 1 ] || die "Bitwarden item \"$ITEM\" holds $COUNT Slack user tokens (xoxp-); want exactly one"
-export HS_SLACK_TOKEN="$TOKENS"
+if [ "$BEEPER" -eq 1 ]; then
+	# The custom field `token`, else the password; one line, nothing else.
+	TOKENS="$(jq -r '([.fields // [] | .[] | select(.name == "token") | .value // ""] | map(select(. != "")) | first)
+		// (.login.password // "")' <<<"$ITEM_JSON" | tr -d '[:space:]')"
+	[ -n "$TOKENS" ] || die "Bitwarden item \"$ITEM\" has no Beeper token (a custom field named token, or the password)"
+else
+	# One distinct xoxp- token, across notes, custom fields and the password.
+	TOKENS="$(jq -r '[.notes // "", (.fields // [] | map(.value // "") | .[]), (.login.password // "")]
+		| join("\n")' <<<"$ITEM_JSON" | grep -oE 'xoxp-[A-Za-z0-9-]+' | sort -u || true)"
+	COUNT="$(printf '%s' "$TOKENS" | grep -c . || true)"
+	[ "$COUNT" -eq 1 ] || die "Bitwarden item \"$ITEM\" holds $COUNT Slack user tokens (xoxp-); want exactly one"
+fi
+export HS_TOKEN="$TOKENS"
 unset TOKENS ITEM_JSON
 
 # --- merge into the secrets file -----------------------------------------------
@@ -128,16 +157,20 @@ if [ ! -f "$SECRETS" ]; then
 	[ "$EXTENSION" -eq 1 ] || die "no HomeSpeaker secrets file at $SECRETS -- open HomeSpeaker and sign in first"
 	CURRENT=""
 else
-	CURRENT="$(jq -r '.slackToken // ""' "$SECRETS")"
+	CURRENT="$(KEY="$KEY" jq -r '.[env.KEY] // ""' "$SECRETS")"
 fi
-if [ "$CURRENT" = "$HS_SLACK_TOKEN" ]; then
-	unset CURRENT HS_SLACK_TOKEN
-	echo "Slack token already matches Bitwarden item \"$ITEM\" -- nothing to do."
+if [ "$CURRENT" = "$HS_TOKEN" ]; then
+	unset CURRENT HS_TOKEN
+	if [ "$BEEPER" -eq 1 ]; then
+		echo "Beeper token already matches Bitwarden item \"$ITEM\" -- nothing to do."
+	else
+		echo "Slack token already matches Bitwarden item \"$ITEM\" -- nothing to do."
+	fi
 	exit 0
 fi
 unset CURRENT
 if [ "$DRY_RUN" -eq 1 ]; then
-	echo "Would write the Slack user token from Bitwarden item \"$ITEM\" to $SECRETS (dry run)."
+	echo "Would write the $WHAT from Bitwarden item \"$ITEM\" to $SECRETS (dry run)."
 	exit 0
 fi
 
@@ -146,16 +179,16 @@ trap 'rm -f "$TMP"' EXIT
 (
 	umask 077
 	if [ -f "$SECRETS" ]; then
-		jq '.slackToken = env.HS_SLACK_TOKEN' "$SECRETS" >"$TMP"
+		KEY="$KEY" jq '.[env.KEY] = env.HS_TOKEN' "$SECRETS" >"$TMP"
 	else
-		jq -n '{slackToken: env.HS_SLACK_TOKEN}' >"$TMP"
+		KEY="$KEY" jq -n '{(env.KEY): env.HS_TOKEN}' >"$TMP"
 	fi
 )
 chmod 600 "$TMP"
 mv -f "$TMP" "$SECRETS"
 trap - EXIT
-unset HS_SLACK_TOKEN
-echo "Slack user token from Bitwarden item \"$ITEM\" written to $WHO."
+unset HS_TOKEN
+echo "$WHAT from Bitwarden item \"$ITEM\" written to $WHO."
 
 # The extension is not a process this script can restart; its chat monitor, like
 # the app's, reads the token when it starts.

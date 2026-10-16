@@ -126,6 +126,16 @@ final class MonitorRuntimeTests: XCTestCase {
         XCTAssertEqual(Pages.readingViaLine("api"), "Currently reading via the Google API")
     }
 
+    func testARunningMonitorSaysWhichBeeperNetworksItReads() throws {
+        try statusFile.write(ChatMonitorStatus(isRunning: true, lastPollDate: Date(), beeperNetworks: ["Signal", "WhatsApp"],
+                                               beeperSkippedNetworks: ["Slack (acme)"], pid: 99))
+        XCTAssertTrue(texts(opened().settingsPage())
+            .contains("Reading Beeper: Signal, WhatsApp · Slack (acme) skipped (read directly)"))
+        // Stopped, or Beeper not read: no line.
+        try statusFile.write(ChatMonitorStatus(isRunning: true, lastPollDate: Date(), pid: 99))
+        XCTAssertFalse(texts(opened().settingsPage()).contains { $0.hasPrefix("Reading Beeper") })
+    }
+
     func testAStoppedMonitorOffersStartWhileTheAppRunsAndASourceIsOn() {
         let tree = opened().settingsPage()
         XCTAssertTrue(texts(tree).contains("Chat monitor stopped"))
@@ -224,7 +234,7 @@ final class MonitorRuntimeTests: XCTestCase {
         store.config?.effectiveChatMonitor.slackEnabled = false
         _ = event(tool, Pages.Block.startChatMonitor, .tap)
         XCTAssertEqual(asked, [])
-        XCTAssertEqual(tool.setupNotice, "Turn on Slack or Google Chat first")
+        XCTAssertEqual(tool.setupNotice, "Turn on Slack, Google Chat or Beeper first")
     }
 
     func testAChangeTheAppWritesIsDrawnWithoutATap() throws {

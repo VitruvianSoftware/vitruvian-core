@@ -515,6 +515,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 try saveSlackToken(text)
             case Pages.Block.clearSlackToken?:
                 try saveSlackToken("")
+            case Pages.Block.beeperToken?:
+                // Return only: leaving the field half-typed saves nothing.
+                guard event.kind == .submit, let text = event.text else { return .keep }
+                try saveBeeperToken(text)
+            case Pages.Block.clearBeeperToken?:
+                try saveBeeperToken("")
             case Pages.Block.grantChat?:
                 try setupJob(.signIn(chatOnly: true))
             case Pages.Block.disconnectChat?:
@@ -535,6 +541,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
+                 Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?:
                 // A value out of range throws, and is said under the
                 // section instead of being dropped or quietly clamped.
@@ -573,7 +580,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             break
         }
         if action == .start, !config.effectiveChatMonitor.anySourceEnabled {
-            throw CommandRefused("turn on Slack or Google Chat first")
+            throw CommandRefused("turn on Slack, Google Chat or Beeper first")
         }
         parts.controlChatMonitor(action)
         setupNotice = "Asked HomeSpeaker to \(action.rawValue) the chat monitor"
@@ -698,6 +705,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.gwsAccount?:
             guard let text = event.text else { return false }
             config.effectiveChatMonitor.gwsAccount = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        case Pages.Block.beeperEnabled?:
+            guard let isOn = event.isOn else { return false }
+            config.effectiveChatMonitor.beeperEnabled = isOn
+        case Pages.Block.beeperAnnounce?:
+            guard let picked, let mode = ChatMonitorConfig.BeeperAnnounce(rawValue: picked) else { return false }
+            config.effectiveChatMonitor.beeperAnnounce = mode
         case Pages.Block.muteOwnMessages?:
             guard let isOn = event.isOn else { return false }
             config.effectiveChatMonitor.muteOwnMessages = isOn
@@ -1338,7 +1351,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         let chat = parts.chat
         return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
                           gwsPath: parts.gwsLocation(), ownerRunning: Self.runs(role ?? parts.role()) && parts.ownerRunning(),
-                          monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read())
+                          monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read(),
+                          hasBeeperToken: chat.hasBeeperToken)
     }
 
     /// The settings page, after starting what Settings reads by itself:
@@ -1382,6 +1396,21 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         } else {
             try parts.chat.saveSlackToken(token)
             setupNotice = "Slack token saved"
+        }
+        parts.credentialsChanged()
+    }
+
+    /// Saves the Beeper token typed, trimmed; nothing typed clears it. As
+    /// with Slack's: to the secrets file only, and the running monitor is
+    /// told, so it starts or restarts with it.
+    private func saveBeeperToken(_ typed: String) throws {
+        let token = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if token.isEmpty {
+            try parts.chat.clearBeeperToken()
+            setupNotice = "Beeper token cleared"
+        } else {
+            try parts.chat.saveBeeperToken(token)
+            setupNotice = "Beeper token saved"
         }
         parts.credentialsChanged()
     }

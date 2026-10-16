@@ -209,11 +209,15 @@ final class PagesTests: XCTestCase {
         status.section = .monitor
         // Nothing on, nothing saved, nothing installed.
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "googleChatEnabled", "chatSource",
-                                                    "grantChat", "muteOwnMessages", "pollInterval"])
-        // A token saved, Chat granted, gws there.
-        status.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", ownerRunning: true)
+                                                    "grantChat", "beeperEnabled", "beeperAnnounce", "beeperToken",
+                                                    "muteOwnMessages", "pollInterval"])
+        // Tokens saved, Chat granted, gws there.
+        status.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", ownerRunning: true,
+                                 hasBeeperToken: true)
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "clearSlackToken", "googleChatEnabled",
-                                                    "chatSource", "disconnectChat", "gwsAccount", "muteOwnMessages", "pollInterval"])
+                                                    "chatSource", "disconnectChat", "gwsAccount", "beeperEnabled", "beeperAnnounce",
+                                                    "beeperToken", "clearBeeperToken", "muteOwnMessages", "pollInterval"])
+        XCTAssertTrue(texts(Pages.settings(status)).contains("Beeper token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("Slack token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("HomeSpeaker is running · "))
         // The API only, or gws only.
