@@ -1,0 +1,189 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# When a tool's release is newer than its catalog entry, opens a pull request
+# that lists it: one per tool and version, on catalog/bump-<id>-<version>.
+# catalog/sources.json says which releases update which entry.
+#
+# Why each hour and not on the release: no release event can tell this
+# repository that a tool's zip is ready.
+#   - The GitHub tool's zip is attached in another repository,
+#     VitruvianSoftware/vitruvian-tool-github, by that repository's own
+#     release.yml with its own token. Nothing there reaches this repository.
+#   - HomeSpeaker's release is created by release-please with an App token, so
+#     `release: published` would fire, but before the zip exists: the zip is
+#     uploaded afterwards by home-speaker-release.yaml's publish-package job
+#     (1.20.0: published 08:45:31, zip attached 08:50:08).
+# Comparing each source's newest release with the catalog works for every
+# tool, however its release is made, and a missed hour is caught the next.
+#
+# Cost: the plan job asks GitHub a few questions and ends in seconds when the
+# catalog is current, which is nearly every hour. Only a release that is ahead
+# runs the bump job (Bazel). An open pull request for that version is left
+# alone, unless it no longer merges, when it is rebuilt from main.
+#
+# It never arms auto-merge: James reads and merges each one. After the merge,
+# catalog-publish signs the list.
+name: catalog-bump
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "Catalog entry, e.g. dev.vitruvian.homespeaker. Empty with an empty tag: every tool behind its newest release."
+        required: false
+        type: string
+      tag:
+        description: "Release tag, e.g. home-speaker-v1.20.0 (v1.4.1 for the GitHub tool). Needs the id."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# One run at a time: two runs would race on the same branch.
+concurrency:
+  group: catalog-bump
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: catalog
+
+      - name: Which releases are newer than the catalog
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ inputs.id }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          plan="$RUNNER_TEMP/plan.json"
+          if [ -n "${ID}${TAG}" ]; then
+            if [ -z "$ID" ] || [ -z "$TAG" ]; then
+              echo "::error::Give both id and tag, or neither."
+              exit 1
+            fi
+            jq -cn --arg id "$ID" --arg tag "$TAG" '[{id: $id, tag: $tag}]' > "$plan"
+          else
+            python3 catalog/bump.py plan --out "$plan"
+          fi
+          echo "matrix=$(jq -c . "$plan")" >> "$GITHUB_OUTPUT"
+
+  bump:
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      # Exit 2: the release has no zip yet. Exit 3: the tool is not listed
+      # yet. Both are a notice, not a failure. Anything else it refuses fails
+      # the job, naming each mismatch.
+      - name: Update ${{ matrix.id }} from ${{ matrix.tag }}
+        id: bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ matrix.id }}
+          TAG: ${{ matrix.tag }}
+        run: |
+          set +e -u -o pipefail
+          bazel run //catalog:bump -- --id "$ID" --tag "$TAG" --result-out "$RUNNER_TEMP/result.json"
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "status=$(jq -r .status "$RUNNER_TEMP/result.json")" >> "$GITHUB_OUTPUT" ;;
+            2 | 3) echo "status=skipped" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$code" ;;
+          esac
+
+      - name: Mint App token for PR operations
+        if: steps.bump.outputs.status == 'bumped'
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+
+      - name: Open or update the pull request
+        if: steps.bump.outputs.status == 'bumped'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ID: ${{ matrix.id }}
+          TAG: ${{ matrix.tag }}
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/result.json"
+          branch="$(jq -r .branch "$result")"
+          title="$(jq -r .title "$result")"
+          jq -r .body "$result" > "$RUNNER_TEMP/body.md"
+
+          git config user.name "vitruvian-wren-agent[bot]"
+          git config user.email "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
+          # The checkout used persist-credentials: false. Hand git the App
+          # token for the push.
+          gh auth setup-git
+
+          git checkout -B "$branch"
+          git add catalog/tools.json apps/web/vitruviansoftware-dev/_data/tools.yml
+          git commit -m "$title" -m "Written by the catalog-bump workflow from the release $TAG."
+          git push -f origin "$branch"
+
+          existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            echo "PR #${existing} already open for $branch: updated."
+          else
+            gh pr create --title "$title" --body-file "$RUNNER_TEMP/body.md" --base main --head "$branch"
+          fi
+
+          # A pull request for an older version of the same tool is replaced.
+          gh pr list --base main --state open --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"catalog/bump-${ID}-\")) | select(.headRefName != \"${branch}\") | .number" |
+            while read -r older; do
+              gh pr close "$older" --delete-branch --comment "Replaced by the pull request for ${TAG}."
+            done
