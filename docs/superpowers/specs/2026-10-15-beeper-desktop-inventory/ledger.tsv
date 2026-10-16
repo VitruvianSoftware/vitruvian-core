@@ -1,0 +1,681 @@
+anchor	item	spec_files	status
+component	./sentry/crash-reporter.ts	01	covered
+component	./sentry/init-sentry-electron.ts	01	covered
+component	./sentry/init-sentry-nonbrowser.ts	01	covered
+component	AIMessageContent.tsx	01	covered
+component	AIMessageFooterActions.tsx	01	covered
+component	AIMessageParts.tsx	01	covered
+component	AIModelButton.tsx	01	covered
+component	AIPane.tsx	01	covered
+component	AISpinnerVerb.tsx	01	covered
+component	AIToolCallsPanel.tsx	01	covered
+component	AccountActions.tsx	01	covered
+component	AccountDisconnectedBanner.tsx	01	covered
+component	AccountListItemPure.tsx	01	covered
+component	AccountNotificationPrefs.tsx	01	covered
+component	AccountPrefsSubView.tsx	01	covered
+component	AccountsBanner.tsx	01	covered
+component	AddAccountsBrowserWindow.tsx	01	covered
+component	AddContactForm.tsx	01	covered
+component	AddMoreAccountsBanner.tsx	01	covered
+component	AddNewAccountIcon.tsx	01	covered
+component	App.tsx	01	covered
+component	AppIconPrefsSubView.tsx	01	covered
+component	AppStatus.tsx	01	covered
+component	AttachmentCarousel.tsx	01	covered
+component	Audio.tsx	01	covered
+component	AuthComponents.tsx	01	covered
+component	Autocomplete.tsx	01	covered
+component	AwaitCredentials.tsx	01	covered
+component	AwaitEmailCode.tsx	01	covered
+component	AwaitInboxExperience.tsx	01	covered
+component	AwaitLeadRegistration.tsx	01	covered
+component	AwaitNetworkConnection.tsx	01	covered
+component	AwaitRecoveryCode.tsx	01	covered
+component	AwaitVerification.tsx	01	covered
+component	Badge.tsx	01	covered
+component	BaseConnectModal.tsx	01	covered
+component	BrandButton.tsx	01	covered
+component	BrandChatInfoPaneBookmarks.tsx	01	covered
+component	BrandCompositeIllustration.tsx	01	covered
+component	BrandEmptyStateMessage.tsx	01	covered
+component	BrandExpandableSection.tsx	01	covered
+component	BrandHeading.tsx	01	covered
+component	BrandIconButton.tsx	01	covered
+component	BrandLink.tsx	01	covered
+component	BrandList.tsx	01	covered
+component	BrandNetworkIcon.tsx	01	covered
+component	BrandParagraph.tsx	01	covered
+component	BrandPopover.tsx	01	covered
+component	BrandReplyLineSegment.tsx	01	covered
+component	BrandSegmentControl.tsx	01	covered
+component	BrandSelect.tsx	01	covered
+component	BrandSendButton.tsx	01	covered
+component	BrandStopButton.tsx	01	covered
+component	BrandTypingIndicator.tsx	01	covered
+component	BrandUserHoverCard.tsx	01	covered
+component	BrandVideo.tsx	01	covered
+component	BridgeV2AuthComponent.tsx	01	covered
+component	BridgeV2Instructions.tsx	01	covered
+component	BrowserExtPrefsSubView.tsx	01	covered
+component	BrowserSessionImportCard.tsx	01	covered
+component	Bubble.tsx	01	covered
+component	Button.tsx	01	covered
+component	CalendarPane.tsx	01	covered
+component	ChangeEmailBrowserWindow.tsx	01	covered
+component	ChatThemeBrowserWindow.tsx	01	covered
+component	ChatThemeWindow.tsx	01	covered
+component	Checkbox.tsx	01	covered
+component	CheckboxPlus.tsx	01	covered
+component	ClippableRecoveryCode.tsx	01	covered
+component	CloudIcon.tsx	01	covered
+component	CmdBarPage.tsx	01	covered
+component	Code.tsx	01	covered
+component	CommandBarUser.tsx	01	covered
+component	CompactAccountsBanner.tsx	01	covered
+component	ComposeMessage.tsx	01	covered
+component	ConfettiIcon.tsx	01	covered
+component	ConnectionPicker.tsx	01	covered
+component	ContactItem.tsx	01	covered
+component	CopyableDataViewer.tsx	01	covered
+component	CopyableField.tsx	01	covered
+component	CreateLabelBrowserWindow.tsx	01	covered
+component	CreateLabelNudgeIcon.tsx	01	covered
+component	CreateMergedChatBrowserWindow.tsx	01	covered
+component	DebugPreferencesIndex.tsx	01	covered
+component	DefaultAvatar.tsx	01	covered
+component	DeleteAccountModal.tsx	01	covered
+component	DeleteAccountPrompt.tsx	01	covered
+component	DesktopIcon.tsx	01	covered
+component	DetachedAccountsOnboarding.tsx	01	covered
+component	DeviceListItem.tsx	01	covered
+component	DeviceRow.tsx	01	covered
+component	DevicesTooltip.tsx	01	covered
+component	DisableAnalyticsPreference.tsx	01	covered
+component	DisappearedMessagesGrouper.tsx	01	covered
+component	DownloadMobileApps.tsx	01	covered
+component	DraftChatAvatar.tsx	01	covered
+component	Drag.tsx	01	covered
+component	Drop.tsx	01	covered
+component	DynamicPreferencesRenderer.tsx	01	covered
+component	EditGroupBrowserWindow.tsx	01	covered
+component	EditGroupModal.tsx	01	covered
+component	EditLabelsBrowserWindow.tsx	01	covered
+component	EditSidebar.tsx	01	covered
+component	EditSidebarBrowserWindow.tsx	01	covered
+component	Email.tsx	01	covered
+component	Emoji.tsx	01	covered
+component	EmojiItem.tsx	01	covered
+component	EmptyStateBackground.tsx	01	covered
+component	EmptyStateBackgroundThumbnail.tsx	01	covered
+component	EnhancedImg.tsx	01	covered
+component	ErrorBoundary.tsx	01	covered
+component	ErrorCircle.tsx	01	covered
+component	ErrorRenderer.tsx	01	covered
+component	EventExplorer.tsx	01	covered
+component	ExtLink.tsx	01	covered
+component	FactsPromptTester.tsx	01	covered
+component	FeaturedHoneycombCard.tsx	01	covered
+component	FileAttachment.tsx	01	covered
+component	FileDropOverlay.tsx	01	covered
+component	FilePlaceholder.tsx	01	covered
+component	FileRowSpinner.tsx	01	covered
+component	Floating.tsx	01	covered
+component	FreebieNudge.tsx	01	covered
+component	GalleryGrouper.tsx	01	covered
+component	GalleryVideoPoster.tsx	01	covered
+component	GeneralSearch.tsx	01	covered
+component	GeneralSearchResults.tsx	01	covered
+component	GifPicker.tsx	01	covered
+component	GlobalAudioPlayer.tsx	01	covered
+component	GroupAvatar.tsx	01	covered
+component	GroupParticipantItem.tsx	01	covered
+component	GroupTitleBar.tsx	01	covered
+component	HelpHubBrowserWindow.tsx	01	covered
+component	HotkeysPrefsSubView.tsx	01	covered
+component	HoverCard.context.tsx	01	covered
+component	HoverCard.tsx	01	covered
+component	IconButton.tsx	01	covered
+component	IconColorPicker.tsx	01	covered
+component	ImageError.tsx	01	covered
+component	JumpToMessage.tsx	01	covered
+component	Key.tsx	01	covered
+component	KeyboardFirstPage.tsx	01	covered
+component	LinkDialog.tsx	01	covered
+component	LoadingAttachment.tsx	01	covered
+component	Location.tsx	01	covered
+component	LoginBrowserWindow.tsx	01	covered
+component	LoginQRCode.tsx	01	covered
+component	Lottie.tsx	01	covered
+component	MediaViewerBrowserWindow.tsx	01	covered
+component	MediaWithSender.tsx	01	covered
+component	MembershipGrouper.tsx	01	covered
+component	MergeSuggestionNetworkIcons.tsx	01	covered
+component	MergedChatEditor.tsx	01	covered
+component	MessageContent.tsx	01	covered
+component	MessageEditHistory.tsx	01	covered
+component	MessageErrorTooltip.tsx	01	covered
+component	MessageIFrame.tsx	01	covered
+component	MessageList.tsx	01	covered
+component	MessageMention.tsx	01	covered
+component	MessageReactButtons.tsx	01	covered
+component	MessageReactions.tsx	01	covered
+component	MessageText.tsx	01	covered
+component	MessageTranslationRow.tsx	01	covered
+component	MessageTranslations.tsx	01	covered
+component	MobileAppsPrefsSubView.tsx	01	covered
+component	MobileIcon.tsx	01	covered
+component	NetworkAccountsMenu.tsx	01	covered
+component	ObjectExplorer.tsx	01	covered
+component	Onboarding.tsx	01	covered
+component	OnboardingFrame.tsx	01	covered
+component	OtherAccounts.tsx	01	covered
+component	OutlineCheck.tsx	01	covered
+component	OutlineChevronDown.tsx	01	covered
+component	OutlineChevronDownSmall.tsx	01	covered
+component	OutlineChevronRightSmall.tsx	01	covered
+component	OutlineClip.tsx	01	covered
+component	OutlineClock.tsx	01	covered
+component	OutlineCompose.tsx	01	covered
+component	OutlineSearch.tsx	01	covered
+component	OutlineSidebar.tsx	01	covered
+component	OutlineSpinner.tsx	01	covered
+component	OutlineTrash.tsx	01	covered
+component	PDF.tsx	01	covered
+component	PDFAttachment.tsx	01	covered
+component	PendingAttachments.tsx	01	covered
+component	PhoneNumber.tsx	01	covered
+component	PictureInPictureBrowserWindow.tsx	01	covered
+component	PinnedThreadListItem.tsx	01	covered
+component	PlusIcon.tsx	01	covered
+component	PlusPill.tsx	01	covered
+component	PollCreator.tsx	01	covered
+component	PollCreatorBrowserWindow.tsx	01	covered
+component	PopupMenu.tsx	01	covered
+component	PrefOption.tsx	01	covered
+component	PreferenceTags.tsx	01	covered
+component	PrefsActionPrompt.tsx	01	covered
+component	PrefsControls.tsx	01	covered
+component	PrefsPanes.tsx	01	covered
+component	ProfileField.tsx	01	covered
+component	ProgressCircle.tsx	01	covered
+component	QRCode.tsx	01	covered
+component	QuickRepliesPrefsSubView.tsx	01	covered
+component	QuickReplyItem.tsx	01	covered
+component	RecoveryCodeInput.tsx	01	covered
+component	RecoveryCodePreamble.tsx	01	covered
+component	RightPane.tsx	01	covered
+component	RoomStateExplorer.tsx	01	covered
+component	ScheduledMessageDate.tsx	01	covered
+component	ScheduledMessages.tsx	01	covered
+component	ScrollToBottom.tsx	01	covered
+component	SearchIcon.tsx	01	covered
+component	SearchSuggestions.tsx	01	covered
+component	SecretPrefsSubView.tsx	01	covered
+component	SelectMessageCommand.tsx	01	covered
+component	SelectRecentSearchCommand.tsx	01	covered
+component	SelectionModeActions.tsx	01	covered
+component	SelectionModeHeader.tsx	01	covered
+component	SingleSelect.tsx	01	covered
+component	Skeleton.tsx	01	covered
+component	Slot.tsx	01	covered
+component	SolidCircleCheck.tsx	01	covered
+component	SolidMoon.tsx	01	covered
+component	SplashScreen.tsx	01	covered
+component	Spoiler.tsx	01	covered
+component	StackedAvatars.tsx	01	covered
+component	StartNewChatView.tsx	01	covered
+component	StatusPill.tsx	01	covered
+component	StickerPicker.tsx	01	covered
+component	StorageByRoomList.tsx	01	covered
+component	StorageOverviewChart.tsx	01	covered
+component	StoragePrefsSubView.tsx	01	covered
+component	SubComponents.tsx	01	covered
+component	SubscriptionExpiryBanners.tsx	01	covered
+component	TabList.tsx	01	covered
+component	TabletIcon.tsx	01	covered
+component	TakeBeeperWithYou.tsx	01	covered
+component	TextAreaAutocomplete.tsx	01	covered
+component	ThreadAvatar.tsx	01	covered
+component	ThreadDescription.tsx	01	covered
+component	ThreadInfo.tsx	01	covered
+component	ThreadInfoBrowserWindow.tsx	01	covered
+component	ThreadListReadIcon.tsx	01	covered
+component	ThreadPreviewMedia.tsx	01	covered
+component	ThreadPreviewTag.tsx	01	covered
+component	ThreadSearchPage.tsx	01	covered
+component	ThreadedRepliesBrowserWindow.tsx	01	covered
+component	ThreadedRepliesHeader.tsx	01	covered
+component	ThreadedRepliesPane.tsx	01	covered
+component	ThreadsList.tsx	01	covered
+component	TimelineNote.tsx	01	covered
+component	Toasts.tsx	01	covered
+component	Toggle.tsx	01	covered
+component	ToggleScheduledMessages.tsx	01	covered
+component	TooltipButton.tsx	01	covered
+component	TranscodedAttachment.tsx	01	covered
+component	TypingIndicator.tsx	01	covered
+component	UnknownAvatar.tsx	01	covered
+component	UnreadMentionIndicator.tsx	01	covered
+component	UnreadThreadCard.tsx	01	covered
+component	UsernameInput.tsx	01	covered
+component	ViewLimitedMediaViewer.tsx	01	covered
+component	VisibilityMonitor.tsx	01	covered
+component	ac_unit.tsx	01	covered
+component	account_circle.tsx	01	covered
+component	add.tsx	01	covered
+component	air.tsx	01	covered
+component	archive.tsx	01	covered
+component	assignment.tsx	01	covered
+component	asterisk.tsx	01	covered
+component	audio_file.tsx	01	covered
+component	auth.tsx	01	covered
+component	auto_awesome.tsx	01	covered
+component	background_replace.tsx	01	covered
+component	beach_access.tsx	01	covered
+component	bed.tsx	01	covered
+component	blur_on.tsx	01	covered
+component	bolt.tsx	01	covered
+component	book_2.tsx	01	covered
+component	business_center.tsx	01	covered
+component	cake.tsx	01	covered
+component	calendar_month.tsx	01	covered
+component	call.tsx	01	covered
+component	campaign.tsx	01	covered
+component	casino.tsx	01	covered
+component	celebration.tsx	01	covered
+component	check.tsx	01	covered
+component	check_circle.tsx	01	covered
+component	chevron_forward.tsx	01	covered
+component	chevron_right.tsx	01	covered
+component	clear_day.tsx	01	covered
+component	close.tsx	01	covered
+component	code.tsx	01	covered
+component	content_copy.tsx	01	covered
+component	createMentionTriggerSettings.tsx	01	covered
+component	createSlashCommandTriggerSettings.tsx	01	covered
+component	csv.tsx	01	covered
+component	deceased.tsx	01	covered
+component	default.tsx	01	covered
+component	directions_bike.tsx	01	covered
+component	directions_boat.tsx	01	covered
+component	directions_car.tsx	01	covered
+component	directions_walk.tsx	01	covered
+component	download.tsx	01	covered
+component	draft.tsx	01	covered
+component	drag_handle.tsx	01	covered
+component	drag_indicator.tsx	01	covered
+component	edit_square.tsx	01	covered
+component	email.tsx	01	covered
+component	entry-preview.tsx	01	covered
+component	error_outline.tsx	01	covered
+component	escalator_warning.tsx	01	covered
+component	expand_more.tsx	01	covered
+component	explore.tsx	01	covered
+component	eyeglasses.tsx	01	covered
+component	family_restroom.tsx	01	covered
+component	favorite.tsx	01	covered
+component	filter_list.tsx	01	covered
+component	fingerprint.tsx	01	covered
+component	fitness_center.tsx	01	covered
+component	folder_zip.tsx	01	covered
+component	footprint.tsx	01	covered
+component	forward.tsx	01	covered
+component	function.tsx	01	covered
+component	group.tsx	01	covered
+component	hardware.tsx	01	covered
+component	headset_mic.tsx	01	covered
+component	heat.tsx	01	covered
+component	hiking.tsx	01	covered
+component	home.tsx	01	covered
+component	hourglass_bottom.tsx	01	covered
+component	icons-compose.tsx	01	covered
+component	icons-custom.tsx	01	covered
+component	icons-general.tsx	01	covered
+component	icons-networks.tsx	01	covered
+component	icons-toolbar.tsx	01	covered
+component	icons.tsx	01	covered
+component	image.tsx	01	covered
+component	inbox.tsx	01	covered
+component	index.tsx	01	covered
+component	joystick.tsx	01	covered
+component	keep.tsx	01	covered
+component	key.tsx	01	covered
+component	kitchen.tsx	01	covered
+component	language.tsx	01	covered
+component	lazy.tsx	01	covered
+component	library_add.tsx	01	covered
+component	link.tsx	01	covered
+component	linkify.tsx	01	covered
+component	local_cafe.tsx	01	covered
+component	location_city.tsx	01	covered
+component	looks.tsx	01	covered
+component	low_priority_space.tsx	01	covered
+component	map.tsx	01	covered
+component	maps_ugc.tsx	01	covered
+component	mark_email_unread.tsx	01	covered
+component	message-info.tsx	01	covered
+component	message-preview.tsx	01	covered
+component	mode_comment.tsx	01	covered
+component	mood.tsx	01	covered
+component	moon_stars.tsx	01	covered
+component	moped.tsx	01	covered
+component	more_horiz.tsx	01	covered
+component	motorcycle.tsx	01	covered
+component	movie.tsx	01	covered
+component	music_note.tsx	01	covered
+component	nature.tsx	01	covered
+component	nest_eco_leaf.tsx	01	covered
+component	new-chat-utils.tsx	01	covered
+component	newspaper.tsx	01	covered
+component	notifications.tsx	01	covered
+component	notifications_off.tsx	01	covered
+component	pentagon.tsx	01	covered
+component	person.tsx	01	covered
+component	pets.tsx	01	covered
+component	photo_camera.tsx	01	covered
+component	photo_library.tsx	01	covered
+component	podcasts.tsx	01	covered
+component	pool.tsx	01	covered
+component	preference-definitions.tsx	01	covered
+component	rainy.tsx	01	covered
+component	reply.tsx	01	covered
+component	restaurant.tsx	01	covered
+component	reviews.tsx	01	covered
+component	road.tsx	01	covered
+component	rowing.tsx	01	covered
+component	sailing.tsx	01	covered
+component	schedule.tsx	01	covered
+component	schedule_send.tsx	01	covered
+component	school.tsx	01	covered
+component	search.tsx	01	covered
+component	self_improvement.tsx	01	covered
+component	settings.tsx	01	covered
+component	shopping_cart.tsx	01	covered
+component	signature.tsx	01	covered
+component	signpost.tsx	01	covered
+component	skateboarding.tsx	01	covered
+component	skillet_cooktop.tsx	01	covered
+component	sms.tsx	01	covered
+component	speaker.tsx	01	covered
+component	speed.tsx	01	covered
+component	sports_basketball.tsx	01	covered
+component	sports_cricket.tsx	01	covered
+component	sports_football.tsx	01	covered
+component	sports_gymnastics.tsx	01	covered
+component	sports_score.tsx	01	covered
+component	sports_soccer.tsx	01	covered
+component	sports_tennis.tsx	01	covered
+component	stadia_controller.tsx	01	covered
+component	star.tsx	01	covered
+component	stethoscope.tsx	01	covered
+component	stop.tsx	01	covered
+component	storefront.tsx	01	covered
+component	stroller.tsx	01	covered
+component	stylus_pencil.tsx	01	covered
+component	surfing.tsx	01	covered
+component	sync.tsx	01	covered
+component	theater_comedy.tsx	01	covered
+component	train.tsx	01	covered
+component	translate.tsx	01	covered
+component	travel.tsx	01	covered
+component	unfold_more.tsx	01	covered
+component	video_file.tsx	01	covered
+component	videocam.tsx	01	covered
+component	view_sidebar.tsx	01	covered
+component	visibility.tsx	01	covered
+component	volume_up.tsx	01	covered
+component	warning.tsx	01	covered
+component	watch.tsx	01	covered
+component	water_bottle.tsx	01	covered
+component	water_drop.tsx	01	covered
+component	waves.tsx	01	covered
+component	weekend.tsx	01	covered
+component	wine_bar.tsx	01	covered
+component	with-assets.tsx	01	covered
+command	Chats	01,02,03,04	covered
+command	Search chats	01,02	covered
+command	Merge chats	01,02	covered
+command	Open recently viewed chats	02	covered
+command	Archive all chats	01,02	covered
+command	Archive all chats older than a week	01,02	covered
+command	Archive all read chats	01,02	covered
+command	Mark all chats as read	01,02	covered
+command	Next Chat	01,02	covered
+command	Commands	01,02,03,04	covered
+command	Create new chat	01,02	covered
+command	Create new group	01,02	covered
+command	Join a Matrix room	01,02	covered
+command	Search messages in all chats	01,02	covered
+command	Show message requests	02	covered
+command	Show settings	02	covered
+command	Show keyboard shortcuts	01,02	covered
+command	Toggle sidebar	01,02	covered
+command	Toggle space bar	01,02	covered
+command	Edit spaces	01,02	covered
+command	Email feedback	01,02	covered
+command	Logout of your Beeper account	02	covered
+command	View subscription details / billing history / edit payment methods	02	covered
+command	Lock app	01,02	covered
+command	Report a problem	01,02,03	covered
+command	Filter Chats	01,02	covered
+command	Filter by folder type	02	covered
+command	Filter by type	01,02	covered
+command	Filter by account	01,02	covered
+command	Settings	01,02,03,04	covered
+command	Add Account	01,02,03	covered
+command	Account	01,02,03,04	covered
+command	Accounts	01,02,03,04	covered
+command	Beeper Plus	01,02	covered
+command	General	01,02	covered
+command	AI	01,02,03,04	covered
+command	Appearance	01,02	covered
+command	Notifications	01,02,03	covered
+command	Secret	01,02	covered
+command	Browser Extension	01,02,03	covered
+command	Mobile Apps	01,02	covered
+command	Hotkeys	01,02,04	covered
+command	Storage	01,02,03,04	covered
+command	Quick Replies	01,02,03	covered
+command	Bridges	01,02,03	covered
+command	Devices	01,02,03,04	covered
+command	About	01,02,03	covered
+command	Help	01,02,03,04	covered
+command	Profile	01,02,03	covered
+command	Debug Preferences	01,02	covered
+command	Integrations	01,02	covered
+command	Turn on incognito mode	02	covered
+command	Window	01,02,03,04	covered
+command	Media viewer	01,02,03	covered
+command	Open space in new window	01,02	covered
+command	Maximize/unmaximize	01,02	covered
+command	View	01,02,03,04	covered
+command	Zoom in	01,02	covered
+command	Zoom out	01,02	covered
+command	Reset zoom	02	covered
+command	UI	01,02,03,04	covered
+command	Set theme to light mode	02	covered
+command	Set theme to dark mode	01,02	covered
+command	Toggle chat selection mode	01,02	covered
+command	Confetti	01,02,03	covered
+command	Redact names and pictures	01,02	covered
+command	Developer	01,02	covered
+command	Reload app	01,02	covered
+command	Relaunch app	01,02	covered
+command	Cleanup	01,02,03	covered
+command	Restart macOS Notification Center	02	covered
+command	Uninstall helper tool	01,02	covered
+command	Open console	02	covered
+command	Open Data Explorer	01,02	covered
+hotkey	Chat: Archive All Read	01,02	covered
+hotkey	Chat: Send File	01,02	covered
+hotkey	Chat: Start New	01,02,03	covered
+hotkey	Chat: Toggle Archive	01,02	covered
+hotkey	Chat: Toggle Mark As Read	01,02	covered
+hotkey	Chat: Toggle Mute	01,02	covered
+hotkey	Chat: Toggle Pin	01,02	covered
+hotkey	Cycle Chats (hold shift to reverse)	01,02	covered
+hotkey	History: Next Chat	01,02	covered
+hotkey	History: Previous Chat	01,02	covered
+hotkey	Open User Profile	02	covered
+hotkey	Remind Later	02	covered
+hotkey	Scroll to the bottom of a chat	01,02	covered
+hotkey	Select Next Chat	02	covered
+hotkey	Select Next Unread Chat	01,02	covered
+hotkey	Select Previous Chat	02	covered
+hotkey	Switch First 9 Chats Modifier	01,02	covered
+hotkey	Toggle Chat Info	01,02	covered
+hotkey	Command Bar	01,02,03	covered
+hotkey	Cycle Filters	01,02	covered
+hotkey	Filter By Account	01,02	covered
+hotkey	Filter: Unread	01,02,03	covered
+hotkey	Focus App	01,02	covered
+hotkey	Focus App and Command Bar	01,02	covered
+hotkey	Keyboard Shortcuts	01,02	covered
+hotkey	Minimize To Menu Bar	02,03	covered
+hotkey	Quit App	01,02	covered
+hotkey	Reload App	01,02	covered
+hotkey	Report a Problem	01,02,03	covered
+hotkey	Reset Zoom	02	covered
+hotkey	Search	01,02,03,04	covered
+hotkey	Search: Room	01,02,03	covered
+hotkey	Select Next Account	02	covered
+hotkey	Select Previous Account	02	covered
+hotkey	Send Feedback	01,02	covered
+hotkey	Settings	01,02,03,04	covered
+hotkey	Switch First 9 Spaces Modifier	01,02	covered
+hotkey	Toggle Sidebar	01,02	covered
+hotkey	Toggle Space Bar	01,02	covered
+hotkey	Zoom In	01,02	covered
+hotkey	Zoom Out	01,02	covered
+hotkey	Download Attachments	01,02	covered
+hotkey	Message: Edit	01,02,03	covered
+hotkey	Message: Forward	01,02,03	covered
+hotkey	Message: Open First Link	01,02	covered
+hotkey	Message: Quick React	01,02	covered
+hotkey	Message: Quote & Reply	01,02	covered
+hotkey	Message: Quote or Edit Selected Message	02	covered
+hotkey	Message: Record Audio	01,02	covered
+hotkey	Message: Send GIF	01,02	covered
+hotkey	Message: Send Later	01,02,03	covered
+hotkey	Message: Send Message and Archive	01,02	covered
+hotkey	Message: Send Sticker	01,02	covered
+hotkey	Message: Talk to Type	01,02	covered
+hotkey	Show Replies	02	covered
+hotkey	Insert New Line	01,02	covered
+hotkey	Send Message	01,02	covered
+setting:ai	Translation Languages	01,02	covered
+setting:ai	Arabic	02	covered
+setting:ai	Use OpenAI's Whisper model for Talk to Type and transcribing	02	covered
+setting:ai	Mention an AI to get answers and help in chat	01,02	covered
+setting:appearance	Show sidebar	01,02	covered
+setting:appearance	Use regular style for pinned chats	01,02	covered
+setting:appearance	Reduce transparency	01,02	covered
+setting:appearance	Show number of unread messages	01,02	covered
+setting:appearance	Show message previews	01,02	covered
+setting:appearance	Compact chat list	01,02	covered
+setting:appearance	Show network icons	01,02	covered
+setting:appearance	Colorize network icons	01,02	covered
+setting:appearance	Chat action button (on hover) should	01,02	covered
+setting:appearance	On double-clicking a chat	02	covered
+setting:appearance	Show message timestamps	01,02	covered
+setting:appearance	Hide deleted messages	01,02	covered
+setting:appearance	Enable message animations	01,02	covered
+setting:appearance	Balance message text	01,02	covered
+setting:appearance	Load external embeds automatically	01,02	covered
+setting:appearance	Show incognito mode indicator	02	covered
+setting:appearance	Show quick reactions Use my most frequent emoji Custom 👍 ❤️ 	01,02	covered
+setting:appearance	Use my most frequent emoji	01,02	covered
+setting:appearance	Custom 👍 ❤️ 😂	01,02,03	covered
+setting:appearance	Quick reaction emoji ❤️	01,02	covered
+setting:appearance	Show reactions when a message is selected	01,02	covered
+setting:appearance	Show feedback widget	01,02	covered
+setting:appearance	Show membership events	01,02	covered
+setting:appearance	Enable spellcheck	01,02	covered
+setting:appearance	Show formatting menu	01,02	covered
+setting:appearance	Open emoji picker on hover	02	covered
+setting:appearance	Disable link previews in outgoing messages	01,02	covered
+setting:appearance	Primary composer button	01,02	covered
+setting:appearance	Secondary composer button	01,02	covered
+setting:appearance	Show menu bar icon	02	covered
+setting:appearance	Use pointer cursor for interactive elements	02	covered
+setting:appearance	Dock badge count	01,02,03	covered
+setting:appearance	Font size	01,02	covered
+setting:beeper-plus	Go Unlimited	02	covered
+setting:general	Incognito mode	01,02,03	covered
+setting:general	Show recipients I'm typing	01,02	covered
+setting:general	App language	01,02	covered
+setting:general	Default for remind later	02	covered
+setting:general	Archive after setting reminder on chat	02	covered
+setting:general	Mark unread chats as read on archive	01,02	covered
+setting:general	After archive	01,02	covered
+setting:general	Archive	01,02,03,04	covered
+setting:general	After mark as read/unread	01,02	covered
+setting:general	On double-clicking a message	01,02	covered
+setting:general	Allow undo send (⌘ Z) for	02	covered
+setting:general	Click pending messages to undo send	01,02	covered
+setting:general	Include timestamps when copying messages with ⌘ C	02	covered
+setting:general	Enable emoji autocomplete	02	covered
+setting:general	Automatically send GIFs after selection	02	covered
+setting:general	Automatically play the next voice note	02	covered
+setting:general	Microphone	01,02,03	covered
+setting:general	Disable automatic replacement of emoticons with emojis	01,02	covered
+setting:general	Auto copy OTP/2FA codes	01,02	covered
+setting:general	Press ↑ in the composer to	01,02	covered
+setting:general	Downloads location <path>	01,02	covered
+setting:general	Always ask where to save files before downloading	01,02	covered
+setting:general	Open Beeper at login	02	covered
+setting:general	Keep Beeper minimized on launch	02	covered
+setting:general	Quit Beeper when closing the main window	02	covered
+setting:general	Default for send later	02	covered
+setting:general	Show WhatsApp Communities as separate spaces	01,02	covered
+setting:general	Show Telegram Topics as separate spaces	01,02	covered
+setting:general	Require Touch ID authentication on launch	01,02	covered
+setting:general	Show hidden events in timeline	01,02	covered
+setting:general	Time Format	01,02	covered
+setting:general	Share Analytics	01,02	covered
+setting:integrations	Allow connections	01,02	covered
+setting:integrations	Claude Desktop	02,03	covered
+setting:integrations	Cursor	01,02,03	covered
+setting:integrations	VS Code	02,03	covered
+setting:integrations	Raycast	01,02,03	covered
+setting:integrations	Install to	02	covered
+setting:integrations	Remote Access	01,02,03	covered
+setting:notifications	Sound effects	01,02	covered
+setting:notifications	Message notifications	02	covered
+setting:notifications	Sound	01,02,03	covered
+setting:notifications	Group message notifications	02	covered
+setting:notifications	Message request notifications	02	covered
+setting:notifications	Notify when app is in focus	02	covered
+setting:notifications	Notify when someone reacts to a message	02	covered
+setting:notifications	Notify when someone starts typing (supported platforms only)	02	covered
+setting:notifications	Delay notifications for	01,02	covered
+setting:notifications	Repeat notification if still unread after	01,02	covered
+menu:Beeper	About Beeper	02	covered
+menu:Beeper	Check for Updates…	01,02	covered
+menu:Beeper	Accounts…	01,02,03,04	covered
+menu:Beeper	Preferences	01,02	covered
+menu:Beeper	Command Bar…	01,02,03	covered
+menu:Beeper	Search…	01,02,03,04	covered
+menu:Beeper	Services	02,03	covered
+menu:Beeper	Hide Beeper	02	covered
+menu:Beeper	Hide Others	02	covered
+menu:Beeper	Show All	02	covered
+menu:Beeper	Lock App	01,02	covered
+menu:Beeper	Logout of Beeper…	02	covered
+menu:Beeper	Quit Beeper	02	covered
+menu:File	Open…	01,02,03	covered
+menu:File	New Chat	01,02,03	covered
+menu:File	Close Window	01,02	covered
+menu:File	Close All	02	covered
+menu:File	Open Chat in New Window	01,02	covered
+menu:View	Hide Space Bar	01,02	covered
+menu:View	Hide Sidebar	01,02	covered
+menu:Help	Report a Problem	01,02,03	covered
+menu:Help	Open Beeper Help	02	covered
+menu:Help	Open Beeper.com	02	covered
+menu:Help	Follow @Beeper on X	02	covered
+menu:Help	Changelog	01,02	covered
+menu:Help	Privacy & Security	02	covered
+menu:Help	Keyboard Shortcuts	01,02	covered
+menu:Help	Logout of Beeper…	02	covered
