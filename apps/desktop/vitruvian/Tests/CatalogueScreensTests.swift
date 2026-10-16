@@ -125,13 +125,37 @@ enum CatalogueScreensTests {
                          && sheet.movesToCatalogue
                          == "You added it from the folder ~/Remote; from now on it comes from the Vitruvian catalog."
                          && sheet.catalogue == english.agreeCatalog && sheet.from == "From github.com/acme/deploys"
-                         && sheet.versions == "You have version 1.2.0. This folder has version 1.3.0."
+                         && sheet.versions == "You have version 1.2.0. The catalog has version 1.3.0."
                          && sheet.keepsData == english.updateKeepsData && sheet.initialFocus == .cancel,
                      "updating from the catalog a tool added from a folder is asked on the usual sheet, which says "
                          + "in one sentence that it moves from its folder to the catalog, and that what it saved is kept")
         suite.expect(sheet.changed == english.updateChanged,
                      "and when what the tool says about itself changed, the sheet still asks the person to read it again")
         moving.installer.finished(with: move)
+
+        // A tool from the catalog, updated from the catalog.
+        let updating = CatalogueInstallerTests.Rig()
+        defer { updating.close() }
+        guard case .success(let first)? = updating.prepare(updating.entry(TestZip.tool())),
+              (try? updating.bench.store.add(ToolConsent(to: first)).get()) != nil else {
+            suite.expect(false, "a tool from the catalog is installed")
+            return
+        }
+        updating.installer.finished(with: first)
+        guard case .success(let update)? = updating.prepare(updating.entry(TestZip.tool(version: "1.3.0"),
+                                                                           version: "1.3.0")) else {
+            suite.expect(false, "a newer version from the catalog is offered")
+            return
+        }
+        let catalogUpdate = ToolAgreementContent(offer: update, language: .enUS, strings: english, cancel: "Cancel")
+        let folderUpdate = ToolAgreementContent(offer: (try? moving.bench.store.offer(from: added).get()) ?? update,
+                                                language: .enUS, strings: english, cancel: "Cancel")
+        suite.expect(catalogUpdate.versions == "You have version 1.2.0. The catalog has version 1.3.0."
+                         && catalogUpdate.movesToCatalogue == nil
+                         && folderUpdate.versions == "You have version 1.2.0. This folder has version 1.2.0.",
+                     "an update from the catalog says the catalog has the new version, never a folder the person "
+                         + "cannot see; an update from a folder still names the folder")
+        updating.installer.finished(with: update)
     }
 
     static func refusals(_ suite: TestSuite) {

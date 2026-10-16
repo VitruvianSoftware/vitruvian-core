@@ -57,7 +57,8 @@ package struct ToolAgreementContent: Equatable {
     package let catalogue: String?
     /// That the name, publisher and description are the tool's own words.
     package let ownWords: String
-    /// For an update: the version agreed to before, and this one.
+    /// For an update: the version agreed to before, and this one, which is
+    /// the catalog's for an offer from the catalog.
     package let versions: String?
     /// For an update whose manifest is not the bytes agreed to before.
     package let changed: String?
@@ -119,8 +120,12 @@ package struct ToolAgreementContent: Equatable {
             ?? Self.abbreviated(offer.folder.path, home: home))
         catalogue = offer.catalogue == nil ? nil : strings.agreeCatalog
         ownWords = strings.agreeOwnWords
+        // An offer from the catalog was unpacked into the app's own folder,
+        // which the person never sees: its version is the catalog's.
         versions = offer.replaces.map {
-            strings.updateVersions(agreed: ToolOwnWords.oneLine($0.version), offered: ToolOwnWords.oneLine(tool.version))
+            let agreed = ToolOwnWords.oneLine($0.version), offered = ToolOwnWords.oneLine(tool.version)
+            return offer.catalogue == nil ? strings.updateVersions(agreed: agreed, offered: offered)
+                : strings.updateVersionsFromCatalog(agreed: agreed, offered: offered)
         }
         changed = offer.manifestChanged ? strings.updateChanged : nil
         movesToCatalogue = offer.movesFromFolder.map { strings.updateMovesToCatalog(Self.abbreviated($0, home: home)) }
