@@ -22,7 +22,10 @@ go_library(
 
 go_test(
     name = "host_test",
-    srcs = ["host_test.go"],
+    srcs = [
+        "host_test.go",
+        "whatsapp_offline_test.go",
+    ],
     embed = [":host"],
     deps = [
         "//apps/desktop/courier/engine/internal/fakenet",
@@ -30,6 +33,7 @@ go_test(
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
+        "@fi_mau_go_mautrix_whatsapp//pkg/connector",
         "@fi_mau_go_util//configupgrade",
     ],
 )
