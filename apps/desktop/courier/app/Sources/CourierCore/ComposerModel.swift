@@ -45,6 +45,8 @@ public struct ComposerAttachment: Equatable, Identifiable, Sendable {
 public enum ComposerNotice: Equatable, Sendable {
     /// Adding the file would take the attachments past 90 MB.
     case attachmentTooLarge(fileName: String)
+    /// Files that were to be put back after a send went wrong no longer fit under 90 MB with what was added since.
+    case attachmentsLeftOut(fileNames: [String])
     /// What was given is a folder, which cannot be sent.
     case notAFile(fileName: String)
     /// The file could not be read (it is gone, or Courier may not open it).
@@ -79,7 +81,10 @@ public final class ComposerModel: ObservableObject {
     @Published public var text = ""
     @Published public private(set) var attachments: [ComposerAttachment] = []
     @Published public private(set) var replyTarget: QuotedMessage?
-    @Published public private(set) var notice: ComposerNotice?
+    /// What the person should be told, first the most important. Cleared when another chat opens or on dismiss.
+    @Published public private(set) var notices: [ComposerNotice] = []
+    /// The first of `notices`.
+    public var notice: ComposerNotice? { notices.first }
     public private(set) var roomID: String?
 
     public var sender: MessageSending?
@@ -92,8 +97,10 @@ public final class ComposerModel: ObservableObject {
         var text = ""
         var attachments: [ComposerAttachment] = []
         var reply: QuotedMessage?
+        /// Notices about a send in a chat that was not open when it ended: shown when it is opened.
+        var notices: [ComposerNotice] = []
 
-        var isEmpty: Bool { text.isEmpty && attachments.isEmpty && reply == nil }
+        var isEmpty: Bool { text.isEmpty && attachments.isEmpty && reply == nil && notices.isEmpty }
 
         /// What was refused, back above what has been typed since. The files that were refused come first; any
         /// added since that would take the total past 90 MB are left out, and their names are returned.
@@ -163,7 +170,8 @@ public final class ComposerModel: ObservableObject {
         text = draft.text
         attachments = draft.attachments
         replyTarget = draft.reply
-        notice = nil
+        notices = draft.notices
+        if let room { drafts[room]?.notices = [] } // shown now, once
     }
 
     private var currentDraft: Draft { Draft(text: text, attachments: attachments, reply: replyTarget) }
@@ -181,23 +189,23 @@ public final class ComposerModel: ObservableObject {
     // MARK: - Attachments
 
     /// Adds files to what will be sent. A folder, an unreadable file, or a file that would take the total past
-    /// 90 MB is left out, and `notice` says which.
+    /// 90 MB is left out, and `notices` says which.
     public func attach(_ urls: [URL]) {
-        notice = nil
+        notices = []
         for url in urls {
             let name = url.lastPathComponent
             if attachments.contains(where: { $0.url == url }) { continue }
             guard let info = fileInfo(url) else {
-                notice = .cannotRead(fileName: name)
+                notices = [.cannotRead(fileName: name)]
                 continue
             }
             guard info.isRegularFile else {
-                notice = .notAFile(fileName: name)
+                notices = [.notAFile(fileName: name)]
                 continue
             }
             let total = attachments.reduce(Int64(0)) { $0 + $1.size }
             guard total + info.size <= Self.maxAttachmentBytes else {
-                notice = .attachmentTooLarge(fileName: name)
+                notices = [.attachmentTooLarge(fileName: name)]
                 continue
             }
             attachments.append(ComposerAttachment(id: UUID(), url: url, size: info.size))
@@ -209,7 +217,7 @@ public final class ComposerModel: ObservableObject {
     }
 
     public func dismissNotice() {
-        notice = nil
+        notices = []
     }
 
     /// A file's size and kind from the disk; nil when it cannot be read.
@@ -238,7 +246,7 @@ public final class ComposerModel: ObservableObject {
         text = ""
         attachments = []
         replyTarget = nil
-        notice = nil
+        notices = []
         onSubmit()
 
         let previous = queues[room]?.task
@@ -284,12 +292,12 @@ public final class ComposerModel: ObservableObject {
                 case .refused(let reason):
                     // Nothing of this was sent: it, and what came after, goes back.
                     let leftOut = putBack(items[index...], reply: reply, in: room)
-                    // A file that no longer fits is the news: the refusal's own words come second.
-                    show(leftOut.map { .attachmentTooLarge(fileName: $0) } ?? .sendFailed(reason: reason), in: room)
+                    show([.sendFailed(reason: reason)] + Self.leftOutNotice(leftOut), in: room)
                 case .unanswered:
                     // This one may have gone: it is not put back, and not sent again. The rest was never tried.
+                    // Files that no longer fit are told after that warning, never instead of it.
                     let leftOut = putBack(items[(index + 1)...], reply: nil, in: room)
-                    show(leftOut.map { .attachmentTooLarge(fileName: $0) } ?? .noAnswer, in: room)
+                    show([.noAnswer] + Self.leftOutNotice(leftOut), in: room)
                 }
                 onSettled()
                 return
@@ -298,9 +306,13 @@ public final class ComposerModel: ObservableObject {
         onSettled()
     }
 
-    /// Puts what was not sent back into the chat's draft. Returns the name of the first file left out because the
-    /// total would pass 90 MB, if any.
-    private func putBack(_ items: ArraySlice<Outgoing>, reply: QuotedMessage?, in room: String) -> String? {
+    private static func leftOutNotice(_ names: [String]) -> [ComposerNotice] {
+        names.isEmpty ? [] : [.attachmentsLeftOut(fileNames: names)]
+    }
+
+    /// Puts what was not sent back into the chat's draft. Returns the names of the files left out because the
+    /// total would pass 90 MB with what was added since.
+    private func putBack(_ items: ArraySlice<Outgoing>, reply: QuotedMessage?, in room: String) -> [String] {
         var unsent = Draft(text: "", attachments: [], reply: reply)
         for item in items {
             switch item {
@@ -308,21 +320,28 @@ public final class ComposerModel: ObservableObject {
             case let .file(file): unsent.attachments.append(file)
             }
         }
-        guard !unsent.isEmpty else { return nil }
+        guard !unsent.isEmpty else { return [] }
         if room == roomID {
             let merged = unsent.restored(into: currentDraft)
             text = merged.draft.text
             attachments = merged.draft.attachments
             replyTarget = merged.draft.reply
-            return merged.leftOut.first
+            return merged.leftOut
         }
         let merged = unsent.restored(into: drafts[room] ?? Draft())
         drafts[room] = merged.draft
-        return merged.leftOut.first
+        return merged.leftOut
     }
 
-    private func show(_ notice: ComposerNotice, in room: String) {
-        if room == roomID { self.notice = notice }
+    /// Tells the person: now if the chat is open, otherwise with that chat's draft, for when it is.
+    private func show(_ notices: [ComposerNotice], in room: String) {
+        if room == roomID {
+            self.notices = notices
+        } else {
+            var draft = drafts[room] ?? Draft()
+            draft.notices = notices
+            drafts[room] = draft
+        }
     }
 
     private enum Failure {

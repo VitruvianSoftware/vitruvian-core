@@ -27,7 +27,7 @@ struct ComposerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let notice = composer.notice {
+            ForEach(Array(composer.notices.enumerated()), id: \.offset) { _, notice in
                 NoticeBar(text: noticeText(notice)) { composer.dismissNotice() }
             }
             if let reply = composer.replyTarget {
@@ -104,6 +104,10 @@ struct ComposerView: View {
         switch notice {
         case let .attachmentTooLarge(name):
             String(localized: "Could not attach \(name) — total size would exceed 90 MB.")
+        case let .attachmentsLeftOut(names):
+            names.count == 1
+                ? String(localized: "Could not put \(names[0]) back — total size would exceed 90 MB.")
+                : String(localized: "Could not put \(names.count) files back — total size would exceed 90 MB: \(names.joined(separator: ", "))")
         case let .notAFile(name):
             String(localized: "Could not attach \(name). Courier can send files, not folders.")
         case let .cannotRead(name):

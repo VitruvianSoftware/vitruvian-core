@@ -332,3 +332,9 @@
 
 /* An action was refused: the chat or message is gone. */
 "That chat or message is no longer there." = "That chat or message is no longer there.";
+
+/* Under the composer after a send went wrong: a file that was to be put back no longer fits with what was added since. The argument is its name. */
+"Could not put %@ back — total size would exceed 90 MB." = "Could not put %@ back — total size would exceed 90 MB.";
+
+/* As above, for several files. The arguments are how many, and their names. */
+"Could not put %lld files back — total size would exceed 90 MB: %@" = "Could not put %lld files back — total size would exceed 90 MB: %@";

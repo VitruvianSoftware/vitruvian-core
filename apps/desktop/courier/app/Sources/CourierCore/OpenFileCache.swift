@@ -3,6 +3,7 @@
 
 import CoreServices
 import CryptoKit
+import Darwin
 import Foundation
 import UniformTypeIdentifiers
 
@@ -14,8 +15,8 @@ import UniformTypeIdentifiers
 /// Gatekeeper still checks the kinds of file that can run, and gives back that copy. The cache is emptied when
 /// Courier starts.
 public struct OpenFileCache: Sendable {
-    /// The longest a file's name is made, in characters.
-    public static let longestName = 100
+    /// The longest a file's name is made, in bytes of UTF-8, extension included. (A folder entry can be 255.)
+    public static let longestNameBytes = 200
 
     public static let shared = OpenFileCache(
         root: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -29,13 +30,24 @@ public struct OpenFileCache: Sendable {
 
     // MARK: - The name
 
-    /// The name the copy is given: the file's own name, made safe to put in a folder. An empty name becomes `file`,
-    /// and a name with no extension gets one from the mime type when the system knows one for it.
+    /// The name the copy is given: the file's own name, made safe to put in a folder and to be shown as it is.
+    /// Slashes, colons and control characters become `_`. Invisible format characters are removed (the
+    /// right-to-left override and the other direction marks, zero-width characters, line and paragraph
+    /// separators): left in, they let `evil<U+202E>fdp.command` show as a harmless name while it runs as a
+    /// `.command`. An empty name becomes `file`, and a name with no extension gets one from the mime type when the
+    /// system knows one for it.
     public static func fileName(for name: String, mimeType: String) -> String {
-        var safe = String(name.unicodeScalars.map { scalar in
-            scalar == "/" || scalar == ":" || scalar.properties.generalCategory == .control ? "_" : Character(scalar)
-        })
-        safe = safe.trimmingCharacters(in: .whitespacesAndNewlines)
+        var kept = String.UnicodeScalarView()
+        for scalar in name.unicodeScalars {
+            let category = scalar.properties.generalCategory
+            if category == .format || category == .lineSeparator || category == .paragraphSeparator { continue }
+            if scalar == "/" || scalar == ":" || category == .control {
+                kept.append("_")
+            } else {
+                kept.append(scalar)
+            }
+        }
+        var safe = String(kept).trimmingCharacters(in: .whitespacesAndNewlines)
         while safe.hasPrefix(".") { safe.removeFirst() }
         safe = safe.trimmingCharacters(in: .whitespacesAndNewlines)
         if safe.isEmpty { safe = "file" }
@@ -47,15 +59,27 @@ public struct OpenFileCache: Sendable {
         return capped(safe)
     }
 
-    /// Cut to `longestName` characters, keeping a sensible extension.
+    /// Cut to `longestNameBytes` bytes (never through a character), keeping a sensible extension.
     private static func capped(_ name: String) -> String {
-        guard name.count > longestName else { return name }
+        guard name.utf8.count > longestNameBytes else { return name }
         let ext = (name as NSString).pathExtension
-        if !ext.isEmpty, ext.count <= 16 {
-            let base = String((name as NSString).deletingPathExtension.prefix(longestName - ext.count - 1))
+        if !ext.isEmpty, ext.utf8.count <= 32 {
+            let base = prefix(of: (name as NSString).deletingPathExtension, bytes: longestNameBytes - ext.utf8.count - 1)
             return base + "." + ext
         }
-        return String(name.prefix(longestName))
+        return prefix(of: name, bytes: longestNameBytes)
+    }
+
+    private static func prefix(of text: String, bytes limit: Int) -> String {
+        var result = String.UnicodeScalarView()
+        var used = 0
+        for scalar in text.unicodeScalars {
+            let size = String(scalar).utf8.count
+            if used + size > limit { break }
+            result.append(scalar)
+            used += size
+        }
+        return String(result)
     }
 
     // MARK: - The copy
@@ -68,13 +92,26 @@ public struct OpenFileCache: Sendable {
         let folder = root.appendingPathComponent(Self.folderName(for: source), isDirectory: true)
         try manager.createDirectory(at: folder, withIntermediateDirectories: true)
         let copy = folder.appendingPathComponent(Self.fileName(for: fileName, mimeType: mimeType))
+        // A file in its place is always a finished, quarantined one: it is only ever put there by the rename below.
         if manager.fileExists(atPath: copy.path) { return copy }
-        try manager.copyItem(at: source, to: copy) // a clone on APFS
+
+        // Copied under a temporary name, marked, and only then renamed into place, so another open that comes
+        // while this one is copying never finds a file that has not been marked.
+        let partial = folder.appendingPathComponent(".\(UUID().uuidString).partial")
         do {
-            try Self.quarantine(copy)
+            try manager.copyItem(at: source, to: partial) // a clone on APFS
+            try Self.quarantine(partial)
+            if renamex_np(partial.path, copy.path, UInt32(RENAME_EXCL)) != 0 {
+                if errno == EEXIST {
+                    // Another open finished first, and its copy is as good.
+                    try? manager.removeItem(at: partial)
+                    return copy
+                }
+                throw CocoaError(.fileWriteUnknown)
+            }
         } catch {
             // Never leave a copy that Gatekeeper has not been told about.
-            try? manager.removeItem(at: copy)
+            try? manager.removeItem(at: partial)
             throw error
         }
         return copy

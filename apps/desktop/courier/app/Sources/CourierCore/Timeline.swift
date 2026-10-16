@@ -177,7 +177,8 @@ public enum Timeline {
     }
 
     /// The oldest of the `unread` newest messages from others (the engine counts messages and stickers only): where
-    /// the "New" divider goes when a chat is opened with that many unread. More unread than are loaded puts it above everything loaded. Nil with none unread.
+    /// the "New" divider goes when a chat is opened with that many unread. More unread than are loaded puts it
+    /// above everything loaded. Nil with none unread.
     public static func firstUnreadID(events: [Event], me: String, unread: Int) -> String? {
         guard unread > 0 else { return nil }
         let incoming = messages(events: events, me: me).filter { !$0.mine && $0.countsAsUnread }

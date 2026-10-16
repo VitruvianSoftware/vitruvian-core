@@ -313,8 +313,47 @@ final class ComposerModelTests: XCTestCase {
         composer.attach([file("b.bin")]) // typed in while the send was out: 60 + 50 would be too much
         await task?.value
         XCTAssertEqual(composer.attachments.map(\.fileName), ["a.bin"], "what was refused comes back; what no longer fits does not")
-        XCTAssertEqual(composer.notice, .attachmentTooLarge(fileName: "b.bin"))
+        XCTAssertEqual(composer.notices, [.sendFailed(reason: "This chat’s network isn’t linked."),
+                                          .attachmentsLeftOut(fileNames: ["b.bin"])],
+                       "the refusal first, then what did not fit")
         XCTAssertLessThanOrEqual(composer.attachments.reduce(Int64(0)) { $0 + $1.size }, ComposerModel.maxAttachmentBytes)
+    }
+
+    func testTheNoAnswerWarningIsNeverReplacedByTheTooLargeNotice() async {
+        let (composer, sender) = make(sizes: ["a.bin": 60 * Self.megabyte, "b.bin": 50 * Self.megabyte])
+        sender.failures = [.timedOut]
+        composer.open("!a")
+        composer.text = "maybe sent"
+        composer.attach([file("a.bin")])
+        let task = composer.submit() // the text times out; the file was never tried and goes back
+        composer.attach([file("b.bin")]) // 60 + 50 does not fit
+        await task?.value
+        XCTAssertEqual(composer.notices, [.noAnswer, .attachmentsLeftOut(fileNames: ["b.bin"])],
+                       "check the chat before sending again comes first, and stays")
+        XCTAssertEqual(composer.attachments.map(\.fileName), ["a.bin"])
+    }
+
+    func testEveryFileLeftOutIsNamedAndTheNoticeWaitsForAChatThatIsNotOpen() async {
+        let (composer, sender) = make(sizes: [
+            "a.bin": 60 * Self.megabyte, "b.bin": 40 * Self.megabyte, "c.bin": 35 * Self.megabyte,
+        ])
+        sender.failures = [.rpc(.notLinked, message: "x", reason: nil)]
+        composer.open("!a")
+        composer.attach([file("a.bin")])
+        let task = composer.submit() // refused once it runs
+        composer.attach([file("b.bin"), file("c.bin")]) // 75 MB, fine on their own
+        composer.open("!b") // the person has moved on
+        await task?.value
+        XCTAssertTrue(composer.notices.isEmpty, "this is chat b's composer, and the news is about chat a")
+
+        composer.open("!a")
+        XCTAssertEqual(composer.attachments.map(\.fileName), ["a.bin"], "60 + 40 and 60 + 35 are both over 90")
+        XCTAssertEqual(composer.notices, [.sendFailed(reason: "This chat’s network isn’t linked."),
+                                          .attachmentsLeftOut(fileNames: ["b.bin", "c.bin"])],
+                       "every file left out is named, and nothing was lost silently")
+        composer.open("!b")
+        composer.open("!a")
+        XCTAssertTrue(composer.notices.isEmpty, "shown once")
     }
 
     func testARefusalIsPutBackIntoThatChatsDraftEvenIfAnotherIsOpen() async {
