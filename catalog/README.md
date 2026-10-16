@@ -130,9 +130,19 @@ merge itself: **catalog-check** arms auto-merge once it passes on the pull
 request, at the commit it checked, and only while the branch holds nothing
 but the workflow's one commit; it turns it off if it fails. A push by anyone
 else to a bump branch turns auto-merge off at once and labels it
-`needs-human`. Otherwise the pull request is labelled
+`needs-human`, and so does a branch that changes anything but `tools.json`
+and the website's `_data/tools.yml`.
+
+When anything in that list changed, the pull request is labelled
 `needs-human`, never armed, and its description names each change. New words
 in the name, the summary or a command's title do not hold it.
+
+What that does not cover: on a pull request, GitHub runs catalog-check's
+workflow file as the pull request has it, so someone with push access who
+edits that file on a bump branch runs their own version of it, with the
+App's key. That is true of every workflow in this repository while `main`
+needs no approval. The fix is repository-wide, the App's key in an
+environment only `main` can use, and is tracked on its own.
 
 **Skipped, not failed:** a release with no zip yet, a draft or pre-release, a
 tool not listed yet, a version whose pull request is still open, and a
