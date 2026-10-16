@@ -38,6 +38,7 @@
     }
   ],
   "manual": {
-    "dev.vitruvian.reference": "Attached to a release of the SDK whose tag is the SDK's version, not the tool's."
+    "dev.vitruvian.reference": "Attached to a release of the SDK whose tag is the SDK's version, not the tool's.",
+    "dev.vitruvian.reference2": "Attached to a release of the SDK whose tag is the SDK's version, not the tool's."
   }
 }
