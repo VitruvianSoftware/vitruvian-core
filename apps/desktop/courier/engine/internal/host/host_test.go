@@ -6,6 +6,7 @@ package host
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -203,4 +204,59 @@ func TestStartKeepsTheDataDirAndBridgeDatabasePrivate(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, want, fi.Mode().Perm(), path)
 	}
+}
+
+func TestStopIsIdempotent(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop())
+	require.NoError(t, err)
+	require.NotPanics(t, func() {
+		h.Stop()
+		h.Stop()
+	})
+}
+
+// bridgev2's Stop closes the database without waiting for goroutines still mid-query, so SQLite's
+// -wal and -shm files can outlive it. Stop must not return until every connection is closed.
+func TestStopWaitsForTheBridgeDatabaseToClose(t *testing.T) {
+	ctx := context.Background()
+	for i := 0; i < 20; i++ {
+		dir := t.TempDir()
+		s, err := store.Open(filepath.Join(dir, "courier.db"))
+		require.NoError(t, err)
+		n := fakenet.New()
+		h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, n, zerolog.Nop())
+		require.NoError(t, err)
+		login, err := n.Login(ctx, h.Bridge)
+		require.NoError(t, err)
+		for j := 0; j < 5; j++ {
+			n.Incoming(login, "chat1", "alice", fmt.Sprintf("m%d", j), "hello")
+		}
+		h.Stop()
+		require.Zero(t, h.db.RawDB.Stats().OpenConnections, "run %d: Stop returned with the bridge database still open", i)
+		entries, err := os.ReadDir(filepath.Join(dir, "bridges"))
+		require.NoError(t, err)
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		require.Equal(t, []string{"fake.db"}, names, "run %d: the database must leave no -wal/-shm files behind", i)
+		s.Close()
+	}
+}
+
+func TestConfigureWithNoConfigIsAnError(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	called := false
+	_, err = Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop(),
+		WithConfigure(func(any) error { called = true; return nil }))
+	require.ErrorContains(t, err, "fake has no config to configure")
+	require.False(t, called)
+	require.NoFileExists(t, filepath.Join(dir, "bridges", "fake.db"))
 }

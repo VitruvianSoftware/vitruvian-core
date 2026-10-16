@@ -12,6 +12,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/sqlite",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
+        "@fi_mau_go_util//dbutil",
         "@in_gopkg_yaml_v3//:yaml_v3",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/bridgeconfig",

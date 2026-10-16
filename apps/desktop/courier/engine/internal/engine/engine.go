@@ -7,7 +7,9 @@ package engine
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
+	"sync"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -29,7 +31,12 @@ type Engine struct {
 	store *store.Store
 	hosts map[string]*host.Host
 	order []string
+	stop  sync.Once
 }
+
+// validName is the shape of a network name: it becomes a ghost-ID prefix, where an underscore or a capital
+// would break parsing.
+var validName = regexp.MustCompile(`^[a-z]+$`)
 
 // Start starts every network it can. Networks that fail are left out and reported by name;
 // the ones that started keep running.
@@ -37,6 +44,14 @@ func Start(ctx context.Context, dataDir string, s *store.Store, m *media.Store, 
 	e := &Engine{store: s, hosts: map[string]*host.Host{}}
 	errs := map[string]error{}
 	for _, spec := range specs {
+		if !validName.MatchString(spec.Name) {
+			errs[spec.Name] = fmt.Errorf("invalid network name %q: it must match [a-z]+", spec.Name)
+			continue
+		}
+		if _, dup := e.hosts[spec.Name]; dup {
+			errs[spec.Name] = fmt.Errorf("network %s is already running; names must be unique", spec.Name)
+			continue
+		}
 		nc, err := spec.Connector()
 		if err != nil {
 			errs[spec.Name] = err
@@ -87,9 +102,11 @@ func (e *Engine) Names() []string {
 	return names
 }
 
-// Stop stops the hosts in reverse start order.
+// Stop stops the hosts in reverse start order. Safe to call more than once.
 func (e *Engine) Stop() {
-	for i := len(e.order) - 1; i >= 0; i-- {
-		e.hosts[e.order[i]].Stop()
-	}
+	e.stop.Do(func() {
+		for i := len(e.order) - 1; i >= 0; i-- {
+			e.hosts[e.order[i]].Stop()
+		}
+	})
 }
