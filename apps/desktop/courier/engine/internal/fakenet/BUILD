@@ -2,7 +2,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "fakenet",
-    srcs = ["fakenet.go"],
+    srcs = [
+        "fakenet.go",
+        "script.go",
+    ],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/fakenet",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [

@@ -25,6 +25,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
+	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
@@ -283,15 +284,12 @@ func link(ctx context.Context, eng *engine.Engine, n networks.Network, flow stri
 			return false, nil
 		}
 	}
-	me, err := h.Me(ctx)
-	if err != nil {
-		return false, err
-	}
-	proc, err := h.Bridge.Network.CreateLogin(ctx, me, flow)
-	if err != nil {
-		return false, fmt.Errorf("start %s login (%s): %w", n.DisplayName, flow, err)
-	}
-	if err = walkLogin(ctx, proc, p, out); err != nil {
+	// The driver is the same one the app uses. It has no store here, so a network with an account counts as
+	// linked whatever state it is in: relinking a signed-out account is the app's Reconnect, not this CLI's.
+	d := login.NewDriver(eng, nil, func(name string) ([]string, bool) { return n.Flows, name == n.Name })
+	d.IdleTimeout = -1
+	step, err := d.Start(ctx, n.Name, flow)
+	if err = walkSteps(ctx, d, step, err, p, out); err != nil {
 		return false, err
 	}
 	return true, nil

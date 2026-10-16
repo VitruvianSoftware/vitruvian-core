@@ -70,6 +70,8 @@ type Network struct {
 	// network connector does: Connect returns after the socket handshake, and the login only counts once the
 	// server's success message is handled. Zero (the default) means logged in at once.
 	LoginDelay time.Duration
+	// Script, when set, is the login CreateLogin returns for the flow ScriptFlow.
+	Script *ScriptedLogin
 }
 
 func New() *Network {
@@ -112,7 +114,10 @@ func (n *Network) GetConfig() (string, any, configupgrade.Upgrader) {
 }
 func (n *Network) GetBridgeInfoVersion() (int, int)    { return 1, 1 }
 func (n *Network) GetLoginFlows() []bridgev2.LoginFlow { return nil }
-func (n *Network) CreateLogin(context.Context, *bridgev2.User, string) (bridgev2.LoginProcess, error) {
+func (n *Network) CreateLogin(_ context.Context, _ *bridgev2.User, flow string) (bridgev2.LoginProcess, error) {
+	if flow == ScriptFlow && n.Script != nil {
+		return n.Script, nil
+	}
 	return nil, bridgev2.ErrInvalidLoginFlowID
 }
 

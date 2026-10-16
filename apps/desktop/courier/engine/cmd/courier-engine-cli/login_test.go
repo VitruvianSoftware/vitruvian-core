@@ -725,20 +725,6 @@ func TestCookieFieldsAreAskedRequiredFirstThenByID(t *testing.T) {
 	require.Equal(t, given, fields, "the step's own field list is not reordered: a connector may share it")
 }
 
-func TestMaybeURLDecodeCookie(t *testing.T) {
-	cookie := cookieField("d", true, ".example.test")
-	for in, want := range map[string]string{
-		"xoxd-a%2Bb%2F%3D": "xoxd-a+b/=",
-		"xoxd-a+b":         "xoxd-a+b",     // a literal '+' is kept: path, not query, unescaping
-		"xoxd-%zz-raw":     "xoxd-%zz-raw", // not valid percent-encoding: kept as pasted
-		"plain":            "plain",
-	} {
-		require.Equal(t, want, maybeURLDecodeCookie(in, cookie), in)
-	}
-	header := bridgev2.LoginCookieField{ID: "h", Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeRequestHeader, Name: "h"}}}
-	require.Equal(t, "a%2Bb", maybeURLDecodeCookie("a%2Bb", header), "only cookie fields are decoded")
-}
-
 func TestPastedCookieWithLiteralPlusAndBadEscapeIsKept(t *testing.T) {
 	plus := cookieField("d", true, ".example.test")
 	raw := cookieField("r", true, ".example.test")

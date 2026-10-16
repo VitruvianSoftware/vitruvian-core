@@ -1,0 +1,571 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package login
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
+)
+
+// world is an engine running the fake network as "fake", with a driver over it. The network has one login
+// flow, fakenet.ScriptFlow, which plays the steps a test gives it.
+type world struct {
+	d      *Driver
+	s      *store.Store
+	n      *fakenet.Network
+	eng    *engine.Engine
+	script *fakenet.ScriptedLogin
+}
+
+func fakeFlows(name string) ([]string, bool) {
+	if name == "fake" {
+		return []string{fakenet.ScriptFlow}, true
+	}
+	return nil, false
+}
+
+func newWorld(t *testing.T, linked bool, steps ...*bridgev2.LoginStep) world {
+	t.Helper()
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	n := fakenet.New()
+	eng, errs := engine.Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")},
+		[]engine.Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(eng.Stop)
+	if linked {
+		h, ok := eng.Host("fake")
+		require.True(t, ok)
+		_, err = n.Login(ctx, h.Bridge)
+		require.NoError(t, err)
+	}
+	w := world{d: NewDriver(eng, s, fakeFlows), s: s, n: n, eng: eng}
+	w.script = &fakenet.ScriptedLogin{Steps: steps}
+	n.Script = w.script
+	return w
+}
+
+// start begins a login on the fake network's script flow.
+func (w world) start(t *testing.T) Step {
+	t.Helper()
+	step, err := w.d.Start(context.Background(), "fake", fakenet.ScriptFlow)
+	require.NoError(t, err)
+	return step
+}
+
+func complete() *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeComplete, StepID: "fi.mau.fake.complete",
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: "fake-login",
+			UserLogin:   &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "fake-login", RemoteName: "Test Account"}},
+		},
+	}
+}
+
+func displayStep(id string, kind bridgev2.LoginDisplayType, data string) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeDisplayAndWait, StepID: id, Instructions: "Look at your phone.",
+		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{Type: kind, Data: data},
+	}
+}
+
+func inputStep(fields ...bridgev2.LoginInputDataField) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeUserInput, StepID: "fi.mau.fake.input", Instructions: "Tell us who you are.",
+		UserInputParams: &bridgev2.LoginUserInputParams{Fields: fields},
+	}
+}
+
+func cookiesStep(fields ...bridgev2.LoginCookieField) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeCookies, StepID: "fi.mau.fake.cookies",
+		CookiesParams: &bridgev2.LoginCookiesParams{
+			URL: "https://accounts.example.test/signin", UserAgent: "Example/1.0",
+			WaitForURLPattern: `^https://app\.example\.test/`, ExtractJS: "(async () => ({}))()", Fields: fields,
+		},
+	}
+}
+
+func cookieField(id string, required bool, pattern string) bridgev2.LoginCookieField {
+	return bridgev2.LoginCookieField{
+		ID: id, Required: required, Pattern: pattern,
+		Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeCookie, Name: id, CookieDomain: ".example.test"}},
+	}
+}
+
+func jsonOf(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(b)
+}
+
+func TestStepsMapToWireShape(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(
+		t, false,
+		displayStep("fi.mau.fake.qr", bridgev2.LoginDisplayTypeQR, "qr-data-1"),
+		displayStep("fi.mau.fake.emoji", bridgev2.LoginDisplayTypeEmoji, "🦊"),
+		displayStep("fi.mau.fake.code", bridgev2.LoginDisplayTypeCode, "ABCD-EFGH"),
+		inputStep(
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeUsername, ID: "user", Name: "User", Description: "Your handle"},
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeSelect, ID: "mode", Name: "Mode", Options: []string{"a", "b"}, DefaultValue: "a"},
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldType2FACode, ID: "code", Name: "Code", Pattern: `^[0-9]{6}$`},
+		),
+		cookiesStep(cookieField("sid", true, `^s-`)),
+		complete(),
+	)
+	qr := w.start(t)
+	id := qr.LoginID
+	require.NotEmpty(t, id)
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.qr","type":"display_and_wait",
+		"instructions":"Look at your phone.","display":{"kind":"qr","data":"qr-data-1"}}`, id), jsonOf(t, qr))
+
+	emoji, err := w.d.Wait(ctx, id)
+	require.NoError(t, err)
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.emoji","type":"display_and_wait",
+		"instructions":"Look at your phone.","display":{"kind":"emoji","data":"🦊"}}`, id), jsonOf(t, emoji))
+
+	code, err := w.d.Wait(ctx, id)
+	require.NoError(t, err)
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.code","type":"display_and_wait",
+		"instructions":"Look at your phone.","display":{"kind":"code","data":"ABCD-EFGH"}}`, id), jsonOf(t, code))
+
+	fields, err := w.d.Wait(ctx, id)
+	require.NoError(t, err)
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.input","type":"user_input",
+		"instructions":"Tell us who you are.","fields":[
+		{"id":"user","name":"User","description":"Your handle","type":"username"},
+		{"id":"mode","name":"Mode","description":"","type":"select","options":["a","b"],"default_value":"a"},
+		{"id":"code","name":"Code","description":"","type":"2fa_code","pattern":"^[0-9]{6}$"}]}`, id), jsonOf(t, fields))
+
+	cookies, err := w.d.Submit(ctx, id, map[string]string{"user": "someone", "mode": "a", "code": "123456"})
+	require.NoError(t, err)
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.cookies","type":"cookies","cookies":{
+		"url":"https://accounts.example.test/signin","user_agent":"Example/1.0",
+		"wait_for_url":"^https://app\\.example\\.test/","extract_js":"(async () => ({}))()",
+		"fields":[{"id":"sid","required":true,"pattern":"^s-","sources":[{"type":"cookie","name":"sid","cookie_domain":".example.test"}]}]}}`, id),
+		jsonOf(t, cookies))
+
+	done, err := w.d.Submit(ctx, id, map[string]string{"sid": "s-1"})
+	require.NoError(t, err)
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.complete","type":"complete","remote_name":"Test Account"}`, id),
+		jsonOf(t, done))
+	require.Zero(t, w.script.Cancelled(), "a completed login is not cancelled")
+
+	_, err = w.d.Wait(ctx, id)
+	require.ErrorIs(t, err, ErrUnknownLogin, "a completed login is over")
+}
+
+func TestSubmitValidatesPatternWithoutEchoing(t *testing.T) {
+	ctx := context.Background()
+	const bad = "bad-value-sentinel"
+	w := newWorld(
+		t, false,
+		inputStep(
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeToken, ID: "token", Name: "Token", Pattern: `^xox[a-z]-`},
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypePhoneNumber, ID: "phone", Name: "Phone"},
+		),
+		complete(),
+	)
+	id := w.start(t).LoginID
+
+	for name, values := range map[string]map[string]string{
+		"pattern mismatch": {"token": bad, "phone": "+15550100"},
+		"bad phone":        {"token": "xoxa-ok", "phone": bad},
+		"missing":          {"phone": "+15550100"},
+	} {
+		_, err := w.d.Submit(ctx, id, values)
+		require.ErrorIs(t, err, ErrBadValue, name)
+		require.NotContains(t, err.Error(), bad, name+": a value is never echoed")
+		require.NotContains(t, err.Error(), "+15550100", name)
+	}
+	require.Empty(t, w.script.Submitted(), "nothing invalid reaches the connector")
+	require.Zero(t, w.script.Cancelled(), "a bad value leaves the login open so the person can try again")
+
+	// The error names the field, so the app can mark it.
+	_, err := w.d.Submit(ctx, id, map[string]string{"token": bad, "phone": "+15550100"})
+	require.ErrorContains(t, err, "Token")
+
+	step, err := w.d.Submit(ctx, id, map[string]string{"token": "xoxa-ok", "phone": "+1 (555) 0100"})
+	require.NoError(t, err)
+	require.Equal(t, StepComplete, step.Type)
+	require.Equal(t, []map[string]string{{"token": "xoxa-ok", "phone": "+15550100"}}, w.script.Submitted(),
+		"a phone number is cleaned the way the bridge's own login does")
+}
+
+func TestPlainFieldsAreTrimmedAndSecretsAreNot(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(
+		t, false,
+		inputStep(
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeUsername, ID: "user", Name: "User"},
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypePassword, ID: "pw", Name: "Password"},
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeUsername, ID: "nick", Name: "Nick", DefaultValue: "me"},
+			bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeSelect, ID: "mode", Name: "Mode", Options: []string{"a", "b"}},
+		),
+		complete(),
+	)
+	id := w.start(t).LoginID
+	_, err := w.d.Submit(ctx, id, map[string]string{"user": "x", "pw": "p", "mode": "c"})
+	require.ErrorIs(t, err, ErrBadValue, "a select takes only its options")
+	_, err = w.d.Submit(ctx, id, map[string]string{"user": "  someone \n", "pw": "  two words  ", "mode": "b", "other": "ignored"})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"user": "someone", "pw": "  two words  ", "nick": "me", "mode": "b"}}, w.script.Submitted(),
+		"plain fields are trimmed, a secret is kept exactly, a blank field takes its default and unknown keys are dropped")
+}
+
+func TestCookieValuesAreURLDecodedLikeBridgev2(t *testing.T) {
+	// Browser developer tools show cookie values percent-encoded; the connector wants the decoded form.
+	const pasted, decoded = "xoxd-sentinel%2Bab%2Fcd%3D%3D", "xoxd-sentinel+ab/cd=="
+	cookie := cookieField("d", true, `^xoxd-[a-zA-Z0-9/+=]+$`) // only the decoded form matches
+	stored := bridgev2.LoginCookieField{
+		ID: "ls", Required: true,
+		Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeLocalStorage, Name: "ls"}},
+	}
+	plus := cookieField("plus", true, "")
+	raw := cookieField("raw", true, "")
+	optional := cookieField("extra", false, `^xoxd-`)
+
+	w := newWorld(t, false, cookiesStep(cookie, stored, plus, raw, optional), complete())
+	id := w.start(t).LoginID
+	_, err := w.d.Submit(context.Background(), id, map[string]string{
+		"d": pasted, "ls": "keep%2Bas-is", "plus": "a+b", "raw": "c%zzd", "extra": "",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{
+		"d": decoded, "ls": "keep%2Bas-is", "plus": "a+b", "raw": "c%zzd",
+	}}, w.script.Submitted(), "cookie fields are decoded; other sources are submitted as pasted; a blank optional is left out")
+}
+
+func TestMaybeURLDecodeCookie(t *testing.T) {
+	cookie := CookieField{Sources: []CookieSource{{Type: SourceCookie, Name: "d"}}}
+	for in, want := range map[string]string{
+		"xoxd-a%2Bb%2F%3D": "xoxd-a+b/=",
+		"xoxd-a+b":         "xoxd-a+b",     // a literal '+' is kept: path, not query, unescaping
+		"xoxd-%zz-raw":     "xoxd-%zz-raw", // not valid percent-encoding: kept as pasted
+		"plain":            "plain",
+	} {
+		require.Equal(t, want, MaybeURLDecodeCookie(in, cookie), in)
+	}
+	header := CookieField{Sources: []CookieSource{{Type: SourceRequestHeader, Name: "h"}}}
+	require.Equal(t, "a%2Bb", MaybeURLDecodeCookie("a%2Bb", header), "only cookie fields are decoded")
+}
+
+func TestCookieSubmitChecksPatternRequiredAndNeverEchoes(t *testing.T) {
+	ctx := context.Background()
+	const bad = "cookie-sentinel"
+	w := newWorld(t, false, cookiesStep(cookieField("sid", true, `^s-`), cookieField("opt", false, "")), complete())
+	id := w.start(t).LoginID
+
+	_, err := w.d.Submit(ctx, id, map[string]string{"sid": bad})
+	require.ErrorIs(t, err, ErrBadValue)
+	require.NotContains(t, err.Error(), bad)
+	require.ErrorContains(t, err, "sid")
+
+	_, err = w.d.Submit(ctx, id, map[string]string{"opt": "x"})
+	require.ErrorIs(t, err, ErrBadValue)
+	require.ErrorContains(t, err, "sid", "a missing required value is named by its ID")
+	require.Empty(t, w.script.Submitted())
+	require.Zero(t, w.script.Cancelled())
+
+	_, err = w.d.Submit(ctx, id, map[string]string{"sid": "s-ok"})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"sid": "s-ok"}}, w.script.Submitted())
+}
+
+func TestCancelOnEveryNonCompleteExit(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("cancel", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"))
+		id := w.start(t).LoginID
+		w.d.Cancel(id)
+		require.Equal(t, 1, w.script.Cancelled())
+		w.d.Cancel(id) // harmless the second time, and for a login that never existed
+		w.d.Cancel("no-such-login")
+		require.Equal(t, 1, w.script.Cancelled(), "a login is cancelled once")
+		_, err := w.d.Wait(ctx, id)
+		require.ErrorIs(t, err, ErrUnknownLogin)
+	})
+
+	t.Run("cancel while a wait is blocked, without waiting for its lock", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"), complete())
+		w.script.Hold = make(chan struct{})
+		id := w.start(t).LoginID
+		waited := make(chan error, 1)
+		go func() { _, err := w.d.Wait(ctx, id); waited <- err }()
+		time.Sleep(50 * time.Millisecond) // let the Wait block inside the connector
+
+		cancelled := make(chan struct{})
+		go func() { w.d.Cancel(id); close(cancelled) }()
+		select {
+		case <-cancelled:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Cancel waited behind a blocked Wait")
+		}
+		select {
+		case err := <-waited:
+			require.Error(t, err, "the blocked Wait comes back")
+		case <-time.After(5 * time.Second):
+			t.Fatal("the blocked Wait never returned after Cancel")
+		}
+		require.Equal(t, 1, w.script.Cancelled(), "exactly one cancel, even though Wait also saw the cancellation")
+	})
+
+	t.Run("ctx cancel during a wait", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"), complete())
+		w.script.Hold = make(chan struct{})
+		id := w.start(t).LoginID
+		wctx, cancel := context.WithCancel(ctx)
+		waited := make(chan error, 1)
+		go func() { _, err := w.d.Wait(wctx, id); waited <- err }()
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+		require.ErrorIs(t, <-waited, context.Canceled)
+		require.Equal(t, 1, w.script.Cancelled())
+		_, err := w.d.Wait(ctx, id)
+		require.ErrorIs(t, err, ErrUnknownLogin, "the session is gone")
+	})
+
+	t.Run("ctx already cancelled at a submit", func(t *testing.T) {
+		w := newWorld(t, false, inputStep(bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeUsername, ID: "u", Name: "U"}),
+			displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"))
+		id := w.start(t).LoginID
+		cctx, cancel := context.WithCancel(ctx)
+		cancel()
+		_, err := w.d.Submit(cctx, id, map[string]string{"u": "x"})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, 1, w.script.Cancelled())
+	})
+
+	t.Run("the connector fails", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x")) // no step left for the Wait
+		id := w.start(t).LoginID
+		_, err := w.d.Wait(ctx, id)
+		require.Error(t, err)
+		require.Equal(t, 1, w.script.Cancelled())
+		_, err = w.d.Wait(ctx, id)
+		require.ErrorIs(t, err, ErrUnknownLogin)
+	})
+
+	t.Run("a step this app cannot do", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"),
+			&bridgev2.LoginStep{Type: bridgev2.LoginStepTypeWebAuthn, StepID: "fi.mau.fake.passkey"})
+		id := w.start(t).LoginID
+		step, err := w.d.Wait(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, StepUnsupported, step.Type)
+		require.Equal(t, 1, w.script.Cancelled())
+	})
+
+	t.Run("idle", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"))
+		w.d.IdleTimeout = 50 * time.Millisecond
+		id := w.start(t).LoginID
+		require.Eventually(t, func() bool { return w.script.Cancelled() == 1 }, 5*time.Second, 10*time.Millisecond,
+			"a session nobody touches is cancelled")
+		_, err := w.d.Wait(ctx, id)
+		require.ErrorIs(t, err, ErrUnknownLogin)
+		time.Sleep(100 * time.Millisecond)
+		require.Equal(t, 1, w.script.Cancelled())
+	})
+
+	t.Run("a call keeps the session alive", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"), displayStep("qr2", bridgev2.LoginDisplayTypeQR, "y"), complete())
+		w.d.IdleTimeout = 300 * time.Millisecond
+		id := w.start(t).LoginID
+		w.script.Hold = make(chan struct{})
+		waited := make(chan error, 1)
+		go func() { _, err := w.d.Wait(ctx, id); waited <- err }()
+		time.Sleep(600 * time.Millisecond) // longer than the idle timeout, but a Wait is a call in progress
+		require.Zero(t, w.script.Cancelled(), "a session that is waiting for the phone is not idle")
+		close(w.script.Hold)
+		require.NoError(t, <-waited)
+	})
+}
+
+func TestIdleTimeoutDefaultsToTenMinutes(t *testing.T) {
+	w := newWorld(t, false)
+	require.Equal(t, 10*time.Minute, w.d.IdleTimeout)
+}
+
+func TestAlreadyLinkedRefusedUnlessLoggedOut(t *testing.T) {
+	ctx := context.Background()
+	setState := func(t *testing.T, w world, event string) {
+		t.Helper()
+		require.NoError(t, w.s.SetBridgeState(ctx, "fake", json.RawMessage(fmt.Sprintf(`{"state_event":%q}`, event))))
+	}
+
+	for _, event := range []string{"", "CONNECTED", "CONNECTING", "TRANSIENT_DISCONNECT", "UNKNOWN_ERROR"} {
+		t.Run("refused when "+event, func(t *testing.T) {
+			w := newWorld(t, true, complete())
+			if event != "" { // "" is no state at all
+				setState(t, w, event)
+			}
+			_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+			require.ErrorIs(t, err, ErrAlreadyLinked)
+			require.Nil(t, w.script.Override())
+			require.Zero(t, w.script.Cancelled(), "no login process was even created")
+			_, err = w.script.Wait(ctx)
+			require.NoError(t, err, "the script's one step is still unused")
+		})
+	}
+
+	for _, event := range []string{"LOGGED_OUT", "BAD_CREDENTIALS"} {
+		t.Run("may re-link when "+event, func(t *testing.T) {
+			w := newWorld(t, true, complete())
+			setState(t, w, event)
+			step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+			require.NoError(t, err)
+			require.Equal(t, StepComplete, step.Type)
+			require.NotNil(t, w.script.Override(), "the existing login is handed to the connector to be replaced")
+			require.Equal(t, "fake-login", string(w.script.Override().ID))
+		})
+	}
+
+	t.Run("a network with no login links freely whatever its state", func(t *testing.T) {
+		w := newWorld(t, false, complete())
+		setState(t, w, "CONNECTED")
+		step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		require.NoError(t, err)
+		require.Equal(t, StepComplete, step.Type)
+		require.Nil(t, w.script.Override())
+	})
+}
+
+func TestWebAuthnIsUnsupportedStep(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("first step", func(t *testing.T) {
+		w := newWorld(t, false, &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeWebAuthn, StepID: "fi.mau.fake.passkey"})
+		step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		require.NoError(t, err, "an unsupported step is an answer, not an error")
+		require.Equal(t, StepUnsupported, step.Type)
+		require.Equal(t, "fi.mau.fake.passkey", step.StepID)
+		require.Contains(t, step.Instructions, "webauthn")
+		require.Contains(t, step.Instructions, "fi.mau.fake.passkey")
+		require.Contains(t, step.Instructions, "passkey")
+		require.Contains(t, step.Instructions, "different sign-in method")
+		require.Nil(t, step.Display)
+		require.Empty(t, step.Fields)
+		require.Equal(t, 1, w.script.Cancelled())
+		_, err = w.d.Submit(ctx, step.LoginID, nil)
+		require.ErrorIs(t, err, ErrUnknownLogin, "the session is removed")
+	})
+
+	t.Run("an unknown step type after a submit", func(t *testing.T) {
+		w := newWorld(t, false,
+			inputStep(bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeUsername, ID: "u", Name: "U"}),
+			&bridgev2.LoginStep{Type: bridgev2.LoginStepTypeClientHTTP, StepID: "fi.mau.fake.http"})
+		id := w.start(t).LoginID
+		step, err := w.d.Submit(ctx, id, map[string]string{"u": "x"})
+		require.NoError(t, err)
+		require.Equal(t, StepUnsupported, step.Type)
+		require.Contains(t, step.Instructions, "client_http")
+		require.Contains(t, step.Instructions, "fi.mau.fake.http")
+		require.Equal(t, id, step.LoginID)
+		require.Equal(t, 1, w.script.Cancelled())
+	})
+}
+
+func TestStartRefusesWhatTheNetworkDoesNotOffer(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t, false, complete())
+
+	_, err := w.d.Start(ctx, "fake", "qr")
+	require.ErrorIs(t, err, ErrBadValue)
+	require.ErrorContains(t, err, `"qr"`, "the message names the flow")
+
+	_, err = w.d.Start(ctx, "nosuch", "qr")
+	require.ErrorIs(t, err, ErrBadValue)
+	require.ErrorContains(t, err, "nosuch")
+
+	step, err := w.d.Start(ctx, "fake", "")
+	require.NoError(t, err, "no flow means the network's first")
+	require.Equal(t, StepComplete, step.Type)
+
+	// A network the table lists but that isn't running (Telegram without its credentials).
+	d := NewDriver(w.eng, w.s, func(name string) ([]string, bool) { return []string{"qr"}, true })
+	_, err = d.Start(ctx, "telegram", "qr")
+	require.ErrorIs(t, err, ErrNotRunning)
+	require.ErrorContains(t, err, "telegram")
+}
+
+func TestACallThatDoesNotFitTheStepIsRefusedAndLeavesTheLoginOpen(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"), complete())
+	id := w.start(t).LoginID
+
+	_, err := w.d.Submit(ctx, id, map[string]string{"a": "b"})
+	require.ErrorIs(t, err, ErrBadValue, "this step is waiting for the phone, not for a value")
+	require.Zero(t, w.script.Cancelled())
+	step, err := w.d.Wait(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, StepComplete, step.Type)
+
+	_, err = w.d.Submit(ctx, "no-such-login", nil)
+	require.ErrorIs(t, err, ErrUnknownLogin)
+}
+
+func TestSessionsAreIndependent(t *testing.T) {
+	w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"))
+	a := w.start(t).LoginID
+	other := &fakenet.ScriptedLogin{Steps: []*bridgev2.LoginStep{displayStep("qr", bridgev2.LoginDisplayTypeQR, "y")}}
+	w.n.Script = other
+	b := w.start(t).LoginID
+	require.NotEqual(t, a, b)
+	w.d.Cancel(a)
+	require.Equal(t, 1, w.script.Cancelled())
+	require.Zero(t, other.Cancelled(), "cancelling one login leaves the other alone")
+	w.d.Cancel(b)
+	require.Equal(t, 1, other.Cancelled())
+}
+
+func TestCallsOnOneSessionRunOneAtATime(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"), displayStep("qr2", bridgev2.LoginDisplayTypeQR, "y"), complete())
+	w.script.Hold = make(chan struct{})
+	id := w.start(t).LoginID
+
+	var mu sync.Mutex
+	var kinds []string
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			step, err := w.d.Wait(ctx, id)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				kinds = append(kinds, "err: "+err.Error())
+				return
+			}
+			kinds = append(kinds, step.StepID)
+		}()
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(w.script.Hold)
+	wg.Wait()
+	require.ElementsMatch(t, []string{"qr2", "fi.mau.fake.complete"}, kinds, "each Wait got its own step; none was lost or doubled")
+}
