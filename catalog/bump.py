@@ -54,7 +54,8 @@ over, close, and arm auto-merge on. Standard library only, apart from `gh`,
 so they run without Bazel.
 
 Exit status: 0 done or nothing to do, 1 refused, 10 the release is not ready
-(no zip yet, a draft), 11 the tool is not listed yet. The workflow reads the
+(no zip yet, a draft), 11 the tool is not listed yet, 12 GitHub did not hand
+over a file (try again; not a refusal). The workflow reads the
 result's `status`, not the exit status.
 """
 
@@ -75,7 +76,7 @@ from pathlib import Path
 
 import catalog_rules
 
-OK, REFUSED, NOT_READY, NOT_LISTED = 0, 1, 10, 11
+OK, REFUSED, NOT_READY, NOT_LISTED, UNAVAILABLE = 0, 1, 10, 11, 12
 
 CATALOG = "catalog/tools.json"
 SCHEMA = "catalog/catalog.schema.json"
@@ -87,10 +88,14 @@ HOME_REPO = "VitruvianSoftware/vitruvian-core"
 AUTOMERGE_MARK = "<!-- catalog-bump: may merge itself -->"
 # The comment plan leaves, once, on a branch it will not rebuild.
 FOREIGN_MARK = "<!-- catalog-bump: foreign commits -->"
+# The comment catalog-check leaves, once, on a pull request it holds.
+HELD_MARK = "<!-- catalog-bump: held for a person -->"
 # The trailer of the one commit the workflow writes on a bump branch.
 TRAILER = "Catalog-Bump"
 HOLDS = ("needs-human", "do-not-automerge")
-BRANCH = re.compile(r"^catalog/bump-[a-z0-9.-]+-[0-9]+\.[0-9]+\.[0-9]+$")
+BRANCH = re.compile(
+    r"^catalog/bump-(?P<id>[a-z0-9.-]+)-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$"
+)
 
 # What a manifest may declare that an app older than the version given does
 # not draw, from packages/vitruvian-sdk/protocol/README.md and the app's
@@ -133,6 +138,11 @@ class Refused(Exception):
 
 class NotReady(Exception):
     """A release that is not ready to list yet, which is not a failure."""
+
+
+class Unavailable(Exception):
+    """GitHub did not hand over a file: nothing is known about the release
+    yet, so this is not a refusal. The run fails and the next hour retries."""
 
 
 class NotListed(Exception):
@@ -410,15 +420,16 @@ def checked_zip(row, tag, version, release, work, oldest):
         raise Refused(reasons)
 
     data = release.fetch(asset)
-    if data is None:
-        raise Refused([f"{name} could not be downloaded"])
+    side = release.fetch(sidecar)
+    for what, got in ((name, data), (name + ".sha256", side)):
+        if got is None:
+            raise Unavailable(f"{what} could not be downloaded")
     sha = hashlib.sha256(data).hexdigest()
     if len(data) != asset.get("size"):
         reasons.append(f"{name} is {len(data)} bytes, GitHub says {asset.get('size')}")
     if sha != digest[len("sha256:") :]:
         reasons.append(f"{name}'s SHA-256 is {sha}, GitHub says {digest}")
-    side = release.fetch(sidecar)
-    match = SIDECAR.match((side or b"").decode("utf-8", "replace").split("\n")[0])
+    match = SIDECAR.match(side.decode("utf-8", "replace").split("\n")[0])
     if not match:
         reasons.append(f"{name}.sha256 is not `<sha256>  <file name>`")
     else:
@@ -931,10 +942,49 @@ class GitHub:
         pulls = sorted(pulls, key=lambda p: p["number"], reverse=True)
         return pulls[0] if pulls else None
 
-    def compare(self, branch):
+    def compare(self, head, base="main"):
         return gh_json(
-            ["api", f"repos/{home()}/compare/main...{branch}"], f"compare {branch}"
+            ["api", f"repos/{home()}/compare/{base}...{head}"], f"compare {head}"
         )
+
+    def pull_view(self, number):
+        return gh_json(
+            [
+                "pr",
+                "view",
+                str(number),
+                "--repo",
+                home(),
+                "--json",
+                "state,isDraft,headRefName,headRefOid,author,labels,body,autoMergeRequest",
+            ],
+            f"read #{number}",
+        )
+
+    def act(self, args, what):
+        if gh([*args, "--repo", home()]) is None:
+            raise SystemExit(f"could not {what}")
+
+    def enable_auto(self, number, sha):
+        # GitHub refuses to arm when the head is no longer `sha`.
+        self.act(
+            [
+                "pr",
+                "merge",
+                str(number),
+                "--squash",
+                "--auto",
+                "--match-head-commit",
+                sha,
+            ],
+            f"arm auto-merge on #{number}",
+        )
+
+    def disable_auto(self, number):
+        self.act(["pr", "merge", str(number), "--disable-auto"], f"disarm #{number}")
+
+    def add_label(self, number, label):
+        self.act(["pr", "edit", str(number), "--add-label", label], f"label #{number}")
 
     def refused_open(self, title):
         issues = gh_json(
@@ -1024,27 +1074,47 @@ def older(pulls, tool_id, version):
 APP_AUTHORS = ("app/vitruvian-copybara-sync", "vitruvian-copybara-sync[bot]")
 
 
-def arm(pull, tested_sha, check):
-    """What catalog-check does with auto-merge on a bump pull request once it
-    has run: "arm", "disarm", or "leave: <why>". It arms only when it passed
-    on the commit the branch still holds, the workflow opened the pull
-    request, the body carries the mark, and nobody held it."""
+def arm(pull, compare, tested_sha, check):
+    """What catalog-check does with auto-merge on a bump pull request:
+    "arm", "disarm", "hold: <why>" (turn it off if on, label needs-human,
+    say why once) or "leave: <why>".
+
+    `compare` is GitHub's compare of main with the pull request's head. A
+    branch that holds anything but the workflow's one trailer commit is held,
+    whatever catalog-check says: the body's verdict was made for the
+    workflow's change alone. `check` is the downloads job's result, or
+    "pushed" when a push just arrived and the check has not run on it: then
+    a person's commit is held at once, and the workflow's own is left for
+    catalog-check to judge.
+
+    It arms only when catalog-check passed on the commit the branch still
+    holds, the workflow opened the pull request and wrote its only commit,
+    the body carries the mark, and nobody held it."""
     armed = pull.get("autoMergeRequest") is not None
     labels = {label["name"] for label in pull.get("labels", [])}
 
     def stop(why):
         return "disarm" if armed else f"leave: {why}"
 
-    if check != "success":
-        return stop(f"catalog-check ended {check}")
     if pull.get("state") != "OPEN" or pull.get("isDraft"):
         return stop("it is not an open, ready pull request")
-    if pull.get("headRefOid") != tested_sha:
-        return "leave: the branch moved since catalog-check ran; that run decides"
-    if not BRANCH.match(pull.get("headRefName", "")):
+    branch = BRANCH.match(pull.get("headRefName", ""))
+    if not branch:
         return stop("it is not a catalog/bump-<id>-<version> branch")
     if (pull.get("author") or {}).get("login") not in APP_AUTHORS:
         return stop("catalog-bump did not open it")
+    others = foreign(compare, branch["id"], branch["version"])
+    if others:
+        return (
+            "hold: its branch holds commits catalog-bump did not write: "
+            + ", ".join(others)
+        )
+    if check == "pushed":
+        return "leave: catalog-bump's own commit; catalog-check decides"
+    if check != "success":
+        return stop(f"catalog-check ended {check}")
+    if pull.get("headRefOid") != tested_sha:
+        return "leave: the branch moved since catalog-check ran; that run decides"
     if labels & set(HOLDS):
         return stop("it is held: " + ", ".join(sorted(labels & set(HOLDS))))
     if AUTOMERGE_MARK not in (pull.get("body") or ""):
@@ -1052,6 +1122,31 @@ def arm(pull, tested_sha, check):
     if armed:
         return "leave: auto-merge is already on"
     return "arm"
+
+
+def automerge(github, number, tested_sha, check, base="main"):
+    """Reads the pull request and its commits now, decides with `arm`, and
+    acts: arms (only at `tested_sha`), disarms, or holds it for a person."""
+    pull = github.pull_view(number)
+    compare = github.compare(pull.get("headRefOid", ""), base)
+    decision = arm(pull, compare, tested_sha, check)
+    if decision == "arm":
+        github.enable_auto(number, tested_sha)
+    elif decision == "disarm":
+        github.disable_auto(number)
+    elif decision.startswith("hold: "):
+        if pull.get("autoMergeRequest") is not None:
+            github.disable_auto(number)
+        github.add_label(number, "needs-human")
+        github.comment_once(
+            number,
+            HELD_MARK,
+            "This pull request will not merge itself: "
+            + decision.removeprefix("hold: ")
+            + ". Auto-merge is off and it is labelled needs-human; a person "
+            "decides.",
+        )
+    return decision
 
 
 # --- The command --------------------------------------------------------------
@@ -1067,7 +1162,14 @@ def workspace(given):
 
 def main(argv=None, github=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0] not in ("bump", "plan", "foreign", "older", "arm"):
+    if not argv or argv[0] not in (
+        "bump",
+        "plan",
+        "foreign",
+        "older",
+        "arm",
+        "automerge",
+    ):
         argv.insert(0, "bump")
     parser = argparse.ArgumentParser(
         description="Updates one tool's catalog entry from one of its releases."
@@ -1097,8 +1199,18 @@ def main(argv=None, github=None):
     mine.add_argument("--version", required=True)
     gate = commands.add_parser("arm", help="what catalog-check does with auto-merge")
     gate.add_argument("--pull", required=True, help="gh pr view --json ..., as JSON")
+    gate.add_argument("--compare", required=True, help="compare main...head, as JSON")
     gate.add_argument("--tested-sha", required=True)
-    gate.add_argument("--check", required=True, help="catalog-check's result")
+    gate.add_argument(
+        "--check", required=True, help="catalog-check's result, or pushed"
+    )
+    auto = commands.add_parser("automerge", help="arm, disarm or hold a bump PR")
+    auto.add_argument("--pr", required=True, type=int)
+    auto.add_argument("--tested-sha", required=True)
+    auto.add_argument(
+        "--check", required=True, help="catalog-check's result, or pushed"
+    )
+    auto.add_argument("--base", default="main")
     old = commands.add_parser("older", help="open bump PRs for older versions")
     old.add_argument(
         "--pulls", required=True, help="gh pr list --json number,headRefName"
@@ -1114,7 +1226,16 @@ def main(argv=None, github=None):
         return OK
     if args.command == "arm":
         pull = json.loads(Path(args.pull).read_text(encoding="utf-8"))
-        print(arm(pull, args.tested_sha, args.check))
+        compare = json.loads(Path(args.compare).read_text(encoding="utf-8"))
+        print(arm(pull, compare, args.tested_sha, args.check))
+        return OK
+    if args.command == "automerge":
+        print(
+            f"#{args.pr}: "
+            + automerge(
+                github or GitHub(), args.pr, args.tested_sha, args.check, args.base
+            )
+        )
         return OK
     if args.command == "older":
         pulls = json.loads(Path(args.pulls).read_text(encoding="utf-8"))
@@ -1149,6 +1270,12 @@ def main(argv=None, github=None):
     except NotReady as why:
         notice(f"{args.id} {args.tag}: skipped, {why}.")
         result, status = {"status": "not-ready", "message": str(why)}, NOT_READY
+    except Unavailable as why:
+        print(
+            f"NOT OK   {args.id} {args.tag}: {why}; try again later.", file=sys.stderr
+        )
+        result = {"status": "unavailable", "message": str(why)}
+        status = UNAVAILABLE
     except NotListed as why:
         notice(f"{args.id}: skipped, {why}.")
         result, status = {"status": "not-listed", "message": str(why)}, NOT_LISTED

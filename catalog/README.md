@@ -127,7 +127,10 @@ apps draw, the pull request says so.
 **Who merges it.** When nothing changed in what the tool asks for (`uses`),
 its commands, its panels, its protocol or its publisher, the pull request may
 merge itself: **catalog-check** arms auto-merge once it passes on the pull
-request, and turns it off if it fails. Otherwise the pull request is labelled
+request, at the commit it checked, and only while the branch holds nothing
+but the workflow's one commit; it turns it off if it fails. A push by anyone
+else to a bump branch turns auto-merge off at once and labels it
+`needs-human`. Otherwise the pull request is labelled
 `needs-human`, never armed, and its description names each change. New words
 in the name, the summary or a command's title do not hold it.
 
@@ -144,8 +147,9 @@ them, even when it no longer merges; it says so once, in a comment.
 **A refusal is recorded once.** The run that refuses a release fails and
 opens the issue `catalog-bump refused <id> <version>` with the reasons. While
 that issue is open the hourly run skips the version; close it to try again.
-A run that fails with no result (GitHub did not answer, say) stays red and
-tries again the next hour.
+Only a finding about the release itself is a refusal. When GitHub does not
+answer, or a file cannot be downloaded, the run stays red, opens no issue,
+and tries again the next hour.
 
 `sources.json` says, for each tool, the repository its release is in, the
 tag's prefix, the zip's name, its uploader, and whether its program is
