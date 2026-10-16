@@ -5,6 +5,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,6 +69,45 @@ func TestStartAppliesConnectorConfigDefaults(t *testing.T) {
 
 	require.Equal(t, "hello", n.cfg.Greeting, "the connector's example config must become its defaults")
 	require.Equal(t, 3, n.cfg.Retries)
+}
+
+func TestConfigureRunsAfterExampleDefaults(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+
+	n := &configNet{Network: fakenet.New()}
+	var seenGreeting string
+	h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, n, zerolog.Nop(),
+		WithConfigure(func(networkConfig any) error {
+			cfg := networkConfig.(*struct {
+				Greeting string `yaml:"greeting"`
+				Retries  int    `yaml:"retries"`
+			})
+			seenGreeting = cfg.Greeting // the example default must already be in place
+			cfg.Retries = 9
+			return nil
+		}))
+	require.NoError(t, err)
+	defer h.Stop()
+
+	require.Equal(t, "hello", seenGreeting, "the hook must run after the example config is decoded")
+	require.Equal(t, "hello", n.cfg.Greeting, "fields the hook leaves alone keep the example default")
+	require.Equal(t, 9, n.cfg.Retries, "the hook's override must win over the example default")
+}
+
+func TestConfigureErrorFailsStartBeforeOpeningTheDatabase(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+
+	_, err = Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, &configNet{Network: fakenet.New()}, zerolog.Nop(),
+		WithConfigure(func(any) error { return errors.New("missing api id") }))
+	require.ErrorContains(t, err, "missing api id")
+	require.ErrorContains(t, err, "fake")
+	require.NoFileExists(t, filepath.Join(dir, "bridges", "fake.db"))
 }
 
 func TestStartRejectsUnparseableConnectorConfig(t *testing.T) {
