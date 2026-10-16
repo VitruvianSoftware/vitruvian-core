@@ -1,6 +1,7 @@
 # `bazel run //tools/worktree -- <branch> [base]` — create an isolated git
 # worktree that gets its own Bazel server (issue #455); `-- --prune` removes the
-# clean, landed, unlocked ones (dry run unless `--execute`). See worktree.sh.
+# clean, landed, unlocked ones, and landed branches that have no worktree (dry
+# run unless `--execute`). See worktree.sh.
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")

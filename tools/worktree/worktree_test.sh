@@ -329,5 +329,48 @@ fi
 kill "$(cat "$BAZEL_ROOT/$(md5_of "$work/wt/p-busy")/server/server.pid.txt")" 2>/dev/null
 git worktree unlock "$work/wt/p-locked"
 
+# 16. --prune also covers branches with NO worktree: one whose worktree was
+# removed by hand. Only the landed one with nothing past it may go.
+landed_branch b/landed "$work/wt/b-landed"
+git worktree remove "$work/wt/b-landed"            # REMOVE: landed, no worktree
+unlanded_branch b/unlanded "$work/wt/b-unlanded"
+git worktree remove "$work/wt/b-unlanded"          # KEEP: not landed
+landed_branch b/grew "$work/wt/b-grew"
+echo more >"$work/wt/b-grew/more.txt"
+git -C "$work/wt/b-grew" add -A
+git -C "$work/wt/b-grew" commit -qm "a commit after the squash"
+git worktree remove "$work/wt/b-grew"              # KEEP: grew past what landed
+git branch -q b/empty main                         # KEEP: no commits of its own
+out="$(tool --prune 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && git show-ref --verify --quiet refs/heads/b/landed && grep -q "would delete 1 branch(es) with no worktree" <<<"$out"; then
+    pass "--prune dry run lists branches with no worktree and deletes none"
+else
+    fail "--prune dry run on branches with no worktree misbehaved (rc=$rc): $out"
+fi
+bwant() { # <description> <branch> <KEEP|REMOVE> <reason fragment>
+    if grep -A1 "^  $3  *branch $2\$" <<<"$out" | grep -q "$4"; then pass "--prune: $1"; else fail "--prune: $1 -- expected $3 branch $2 ($4) in: $out"; fi
+}
+bwant "lists a landed branch with no worktree for deletion" b/landed REMOVE "landed"
+bwant "keeps an unlanded branch with no worktree" b/unlanded KEEP "not landed"
+bwant "keeps a branch that grew commits past what landed" b/grew KEEP "not landed"
+bwant "keeps a branch with no commits of its own" b/empty KEEP "no commits of its own"
+if grep -q "branch p/unlanded" <<<"$out" || grep -q "branch main\$" <<<"$out"; then
+    fail "--prune listed a checked-out branch or main among branches with no worktree: $out"
+else
+    pass "--prune leaves checked-out branches and main out of the branch list"
+fi
+out="$(tool --prune --execute 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && ! git show-ref --verify --quiet refs/heads/b/landed &&
+   git show-ref --verify --quiet refs/heads/b/unlanded &&
+   git show-ref --verify --quiet refs/heads/b/grew &&
+   git show-ref --verify --quiet refs/heads/b/empty &&
+   git show-ref --verify --quiet refs/heads/main; then
+    pass "--prune --execute deletes only the landed branch with no worktree"
+else
+    fail "--prune --execute deleted the wrong branches (rc=$rc): $out"
+fi
+
 echo "worktree_test: $pass_n passed, $fail_n failed"
 [ "$fail_n" -eq 0 ]

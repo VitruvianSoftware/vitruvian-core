@@ -20,7 +20,7 @@ bazel run //tools/worktree -- --remove <branch>     # remove that worktree (bran
 bazel run //tools/worktree -- --remove <branch> --force          # ...with its uncommitted files
 bazel run //tools/worktree -- --remove <branch> --delete-branch  # ...and its branch, if clean AND landed
 bazel run //tools/worktree -- --prune               # dry run: what would go, what stays and why
-bazel run //tools/worktree -- --prune --execute     # remove them, with their branches
+bazel run //tools/worktree -- --prune --execute     # remove them, with their branches, and landed branches with no worktree
 ```
 
 Then `cd` into the printed path and work there.
@@ -46,7 +46,18 @@ what survives a squash merge), or its PR merged and the local branch has nothing
 past the PR's head. A branch whose PR merged but which then got more local
 commits is **not** landed.
 
-`--execute` re-checks each worktree just before removing it.
+### Branches with no worktree
+
+`--prune` then looks at local branches that are not checked out anywhere,
+such as one whose worktree was removed by hand or with a plain `--remove`. Such
+a branch is deleted only when it has commits of its own and
+`//tools/landed -- --branch` says it is landed, by the same rule as above. A
+branch level with `main` is kept and named, since it is more often about to be
+used than abandoned; `main` itself and any branch checked out in a worktree are
+never touched.
+
+`--execute` re-checks each worktree just before removing it, and each branch
+just before deleting it.
 
 ## Notes
 
