@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-10-16T06:32:54Z"
+generated: "2026-10-16T17:06:49Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -18,12 +18,13 @@ tools:
     name: "GitHub"
     publisher: "VitruvianSoftware"
     summary: "Shows whether main is green on the repositories you watch and where your pull requests stand."
-    version: "1.3.0"
+    version: "1.4.1"
     source: "https://github.com/VitruvianSoftware/vitruvian-tool-github"
-    download: "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.3.0/github-tool-1.3.0.zip"
-    size: "1.2 MB"
-    sha256: "d2b3a8c5f2c325c9c48986e11017032ea1d4d9ee0ed27203be3e31931252afdc"
+    download: "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.4.1/github-tool-1.4.1.zip"
+    size: "1.3 MB"
+    sha256: "94aca696dbb5f2d5df13b02c1666dc19348fb39d037e48251518a0047a2a03e9"
     uses:
+      - "Write to the clipboard"
       - "Show messages and play the alert sound"
       - "Open links"
       - "Save its own settings"
@@ -31,11 +32,11 @@ tools:
     name: "HomeSpeaker"
     publisher: "VitruvianSoftware"
     summary: "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
-    version: "1.19.1"
+    version: "1.20.0"
     source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker"
-    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.19.1/HomeSpeaker-1.19.1-tool.zip"
-    size: "2.6 MB"
-    sha256: "0301fbf7bc26dd65b4922be2dfd2863694b715ab5a97f6752d59ee0dbd3f1324"
+    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.20.0/HomeSpeaker-1.20.0-tool.zip"
+    size: "2.8 MB"
+    sha256: "cb65498aaddacd6205cb3a6066b7deb0852a0a2307de0f69013aa9beb995fcad"
     uses:
       - "Show messages and play the alert sound"
       - "Read the clipboard"
