@@ -82,11 +82,17 @@ filegroup(
     visibility = ["//tools/sdk-codegen:__pkg__"],
 )
 
-# The smallest tool that speaks the protocol. The conformance script is proven
-# against it, and its manifest is read by both halves of the drift test.
+# The smallest tools that speak the protocol, one for version 1 and one for
+# version 2. The conformance script is proven against both, and their
+# manifests are read by both halves of the drift test.
 REFERENCE_TOOL = glob(["conformance/reference-tool/**"])
 
-REFERENCE_MANIFEST = "conformance/reference-tool/vitruvian-tool.json"
+REFERENCE_TOOL_2 = glob(["conformance/reference-tool-2/**"])
+
+REFERENCE_MANIFESTS = [
+    "conformance/reference-tool/vitruvian-tool.json",
+    "conformance/reference-tool-2/vitruvian-tool.json",
+]
 
 # The one list of the protocol's Swift sources: it is both what the module
 # compiles and what the Vitruvian app's pin hashes
@@ -205,7 +211,7 @@ swift_test(
     name = "VitruvianToolProtocolTests",
     size = "small",
     srcs = glob(["Tests/VitruvianToolProtocolTests/**/*.swift"]),
-    data = PROTOCOL_FILES + [REFERENCE_MANIFEST],
+    data = PROTOCOL_FILES + REFERENCE_MANIFESTS,
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":VitruvianToolProtocol"],
@@ -248,13 +254,16 @@ swift_test(
     ],
 )
 
-# The examples, judged by the schemas. Not `manual` and not tied to macOS: it
-# is plain Python, so the Linux lane runs it too.
+# The examples, judged by the schemas, and every line the reference tool of
+# protocol 2 writes in a short session. Not `manual` and not tied to macOS:
+# it is plain Python, so the Linux lane runs it too.
 py_test(
     name = "protocol_examples_test",
     size = "small",
     srcs = ["protocol/protocol_examples_test.py"],
-    data = PROTOCOL_FILES + [REFERENCE_MANIFEST],
+    data = PROTOCOL_FILES + REFERENCE_MANIFESTS + [
+        "conformance/reference-tool-2/bin/reference_tool_2.py",
+    ],
     main = "protocol/protocol_examples_test.py",
     deps = ["@pip//jsonschema"],
 )
@@ -278,10 +287,10 @@ alias(
     actual = ":conformance_script",
 )
 
-# The reference tool passes, and tools that each break the protocol in one way
-# are each caught by the check meant for them. It starts real processes:
-# Python ones, a few seconds in all. Not `manual` and not tied to macOS, so
-# the Linux lane runs it too.
+# The reference tools pass, one for each protocol version, and tools that
+# each break the protocol in one way are each caught by the check meant for
+# them. It starts real processes: Python ones, a few seconds in all. Not
+# `manual` and not tied to macOS, so the Linux lane runs it too.
 py_test(
     name = "conformance_test",
     size = "small",
@@ -289,7 +298,7 @@ py_test(
         "conformance/conformance.py",
         "conformance/conformance_test.py",
     ],
-    data = REFERENCE_TOOL,
+    data = REFERENCE_TOOL + REFERENCE_TOOL_2,
     main = "conformance/conformance_test.py",
 )
 

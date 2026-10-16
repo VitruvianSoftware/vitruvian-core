@@ -98,7 +98,7 @@ jobs:
           "$RUNNER_TEMP/venv/bin/pip" install --quiet jsonschema==4.26.0
 
       # The examples against the schemas, the conformance script against the
-      # reference tool and the tools that each break it in one way, every
+      # two reference tools and the tools that each break it in one way, every
       # sample's manifest and the Python sample, and the templates `init`
       # holds against the samples. Plain Python: no Mac needed.
       - name: The protocol, the conformance script, the samples and the templates

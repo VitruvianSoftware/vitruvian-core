@@ -533,4 +533,16 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(manifest.contributes?.commands?.map(\.id), ["hello"])
         XCTAssertEqual(manifest.runtime.exec, "bin/reference_tool.py")
     }
+
+    func testTheSecondReferenceToolsManifestIsRead() throws {
+        let data = ProtocolFiles.data("conformance/reference-tool-2/\(ToolManifestFile.fileName)")
+        let manifest = try ToolManifestFile.read(data).get()
+        XCTAssertEqual(manifest.id, "dev.vitruvian.reference2")
+        XCTAssertEqual(manifest.`protocol`, "2")
+        XCTAssertEqual(manifest.uses, [AppService.notify.rawValue])
+        XCTAssertEqual(manifest.contributes?.commands?.map(\.id), ["hello"])
+        XCTAssertEqual(manifest.contributes?.panels?.map(\.id), ["hello"])
+        XCTAssertEqual(manifest.contributes?.panels?.map(\.placement), ["island"])
+        XCTAssertEqual(manifest.runtime.exec, "bin/reference_tool_2.py")
+    }
 }
