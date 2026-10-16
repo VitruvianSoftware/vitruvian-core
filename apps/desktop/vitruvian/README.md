@@ -112,9 +112,9 @@ with the sample tool registered. No release build has it:
 bazel build --config=macos-app --define=vitruvian_sample_tool=true //apps/desktop/vitruvian:Vitruvian
 ```
 
-A tool that runs as its own program is added in Settings, under Features,
-in the section "Extensions & Tools": choose the tool's folder, read the
-sheet, and agree. To try it, choose `packages/vitruvian-sdk/samples/hello-python`,
+A tool that runs as its own program is added in Settings, on the
+Extensions page: Add from Folder…, choose the tool's folder, read the
+sheet, and agree. The same page lists the Vitruvian catalog's tools. To try it, choose `packages/vitruvian-sdk/samples/hello-python`,
 or build the two Swift samples with
 `bazel build --config=macos-app //packages/vitruvian-sdk:sample-folders` and
 choose one under `bazel-bin/packages/vitruvian-sdk/built/`. To write a tool,
