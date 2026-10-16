@@ -103,48 +103,7 @@ public struct ExtensionLocation: Equatable, Sendable {
     }
 }
 
-// MARK: - The chat monitor, in this process
-
-/// Whether this side's chat monitor may start now: set by the tool's role
-/// check (`HomeSpeakerTool.refreshRole`), on the kit's thread, and read on
-/// the main actor.
-public final class MonitorPermission: @unchecked Sendable {
-    private let lock = NSLock()
-    private var allowed = false
-    public init() {}
-    public var value: Bool { lock.withLock { allowed } }
-    public func set(_ value: Bool) { lock.withLock { allowed = value } }
-}
-
-/// The extension's chat monitor, as everything that can start it sees it:
-/// the settings watcher (`ConfigManager.chatMonitor`), the sign-out and
-/// credentials-changed notices, the control message, and the tool's own
-/// Start and Stop. A start is ignored unless `permission` says this side
-/// may run (design 7.3): a quiet or waiting extension never runs a monitor
-/// beside the app's. A stop always goes through.
-@MainActor
-public final class GatedMonitor {
-    private let monitor: any ChatMonitorControlling
-    public nonisolated let permission: MonitorPermission
-
-    public init(_ monitor: any ChatMonitorControlling, permission: MonitorPermission = MonitorPermission()) {
-        self.monitor = monitor
-        self.permission = permission
-    }
-}
-
-extension GatedMonitor: @preconcurrency ChatMonitorControlling {
-    public var isRunning: Bool { monitor.isRunning }
-
-    public func start() {
-        guard permission.value else { return }
-        monitor.start()
-    }
-
-    public func stop() {
-        monitor.stop()
-    }
-}
+// MARK: - The chat monitor, in this process (its gate, `GatedMonitor`, is HomeSpeakerCore's)
 
 /// The last thing the engine said when it put a speaker back
 /// (`VolumeRestoreCoordinator.lastReport`), kept where the kit's thread can
