@@ -155,3 +155,21 @@ py_binary(
     ],
 )
 
+# Fixture zips made in the test, with no network.
+py_test(
+    name = "bump_test",
+    size = "small",
+    srcs = ["bump_test.py"],
+    data = [
+        "catalog.schema.json",
+        "public-key.txt",
+        "sources.json",
+        "tools.json",
+    ],
+    deps = [
+        ":bump",
+        ":rules",
+        "//tools/sync-site-tools:catalogue",
+        "@pip//jsonschema",
+    ],
+)
