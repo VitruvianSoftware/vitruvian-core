@@ -52,6 +52,12 @@ package final class RecorderExporter: Sendable {
     /// Builds the composition an edit is drawn with. When it cannot be built
     /// the export stops, rather than saving the recording without the edit.
     private let filtered: RecorderComposer.FilteredComposition
+    /// Told why an export failed, with the reader's or writer's own error.
+    /// `Failure` only says which side failed; AVFoundation's error says why.
+    private let reportFailure: FailureReport
+
+    /// Receives a failure and the AVFoundation error behind it, when there is one.
+    package typealias FailureReport = @Sendable (Failure, Error?) -> Void
 
     package func cancel() {
         cancelled.cancel()
@@ -395,12 +401,15 @@ package final class RecorderExporter: Sendable {
             reader.cancelReading()
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: destination)
-            return readerStatus == .failed ? .readFailed : .writeFailed
+            let failure: Failure = readerStatus == .failed ? .readFailed : .writeFailed
+            reportFailure(failure, readerStatus == .failed ? reader.error : writer.error)
+            return failure
         }
         progress(0.95)
         await writer.finishWriting()
         guard writer.status == .completed else {
             try? FileManager.default.removeItem(at: destination)
+            reportFailure(.writeFailed, writer.error)
             return .writeFailed
         }
         progress(1)
@@ -675,9 +684,12 @@ package final class RecorderExporter: Sendable {
     }
 
     /// AVFoundation builds the composition; a test passes one that fails.
+    /// `reportFailure` hears the AVFoundation error behind a failed export.
     package init(filtered: @escaping RecorderComposer.FilteredComposition
-                    = RecorderComposer.filteredComposition) {
+                    = RecorderComposer.filteredComposition,
+                 reportFailure: @escaping FailureReport = { _, _ in }) {
         self.filtered = filtered
+        self.reportFailure = reportFailure
     }
 }
 
