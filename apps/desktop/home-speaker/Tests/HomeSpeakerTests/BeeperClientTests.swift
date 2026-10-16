@@ -800,10 +800,10 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         rig.expectOnlyGoodGETs()
     }
 
-    /// More than 200 messages in the window: 200 are read, and the page and
+    /// 250 new messages to speak at once: 200 are read, and the page and
     /// the status file say some may be missed.
-    @Test func tooManyMessagesSaySo() async throws {
-        let many = (0..<230).map {
+    @Test func tooManyNewMessagesSaySo() async throws {
+        let many = (0..<250).map {
             message("m\($0)", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 10 + Double($0) / 10, text: "m\($0)")
         }
         let scenario = StandInBeeper.Scenario(searches: [.messages(many)])
@@ -811,13 +811,84 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         defer { rig.finish() }
         await rig.startMonitor()
         await rig.poll(at: 60)
-        #expect(rig.beeper.searches.count == BeeperClient.maxPages)
+        #expect(rig.beeper.searches.count == BeeperClient.unseenBudget / BeeperClient.pageLimit)
         #expect(rig.local.spoken.count == 200)
         let said = ChatMonitorError.beeperTooMany.localizedDescription
         #expect(said == "Beeper: too many messages at once; some may be missed. Mute busy chats in Beeper.")
         #expect(rig.monitor.lastError == said)
         #expect(ChatMonitorStatusFile(url: rig.engine.profile.monitorStatusURL).read()?.lastError == said)
         rig.expectOnlyGoodGETs()
+    }
+
+    /// A busy window of 300 messages already handled and one new direct
+    /// message: the DM is spoken, and nothing says messages were missed,
+    /// because none were. Three polls 60 s apart, 150 messages before each
+    /// of the first two, the DM before the third; the look-back keeps all
+    /// 301 in the third poll's window.
+    @Test func aBusyWindowOfHandledMessagesIsNoAlarm() async throws {
+        var all: [String] = []
+        var answers: [StandInBeeper.Answer] = []
+        for poll in 1...2 {
+            let at = 340 + Double(poll) * 60
+            all += (0..<150).map {
+                message("p\(poll)n\($0)", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice",
+                        at: at - 50 + Double($0) / 4, text: "p\(poll)n\($0)")
+            }
+            answers.append(.messages(all))
+        }
+        let dm = message("dm", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 515, text: "the new one")
+        answers.append(.messages(all + [dm]))
+        let scenario = StandInBeeper.Scenario(searches: answers)
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 400)
+        await rig.poll(at: 460)
+        #expect(rig.local.spoken.count == 300)
+        #expect(rig.monitor.lastError == nil, "\(rig.monitor.lastError ?? "")")
+        let before = rig.beeper.searches.count
+        await rig.poll(at: 520)
+        #expect(rig.beeper.searches.count - before == 16, "301 messages, 20 a page, all read")
+        #expect(rig.local.spoken.count == 301)
+        #expect(rig.spoken.last == "WhatsApp message from Alice: the new one")
+        #expect(rig.monitor.lastError == nil, "\(rig.monitor.lastError ?? "")")
+        #expect(ChatMonitorStatusFile(url: rig.engine.profile.monitorStatusURL).read()?.lastError == nil)
+        rig.expectOnlyGoodGETs()
+    }
+
+    /// A flood of new Slack messages that are skipped (read directly) does
+    /// not use up the budget: the DM behind them is spoken, with no alarm.
+    @Test func aFloodOfSkippedMessagesIsNoAlarm() async throws {
+        let flood = (0..<400).map {
+            message("s\($0)", chat: "slack-native-dm", account: "slackgo.TNATIVE-UME1", from: "Dee", at: 20 + Double($0) / 20,
+                    text: "busy \($0)")
+        }
+        let dm = message("dm", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 10, text: "behind the flood")
+        let scenario = StandInBeeper.Scenario(searches: [.messages(flood + [dm])])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(slackEnabled: true, beeperEnabled: true),
+                          beeperToken: fakeToken(), slackToken: "fake-slack-token", beeper: scenario) // gitleaks:allow (made-up test token)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 60)
+        #expect(rig.spoken == ["WhatsApp message from Alice: behind the flood"])
+        #expect(rig.monitor.lastError == nil, "\(rig.monitor.lastError ?? "")")
+    }
+
+    /// The safety bound: more than 1000 messages, even ones that do not
+    /// count, stop the reading and say some may be missed.
+    @Test func theSafetyBoundSaysSo() async throws {
+        let flood = (0..<1100).map {
+            message("s\($0)", chat: "slack-native-dm", account: "slackgo.TNATIVE-UME1", from: "Dee", at: 10 + Double($0) / 40,
+                    text: "busy \($0)")
+        }
+        let scenario = StandInBeeper.Scenario(searches: [.messages(flood)])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(slackEnabled: true, beeperEnabled: true),
+                          beeperToken: fakeToken(), slackToken: "fake-slack-token", beeper: scenario) // gitleaks:allow (made-up test token)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 60)
+        #expect(rig.beeper.searches.count == BeeperClient.maxPages)
+        #expect(rig.monitor.lastError == ChatMonitorError.beeperTooMany.localizedDescription)
     }
 
     /// A Beeper that sends messages older than asked for (or one that
