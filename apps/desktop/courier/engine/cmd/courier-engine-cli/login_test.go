@@ -4,11 +4,14 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -284,7 +287,8 @@ func TestCookiesStepPrintsURLAndSubmitsPastedValues(t *testing.T) {
 		),
 		steps: []*bridgev2.LoginStep{complete()},
 	}
-	p := &scripted{secrets: []string{sid, osid, ""}}
+	// Blank file path: the values are asked for one at a time, required first, then by name.
+	p := &scripted{lines: []string{""}, secrets: []string{osid, sid, ""}}
 	out, err := walk(t, fullProc{f}, p)
 	require.NoError(t, err)
 	require.Zero(t, f.cancelled)
@@ -293,7 +297,7 @@ func TestCookiesStepPrintsURLAndSubmitsPastedValues(t *testing.T) {
 		require.Contains(t, out, hint, "each cookie is named with its domain so the user knows where to copy it from")
 	}
 	require.Len(t, p.askedWith("secret"), 3, "every cookie value is read as a secret")
-	require.Empty(t, p.askedWith("line"))
+	require.Len(t, p.askedWith("line"), 1, "only the file path is asked for visibly")
 	require.Equal(t, []map[string]string{{"SID": sid, "OSID": osid}}, f.submitted, "a skipped optional cookie is left out")
 	require.NotContains(t, out, sid)
 	require.NotContains(t, out, osid)
@@ -301,7 +305,7 @@ func TestCookiesStepPrintsURLAndSubmitsPastedValues(t *testing.T) {
 
 func TestCookiesStepRequiredBlankCancelsWithAdvice(t *testing.T) {
 	f := &fakeProc{start: cookiesStep("https://accounts.example.test/signin", cookieField("SID", true, ".example.test"))}
-	_, err := walk(t, fullProc{f}, &scripted{secrets: []string{""}})
+	_, err := walk(t, fullProc{f}, &scripted{lines: []string{""}, secrets: []string{""}})
 	require.ErrorContains(t, err, "use the Courier app for this sign-in (milestone 3)")
 	require.Empty(t, f.submitted)
 	require.Equal(t, 1, f.cancelled)
@@ -317,7 +321,7 @@ func TestPastedCookiesAreURLDecodedLikeTheBridgeDoes(t *testing.T) {
 		Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeLocalStorage, Name: "ls"}},
 	}
 	f := &fakeProc{start: cookiesStep("https://accounts.example.test", token, stored), steps: []*bridgev2.LoginStep{complete()}}
-	out, err := walk(t, fullProc{f}, &scripted{secrets: []string{pasted, "keep%2Bas-is"}})
+	out, err := walk(t, fullProc{f}, &scripted{lines: []string{""}, secrets: []string{pasted, "keep%2Bas-is"}})
 	require.NoError(t, err)
 	require.Equal(t, []map[string]string{{"d": decoded, "ls": "keep%2Bas-is"}}, f.submitted,
 		"cookie fields are decoded; other sources are submitted as pasted")
@@ -330,7 +334,7 @@ func TestCookiePatternMismatchRepromptsThenGivesUp(t *testing.T) {
 	field.Pattern = `^xoxd-`
 
 	f := &fakeProc{start: cookiesStep("https://accounts.example.test", field), steps: []*bridgev2.LoginStep{complete()}}
-	p := &scripted{secrets: []string{bad1, bad2, good}}
+	p := &scripted{lines: []string{""}, secrets: []string{bad1, bad2, good}}
 	out, err := walk(t, fullProc{f}, p)
 	require.NoError(t, err)
 	require.Len(t, p.askedWith("secret"), 3)
@@ -339,7 +343,7 @@ func TestCookiePatternMismatchRepromptsThenGivesUp(t *testing.T) {
 	require.NotContains(t, out, "sentinel", "a rejected cookie is never printed back")
 
 	f = &fakeProc{start: cookiesStep("https://accounts.example.test", field)}
-	p = &scripted{secrets: []string{bad1, bad2, bad3}}
+	p = &scripted{lines: []string{""}, secrets: []string{bad1, bad2, bad3}}
 	out, err = walk(t, fullProc{f}, p)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "sentinel")
@@ -352,7 +356,7 @@ func TestOptionalBlankCookieSkipsItsPattern(t *testing.T) {
 	field := cookieField("EXTRA", false, ".example.test")
 	field.Pattern = `^xoxd-`
 	f := &fakeProc{start: cookiesStep("https://accounts.example.test", field), steps: []*bridgev2.LoginStep{complete()}}
-	_, err := walk(t, fullProc{f}, &scripted{secrets: []string{""}})
+	_, err := walk(t, fullProc{f}, &scripted{lines: []string{""}, secrets: []string{""}})
 	require.NoError(t, err)
 	require.Equal(t, []map[string]string{{}}, f.submitted)
 }
@@ -370,7 +374,7 @@ func TestSecretsKeepTheirSpacesAndLoseOnlyTheLineEnding(t *testing.T) {
 		start: cookiesStep("https://accounts.example.test", cookieField("SID", true, ".example.test")),
 		steps: []*bridgev2.LoginStep{complete()},
 	}
-	_, err = walk(t, fullProc{f}, &scripted{secrets: []string{" padded \n"}})
+	_, err = walk(t, fullProc{f}, &scripted{lines: []string{""}, secrets: []string{" padded \n"}})
 	require.NoError(t, err)
 	require.Equal(t, []map[string]string{{"SID": " padded "}}, f.submitted)
 }
@@ -505,7 +509,7 @@ func TestStepsTheProcessCannotTakeCancel(t *testing.T) {
 
 func TestTerminalPrompterReadsLinesAndConfirms(t *testing.T) {
 	var out bytes.Buffer
-	tp := &terminalPrompter{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("hello there\r\ny\nno\n\n")), out: &out, fd: -1}
+	tp := &terminalPrompter{ctx: context.Background(), in: strings.NewReader("hello there\r\ny\nno\n\n"), out: &out, fd: -1}
 	v, err := tp.Line("Name")
 	require.NoError(t, err)
 	require.Equal(t, "hello there", v)
@@ -522,7 +526,7 @@ func TestTerminalPrompterReadsLinesAndConfirms(t *testing.T) {
 func TestTerminalPrompterSecretOnAPipeIsNotEchoed(t *testing.T) {
 	const secret = "pipe-secret-sentinel"
 	var out bytes.Buffer
-	tp := &terminalPrompter{ctx: context.Background(), in: bufio.NewReader(strings.NewReader(secret + "\n")), out: &out, fd: -1}
+	tp := &terminalPrompter{ctx: context.Background(), in: strings.NewReader(secret + "\n"), out: &out, fd: -1}
 	v, err := tp.Secret("Token")
 	require.NoError(t, err)
 	require.Equal(t, secret, v)
@@ -533,7 +537,7 @@ func TestTerminalPrompterStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	pr := newBlockingReader()
 	defer pr.release()
-	tp := &terminalPrompter{ctx: ctx, in: bufio.NewReader(pr), out: &bytes.Buffer{}, fd: -1}
+	tp := &terminalPrompter{ctx: ctx, in: pr, out: &bytes.Buffer{}, fd: -1}
 	cancel()
 	_, err := tp.Line("Name")
 	require.ErrorIs(t, err, context.Canceled, "Ctrl-C must interrupt a prompt that is waiting for typing")
@@ -548,3 +552,237 @@ func (b *blockingReader) Read([]byte) (int, error) {
 	return 0, errors.New("released")
 }
 func (b *blockingReader) release() { close(b.done) }
+
+// slackLikeFields are shaped like mautrix-slack's cookies step: a token from the browser's storage or a request
+// body field, and a cookie.
+func slackLikeFields() []bridgev2.LoginCookieField {
+	return []bridgev2.LoginCookieField{{
+		ID: "auth_token", Required: true, Pattern: `^xoxc-.+$`,
+		Sources: []bridgev2.LoginCookieFieldSource{
+			{Type: bridgev2.LoginCookieTypeSpecial, Name: "fi.mau.example.auth_token"},
+			{Type: bridgev2.LoginCookieTypeRequestBody, Name: "token"},
+		},
+	}, {
+		ID: "cookie_token", Required: true, Pattern: `^xoxd-[a-zA-Z0-9/+=]+$`,
+		Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeCookie, Name: "d", CookieDomain: "example.test"}},
+	}, {
+		ID:      "client_header",
+		Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeRequestHeader, Name: "X-Example-Client"}},
+	}}
+}
+
+// writeFile writes a test file and returns its path.
+func writeFile(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
+}
+
+// cookieWalk runs a cookies step whose file prompt is answered with path.
+func cookieWalk(t *testing.T, path string, fields ...bridgev2.LoginCookieField) (*fakeProc, *scripted, string, error) {
+	t.Helper()
+	f := &fakeProc{start: cookiesStep("https://app.example.test/signin", fields...), steps: []*bridgev2.LoginStep{complete()}}
+	p := &scripted{lines: []string{path}}
+	out, err := walk(t, fullProc{f}, p)
+	return f, p, out, err
+}
+
+func TestCookiesFromACURLFileWithAMultipartBody(t *testing.T) {
+	// Laid out as a browser's "Copy as cURL" is: one option per line, a -b cookie list, an ANSI-C quoted body.
+	const curlCmd = `curl 'https://app.example.test/api/client.boot?_x_id=sentinel-query' \
+  -H 'accept: */*' \
+  -H 'X-Example-Client: sentinel-client-1' \
+  -b 'b=sentinel-other; d=xoxd-sentinel%2Bab%2Fcd%3D%3D; x=sentinel-x' \
+  -H 'content-type: multipart/form-data; boundary=----Boundary' \
+  --data-raw $'------Boundary\r\nContent-Disposition: form-data; name="token"\r\n\r\nxoxc-sentinel-token\r\n------Boundary--\r\n'
+`
+	f, p, out, err := cookieWalk(t, writeFile(t, "request.curl", curlCmd), slackLikeFields()...)
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{
+		"auth_token":    "xoxc-sentinel-token",
+		"cookie_token":  "xoxd-sentinel+ab/cd==", // URL-decoded, as bridgev2 does
+		"client_header": "sentinel-client-1",
+	}}, f.submitted)
+	require.Empty(t, p.askedWith("secret"), "a file answers every field: nothing is asked one at a time")
+	require.NotContains(t, out, "sentinel", "nothing from the file is ever printed")
+	require.NotContains(t, out, "Enter a JSON object", "the bridge's own instructions describe its chat command, not this CLI")
+	require.Contains(t, out, "Copy as cURL")
+}
+
+func TestCookiesFromACURLFileWithACookieHeader(t *testing.T) {
+	const curlCmd = "curl 'https://messages.example.test/web/config' -H 'cookie: SID=sid-sentinel; OSID=osid%3Dsentinel; NID=nid-sentinel'\n"
+	f, _, out, err := cookieWalk(t, writeFile(t, "google.curl", curlCmd),
+		cookieField("SID", true, ".example.test"), cookieField("OSID", true, "messages.example.test"),
+		cookieField("EXTRA", false, ".example.test"))
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"SID": "sid-sentinel", "OSID": "osid=sentinel"}}, f.submitted,
+		"cookies the step doesn't list are left out, and an optional one that isn't there is skipped")
+	require.NotContains(t, out, "sentinel")
+}
+
+func TestCookiesFromAJSONFile(t *testing.T) {
+	const doc = `{"auth_token": "xoxc-sentinel-json", "cookie_token": "xoxd-sentinel%2Fjson%3D%3D"}`
+	f, _, out, err := cookieWalk(t, writeFile(t, "cookies.json", "\n"+doc+"\n"), slackLikeFields()...)
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"auth_token": "xoxc-sentinel-json", "cookie_token": "xoxd-sentinel/json=="}}, f.submitted,
+		"cookie fields are URL-decoded; the token is not a cookie, so it is submitted as written")
+	require.NotContains(t, out, "sentinel")
+}
+
+func TestCookieFileMissingARequiredValueCancelsNamingTheField(t *testing.T) {
+	for name, c := range map[string]struct{ file, content string }{
+		"curl": {"request.curl", "curl 'https://app.example.test/api/x' -b 'd=xoxd-sentinel-only'\n"},
+		"json": {"cookies.json", `{"cookie_token": "xoxd-sentinelonly"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, _, out, err := cookieWalk(t, writeFile(t, c.file, c.content), slackLikeFields()...)
+			require.ErrorContains(t, err, "auth_token", "the missing field is named by its ID")
+			require.NotContains(t, err.Error(), "cookie_token", "a field that was there isn't reported missing")
+			require.NotContains(t, err.Error(), "sentinel")
+			require.NotContains(t, out, "sentinel")
+			require.Empty(t, f.submitted)
+			require.Equal(t, 1, f.cancelled)
+		})
+	}
+}
+
+func TestCookieFileThatCantBeReadNeverQuotesIt(t *testing.T) {
+	for name, content := range map[string]string{
+		"not json":           "sentinel-garbage {",
+		"json of non-text":   `{"auth_token": 12345, "cookie_token": "xoxd-sentinel"}`,
+		"truncated curl":     "curl 'https://app.example.test/sentinel-path' -H",
+		"curl header no sep": "curl 'https://app.example.test/x' -H 'sentinel-no-colon'",
+		"curl unclosed":      "curl 'https://app.example.test/sentinel-open",
+		"value fails regex":  `{"auth_token": "not-xoxc-sentinel", "cookie_token": "xoxd-ok"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var f *fakeProc
+			var out string
+			var err error
+			require.NotPanics(t, func() { f, _, out, err = cookieWalk(t, writeFile(t, "in.txt", content), slackLikeFields()...) })
+			require.Error(t, err)
+			require.NotContains(t, err.Error(), "sentinel", "an error must not quote the file")
+			require.NotContains(t, out, "sentinel")
+			require.Empty(t, f.submitted)
+			require.Equal(t, 1, f.cancelled)
+		})
+	}
+}
+
+func TestCURLCantHoldALocalStorageValue(t *testing.T) {
+	stored := bridgev2.LoginCookieField{
+		ID: "ls_token", Required: true,
+		Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeLocalStorage, Name: "ls_token"}},
+	}
+	_, _, _, err := cookieWalk(t, writeFile(t, "request.curl", "curl 'https://app.example.test/x' -b 'a=b'\n"), stored)
+	require.ErrorContains(t, err, "ls_token")
+	require.ErrorContains(t, err, "JSON", "the user is told the format that can hold it")
+}
+
+func TestMissingCookieFileCancelsNamingThePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nope.curl")
+	f, _, _, err := cookieWalk(t, path, slackLikeFields()...)
+	require.ErrorContains(t, err, "nope.curl")
+	require.Equal(t, 1, f.cancelled)
+}
+
+func TestCookieFilePathIsCleaned(t *testing.T) {
+	path := writeFile(t, "with space.json", `{"cookie_token": "xoxd-a", "auth_token": "xoxc-b"}`)
+	for name, typed := range map[string]string{
+		"quoted":          "'" + path + "'  ",
+		"double quoted":   `"` + path + `"`,
+		"dragged in":      strings.ReplaceAll(path, " ", `\ `),
+		"surrounding gap": "  " + path + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, _, _, err := cookieWalk(t, typed, slackLikeFields()...)
+			require.NoError(t, err)
+			require.Equal(t, []map[string]string{{"cookie_token": "xoxd-a", "auth_token": "xoxc-b"}}, f.submitted)
+		})
+	}
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(home, "x", "y.json"), cleanPath("~/x/y.json"))
+}
+
+func TestCookieFieldsAreAskedRequiredFirstThenByID(t *testing.T) {
+	fields := []bridgev2.LoginCookieField{
+		cookieField("EXTRA", false, ".example.test"),
+		cookieField("SID", true, ".example.test"),
+		cookieField("AAA", false, ".example.test"),
+		cookieField("APISID", true, ".example.test"),
+	}
+	given := slices.Clone(fields)
+	f := &fakeProc{start: cookiesStep("https://app.example.test", fields...), steps: []*bridgev2.LoginStep{complete()}}
+	p := &scripted{lines: []string{""}, secrets: []string{"v1", "v2", "", ""}}
+	out, err := walk(t, fullProc{f}, p)
+	require.NoError(t, err)
+	require.Equal(t, []string{"APISID", "SID", "AAA", "EXTRA"}, trimLabels(p.askedWith("secret")))
+	require.Equal(t, []map[string]string{{"APISID": "v1", "SID": "v2"}}, f.submitted)
+	listed := []int{strings.Index(out, "- APISID"), strings.Index(out, "- SID"), strings.Index(out, "- AAA"), strings.Index(out, "- EXTRA")}
+	require.True(t, slices.IsSorted(listed) && listed[0] >= 0, "the list is printed in the same order: %v", listed)
+	require.Equal(t, given, fields, "the step's own field list is not reordered: a connector may share it")
+}
+
+func TestMaybeURLDecodeCookie(t *testing.T) {
+	cookie := cookieField("d", true, ".example.test")
+	for in, want := range map[string]string{
+		"xoxd-a%2Bb%2F%3D": "xoxd-a+b/=",
+		"xoxd-a+b":         "xoxd-a+b",     // a literal '+' is kept: path, not query, unescaping
+		"xoxd-%zz-raw":     "xoxd-%zz-raw", // not valid percent-encoding: kept as pasted
+		"plain":            "plain",
+	} {
+		require.Equal(t, want, maybeURLDecodeCookie(in, cookie), in)
+	}
+	header := bridgev2.LoginCookieField{ID: "h", Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeRequestHeader, Name: "h"}}}
+	require.Equal(t, "a%2Bb", maybeURLDecodeCookie("a%2Bb", header), "only cookie fields are decoded")
+}
+
+func TestPastedCookieWithLiteralPlusAndBadEscapeIsKept(t *testing.T) {
+	plus := cookieField("d", true, ".example.test")
+	raw := cookieField("r", true, ".example.test")
+	f := &fakeProc{start: cookiesStep("https://app.example.test", plus, raw), steps: []*bridgev2.LoginStep{complete()}}
+	_, err := walk(t, fullProc{f}, &scripted{lines: []string{""}, secrets: []string{"a+b", "c%zzd"}})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"d": "a+b", "r": "c%zzd"}}, f.submitted)
+}
+
+func TestTerminalPrompterLineThenSecretShareOneInput(t *testing.T) {
+	const secret = "shared-secret-sentinel"
+	var out bytes.Buffer
+	tp := &terminalPrompter{ctx: context.Background(), in: strings.NewReader("/tmp/none\n" + secret + "\nlast\n"), out: &out, fd: -1}
+	v, err := tp.Line("Path")
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/none", v)
+	v, err = tp.Secret("Value")
+	require.NoError(t, err)
+	require.Equal(t, secret, v, "the secret comes from the same input, not lost to a buffer")
+	v, err = tp.Line("Again")
+	require.NoError(t, err)
+	require.Equal(t, "last", v)
+	require.NotContains(t, out.String(), secret)
+}
+
+func TestTerminalPrompterLineDoesNotReadAhead(t *testing.T) {
+	// On a terminal, Secret reads the terminal itself, not through Line's reader. So Line must leave everything
+	// after its own line unread, or a Secret that follows would lose it.
+	in := strings.NewReader("first\nsecond\n")
+	tp := &terminalPrompter{ctx: context.Background(), in: in, out: &bytes.Buffer{}, fd: -1}
+	v, err := tp.Line("First")
+	require.NoError(t, err)
+	require.Equal(t, "first", v)
+	rest, err := io.ReadAll(in)
+	require.NoError(t, err)
+	require.Equal(t, "second\n", string(rest))
+}
+
+func TestTerminalPrompterAfterCancelStartsNoRead(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	in := strings.NewReader("never\n")
+	tp := &terminalPrompter{ctx: ctx, in: in, out: &bytes.Buffer{}, fd: -1}
+	_, err := tp.Line("Name")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, int64(len("never\n")), int64(in.Len()), "no read is started once Ctrl-C was pressed")
+}

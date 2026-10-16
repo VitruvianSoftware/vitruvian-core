@@ -19,6 +19,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_mdp_qrterminal_v3//:qrterminal",
         "@com_github_rs_zerolog//:zerolog",
+        "@fi_mau_go_util//curl",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
