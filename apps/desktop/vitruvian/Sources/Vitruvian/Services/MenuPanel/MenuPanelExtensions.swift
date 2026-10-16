@@ -73,6 +73,15 @@ package enum MenuPanelExtensions {
         appShell()?.openSettingsWindow()
     }
 
+    /// Opens the Dynamic Island on an extension's page, from the line the tab
+    /// shows while the island holds that page. The popover goes first, so
+    /// the island is in front; the island's own rule decides, and does
+    /// nothing for a page it does not list.
+    package static func showInIsland(_ key: ToolPanelHost.Key) {
+        appShell()?.closePopover(preservingNotch: true)
+        NotchService.shared.openExtensionSection(key)
+    }
+
     /// Opens Settings › Menu bar.
     package static func openTabSettings() {
         SettingsRouter.shared.request(tabSettings)

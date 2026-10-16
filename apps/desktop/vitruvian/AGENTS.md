@@ -734,8 +734,11 @@ before: the app offers both versions at `initialize`, and the tool picks.
 - The menu bar panel's Extensions tab (`PanelSectionID.extensions`,
   `UI/MenuPanel/ExtensionsSection.swift`) shows each extension's island
   page a second time, drawn by `ToolPanelView`, with no SDK change. It is
-  one page and one session whichever place shows it: a view of the tab
-  calls `ToolPanelHost.openInMenuPanel` once and `closeInMenuPanel` once;
+  one page and one session whichever place shows it: each card of the tab
+  opens the page with `ToolPanelHost.openInMenuPanel` under a token of its
+  own and lets go of that token alone with `closeInMenuPanel`, so the order
+  cards come and go in (an updated extension's new card can appear before
+  the old one goes) never closes another card's page;
   `close`, which the island calls, leaves open a page the tab still shows;
   and the island opening a page the tab has open takes it as it is, asking
   the tool nothing. The tab is built only while the popover is up or the
@@ -747,6 +750,8 @@ before: the app offers both versions at `initialize`, and the tool picks.
   is named once, `MenuPanelExtensions.openExtensionSettings`. A web page
   is one web view, which one place can hold: while the island shows a web
   page the tab draws a line in its place (`ToolPanelHost.defersToIsland`),
+  with a button that opens the island on it
+  (`MenuPanelExtensions.showInIsland`, through `NotchService.openExtensionSection`),
   and draws the page again when the island lets go. Known limit: two views
   of the tab at once (the popover and the panel inside the island) showing
   one web page still share that one web view. Opening the tab starts the

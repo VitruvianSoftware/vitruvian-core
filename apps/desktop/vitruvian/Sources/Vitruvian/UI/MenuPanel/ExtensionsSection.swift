@@ -75,6 +75,9 @@ private struct MenuPanelExtensionCard: View {
     /// Set once the card has asked for its page, so a page that is gone
     /// (its tool stopped) reads as not shown rather than as nothing.
     @State private var asked = false
+    /// This card's own token with the host: it lets go of its own view of
+    /// the page, never another card's.
+    @State private var viewer = UUID()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -83,7 +86,7 @@ private struct MenuPanelExtensionCard: View {
                 if host.defersToIsland(entry.key) {
                     // The island holds the one web view; the page comes
                     // back here when the island lets go.
-                    ShownInIsland(size: size)
+                    ShownInIsland(size: size) { MenuPanelExtensions.showInIsland(entry.key) }
                 } else if asked, host.shown[entry.key] == nil {
                     ToolPanelNotShown(size: size)
                 } else {
@@ -96,11 +99,11 @@ private struct MenuPanelExtensionCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .panelCard()
         .onAppear {
-            host.openInMenuPanel(entry.key)
+            host.openInMenuPanel(entry.key, viewer: viewer)
             asked = true
         }
         .onDisappear {
-            host.closeInMenuPanel(entry.key)
+            host.closeInMenuPanel(entry.key, viewer: viewer)
             asked = false
         }
     }
@@ -127,15 +130,21 @@ private struct MenuPanelExtensionCard: View {
 /// In place of a web page the Dynamic Island is showing.
 private struct ShownInIsland: View {
     let size: BlockTreeContent.Size
+    let open: () -> Void
     @ObservedObject private var l10n = L10n.shared
 
     var body: some View {
-        Text(FeatureStrings.menuPanelExtensions(l10n.language).shownInIsland)
-            .font(size == .island ? .system(size: 11) : .callout)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 80)
+        let text = FeatureStrings.menuPanelExtensions(l10n.language)
+        VStack(spacing: 8) {
+            Text(text.shownInIsland)
+                .font(size == .island ? .system(size: 11) : .callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(text.openInIsland) { open() }
+                .controlSize(.small)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 80)
     }
 }

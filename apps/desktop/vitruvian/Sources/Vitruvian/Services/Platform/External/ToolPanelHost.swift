@@ -205,11 +205,12 @@ package final class ToolPanelHost: ObservableObject {
     @Published package private(set) var windows: [Key] = []
     /// The island page that is open, when one is.
     @Published package private(set) var island: Key?
-    /// The island pages the menu bar panel shows too, each with how many of
-    /// its views show it: the popover's and the copy of the panel inside the
-    /// island can both be up. A page here stays open while the island lets
-    /// go of it, and the other way round.
-    package private(set) var inMenuPanel: [Key: Int] = [:]
+    /// The island pages the menu bar panel shows too, each with the views
+    /// that show it, one token for each: the popover's card and the card in
+    /// the copy of the panel inside the island can both be up, and an
+    /// extension's new card can appear before its old one goes. A page here
+    /// stays open while the island lets go of it, and the other way round.
+    package private(set) var inMenuPanel: [Key: Set<UUID>] = [:]
     /// Each tool's status, the last it set, as shown: a change is published
     /// at most once a second for each tool. A tool with none is not here.
     /// Whether a tool's is drawn is the store's to say (`statusTools`).
@@ -313,19 +314,21 @@ package final class ToolPanelHost: ObservableObject {
     /// too. Whichever place shows it, there is one page and one session:
     /// a page the island has open is shown as it is, and the tool is asked
     /// nothing; one that is not is asked for as the island asks, without
-    /// becoming the island's page. Each view that shows it calls this once
-    /// and `closeInMenuPanel` once.
+    /// becoming the island's page. Each view that shows it opens it with a
+    /// token of its own, and lets go of that token alone
+    /// (`closeInMenuPanel`), so the order views come and go in does not
+    /// matter.
     @discardableResult
-    package func openInMenuPanel(_ key: Key) -> Refusal? {
+    package func openInMenuPanel(_ key: Key, viewer: UUID) -> Refusal? {
         guard let panel = parts.described(key.tool)?.panel(key.panel) else { return .unknownPanel(key.panel) }
         guard panel.placement == .island else { return .wrongPlace(key.panel) }
         guard shown[key] == nil else {
-            inMenuPanel[key, default: 0] += 1
+            inMenuPanel[key, default: []].insert(viewer)
             return nil
         }
         guard let tool = parts.tool(key.tool) else { return .notOpen(key.panel) }
         begin(key, panel)
-        inMenuPanel[key, default: 0] += 1
+        inMenuPanel[key, default: []].insert(viewer)
         tool.open(panel: key.panel) { [weak self] answer in self?.opened(key, answer) }
         return nil
     }
@@ -344,13 +347,15 @@ package final class ToolPanelHost: ObservableObject {
         Self.defersToIsland(key, shown: shown[key], island: island)
     }
 
-    /// One view of the menu bar panel no longer shows the page. When it was
-    /// the last, and the island does not show it either, the page closes and
-    /// the tool is told, as when the island closes it.
-    package func closeInMenuPanel(_ key: Key) {
-        guard let views = inMenuPanel[key] else { return }
-        guard views <= 1 else {
-            inMenuPanel[key] = views - 1
+    /// One view of the menu bar panel no longer shows the page: only its own
+    /// token goes. A token the host does not hold, of a view whose page
+    /// already ended with its tool, does nothing. When no view is left, and
+    /// the island does not show the page either, the page closes and the
+    /// tool is told, as when the island closes it.
+    package func closeInMenuPanel(_ key: Key, viewer: UUID) {
+        guard var viewers = inMenuPanel[key], viewers.remove(viewer) != nil else { return }
+        guard viewers.isEmpty else {
+            inMenuPanel[key] = viewers
             return
         }
         inMenuPanel[key] = nil
