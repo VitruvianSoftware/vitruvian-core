@@ -6,7 +6,7 @@
 
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 
-_FLAG = "//third_party/libsignal:rust_1_98_1"
+_FLAG = "//apps/desktop/courier/libsignal:rust_1_98_1"
 
 def _rust_1_98_1_transition_impl(_settings, _attr):
     return {_FLAG: True}
@@ -24,7 +24,7 @@ def _with_rust_1_98_1_impl(ctx):
 with_rust_1_98_1 = rule(
     doc = """Builds `dep` (and everything under it) with libsignal's Rust 1.98.1.
 
-The toolchain is chosen by //third_party/libsignal:rust_1_98_1, which only this
+The toolchain is chosen by //apps/desktop/courier/libsignal:rust_1_98_1, which only this
 rule sets, so the rest of the repository keeps the default Rust toolchain.
 Forwards the dep's CcInfo so a cc_library can depend on the result.""",
     implementation = _with_rust_1_98_1_impl,

@@ -4,7 +4,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 package(default_visibility = ["//apps/desktop/courier:__subpackages__"])
 
 # The engine's tests on macOS. Signal links Signal's Rust library
-# (//third_party/libsignal:signal_ffi), which builds only on macOS, so only a
+# (//apps/desktop/courier/libsignal:signal_ffi), which builds only on macOS, so only a
 # Mac runs the Signal registration and the link test
 # (internal/networks/signal_link_test.go). The Linux lanes (ci.yaml's go-race
 # and build-test) run the same go_tests without Signal.

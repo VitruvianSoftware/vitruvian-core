@@ -34,7 +34,7 @@ exports_files([
     "boring-pq.patch",
 ])
 
-# True only under //third_party/libsignal:signal_ffi (set by with_rust_1_98_1).
+# True only under //apps/desktop/courier/libsignal:signal_ffi (set by with_rust_1_98_1).
 # Selects the Rust 1.98.1 toolchains MODULE.bazel registers for libsignal.
 bool_flag(
     name = "rust_1_98_1",

@@ -1,5 +1,5 @@
 Courier (apps/desktop/courier): link go.mau.fi/mautrix-signal's libsignalgo
-against //third_party/libsignal:signal_ffi, the libsignal_ffi.a Bazel builds
+against //apps/desktop/courier/libsignal:signal_ffi, the libsignal_ffi.a Bazel builds
 from source, instead of a prebuilt library on the linker search path.
 
 - cflags.go: drop -lsignal_ffi (the archive comes in through cdeps; there is
@@ -16,7 +16,7 @@ diff -ru a/pkg/libsignalgo/BUILD.bazel b/pkg/libsignalgo/BUILD.bazel
      ],
      cgo = True,
 -    clinkopts = ["-lsignal_ffi -ldl -lm -lz -lstdc++"],
-+    cdeps = ["@@//third_party/libsignal:signal_ffi"],
++    cdeps = ["@@//apps/desktop/courier/libsignal:signal_ffi"],
 +    clinkopts = ["-ldl -lm -lz"],
      importpath = "go.mau.fi/mautrix-signal/pkg/libsignalgo",
      visibility = ["//visibility:public"],

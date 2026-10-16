@@ -140,7 +140,7 @@ go_deps.module_override(
 # go.mau.fi/mautrix-signal (Courier's Signal bridge): pkg/libsignalgo links
 # Signal's Rust library through cgo as a bare `-lsignal_ffi`, expecting a
 # prebuilt libsignal_ffi.a on the linker search path. The patch drops that
-# flag and adds //third_party/libsignal:signal_ffi (built from source) to the
+# flag and adds //apps/desktop/courier/libsignal:signal_ffi (built from source) to the
 # gazelle-generated go_library's cdeps instead; it also links libc++, not
 # libstdc++, on darwin. go_repository applies patches after gazelle, so the
 # patch edits the generated BUILD.bazel.
@@ -354,13 +354,13 @@ use_repo(crate, "crates")
 
 # --- libsignal (Courier's Signal bridge) -----------------------------------
 # mautrix-signal's libsignalgo links Signal's Rust library, libsignal_ffi.a,
-# through cgo. //third_party/libsignal builds it from source; README.md there
+# through cgo. //apps/desktop/courier/libsignal builds it from source; README.md there
 # explains the moving parts and apps/desktop/courier/engine/docs/m2-libsignal.md
 # records why it is built this way.
 #
 # libsignal needs Rust 1.98.1 (its rust-toolchain file). The SDK above stays on
 # 1.75.0: these toolchains only match when
-# //third_party/libsignal:rust_1_98_1 is true, and only the libsignal targets
+# //apps/desktop/courier/libsignal:rust_1_98_1 is true, and only the libsignal targets
 # set that flag (by transition). They are registered below, ahead of rules_rust's
 # own registration, so they are considered first and skipped everywhere else.
 # rules_rust (0.68.1 declared above; the graph resolves 0.69.0) knows checksums
@@ -385,7 +385,7 @@ rust.repository_set(
         "@platforms//cpu:aarch64",
         "@platforms//os:macos",
     ],
-    target_settings = ["//third_party/libsignal:rust_1_98_1_enabled"],
+    target_settings = ["//apps/desktop/courier/libsignal:rust_1_98_1_enabled"],
     target_triple = "aarch64-apple-darwin",
     versions = ["1.98.1"],
 )
@@ -407,13 +407,13 @@ register_toolchains(
     "@rust_toolchains//:rust_libsignal_darwin_aarch64__x86_64-apple-darwin__stable",
 )
 
-# libsignal's crate graph. third_party/libsignal/Cargo.toml is a one-package
+# libsignal's crate graph. apps/desktop/courier/libsignal/Cargo.toml is a one-package
 # workspace that depends on libsignal's crates at the pinned commit, so rules_rs
 # generates every one of them (build scripts included) like any crates.io crate.
 crate.from_cargo(
     name = "libsignal_crates",
-    cargo_lock = "//third_party/libsignal:Cargo.lock",
-    cargo_toml = "//third_party/libsignal:Cargo.toml",
+    cargo_lock = "//apps/desktop/courier/libsignal:Cargo.lock",
+    cargo_toml = "//apps/desktop/courier/libsignal:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
@@ -446,31 +446,31 @@ crate.from_cargo(
 # ASSUME_PATCHED only records that @signal_boringssl carries the patch; with
 # BORING_BSSL_PATH set, boring-sys skips patching anyway.
 crate.annotation(
-    build_script_data = ["@@//third_party/libsignal:boringssl_prefix"],
+    build_script_data = ["@@//apps/desktop/courier/libsignal:boringssl_prefix"],
     build_script_env = {
         "BORING_BSSL_ASSUME_PATCHED": "1",
-        "BORING_BSSL_PATH": "$(execpath @@//third_party/libsignal:boringssl_prefix)",
+        "BORING_BSSL_PATH": "$(execpath @@//apps/desktop/courier/libsignal:boringssl_prefix)",
         "BORING_BSSL_SYSROOT": _MACOS_SDK,
-        "LIBCLANG_PATH": "$(execpath @@//third_party/libsignal:libclang)",
+        "LIBCLANG_PATH": "$(execpath @@//apps/desktop/courier/libsignal:libclang)",
     },
     build_script_tools = [
-        "@@//third_party/libsignal:clang_headers",
-        "@@//third_party/libsignal:libclang",
+        "@@//apps/desktop/courier/libsignal:clang_headers",
+        "@@//apps/desktop/courier/libsignal:libclang",
     ],
     crate = "boring-sys",
     repositories = ["libsignal_crates"],
 )
 
 # libsignal's protobuf build scripts run protoc: prost-build from $PROTOC,
-# protobuf-codegen from $PATH. //third_party/libsignal:protoc is the protobuf
+# protobuf-codegen from $PATH. //apps/desktop/courier/libsignal:protoc is the protobuf
 # module's protoc plus its well-known types.
 [
     crate.annotation(
         build_script_env = {
-            "PATH": "$(execpath @@//third_party/libsignal:protoc)/bin:/usr/bin:/bin",
-            "PROTOC": "$(execpath @@//third_party/libsignal:protoc)/bin/protoc",
+            "PATH": "$(execpath @@//apps/desktop/courier/libsignal:protoc)/bin:/usr/bin:/bin",
+            "PROTOC": "$(execpath @@//apps/desktop/courier/libsignal:protoc)/bin/protoc",
         },
-        build_script_tools = ["@@//third_party/libsignal:protoc"],
+        build_script_tools = ["@@//apps/desktop/courier/libsignal:protoc"],
         crate = name,
         repositories = ["libsignal_crates"],
     )
@@ -508,11 +508,11 @@ crate.annotation(
 # execroot ($${pwd}, filled in by rules_rust) and then runs the real $CC.
 crate.annotation(
     build_script_env = {
-        "CC_aarch64_apple_darwin": "$(execpath @@//third_party/libsignal:cc_in_execroot)",
-        "CC_x86_64_apple_darwin": "$(execpath @@//third_party/libsignal:cc_in_execroot)",
+        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
         "COURIER_BAZEL_EXECROOT": "$${pwd}",
     },
-    build_script_tools = ["@@//third_party/libsignal:cc_in_execroot"],
+    build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
     crate = "ring",
     repositories = ["libsignal_crates"],
 )
@@ -641,7 +641,7 @@ bazel_dep(name = "rules_license", version = "1.0.0")
 http_archive(
     name = "signal_boringssl",
     patch_args = ["-p1"],
-    patches = ["//third_party/libsignal:boring-pq.patch"],
+    patches = ["//apps/desktop/courier/libsignal:boring-pq.patch"],
     sha256 = "c7bb28cc94b40dd0606507c5010008138193bc7773b86058756a26df1b957b6f",
     strip_prefix = "boringssl-e2a57cfb4d915b4ba820585aef9fdee7bca13fe5",
     url = "https://github.com/google/boringssl/archive/e2a57cfb4d915b4ba820585aef9fdee7bca13fe5.tar.gz",

@@ -11,7 +11,7 @@ Courier's Signal bridge (mautrix-signal) calls Signal's Rust library through
 cgo. This directory builds that library, `libsignal_ffi.a`, from source inside
 Bazel, so nothing prebuilt is downloaded and no `cargo` is needed.
 
-What Go links is `//third_party/libsignal:signal_ffi`. It is macOS only
+What Go links is `//apps/desktop/courier/libsignal:signal_ffi`. It is macOS only
 (arm64 and x86_64), built on an Apple-silicon Mac.
 
 The guard is `//apps/desktop/courier/engine/internal/networks:networks_test`:

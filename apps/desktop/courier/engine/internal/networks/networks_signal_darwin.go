@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Signal does its encryption through Signal's own Rust library, libsignal_ffi.a, which is built for macOS only
-// (//third_party/libsignal; see docs/m2-libsignal.md). Courier is a macOS app, so Signal is registered here, in a
+// (//apps/desktop/courier/libsignal; see docs/m2-libsignal.md). Courier is a macOS app, so Signal is registered here, in a
 // file only darwin builds. Nothing that Linux CI compiles imports mautrix-signal, so those lanes never look for a
 // library that does not exist there.
 
