@@ -25,6 +25,7 @@ enum MenuPanelExtensionsTests {
         theIslandKeepsAWebPage(suite)
         anUpdatedExtensionIsAskedAgain(suite)
         whetherAnyExtensionHasAnIslandPageIsKnownOncePerChange(suite)
+        theEmptyStateLeadsToTheExtensionsPage(suite)
     }
 
     /// The names saved in a layout before the tab existed.
@@ -338,5 +339,16 @@ enum MenuPanelExtensionsTests {
         bench.store.setOn(ToolID("com.acme.board")!, false)
         suite.expect(!bench.store.hasIslandPanels,
                      "with both switched off, none has one: the answer is worked out again after each change")
+    }
+
+    static func theEmptyStateLeadsToTheExtensionsPage(_ suite: TestSuite) {
+        let manage = MenuPanelExtensions.extensionSettings
+        suite.expect(manage == FeatureSettingsDestination(.extensions) && manage.sectionAnchor == nil
+                         && manage == ExtensionsPageSupport.destination,
+                     "the tab's empty state leads to Settings' Extensions page, where every link to the extensions goes")
+        let switches = MenuPanelExtensions.tabSettings
+        suite.expect(switches.page == .general && switches.sectionAnchor == .panelConfiguration
+                         && switches.hasValidSectionAnchor,
+                     "with every extension switched off, it leads to Settings › Menu bar, where the switches are")
     }
 }

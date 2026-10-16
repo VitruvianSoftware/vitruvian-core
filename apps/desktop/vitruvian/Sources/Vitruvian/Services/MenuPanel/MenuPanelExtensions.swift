@@ -56,16 +56,26 @@ package enum MenuPanelExtensions {
         return entries.filter { kept.contains($0.key.tool) }
     }
 
-    /// Opens Settings where extensions are added and managed. The one place
-    /// that says where that is, so moving it moves one line.
+    /// Where extensions are added and managed: Settings' Extensions page.
+    /// The one place the tab says so.
+    nonisolated package static var extensionSettings: FeatureSettingsDestination {
+        ExtensionsPageSupport.destination
+    }
+
+    /// Settings › Menu bar, where the tab's switches are.
+    nonisolated package static var tabSettings: FeatureSettingsDestination {
+        FeatureSettingsDestination(.general, sectionAnchor: .panelConfiguration)
+    }
+
+    /// Opens Settings on the Extensions page, from the tab's empty state.
     package static func openExtensionSettings() {
-        SettingsRouter.shared.request(FeatureSettingsDestination(.features))
+        SettingsRouter.shared.request(extensionSettings)
         appShell()?.openSettingsWindow()
     }
 
-    /// Opens Settings › Menu bar, where the tab's switches are.
+    /// Opens Settings › Menu bar.
     package static func openTabSettings() {
-        SettingsRouter.shared.request(FeatureSettingsDestination(.general, sectionAnchor: .panelConfiguration))
+        SettingsRouter.shared.request(tabSettings)
         appShell()?.openSettingsWindow()
     }
 }

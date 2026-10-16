@@ -1561,6 +1561,11 @@ MUTATIONS = [
      "        return island == key\n",
      "        return false\n",
      "a web page the island shows is a line in the tab, so the island keeps its one web view"),
+    ("the Extensions tab leads to the Features page", "tool-runtime",
+     "Sources/Vitruvian/Services/MenuPanel/MenuPanelExtensions.swift",
+     "        ExtensionsPageSupport.destination\n",
+     "        FeatureSettingsDestination(.features)\n",
+     "the tab's empty state leads to Settings' Extensions page, where every link to the extensions goes"),
 ]
 
 
