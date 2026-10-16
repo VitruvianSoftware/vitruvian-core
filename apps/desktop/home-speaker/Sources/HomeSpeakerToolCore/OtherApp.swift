@@ -94,6 +94,13 @@ public protocol OtherAppControlling: Sendable {
     /// Runs the app's own `--login-item disable`: only an app can switch its
     /// own login item off. A failure is the sentence the person reads.
     func turnOffLoginItem() async -> Result<Void, OtherAppProblem>
+    /// Runs the app's own `--login-item enable`, when the person picks the
+    /// app again. A failure, or an app too old for the flag, is the sentence
+    /// the person reads, with where to turn it on by hand.
+    func turnOnLoginItem() async -> Result<Void, OtherAppProblem>
+    /// Opens the menu bar app, as the Finder does: the app as it is found
+    /// now, never a copy in the Trash. True when it was opened.
+    func open() async -> Bool
     /// Moves HomeSpeaker.app to the Trash, never deleting it, and says where
     /// it went. Refused while the app is running.
     func moveToTrash() throws -> URL
@@ -106,42 +113,68 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     public static let loginItemFlagSince = "1.13.2"
     /// Where a person turns Open at Login off by hand.
     public static let whereToLook = "Turn it off in System Settings > General > Login Items & Extensions."
+    /// Where a person turns it on by hand.
+    public static let whereToTurnOn = "Turn it on in System Settings > General > Login Items & Extensions."
     static let tooOldForLoginItem = "This copy of the app is too old to turn off its own Open at Login."
+    static let tooOldToTurnOn = "This copy of the app is too old to turn on its own Open at Login."
 
-    public let program: URL?
     // Immutable after init. The file manager is only asked to move the app
     // to the Trash.
+    private let locate: @Sendable () -> URL?
     private let runningApps: @Sendable () -> [any RunningAppHandle]
     private let run: ProgramRunning
     private let fileManager: FileManager
     private let wait: @Sendable (Double) async -> Void
+    private let openApp: @Sendable (URL) async -> Bool
 
     /// Every part is handed in, with no defaults, so nothing can reach this
-    /// Mac's app by being left out. `onThisMac(program:)` is the real set.
-    public init(program: URL?, runningApps: @escaping @Sendable () -> [any RunningAppHandle],
+    /// Mac's app by being left out. `onThisMac(locate:)` is the real set.
+    /// `locate` finds the app's program afresh each time it is asked, so an
+    /// app installed, moved or put in the Trash since is seen as it is now.
+    public init(locate: @escaping @Sendable () -> URL?, runningApps: @escaping @Sendable () -> [any RunningAppHandle],
                 run: @escaping ProgramRunning, fileManager: FileManager,
-                wait: @escaping @Sendable (Double) async -> Void) {
-        self.program = program
+                wait: @escaping @Sendable (Double) async -> Void,
+                openApp: @escaping @Sendable (URL) async -> Bool) {
+        self.locate = locate
         self.runningApps = runningApps
         self.run = run
         self.fileManager = fileManager
         self.wait = wait
+        self.openApp = openApp
     }
 
-    /// The app at `program`, through this Mac's running applications, a
-    /// real run of its program, and the default file manager's Trash.
-    public static func onThisMac(program: URL?) -> SystemOtherApp {
-        SystemOtherApp(program: program,
+    /// The app always at `program`.
+    public convenience init(program: URL?, runningApps: @escaping @Sendable () -> [any RunningAppHandle],
+                            run: @escaping ProgramRunning, fileManager: FileManager,
+                            wait: @escaping @Sendable (Double) async -> Void,
+                            openApp: @escaping @Sendable (URL) async -> Bool) {
+        self.init(locate: { program }, runningApps: runningApps, run: run, fileManager: fileManager, wait: wait,
+                  openApp: openApp)
+    }
+
+    /// The app as `locate` finds it, through this Mac's running
+    /// applications, a real run of its program, the default file manager's
+    /// Trash, and the Finder's way of opening an app.
+    public static func onThisMac(locate: @escaping @Sendable () -> URL?) -> SystemOtherApp {
+        SystemOtherApp(locate: locate,
                        runningApps: { NSRunningApplication.runningApplications(withBundleIdentifier: HomeSpeakerProfile.appBundleID) },
                        run: runProgram, fileManager: .default,
-                       wait: { try? await Task.sleep(for: .seconds($0)) })
+                       wait: { try? await Task.sleep(for: .seconds($0)) },
+                       openApp: openWithWorkspace)
+    }
+
+    /// The app's program as it is found now. Nil when there is none, or
+    /// when the only one is in the Trash.
+    public var program: URL? {
+        guard let found = locate(), !OtherDoorPresence.isInTrash(found.path) else { return nil }
+        return found
     }
 
     /// `HomeSpeaker.app`, when the program is `HomeSpeaker.app/Contents/MacOS/<name>`.
     /// A bare program, such as a build's, is no app: it has no version and
     /// is never moved.
     public var bundle: URL? {
-        guard let program else { return nil }
+        guard let program = locate() else { return nil }
         let macOS = program.deletingLastPathComponent()
         let contents = macOS.deletingLastPathComponent()
         let bundle = contents.deletingLastPathComponent()
@@ -164,6 +197,10 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     static let quitCheck = 0.1
 
     public func quit(timeout: Double) async -> Bool {
+        // Only an app this controller has found is asked: with none found
+        // (a test's `HOMESPEAKER_PROGRAM=""`, say), a HomeSpeaker that happens
+        // to run on this Mac is never quit.
+        guard locate() != nil else { return !isRunning }
         // The menu bar app only: a command-line run of the program has the
         // `.prohibited` policy, and may be a script speaking.
         let menuBarApps = runningApps().filter {
@@ -199,6 +236,44 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
             return .failure(OtherAppProblem("Open at Login is still on. \(Self.whereToLook)"))
         default:
             return .failure(OtherAppProblem("Open at Login could not be turned off. \(Self.whereToLook)"))
+        }
+    }
+
+    public func turnOnLoginItem() async -> Result<Void, OtherAppProblem> {
+        guard let program else {
+            return .failure(OtherAppProblem("\(OtherAppError.notAnApp.errorDescription ?? "") \(Self.whereToTurnOn)"))
+        }
+        guard !OtherAppVersion.isOlder(version, than: Self.loginItemFlagSince) else {
+            return .failure(OtherAppProblem("\(Self.tooOldToTurnOn) \(Self.whereToTurnOn)"))
+        }
+        let job = Job.app(.loginItem(.enable))
+        let ran = await run(program, ProcessDriver.arguments(for: job))
+        // By how it ended, then by the state it printed: only "enabled" is on.
+        switch ProcessDriver.result(of: job, status: ran.status, output: ran.output, error: ran.error) {
+        case .loginItem(.enabled, nil):
+            return .success(())
+        case .loginItem(_, let problem?), .failed(let problem):
+            return .failure(OtherAppProblem("Open at Login could not be turned on: \(problem). \(Self.whereToTurnOn)"))
+        default:
+            return .failure(OtherAppProblem("Open at Login could not be turned on. \(Self.whereToTurnOn)"))
+        }
+    }
+
+    public func open() async -> Bool {
+        // Never a copy in the Trash: Launch Services still knows those.
+        guard let bundle, !OtherDoorPresence.isInTrash(bundle.path + "/") else { return false }
+        return await openApp(bundle)
+    }
+
+    /// Opens the app at `bundle` as the Finder does, in the background.
+    public static let openWithWorkspace: @Sendable (URL) async -> Bool = { bundle in
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        do {
+            _ = try await NSWorkspace.shared.openApplication(at: bundle, configuration: configuration)
+            return true
+        } catch {
+            return false
         }
     }
 

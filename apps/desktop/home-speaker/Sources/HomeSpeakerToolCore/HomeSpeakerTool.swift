@@ -128,9 +128,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// none, and then nothing is compared or copied.
         public var profile: HomeSpeakerProfile?
         public var appProfile: HomeSpeakerProfile?
-        /// The app's program, which the agents' hooks are pointed at when
-        /// the person picks the app. Nil when there is none.
-        public var appProgram: URL?
+        /// The app's program as it is found now (`ProcessDriver.locate`),
+        /// asked afresh at each switch: the agents' hooks are pointed at it
+        /// when the person picks the app. Nil when there is none; a copy in
+        /// the Trash is never used.
+        public var appProgram: () -> URL?
+        /// While this side runs, a HomeSpeaker hook left pointing at a
+        /// program that is gone or in the Trash is pointed at this side's
+        /// program. Only the extension's real parts turn it on: a test's
+        /// default home is this Mac's.
+        public var repairsHooks: Bool
         /// The app is installed (`DoorCheck.appInstalled`), for General's
         /// "Which HomeSpeaker" row.
         public var otherInstalled: () -> Bool
@@ -159,7 +166,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     copy: @escaping (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = DoorCopy.copy,
                     sendStatus: @escaping (MarkChoice) -> Void = { _ in },
                     monitorMayRun: @escaping (Bool) -> Void = { _ in },
-                    profile: HomeSpeakerProfile? = nil, appProfile: HomeSpeakerProfile? = nil, appProgram: URL? = nil,
+                    profile: HomeSpeakerProfile? = nil, appProfile: HomeSpeakerProfile? = nil, appProgram: @escaping () -> URL? = { nil },
+                    repairsHooks: Bool = false,
                     otherInstalled: @escaping () -> Bool = { false },
                     credentialsChangedIn: @escaping (HomeSpeakerProfile) -> Void = { _ in },
                     volumeRestoreReport: @escaping () -> String? = { nil }) {
@@ -192,6 +200,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.profile = profile
             self.appProfile = appProfile
             self.appProgram = appProgram
+            self.repairsHooks = repairsHooks
             self.otherInstalled = otherInstalled
             self.credentialsChangedIn = credentialsChangedIn
             self.volumeRestoreReport = volumeRestoreReport
@@ -253,6 +262,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     public private(set) var doorStep: Pages.DoorStep?
     /// What the last step did, a sentence each, until a page opens afresh.
     public private(set) var doorReport: [String] = []
+    /// The app was opened when the person picked it, and has not been seen
+    /// running since.
+    public private(set) var otherStarting = false
 
     public init(parts: Parts) {
         self.parts = parts
@@ -733,10 +745,26 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             }
             self.role = role
         }
+        if changed, case .compare(let compare)? = doorStep, choiceChanged(since: compare) {
+            // Picked elsewhere, in the app: the step is stale.
+            doorStep = nil
+            doorReport = [Pages.DoorWords.choiceChanged]
+        }
+        if otherStarting, parts.other?.isRunning ?? true || !role.isQuiet { otherStarting = false }
         var mayRun = false
         if runs {
+            if parts.repairsHooks { repairStrandedHooks() }
             let since = parts.door?.read()?.chosenAt ?? runsSince ?? now
-            mayRun = !(parts.other?.isRunning ?? false) || now.timeIntervalSince(since) >= Self.otherStopsWithin
+            let otherRunning = parts.other?.isRunning ?? false
+            // Only an app that is found: with none (a test's
+            // `HOMESPEAKER_PROGRAM=""`), there is nothing to wait for or quit.
+            let appFound = parts.appProgram() != nil
+            // An app older than 1.19 never hears the choice and keeps its
+            // own monitor: this side's waits until it has quit, however
+            // long that takes (design 7.6, item 4). A newer one goes quiet
+            // by itself, so five seconds is the most this side waits.
+            mayRun = !(otherRunning && appFound && Self.isOld(parts.other))
+                && (!otherRunning || now.timeIntervalSince(since) >= Self.otherStopsWithin)
         }
         if mayRun != monitorMayRun {
             monitorMayRun = mayRun
@@ -749,8 +777,39 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 parts.controlChatMonitor(.stop)
             }
         }
-        if changed { refreshOpenPanels() }
+        if changed || drawnStarting != otherStarting { refreshOpenPanels() }
+        drawnStarting = otherStarting
         updateMark()
+    }
+
+    /// Whether the open pages last showed the app as starting.
+    private var drawnStarting = false
+
+    /// An app that cannot hear the choice file: older than 1.19, or of a
+    /// version that does not read.
+    private static func isOld(_ other: (any OtherAppControlling)?) -> Bool {
+        guard let other else { return false }
+        return OtherAppVersion.isOlder(other.version, than: OtherAppPlan.hearsTheChoiceSince)
+    }
+
+    /// Points a HomeSpeaker hook stranded on a program that is gone or in
+    /// the Trash (the app dragged there by hand, say) at this side's own
+    /// program, so the replies are spoken again. A hook that runs a
+    /// program that is there is left alone, as is one that is not
+    /// HomeSpeaker's program.
+    private func repairStrandedHooks() {
+        guard let program = parts.driver.program else { return }
+        let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
+        for agent in CodingAgent.allCases where agent.supportsHook {
+            let status = integration.status(of: agent)
+            guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isHomeSpeakerProgram(runs),
+                  OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
+            do {
+                try integration.installHook(for: agent)
+            } catch {
+                parts.link.log("the \(agent.displayName) hook could not be pointed at this HomeSpeaker: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// A side that runs: the hook, the chat monitor, listening.
@@ -809,8 +868,24 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private var me: HomeSpeakerProfile.Door { parts.profile?.door ?? .extension }
 
     /// Which HomeSpeaker is in use, read afresh, and the step the person is on.
-    private func doorState() -> Pages.DoorState {
-        Pages.DoorState(me: me, role: parts.role(), otherInstalled: parts.otherInstalled(), step: doorStep, report: doorReport)
+    private func doorState(role: DoorRole? = nil) -> Pages.DoorState {
+        let role = role ?? parts.role()
+        let oldAppRunning = Self.runs(role) && parts.appProgram() != nil && (parts.other?.isRunning ?? false)
+            && Self.isOld(parts.other)
+        return Pages.DoorState(me: me, role: role, otherInstalled: parts.otherInstalled(), step: doorStep, report: doorReport,
+                               oldAppRunning: oldAppRunning, otherStarting: otherStarting)
+    }
+
+    /// The app's program as it is found now; never a copy in the Trash.
+    private func appProgramNow() -> URL? {
+        guard let program = parts.appProgram(), !OtherDoorPresence.isInTrash(program.path) else { return nil }
+        return program
+    }
+
+    /// The choice file no longer says what it did when `compare` began.
+    private func choiceChanged(since compare: Pages.DoorCompare) -> Bool {
+        let record = parts.door?.read()
+        return record?.chosen != compare.seenChoice || record?.chosenAt != compare.seenChosenAt
     }
 
     private static func other(of door: HomeSpeakerProfile.Door) -> HomeSpeakerProfile.Door {
@@ -825,6 +900,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             switch id {
             case Pages.Block.doorUseExtension: try compare(choosing: .extension)
             case Pages.Block.doorUseApp: try compare(choosing: .app)
+            case Pages.Block.doorBack:
+                // Nothing is committed before Copy or Keep.
+                if case .compare? = doorStep { doorStep = nil }
+            case Pages.Block.doorQuitAgain: quitAgain()
             case Pages.Block.doorUseThis: try compare(choosing: me)
             case Pages.Block.doorSwitch:
                 guard let inUse = doorState().inUse else { return true }
@@ -865,12 +944,20 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     private func compare(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door,
                          purpose: Pages.DoorCompare.Purpose) throws {
+        // The app is offered only while it is installed, and picked only
+        // while its program can be found: the hook must have it to run.
+        if purpose == .choose, into != me {
+            guard parts.otherInstalled() else { return }
+            guard appProgramNow() != nil else { throw CommandRefused(Pages.DoorWords.appNotFound) }
+        }
         let source = try profile(from)
         let destination = try profile(into)
+        let record = parts.door?.read()
         doorReport = []
         doorStep = .compare(Pages.DoorCompare(
             purpose: purpose, from: from, into: into,
-            source: DoorSnapshot(profile: source), destination: DoorSnapshot(profile: destination)))
+            source: DoorSnapshot(profile: source), destination: DoorSnapshot(profile: destination),
+            seenChoice: record?.chosen, seenChosenAt: record?.chosenAt))
     }
 
     /// Copy or Keep, then, when choosing, the rest in order (design 7.6):
@@ -878,12 +965,41 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// choice is written; the hooks follow it; then the app is closed.
     private func finishCompare(copy: Bool) {
         guard case .compare(var compare) = doorStep else { return }
+        // A choice made elsewhere since this step began (in the app, say)
+        // is never overridden: the step goes, and the page shows what is.
+        if choiceChanged(since: compare) {
+            doorStep = nil
+            doorReport = [Pages.DoorWords.choiceChanged]
+            refreshRole()
+            return
+        }
+        // The hook must have the app's program to run: without it, nothing
+        // is copied or chosen.
+        var appProgram: URL?
+        if compare.purpose == .choose, compare.into != me {
+            appProgram = appProgramNow()
+            if appProgram == nil {
+                compare.problem = Pages.DoorWords.appNotFound
+                doorStep = .compare(compare)
+                return
+            }
+        }
         do {
             let source = try profile(compare.from)
             let destination = try profile(compare.into)
             doorReport = []
+            compare.problem = nil
             if copy {
-                doorReport = try parts.copy(source, destination).lines
+                do {
+                    doorReport = try parts.copy(source, destination).lines
+                } catch let partial as DoorCopyPartial {
+                    // Stopped part-way: say what came across and what did
+                    // not, and tell the destination if its sign-ins changed.
+                    if partial.signInsWritten { parts.credentialsChangedIn(destination) }
+                    doorReport = partial.copied + partial.notCopied
+                    doorStep = .compare(compare)
+                    return
+                }
                 // The side that took the copy re-reads its sign-ins.
                 parts.credentialsChangedIn(destination)
             }
@@ -897,9 +1013,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             doorStep = nil
             return
         }
-        doorReport += repointHooks(at: compare.into)
+        doorReport += repointHooks(at: compare.into, program: compare.into == me ? parts.driver.program : appProgram)
         if compare.into == me {
             closeTheOther()
+        } else if let other = parts.other, !other.isRunning {
+            openTheOther(other)
         } else {
             doorStep = nil
         }
@@ -921,8 +1039,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// (design 7.6): otherwise each reply would go to a program that stands
     /// aside, or one in the Trash. An agent with no HomeSpeaker hook gets
     /// none. What could not be done, a sentence each.
-    private func repointHooks(at door: HomeSpeakerProfile.Door) -> [String] {
-        guard let program = door == me ? parts.driver.program : parts.appProgram else { return [] }
+    private func repointHooks(at door: HomeSpeakerProfile.Door, program: URL?) -> [String] {
+        guard let program else { return [] }
         let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
         var problems: [String] = []
         for agent in CodingAgent.allCases where agent.supportsHook {
@@ -939,7 +1057,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Asks the app to quit, and waits for it, off the kit's thread; then
     /// step 3's offers.
     private func closeTheOther() {
-        guard let other = parts.other else { return appClosed(quit: true, version: nil) }
+        guard let other = parts.other else {
+            // Nothing to ask: say nothing about a quit.
+            doorStep = nil
+            return
+        }
         doorStep = .closing
         let later = parts.later
         let timeout = Self.otherStopsWithin
@@ -948,6 +1070,53 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             let version = other.version
             later { [weak self] in self?.appClosed(quit: quit, version: version) }
         }
+    }
+
+    /// Quit, asked again: from step 3, or the line an app older than 1.19
+    /// leaves while it still runs.
+    private func quitAgain() {
+        // Never a HomeSpeaker this side has not found.
+        guard let other = parts.other, parts.appProgram() != nil else { return }
+        let later = parts.later
+        let timeout = Self.otherStopsWithin
+        Task.detached { [weak self] in
+            let quit = await other.quit(timeout: timeout)
+            later { [weak self] in self?.quitAgainDone(quit) }
+        }
+    }
+
+    private func quitAgainDone(_ quit: Bool) {
+        if case .offers(var offers)? = doorStep {
+            offers.quit = quit
+            doorStep = .offers(offers)
+        }
+        refreshRole()
+        refreshOpenPanels()
+    }
+
+    /// The person picked the app, which is not running: it is opened, as
+    /// they asked, and its Open at Login, which picking the extension
+    /// turned off, is turned back on. Off the kit's thread.
+    private func openTheOther(_ other: any OtherAppControlling) {
+        doorStep = .opening
+        let later = parts.later
+        Task.detached { [weak self] in
+            let opened = await other.open()
+            let loginItem = await other.turnOnLoginItem()
+            later { [weak self] in self?.otherOpened(opened, loginItem: loginItem) }
+        }
+    }
+
+    private func otherOpened(_ opened: Bool, loginItem: Result<Void, OtherAppProblem>) {
+        doorStep = nil
+        otherStarting = opened
+        if !opened { doorReport.append(Pages.DoorWords.couldNotOpen) }
+        switch loginItem {
+        case .success: doorReport.append(Pages.DoorWords.loginItemOn)
+        case .failure(let problem): doorReport.append(problem.sentence)
+        }
+        refreshRole()
+        refreshOpenPanels()
     }
 
     private func appClosed(quit: Bool, version: String?) {
@@ -1098,7 +1267,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.selectedHomeId = selectedHomeId
         status.previewing = previewing
         status.removingSpeakers = removingSpeakers
-        status.door = doorState()
+        let role = parts.role()
+        status.door = doorState(role: role)
         status.volumeRestoreReport = parts.volumeRestoreReport()
         let account = parts.account
         let islandOpen = openPanels.contains(Self.islandPanel)
@@ -1111,7 +1281,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // The island warns about the chat monitor only while it is on,
             // so nothing is looked for otherwise.
             if config.effectiveChatMonitor.anySourceEnabled {
-                status.chat = chatStatus()
+                status.chat = chatStatus(role: role)
                 drawnChat = status.chat
             }
         }
@@ -1138,7 +1308,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     legacyLaunchAgent: integration.isLegacyLaunchAgentInstalled())
             }
             if section == .monitor {
-                status.chat = chatStatus()
+                status.chat = chatStatus(role: role)
                 drawnChat = status.chat
             }
             if section == .speakers, config.effectiveSpeakLocal {
@@ -1152,10 +1322,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// The chat monitor as the pages show it. Its owner counts as running
     /// only while this side runs and its process is alive: a waiting or
     /// quiet side runs no monitor, so it offers no Start or Stop.
-    private func chatStatus() -> Pages.Chat {
+    private func chatStatus(role: DoorRole? = nil) -> Pages.Chat {
         let chat = parts.chat
         return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
-                          gwsPath: parts.gwsLocation(), ownerRunning: Self.runs(parts.role()) && parts.ownerRunning(),
+                          gwsPath: parts.gwsLocation(), ownerRunning: Self.runs(role ?? parts.role()) && parts.ownerRunning(),
                           monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read())
     }
 

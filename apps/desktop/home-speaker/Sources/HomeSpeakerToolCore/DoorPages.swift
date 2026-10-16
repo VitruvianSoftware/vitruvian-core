@@ -40,14 +40,22 @@ extension Pages {
         public var step: DoorStep?
         /// What the last step did, a sentence each.
         public var report: [String]
+        /// An app older than 1.19 is running while this side runs: it
+        /// cannot hear the choice, so this side's chat monitor waits.
+        public var oldAppRunning: Bool
+        /// The app was opened when the person picked it, and has not been
+        /// seen running yet.
+        public var otherStarting: Bool
 
         public init(me: HomeSpeakerProfile.Door = .extension, role: DoorRole = .active, otherInstalled: Bool = false,
-                    step: DoorStep? = nil, report: [String] = []) {
+                    step: DoorStep? = nil, report: [String] = [], oldAppRunning: Bool = false, otherStarting: Bool = false) {
             self.me = me
             self.role = role
             self.otherInstalled = otherInstalled
             self.step = step
             self.report = report
+            self.oldAppRunning = oldAppRunning
+            self.otherStarting = otherStarting
         }
 
         /// The one in use, once the person has chosen and both are installed.
@@ -67,6 +75,9 @@ extension Pages {
         case compare(DoorCompare)
         /// The app has been asked to quit; waiting for it.
         case closing
+        /// The person picked the app, which was not running: it is being
+        /// opened, and its Open at Login turned back on.
+        case opening
         /// Step 3: the app has quit (or not), and the two offers.
         case offers(DoorOffers)
     }
@@ -87,15 +98,22 @@ extension Pages {
         public var destination: DoorSnapshot
         /// Why the last copy or choice did not happen.
         public var problem: String?
+        /// The choice file's choice, and when it was made, as this step
+        /// found them. A choice made elsewhere since is never overridden.
+        public var seenChoice: HomeSpeakerProfile.Door?
+        public var seenChosenAt: Date?
 
         public init(purpose: Purpose, from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door,
-                    source: DoorSnapshot, destination: DoorSnapshot, problem: String? = nil) {
+                    source: DoorSnapshot, destination: DoorSnapshot, problem: String? = nil,
+                    seenChoice: HomeSpeakerProfile.Door? = nil, seenChosenAt: Date? = nil) {
             self.purpose = purpose
             self.from = from
             self.into = into
             self.source = source
             self.destination = destination
             self.problem = problem
+            self.seenChoice = seenChoice
+            self.seenChosenAt = seenChosenAt
         }
 
         public var suggestion: DoorCopy.Suggestion { DoorCopy.suggest(chosen: destination, other: source) }
@@ -165,6 +183,14 @@ extension Pages {
         public static let didNotQuit = "The app did not quit. Quit it from its menu bar icon."
         public static let loginItemOff = "The app's Open at Login is off."
         public static let inTheTrash = "HomeSpeaker.app is in the Trash."
+        public static let back = "Back"
+        public static let quitAgain = "Quit the app"
+        public static let opening = "Opening the app…"
+        public static let starting = "The HomeSpeaker app is starting, so this one stays quiet."
+        public static let couldNotOpen = "HomeSpeaker.app could not be opened. Open it from Applications."
+        public static let loginItemOn = "The app's Open at Login is on."
+        public static let appNotFound = "HomeSpeaker.app can't be found, so nothing was changed."
+        public static let choiceChanged = "The choice changed in the other HomeSpeaker, so nothing was changed here."
     }
 
     /// The quiet-hours choices: every half hour, "00:00" to "23:30".
@@ -182,6 +208,14 @@ extension Pages {
         let door = status.door
         switch door.step {
         case nil:
+            if door.oldAppRunning, !door.role.isQuiet, door.role != .waitingAsking {
+                // An app before 1.19 still runs: it reads chat, so this
+                // side's monitor waits until it is quit.
+                return [
+                    row(nil, UIText.plain(OtherAppPlan.Step.oldAppWarning.text), icon: "exclamationmark.triangle.fill"),
+                    button(Block.doorQuitAgain, UIText.plain(DoorWords.quitAgain), style: .prominent),
+                ]
+            }
             guard door.role == .waitingAsking else { return [] }
             return UITree {
                 heading(UIText.plain(DoorWords.heading))
@@ -193,6 +227,8 @@ extension Pages {
             return compareBlocks(compare)
         case .closing:
             return [heading(UIText.plain(DoorWords.heading)), text(UIText.plain(DoorWords.quitting), style: .caption)]
+        case .opening:
+            return [heading(UIText.plain(DoorWords.heading)), text(UIText.plain(DoorWords.opening), style: .caption)]
         case .offers(let offers):
             return offerBlocks(offers)
         }
@@ -211,6 +247,7 @@ extension Pages {
                 row(nil, UIText.plain(DoorWords.signsOut(from: compare.from, into: compare.into)), icon: "exclamationmark.triangle.fill")
             }
             if compare.suggestion == .copyFromOther { [copy, keep] } else { [keep, copy] }
+            button(Block.doorBack, UIText.plain(DoorWords.back))
             text(UIText.plain(DoorCopy.copyNote), style: .caption)
             if let problem = compare.problem {
                 row(nil, UIText.plain(problem), icon: "exclamationmark.triangle.fill")
@@ -235,10 +272,14 @@ extension Pages {
             if offers.oldApp {
                 row(nil, UIText.plain(OtherAppPlan.Step.oldAppWarning.text), icon: "exclamationmark.triangle.fill")
             }
+            if !offers.quit {
+                button(Block.doorQuitAgain, UIText.plain(DoorWords.quitAgain), enabled: !offers.working)
+            }
             toggle(Block.doorLoginItem, UIText.plain(OtherAppPlan.Step.turnOffLoginItem(ticked: true, optional: true).text),
                    isOn: offers.loginItem, enabled: offers.loginItemOptional && !offers.working)
+            // A running app is never moved: it is quit first.
             toggle(Block.doorTrash, UIText.plain(OtherAppPlan.Step.moveToTrash(ticked: false).text), isOn: offers.trash,
-                   enabled: !offers.working)
+                   enabled: offers.quit && !offers.working)
             if let warning = OtherAppPlan.Step.moveToTrash(ticked: false).warning {
                 text(UIText.plain(warning), style: .caption)
             }
@@ -247,9 +288,9 @@ extension Pages {
     }
 
     /// In place of the island's body while the other one is in use.
-    static func quietCardBlocks(other: HomeSpeakerProfile.Door) -> [UIBlock] {
+    static func quietCardBlocks(other: HomeSpeakerProfile.Door, starting: Bool = false) -> [UIBlock] {
         [
-            row(nil, UIText.plain(DoorWords.quiet(other: other)), icon: "moon.zzz"),
+            row(nil, UIText.plain(starting ? DoorWords.starting : DoorWords.quiet(other: other)), icon: "moon.zzz"),
             button(Block.doorUseThis, UIText.plain(DoorWords.useThis), style: .prominent),
         ]
     }
@@ -372,6 +413,8 @@ extension Pages.Block {
     public static let doorUseThis = "door.useThis"
     public static let doorSwitch = "door.switch"
     public static let doorCopyAgain = "door.copyAgain"
+    public static let doorBack = "door.back"
+    public static let doorQuitAgain = "door.quitAgain"
     // Beside the typed volume.
     public static let quieter = "quieter"
     public static let louder = "louder"

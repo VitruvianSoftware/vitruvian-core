@@ -226,9 +226,11 @@ extension HomeSpeakerTool.Parts {
     /// - `monitor` is this process's chat monitor: Start and Stop call it
     ///   on the main actor (`onMain`); nothing is posted to the app.
     /// - `check` says which HomeSpeaker runs.
-    /// - `appProgram`, `runningApps` and `runProgram` are the app as the
-    ///   extension sees it (`SystemOtherApp`): `runProgram` is the one way a
-    ///   program of the app's is started, and no job uses it.
+    /// - `appProgram`, `runningApps`, `runProgram` and `openApp` are the app
+    ///   as the extension sees it (`SystemOtherApp`): `appProgram` finds it
+    ///   afresh each time it is asked; `runProgram` is the one way a program
+    ///   of the app's is started, and no job uses it; `openApp` opens it
+    ///   when the person picks it.
     /// - `appProfile` is the app's files, which the choice card compares
     ///   with the extension's and copies from or into.
     /// - `home` is where the coding agents keep their files.
@@ -241,10 +243,11 @@ extension HomeSpeakerTool.Parts {
         driverParts: EngineDriver.Parts,
         monitor: GatedMonitor,
         check: DoorCheck,
-        appProgram: URL?,
+        appProgram: @escaping @Sendable () -> URL?,
         appProfile: HomeSpeakerProfile,
         runningApps: @escaping @Sendable () -> [any RunningAppHandle],
         runProgram: @escaping ProgramRunning,
+        openApp: @escaping @Sendable (URL) async -> Bool,
         home: URL,
         onMain: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void = ExtensionSide.onMain,
         voices: @escaping () -> [LocalVoice] = { [] },
@@ -255,8 +258,8 @@ extension HomeSpeakerTool.Parts {
         let profile = engine.profile
         let permission = monitor.permission
         let other = SystemOtherApp(
-            program: appProgram, runningApps: runningApps, run: runProgram, fileManager: .default,
-            wait: { try? await Task.sleep(for: .seconds($0)) })
+            locate: appProgram, runningApps: runningApps, run: runProgram, fileManager: .default,
+            wait: { try? await Task.sleep(for: .seconds($0)) }, openApp: openApp)
         let credentialsChanged = CredentialsChangedNotice.notificationName(for: profile)
         let restored = RestoreReport(engine.volumeRestore)
         return Self(
@@ -287,6 +290,7 @@ extension HomeSpeakerTool.Parts {
             profile: profile,
             appProfile: appProfile,
             appProgram: appProgram,
+            repairsHooks: true,
             otherInstalled: { check.appInstalled() },
             // After a copy, the side that took it: the app's names when the
             // app took it, so the running app re-reads its sign-ins.

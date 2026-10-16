@@ -63,9 +63,28 @@ private final class StandInMac: @unchecked Sendable {
 
     func running() -> [any RunningAppHandle] { apps.filter { !$0.gone } }
 
+    var opened: [URL] = []
+    var opens = true
+
+    func open(_ bundle: URL) -> Bool {
+        opened.append(bundle)
+        return opens
+    }
+
     func run(_ program: URL, _ arguments: [String]) -> ProgramRun {
         runs.append((program, arguments))
         return answer
+    }
+}
+
+/// Where the app is found, changed by a test, read from any thread.
+private final class Found: @unchecked Sendable {
+    private let lock = NSLock()
+    private var where_: URL?
+    init(_ url: URL?) { where_ = url }
+    var url: URL? {
+        get { lock.withLock { where_ } }
+        set { lock.withLock { where_ = newValue } }
     }
 }
 
@@ -121,7 +140,8 @@ final class OtherAppTests: XCTestCase {
         let mac = self.mac!
         return SystemOtherApp(program: program, runningApps: { mac.running() },
                               run: { mac.run($0, $1) }, fileManager: workspace,
-                              wait: { mac.waited.append($0) })
+                              wait: { mac.waited.append($0) },
+                              openApp: { mac.open($0) })
     }
 
     // MARK: Quitting
@@ -141,6 +161,16 @@ final class OtherAppTests: XCTestCase {
         XCTAssertFalse(script.askedToQuit, "a command-line run of the app's program (a script's --say) is never stopped")
         XCTAssertFalse(stranger.askedToQuit, "another app is never stopped")
         XCTAssertFalse(other.isRunning)
+    }
+
+    /// With no app found, as in a test that sets `HOMESPEAKER_PROGRAM=""`,
+    /// a HomeSpeaker running on this Mac is never asked to quit.
+    func testQuitAsksNothingWhenNoAppIsFound() async throws {
+        let menuBar = StandInApp(.accessory)
+        mac.apps = [menuBar]
+        let quit = await app(program: nil).quit(timeout: 1)
+        XCTAssertFalse(quit, "it is still running")
+        XCTAssertFalse(menuBar.askedToQuit, "an app it did not find was asked to quit")
     }
 
     func testQuitWithOnlyACommandLineRunHasNothingToDo() async throws {
@@ -166,6 +196,60 @@ final class OtherAppTests: XCTestCase {
         XCTAssertFalse(quit, "still running when the time is up")
         XCTAssertTrue(stubborn.askedToQuit)
         XCTAssertEqual(mac.waited.reduce(0, +), 2, accuracy: 0.001, "waits the whole timeout, and no longer")
+    }
+
+    // MARK: Picking the app again
+
+    func testTheLoginItemIsTurnedBackOnByTheAppsOwnProgram() async throws {
+        let program = try makeApp(version: "1.19.0")
+        let other = app(program: program)
+        mac.answer = ProgramRun(status: 0, output: "login item: enabled\n", error: "")
+
+        let result = await other.turnOnLoginItem()
+
+        XCTAssertNoThrow(try result.get())
+        XCTAssertEqual(mac.runs.map(\.program), [program])
+        XCTAssertEqual(mac.runs.map(\.arguments), [["--login-item", "enable"]])
+    }
+
+    func testTurningTheLoginItemOnIsJudgedByHowTheProgramEnded() async throws {
+        let other = app(program: try makeApp(version: "1.19.0"))
+        mac.answer = ProgramRun(status: 1, output: "login item: not registered\n", error: "error: could not enable the login item: denied\n")
+        var result = await other.turnOnLoginItem()
+        XCTAssertEqual(result.failure?.sentence,
+                       "Open at Login could not be turned on: could not enable the login item: denied. " + SystemOtherApp.whereToTurnOn)
+        mac.answer = ProgramRun(status: 0, output: "login item: requires approval\n", error: "")
+        result = await other.turnOnLoginItem()
+        XCTAssertEqual(result.failure?.sentence.hasSuffix(SystemOtherApp.whereToTurnOn), true, "waiting for approval is not on")
+    }
+
+    func testAnAppTooOldForTheFlagIsNotRunAndSaysWhereToLook() async throws {
+        let other = app(program: try makeApp(version: "1.13.1"))
+        let result = await other.turnOnLoginItem()
+        XCTAssertEqual(result.failure?.sentence,
+                       "This copy of the app is too old to turn on its own Open at Login. " + SystemOtherApp.whereToTurnOn)
+        XCTAssertTrue(mac.runs.isEmpty, "an app without the flag would open as the app instead")
+        XCTAssertEqual(SystemOtherApp.whereToTurnOn, "Turn it on in System Settings > General > Login Items & Extensions.")
+    }
+
+    func testOpeningOpensTheAppAsFoundNowAndNeverATrashCopy() async throws {
+        let installed = try makeApp(version: "1.19.0")
+        let found = Found(installed)
+        let mac = self.mac!
+        let other = SystemOtherApp(locate: { found.url }, runningApps: { mac.running() }, run: { mac.run($0, $1) },
+                                   fileManager: workspace, wait: { _ in }, openApp: { mac.open($0) })
+        let opened = await other.open()
+        XCTAssertTrue(opened)
+        XCTAssertEqual(mac.opened, [installed.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()])
+
+        found.url = try makeApp(version: "1.19.0", in: ".Trash")
+        let openedTrash = await other.open()
+        XCTAssertFalse(openedTrash)
+        XCTAssertNil(other.program, "a copy in the Trash is not the app")
+        XCTAssertEqual(mac.opened.count, 1, "the Trash copy was never opened")
+        found.url = nil
+        let openedNothing = await other.open()
+        XCTAssertFalse(openedNothing)
     }
 
     // MARK: The login item

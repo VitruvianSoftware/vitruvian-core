@@ -79,6 +79,14 @@ private final class StandInApp: OtherAppControlling, @unchecked Sendable {
         XCTFail("moved the app to the Trash")
         throw OtherAppError.notAnApp
     }
+    func turnOnLoginItem() async -> Result<Void, OtherAppProblem> {
+        XCTFail("turned the app's login item on")
+        return .failure(OtherAppProblem("no"))
+    }
+    func open() async -> Bool {
+        XCTFail("opened the app")
+        return false
+    }
 }
 
 /// A chat monitor that only records what it is asked.
@@ -509,7 +517,7 @@ final class ExtensionPartsTests: XCTestCase {
             engine: engine, program: program, link: HomeSpeakerToolTests.Link(),
             later: { work in DispatchQueue.main.async(execute: work) },
             driverParts: driverParts, monitor: gate, check: check,
-            appProgram: Self.appProgram,
+            appProgram: { Self.appProgram },
             appProfile: HomeSpeakerProfile(
                 door: .app, settingsURL: home.appendingPathComponent(".gemini/speaker_broadcast.json"),
                 historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),
@@ -519,6 +527,10 @@ final class ExtensionPartsTests: XCTestCase {
             runProgram: { program, arguments in
                 ran.add([program.path] + arguments)
                 return ProgramRun(status: 1, output: "", error: "error: the test's stand-in never runs the app")
+            },
+            openApp: { _ in
+                XCTFail("opened the app")
+                return false
             },
             home: home, onMain: { work in MainActor.assumeIsolated { work() } })
         return Rig(root: root, home: home, profile: profile, engine: engine, monitor: monitor, gate: gate,

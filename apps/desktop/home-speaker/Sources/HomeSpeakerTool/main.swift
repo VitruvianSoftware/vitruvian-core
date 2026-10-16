@@ -203,7 +203,6 @@ func runProgram() -> Never {
     let tool = Tool(version: ToolVersion.current)
     let link = KitLink()
     let waker = tool.waker
-    let appProgram = locateApp()
     let appSecrets = HomeSpeakerProfile.app().secretsURL
     let driverParts = EngineDriver.Parts(
         engine: engine,
@@ -217,10 +216,13 @@ func runProgram() -> Never {
         engine: engine, program: program, link: link,
         later: { work in waker.later { _ in work() } },
         driverParts: driverParts, monitor: gate, check: check,
-        appProgram: appProgram,
+        // Found afresh at each switch: the app may be installed, moved or
+        // put in the Trash while the extension runs.
+        appProgram: { locateApp() },
         appProfile: HomeSpeakerProfile.app(home: home),
         runningApps: { NSRunningApplication.runningApplications(withBundleIdentifier: HomeSpeakerProfile.appBundleID) },
         runProgram: SystemOtherApp.runProgram,
+        openApp: SystemOtherApp.openWithWorkspace,
         home: home,
         voices: { LocalSpeaker.shared.englishVoices() },
         previewVoice: { voice in try await LocalSpeaker.shared.speak(Pages.previewText, voiceID: voice) },

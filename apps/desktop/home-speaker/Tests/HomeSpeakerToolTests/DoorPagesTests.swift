@@ -66,6 +66,16 @@ private final class RecordingApp: OtherAppControlling, @unchecked Sendable {
         set { lock.withLock { shownVersion = newValue } }
     }
 
+    /// Whether it goes when asked to quit.
+    let quits = Flag(true)
+    /// Whether opening it works.
+    let opens = Flag(true)
+    private var loginItemAnswer: Result<Void, OtherAppProblem> = .success(())
+    var turningOn: Result<Void, OtherAppProblem> {
+        get { lock.withLock { loginItemAnswer } }
+        set { lock.withLock { loginItemAnswer = newValue } }
+    }
+
     init(order: Order, running: Flag) {
         self.order = order
         self.running = running
@@ -75,8 +85,18 @@ private final class RecordingApp: OtherAppControlling, @unchecked Sendable {
 
     func quit(timeout: Double) async -> Bool {
         order.add("quit")
-        running.value = false
-        return true
+        if quits.value { running.value = false }
+        return quits.value
+    }
+
+    func open() async -> Bool {
+        order.add("open")
+        return opens.value
+    }
+
+    func turnOnLoginItem() async -> Result<Void, OtherAppProblem> {
+        order.add("loginItemOn")
+        return turningOn
     }
 
     func turnOffLoginItem() async -> Result<Void, OtherAppProblem> {
@@ -120,6 +140,11 @@ final class DoorPagesTests: XCTestCase {
     private var told: [HomeSpeakerProfile.Door] = []
     private var asked: [ChatMonitorAction] = []
     private var ownerRunning = true
+    private var now = Date(timeIntervalSince1970: 1_800_000_000)
+    /// Where the app's program is found now; nil: nowhere.
+    private var appFound: URL?
+    /// What the copy throws instead of copying; nil: it copies.
+    private var copyStops: DoorCopyPartial?
 
     private var appProgram: URL { root.appendingPathComponent("Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker") }
     private var extensionProgram: URL { root.appendingPathComponent("Tools/dev.vitruvian.homespeaker/bin/tool") }
@@ -160,6 +185,9 @@ final class DoorPagesTests: XCTestCase {
         told = []
         asked = []
         ownerRunning = true
+        now = Date(timeIntervalSince1970: 1_800_000_000)
+        appFound = appProgram
+        copyStops = nil
 
         // The app is set up: signed in, with a speaker. The extension is new.
         let appConfig = SpeakerConfig(enabled: true, defaultTarget: "kitchen", structureId: "h1", structureName: "Lake House",
@@ -177,17 +205,18 @@ final class DoorPagesTests: XCTestCase {
         let order = self.order!
         return HomeSpeakerTool(parts: .init(
             link: link, store: FileConfigStore(url: mine.settingsURL), driver: driver,
-            later: { work in DispatchQueue.main.async(execute: work) },
+            later: { work in DispatchQueue.main.async(execute: work) }, now: { [unowned self] in now },
             account: account, ownerRunning: { [unowned self] in ownerRunning },
             home: home, settingsURL: mine.settingsURL, secretsURL: mine.secretsURL, historyURL: mine.historyURL,
             monitorStatusURL: mine.monitorStatusURL,
             controlChatMonitor: { [unowned self] in asked.append($0) },
             role: { check.role(me: .extension) }, other: otherApp, door: door,
-            copy: { from, to in
+            copy: { [unowned self] from, to in
                 order.add("copy")
+                if let copyStops { throw copyStops }
                 return try DoorCopy.copy(from: from, to: to)
             },
-            profile: mine, appProfile: app, appProgram: appProgram,
+            profile: mine, appProfile: app, appProgram: { [unowned self] in appFound }, repairsHooks: true,
             otherInstalled: { check.appInstalled() },
             credentialsChangedIn: { [unowned self] in told.append($0.door) }))
     }
@@ -492,6 +521,10 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertTrue(try stillMine())
         XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".gemini/antigravity-cli/settings.json").path),
                        "an agent with no HomeSpeaker hook gets none")
+        // The app was quit when the extension was picked: picking it again
+        // opens it, so something reads chat (review round 1, critical 2).
+        await settle { tool.doorStep == nil }
+        XCTAssertEqual(Array(order.all.suffix(2)), ["open", "loginItemOn"])
         XCTAssertEqual(ids(tool.islandPage()), [Pages.Block.doorUseThis], "and this side goes quiet")
     }
 
@@ -525,5 +558,301 @@ final class DoorPagesTests: XCTestCase {
         page = monitorPage()
         XCTAssertTrue(ids(page).contains(Pages.Block.startChatMonitor), "active: Start")
         XCTAssertFalse(words(page).contains { $0.hasPrefix("Open HomeSpeaker") })
+    }
+
+    // MARK: - Review round 1
+
+    /// Slack on in the extension's own settings, so a monitor allowed to
+    /// run is asked to start.
+    private func slackOnHere() throws {
+        var config = SpeakerConfig(enabled: true)
+        config.effectiveChatMonitor.slackEnabled = true
+        try SpeakerConfigFile(url: mine.settingsURL).write(config)
+    }
+
+    private func hooksFile() -> URL { home.appendingPathComponent(".claude/settings.json") }
+
+    /// A Claude Code settings file whose HomeSpeaker hook runs `program`.
+    private func hook(at program: URL) throws {
+        let ours: [String: Any] = ["type": "command", "command": AgentIntegration.hookCommand(executable: program.path), "timeout": 10]
+        let settings: [String: Any] = ["hooks": ["Stop": [["hooks": [ours]]] as [[String: Any]]]]
+        try FileManager.default.createDirectory(at: hooksFile().deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: settings).write(to: hooksFile())
+    }
+
+    private func installedHook() throws -> String? {
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: hooksFile())) as? [String: Any] ?? [:]
+        return AgentIntegration.installedHookCommand(in: json)
+    }
+
+    // Critical 1: an app older than 1.19 that does not quit.
+
+    func testAnOldAppThatDoesNotQuitHoldsTheMonitorBack() async throws {
+        try slackOnHere()
+        otherApp.version = "1.18.0"
+        otherApp.quits.value = false
+        let tool = tool()
+        let page = await chooseTheExtension(tool, copy: false)
+        XCTAssertTrue(words(page).contains(Pages.DoorWords.didNotQuit))
+        XCTAssertTrue(words(page).contains(OtherAppPlan.Step.oldAppWarning.text))
+        XCTAssertEqual(button(page, Pages.Block.doorQuitAgain)?.title.text(for: "en"), "Quit the app")
+        XCTAssertEqual(toggle(page, Pages.Block.doorTrash)?.enabled, false, "a running app is never moved")
+
+        now += 60
+        tool.refreshRole()
+        XCTAssertFalse(asked.contains(.start), "the old app still reads chat: this side's monitor waits, past five seconds")
+        XCTAssertFalse(tool.monitorMayRun)
+
+        // Done, with the app still running: the island keeps saying so.
+        await done(tool)
+        now += 60
+        tool.refreshRole()
+        XCTAssertFalse(asked.contains(.start))
+        let island = tool.islandPage()
+        XCTAssertEqual(ids(island).first, Pages.Block.doorQuitAgain)
+        XCTAssertTrue(words(island).contains(OtherAppPlan.Step.oldAppWarning.text))
+
+        // Asked again, it goes: now this side reads chat.
+        otherApp.quits.value = true
+        _ = tap(tool, Pages.Block.doorQuitAgain)
+        await settle { asked.contains(.start) }
+        XCTAssertEqual(asked, [.start])
+        XCTAssertFalse(ids(tool.islandPage()).contains(Pages.Block.doorQuitAgain))
+    }
+
+    /// An app running but not found (a test's `HOMESPEAKER_PROGRAM=""`
+    /// beside a real one on this Mac): no line, no button, no quit.
+    func testAnAppThatIsNotFoundIsNeverOfferedToQuit() throws {
+        appInstalled.value = false
+        appFound = nil
+        otherApp.version = nil
+        let tool = tool()
+        tool.start()
+        let island = tool.islandPage()
+        XCTAssertFalse(ids(island).contains(Pages.Block.doorQuitAgain))
+        XCTAssertFalse(words(island).contains(OtherAppPlan.Step.oldAppWarning.text))
+        _ = tap(tool, Pages.Block.doorQuitAgain)
+        XCTAssertEqual(order.all, [], "nothing asked to quit")
+        now += 5
+        tool.refreshRole()
+        XCTAssertTrue(tool.monitorMayRun, "nothing found to wait for past the usual five seconds")
+    }
+
+    func testANewAppThatDoesNotQuitIsGivenFiveSeconds() async throws {
+        try slackOnHere()
+        otherApp.quits.value = false
+        let tool = tool()
+        _ = await chooseTheExtension(tool, copy: false)
+        XCTAssertFalse(asked.contains(.start))
+        now += 5
+        tool.refreshRole()
+        XCTAssertEqual(asked, [.start], "a 1.19 app hears the choice and goes quiet by itself")
+    }
+
+    // Critical 2: picking the app opens it.
+
+    func testPickingTheAppOpensItWhenItIsNotRunning() async throws {
+        appRunning.value = false
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tap(tool, Pages.Block.doorUseApp)
+        _ = tap(tool, Pages.Block.doorKeep)
+        await settle { tool.doorStep == nil }
+        XCTAssertEqual(order.all, ["open", "loginItemOn"], "opened, and its Open at Login turned back on")
+        XCTAssertEqual(door.read()?.chosen, .app)
+        var island = tool.islandPage()
+        XCTAssertEqual(ids(island), [Pages.Block.doorUseThis])
+        XCTAssertTrue(words(island).contains("The HomeSpeaker app is starting, so this one stays quiet."), "\(words(island))")
+        XCTAssertTrue(words(island).contains(Pages.DoorWords.loginItemOn))
+
+        appRunning.value = true
+        tool.refreshRole()
+        island = tool.islandPage()
+        XCTAssertTrue(words(island).contains("The HomeSpeaker app is in use, so this one stays quiet."))
+    }
+
+    func testAnAppThatCannotBeOpenedOrSwitchedOnSaysSo() async throws {
+        appRunning.value = false
+        otherApp.opens.value = false
+        otherApp.turningOn = .failure(OtherAppProblem(
+            "This copy of the app is too old to turn on its own Open at Login. \(SystemOtherApp.whereToTurnOn)"))
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tap(tool, Pages.Block.doorUseApp)
+        _ = tap(tool, Pages.Block.doorKeep)
+        await settle { tool.doorStep == nil }
+        let island = tool.islandPage()
+        XCTAssertTrue(words(island).contains(Pages.DoorWords.couldNotOpen))
+        XCTAssertTrue(words(island).contains { $0.hasSuffix(SystemOtherApp.whereToTurnOn) })
+        XCTAssertFalse(words(island).contains(Pages.DoorWords.starting), "not opened: not starting")
+    }
+
+    func testPickingARunningAppOpensNothing() async throws {
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tap(tool, Pages.Block.doorUseApp)
+        _ = tap(tool, Pages.Block.doorKeep)
+        await settle { tool.doorStep == nil }
+        XCTAssertEqual(order.all, [])
+        XCTAssertTrue(words(tool.islandPage()).contains("The HomeSpeaker app is in use, so this one stays quiet."))
+    }
+
+    func testTheAppIsNeverOfferedWhenItIsNotInstalled() throws {
+        appInstalled.value = false
+        let tool = tool()
+        XCTAssertFalse(ids(tool.islandPage()).contains(Pages.Block.doorUseApp))
+        XCTAssertFalse(ids(tool.settingsPage()).contains(Pages.Block.doorSwitch))
+        _ = tap(tool, Pages.Block.doorUseApp)
+        XCTAssertNil(tool.doorStep, "a stale tap starts nothing")
+        XCTAssertNil(door.read()?.chosen)
+    }
+
+    func testACopyIntoTheAppTellsTheApp() async throws {
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tap(tool, Pages.Block.doorUseApp)
+        _ = tap(tool, Pages.Block.doorCopy)
+        await settle { tool.doorStep == nil }
+        XCTAssertEqual(told, [.app], "under the app's own names")
+    }
+
+    // Important 1: Back, and a choice made elsewhere.
+
+    func testBackLeavesEverythingAsItWas() throws {
+        let tool = tool()
+        _ = tool.islandPage()
+        let compare = tap(tool, Pages.Block.doorUseExtension)
+        XCTAssertEqual(button(compare, Pages.Block.doorBack)?.title.text(for: "en"), "Back")
+        let back = tap(tool, Pages.Block.doorBack)
+        XCTAssertNil(tool.doorStep)
+        XCTAssertEqual(Array(ids(back).prefix(2)), [Pages.Block.doorUseExtension, Pages.Block.doorUseApp], "step 1 again")
+        XCTAssertNil(door.read()?.chosen)
+        XCTAssertEqual(order.all, [], "nothing copied, nothing quit")
+    }
+
+    func testAChoiceMadeInTheAppIsNeverOverridden() async throws {
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tap(tool, Pages.Block.doorUseExtension)
+        try door.update { $0.chosen = .app }
+        let page = tap(tool, Pages.Block.doorKeep)
+        XCTAssertEqual(door.read()?.chosen, .app, "the app's choice stands")
+        XCTAssertEqual(order.all, [], "nothing copied, nothing quit")
+        XCTAssertNil(tool.doorStep)
+        XCTAssertEqual(ids(page), [Pages.Block.doorUseThis], "the page shows what is")
+        XCTAssertTrue(words(page).contains(Pages.DoorWords.choiceChanged))
+
+        // Seen on the five-second tick, before any tap: the step goes too.
+        try door.update { $0.chosen = nil }
+        let other = self.tool()
+        _ = other.islandPage()
+        other.refreshRole()
+        _ = tap(other, Pages.Block.doorUseExtension)
+        try door.update { $0.chosen = .app }
+        other.refreshRole()
+        XCTAssertNil(other.doorStep)
+    }
+
+    // Important 2: the app's program, found at the switch.
+
+    func testTheAppMustBeFoundToBePicked() throws {
+        try hook(at: extensionProgram)
+        appFound = nil
+        let tool = tool()
+        _ = tool.islandPage()
+        var page = tap(tool, Pages.Block.doorUseApp)
+        XCTAssertNil(tool.doorStep)
+        XCTAssertTrue(words(page).contains(Pages.DoorWords.appNotFound))
+
+        // Found when step 2 began, gone by Keep: nothing changes.
+        appFound = appProgram
+        _ = tap(tool, Pages.Block.doorUseApp)
+        appFound = nil
+        page = tap(tool, Pages.Block.doorCopy)
+        XCTAssertTrue(words(page).contains(Pages.DoorWords.appNotFound), "\(words(page))")
+        XCTAssertNil(door.read()?.chosen)
+        XCTAssertEqual(order.all, [], "nothing copied")
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: extensionProgram.path))
+
+        // Only a copy in the Trash: the same.
+        appFound = root.appendingPathComponent(".Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        _ = tap(tool, Pages.Block.doorBack)
+        page = tap(tool, Pages.Block.doorUseApp)
+        XCTAssertTrue(words(page).contains(Pages.DoorWords.appNotFound))
+        XCTAssertNil(door.read()?.chosen)
+    }
+
+    func testTheHookFollowsTheAppWhereItIsNow() async throws {
+        try hook(at: extensionProgram)
+        let tool = tool()
+        _ = tool.islandPage()
+        // Moved since the extension started.
+        appFound = root.appendingPathComponent("Elsewhere/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        _ = tap(tool, Pages.Block.doorUseApp)
+        _ = tap(tool, Pages.Block.doorKeep)
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: try XCTUnwrap(appFound).path))
+    }
+
+    // Important 3: a copy that stops part-way.
+
+    func testACopyThatStopsPartWayTellsTheDestinationAndSaysWhatCameAcross() throws {
+        copyStops = DoorCopyPartial(
+            copied: ["Settings: copied from the app.", "Sign-ins: copied from the app: Google Home (as app@example.test)."],
+            notCopied: ["History: not copied (the disk is full)."], signInsWritten: true)
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tap(tool, Pages.Block.doorUseExtension)
+        let page = tap(tool, Pages.Block.doorCopy)
+        XCTAssertEqual(told, [.extension], "its sign-ins were replaced: it is told")
+        for line in ["Settings: copied from the app.", "Sign-ins: copied from the app: Google Home (as app@example.test).",
+                     "History: not copied (the disk is full)."] {
+            XCTAssertTrue(words(page).contains(line), line)
+        }
+        XCTAssertNil(door.read()?.chosen, "nothing chosen")
+        XCTAssertFalse(order.all.contains("quit"))
+
+        // Stopped before the sign-ins: nobody is told.
+        told = []
+        copyStops = DoorCopyPartial(copied: [], notCopied: ["Settings: not copied (no room).", "Sign-ins: not copied.",
+                                                            "History: not copied."], signInsWritten: false)
+        _ = tap(tool, Pages.Block.doorCopy)
+        XCTAssertEqual(told, [])
+    }
+
+    // Important 4: a hook stranded on a program that is gone.
+
+    func testAStrandedHookIsPointedHereWhileThisSideRuns() throws {
+        appInstalled.value = false
+        try hook(at: root.appendingPathComponent("Gone/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"))
+        let tool = tool()
+        tool.start()
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: extensionProgram.path))
+
+        // Dragged to the Trash by hand, seen on the tick.
+        let trashed = root.appendingPathComponent(".Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        try FileManager.default.createDirectory(at: trashed.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: trashed)
+        try hook(at: trashed)
+        tool.refreshRole()
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: extensionProgram.path))
+    }
+
+    func testAHookOnAProgramThatIsThereIsLeftAlone() throws {
+        appInstalled.value = false
+        try FileManager.default.createDirectory(at: appProgram.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: appProgram)
+        try hook(at: appProgram)
+        let tool = tool()
+        tool.start()
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: appProgram.path))
+    }
+
+    func testAQuietSideRepairsNoHook() throws {
+        try door.update { $0.chosen = .app }
+        let gone = root.appendingPathComponent("Gone/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        try hook(at: gone)
+        let tool = tool()
+        tool.start()
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: gone.path))
     }
 }

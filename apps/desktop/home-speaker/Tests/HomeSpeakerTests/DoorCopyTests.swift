@@ -414,6 +414,32 @@ private struct QuietLocal: LocalSpeaking {
         #expect(bytes(ext.settingsURL) == settingsBefore)
     }
 
+    @Test func aCopyThatStopsPartWaySaysWhatCameAcross() throws {
+        let root = try scratchDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = try appShaped(root)
+        let ext = try extensionShaped(root)
+        let planted = Planted()
+        try fill(app, planted, history: entries(2, from: 0, prefix: "app"))
+        // A folder where the history file goes: its write fails, after the
+        // settings and the sign-ins were written.
+        try FileManager.default.createDirectory(at: ext.historyURL, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: ext.historyURL.appendingPathComponent("keep"))
+
+        let partial = try #require(throws: DoorCopyPartial.self) { try DoorCopy.copy(from: app, to: ext) }
+
+        #expect(partial.signInsWritten)
+        #expect(partial.copied.first == "Settings: copied from the app.")
+        #expect(partial.copied.contains { $0.hasPrefix("Sign-ins: copied from the app") })
+        #expect(partial.notCopied.count == 1)
+        #expect(partial.notCopied.first?.hasPrefix("History: not copied (") == true)
+        let text = (partial.copied + partial.notCopied).joined(separator: "\n") + (partial.errorDescription ?? "")
+        for token in planted.all {
+            #expect(!text.contains(token), "the report shows a token")
+        }
+        #expect(SecretStore(fileURL: ext.secretsURL).load() == planted.secrets, "the sign-ins were written")
+    }
+
     @Test func theReportNamesNoToken() throws {
         let root = try scratchDir()
         defer { try? FileManager.default.removeItem(at: root) }

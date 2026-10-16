@@ -302,7 +302,11 @@ public enum Pages {
         if let other = quietFor {
             return UITree {
                 heading("HomeSpeaker")
-                if status.door.step == nil { quietCardBlocks(other: other) } else { doorCardBlocks(status) }
+                if status.door.step == nil {
+                    quietCardBlocks(other: other, starting: status.door.otherStarting)
+                } else {
+                    doorCardBlocks(status)
+                }
                 doorReportBlocks(status)
             }
         }
