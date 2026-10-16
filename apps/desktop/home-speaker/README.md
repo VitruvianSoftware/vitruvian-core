@@ -237,7 +237,7 @@ Google.
 | `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, OAuth client override. Mode `0600`. |
 | `~/.gemini/speaker_history.json` | The last 30 announcements shown in the menu. |
 | `~/.gemini/speaker_door.json` | Which of the two, app or extension, you chose to use, and where the extension keeps its files. The one file both read. |
-| `~/.gemini/speaker_monitor_status.json` | What the running chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the app's pid), written by the app for the Vitruvian tool. Not settings: a crashed app leaves it saying "running", so readers check the app is up. |
+| `~/.gemini/speaker_monitor_status.json` | What the app's chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the app's pid), written by the app. The extension writes its own, below, and its Vitruvian tool reads that one. Not settings: a crashed app leaves it saying "running", so a reader checks the app is up. |
 
 The extension keeps the same four things in its own data folder instead,
 `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`:

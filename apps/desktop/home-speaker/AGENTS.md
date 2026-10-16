@@ -61,8 +61,10 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
   waits. After a pick, only the chosen one speaks, reads chat and answers the Claude Code hook.
 - **`~/.gemini/speaker_monitor_status.json` is the app's to write.** The running app reports its
   chat monitor there (`ChatMonitorStatusFile`) and takes Start/Stop over a distributed notification
-  (`ChatMonitorControlNotice`, also `HomeSpeaker --chat-monitor start|stop`). A reader must treat
-  "running" from an app that is not running as stopped: a crash leaves the file behind.
+  (`ChatMonitorControlNotice`, also `HomeSpeaker --chat-monitor start|stop`). The extension writes
+  its own `speaker_monitor_status.json` in its data folder, and its tool reads only that one. A
+  reader must treat "running" from an app that is not running as stopped: a crash leaves the file
+  behind.
 - **Google's gates are not bugs.** The Home API needs a Google Home Premium Advanced plan — an
   empty speaker list after a successful sign-in is that. Home and Chat refuse a single consent,
   so they are separate sign-ins.
