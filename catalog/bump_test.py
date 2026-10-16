@@ -41,7 +41,10 @@ HERE = Path(__file__).resolve().parent
 NOW = "2030-01-02T03:04:05Z"
 HS = "dev.vitruvian.homespeaker"
 BOT = "github-actions[bot]"
-APP_INFO = HERE.parent / "apps/desktop/vitruvian/Resources/Info.plist"
+# Frozen copies (testdata/README.md): the bump and plan tests never read the
+# live catalog, so a real catalog update cannot break them.
+FROZEN = HERE / "testdata"
+LIVE_APP_INFO = HERE.parent / "apps/desktop/vitruvian/Resources/Info.plist"
 
 ARM64, X86_64 = 0x0100000C, 0x01000007
 
@@ -74,8 +77,12 @@ def fat(*slices):
 UNIVERSAL = fat((X86_64, thin(X86_64)), (ARM64, thin(ARM64)))
 
 
-def real_catalog():
-    return json.loads((HERE / "tools.json").read_text(encoding="utf-8"))
+def frozen_catalog():
+    return json.loads((FROZEN / "tools.json").read_text(encoding="utf-8"))
+
+
+def frozen_sources():
+    return bump.load_sources(FROZEN / "sources.json")
 
 
 def entry_of(catalog, tool_id):
@@ -84,7 +91,7 @@ def entry_of(catalog, tool_id):
 
 def manifest_for(tool_id, version, **changes):
     """A manifest that says what the real entry says, at `version`."""
-    entry = entry_of(real_catalog(), tool_id)
+    entry = entry_of(frozen_catalog(), tool_id)
     manifest = {
         "id": tool_id,
         "name": entry["name"],
@@ -126,16 +133,13 @@ class Fixture:
         test.addCleanup(shutil.rmtree, self.dir)
         self.root = self.dir / "repo"
         (self.root / "catalog").mkdir(parents=True)
-        for name in (
-            "tools.json",
-            "catalog.schema.json",
-            "public-key.txt",
-            "sources.json",
-        ):
+        for name in ("catalog.schema.json", "public-key.txt"):
             shutil.copy(HERE / name, self.root / "catalog" / name)
+        for name in ("tools.json", "sources.json"):
+            shutil.copy(FROZEN / name, self.root / "catalog" / name)
         info = self.root / bump.APP_INFO
         info.parent.mkdir(parents=True)
-        shutil.copy(APP_INFO, info)
+        shutil.copy(FROZEN / "Info.plist", info)
         for path, data in catalogue.outputs(self.root).items():
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_bytes(data)
@@ -225,12 +229,13 @@ class FormatTest(unittest.TestCase):
 
 
 class SourcesTest(unittest.TestCase):
-    """sources.json and the catalog agree."""
+    """The LIVE sources.json and catalog/tools.json agree. This one is meant
+    to track the live files; every other test reads testdata/."""
 
     @classmethod
     def setUpClass(cls):
         cls.sources = bump.load_sources(HERE / "sources.json")
-        cls.catalog = real_catalog()
+        cls.catalog = json.loads((HERE / "tools.json").read_text(encoding="utf-8"))
 
     def test_every_entry_has_a_row_or_is_kept_by_hand(self):
         rows = {r["id"] for r in self.sources["sources"]}
@@ -768,8 +773,19 @@ class MachOTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             bump.macho_slices(broken)
 
-    def test_the_app_runs_on_macos_14(self):
-        self.assertEqual(bump.app_oldest_macos(HERE.parent), (14, 0, 0))
+    def test_the_frozen_app_runs_on_macos_14(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        (root / bump.APP_INFO).parent.mkdir(parents=True)
+        shutil.copy(FROZEN / "Info.plist", root / bump.APP_INFO)
+        self.assertEqual(bump.app_oldest_macos(root), (14, 0, 0))
+
+    def test_the_apps_info_plist_names_an_oldest_macos(self):
+        """Live: whatever the app's floor becomes, bump.py can read it."""
+        self.assertTrue(LIVE_APP_INFO.exists())
+        oldest = bump.app_oldest_macos(HERE.parent)
+        self.assertEqual(len(oldest), 3)
+        self.assertGreaterEqual(oldest, (11, 0, 0))
 
 
 class WorkflowHelpersTest(unittest.TestCase):
@@ -1123,10 +1139,10 @@ class PlanTest(unittest.TestCase):
         self.github = FakeGitHub(self)
 
     def plan(self, versions):
-        catalog = real_catalog()
+        catalog = frozen_catalog()
         for tool_id, version in versions.items():
             entry_of(catalog, tool_id)["version"] = version
-        return bump.plan(catalog, bump.load_sources(HERE / "sources.json"), self.github)
+        return bump.plan(catalog, frozen_sources(), self.github)
 
     def test_newer_published_releases_are_planned(self):
         """A pre-release flag and an -rc version (M2) are both passed over."""
