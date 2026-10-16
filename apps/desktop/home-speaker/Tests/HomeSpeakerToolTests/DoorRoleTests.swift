@@ -694,6 +694,114 @@ final class ExtensionPartsTests: XCTestCase {
     }
 }
 
+// MARK: - The extension's command line
+
+/// Google, in this process: answers every request 200 and keeps each body,
+/// so a sign-out's revoke is seen and never leaves this Mac.
+private final class RevokeRecorder: URLProtocol {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var bodies: [String] = []
+
+    static var session: URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RevokeRecorder.self]
+        return URLSession(configuration: configuration)
+    }
+
+    /// `token` holds no character a form encodes, so it is found as is.
+    static func revoked(_ token: String) -> Bool {
+        lock.withLock { bodies.contains { $0.contains(token) } }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+    override func startLoading() {
+        var body = request.httpBody ?? Data()
+        if body.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let n = stream.read(&buffer, maxLength: buffer.count)
+                guard n > 0 else { break }
+                body.append(buffer, count: n)
+            }
+            stream.close()
+        }
+        Self.lock.withLock { Self.bodies.append(String(decoding: body, as: UTF8.self)) }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("{}".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+
+/// `bin/tool --sign-out`, wired as `main.swift` wires it
+/// (`ExtensionSide.commandLineParts`): the mirror of the app's
+/// `theCommandLineSignOutNeverRevokesASharedLogin`.
+@MainActor
+final class ExtensionCommandLineTests: XCTestCase {
+    func testTheCommandLineSignOutNeverRevokesALoginTheAppShares() async throws {
+        let root = try scratchDir()
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let profile = HomeSpeakerProfile.extension(
+            dataFolder: root.appendingPathComponent("ToolData/dev.vitruvian.homespeaker"),
+            toolFolder: root.appendingPathComponent("Tools/dev.vitruvian.homespeaker"), messagePrefix: testPrefix())
+        // The app's sign-ins, beside the extension's, in the scratch folder.
+        let appSecretsURL = root.appendingPathComponent("home/.gemini/speaker_secrets.json")
+        try FileManager.default.createDirectory(
+            at: appSecretsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let appInstalled = Calls<Bool>()
+        appInstalled.add(true)
+        let check = DoorCheck(
+            file: DoorFile(url: root.appendingPathComponent("home/.gemini").appendingPathComponent(DoorFile.fileName)),
+            appInstalled: { appInstalled.all.last ?? false }, fileExists: { _ in false })
+
+        let id = UUID().uuidString
+        let shared = GoogleCredentials(
+            clientId: "shipped.apps.googleusercontent.test", clientSecret: "made-up-\(id)", // gitleaks:allow (made-up test token)
+            accessToken: "made-up-ext-access-\(id)", refreshToken: "made-up-ext-refresh-\(id)", // gitleaks:allow (made-up test token)
+            scopes: [GoogleAuth.homeScope], userId: "1234", email: "person@example.test")
+        // The copy left the same login on both sides.
+        try SecretStore(fileURL: appSecretsURL).save(Secrets(google: shared))
+        let theirs = try Data(contentsOf: appSecretsURL)
+        let engine = HomeSpeakerEngine(profile: profile, session: RevokeRecorder.session, local: SilentLocal())
+        try engine.secrets.save(Secrets(google: shared))
+        let posted = Calls<String>()
+        let parts = ExtensionSide.commandLineParts(
+            check: check, appSecretsURL: appSecretsURL,
+            postSignedOut: { chatOnly, name in posted.add("\(name.rawValue) \(chatOnly)") })
+
+        func signOut() async -> CLIOutput {
+            guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(
+                for: ["--sign-out"], engine: engine, parts: parts) else {
+                XCTFail("--sign-out does not run headless")
+                return CLIOutput()
+            }
+            return await body()
+        }
+
+        // The app is installed and holds the same login: removed here only.
+        let quiet = await signOut()
+        XCTAssertEqual(quiet, CLIOutput(stdout: ["signed out of Google (Home and Chat)"]))
+        XCTAssertNil(engine.secrets.load().google, "still signed in here")
+        XCTAssertFalse(RevokeRecorder.revoked(shared.refreshToken),
+                       "the extension's --sign-out revoked the app's login at Google")
+        XCTAssertEqual(try Data(contentsOf: appSecretsURL), theirs, "the app's sign-ins changed")
+        XCTAssertEqual(posted.all, ["\(profile.messagePrefix).signed-out false"], "told under the extension's names")
+
+        // Control: no app, the same lines, and the login revoked.
+        appInstalled.add(false)
+        var alone = shared
+        alone.refreshToken = "made-up-ext-alone-\(id)" // gitleaks:allow (made-up test token)
+        try engine.secrets.save(Secrets(google: alone))
+        let lone = await signOut()
+        XCTAssertEqual(lone, CLIOutput(stdout: ["signed out of Google (Home and Chat)"]))
+        XCTAssertTrue(RevokeRecorder.revoked(alone.refreshToken),
+                      "the stand-in never saw a revoke, so the check above proves nothing")
+    }
+}
+
 // MARK: - Where the extension's files are
 
 final class ExtensionLocationTests: XCTestCase {

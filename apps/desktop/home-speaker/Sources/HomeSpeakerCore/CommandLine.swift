@@ -177,9 +177,17 @@ public enum HomeSpeakerCommandLine {
                   asideNote: asideNote, otherSecrets: otherSecrets, postSignedOut: postSignedOut)
         }
 
-        /// The extension's: no login item of its own.
-        public static func `extension`(standsAside: @escaping @Sendable () -> Bool = { false }) -> Parts {
-            Parts(openBrowser: browser, loginItem: .none(reason: extensionHasNoLoginItem), standsAside: standsAside)
+        /// The extension's: no login item of its own. `otherSecrets` is the
+        /// app's sign-ins while it is installed, as for the app's side.
+        public static func `extension`(
+            standsAside: @escaping @Sendable () -> Bool = { false },
+            otherSecrets: @escaping @Sendable () -> Secrets? = { nil },
+            postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
+                SignOutNotice.post(chatOnly: $0, name: $1)
+            }
+        ) -> Parts {
+            Parts(openBrowser: browser, loginItem: .none(reason: extensionHasNoLoginItem), standsAside: standsAside,
+                  otherSecrets: otherSecrets, postSignedOut: postSignedOut)
         }
     }
 

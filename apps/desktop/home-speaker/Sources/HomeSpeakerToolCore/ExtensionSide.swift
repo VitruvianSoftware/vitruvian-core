@@ -167,6 +167,28 @@ public enum ExtensionSide {
         }
     }
 
+    /// The app's sign-ins, read only and only while the app is installed:
+    /// what a sign-out here checks so it never revokes a login the app
+    /// shares (`HomeSpeakerEngine.signOut`). Nil when there is no app.
+    public static func appSecrets(check: DoorCheck, appSecretsURL: URL) -> @Sendable () -> Secrets? {
+        { check.appInstalled() ? SecretStore(fileURL: appSecretsURL).load() : nil }
+    }
+
+    /// The command line's parts on the extension's side: it stands aside
+    /// while the app is chosen and installed, and `--sign-out` keeps any
+    /// login the app shares (`appSecrets`), as the tool's pages do.
+    public static func commandLineParts(
+        check: DoorCheck, appSecretsURL: URL,
+        postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
+            SignOutNotice.post(chatOnly: $0, name: $1)
+        }
+    ) -> HomeSpeakerCommandLine.Parts {
+        .extension(
+            standsAside: { check.standsAside(me: .extension) },
+            otherSecrets: appSecrets(check: check, appSecretsURL: appSecretsURL),
+            postSignedOut: postSignedOut)
+    }
+
     /// Runs `work` on the main actor, later: how the kit's thread reaches
     /// the monitor, whose process keeps its main queue running.
     public static let onMain: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void = { work in

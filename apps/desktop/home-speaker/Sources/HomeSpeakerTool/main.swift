@@ -156,6 +156,9 @@ func runProgram() -> Never {
     let door = DoorFile(url: DoorFile.defaultURL(home: home))
     let check = DoorCheck(file: door, appInstalled: { OtherDoorPresence.appInstalled(locate: locateApp) })
     let standsAside: @Sendable () -> Bool = { check.standsAside(me: .extension) }
+    // The app's sign-ins, read only, so a sign-out here (the command line's
+    // or a page's) never revokes a login the app shares.
+    let appSecrets = HomeSpeakerProfile.app().secretsURL
 
     // The command line: no Vitruvian, so no hello to name the folder.
     if HomeSpeakerCommandLine.recognizes(arguments) {
@@ -165,7 +168,8 @@ func runProgram() -> Never {
         }
         HomeSpeakerProfile.useForThisProcess(located.profile)
         HomeSpeakerCommandLine.run(
-            arguments, engine: HomeSpeakerEngine(profile: located.profile), parts: .extension(standsAside: standsAside))
+            arguments, engine: HomeSpeakerEngine(profile: located.profile),
+            parts: ExtensionSide.commandLineParts(check: check, appSecretsURL: appSecrets))
     }
 
     // The tool. Vitruvian starts it in its data folder, which the hello
@@ -203,12 +207,9 @@ func runProgram() -> Never {
     let tool = Tool(version: ToolVersion.current)
     let link = KitLink()
     let waker = tool.waker
-    let appSecrets = HomeSpeakerProfile.app().secretsURL
     let driverParts = EngineDriver.Parts(
         engine: engine,
-        // The app's sign-ins, read only, so a sign-out here never revokes a
-        // login the app shares.
-        otherSecrets: { check.appInstalled() ? SecretStore(fileURL: appSecrets).load() : nil },
+        otherSecrets: ExtensionSide.appSecrets(check: check, appSecretsURL: appSecrets),
         // The sign-in page opens through the app, on the kit's thread.
         link: { url in waker.later { app in _ = try app.open(url.absoluteString) } },
         standsAside: standsAside)
