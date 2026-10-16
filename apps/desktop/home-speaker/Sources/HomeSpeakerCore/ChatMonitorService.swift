@@ -487,7 +487,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     /// Unknown account ids that already made the accounts be listed again.
     private var beeperAccountsAskedFor: Set<String> = []
     /// Counts starts and stops: a poll begun under another run writes
-    /// nothing of Beeper's when it resumes.
+    /// nothing of Beeper's, nor who Slack says we are, when it resumes.
     private var beeperRun = 0
     /// The workspace the Slack token reads, from `auth.test`.
     private var slackTeamId: String?
@@ -654,7 +654,8 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     /// in Beeper is skipped while Slack is on. Once it answers, Beeper's
     /// accounts are listed again so the page says what is skipped.
     func readSlackIdentity() async {
-        guard let slack, let ident = try? await slack.identity() else { return }
+        let run = beeperRun
+        guard let slack, let ident = try? await slack.identity(), run == beeperRun else { return }
         slackOwnId = ident.userId
         slackUser = ident.name
         slackTeamId = ident.teamId

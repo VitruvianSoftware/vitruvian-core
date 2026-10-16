@@ -238,9 +238,10 @@ public struct BeeperClient: Sendable {
     /// Every message after `after`, page by page. Each page carries on from
     /// the last in the order Beeper sent it: older when it came newest
     /// first, newer when oldest first. Stops when Beeper has no more, at a
-    /// page with nothing new, or a cursor already used; and, with more
-    /// still to read (`truncated`), once `unseenBudget` messages that
-    /// `counts` have been read, or at `maxPages`. Messages already handled,
+    /// page with nothing new, or a cursor already used, or none (each of
+    /// these with more still to read is `truncated`); and, also
+    /// `truncated`, once `unseenBudget` messages that `counts` have been
+    /// read, or at `maxPages`. Messages already handled,
     /// or skipped, do not count, so a busy window of those is no alarm.
     public func allMessages(
         after: Date, othersOnly: Bool, unseenBudget: Int = BeeperClient.unseenBudget, maxPages: Int = BeeperClient.maxPages,
@@ -262,9 +263,13 @@ public struct BeeperClient: Sendable {
                 messages[message.key] = message
                 if counts(message, chats[message.chatID]) { counted += 1 }
             }
+            guard page.hasMore else { break }
+            // Beeper says there is more; anything that stops the reading
+            // now leaves it unread, and says so: the budget or the bound, or
+            // paging that does not move on (no cursor, a cursor already
+            // used, a page with nothing new).
             let next = page.newestFirst ? page.oldestCursor : page.newestCursor
-            guard page.hasMore, messages.count > before, let next, !used.contains(next) else { break }
-            guard counted < unseenBudget, pages < maxPages else {
+            guard counted < unseenBudget, pages < maxPages, messages.count > before, let next, !used.contains(next) else {
                 return BeeperPages(messages: Self.sorted(messages.values), chats: chats, pages: pages, truncated: true)
             }
             used.insert(next)
