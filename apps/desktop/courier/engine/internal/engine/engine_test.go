@@ -9,6 +9,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,12 +50,17 @@ func startTwo(t *testing.T) (*Engine, *store.Store, map[string]*fakenet.Network)
 }
 
 func roomWith(t *testing.T, s *store.Store, network, body string) string {
+	// assert.Eventually runs the condition on its own goroutine and can still be running it when it times out,
+	// so what the condition finds is handed back under a lock.
+	var mu sync.Mutex
 	var roomID string
 	var lastErr error
 	found := func() bool {
 		rooms, err := s.ListRooms(context.Background())
 		if err != nil {
+			mu.Lock()
 			lastErr = err
+			mu.Unlock()
 			return false
 		}
 		for _, r := range rooms {
@@ -63,19 +69,26 @@ func roomWith(t *testing.T, s *store.Store, network, body string) string {
 			}
 			evs, err := s.Events(context.Background(), r.ID, 10)
 			if err != nil {
+				mu.Lock()
 				lastErr = err
+				mu.Unlock()
 				return false
 			}
 			for _, e := range evs {
 				if containsBody(e.Content, body) {
+					mu.Lock()
 					roomID = r.ID
+					mu.Unlock()
 					return true
 				}
 			}
 		}
 		return false
 	}
-	if !assert.Eventually(t, found, 5*time.Second, 50*time.Millisecond) {
+	ok := assert.Eventually(t, found, 5*time.Second, 50*time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !ok {
 		require.NoError(t, lastErr)
 		t.FailNow()
 	}

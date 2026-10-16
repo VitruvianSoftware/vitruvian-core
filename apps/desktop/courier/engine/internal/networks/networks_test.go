@@ -129,6 +129,8 @@ func TestTelegramRejectsMalformedCredentialsWithoutEchoingThem(t *testing.T) {
 		"id not a number":    {"not-a-number-77", goodHash},
 		"id zero":            {"0", goodHash},
 		"id negative":        {"-424242", goodHash},
+		"id overflows":       {"99999999999", goodHash},
+		"id over 31 bits":    {"2147483648", goodHash},
 		"hash too short":     {"424242", "abc123short"},
 		"hash not hex":       {"424242", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"},
 		"hash has a newline": {"424242", "0123456789abcdef0123456789abcde\n"},
