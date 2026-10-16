@@ -430,7 +430,9 @@ def end_to_end(conf, folder, data, env):
         run = conf.Run(older, manifest, started_in, features=None)
         said.append("an older app: " + run.handshake())
         app = Driver(conf, run)
-        general = offers_no_quit(app.open("settings"), "an older app's settings, first page")
+        general = offers_no_quit(
+            app.open("settings"), "an older app's settings, first page"
+        )
         drawn = block(general, "quietEnd")
         if drawn is None or drawn.get("type") != "field":
             raise E2EFailure(
