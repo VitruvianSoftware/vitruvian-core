@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// courier-engine-cli drives the milestone-1 engine by hand: link WhatsApp, list chats, watch and send.
+// courier-engine-cli drives the engine by hand: link any network, list chats, watch and send.
 package main
 
 import (
@@ -14,36 +14,43 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
-	"github.com/mdp/qrterminal/v3"
 	"github.com/rs/zerolog"
-	"go.mau.fi/mautrix-whatsapp/pkg/connector"
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
-// loginWait is how long send waits for WhatsApp to finish logging in before giving up.
+// loginWait is how long send waits for a linked network to finish logging in before giving up.
 const loginWait = 30 * time.Second
 
-// errNotConnected means the engine never became logged in to the network, so nothing was queued.
-var errNotConnected = errors.New("not connected to WhatsApp yet — nothing was sent")
+// errNotConnected means a linked network never became logged in, so nothing was queued.
+var errNotConnected = errors.New("not connected yet")
 
-const usage = "usage: courier-engine-cli [--data DIR] link|chats|tail|send <room-id> <text>"
+const usage = "usage: courier-engine-cli [--data DIR] [--network NAME --flow ID] link|chats|tail|send <room-id> <text>"
 
-type args struct{ data, cmd, room, text string }
+// args is the parsed command line. network and flow only apply to link.
+type args struct{ data, network, flow, cmd, room, text string }
 
-// bridgeCommandPrefix is the host's bridge command prefix ("!" + network name).
-// A message body starting with it would be run as a bridge admin command.
-const bridgeCommandPrefix = "!whatsapp"
+// linkWarnings are questions asked, and which must be answered yes, before linking a network.
+var linkWarnings = map[string]string{
+	"gmessages": "Google Messages allows one web session. Linking here disconnects it in Beeper. Continue?",
+}
+
+// bridgeCommandPrefix is a bridge's command prefix ("!" + network name). A message body starting with it
+// is run by that network's bridge as an admin command instead of being sent.
+func bridgeCommandPrefix(network string) string { return "!" + network }
 
 func defaultDataDir(home string, homeErr error) (string, error) {
 	if homeErr != nil || home == "" {
@@ -52,9 +59,19 @@ func defaultDataDir(home string, homeErr error) (string, error) {
 	return filepath.Join(home, "Library", "Application Support", "Courier-m1"), nil
 }
 
+func networkNames() string {
+	var names []string
+	for _, n := range networks.All() {
+		names = append(names, n.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
 func parseArgs(argv []string) (args, error) {
 	fs := flag.NewFlagSet("courier-engine-cli", flag.ContinueOnError)
 	data := fs.String("data", "", "data directory (default ~/Library/Application Support/Courier-m1)")
+	network := fs.String("network", "", "network to link (link only): "+networkNames())
+	flow := fs.String("flow", "", "login flow to use (link only; default: the network's first flow)")
 	if err := fs.Parse(argv); err != nil {
 		return args{}, err
 	}
@@ -76,8 +93,24 @@ func parseArgs(argv []string) (args, error) {
 		return args{}, errors.New(usage)
 	}
 	a := args{data: *data, cmd: rest[0]}
+	if a.cmd != "link" && (*network != "" || *flow != "") {
+		return args{}, errors.New("--network and --flow only apply to link: chats, tail and send run every network")
+	}
 	switch a.cmd {
-	case "link", "chats", "tail":
+	case "link":
+		// No default network: a QR code must never be shown for the wrong app.
+		if *network == "" {
+			return args{}, fmt.Errorf("link needs --network NAME (one of: %s)", networkNames())
+		}
+		n, ok := networks.Get(*network)
+		if !ok {
+			return args{}, fmt.Errorf("unknown network %q (one of: %s)", *network, networkNames())
+		}
+		if *flow != "" && !slices.Contains(n.Flows, *flow) {
+			return args{}, fmt.Errorf("%s has no login flow %q (one of: %s)", n.Name, *flow, strings.Join(n.Flows, ", "))
+		}
+		a.network, a.flow = n.Name, *flow
+	case "chats", "tail":
 	case "send":
 		if len(rest) < 3 {
 			return args{}, errors.New("send needs <room-id> <text>")
@@ -85,9 +118,6 @@ func parseArgs(argv []string) (args, error) {
 		a.room, a.text = rest[1], strings.Join(rest[2:], " ")
 		if strings.TrimSpace(a.text) == "" {
 			return args{}, errors.New("send needs non-empty text")
-		}
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.text)), bridgeCommandPrefix) {
-			return args{}, fmt.Errorf("refusing to send text starting with %s: the bridge would run it as an admin command", bridgeCommandPrefix)
 		}
 	default:
 		return args{}, fmt.Errorf("unknown command %q", a.cmd)
@@ -105,11 +135,21 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	releaseSignalWhenDone(ctx, stop)
 	if err = run(ctx, a); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		stop()
 		os.Exit(1)
 	}
+}
+
+// releaseSignalWhenDone hands Ctrl-C back to Go's default handler once the first one has been caught, so a
+// second Ctrl-C ends the process at once if shutting down (engine, then store, then the data-dir lock) hangs.
+func releaseSignalWhenDone(ctx context.Context, stop context.CancelFunc) {
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 }
 
 func run(ctx context.Context, a args) error {
@@ -127,14 +167,25 @@ func run(ctx context.Context, a args) error {
 		return err
 	}
 	defer s.Close()
-	h, err := host.Start(ctx, a.data, "whatsapp", s, &media.Store{Dir: filepath.Join(a.data, "media")}, &connector.WhatsAppConnector{}, log)
-	if err != nil {
-		return err
+	// link needs only the network being linked; everything else runs every network.
+	nets := networks.All()
+	var target networks.Network
+	if a.cmd == "link" {
+		target, _ = networks.Get(a.network)
+		nets = []networks.Network{target}
 	}
-	defer h.Stop()
+	eng, errs := startNetworks(ctx, a.data, s, &media.Store{Dir: filepath.Join(a.data, "media")}, nets, log)
+	defer eng.Stop()
+	reportNotStarted(os.Stderr, errs)
 	switch a.cmd {
 	case "link":
-		return link(ctx, h)
+		linked, err := link(ctx, eng, target, a.flow, newTerminalPrompter(ctx, os.Stdin, os.Stdout), os.Stdout)
+		if err != nil || !linked {
+			return err
+		}
+		fmt.Printf("Linked to %s. Leave this running a minute so history backfills, then Ctrl-C.\n", target.DisplayName)
+		<-ctx.Done()
+		return nil
 	case "chats":
 		rooms, err := s.ListRooms(ctx)
 		for _, r := range rooms {
@@ -144,18 +195,54 @@ func run(ctx context.Context, a args) error {
 	case "tail":
 		return tail(ctx, s)
 	case "send":
-		return send(ctx, h, s, a, loginWait)
+		return send(ctx, eng, s, a, loginWait)
 	}
 	return nil
 }
 
-// waitForLogin waits until at least one of the local user's logins reports it is logged in. The bridge's Start
-// only connects the logins: the connection counts as logged in a moment later, when the server's success
-// message arrives. A message queued before then is refused as "not logged in" and marked failed.
+// startNetworks starts every network it can. One that can't start (Telegram without its app credentials, say)
+// is reported under its name and the others carry on.
+func startNetworks(ctx context.Context, dataDir string, s *store.Store, m *media.Store, nets []networks.Network, log zerolog.Logger) (*engine.Engine, map[string]error) {
+	errs := map[string]error{}
+	var specs []engine.Spec
+	for _, n := range nets {
+		spec, err := n.Spec()
+		if err != nil {
+			errs[n.Name] = err
+			continue
+		}
+		specs = append(specs, spec)
+	}
+	eng, startErrs := engine.Start(ctx, dataDir, s, m, specs, log)
+	for name, err := range startErrs {
+		errs[name] = err
+	}
+	return eng, errs
+}
+
+// reportNotStarted prints one line per network that did not start.
+func reportNotStarted(w io.Writer, errs map[string]error) {
+	names := make([]string, 0, len(errs))
+	for name := range errs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fmt.Fprintf(w, "%s: not started — %v\n", name, errs[name])
+	}
+}
+
+// waitForLogin waits until at least one of the local user's logins on this network reports it is logged in.
+// The bridge's Start only connects the logins: the connection counts as logged in a moment later, when the
+// server's success message arrives. A message queued before then is refused as "not logged in" and marked
+// failed. A network with no login at all is not going to get one by waiting, so that fails at once.
 func waitForLogin(ctx context.Context, h *host.Host, timeout time.Duration) error {
 	me, err := h.Me(ctx)
 	if err != nil {
 		return err
+	}
+	if len(me.GetUserLogins()) == 0 {
+		return fmt.Errorf("%s isn't linked — run link --network %s first", h.Network, h.Network)
 	}
 	deadline := time.After(timeout)
 	for {
@@ -166,28 +253,38 @@ func waitForLogin(ctx context.Context, h *host.Host, timeout time.Duration) erro
 		}
 		select {
 		case <-ctx.Done():
-			return errNotConnected
+			return fmt.Errorf("%s: %w — nothing was sent", h.Network, errNotConnected)
 		case <-deadline:
-			return errNotConnected
+			return fmt.Errorf("%s: %w — nothing was sent", h.Network, errNotConnected)
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
 }
 
-// ensureNotLinked refuses to link when the data dir already has a login: a second run would link a second
-// device and orphan the first, which would stay listed in WhatsApp's Linked devices.
-func ensureNotLinked(ctx context.Context, h *host.Host) error {
+// ensureNotLinked refuses to link when the network already has a login: a second run would link a second
+// device and orphan the first, which would stay listed in the network's linked devices.
+func ensureNotLinked(ctx context.Context, h *host.Host, displayName string) error {
 	me, err := h.Me(ctx)
 	if err != nil {
 		return err
 	}
 	if len(me.GetUserLogins()) > 0 {
-		return errors.New("already linked — unlink this device in WhatsApp → Linked devices first, or use a fresh --data dir")
+		return fmt.Errorf("already linked to %s — unlink this device in that app first, or use a fresh --data dir", displayName)
 	}
 	return nil
 }
 
-func send(ctx context.Context, h *host.Host, s *store.Store, a args, loginTimeout time.Duration) error {
+// send queues a text message in a room, through the bridge of the network the room belongs to.
+func send(ctx context.Context, eng *engine.Engine, s *store.Store, a args, loginTimeout time.Duration) error {
+	// Never the first host or any other fallback: a reply must go out through the room's own network.
+	h, err := eng.HostForRoom(ctx, a.room)
+	if err != nil {
+		return err
+	}
+	prefix := bridgeCommandPrefix(h.Network)
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.text)), prefix) {
+		return fmt.Errorf("refusing to send text starting with %s: the bridge would run it as an admin command", prefix)
+	}
 	// Wait before storing or queueing anything, so a refused send leaves no trace.
 	if err := waitForLogin(ctx, h, loginTimeout); err != nil {
 		return err
@@ -211,59 +308,44 @@ func send(ctx context.Context, h *host.Host, s *store.Store, a args, loginTimeou
 	return waitStatus(ctx, s, string(evt.ID), 30*time.Second)
 }
 
-func link(ctx context.Context, h *host.Host) error {
-	if err := ensureNotLinked(ctx, h); err != nil {
-		return err
+// link signs in to one network and reports whether it did. Declining a warning is not an error; it just
+// links nothing. flow "" means the network's first flow.
+func link(ctx context.Context, eng *engine.Engine, n networks.Network, flow string, p prompter, out io.Writer) (bool, error) {
+	h, ok := eng.Host(n.Name)
+	if !ok {
+		return false, fmt.Errorf("%s is not running", n.DisplayName)
+	}
+	if err := ensureNotLinked(ctx, h, n.DisplayName); err != nil {
+		return false, err
+	}
+	if flow == "" {
+		if len(n.Flows) == 0 {
+			return false, fmt.Errorf("%s has no login flow", n.DisplayName)
+		}
+		flow = n.Flows[0]
+	}
+	if question, ok := linkWarnings[n.Name]; ok {
+		yes, err := p.Confirm(question)
+		if err != nil {
+			return false, err
+		}
+		if !yes {
+			fmt.Fprintln(out, "Not linking.")
+			return false, nil
+		}
 	}
 	me, err := h.Me(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
-	proc, err := h.Bridge.Network.CreateLogin(ctx, me, connector.LoginFlowIDQR)
+	proc, err := h.Bridge.Network.CreateLogin(ctx, me, flow)
 	if err != nil {
-		return fmt.Errorf("start QR login: %w", err)
+		return false, fmt.Errorf("start %s login (%s): %w", n.DisplayName, flow, err)
 	}
-	if err = runLogin(ctx, proc, os.Stdout); err != nil {
-		return err
+	if err = walkLogin(ctx, proc, p, out); err != nil {
+		return false, err
 	}
-	fmt.Println("Linked. Leave this running a minute so history backfills, then Ctrl-C.")
-	<-ctx.Done()
-	return nil
-}
-
-// runLogin walks a QR login to completion, drawing each QR code to out. On every
-// path except a completed login it cancels the process so no half-open pairing
-// is left behind.
-func runLogin(ctx context.Context, proc bridgev2.LoginProcess, out io.Writer) (err error) {
-	completed := false
-	defer func() {
-		if !completed {
-			proc.Cancel()
-		}
-	}()
-	step, err := proc.Start(ctx)
-	for err == nil {
-		switch step.Type {
-		case bridgev2.LoginStepTypeComplete:
-			completed = true
-			return nil
-		case bridgev2.LoginStepTypeWebAuthn:
-			return errors.New("WhatsApp asked for a passkey, which this test CLI can't do — link from a device without a passkey prompt, or try again")
-		case bridgev2.LoginStepTypeDisplayAndWait:
-			if p := step.DisplayAndWaitParams; p != nil && p.Type == bridgev2.LoginDisplayTypeQR {
-				fmt.Fprintln(out, "Scan with WhatsApp → Settings → Linked devices → Link a device:")
-				qrterminal.GenerateHalfBlock(p.Data, qrterminal.L, out)
-			}
-			waiter, ok := proc.(bridgev2.LoginProcessDisplayAndWait)
-			if !ok {
-				return errors.New("login process cannot wait for the QR scan")
-			}
-			step, err = waiter.Wait(ctx)
-		default:
-			return fmt.Errorf("unexpected login step %q (id %q)", step.Type, step.StepID)
-		}
-	}
-	return err
+	return true, nil
 }
 
 func tail(ctx context.Context, s *store.Store) error {

@@ -56,8 +56,8 @@ flowchart TB
 Notes:
 - **No Matrix server and no Matrix encryption between app and engine.** Nothing leaves the Mac except through each network's own encryption.
 - **Signal** links the Rust `libsignal` through cgo. Building it under Bazel for both CPU types is the hardest build task.
-- **Slack** logs in through a web sign-in page. Courier needs a small built-in browser window (WKWebView) that captures the Slack session, as Beeper does. The other four use QR codes or phone numbers.
-- **One process for all bridges.** A panic in one bridge is recovered and confined to that network.
+- **Slack and Google Messages** log in through a web sign-in page. Courier needs a small built-in browser window (WKWebView) that captures the session, as Beeper does. Google Messages then also asks you to match an emoji on your phone; Google ended its QR-code sign-in, and mautrix-gmessages v0.2609.0 no longer offers it. The other three (WhatsApp, Signal, Telegram) use QR codes or phone numbers.
+- **One process for all bridges.** A panic while a bridge is starting is caught and confined to that network; the others start as normal. A panic later, inside a bridge's own background work, still stops the engine, because bridgev2 recovers panics in only a few places. Confining that too (for example, one process per bridge) is left for a later milestone.
 
 ## 3. Interface scope
 
@@ -115,7 +115,7 @@ Reminders and scheduled sends are timers in the engine, so they fire with the wi
 | Session expired or logged out | A per-account banner with **Reconnect**, which reopens that network's login. Chats stay readable. |
 | Send fails | The message stays in the chat marked failed, with **Retry** and **Delete** |
 | Engine crash | The app restarts it with back-off and shows "reconnecting". Pending and scheduled messages survive in the database. |
-| Bridge panic | Recovered and confined to that network. The Bridges pane shows the error and **Restart bridge**. |
+| Bridge panic | A panic while a bridge starts is confined to that network: the Bridges pane shows the error and **Restart bridge**. A panic in a bridge's background work stops the engine, which the app restarts as for an engine crash; confining that too is a later milestone. |
 | Network protocol change | Bridge versions are pinned and fixes ship as app releases. The Bridges pane shows each version. |
 | App and engine out of step | The socket handshake checks the protocol version. A mismatch shows an "update needed" state instead of misbehaving. |
 | Adding Google Messages while Beeper holds it | Warn before pairing that this disconnects it in Beeper. Google Messages allows one web session at a time; this is known behaviour, not yet tested. |
@@ -132,8 +132,8 @@ Reminders and scheduled sends are timers in the engine, so they fire with the wi
 | # | Milestone | Done when |
 |---|---|---|
 | 1 | **Prove the glue:** engine skeleton, local store, WhatsApp only, driven from a test CLI | WhatsApp linked as an extra device; a message sent and received through the engine. **Kill criterion:** if the local store can't satisfy the bridges' interface, switch the engine to option B (local Matrix server). Nothing above the engine changes. |
-| 2 | **All five bridges**, including the Signal build and the Slack sign-in window | All five linked beside Beeper, receiving live |
-| 3 | **Usable app:** inbox, conversation, composer, notifications, menu-bar icon | James reads and replies all day without opening Beeper |
+| 2 | **All five bridges**, including the Signal build | All five linked beside Beeper, receiving live |
+| 3 | **Usable app:** inbox, conversation, composer, notifications, menu-bar icon, and the built-in sign-in window (WKWebView) that both Slack and Google Messages use (moved from milestone 2) | James reads and replies all day without opening Beeper |
 | 4 | **Full interface:** the rest of the spec, plus all stubs | The acceptance checklist passes (below) |
 | 5 | **Local API and MCP** | Claude works against Courier with only its address changed |
 | 6 | **Cutover and release** | Google Messages moved, Beeper logged out, a release through the desktop pipeline (`//tools/desktop-package`) |
