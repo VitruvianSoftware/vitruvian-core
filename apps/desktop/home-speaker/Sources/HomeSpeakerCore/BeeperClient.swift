@@ -138,8 +138,9 @@ public struct BeeperPages: Equatable, Sendable {
     public var chats: [String: BeeperChat]
     /// Pages read.
     public var pages: Int
-    /// The window held more than `BeeperClient.maxPages` pages: some
-    /// messages were not read.
+    /// Reading stopped with more to read, after `unseenBudget` messages
+    /// that count (new, and to be spoken or not yet known), or at the
+    /// `maxPages` safety bound: some may have been missed.
     public var truncated: Bool
 }
 
@@ -155,8 +156,13 @@ public struct BeeperClient: Sendable {
     public static let lookBack: TimeInterval = 5 * 60
     /// The most one search returns (the API's own limit).
     public static let pageLimit = 20
-    /// The most pages one poll reads: 200 messages in the window.
-    public static let maxPages = 10
+    /// The most new messages to be spoken one poll reads: past these, with
+    /// more still to read, the poll says some may be missed.
+    public static let unseenBudget = 200
+    /// The most pages one poll reads whatever they hold (1000 messages): a
+    /// safety bound, for a window full of messages already handled or
+    /// skipped.
+    public static let maxPages = 50
 
     let token: String
     public let baseURL: URL
@@ -229,26 +235,36 @@ public struct BeeperClient: Sendable {
         return Self.parseSearch((json as? [String: Any]) ?? [:])
     }
 
-    /// Every message after `after`, page by page, up to `maxPages` pages.
-    /// Each page carries on from the last in the order Beeper sent it:
-    /// older when it came newest first, newer when oldest first. Stops at a
-    /// page with nothing new, or a cursor already used.
-    public func allMessages(after: Date, othersOnly: Bool, maxPages: Int = BeeperClient.maxPages) async throws -> BeeperPages {
+    /// Every message after `after`, page by page. Each page carries on from
+    /// the last in the order Beeper sent it: older when it came newest
+    /// first, newer when oldest first. Stops when Beeper has no more, at a
+    /// page with nothing new, or a cursor already used; and, with more
+    /// still to read (`truncated`), once `unseenBudget` messages that
+    /// `counts` have been read, or at `maxPages`. Messages already handled,
+    /// or skipped, do not count, so a busy window of those is no alarm.
+    public func allMessages(
+        after: Date, othersOnly: Bool, unseenBudget: Int = BeeperClient.unseenBudget, maxPages: Int = BeeperClient.maxPages,
+        counts: @Sendable (BeeperMessage, BeeperChat?) -> Bool = { _, _ in true }
+    ) async throws -> BeeperPages {
         var messages: [String: BeeperMessage] = [:]
         var chats: [String: BeeperChat] = [:]
         var cursor: String?
         var direction: String?
         var used: Set<String> = []
         var pages = 0
+        var counted = 0
         while true {
             let page = try await self.messages(after: after, othersOnly: othersOnly, cursor: cursor, direction: direction)
             pages += 1
             let before = messages.count
-            for message in page.messages { messages[message.key] = message }
             chats.merge(page.chats) { _, new in new }
+            for message in page.messages where messages[message.key] == nil {
+                messages[message.key] = message
+                if counts(message, chats[message.chatID]) { counted += 1 }
+            }
             let next = page.newestFirst ? page.oldestCursor : page.newestCursor
             guard page.hasMore, messages.count > before, let next, !used.contains(next) else { break }
-            guard pages < maxPages else {
+            guard counted < unseenBudget, pages < maxPages else {
                 return BeeperPages(messages: Self.sorted(messages.values), chats: chats, pages: pages, truncated: true)
             }
             used.insert(next)

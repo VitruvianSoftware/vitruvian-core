@@ -758,7 +758,22 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         // window asked for.
         let from = max(beeperStart, (beeperLastPollStart ?? beeperStart).addingTimeInterval(-BeeperClient.lookBack))
         let after = Date(timeIntervalSince1970: (from.timeIntervalSince1970 * 1000).rounded(.down) / 1000)
-        let found = try await beeper.allMessages(after: after, othersOnly: config.muteOwnMessages)
+        // What counts against the poll's budget: a message not handled yet
+        // that would be spoken, or whose account is not known yet. A copy
+        // of what is known now, so Beeper's reading never waits on this.
+        let known = beeperAccounts ?? [:]
+        let handled = beeperSeen
+        let start = beeperStart
+        let knownOwnIDs = Set(known.values.compactMap(\.userID))
+        let team = slackTeamId
+        let user = slackOwnId
+        let found = try await beeper.allMessages(after: after, othersOnly: config.muteOwnMessages) { message, chat in
+            guard handled[message.key] == nil, message.timestamp > start else { return false }
+            guard let account = known[message.accountID] else { return true }
+            return !BeeperClient.isSkipped(account, config: config, nativeSlackTeam: team, nativeSlackUser: user)
+                && BeeperClient.shouldAnnounce(message, chat: chat, ownUserIDs: knownOwnIDs, mode: config.beeperAnnounce,
+                                               muteOwn: config.muteOwnMessages)
+        }
         try stillRun(run)
         beeperLastPollStart = pollStart
         // An account Beeper has added since: list them again, once for
