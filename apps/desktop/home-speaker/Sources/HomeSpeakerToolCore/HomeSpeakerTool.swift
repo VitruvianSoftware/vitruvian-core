@@ -255,6 +255,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Whether this side's chat monitor may run, as last told
     /// (`Parts.monitorMayRun`).
     public private(set) var monitorMayRun = false
+    /// The wait for the other side to stop its monitor is over for the
+    /// role this side has now; cleared when the role changes.
+    private var waitedForTheOther = false
     /// The mark as last sent, so an unchanged one is not sent again.
     private var sentMark: MarkChoice?
     /// The step of the choice card the person is on (design 7.4); nil
@@ -726,13 +729,18 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// What `say` says with nowhere to speak.
     public static let notSetUp = "Set up HomeSpeaker first: pick a speaker, or turn on This Mac"
 
-    /// Reads the role afresh (the choice file, and whether the other is
-    /// installed) and acts on a change: the chat monitor may run only while
-    /// this side runs, and, once it does, only after the other has stopped
-    /// or `otherStopsWithin` has passed since the choice was written. Then
-    /// the pages are drawn again and the mark sent. Asked at start and on
-    /// the five-second tick.
+    /// Reads the settings and the role afresh (the choice file, and whether
+    /// the other is installed) and acts on a change: the chat monitor may
+    /// run only while this side runs, and, once it does, only after the
+    /// other has stopped or `otherStopsWithin` has passed since the choice
+    /// was written. That wait is over once it has passed for this role: a
+    /// choice written again later (the same side, a newer time) does not
+    /// stop a monitor that runs. Then the pages are drawn again and the
+    /// mark sent, from the settings as they are on disk now (a copy into
+    /// this side, or `--discover`, may have changed them with no page
+    /// open). Asked at start and on the five-second tick.
     public func refreshRole() {
+        reload()
         let now = parts.now()
         let role = parts.role()
         let changed = role != self.role
@@ -743,6 +751,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             } else if !(self.role.map(Self.runs) ?? false) {
                 runsSince = now
             }
+            waitedForTheOther = false
             self.role = role
         }
         if changed, case .compare(let compare)? = doorStep, choiceChanged(since: compare) {
@@ -754,7 +763,6 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         var mayRun = false
         if runs {
             if parts.repairsHooks { repairStrandedHooks() }
-            let since = parts.door?.read()?.chosenAt ?? runsSince ?? now
             let otherRunning = parts.other?.isRunning ?? false
             // Only an app that is found: with none (a test's
             // `HOMESPEAKER_PROGRAM=""`), there is nothing to wait for or quit.
@@ -762,15 +770,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // An app older than 1.19 never hears the choice and keeps its
             // own monitor: this side's waits until it has quit, however
             // long that takes (design 7.6, item 4). A newer one goes quiet
-            // by itself, so five seconds is the most this side waits.
-            mayRun = !(otherRunning && appFound && Self.isOld(parts.other))
-                && (!otherRunning || now.timeIntervalSince(since) >= Self.otherStopsWithin)
+            // by itself, so five seconds is the most this side waits, once
+            // for each time this side comes to run.
+            let waited = waitedForTheOther || !otherRunning || {
+                let since = parts.door?.read()?.chosenAt ?? runsSince ?? now
+                return now.timeIntervalSince(since) >= Self.otherStopsWithin
+            }()
+            mayRun = !(otherRunning && appFound && Self.isOld(parts.other)) && waited
+            if mayRun { waitedForTheOther = true }
         }
         if mayRun != monitorMayRun {
             monitorMayRun = mayRun
             parts.monitorMayRun(mayRun)
             if mayRun {
-                reload()
                 // As the app does at launch: only a monitor switched on.
                 if config.effectiveChatMonitor.anySourceEnabled { parts.controlChatMonitor(.start) }
             } else {

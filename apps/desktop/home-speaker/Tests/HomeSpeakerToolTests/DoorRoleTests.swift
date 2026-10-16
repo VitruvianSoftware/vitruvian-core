@@ -383,6 +383,34 @@ final class DoorRoleTests: XCTestCase {
         XCTAssertEqual(mayRun, [true, false])
     }
 
+    func testAChoiceWrittenAgainDoesNotStopARunningMonitor() throws {
+        // Chosen a while ago; the app (1.19, quiet by itself) still runs.
+        try choose(.extension, at: now - 60)
+        app.isRunning = true
+        let tool = tool()
+        tool.start()
+        XCTAssertEqual(asked, [.start], "the wait is long over")
+
+        // The same choice, written again with a newer time.
+        try choose(.extension, at: now)
+        tool.refreshRole()
+        now += 2
+        tool.refreshRole()
+        XCTAssertEqual(asked, [.start], "a newer choice time stopped the monitor that runs")
+        XCTAssertEqual(mayRun, [true])
+
+        // A real change of role starts the wait again.
+        role = .quiet(other: .app)
+        tool.refreshRole()
+        role = .active
+        try choose(.extension, at: now)
+        tool.refreshRole()
+        XCTAssertEqual(asked, [.start, .stop], "back in use, it waits for the app again")
+        now += 5
+        tool.refreshRole()
+        XCTAssertEqual(asked, [.start, .stop, .start])
+    }
+
     func testStartIsRefusedWhileQuietOrWaiting() throws {
         role = .quiet(other: .app)
         let tool = tool()
@@ -415,6 +443,21 @@ final class DoorRoleTests: XCTestCase {
         role = .active
         tool.refreshRole()
         XCTAssertEqual(marks.last?.text, "Broadcasting to Kitchen")
+    }
+
+    func testTheMarkFollowsTheSettingsOnDisk() throws {
+        link.features = [.status]
+        let tool = tool()
+        tool.start()
+        XCTAssertEqual(marks.last?.text, "Broadcasting to Kitchen")
+        // Changed with no page open: a copy from the app, or `--discover`.
+        store.config?.targets["lounge"] = SpeakerDevice(id: "d2", type: "SpeakerDevice", name: "Lounge")
+        store.config?.defaultTarget = "lounge"
+        tool.refreshRole()
+        XCTAssertEqual(marks.last?.text, "Broadcasting to Lounge", "the mark kept the settings of the last page opened")
+        store.config?.enabled = false
+        tool.refreshRole()
+        XCTAssertNotEqual(marks.last?.text, "Broadcasting to Lounge", "broadcasting switched off on disk")
     }
 
     func testNoStatusForAnAppWithoutTheFeature() throws {
