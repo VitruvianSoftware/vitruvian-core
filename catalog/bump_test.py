@@ -26,6 +26,7 @@ import hashlib
 import io
 import json
 import shutil
+import struct
 import tempfile
 import unittest
 import zipfile
@@ -38,6 +39,38 @@ import catalogue
 HERE = Path(__file__).resolve().parent
 NOW = "2030-01-02T03:04:05Z"
 HS = "dev.vitruvian.homespeaker"
+BOT = "github-actions[bot]"
+APP_INFO = HERE.parent / "apps/desktop/vitruvian/Resources/Info.plist"
+
+ARM64, X86_64 = 0x0100000C, 0x01000007
+
+
+def thin(cputype, minos=(14, 0, 0), command=0x32):
+    """A fake 64-bit Mach-O header with one load command naming its oldest
+    macOS: LC_BUILD_VERSION (0x32) or LC_VERSION_MIN_MACOSX (0x24); None for
+    no such command."""
+    raw = (minos[0] << 16) | (minos[1] << 8) | minos[2] if minos else 0
+    if minos is None:
+        cmd = struct.pack("<II", 0x19, 8)  # an LC_SEGMENT_64 stand-in, empty
+    elif command == 0x32:
+        cmd = struct.pack("<IIIIII", 0x32, 24, 1, raw, raw, 0)
+    else:
+        cmd = struct.pack("<IIII", 0x24, 16, raw, raw)
+    header = struct.pack("<IiiIIIII", 0xFEEDFACF, cputype, 0, 2, 1, len(cmd), 0, 0)
+    return header + cmd + b"\0" * 64
+
+
+def fat(*slices):
+    """A fake universal Mach-O holding each (cputype, thin bytes)."""
+    offset, arches, body = 4096, b"", b""
+    for cputype, data in slices:
+        arches += struct.pack(">iiIII", cputype, 0, offset + len(body), len(data), 12)
+        body += data
+    head = struct.pack(">II", 0xCAFEBABE, len(slices)) + arches
+    return head + b"\0" * (offset - len(head)) + body
+
+
+UNIVERSAL = fat((X86_64, thin(X86_64)), (ARM64, thin(ARM64)))
 
 
 def real_catalog():
@@ -72,12 +105,12 @@ def manifest_for(tool_id, version, **changes):
     return manifest
 
 
-def zip_of(manifest, extra=None):
+def zip_of(manifest, extra=None, program=UNIVERSAL):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         if manifest is not None:
             archive.writestr("vitruvian-tool.json", json.dumps(manifest))
-        archive.writestr("bin/tool", "#!/bin/sh\necho fake tool\n")
+        archive.writestr("bin/tool", program)
         for name, data in (extra or {}).items():
             archive.writestr(name, data)
     return buffer.getvalue()
@@ -99,6 +132,9 @@ class Fixture:
             "sources.json",
         ):
             shutil.copy(HERE / name, self.root / "catalog" / name)
+        info = self.root / bump.APP_INFO
+        info.parent.mkdir(parents=True)
+        shutil.copy(APP_INFO, info)
         for path, data in catalogue.outputs(self.root).items():
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_bytes(data)
@@ -106,7 +142,15 @@ class Fixture:
         self.release.mkdir()
 
     def publish(
-        self, name, data, sidecar=True, digest=None, size=None, sidecar_text=None
+        self,
+        name,
+        data,
+        sidecar=True,
+        digest=None,
+        size=None,
+        sidecar_text=None,
+        uploader=BOT,
+        sidecar_uploader=BOT,
     ):
         """Attaches `data` as `name`, with its .sha256, as a release does."""
         sha = hashlib.sha256(data).hexdigest()
@@ -116,13 +160,21 @@ class Fixture:
                 "name": name,
                 "size": len(data) if size is None else size,
                 "digest": "sha256:" + sha if digest is None else digest,
+                "uploader": {"login": uploader},
             }
         ]
         (self.release / name).write_bytes(data)
         if sidecar:
             text = sidecar_text if sidecar_text is not None else f"{sha}  {name}\n"
             (self.release / (name + ".sha256")).write_text(text)
-            assets.append({"id": 2, "name": name + ".sha256", "size": len(text)})
+            assets.append(
+                {
+                    "id": 2,
+                    "name": name + ".sha256",
+                    "size": len(text),
+                    "uploader": {"login": sidecar_uploader},
+                }
+            )
         self.meta(assets=assets)
         return sha
 
@@ -253,6 +305,20 @@ class BumpTest(unittest.TestCase):
         )
         self.assertIn("It offered 1.19.1", result["body"])
         self.assertNotIn("Also copied", result["body"])
+        self.assertTrue(result["automerge"])
+        self.assertIn("merges itself once its checks pass", result["body"])
+        self.assertNotIn("needs-human", result["body"])
+        self.assertIn(
+            "(https://github.com/VitruvianSoftware/vitruvian-core/compare/"
+            "home-speaker-v1.19.1...home-speaker-v1.20.0)",
+            result["body"],
+        )
+        self.assertIn(
+            "(https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/"
+            "home-speaker-v1.20.0)",
+            result["body"],
+        )
+        self.assertIn("they do not prove the release's code is safe", result["body"])
 
     def test_floor_is_kept_and_a_newer_feature_is_a_note(self):
         manifest = manifest_for(HS, "1.20.0")
@@ -262,10 +328,9 @@ class BumpTest(unittest.TestCase):
         status, result = self.f.run(HS, "home-speaker-v1.20.0")
         self.assertEqual(status, bump.OK, result)
         self.assertEqual(entry_of(self.f.catalog(), HS)["minimumAppVersion"], "3.45.0")
-        self.assertIn(
-            "Oldest app version stays 3.45.0; a person decides", result["body"]
-        )
+        self.assertIn("Oldest app version stays 3.45.0.", result["body"])
         self.assertIn("Vitruvian 3.48.0", result["body"])
+        self.assertTrue(result["automerge"], "a floor note alone does not hold it")
 
     def test_no_note_when_the_floor_already_has_it(self):
         self.assertEqual(bump.floor_notes({"protocol": "2"}, "3.45.0"), [])
@@ -276,6 +341,47 @@ class BumpTest(unittest.TestCase):
                 )
             ),
             2,
+        )
+
+    def test_a_new_service_holds_the_pull_request_for_a_person(self):
+        """The guard: a tool that asks for more never merges itself."""
+        self.publish_homespeaker(
+            uses=["notify", "clipboard.read", "open", "keystrokes"]
+        )
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertEqual(status, bump.OK, result)
+        self.assertFalse(result["automerge"])
+        self.assertIn("waits for a person** (label `needs-human`)", result["body"])
+        self.assertIn(
+            "It asks for a service it did not ask for before: `keystrokes`.",
+            result["body"],
+        )
+        self.assertNotIn("merges itself", result["body"])
+
+    def test_a_new_command_holds_the_pull_request_for_a_person(self):
+        manifest = manifest_for(HS, "1.20.0")
+        manifest["contributes"]["commands"].append(
+            {"id": "shout", "title": {"en": "Shout"}, "surfaces": ["commandBar"]}
+        )
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", zip_of(manifest))
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertEqual(status, bump.OK, result)
+        self.assertFalse(result["automerge"])
+        self.assertIn("It offers new commands: `shout`.", result["body"])
+
+    def test_taking_a_service_away_still_merges_itself(self):
+        self.publish_homespeaker(uses=["notify", "open"])
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertEqual(status, bump.OK, result)
+        self.assertTrue(result["automerge"])
+        self.assertEqual(entry_of(self.f.catalog(), HS)["uses"], ["notify", "open"])
+
+    def test_new_words_hold_the_pull_request(self):
+        self.publish_homespeaker(description={"en": "Speaks."})
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertFalse(result["automerge"])
+        self.assertIn(
+            "The words or panels the app shows changed: summary.", result["body"]
         )
 
     def test_what_the_manifest_says_is_copied_and_new_uses_are_flagged(self):
@@ -294,7 +400,7 @@ class BumpTest(unittest.TestCase):
             hs["uses"], ["notify", "clipboard.read", "open", "clipboard.write"]
         )
         self.assertIn("`summary`, `uses`", result["body"])
-        self.assertIn("now asks for `clipboard.write`", result["body"])
+        self.assertIn("did not ask for before: `clipboard.write`", result["body"])
         self.assertEqual(catalog_rules.manifest_problems(hs, manifest), [])
 
     def test_uses_in_another_order_is_not_a_change(self):
@@ -323,7 +429,11 @@ class BumpTest(unittest.TestCase):
             entry_of(self.f.catalog(), "dev.vitruvian.github")["download"]["url"],
             "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.4.1/github-tool-1.4.1.zip",
         )
-        self.assertIn("in VitruvianSoftware/vitruvian-tool-github", result["body"])
+        self.assertIn(
+            "(https://github.com/VitruvianSoftware/vitruvian-tool-github/compare/"
+            "v1.3.0...v1.4.1)",
+            result["body"],
+        )
         self.assertIn(sha[:8], result["body"])
 
     def test_already_listed_is_nothing_to_do(self):
@@ -335,6 +445,77 @@ class BumpTest(unittest.TestCase):
         self.assertEqual(self.f.files(), before)
 
     # --- Refused, and nothing written ---------------------------------------
+
+    def test_a_zip_someone_else_uploaded(self):
+        """I1: the release workflow's account uploads the zip; anyone else's
+        upload is refused, however well its checksums match."""
+        data = zip_of(manifest_for(HS, "1.20.0"))
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", data, uploader="someone")
+        self.assert_refused(
+            HS,
+            "home-speaker-v1.20.0",
+            "HomeSpeaker-1.20.0-tool.zip was uploaded by someone",
+        )
+
+    def test_a_checksum_someone_else_uploaded(self):
+        data = zip_of(manifest_for(HS, "1.20.0"))
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", data, sidecar_uploader="someone")
+        self.assert_refused(
+            HS, "home-speaker-v1.20.0", ".sha256 was uploaded by someone"
+        )
+
+    def test_a_program_for_a_newer_macos(self):
+        """A Remote zip was built for macOS 27: it would install on 14 and fail."""
+        program = fat((X86_64, thin(X86_64)), (ARM64, thin(ARM64, minos=(27, 0, 0))))
+        self.f.publish(
+            "HomeSpeaker-1.20.0-tool.zip",
+            zip_of(manifest_for(HS, "1.20.0"), program=program),
+        )
+        self.assert_refused(
+            HS,
+            "home-speaker-v1.20.0",
+            "bin/tool (arm64) needs macOS 27.0; the app runs on macOS 14.0",
+        )
+
+    def test_any_mach_o_in_the_zip_is_checked(self):
+        library = thin(ARM64, minos=(15, 4, 0), command=0x24)
+        self.f.publish(
+            "HomeSpeaker-1.20.0-tool.zip",
+            zip_of(manifest_for(HS, "1.20.0"), extra={"lib/helper.dylib": library}),
+        )
+        self.assert_refused(
+            HS, "home-speaker-v1.20.0", "lib/helper.dylib (arm64) needs macOS 15.4"
+        )
+
+    def test_a_program_that_names_no_oldest_macos(self):
+        program = fat((X86_64, thin(X86_64)), (ARM64, thin(ARM64, minos=None)))
+        self.f.publish(
+            "HomeSpeaker-1.20.0-tool.zip",
+            zip_of(manifest_for(HS, "1.20.0"), program=program),
+        )
+        self.assert_refused(HS, "home-speaker-v1.20.0", "names no oldest macOS")
+
+    def test_a_program_that_is_no_longer_universal(self):
+        program = thin(ARM64)
+        self.f.publish(
+            "HomeSpeaker-1.20.0-tool.zip",
+            zip_of(manifest_for(HS, "1.20.0"), program=program),
+        )
+        self.assert_refused(
+            HS, "home-speaker-v1.20.0", "bin/tool is arm64, not universal"
+        )
+
+    def test_a_script_where_a_universal_program_was(self):
+        self.f.publish(
+            "HomeSpeaker-1.20.0-tool.zip",
+            zip_of(manifest_for(HS, "1.20.0"), program=b"#!/bin/sh\necho hi\n"),
+        )
+        self.assert_refused(
+            HS, "home-speaker-v1.20.0", "bin/tool is not a Mach-O, not universal"
+        )
+
+    def test_a_pre_release_version_is_refused(self):
+        self.assert_refused(HS, "home-speaker-v1.21.0-rc.1", "X.Y.Z releases only")
 
     def test_github_digest_differs(self):
         data = zip_of(manifest_for(HS, "1.20.0"))
@@ -445,41 +626,113 @@ class BumpTest(unittest.TestCase):
         self.assertEqual((status, result["status"]), (bump.NOT_LISTED, "not-listed"))
         self.assertEqual(self.f.files(), before)
 
+    def test_a_skip_never_exits_as_bazel_or_argparse_fail(self):
+        """I4: 2 is a usage error to Bazel and argparse, so it means nothing here."""
+        self.assertNotIn(2, (bump.OK, bump.REFUSED, bump.NOT_READY, bump.NOT_LISTED))
+        with self.assertRaises(SystemExit) as usage:
+            bump.main(["bump", "--tag", "x"])
+        self.assertEqual(usage.exception.code, 2)
+
+
+class MachOTest(unittest.TestCase):
+    def test_reads_each_architecture_and_its_oldest_macos(self):
+        self.assertEqual(
+            bump.macho_slices(
+                fat((X86_64, thin(X86_64, minos=(13, 5, 0))), (ARM64, thin(ARM64)))
+            ),
+            [("x86_64", (13, 5, 0)), ("arm64", (14, 0, 0))],
+        )
+        self.assertEqual(
+            bump.macho_slices(thin(ARM64, minos=(12, 0, 1), command=0x24)),
+            [("arm64", (12, 0, 1))],
+        )
+
+    def test_other_files_are_not_mach_o(self):
+        self.assertIsNone(bump.macho_slices(b"#!/bin/sh\n"))
+        java = struct.pack(">IHH", 0xCAFEBABE, 0, 65) + b"\0" * 32
+        self.assertIsNone(bump.macho_slices(java))
+
+    def test_a_broken_mach_o_is_an_error(self):
+        broken = thin(ARM64)[:40]
+        with self.assertRaises(ValueError):
+            bump.macho_slices(broken)
+
+    def test_the_app_runs_on_macos_14(self):
+        self.assertEqual(bump.app_oldest_macos(HERE.parent), (14, 0, 0))
+
+
+class WorkflowHelpersTest(unittest.TestCase):
+    def commit(self, sha, name, email):
+        return {"sha": sha, "commit": {"author": {"name": name, "email": email}}}
+
+    def test_a_persons_commit_on_a_bump_branch_is_foreign(self):
+        """I3: the workflow never force-pushes over these."""
+        compare = {
+            "commits": [
+                self.commit("a" * 40, "vitruvian-wren-agent[bot]", bump.BOT_EMAIL),
+                self.commit("b" * 40, "James", "james@example.com"),
+            ]
+        }
+        self.assertEqual(bump.foreign(compare), ["bbbbbbbbbbbb by James"])
+        self.assertEqual(bump.foreign({"commits": compare["commits"][:1]}), [])
+
+    def test_only_older_versions_are_replaced(self):
+        pulls = [
+            {"number": 1, "headRefName": f"catalog/bump-{HS}-1.19.0"},
+            {"number": 2, "headRefName": f"catalog/bump-{HS}-1.21.0"},
+            {"number": 3, "headRefName": f"catalog/bump-{HS}-1.20.0"},
+            {"number": 4, "headRefName": "catalog/bump-dev.vitruvian.github-1.0.0"},
+            {"number": 5, "headRefName": "feature/other"},
+        ]
+        self.assertEqual(bump.older(pulls, HS, "1.20.0"), [1])
+
 
 class PlanTest(unittest.TestCase):
-    def releases(self, repo):
-        return {
-            "VitruvianSoftware/vitruvian-core": [
-                {"tag_name": "home-speaker-v1.21.0", "prerelease": True},
-                {"tag_name": "home-speaker-v1.22.0", "draft": True},
-                {"tag_name": "home-speaker-v1.20.0"},
-                {"tag_name": "home-speaker-v1.19.1"},
-                {"tag_name": "vitruvian-v9.0.0"},
-                {"tag_name": "android-remote-v0.1.4"},
-            ],
-            "VitruvianSoftware/vitruvian-tool-github": [
-                {"tag_name": "v1.4.1"},
-                {"tag_name": "v1.10.0-rc.1", "prerelease": True},
-                {"tag_name": "v1.3.0"},
-            ],
-        }[repo]
+    TAGS = {
+        "VitruvianSoftware/vitruvian-core": [
+            "home-speaker-v1.19.1",
+            "home-speaker-v1.20.0",
+            "home-speaker-v1.21.0",
+            "home-speaker-v1.22.0-rc.1",
+            "android-remote-v0.1.4",
+        ],
+        "VitruvianSoftware/vitruvian-tool-github": ["v1.3.0", "v1.4.1", "v1.10.0-rc.1"],
+    }
 
-    def catalog_lists(self, versions):
+    def setUp(self):
+        self.releases = {
+            "home-speaker-v1.19.1": {
+                "assets": [{"name": "HomeSpeaker-1.19.1-tool.zip"}]
+            },
+            "home-speaker-v1.20.0": {
+                "assets": [{"name": "HomeSpeaker-1.20.0-tool.zip"}]
+            },
+            "home-speaker-v1.21.0": {"prerelease": True, "assets": []},
+            "home-speaker-v1.22.0-rc.1": {
+                "assets": [{"name": "HomeSpeaker-1.22.0-rc.1-tool.zip"}]
+            },
+            "v1.3.0": {"assets": [{"name": "github-tool-1.3.0.zip"}]},
+            "v1.4.1": {"assets": [{"name": "github-tool-1.4.1.zip"}]},
+            "v1.10.0-rc.1": {"assets": [{"name": "github-tool-1.10.0-rc.1.zip"}]},
+        }
+        self.pulls = {}
+
+    def plan(self, versions):
         catalog = real_catalog()
         for tool_id, version in versions.items():
             entry_of(catalog, tool_id)["version"] = version
-        return catalog
-
-    def test_newer_published_releases_are_planned(self):
-        catalog = self.catalog_lists({HS: "1.19.1", "dev.vitruvian.github": "1.3.0"})
-        found = bump.plan(
+        return bump.plan(
             catalog,
             bump.load_sources(HERE / "sources.json"),
-            self.releases,
-            lambda b: None,
+            lambda repo, prefix: [t for t in self.TAGS[repo] if t.startswith(prefix)],
+            lambda repo, tag: self.releases.get(tag),
+            self.pulls.get,
         )
+
+    def test_newer_published_releases_are_planned(self):
+        """A pre-release flag and an -rc version (M2) are both passed over."""
         self.assertEqual(
-            found,
+            self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.3.0"}),
             [
                 {"id": HS, "tag": "home-speaker-v1.20.0"},
                 {"id": "dev.vitruvian.github", "tag": "v1.4.1"},
@@ -487,26 +740,30 @@ class PlanTest(unittest.TestCase):
         )
 
     def test_nothing_when_the_catalog_is_current(self):
-        catalog = self.catalog_lists({HS: "1.20.0", "dev.vitruvian.github": "1.4.1"})
-        found = bump.plan(
-            catalog,
-            bump.load_sources(HERE / "sources.json"),
-            self.releases,
-            lambda b: None,
-        )
-        self.assertEqual(found, [])
+        self.assertEqual(self.plan({HS: "1.20.0", "dev.vitruvian.github": "1.4.1"}), [])
+
+    def test_a_release_with_no_zip_yet_costs_no_bump(self):
+        """M1: skipped in the plan, before any Bazel job."""
+        self.releases["v1.4.1"]["assets"] = []
+        self.assertEqual(self.plan({HS: "1.20.0", "dev.vitruvian.github": "1.3.0"}), [])
 
     def test_an_open_pull_request_is_left_alone_unless_it_conflicts(self):
-        catalog = self.catalog_lists({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"})
         branch = bump.branch_for(HS, "1.20.0")
-        sources = bump.load_sources(HERE / "sources.json")
-        open_one = {branch: {"number": 7, "mergeable": "MERGEABLE"}}
-        self.assertEqual(bump.plan(catalog, sources, self.releases, open_one.get), [])
-        stuck = {branch: {"number": 7, "mergeable": "CONFLICTING"}}
+        self.pulls[branch] = {"number": 7, "state": "OPEN", "mergeable": "MERGEABLE"}
+        self.assertEqual(self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}), [])
+        self.pulls[branch]["mergeable"] = "CONFLICTING"
         self.assertEqual(
-            bump.plan(catalog, sources, self.releases, stuck.get),
+            self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}),
             [{"id": HS, "tag": "home-speaker-v1.20.0"}],
         )
+
+    def test_a_pull_request_closed_without_merging_is_not_opened_again(self):
+        """I2: a person said no; the next hour does not ask again."""
+        branch = bump.branch_for(HS, "1.20.0")
+        self.pulls[branch] = {"number": 7, "state": "CLOSED", "mergeable": "UNKNOWN"}
+        self.assertEqual(self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}), [])
+        self.pulls[branch]["state"] = "MERGED"
+        self.assertEqual(self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}), [])
 
 
 if __name__ == "__main__":

@@ -986,6 +986,13 @@ exports_files(
     visibility = ["//catalog:__pkg__"],
 )
 
+# The oldest macOS the app runs on (LSMinimumSystemVersion). //catalog:bump
+# refuses a tool whose programs need a newer one.
+exports_files(
+    ["Resources/Info.plist"],
+    visibility = ["//catalog:__pkg__"],
+)
+
 sh_binary(
     name = "publish",
     srcs = ["publish.sh"],

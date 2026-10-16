@@ -165,6 +165,7 @@ py_test(
         "public-key.txt",
         "sources.json",
         "tools.json",
+        "//apps/desktop/vitruvian:Resources/Info.plist",
     ],
     deps = [
         ":bump",
