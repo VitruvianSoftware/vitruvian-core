@@ -51,20 +51,22 @@ public protocol GoogleAccount: AnyObject {
     func clearOAuthClient() throws
 }
 
-/// HomeSpeaker's own secrets file, read afresh on every question, as the
-/// app reads it: the app, the tool and the CLI all sign in and out of it.
+/// One HomeSpeaker's secrets file, read afresh on every question, as the
+/// app reads its own: that HomeSpeaker, its tool and its command line all
+/// sign in and out of it.
 public final class SecretStoreAccount: GoogleAccount {
-    private let store: SecretStore
+    /// The secrets file: the extension's engine's, never the app's.
+    public let store: SecretStore
     private let antigravityTokens: URL
-    private let profile: HomeSpeakerProfile
+    /// Says which sign-in client is shipped: the extension's, in its tool
+    /// folder.
+    public let profile: HomeSpeakerProfile
 
-    /// `profile` says which sign-in client is shipped. The tool, which
-    /// still drives HomeSpeaker.app, passes the app's profile on the app's
-    /// bundle, whose Info.plist may carry the OAuth client it was packaged
-    /// with: the tool's own bundle has none.
+    /// Every part is named: a default would be the app's secrets, which the
+    /// extension must never sign in or out of.
     public init(
-        store: SecretStore = .shared, antigravityTokens: URL = SecretStore.antigravityTokensURL,
-        profile: HomeSpeakerProfile = .current
+        store: SecretStore, antigravityTokens: URL = SecretStore.antigravityTokensURL,
+        profile: HomeSpeakerProfile
     ) {
         self.store = store
         self.antigravityTokens = antigravityTokens
@@ -143,13 +145,15 @@ public protocol ChatCredentials: AnyObject {
     func clearSlackToken() throws
 }
 
-/// HomeSpeaker's own secrets file, read afresh on every question, and
-/// written through `SecretStore.update`, under its lock, so the running
-/// app refreshing a Google token never writes over the token saved here.
+/// One HomeSpeaker's secrets file, read afresh on every question, and
+/// written through `SecretStore.update`, under its lock, so that
+/// HomeSpeaker refreshing a Google token never writes over the token saved
+/// here.
 public final class SecretStoreChatCredentials: ChatCredentials {
-    private let store: SecretStore
+    /// The secrets file: the extension's engine's, never the app's.
+    public let store: SecretStore
 
-    public init(store: SecretStore = .shared) {
+    public init(store: SecretStore) {
         self.store = store
     }
 

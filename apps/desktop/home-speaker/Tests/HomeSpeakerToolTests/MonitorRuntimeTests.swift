@@ -215,12 +215,12 @@ final class MonitorRuntimeTests: XCTestCase {
         XCTAssertEqual(tool.setupNotice, "Asked HomeSpeaker to stop the chat monitor")
     }
 
-    func testStartIsRefusedWithoutTheAppOrASource() {
+    func testStartNeedsNoRunningAppButIsRefusedWithoutASource() {
         let tool = opened()
         appRunning = false
         _ = event(tool, Pages.Block.startChatMonitor, .tap)
-        XCTAssertEqual(asked, [])
-        XCTAssertEqual(tool.setupNotice, "HomeSpeaker isn't running: open it, then start the chat monitor")
+        XCTAssertEqual(asked, [.start], "the extension's monitor runs in its own process: no app is asked")
+        asked = []
         appRunning = true
         store.config?.effectiveChatMonitor.slackEnabled = false
         _ = event(tool, Pages.Block.startChatMonitor, .tap)

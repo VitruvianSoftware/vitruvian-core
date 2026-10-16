@@ -52,6 +52,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 
 # The five sections of the settings panel (Pages.Section), in order.
 SECTIONS = ["general", "speakers", "monitor", "agents", "googleCloud"]
@@ -93,7 +94,16 @@ def main():
     # Services would still know this Mac's HomeSpeaker by its bundle id,
     # whatever the home: HOMESPEAKER_PROGRAM, set and empty, keeps the tool
     # off it, so nothing here can speak.
-    env = dict(os.environ, HOME=home, CFFIXED_USER_HOME=home, HOMESPEAKER_PROGRAM="")
+    # HOMESPEAKER_MESSAGE_PREFIX: the program listens and posts under a
+    # prefix of this run's own, so a HomeSpeaker extension running on this
+    # Mac hears nothing of it.
+    env = dict(
+        os.environ,
+        HOME=home,
+        CFFIXED_USER_HOME=home,
+        HOMESPEAKER_PROGRAM="",
+        HOMESPEAKER_MESSAGE_PREFIX=f"test.{uuid.uuid4()}.homespeaker",
+    )
     failed = 0
     for name, command in [
         ("validate", [os.path.abspath(validate), "validate", folder]),

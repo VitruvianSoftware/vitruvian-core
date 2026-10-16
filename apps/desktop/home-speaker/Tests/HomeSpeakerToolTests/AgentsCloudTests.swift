@@ -313,7 +313,8 @@ final class AgentsCloudTests: XCTestCase {
     func testTheSecretStoreAccountSavesBothInOneWriteAndKeepsTheSecret() throws {
         let secrets = SecretStore(fileURL: home.appendingPathComponent("secrets/secrets.json"))
         try secrets.update { $0.slackToken = "xoxp-kept" }
-        let account = SecretStoreAccount(store: secrets, antigravityTokens: home.appendingPathComponent("none.json"))
+        let account = SecretStoreAccount(
+            store: secrets, antigravityTokens: home.appendingPathComponent("none.json"), profile: .app(home: home))
         XCTAssertNil(account.customOAuthClientId)
         XCTAssertFalse(account.hasCustomOAuthClientSecret)
         XCTAssertFalse(account.hasBundledOAuthClient, "the test bundle ships no client")

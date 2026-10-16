@@ -74,20 +74,20 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// it is not installed.
         public var gwsLocation: () -> String?
         /// The process that runs this side's chat monitor is alive, so it
-        /// reads messages: for the app, HomeSpeaker.app is running as an app
-        /// (`ProcessDriver.isAppRunning()`).
+        /// reads messages: for the extension, its own `running.lock` is held
+        /// (`HomeSpeakerProfile.ownerRunning()`).
         public var ownerRunning: () -> Bool
-        /// Tells a running HomeSpeaker that a login or token changed
-        /// (`CredentialsChangedNotice.post()`), so it re-reads them and
-        /// starts or restarts its chat monitor.
+        /// Tells this HomeSpeaker's long-lived process that a login or token
+        /// changed (`CredentialsChangedNotice`, under the profile's name),
+        /// so it re-reads them and starts or restarts its chat monitor.
         public var credentialsChanged: () -> Void
         /// The home folder the coding agents keep their files in.
         public var home: URL
         /// Where HomeSpeaker's settings and secrets files are, for Files.
         public var settingsURL: URL
         public var secretsURL: URL
-        /// The installed HomeSpeaker's version, from its bundle; nil when
-        /// it is not installed or does not say.
+        /// The HomeSpeaker version Files shows: the engine this tool runs
+        /// on. Nil when it does not say.
         public var homeSpeakerVersion: () -> String?
         /// Stops a launchd job (`AgentIntegration.launchctlBootout`); the
         /// tests record instead, so they never touch the live session.
@@ -100,10 +100,29 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// (`ChatMonitorStatusFile`): by default beside the settings file,
         /// so a test's temporary settings never read this Mac's.
         public var monitorStatusURL: URL
-        /// Asks a running HomeSpeaker to start or stop its chat monitor
-        /// (`ChatMonitorControlNotice.post`). The default asks nothing, so
-        /// a test never reaches a real running app.
+        /// Starts or stops this side's chat monitor: for the extension, the
+        /// one in its own process. The default does nothing, so a test never
+        /// reaches a real monitor or a real running app.
         public var controlChatMonitor: (ChatMonitorAction) -> Void
+        /// What this HomeSpeaker does now, given the other one and the
+        /// person's choice (`DoorCheck.role(me:)`), asked afresh each time.
+        public var role: () -> DoorRole
+        /// The other HomeSpeaker, the app, as far as the extension needs it:
+        /// whether it still runs. Nil when there is none to ask.
+        public var other: (any OtherAppControlling)?
+        /// The choice file (`~/.gemini/speaker_door.json`); nil in a test
+        /// that has none.
+        public var door: DoorFile?
+        /// Copies one HomeSpeaker's settings and sign-ins into the other's
+        /// (`DoorCopy.copy`).
+        public var copy: (_ from: HomeSpeakerProfile, _ to: HomeSpeakerProfile) throws -> CopyReport
+        /// Shows the mark on the closed island (`ui/status`). Called only
+        /// when the app has it, and only with a mark that changed.
+        public var sendStatus: (MarkChoice) -> Void
+        /// Told when this side's chat monitor may start, and when it may no
+        /// longer: the monitor's own triggers (its settings changing on
+        /// disk, a sign-in, the control message) start nothing otherwise.
+        public var monitorMayRun: (Bool) -> Void
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
                     later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
@@ -116,7 +135,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     homeSpeakerVersion: @escaping () -> String? = { nil },
                     launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
                     historyURL: URL? = nil, monitorStatusURL: URL? = nil,
-                    controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in }) {
+                    controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in },
+                    role: @escaping () -> DoorRole = { .active }, other: (any OtherAppControlling)? = nil,
+                    door: DoorFile? = nil,
+                    copy: @escaping (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = DoorCopy.copy,
+                    sendStatus: @escaping (MarkChoice) -> Void = { _ in },
+                    monitorMayRun: @escaping (Bool) -> Void = { _ in }) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -137,6 +161,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.historyURL = historyURL ?? Self.historyURL(beside: settingsURL)
             self.monitorStatusURL = monitorStatusURL ?? ChatMonitorStatusFile.url(beside: settingsURL)
             self.controlChatMonitor = controlChatMonitor
+            self.role = role
+            self.other = other
+            self.door = door
+            self.copy = copy
+            self.sendStatus = sendStatus
+            self.monitorMayRun = monitorMayRun
         }
 
         /// `speaker_history.json` in the settings file's folder, where
@@ -182,6 +212,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// The chat monitor as last drawn, so a change the app writes is drawn
     /// and an unchanged one is not (`refreshMonitorStatus`).
     private var drawnChat: Pages.Chat?
+    /// The role as the last `refreshRole` found it; nil before the first.
+    public private(set) var role: DoorRole?
+    /// When this side last became one that runs, for the wait when no
+    /// choice says when it was made.
+    private var runsSince: Date?
+    /// Whether this side's chat monitor may run, as last told
+    /// (`Parts.monitorMayRun`).
+    public private(set) var monitorMayRun = false
+    /// The mark as last sent, so an unchanged one is not sent again.
+    private var sentMark: MarkChoice?
 
     public init(parts: Parts) {
         self.parts = parts
@@ -208,6 +248,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     public func start() {
         reload()
+        refreshRole()
         if readsVolume { try? run(.volume) }
         if !parts.driver.isInstalled { parts.link.log("HomeSpeaker is not installed: the tool can only show its settings") }
     }
@@ -248,9 +289,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// The volume is read only where it can answer: HomeSpeaker installed,
     /// a speaker picked, and Home speakers on. With them off a read would
-    /// only wait on a Cast speaker nobody is using.
+    /// only wait on a Cast speaker nobody is using. A quiet side reads
+    /// nothing.
     private var readsVolume: Bool {
-        parts.driver.isInstalled && config.defaultDevice != nil && config.effectiveSpeakHome
+        parts.driver.isInstalled && config.defaultDevice != nil && config.effectiveSpeakHome && !parts.role().isQuiet
     }
 
     /// Signed in with no speakers: the island's setup offers each home, so
@@ -457,12 +499,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return .page(settingsTree())
     }
 
-    /// Asks the running HomeSpeaker to start or stop its monitor. The page
-    /// says Running once the app has written that it is; the request alone
-    /// changes nothing on it.
+    /// Starts or stops this side's monitor. The page says Running once the
+    /// monitor has written that it is; the request alone changes nothing on
+    /// it. Refused while the other HomeSpeaker is in use: its monitor is the
+    /// one that runs. Start is refused, too, while nobody has picked: the
+    /// app may be running its own.
     private func controlChatMonitor(_ action: ChatMonitorAction) throws {
-        guard parts.ownerRunning() else {
-            throw CommandRefused("HomeSpeaker isn't running: open it, then \(action.rawValue) the chat monitor")
+        switch parts.role() {
+        case .quiet(let other):
+            throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so its monitor is the one that runs")
+        case .waitingAsking where action == .start:
+            throw CommandRefused(Self.pickFirst)
+        case .active, .activeAsking, .waitingAsking:
+            break
         }
         if action == .start, !config.effectiveChatMonitor.anySourceEnabled {
             throw CommandRefused("turn on Slack or Google Chat first")
@@ -610,6 +659,93 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         openPanels.remove(panel)
     }
 
+    // MARK: - Which HomeSpeaker runs
+
+    /// How long a side that has just become the one in use waits for the
+    /// other to stop its chat monitor before starting its own (design 7.6).
+    public static let otherStopsWithin: TimeInterval = 5
+
+    /// What a refusal says while nobody has picked a HomeSpeaker.
+    public static let pickFirst = "Pick which HomeSpeaker to use first"
+    /// What `say` says with nowhere to speak.
+    public static let notSetUp = "Set up HomeSpeaker first: pick a speaker, or turn on This Mac"
+
+    /// Reads the role afresh (the choice file, and whether the other is
+    /// installed) and acts on a change: the chat monitor may run only while
+    /// this side runs, and, once it does, only after the other has stopped
+    /// or `otherStopsWithin` has passed since the choice was written. Then
+    /// the pages are drawn again and the mark sent. Asked at start and on
+    /// the five-second tick.
+    public func refreshRole() {
+        let now = parts.now()
+        let role = parts.role()
+        let changed = role != self.role
+        let runs = Self.runs(role)
+        if changed {
+            if !runs {
+                runsSince = nil
+            } else if !(self.role.map(Self.runs) ?? false) {
+                runsSince = now
+            }
+            self.role = role
+        }
+        var mayRun = false
+        if runs {
+            let since = parts.door?.read()?.chosenAt ?? runsSince ?? now
+            mayRun = !(parts.other?.isRunning ?? false) || now.timeIntervalSince(since) >= Self.otherStopsWithin
+        }
+        if mayRun != monitorMayRun {
+            monitorMayRun = mayRun
+            parts.monitorMayRun(mayRun)
+            if mayRun {
+                reload()
+                // As the app does at launch: only a monitor switched on.
+                if config.effectiveChatMonitor.anySourceEnabled { parts.controlChatMonitor(.start) }
+            } else {
+                parts.controlChatMonitor(.stop)
+            }
+        }
+        if changed { refreshOpenPanels() }
+        updateMark()
+    }
+
+    /// A side that runs: the hook, the chat monitor, listening.
+    private static func runs(_ role: DoorRole) -> Bool {
+        switch role {
+        case .active, .activeAsking: return true
+        case .waitingAsking, .quiet: return false
+        }
+    }
+
+    /// What the mark is worked out from (`IslandStatus.mark`). Set up means
+    /// something to speak with: a Google sign-in, a default speaker, or
+    /// this Mac's speech on (design 6, "not set up").
+    public func statusInputs() -> StatusInputs {
+        let monitorProblem = config.effectiveChatMonitor.anySourceEnabled
+            ? Pages.Chat(ownerRunning: parts.ownerRunning(),
+                         monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read()).runtimeError
+            : nil
+        let speaking: Bool
+        if case .say? = busy { speaking = true } else { speaking = false }
+        return StatusInputs(
+            role: role ?? parts.role(),
+            monitorProblem: monitorProblem,
+            setUp: parts.account.isSignedIn || config.defaultDevice != nil || config.effectiveSpeakLocal,
+            speaking: speaking,
+            quietUntil: config.isInQuietHours(at: parts.now()) ? config.quietHoursEnd : nil,
+            broadcasting: config.enabled,
+            defaultSpeaker: config.defaultDevice?.name)
+    }
+
+    /// Sends the mark when it changed, to an app that shows one.
+    private func updateMark() {
+        guard parts.link.supports(.status) else { return }
+        let mark = IslandStatus.mark(statusInputs())
+        guard mark != sentMark else { return }
+        sentMark = mark
+        parts.sendStatus(mark)
+    }
+
     /// Draws the open pages again when what the chat monitor says about
     /// itself has changed since they were drawn: a Start pressed here shows
     /// Running once the app has started, without another tap. Asked on a
@@ -635,6 +771,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             finishedSpeaking(job, result)
         }
         refreshOpenPanels()
+        updateMark()
     }
 
     private func finishedSpeaking(_ job: Job, _ result: JobResult) {
@@ -861,14 +998,26 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         refreshOpenPanels()
     }
 
+    /// While the other HomeSpeaker is in use this one does nothing, even
+    /// asked by hand: the other is the one the person picked. While nobody
+    /// has picked, what the person asks for is done.
+    private func refuseWhileQuiet() throws {
+        if case .quiet(let other) = parts.role() {
+            throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so this one stays quiet")
+        }
+    }
+
     private func say(_ text: String) throws {
+        try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         reload()
+        guard config.defaultDevice != nil || config.effectiveSpeakLocal else { throw CommandRefused(Self.notSetUp) }
         guard config.enabled else { throw CommandRefused("broadcasting is switched off") }
         try run(.say(text))
     }
 
     private func speakerJob(_ job: Job) throws {
+        try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         reload()
         guard config.defaultDevice != nil else { throw CommandRefused("no default speaker; pick one in HomeSpeaker") }
@@ -878,6 +1027,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// A setup job needs HomeSpeaker and nothing more: not a speaker, and
     /// not the speaker slot.
     private func setupJob(_ job: Job) throws {
+        try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         try run(job)
     }
@@ -900,6 +1050,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         parts.driver.run(job) { [weak self] result in
             later { [weak self] in self?.finished(job, result) }
         }
+        updateMark()
     }
 
     private func reload() {
@@ -919,6 +1070,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private func save() throws {
         if let configProblem { throw CommandRefused("refusing to save: \(configProblem)") }
         try parts.store.save(config)
+        updateMark()
     }
 
     /// An error as a sentence for the page: a refusal's own words, not
