@@ -22,13 +22,19 @@ package enum MenuPanelExtensions {
         package let name: String
         /// The page's symbol: its own, else the extension's.
         package let symbol: String
+        /// The extension's count of `ExternalToolStore.activations`. An
+        /// extension updated, or switched off and on, is another entry, so
+        /// its card asks for its page again instead of keeping the old one's
+        /// "could not be shown".
+        package let activation: Int
 
-        package var id: String { key.tool.rawValue + "/" + key.panel }
+        package var id: String { key.tool.rawValue + "/" + key.panel + "#\(activation)" }
 
-        package init(key: ToolPanelHost.Key, name: String, symbol: String) {
+        package init(key: ToolPanelHost.Key, name: String, symbol: String, activation: Int = 0) {
             self.key = key
             self.name = name
             self.symbol = symbol
+            self.activation = activation
         }
     }
 
@@ -38,7 +44,7 @@ package enum MenuPanelExtensions {
         store.availableIslandPanels().compactMap { key in
             guard let tool = store.installed[key.tool]?.tool, let panel = tool.panel(key.panel) else { return nil }
             let name = tool.name.text(for: language.rawValue) ?? tool.manifest.tool.name
-            return Entry(key: key, name: name, symbol: panel.symbol)
+            return Entry(key: key, name: name, symbol: panel.symbol, activation: store.activations[key.tool] ?? 0)
         }
     }
 

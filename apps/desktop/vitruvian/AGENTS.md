@@ -744,8 +744,13 @@ before: the app offers both versions at `initialize`, and the tool picks.
   (`PanelSectionID.shownByDefault`); each extension's switch for it is in
   Settings › Menu bar (`MenuPanelExtensionsSupport`), apart from the
   island's "Show in the Dynamic Island". Where Settings manages extensions
-  is named once, `MenuPanelExtensions.openExtensionSettings`. A web panel
-  shown in both places at once draws in the view made last.
+  is named once, `MenuPanelExtensions.openExtensionSettings`. A web page
+  is one web view, which one place can hold: while the island shows a web
+  page the tab draws a line in its place (`ToolPanelHost.defersToIsland`),
+  and draws the page again when the island lets go. Known limit: two views
+  of the tab at once (the popover and the panel inside the island) showing
+  one web page still share that one web view. Opening the tab starts the
+  program of every extension it lists, one `ui/open` each.
 - `ToolPanelHost` (`Services/Platform/External/ToolPanelHost.swift`) is the
   one place that knows what a panel shows: for each open panel the last page
   its tool sent, read away from the main thread by `ToolPanelTree.read` and

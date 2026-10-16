@@ -330,6 +330,20 @@ package final class ToolPanelHost: ObservableObject {
         return nil
     }
 
+    /// Whether the menu bar panel's tab draws a line in place of the page:
+    /// a web page the island shows. A web page is one web view, which only
+    /// one place can hold, and the island keeps it. The tab draws the page
+    /// again when the island lets go.
+    nonisolated package static func defersToIsland(_ key: Key, shown: Shown?, island: Key?) -> Bool {
+        guard case .web? = shown else { return false }
+        return island == key
+    }
+
+    /// `defersToIsland` for an open panel, as the host stands now.
+    package func defersToIsland(_ key: Key) -> Bool {
+        Self.defersToIsland(key, shown: shown[key], island: island)
+    }
+
     /// One view of the menu bar panel no longer shows the page. When it was
     /// the last, and the island does not show it either, the page closes and
     /// the tool is told, as when the island closes it.

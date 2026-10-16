@@ -22,9 +22,13 @@ package struct MenuPanelExtensionsStrings {
     package let settingsTitle: String
     /// The line under that heading.
     package let settingsCaption: String
+    /// In place of a web page the Dynamic Island is showing: the two cannot
+    /// draw one web page at once, and the island keeps it.
+    package let shownInIsland: String
 
     package init(title: String, sectionDescription: String, emptyNone: String, manage: String,
-                 emptyAllOff: String, choose: String, settingsTitle: String, settingsCaption: String) {
+                 emptyAllOff: String, choose: String, settingsTitle: String, settingsCaption: String,
+                 shownInIsland: String) {
         self.title = title
         self.sectionDescription = sectionDescription
         self.emptyNone = emptyNone
@@ -33,6 +37,7 @@ package struct MenuPanelExtensionsStrings {
         self.choose = choose
         self.settingsTitle = settingsTitle
         self.settingsCaption = settingsCaption
+        self.shownInIsland = shownInIsland
     }
 }
 
@@ -67,7 +72,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Every extension is switched off for this tab.",
         choose: "Choose Extensions…",
         settingsTitle: "Extensions tab",
-        settingsCaption: "Choose which extensions show their panel in the Extensions tab."
+        settingsCaption: "Choose which extensions show their panel in the Extensions tab.",
+        shownInIsland: "Showing in the Dynamic Island"
     )
 
     package static let ptBR = MenuPanelExtensionsStrings(
@@ -78,7 +84,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Todas as extensões estão desativadas nesta aba.",
         choose: "Escolher extensões…",
         settingsTitle: "Aba Extensões",
-        settingsCaption: "Escolha quais extensões mostram o painel na aba Extensões."
+        settingsCaption: "Escolha quais extensões mostram o painel na aba Extensões.",
+        shownInIsland: "Aparecendo no Dynamic Island"
     )
 
     package static let tr = MenuPanelExtensionsStrings(
@@ -89,7 +96,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Bu sekme için tüm uzantılar kapalı.",
         choose: "Uzantıları Seç…",
         settingsTitle: "Uzantılar sekmesi",
-        settingsCaption: "Uzantılar sekmesinde hangi uzantıların panelini göstereceğini seçin."
+        settingsCaption: "Uzantılar sekmesinde hangi uzantıların panelini göstereceğini seçin.",
+        shownInIsland: "Dynamic Island’da gösteriliyor"
     )
 
     package static let ru = MenuPanelExtensionsStrings(
@@ -100,7 +108,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Все расширения выключены для этой вкладки.",
         choose: "Выбрать расширения…",
         settingsTitle: "Вкладка «Расширения»",
-        settingsCaption: "Выберите, какие расширения показывают свою панель на вкладке «Расширения»."
+        settingsCaption: "Выберите, какие расширения показывают свою панель на вкладке «Расширения».",
+        shownInIsland: "Показывается в Dynamic Island"
     )
 
     package static let es = MenuPanelExtensionsStrings(
@@ -111,7 +120,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Todas las extensiones están desactivadas en esta pestaña.",
         choose: "Elegir extensiones…",
         settingsTitle: "Pestaña Extensiones",
-        settingsCaption: "Elige qué extensiones muestran su panel en la pestaña Extensiones."
+        settingsCaption: "Elige qué extensiones muestran su panel en la pestaña Extensiones.",
+        shownInIsland: "Se muestra en el Dynamic Island"
     )
 
     package static let sk = MenuPanelExtensionsStrings(
@@ -122,7 +132,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Všetky rozšírenia sú pre túto kartu vypnuté.",
         choose: "Vybrať rozšírenia…",
         settingsTitle: "Karta Rozšírenia",
-        settingsCaption: "Vyberte, ktoré rozšírenia zobrazia svoj panel na karte Rozšírenia."
+        settingsCaption: "Vyberte, ktoré rozšírenia zobrazia svoj panel na karte Rozšírenia.",
+        shownInIsland: "Zobrazuje sa v Dynamic Island"
     )
 
     package static let de = MenuPanelExtensionsStrings(
@@ -133,7 +144,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Alle Erweiterungen sind für diesen Tab ausgeschaltet.",
         choose: "Erweiterungen auswählen…",
         settingsTitle: "Tab „Erweiterungen“",
-        settingsCaption: "Wähle, welche Erweiterungen ihren Bereich im Tab „Erweiterungen“ zeigen."
+        settingsCaption: "Wähle, welche Erweiterungen ihren Bereich im Tab „Erweiterungen“ zeigen.",
+        shownInIsland: "Wird im Dynamic Island angezeigt"
     )
 
     package static let fr = MenuPanelExtensionsStrings(
@@ -144,7 +156,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Toutes les extensions sont désactivées pour cet onglet.",
         choose: "Choisir les extensions…",
         settingsTitle: "Onglet Extensions",
-        settingsCaption: "Choisissez les extensions qui affichent leur panneau dans l’onglet Extensions."
+        settingsCaption: "Choisissez les extensions qui affichent leur panneau dans l’onglet Extensions.",
+        shownInIsland: "Affiché dans le Dynamic Island"
     )
 
     package static let it = MenuPanelExtensionsStrings(
@@ -155,7 +168,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Tutte le estensioni sono disattivate per questa scheda.",
         choose: "Scegli estensioni…",
         settingsTitle: "Scheda Estensioni",
-        settingsCaption: "Scegli quali estensioni mostrano il loro pannello nella scheda Estensioni."
+        settingsCaption: "Scegli quali estensioni mostrano il loro pannello nella scheda Estensioni.",
+        shownInIsland: "Mostrato nel Dynamic Island"
     )
 
     package static let ja = MenuPanelExtensionsStrings(
@@ -166,7 +180,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "このタブではすべての拡張機能がオフになっています。",
         choose: "拡張機能を選択…",
         settingsTitle: "「拡張機能」タブ",
-        settingsCaption: "「拡張機能」タブにパネルを表示する拡張機能を選びます。"
+        settingsCaption: "「拡張機能」タブにパネルを表示する拡張機能を選びます。",
+        shownInIsland: "Dynamic Islandに表示中"
     )
 
     package static let ko = MenuPanelExtensionsStrings(
@@ -177,7 +192,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "이 탭에서 모든 확장 프로그램이 꺼져 있습니다.",
         choose: "확장 프로그램 선택…",
         settingsTitle: "확장 프로그램 탭",
-        settingsCaption: "확장 프로그램 탭에 패널을 표시할 확장 프로그램을 선택하세요."
+        settingsCaption: "확장 프로그램 탭에 패널을 표시할 확장 프로그램을 선택하세요.",
+        shownInIsland: "Dynamic Island에 표시 중"
     )
 
     package static let uk = MenuPanelExtensionsStrings(
@@ -188,7 +204,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "Усі розширення вимкнено для цієї вкладки.",
         choose: "Вибрати розширення…",
         settingsTitle: "Вкладка «Розширення»",
-        settingsCaption: "Виберіть, які розширення показують свою панель на вкладці «Розширення»."
+        settingsCaption: "Виберіть, які розширення показують свою панель на вкладці «Розширення».",
+        shownInIsland: "Показується в Dynamic Island"
     )
 
     package static let zhHans = MenuPanelExtensionsStrings(
@@ -199,7 +216,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "所有扩展都已在此标签页中关闭。",
         choose: "选择扩展…",
         settingsTitle: "“扩展”标签页",
-        settingsCaption: "选择哪些扩展在“扩展”标签页中显示面板。"
+        settingsCaption: "选择哪些扩展在“扩展”标签页中显示面板。",
+        shownInIsland: "正在 Dynamic Island 中显示"
     )
 
     package static let zhTW = MenuPanelExtensionsStrings(
@@ -210,7 +228,8 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "所有擴充功能都已在此標籤頁中關閉。",
         choose: "選擇擴充功能…",
         settingsTitle: "「擴充功能」標籤頁",
-        settingsCaption: "選擇哪些擴充功能在「擴充功能」標籤頁中顯示面板。"
+        settingsCaption: "選擇哪些擴充功能在「擴充功能」標籤頁中顯示面板。",
+        shownInIsland: "正在 Dynamic Island 中顯示"
     )
 
     package static let zhHK = MenuPanelExtensionsStrings(
@@ -221,6 +240,7 @@ extension MenuPanelExtensionsStrings {
         emptyAllOff: "所有擴充功能都已在此分頁中關閉。",
         choose: "選擇擴充功能…",
         settingsTitle: "「擴充功能」分頁",
-        settingsCaption: "選擇哪些擴充功能在「擴充功能」分頁中顯示面板。"
+        settingsCaption: "選擇哪些擴充功能在「擴充功能」分頁中顯示面板。",
+        shownInIsland: "正在 Dynamic Island 中顯示"
     )
 }

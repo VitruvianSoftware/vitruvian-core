@@ -84,7 +84,7 @@ package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
     /// Extensions shows by default only while an extension has an island
     /// page to put in it, so a Mac with none gets no empty tab.
     @MainActor package var shownByDefault: Bool {
-        shownByDefault(anyIslandPanel: !ExternalToolStore.shared.availableIslandPanels().isEmpty)
+        self != .extensions || shownByDefault(anyIslandPanel: ExternalToolStore.shared.hasIslandPanels)
     }
 
     /// `shownByDefault`, given whether any extension has an island page.
@@ -195,9 +195,11 @@ package enum PanelLayout {
     }
 
     /// `isShown`, from the given preferences, with the section's default
-    /// given: the person's choice when they made one, else the default.
-    package static func isShown(_ id: PanelSectionID, in defaults: UserDefaults, shownByDefault: Bool) -> Bool {
-        defaults.object(forKey: id.visibilityKey) as? Bool ?? shownByDefault
+    /// given: the person's choice when they made one, else the default,
+    /// worked out only then.
+    package static func isShown(_ id: PanelSectionID, in defaults: UserDefaults,
+                                shownByDefault: @autoclosure () -> Bool) -> Bool {
+        defaults.object(forKey: id.visibilityKey) as? Bool ?? shownByDefault()
     }
 
     package static func setShown(_ shown: Bool, for id: PanelSectionID) {

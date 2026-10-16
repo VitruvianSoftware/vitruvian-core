@@ -80,7 +80,11 @@ private struct MenuPanelExtensionCard: View {
         VStack(alignment: .leading, spacing: 8) {
             header
             Group {
-                if asked, host.shown[entry.key] == nil {
+                if host.defersToIsland(entry.key) {
+                    // The island holds the one web view; the page comes
+                    // back here when the island lets go.
+                    ShownInIsland(size: size)
+                } else if asked, host.shown[entry.key] == nil {
                     ToolPanelNotShown(size: size)
                 } else {
                     ToolPanelView(key: entry.key, size: size)
@@ -117,5 +121,21 @@ private struct MenuPanelExtensionCard: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// In place of a web page the Dynamic Island is showing.
+private struct ShownInIsland: View {
+    let size: BlockTreeContent.Size
+    @ObservedObject private var l10n = L10n.shared
+
+    var body: some View {
+        Text(FeatureStrings.menuPanelExtensions(l10n.language).shownInIsland)
+            .font(size == .island ? .system(size: 11) : .callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 80)
     }
 }
