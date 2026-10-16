@@ -125,7 +125,9 @@ Two things in the panel are about what is waiting on a person, not an agent:
   your review", since nobody asks you to review your own.
 - **All open pull requests** lists everyone's open pull requests in the
   repositories you have ticked.
-- One set of repository tick boxes, above the lists, applies to all three. It
+- One set of repository tick boxes, above the lists, applies to all three.
+  It collapses like the lists, shows how many are ticked in its heading, and
+  remembers whether it was left open. It
   covers every repository seen in your review requests, your own pull
   requests and the watched ones; a repository seen for the first time is
   ticked. Rows in the last two lists have a **Watch** button, which ties the

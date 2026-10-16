@@ -2,6 +2,13 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.7.1
+
+- "Repositories to list" can be collapsed like the lists below it. Its
+  heading says how many are ticked ("3 of 10"), and the panel remembers
+  whether it was left open or closed. Errors and action results now show
+  under it, so they are visible when it is closed.
+
 ## 0.7.0
 
 - Two new lists under "Waiting on your review": **Your open pull requests**

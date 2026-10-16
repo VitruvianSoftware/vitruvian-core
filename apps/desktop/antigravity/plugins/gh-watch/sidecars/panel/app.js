@@ -26,6 +26,7 @@
 const sidecar = window.sidecar;
 const $ = (id) => document.getElementById(id);
 const FONT_KEY = "cowork-artifact-fontscale";
+const REPOS_OPEN_KEY = "gh-watch-repos-open";
 const REDRAW_MS = 5000;
 const PRESENCE_MS = 10000;
 const openLogs = new Map();
@@ -71,6 +72,24 @@ $("font-down").addEventListener("click", () => {
 $("font-up").addEventListener("click", () => {
   scale = applyScale(scale + 0.1);
 });
+
+// The repository filter remembers whether it was left open or closed.
+(() => {
+  const card = $("repos-card");
+  try {
+    const saved = localStorage.getItem(REPOS_OPEN_KEY);
+    if (saved !== null) card.open = saved === "1";
+  } catch {
+    // Storage can be unavailable in the embedded frame; it starts open.
+  }
+  card.addEventListener("toggle", () => {
+    try {
+      localStorage.setItem(REPOS_OPEN_KEY, card.open ? "1" : "0");
+    } catch {
+      // Not remembered, but still works.
+    }
+  });
+})();
 
 // --- Rendering --------------------------------------------------------------
 
@@ -595,7 +614,10 @@ function renderLists(lists) {
   const all = lists.all ?? empty;
   const repos = lists.repos ?? [];
 
-  $("repos-card").hidden = repos.length === 0 && !lists.error;
+  $("repos-card").hidden = repos.length === 0;
+  const ticked = repos.filter((row) => row.shown).length;
+  $("repos-count").textContent =
+    ticked === repos.length ? `${ticked}` : `${ticked} of ${repos.length}`;
   $("lists-error").textContent = lists.error ?? "";
   $("lists-error").hidden = !lists.error;
   redraw(
