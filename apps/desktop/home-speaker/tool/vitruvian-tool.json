@@ -4,7 +4,7 @@
     "en": "HomeSpeaker"
   },
   "description": {
-    "en": "Speaks what you type, or the clipboard, on your Google Home speakers through HomeSpeaker, and keeps broadcasting, quiet hours and the volume at hand."
+    "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
   },
   "version": "1.18.0",
   "protocol": "2",
@@ -26,7 +26,8 @@
         "icon": "hifispeaker.2",
         "surfaces": [
           "commandBar",
-          "quickPanel"
+          "quickPanel",
+          "shortcut"
         ]
       },
       {
@@ -86,7 +87,10 @@
         },
         "placement": "settings"
       }
-    ]
+    ],
+    "status": {
+      "placement": "island"
+    }
   },
   "activation": [
     "onLaunch"

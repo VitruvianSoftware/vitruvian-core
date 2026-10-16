@@ -25,24 +25,33 @@
 
 Runs `vitruvian-tool validate` on the built folder, then the SDK's
 conformance script, which plays the app to the real program: the handshake,
-the `sayClipboard` command (answered with a refusal: as far as the program
-is allowed to see, HomeSpeaker is not installed), an unknown command, the
-island panel opened and its page read, the refusals, and a clean exit. The
-program runs under a home of its own with no settings file in it, and
-`HOMESPEAKER_PROGRAM` set and empty keeps it off the HomeSpeaker Launch
-Services would find on this Mac, so it speaks on nothing of this Mac's.
+the `sayClipboard` command (answered with a refusal: the extension has no
+speaker picked and This Mac off, so it is not set up), an unknown command,
+the island panel opened and its page read, the refusals, and a clean exit.
+
+The program runs in a scratch folder of its own: `HOME` and
+`CFFIXED_USER_HOME` are a home in it, `HOMESPEAKER_DATA_FOLDER` a data
+folder in it, `HOMESPEAKER_PROGRAM` set and empty keeps it off the
+HomeSpeaker app Launch Services would find on this Mac, and
+`HOMESPEAKER_MESSAGE_PREFIX` is this run's own, so a HomeSpeaker on this
+Mac hears nothing of it. Before anything runs, the program's hidden
+`--where` flag must name that data folder.
 
 Then it plays the app itself, over the same JSON-RPC on stdin and stdout,
 with the conformance script's own link and checks (imported, not copied):
 the island and each of the five settings sections are opened, every page
 is held to the protocol's limits (`is_tree`: the most blocks, the most
 bytes, the choice rules), switches and fields are changed, and the
-settings file and the secrets file are read back from the home of its
-own. Nothing is written until the tool has said, on its Files rows, that
-both files are in that home. There, `HOMESPEAKER_PROGRAM` names a stand-in
-for HomeSpeaker's program, a shell script that never speaks, so the island
-draws the controls an installed HomeSpeaker gets. Only a block on the page
-the tool last drew is acted on.
+settings file and the secrets file are read back from the data folder.
+Nothing is written until the tool has said, on its Files rows, that both
+files are in that folder. The island draws its controls because the
+extension is installed by definition; no HomeSpeaker program is run. Only
+a block on the page the tool last drew is acted on.
+
+Last, nothing was written where the app keeps its files: the scratch
+home's `.gemini` holds none of the app's settings, history or monitor
+status, and the choice file, which both sides share by design, holds only
+the extension's own block, naming the scratch folder.
 """
 
 import importlib.util
@@ -60,21 +69,17 @@ SECTIONS = ["general", "speakers", "monitor", "agents", "googleCloud"]
 # agents' files, and a busy CI Mac is slow to start a Swift program.
 SECONDS = 15
 
-# HomeSpeaker's program, as far as the tool can tell: it answers the volume
-# with no speaker, the login item as off, and refuses everything else. It
-# speaks on nothing and reaches nothing.
-STAND_IN = """#!/bin/sh
-case "$1" in
-  --volume|--set-volume|--mute|--unmute)
-    echo '{"available": false, "reason": "the end-to-end stand-in has no speaker"}'
-    exit 1 ;;
-  --login-item)
-    echo "login item: disabled" ;;
-  *)
-    echo "error: the end-to-end stand-in does nothing" >&2
-    exit 1 ;;
-esac
-"""
+# The app's own files in ~/.gemini, which the extension must never write.
+APP_FILES = [
+    "speaker_broadcast.json",
+    "speaker_history.json",
+    "speaker_monitor_status.json",
+]
+# The choice file both sides share: the extension writes its own block.
+DOOR_FILE = "speaker_door.json"
+# The conformance script's line for the command, refused because the
+# extension is not set up (HomeSpeakerTool.notSetUp).
+NOT_SET_UP = "sayClipboard: refused, Set up HomeSpeaker first"
 
 
 def main():
@@ -88,12 +93,13 @@ def main():
     shutil.copytree(built, folder, symlinks=False)
     home = os.path.join(scratch, "home")
     os.makedirs(home)
-    # A home of its own: the tool reads ~/.gemini/speaker_broadcast.json
-    # and looks in ~/Applications, and with this Mac's home it would find
-    # both. CFFIXED_USER_HOME is what NSHomeDirectory() reads. Launch
-    # Services would still know this Mac's HomeSpeaker by its bundle id,
-    # whatever the home: HOMESPEAKER_PROGRAM, set and empty, keeps the tool
-    # off it, so nothing here can speak.
+    data = os.path.join(scratch, "data")
+    # A home of its own: the app's files are in ~/.gemini, and with this
+    # Mac's home the tool could find them. CFFIXED_USER_HOME is what
+    # NSHomeDirectory() reads. HOMESPEAKER_DATA_FOLDER is where the
+    # extension keeps its settings and sign-ins. Launch Services would still
+    # know this Mac's HomeSpeaker app by its bundle id, whatever the home:
+    # HOMESPEAKER_PROGRAM, set and empty, keeps the tool off it.
     # HOMESPEAKER_MESSAGE_PREFIX: the program listens and posts under a
     # prefix of this run's own, so a HomeSpeaker extension running on this
     # Mac hears nothing of it.
@@ -101,9 +107,17 @@ def main():
         os.environ,
         HOME=home,
         CFFIXED_USER_HOME=home,
+        HOMESPEAKER_DATA_FOLDER=data,
         HOMESPEAKER_PROGRAM="",
         HOMESPEAKER_MESSAGE_PREFIX=f"test.{uuid.uuid4()}.homespeaker",
     )
+    program = os.path.join(folder, "bin", "tool")
+    try:
+        said = where(program, data, env)
+    except E2EFailure as failure:
+        print(f"--- where: NOT OK: {failure}")
+        return 1
+    print(f"--- where: {said}")
     failed = 0
     for name, command in [
         ("validate", [os.path.abspath(validate), "validate", folder]),
@@ -115,27 +129,87 @@ def main():
         print(f"--- {name}: exit {done.returncode}\n{done.stdout}{done.stderr}")
         if done.returncode != 0:
             failed += 1
-        # The command must have been refused, not run: a run means the
-        # program found a HomeSpeaker, which no test may drive.
-        if name == "conformance" and "sayClipboard: refused" not in done.stdout:
+        # The command must have been refused, not run: the extension has no
+        # speaker and This Mac is off, and a run would mean it found
+        # something to speak on, which no test may drive.
+        if name == "conformance" and NOT_SET_UP not in done.stdout:
             print(
-                "the sayClipboard command was not refused: the program found a HomeSpeaker to drive"
+                "the sayClipboard command was not refused as not set up: "
+                "the program found something to speak on"
             )
             failed += 1
     if failed:
         print(f"{failed} of 2 checks failed")
         return 1
     try:
-        said = end_to_end(load(conformance), folder, home, env)
+        said = end_to_end(load(conformance), folder, data, env)
     except E2EFailure as failure:
         print(f"--- end to end: NOT OK: {failure}")
         return 1
     print("--- end to end: ok\n" + "\n".join(said))
+    try:
+        said = nothing_outside(home, scratch)
+    except E2EFailure as failure:
+        print(f"--- the app's files: NOT OK: {failure}")
+        return 1
+    print(f"--- the app's files: {said}")
     print(
         "the built HomeSpeaker tool validates, passes the conformance script, "
-        "and draws and saves its pages end to end"
+        "draws and saves its pages end to end, and keeps to its scratch folder"
     )
     return 0
+
+
+def where(program, data, env):
+    """The folder the program keeps its files in, by its hidden `--where`
+    flag, must be the scratch data folder: checked before anything runs."""
+    done = subprocess.run(
+        [program, "--where"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env=env,
+    )
+    if done.returncode != 0:
+        raise E2EFailure(
+            f"--where exited {done.returncode}: {done.stdout}{done.stderr}"
+        )
+    named = done.stdout.strip()
+    if os.path.realpath(named) != os.path.realpath(data):
+        raise E2EFailure(f"--where names {named!r}, not the scratch data folder {data}")
+    return f"the program keeps its files in {named}"
+
+
+def nothing_outside(home, scratch):
+    """Nothing of the app's was written under the scratch home's `.gemini`:
+    not its settings, its history or its monitor status. The choice file
+    may be there, since both sides share it, but holds only the extension's
+    block, and that names the scratch folder."""
+    gemini = os.path.join(home, ".gemini")
+    for name in APP_FILES:
+        if os.path.exists(os.path.join(gemini, name)):
+            raise E2EFailure(
+                f"{os.path.join(gemini, name)} was written: that is the app's file"
+            )
+    door = os.path.join(gemini, DOOR_FILE)
+    if not os.path.exists(door):
+        return f"nothing in {gemini}"
+    with open(door, encoding="utf-8") as handle:
+        record = json.load(handle)
+    if not set(record) <= {"version", "extension"}:
+        raise E2EFailure(
+            f"{door} holds more than the extension's block: {sorted(record)}"
+        )
+    entry = record.get("extension") or {}
+    inside = os.path.realpath(scratch) + os.sep
+    for key in ("program", "data_folder"):
+        path = entry.get(key)
+        if not isinstance(path, str) or not os.path.realpath(path).startswith(inside):
+            raise E2EFailure(
+                f"{door}: the extension's {key} is {path!r}, not in {scratch}"
+            )
+    return f"none of the app's files in {gemini}; {DOOR_FILE} holds only the extension's block"
 
 
 class E2EFailure(Exception):
@@ -242,48 +316,35 @@ class Driver:
         return tree
 
 
-def end_to_end(conf, folder, home, env):
-    """Opens every page the app can show and changes what it can save,
-    under `home`. Returns what was done, a line each."""
+def end_to_end(conf, folder, data, env):
+    """Opens every page the app can show and changes what it can save, in
+    the data folder `data`. Returns what was done, a line each."""
     with open(os.path.join(folder, "vitruvian-tool.json"), encoding="utf-8") as handle:
         manifest = json.load(handle)
     program = os.path.join(folder, manifest["runtime"]["exec"])
-    gemini = os.path.join(home, ".gemini")
-    settings = os.path.join(gemini, "speaker_broadcast.json")
-    data = tempfile.mkdtemp(dir=os.environ.get("TEST_TMPDIR"))
-    stand_in = os.path.join(data, "HomeSpeaker")
-    with open(stand_in, "w", encoding="utf-8") as handle:
-        handle.write(STAND_IN)
-    os.chmod(stand_in, 0o755)
+    settings = os.path.join(data, "settings.json")
+    secrets = os.path.join(data, "secrets.json")
+    # The folder the link starts the program in, which the hello names: the
+    # variable wins over it, so the files are in `data`.
+    started_in = tempfile.mkdtemp(dir=os.environ.get("TEST_TMPDIR"))
     # The kit's link starts the program with this process's environment.
-    os.environ.update(env, HOMESPEAKER_PROGRAM=stand_in)
-    link = conf.Link([program], data)
+    os.environ.update(env)
+    link = conf.Link([program], started_in)
     said = []
     try:
-        run = conf.Run(link, manifest, data)
+        run = conf.Run(link, manifest, started_in)
         said.append("handshake: " + run.handshake())
         app = Driver(conf, run)
 
-        # Before anything is written: the tool must be using this home.
+        # Before anything is written: the tool must be using this folder.
         app.open("settings")
         cloud = app.section("googleCloud")
-        if not says(cloud, settings):
-            raise E2EFailure(
-                f"Files does not name {settings}: the tool is not using the test's "
-                "home, and nothing may be written"
-            )
-        secrets = next(
-            (
-                w
-                for b in cloud["blocks"]
-                if "Secrets" in words(b)
-                for w in words(b)
-                if w.startswith(home)
-            ),
-            None,
-        )
-        if secrets is None:
-            raise E2EFailure("Files does not name a secrets file in the test's home")
+        for path in (settings, secrets):
+            if not says(cloud, path):
+                raise E2EFailure(
+                    f"Files does not name {path}: the tool is not using the test's "
+                    "data folder, and nothing may be written"
+                )
 
         for name in SECTIONS:
             app.section(name)
@@ -317,11 +378,11 @@ def end_to_end(conf, folder, home, env):
             "settings: quiet hours, Slack, poll interval and an OAuth client changed"
         )
 
-        # The island: drawn as an installed HomeSpeaker's, and its
-        # broadcasting switch saved.
+        # The island: the extension is HomeSpeaker, installed by definition,
+        # so its controls are drawn, and its broadcasting switch saved.
         island = app.open("speaker")
         if says(island, "not installed"):
-            raise E2EFailure("the island did not find the stand-in HomeSpeaker")
+            raise E2EFailure("the island says HomeSpeaker is not installed")
         app.act("speaker", "broadcasting", "toggle", False)
         said.append("speaker: drawn, broadcasting switched off")
 
@@ -356,12 +417,12 @@ def end_to_end(conf, folder, home, env):
         or monitor.get("poll_interval_seconds") != 45
     ):
         raise E2EFailure(f"{settings}: chat_monitor is {monitor!r}")
-    said.append(f"{os.path.relpath(settings, home)}: written as changed")
+    said.append(f"{os.path.relpath(settings, data)}: written as changed")
     with open(secrets, encoding="utf-8") as handle:
         stored = handle.read()
     if "e2e-client.apps.googleusercontent.com" not in stored:
         raise E2EFailure(f"{secrets}: the OAuth client was not saved")
-    said.append(f"{os.path.relpath(secrets, home)}: holds the OAuth client")
+    said.append(f"{os.path.relpath(secrets, data)}: holds the OAuth client")
     return said
 
 
