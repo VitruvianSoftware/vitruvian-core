@@ -36,8 +36,10 @@ func TestMessageStatusUpdatesStore(t *testing.T) {
 	c, ctx := newTestConnector(t), context.Background()
 	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
 	require.NoError(t, err)
-	_, err = c.store.InsertEvent(ctx, store.Event{RoomID: string(roomID), EventID: "$mine", Sender: string(ids.Me),
-		Type: "m.room.message", Content: json.RawMessage(`{}`), Status: "pending"})
+	_, err = c.store.InsertEvent(ctx, store.Event{
+		RoomID: string(roomID), EventID: "$mine", Sender: string(ids.Me),
+		Type: "m.room.message", Content: json.RawMessage(`{}`), Status: "pending",
+	})
 	require.NoError(t, err)
 	c.SendMessageStatus(ctx, &bridgev2.MessageStatus{Status: event.MessageStatusFail, Message: "not delivered"},
 		&bridgev2.MessageStatusEventInfo{RoomID: roomID, SourceEventID: "$mine"})
@@ -94,8 +96,10 @@ func statusAfter(t *testing.T, c *Connector, ms bridgev2.MessageStatus) (status,
 	ctx := context.Background()
 	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
 	require.NoError(t, err)
-	_, err = c.store.InsertEvent(ctx, store.Event{RoomID: string(roomID), EventID: "$mine", Sender: string(ids.Me),
-		Type: "m.room.message", Content: json.RawMessage(`{}`), Status: "pending"})
+	_, err = c.store.InsertEvent(ctx, store.Event{
+		RoomID: string(roomID), EventID: "$mine", Sender: string(ids.Me),
+		Type: "m.room.message", Content: json.RawMessage(`{}`), Status: "pending",
+	})
 	require.NoError(t, err)
 	c.SendMessageStatus(ctx, &ms, &bridgev2.MessageStatusEventInfo{RoomID: roomID, SourceEventID: "$mine"})
 	e, _, err := c.store.GetEvent(ctx, "$mine")
@@ -139,15 +143,23 @@ func TestFailedStatusReasonFallsBack(t *testing.T) {
 		ms   bridgev2.MessageStatus
 		want string
 	}{
-		"human message wins": {bridgev2.MessageStatus{Status: event.MessageStatusFail, Message: "not delivered",
-			InternalError: errors.New("internal")}, "not delivered"},
+		"human message wins": {bridgev2.MessageStatus{
+			Status: event.MessageStatusFail, Message: "not delivered",
+			InternalError: errors.New("internal"),
+		}, "not delivered"},
 		"internal error when message is empty": {wrapped, "boom"},
-		"error as message prefers the error": {bridgev2.MessageStatus{Status: event.MessageStatusFail, Message: "generic",
-			InternalError: errors.New("the real cause"), ErrorAsMessage: true}, "the real cause"},
-		"error as message without an error keeps the message": {bridgev2.MessageStatus{Status: event.MessageStatusFail,
-			Message: "generic", ErrorAsMessage: true}, "generic"},
-		"error reason as the last resort": {bridgev2.MessageStatus{Status: event.MessageStatusFail,
-			ErrorReason: event.MessageStatusNetworkError}, string(event.MessageStatusNetworkError)},
+		"error as message prefers the error": {bridgev2.MessageStatus{
+			Status: event.MessageStatusFail, Message: "generic",
+			InternalError: errors.New("the real cause"), ErrorAsMessage: true,
+		}, "the real cause"},
+		"error as message without an error keeps the message": {bridgev2.MessageStatus{
+			Status:  event.MessageStatusFail,
+			Message: "generic", ErrorAsMessage: true,
+		}, "generic"},
+		"error reason as the last resort": {bridgev2.MessageStatus{
+			Status:      event.MessageStatusFail,
+			ErrorReason: event.MessageStatusNetworkError,
+		}, string(event.MessageStatusNetworkError)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, reason := statusAfter(t, newTestConnector(t), tc.ms)

@@ -61,16 +61,20 @@ func (c *Connector) GetCapabilities() *bridgev2.MatrixCapabilities {
 func (c *Connector) ParseGhostMXID(userID id.UserID) (networkid.UserID, bool) {
 	return ids.ParseGhostMXID(c.network, userID)
 }
+
 func (c *Connector) FormatGhostMXID(userID networkid.UserID) id.UserID {
 	return ids.GhostMXID(c.network, userID)
 }
+
 func (c *Connector) GhostIntent(userID networkid.UserID) bridgev2.MatrixAPI {
 	return newIntent(c, c.FormatGhostMXID(userID), false)
 }
+
 func (c *Connector) NewUserIntent(_ context.Context, userID id.UserID, _ string) (bridgev2.MatrixAPI, string, error) {
 	// The local user is "double puppeted" by definition: messages sent from other devices appear as sent by @me.
 	return newIntent(c, userID, true), "", nil
 }
+
 func (c *Connector) BotIntent() bridgev2.MatrixAPI {
 	return newIntent(c, id.NewUserID(c.network+"bot", ids.ServerName), false)
 }
@@ -118,6 +122,7 @@ func statusReason(ms *bridgev2.MessageStatus) string {
 func (c *Connector) GenerateContentURI(_ context.Context, mediaID networkid.MediaID) (id.ContentURIString, error) {
 	return "", fmt.Errorf("direct media is not supported locally (media %s)", mediaID)
 }
+
 func (c *Connector) ParseContentURI(_ context.Context, uri id.ContentURIString) (networkid.MediaID, error) {
 	return nil, fmt.Errorf("direct media is not supported locally (%s)", uri)
 }
@@ -172,9 +177,11 @@ func (c *Connector) BatchSend(context.Context, id.RoomID, *mautrix.ReqBeeperBatc
 func (c *Connector) GenerateDeterministicRoomID(key networkid.PortalKey) id.RoomID {
 	return ids.RoomID(c.network, key)
 }
+
 func (c *Connector) GenerateDeterministicEventID(roomID id.RoomID, key networkid.PortalKey, msg networkid.MessageID, part networkid.PartID) id.EventID {
 	return ids.EventID(roomID, key, msg, part)
 }
+
 func (c *Connector) GenerateReactionEventID(roomID id.RoomID, target *database.Message, sender networkid.UserID, emoji networkid.EmojiID) id.EventID {
 	// The interface passes no emoji text, so on networks without emoji IDs this ID cannot tell two emoji apart.
 	// Reactions arriving from the network are unaffected: Intent.SendMessage hashes the emoji text itself.

@@ -49,6 +49,7 @@ func (n *Network) GetDBMetaTypes() database.MetaTypes { return database.MetaType
 func (n *Network) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 	return &bridgev2.NetworkGeneralCapabilities{}
 }
+
 func (n *Network) GetConfig() (string, any, configupgrade.Upgrader) {
 	return "", nil, configupgrade.NoopUpgrader
 }
@@ -57,6 +58,7 @@ func (n *Network) GetLoginFlows() []bridgev2.LoginFlow { return nil }
 func (n *Network) CreateLogin(context.Context, *bridgev2.User, string) (bridgev2.LoginProcess, error) {
 	return nil, bridgev2.ErrInvalidLoginFlowID
 }
+
 func (n *Network) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	login.Client = &client{n: n, login: login}
 	return nil
@@ -79,14 +81,18 @@ func (n *Network) Login(ctx context.Context, br *bridgev2.Bridge) (*bridgev2.Use
 // Incoming queues a remote text message, as if the network had just delivered it.
 func (n *Network) Incoming(login *bridgev2.UserLogin, chatID, senderID, msgID, body string) {
 	n.br.QueueRemoteEvent(login, &simplevent.Message[string]{
-		EventMeta: simplevent.EventMeta{Type: bridgev2.RemoteEventMessage, CreatePortal: true, Timestamp: time.Now(),
+		EventMeta: simplevent.EventMeta{
+			Type: bridgev2.RemoteEventMessage, CreatePortal: true, Timestamp: time.Now(),
 			PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID},
-			Sender:    bridgev2.EventSender{Sender: networkid.UserID(senderID)}},
+			Sender:    bridgev2.EventSender{Sender: networkid.UserID(senderID)},
+		},
 		ID:   networkid.MessageID(msgID),
 		Data: body,
 		ConvertMessageFunc: func(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, data string) (*bridgev2.ConvertedMessage, error) {
-			return &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{{Type: event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: data}}}}, nil
+			return &bridgev2.ConvertedMessage{Parts: []*bridgev2.ConvertedMessagePart{{
+				Type:    event.EventMessage,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: data},
+			}}}, nil
 		},
 	})
 }
@@ -115,16 +121,20 @@ func (c *client) LogoutRemote(context.Context) {}
 func (c *client) IsThisUser(_ context.Context, uid networkid.UserID) bool {
 	return uid == "me"
 }
+
 func (c *client) GetChatInfo(context.Context, *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	name := "Fake chat"
 	return &bridgev2.ChatInfo{Name: &name}, nil
 }
+
 func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	return &bridgev2.UserInfo{}, nil
 }
+
 func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomFeatures {
 	return &event.RoomFeatures{}
 }
+
 func (c *client) HandleMatrixMessage(_ context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	// Never block the bridge's event loop if nobody is draining Sent.
 	select {
@@ -132,6 +142,8 @@ func (c *client) HandleMatrixMessage(_ context.Context, msg *bridgev2.MatrixMess
 	default:
 		return nil, errors.New("fakenet: Sent buffer is full")
 	}
-	return &bridgev2.MatrixMessageResponse{DB: &database.Message{ID: networkid.MessageID("out-" + string(msg.Event.ID)),
-		SenderID: "me", Timestamp: time.Now()}}, nil
+	return &bridgev2.MatrixMessageResponse{DB: &database.Message{
+		ID:       networkid.MessageID("out-" + string(msg.Event.ID)),
+		SenderID: "me", Timestamp: time.Now(),
+	}}, nil
 }

@@ -35,8 +35,10 @@ func TestRoomRoundTrip(t *testing.T) {
 func TestInsertEventIsIdempotent(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r:courier.local", Network: "whatsapp"}))
-	e := Event{RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local", Type: "m.room.message",
-		Content: json.RawMessage(`{"body":"hi"}`), TS: time.Unix(10, 0)}
+	e := Event{
+		RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"body":"hi"}`), TS: time.Unix(10, 0),
+	}
 	ins, err := s.InsertEvent(ctx, e)
 	require.NoError(t, err)
 	require.True(t, ins)
@@ -52,8 +54,10 @@ func TestEventsNewestFirstAndStatus(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r:courier.local", Network: "whatsapp"}))
 	for i := 1; i <= 3; i++ {
-		_, err := s.InsertEvent(ctx, Event{RoomID: "!r:courier.local", EventID: fmt.Sprintf("$%d", i), Sender: "@x:courier.local",
-			Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(int64(i), 0), Status: "pending"})
+		_, err := s.InsertEvent(ctx, Event{
+			RoomID: "!r:courier.local", EventID: fmt.Sprintf("$%d", i), Sender: "@x:courier.local",
+			Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(int64(i), 0), Status: "pending",
+		})
 		require.NoError(t, err)
 	}
 	require.NoError(t, s.SetStatus(ctx, "$3", "failed", "network down"))
@@ -103,8 +107,10 @@ func TestConcurrentInsertsDoNotLock(t *testing.T) {
 		go func(r int) {
 			defer wg.Done()
 			for i := 0; i < 50; i++ {
-				_, err := s.InsertEvent(ctx, Event{RoomID: fmt.Sprintf("!r%d:courier.local", r), EventID: fmt.Sprintf("$%d-%d", r, i),
-					Sender: "@x:courier.local", Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Now()})
+				_, err := s.InsertEvent(ctx, Event{
+					RoomID: fmt.Sprintf("!r%d:courier.local", r), EventID: fmt.Sprintf("$%d-%d", r, i),
+					Sender: "@x:courier.local", Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Now(),
+				})
 				errs <- err
 			}
 		}(r)
@@ -121,8 +127,10 @@ func TestEventsOrderBySentTimeNotArrival(t *testing.T) {
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r:courier.local", Network: "whatsapp"}))
 	// Arrival order is 300, 100, 200; sent order is 100, 200, 300.
 	for _, sec := range []int64{300, 100, 200} {
-		_, err := s.InsertEvent(ctx, Event{RoomID: "!r:courier.local", EventID: fmt.Sprintf("$%d", sec), Sender: "@x:courier.local",
-			Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(sec, 0)})
+		_, err := s.InsertEvent(ctx, Event{
+			RoomID: "!r:courier.local", EventID: fmt.Sprintf("$%d", sec), Sender: "@x:courier.local",
+			Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(sec, 0),
+		})
 		require.NoError(t, err)
 	}
 	evs, err := s.Events(ctx, "!r:courier.local", 3)
@@ -148,8 +156,10 @@ func TestInsertEventPublishesEventChange(t *testing.T) {
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r:courier.local", Network: "whatsapp"}))
 	ch, cancel := s.Subscribe()
 	defer cancel()
-	_, err := s.InsertEvent(ctx, Event{RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local",
-		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0)})
+	_, err := s.InsertEvent(ctx, Event{
+		RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0),
+	})
 	require.NoError(t, err)
 	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
 }
@@ -159,8 +169,10 @@ func TestDuplicateInsertEventPublishesNothing(t *testing.T) {
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r:courier.local", Network: "whatsapp"}))
 	ch, cancel := s.Subscribe()
 	defer cancel()
-	e := Event{RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local",
-		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0)}
+	e := Event{
+		RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0),
+	}
 	_, err := s.InsertEvent(ctx, e)
 	require.NoError(t, err)
 	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
@@ -177,8 +189,10 @@ func TestDuplicateInsertEventPublishesNothing(t *testing.T) {
 func TestSetStatusPublishesStatusChange(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r:courier.local", Network: "whatsapp"}))
-	_, err := s.InsertEvent(ctx, Event{RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local",
-		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0), Status: "pending"})
+	_, err := s.InsertEvent(ctx, Event{
+		RoomID: "!r:courier.local", EventID: "$a", Sender: "@x:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0), Status: "pending",
+	})
 	require.NoError(t, err)
 	ch, cancel := s.Subscribe()
 	defer cancel()
@@ -195,8 +209,10 @@ func TestUnreadSubscriberDoesNotBlockWriters(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		for i := 0; i < 300; i++ {
-			if _, err := s.InsertEvent(ctx, Event{RoomID: "!r:courier.local", EventID: fmt.Sprintf("$%d", i),
-				Sender: "@x:courier.local", Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(int64(i), 0)}); err != nil {
+			if _, err := s.InsertEvent(ctx, Event{
+				RoomID: "!r:courier.local", EventID: fmt.Sprintf("$%d", i),
+				Sender: "@x:courier.local", Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(int64(i), 0),
+			}); err != nil {
 				done <- err
 				return
 			}

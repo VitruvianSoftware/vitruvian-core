@@ -36,8 +36,10 @@ func TestRemoteMessageLandsAndReplyGoesOut(t *testing.T) {
 	require.NoError(t, err)
 	net := New()
 	conn := localmatrix.New("fake", s, &media.Store{Dir: filepath.Join(dir, "media")})
-	cfg := &bridgeconfig.BridgeConfig{CommandPrefix: "!fake",
-		Permissions: bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin}}
+	cfg := &bridgeconfig.BridgeConfig{
+		CommandPrefix: "!fake",
+		Permissions:   bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
+	}
 	br := bridgev2.NewBridge("fake", bdb, zerolog.New(zerolog.NewTestWriter(t)), cfg, conn, net, func(b *bridgev2.Bridge) bridgev2.CommandProcessor { return commands.NewProcessor(b) })
 	require.NoError(t, br.Start(ctx))
 	defer br.Stop()
@@ -90,12 +92,16 @@ func TestRemoteMessageLandsAndReplyGoesOut(t *testing.T) {
 	require.Equal(t, string(ids.GhostMXID("fake", "alice")), matches[0].Sender)
 
 	// The reply follows the production order: the app stores the user's event as pending, then queues it.
-	reply := &event.Event{Type: event.EventMessage, RoomID: roomID, Sender: ids.Me, ID: ids.RandomEventID(),
-		Timestamp: time.Now().UnixMilli(), Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText, Body: "hi alice"}}}
+	reply := &event.Event{
+		Type: event.EventMessage, RoomID: roomID, Sender: ids.Me, ID: ids.RandomEventID(),
+		Timestamp: time.Now().UnixMilli(), Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText, Body: "hi alice"}},
+	}
 	raw, err := json.Marshal(&reply.Content)
 	require.NoError(t, err)
-	inserted, err := s.InsertEvent(ctx, store.Event{RoomID: string(roomID), EventID: string(reply.ID), Sender: string(ids.Me),
-		Type: event.EventMessage.Type, Content: raw, TS: time.Now(), Status: "pending"})
+	inserted, err := s.InsertEvent(ctx, store.Event{
+		RoomID: string(roomID), EventID: string(reply.ID), Sender: string(ids.Me),
+		Type: event.EventMessage.Type, Content: raw, TS: time.Now(), Status: "pending",
+	})
 	require.NoError(t, err)
 	require.True(t, inserted)
 	br.QueueMatrixEvent(ctx, reply)

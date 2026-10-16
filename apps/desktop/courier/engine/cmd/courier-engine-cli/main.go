@@ -193,14 +193,18 @@ func send(ctx context.Context, h *host.Host, s *store.Store, a args, loginTimeou
 		return err
 	}
 	now := time.Now()
-	evt := &event.Event{Type: event.EventMessage, RoomID: id.RoomID(a.room), Sender: ids.Me, ID: ids.RandomEventID(),
-		Timestamp: now.UnixMilli(), Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText, Body: a.text}}}
+	evt := &event.Event{
+		Type: event.EventMessage, RoomID: id.RoomID(a.room), Sender: ids.Me, ID: ids.RandomEventID(),
+		Timestamp: now.UnixMilli(), Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText, Body: a.text}},
+	}
 	raw, err := json.Marshal(&evt.Content)
 	if err != nil {
 		return err
 	}
-	if _, err = s.InsertEvent(ctx, store.Event{RoomID: a.room, EventID: string(evt.ID), Sender: string(ids.Me),
-		Type: evt.Type.Type, Content: raw, TS: now, Status: "pending"}); err != nil {
+	if _, err = s.InsertEvent(ctx, store.Event{
+		RoomID: a.room, EventID: string(evt.ID), Sender: string(ids.Me),
+		Type: evt.Type.Type, Content: raw, TS: now, Status: "pending",
+	}); err != nil {
 		return err
 	}
 	h.Bridge.QueueMatrixEvent(ctx, evt)

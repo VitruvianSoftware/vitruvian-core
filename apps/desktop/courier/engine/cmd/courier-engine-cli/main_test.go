@@ -71,8 +71,10 @@ func newStoreWithPending(t *testing.T) (*store.Store, string) {
 	content, err := json.Marshal(map[string]string{"msgtype": "m.text", "body": "hi"})
 	require.NoError(t, err)
 	require.NoError(t, s.UpsertRoom(context.Background(), store.Room{ID: "!r:courier.local", Network: "whatsapp", Name: "Test"}))
-	_, err = s.InsertEvent(context.Background(), store.Event{RoomID: "!r:courier.local", EventID: "$e1", Sender: "@me:courier.local",
-		Type: "m.room.message", Content: content, TS: time.Now(), Status: "pending"})
+	_, err = s.InsertEvent(context.Background(), store.Event{
+		RoomID: "!r:courier.local", EventID: "$e1", Sender: "@me:courier.local",
+		Type: "m.room.message", Content: content, TS: time.Now(), Status: "pending",
+	})
 	require.NoError(t, err)
 	return s, "$e1"
 }
@@ -146,8 +148,10 @@ func (f fakeWaiter) Wait(context.Context) (*bridgev2.LoginStep, error) {
 }
 
 func qrStep(data string) *bridgev2.LoginStep {
-	return &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeDisplayAndWait, StepID: "qr",
-		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{Type: bridgev2.LoginDisplayTypeQR, Data: data}}
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeDisplayAndWait, StepID: "qr",
+		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{Type: bridgev2.LoginDisplayTypeQR, Data: data},
+	}
 }
 
 func TestRunLoginCompleteDoesNotCancel(t *testing.T) {

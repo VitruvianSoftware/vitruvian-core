@@ -65,8 +65,10 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 		return nil, err
 	}
 	// A duplicate insert is not an error: the same bridge event always maps to the same event ID.
-	if _, err = in.c.store.InsertEvent(ctx, store.Event{RoomID: string(roomID), EventID: string(evtID), Sender: string(in.mxid),
-		Type: evtType.Type, Content: raw, TS: ts, Status: "sent"}); err != nil {
+	if _, err = in.c.store.InsertEvent(ctx, store.Event{
+		RoomID: string(roomID), EventID: string(evtID), Sender: string(in.mxid),
+		Type: evtType.Type, Content: raw, TS: ts, Status: "sent",
+	}); err != nil {
 		return nil, err
 	}
 	return &mautrix.RespSendEvent{EventID: evtID}, nil
@@ -92,6 +94,7 @@ func (in *Intent) MarkRead(ctx context.Context, roomID id.RoomID, eventID id.Eve
 
 // Unread flags, typing, tags and mutes are user-interface state owned by the app in milestone 3; the engine accepts them.
 func (in *Intent) MarkUnread(context.Context, id.RoomID, bool) error { return nil }
+
 func (in *Intent) MarkTyping(context.Context, id.RoomID, bridgev2.TypingType, time.Duration) error {
 	return nil
 }
@@ -176,6 +179,7 @@ func (in *Intent) UploadMediaStream(_ context.Context, _ id.RoomID, _ int64, _ b
 func (in *Intent) SetDisplayName(ctx context.Context, name string) error {
 	return in.c.store.SetProfile(ctx, string(in.mxid), &name, nil)
 }
+
 func (in *Intent) SetAvatarURL(ctx context.Context, avatarURL id.ContentURIString) error {
 	avatar := string(avatarURL)
 	return in.c.store.SetProfile(ctx, string(in.mxid), nil, &avatar)
@@ -187,6 +191,7 @@ func (in *Intent) SetAvatarURL(ctx context.Context, avatarURL id.ContentURIStrin
 func (in *Intent) SetExtraProfileMeta(ctx context.Context, data any) error {
 	return in.storeProfileFields(ctx, data)
 }
+
 func (in *Intent) SetProfile(ctx context.Context, data any) error {
 	return in.storeProfileFields(ctx, data)
 }
@@ -286,8 +291,10 @@ func (in *Intent) GetEvent(ctx context.Context, roomID id.RoomID, eventID id.Eve
 	if e.StateKey != nil {
 		class = event.StateEventType
 	}
-	evt := &event.Event{ID: eventID, RoomID: roomID, Sender: id.UserID(e.Sender), Type: event.Type{Type: e.Type, Class: class},
-		Timestamp: e.TS.UnixMilli(), StateKey: e.StateKey}
+	evt := &event.Event{
+		ID: eventID, RoomID: roomID, Sender: id.UserID(e.Sender), Type: event.Type{Type: e.Type, Class: class},
+		Timestamp: e.TS.UnixMilli(), StateKey: e.StateKey,
+	}
 	if err = json.Unmarshal(e.Content, &evt.Content); err != nil {
 		return nil, err
 	}

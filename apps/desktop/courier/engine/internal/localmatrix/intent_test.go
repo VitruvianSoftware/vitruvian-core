@@ -224,8 +224,10 @@ func TestCreateRoomUsesLocalIDAndKeepsInitialMemberProfile(t *testing.T) {
 	sk := string(key)
 	roomID, err := ghost.CreateRoom(ctx, &mautrix.ReqCreateRoom{
 		BeeperLocalRoomID: want,
-		InitialState: []*event.Event{{Type: event.StateMember, StateKey: &sk,
-			Content: event.Content{Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Gia"}}}},
+		InitialState: []*event.Event{{
+			Type: event.StateMember, StateKey: &sk,
+			Content: event.Content{Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Gia"}},
+		}},
 	})
 	require.NoError(t, err)
 	require.Equal(t, want, roomID)
@@ -388,8 +390,10 @@ func TestInitialStateNameRoundTripsUnicode(t *testing.T) {
 	c, ctx := newTestConnector(t), context.Background()
 	const name = "Gia đình 👨‍👩‍👧"
 	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{
-		InitialState: []*event.Event{{Type: event.StateRoomName, StateKey: ptr(""),
-			Content: event.Content{Parsed: &event.RoomNameEventContent{Name: name}}}},
+		InitialState: []*event.Event{{
+			Type: event.StateRoomName, StateKey: ptr(""),
+			Content: event.Content{Parsed: &event.RoomNameEventContent{Name: name}},
+		}},
 	})
 	require.NoError(t, err)
 	room, ok, err := c.store.GetRoom(ctx, string(roomID))
