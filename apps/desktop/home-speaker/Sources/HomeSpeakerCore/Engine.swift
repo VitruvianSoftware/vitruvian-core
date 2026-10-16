@@ -128,11 +128,10 @@ public final class HomeSpeakerEngine {
     /// Chat's, through the one sign-out path (`AppCommandRunner.signOut`).
     ///
     /// `otherSecrets` is the other HomeSpeaker's sign-ins, when it is
-    /// installed. While it holds any of the same logins, this side signs
-    /// out here only and never revokes at Google (design 7.7): revoking
-    /// would end the other side's sign-in too. A login only this side
-    /// holds is then left valid at Google but is gone from this side.
-    /// Otherwise the logins are revoked, as they always were.
+    /// installed. Each login is decided on its own (design 7.7): one the
+    /// other side holds too is removed here only and never revoked at
+    /// Google, because revoking it would end the other side's sign-in;
+    /// every other login is revoked, as it always was.
     ///
     /// `notify` is told on success; the default tells no one.
     public func signOut(
@@ -140,10 +139,10 @@ public final class HomeSpeakerEngine {
         notify: @Sendable (_ chatOnly: Bool) -> Void = { _ in }
     ) async -> CLIOutput {
         let purposes: [GoogleAuth.Purpose] = chatOnly ? [.chat] : GoogleAuth.Purpose.allCases
-        let revoke = !Self.sharesALogin(secrets.load(), purposes: purposes, with: otherSecrets)
+        let shared = Self.sharedLogins(secrets.load(), purposes: purposes, with: otherSecrets)
         let store = secrets
         return await AppCommandRunner.signOut(
-            chatOnly: chatOnly, revoke: revoke, auth: auth,
+            chatOnly: chatOnly, revoke: { !shared.contains($0) }, auth: auth,
             signedIn: {
                 let stored = store.load()
                 return Set(GoogleAuth.Purpose.allCases.filter { stored.slot($0) != nil })
@@ -151,18 +150,18 @@ public final class HomeSpeakerEngine {
             notify: notify)
     }
 
-    /// True when `other` holds a refresh token that `mine` is about to
-    /// sign out of for `purposes`, in either of its slots.
-    nonisolated static func sharesALogin(
+    /// Which of `purposes` sign `mine` in with a refresh token that `other`
+    /// holds too, in either of its slots.
+    nonisolated static func sharedLogins(
         _ mine: Secrets, purposes: [GoogleAuth.Purpose], with other: Secrets?
-    ) -> Bool {
-        guard let other else { return false }
+    ) -> Set<GoogleAuth.Purpose> {
+        guard let other else { return [] }
         let theirs = Set([other.google?.refreshToken, other.googleChat?.refreshToken].compactMap { $0 })
             .subtracting([""])
-        return purposes.contains { purpose in
+        return Set(purposes.filter { purpose in
             guard let token = mine.slot(purpose)?.refreshToken, !token.isEmpty else { return false }
             return theirs.contains(token)
-        }
+        })
     }
 
     /// Takes the sign-out and credentials-changed notices on the profile's

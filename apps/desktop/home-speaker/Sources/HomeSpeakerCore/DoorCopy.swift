@@ -208,6 +208,11 @@ public enum DoorCopy {
     /// (`ConfigFileError`) or the source's sign-in file does not
     /// (`DoorCopyError`).
     ///
+    /// The sign-ins are the whole value: copying from a side with none
+    /// signs the destination out of everything. Callers must warn the
+    /// person before copying from a side with no sign-ins
+    /// (`DoorSnapshot.hasHomeLogin` and the rest are all false).
+    ///
     /// It posts nothing. The caller tells the destination its sign-ins
     /// changed, by posting `CredentialsChangedNotice` under the
     /// destination profile's names (design 7.5), never the source's.

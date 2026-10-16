@@ -480,4 +480,26 @@ private struct QuietLocal: LocalSpeaking {
         #expect(StandInGoogle.revokes(of: alone.chatRefresh).count == 1)
         #expect(StandInGoogle.revokes(of: alone.homeRefresh).isEmpty, "--chat signs out of Chat only")
     }
+
+    @Test func aPartlySharedSignOutRevokesOnlyTheUnshared() async throws {
+        let root = try scratchDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let active = try appShaped(root)
+        let quiet = try extensionShaped(root)
+        // The two share the Home login; the Chat login is the quiet side's own.
+        let shared = Planted()
+        let own = Planted()
+        try SecretStore(fileURL: active.secretsURL).save(Secrets(google: shared.secrets.google))
+        let activeSecrets = try #require(bytes(active.secretsURL))
+        let engine = HomeSpeakerEngine(profile: quiet, session: StandInGoogle.session, local: QuietLocal())
+        try engine.secrets.save(Secrets(google: shared.secrets.google, googleChat: own.secrets.googleChat))
+
+        let out = await engine.signOut(chatOnly: false, otherSecrets: SecretStore(fileURL: active.secretsURL).load())
+
+        #expect(out.exitCode == 0)
+        #expect(StandInGoogle.revokes(of: shared.homeRefresh).isEmpty, "the shared Home login was revoked at Google")
+        #expect(StandInGoogle.revokes(of: own.chatRefresh).count == 1, "the unshared Chat login was left valid at Google")
+        #expect(engine.secrets.load().google == nil && engine.secrets.load().googleChat == nil, "still signed in here")
+        #expect(bytes(active.secretsURL) == activeSecrets, "the active side's sign-ins changed")
+    }
 }
