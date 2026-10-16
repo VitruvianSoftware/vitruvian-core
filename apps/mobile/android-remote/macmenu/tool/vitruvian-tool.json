@@ -11,8 +11,14 @@
   "publisher": "VitruvianSoftware",
   "license": "MIT",
   "icon": "iphone.radiowaves.left.and.right",
-  "uses": ["notify", "clipboard.write", "open"],
-  "activation": ["onLaunch"],
+  "uses": [
+    "notify",
+    "clipboard.write",
+    "open"
+  ],
+  "activation": [
+    "onLaunch"
+  ],
   "contributes": {
     "status": {
       "placement": "island"
@@ -24,7 +30,10 @@
           "en": "Pair a phone with a QR code"
         },
         "icon": "qrcode",
-        "surfaces": ["commandBar", "quickPanel"]
+        "surfaces": [
+          "commandBar",
+          "quickPanel"
+        ]
       },
       {
         "id": "restartAgent",
@@ -32,7 +41,9 @@
           "en": "Restart the Vitruvian Remote agent"
         },
         "icon": "arrow.clockwise",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "toggleNotifications",
@@ -40,7 +51,10 @@
           "en": "Turn push notifications on or off"
         },
         "icon": "bell",
-        "surfaces": ["commandBar", "quickPanel"]
+        "surfaces": [
+          "commandBar",
+          "quickPanel"
+        ]
       },
       {
         "id": "togglePermissionHook",
@@ -48,7 +62,9 @@
           "en": "Turn the Claude Code permission hook on or off"
         },
         "icon": "checkmark.shield",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "copyMCPCommand",
@@ -56,7 +72,9 @@
           "en": "Copy the Claude Code Phone MCP command"
         },
         "icon": "doc.on.doc",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       },
       {
         "id": "openLog",
@@ -64,7 +82,9 @@
           "en": "Open the Vitruvian Remote agent log"
         },
         "icon": "doc.text",
-        "surfaces": ["commandBar"]
+        "surfaces": [
+          "commandBar"
+        ]
       }
     ],
     "panels": [

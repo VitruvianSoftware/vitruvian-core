@@ -67,3 +67,4 @@ packages/vitruvian-sdk/kits/rust/src/generated/mod.rs      linguist-generated=tr
 apps/desktop/vitruvian-tool-github/vitruvian-tool.json rules-lint-ignored=true
 apps/desktop/home-speaker/tool/vitruvian-tool.json     rules-lint-ignored=true
 apps/desktop/nexus-agent/macos/tool/vitruvian-tool.json rules-lint-ignored=true
+apps/mobile/android-remote/macmenu/tool/vitruvian-tool.json rules-lint-ignored=true
