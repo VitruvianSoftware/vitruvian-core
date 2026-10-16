@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.18.0...home-speaker-v1.19.0) (2026-10-16)
+
+
+### Features
+
+* **home-speaker:** the extension runs without the app, and asks which to use when both are installed ([#3354](https://github.com/VitruvianSoftware/vitruvian-core/issues/3354)) ([a0d9911](https://github.com/VitruvianSoftware/vitruvian-core/commit/a0d99117a74f9c4080e21b60fa2da7ab870ecbbd))
+
 ## [1.18.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.17.0...home-speaker-v1.18.0) (2026-10-15)
 
 
