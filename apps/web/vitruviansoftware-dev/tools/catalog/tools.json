@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-16T17:06:49Z",
+  "generated": "2026-10-16T18:41:44Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -156,6 +156,65 @@
           "id": "toggleQuietHours",
           "title": {
             "en": "Turn quiet hours on or off"
+          }
+        }
+      ],
+      "panels": ["island", "settings"]
+    },
+    {
+      "id": "dev.vitruvian.remote",
+      "name": {
+        "en": "Vitruvian Remote"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
+      },
+      "version": "0.1.5",
+      "protocol": "2",
+      "minimumAppVersion": "3.48.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.5/VitruvianRemote-0.1.5-tool.zip",
+        "sha256": "4f72d30e892943232867157951f890e8732f87233c179b41c96b385755f060e9",
+        "size": 13133127
+      },
+      "uses": ["notify", "clipboard.write", "open"],
+      "commands": [
+        {
+          "id": "pairWithQR",
+          "title": {
+            "en": "Pair a phone with a QR code"
+          }
+        },
+        {
+          "id": "restartAgent",
+          "title": {
+            "en": "Restart the Vitruvian Remote agent"
+          }
+        },
+        {
+          "id": "toggleNotifications",
+          "title": {
+            "en": "Turn push notifications on or off"
+          }
+        },
+        {
+          "id": "togglePermissionHook",
+          "title": {
+            "en": "Turn the Claude Code permission hook on or off"
+          }
+        },
+        {
+          "id": "copyMCPCommand",
+          "title": {
+            "en": "Copy the Claude Code Phone MCP command"
+          }
+        },
+        {
+          "id": "openLog",
+          "title": {
+            "en": "Open the Vitruvian Remote agent log"
           }
         }
       ],
