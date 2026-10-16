@@ -93,6 +93,12 @@ public protocol SpeakerDriver: AnyObject {
 /// and default speaker, `--volume` and the rest answer with JSON. The
 /// program is started and not waited for; its end is reported to `then`
 /// on a thread of the system's.
+///
+/// Its lasting role is how the extension finds the app and reads it:
+/// `locate`, `isAppRunning`, `arguments` and `result` stay. `SystemOtherApp`
+/// uses them to run the app's own `--login-item disable` when the person
+/// picks the extension. Once the extension runs on its own engine, the tool
+/// gives it no jobs.
 public final class ProcessDriver: SpeakerDriver {
     public static let bundleID = HomeSpeakerProfile.appBundleID
     public static let usualPlaces = ["/Applications/HomeSpeaker.app", "~/Applications/HomeSpeaker.app"]
