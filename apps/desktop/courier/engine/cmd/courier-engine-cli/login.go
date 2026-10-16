@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -143,8 +144,14 @@ func askFields(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string]
 			if err != nil {
 				return nil, err
 			}
+			// A secret is kept exactly as typed (spaces can be part of a password); only the line ending goes.
+			if secret {
+				raw = strings.TrimRight(raw, "\r\n")
+			} else {
+				raw = strings.TrimSpace(raw)
+			}
 			var verr error
-			if value, verr = checkInput(field, strings.TrimSpace(raw)); verr == nil {
+			if value, verr = checkInput(field, raw); verr == nil {
 				break
 			}
 			if try == maxInputTries {
@@ -189,13 +196,9 @@ func checkInput(f bridgev2.LoginInputDataField, value string) (string, error) {
 	if f.Type == bridgev2.LoginInputFieldTypeSelect && len(f.Options) > 0 && !slices.Contains(f.Options, value) {
 		return "", fmt.Errorf("choose one of: %s", strings.Join(f.Options, ", "))
 	}
-	if f.Pattern != "" {
-		// A pattern that doesn't compile can't be checked here; the bridge checks what it gets anyway.
-		if re, err := regexp.Compile(f.Pattern); err == nil && !re.MatchString(value) {
-			return "", errors.New("it doesn't match the expected format")
-		}
-	}
-	// The same cleaning and checks the bridge's own login commands apply (phone numbers, emails).
+	// The same cleaning and checks the bridge's own login commands apply: phone numbers and emails are cleaned,
+	// and any other field is matched against its Pattern. A Pattern that doesn't compile fails every try, as it
+	// does in the bridge's commands.
 	f.FillDefaultValidate()
 	return f.Validate(value)
 }
@@ -226,20 +229,59 @@ func askCookies(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string
 		if !f.Required {
 			label += " (optional — press Enter to skip)"
 		}
-		v, err := p.Secret(label)
-		if err != nil {
-			return nil, err
-		}
-		v = strings.TrimSpace(v)
-		if v == "" {
-			if f.Required {
-				return nil, fmt.Errorf("no value for the required %s — %s", f.ID, useTheApp)
+		for try := 1; ; try++ {
+			raw, err := p.Secret(label)
+			if err != nil {
+				return nil, err
 			}
-			continue
+			// Kept exactly as pasted apart from the line ending.
+			raw = strings.TrimRight(raw, "\r\n")
+			if raw == "" {
+				if f.Required {
+					return nil, fmt.Errorf("no value for the required %s — %s", f.ID, useTheApp)
+				}
+				break
+			}
+			v := maybeURLDecodeCookie(raw, f)
+			if cookieMatches(f, v) {
+				cookies[f.ID] = v
+				break
+			}
+			if try == maxInputTries {
+				return nil, fmt.Errorf("%s: no valid value after %d tries", f.ID, maxInputTries)
+			}
+			// Never echo what was pasted: it is a credential.
+			fmt.Fprintln(out, "That wasn't accepted — try again.")
 		}
-		cookies[f.ID] = v
 	}
 	return cookies, nil
+}
+
+// maybeURLDecodeCookie URL-decodes a value copied from the browser's developer tools, which shows cookie values
+// percent-encoded, when the field is a cookie. The bridge's own cookie command does exactly this
+// (bridgev2/commands/login.go) and connectors expect the decoded form.
+func maybeURLDecodeCookie(val string, f bridgev2.LoginCookieField) string {
+	isCookie := slices.ContainsFunc(f.Sources, func(src bridgev2.LoginCookieFieldSource) bool {
+		return src.Type == bridgev2.LoginCookieTypeCookie
+	})
+	if !isCookie {
+		return val
+	}
+	decoded, err := url.PathUnescape(val)
+	if err != nil {
+		return val
+	}
+	return decoded
+}
+
+// cookieMatches checks a decoded value against the field's Pattern, if it has one. A pattern that doesn't
+// compile can't be checked here, so the value goes to the connector, which checks what it gets.
+func cookieMatches(f bridgev2.LoginCookieField, val string) bool {
+	if f.Pattern == "" {
+		return true
+	}
+	re, err := regexp.Compile(f.Pattern)
+	return err != nil || re.MatchString(val)
 }
 
 // sourceHints says where in the browser a value can be found.

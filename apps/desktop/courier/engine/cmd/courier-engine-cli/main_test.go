@@ -330,7 +330,12 @@ func TestBridgePrefixPerNetwork(t *testing.T) {
 	// So is ordinary text with a bang or the network's name later on.
 	for _, text := range []string{"hey !telegram is cool", "!important", "telegram !logout"} {
 		require.NoError(t, send(ctx, w.eng, w.s, args{cmd: "send", room: room, text: text}, time.Second), text)
-		<-w.n.Sent
+		select {
+		case got := <-w.n.Sent:
+			require.Equal(t, text, got.Body)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%q never reached the network", text)
+		}
 	}
 }
 
@@ -411,6 +416,17 @@ func TestLinkOtherNetworksDoNotAskForConfirmation(t *testing.T) {
 	require.True(t, linked)
 	require.Equal(t, []string{"token"}, lc.flows, "--flow picks the flow")
 	require.Empty(t, p.asked)
+}
+
+func TestGoogleMessagesAlreadyLinkedRefusesBeforeAsking(t *testing.T) {
+	eng, lc := startLinkable(t, "gmessages", true)
+	gm := networks.Network{Name: "gmessages", DisplayName: "Google Messages", Flows: []string{"google"}}
+	p := &scripted{confirms: []bool{true}}
+	linked, err := link(context.Background(), eng, gm, "", p, &bytes.Buffer{})
+	require.ErrorContains(t, err, "already linked to Google Messages")
+	require.False(t, linked)
+	require.Empty(t, p.asked, "no warning is worth showing for a link that will be refused")
+	require.Empty(t, lc.flows)
 }
 
 func TestLinkRefusesWhenAlreadyLinked(t *testing.T) {

@@ -307,6 +307,95 @@ func TestCookiesStepRequiredBlankCancelsWithAdvice(t *testing.T) {
 	require.Equal(t, 1, f.cancelled)
 }
 
+func TestPastedCookiesAreURLDecodedLikeTheBridgeDoes(t *testing.T) {
+	// Browser developer tools show cookie values percent-encoded; the connector wants the decoded form.
+	const pasted, decoded = "xoxd-sentinel%2Bab%2Fcd%3D%3D", "xoxd-sentinel+ab/cd=="
+	token := cookieField("d", true, ".example.test")
+	token.Pattern = `^xoxd-[a-zA-Z0-9/+=]+$` // only the decoded form matches
+	stored := bridgev2.LoginCookieField{
+		ID: "ls", Required: true,
+		Sources: []bridgev2.LoginCookieFieldSource{{Type: bridgev2.LoginCookieTypeLocalStorage, Name: "ls"}},
+	}
+	f := &fakeProc{start: cookiesStep("https://accounts.example.test", token, stored), steps: []*bridgev2.LoginStep{complete()}}
+	out, err := walk(t, fullProc{f}, &scripted{secrets: []string{pasted, "keep%2Bas-is"}})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"d": decoded, "ls": "keep%2Bas-is"}}, f.submitted,
+		"cookie fields are decoded; other sources are submitted as pasted")
+	require.NotContains(t, out, "sentinel")
+}
+
+func TestCookiePatternMismatchRepromptsThenGivesUp(t *testing.T) {
+	const bad1, bad2, bad3, good = "bad-one-sentinel", "bad-two-sentinel", "bad-three-sentinel", "xoxd-good"
+	field := cookieField("d", true, ".example.test")
+	field.Pattern = `^xoxd-`
+
+	f := &fakeProc{start: cookiesStep("https://accounts.example.test", field), steps: []*bridgev2.LoginStep{complete()}}
+	p := &scripted{secrets: []string{bad1, bad2, good}}
+	out, err := walk(t, fullProc{f}, p)
+	require.NoError(t, err)
+	require.Len(t, p.askedWith("secret"), 3)
+	require.Equal(t, []map[string]string{{"d": good}}, f.submitted)
+	require.Contains(t, out, "try again")
+	require.NotContains(t, out, "sentinel", "a rejected cookie is never printed back")
+
+	f = &fakeProc{start: cookiesStep("https://accounts.example.test", field)}
+	p = &scripted{secrets: []string{bad1, bad2, bad3}}
+	out, err = walk(t, fullProc{f}, p)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "sentinel")
+	require.NotContains(t, out, "sentinel")
+	require.Empty(t, f.submitted, "nothing invalid may be submitted")
+	require.Equal(t, 1, f.cancelled)
+}
+
+func TestOptionalBlankCookieSkipsItsPattern(t *testing.T) {
+	field := cookieField("EXTRA", false, ".example.test")
+	field.Pattern = `^xoxd-`
+	f := &fakeProc{start: cookiesStep("https://accounts.example.test", field), steps: []*bridgev2.LoginStep{complete()}}
+	_, err := walk(t, fullProc{f}, &scripted{secrets: []string{""}})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{}}, f.submitted)
+}
+
+func TestSecretsKeepTheirSpacesAndLoseOnlyTheLineEnding(t *testing.T) {
+	f := &fakeProc{
+		start: inputStep(bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypePassword, ID: "password", Name: "Password"}),
+		steps: []*bridgev2.LoginStep{complete()},
+	}
+	_, err := walk(t, fullProc{f}, &scripted{secrets: []string{"  two words  \r\n"}})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"password": "  two words  "}}, f.submitted)
+
+	f = &fakeProc{
+		start: cookiesStep("https://accounts.example.test", cookieField("SID", true, ".example.test")),
+		steps: []*bridgev2.LoginStep{complete()},
+	}
+	_, err = walk(t, fullProc{f}, &scripted{secrets: []string{" padded \n"}})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"SID": " padded "}}, f.submitted)
+}
+
+func TestPlainFieldsAreTrimmed(t *testing.T) {
+	f := &fakeProc{
+		start: inputStep(bridgev2.LoginInputDataField{Type: bridgev2.LoginInputFieldTypeUsername, ID: "u", Name: "User"}),
+		steps: []*bridgev2.LoginStep{complete()},
+	}
+	_, err := walk(t, fullProc{f}, &scripted{lines: []string{"  someone \n"}})
+	require.NoError(t, err)
+	require.Equal(t, []map[string]string{{"u": "someone"}}, f.submitted)
+}
+
+func TestBadPatternFailsEveryTryAsInTheBridge(t *testing.T) {
+	f := &fakeProc{start: inputStep(bridgev2.LoginInputDataField{
+		Type: bridgev2.LoginInputFieldType2FACode, ID: "code", Name: "Code", Pattern: `([`,
+	})}
+	p := &scripted{lines: []string{"1", "2", "3"}}
+	_, err := walk(t, fullProc{f}, p)
+	require.Error(t, err)
+	require.Len(t, p.askedWith("line"), 3)
+	require.Equal(t, 1, f.cancelled)
+}
+
 func TestEmojiDisplayIsShownThenWaits(t *testing.T) {
 	f := &fakeProc{
 		start: &bridgev2.LoginStep{
