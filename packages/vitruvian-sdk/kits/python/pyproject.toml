@@ -26,7 +26,7 @@ build-backend = "hatchling.build"
 name = "vitruvian-tool-kit"
 # The SDK's version: every kit is published at it on every release
 # (release-please, component vitruvian-sdk).
-version = "1.4.1"
+version = "1.5.0"
 description = "Write a tool for the Vitruvian app in Python: declare its commands, handle them, call the app."
 readme = "README.md"
 license = "MIT"
