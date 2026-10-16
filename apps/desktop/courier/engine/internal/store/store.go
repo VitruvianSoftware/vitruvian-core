@@ -23,8 +23,8 @@ var schema string
 
 type Room struct {
 	ID, Network, Name, Topic, AvatarURI string
-	IsDirect                           bool
-	CreatedAt                          time.Time
+	IsDirect                            bool
+	CreatedAt                           time.Time
 }
 
 type Event struct {

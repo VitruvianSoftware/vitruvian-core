@@ -26,7 +26,7 @@ go_library(
 go_binary(
     name = "courier-engine-cli",
     embed = [":courier-engine-cli_lib"],
-    visibility = ["//visibility:public"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
 )
 
 go_test(
