@@ -161,10 +161,23 @@ public class ConfigManager: ObservableObject {
         guard fd >= 0 else { return }
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: .main)
-        source.setEventHandler { [weak self] in self?.reloadIfChangedExternally() }
+        source.setEventHandler { [weak self] in self?.folderChanged() }
         source.setCancelHandler { close(fd) }
         source.resume()
         watcher = source
+    }
+
+    /// Told on every change in the watched folder, after the settings are
+    /// re-read. The app reads its role from the choice file here, which sits
+    /// in the same folder (`~/.gemini/speaker_door.json`), so a choice made
+    /// in the extension reaches it within a second.
+    public var onFolderChange: (@MainActor () -> Void)?
+
+    /// Something in the watched folder changed: the settings are re-read,
+    /// then `onFolderChange` is told. Public so a test can drive it.
+    public func folderChanged() {
+        reloadIfChangedExternally()
+        onFolderChange?()
     }
 
     public func stopWatchingConfigFile() {

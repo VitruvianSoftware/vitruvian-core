@@ -60,6 +60,25 @@ public enum DoorWords {
     public static let loginItemOn = "The app's Open at Login is on."
     public static let appNotFound = "HomeSpeaker.app can't be found, so nothing was changed."
     public static let choiceChanged = "The choice changed in the other HomeSpeaker, so nothing was changed here."
+
+    // Step 3's offers, as the extension makes them and the app makes them
+    // of itself ("The strings").
+    public static let turnOffLoginItem = "Turn off the app's Open at Login"
+    public static let moveToTrash = "Move HomeSpeaker.app to the Trash"
+    public static let trashWarning =
+        "Your phone remote and scripts that call HomeSpeaker.app will stop working until they are pointed at the extension."
+
+    // The app's own ("The strings", "App, after choosing it").
+    public static let appChosen =
+        "The extension is quiet now. To remove it: Vitruvian > Settings > Features > Tools from outside > HomeSpeaker > Remove."
+    public static let openVitruvian = "Open Vitruvian"
+    // Not in the plan's table; in the same voice (listed in the task's report).
+    public static let quit = "Quit"
+    public static let extensionNotFound = "The HomeSpeaker extension can't be found, so nothing was changed."
+    public static let couldNotOpenVitruvian = "Vitruvian could not be opened. Open it from Applications."
+    /// The app's login item needs the person's approval (macOS 15 on names
+    /// the pane "Login Items & Extensions").
+    public static let approveLoginItem = "Approve HomeSpeaker under System Settings > General > Login Items & Extensions."
 }
 
 /// Step 2 of the choice, in either HomeSpeaker: one side copied into the

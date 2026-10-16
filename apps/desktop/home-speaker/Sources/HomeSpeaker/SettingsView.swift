@@ -71,6 +71,8 @@ public struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @ObservedObject var mediaPause: MediaPauseCoordinator = .shared
     @ObservedObject var volumeRestore: VolumeRestoreCoordinator = .shared
+    @ObservedObject var door: AppDoor = AppSide.shared.door
+    @ObservedObject var switcher: AppSwitch = AppSide.shared.switcher
 
     public init(
         configManager: ConfigManager,
@@ -168,6 +170,7 @@ public struct SettingsView: View {
                         .textSelection(.enabled)
                 }
             }
+            WhichHomeSpeakerSection(door: door, switcher: switcher)
             Section("Google Home Account") {
                 LabeledContent("Status") {
                     HStack(spacing: 8) {
@@ -222,7 +225,7 @@ public struct SettingsView: View {
                             try LoginItem.setEnabled(on)
                             viewModel.launchAtLogin = LoginItem.isEnabled
                             if on && LoginItem.requiresApproval {
-                                status("Approve HomeSpeaker under System Settings > General > Login Items.")
+                                status(DoorWords.approveLoginItem)
                             }
                         } catch {
                             status(error.localizedDescription, isError: true)
@@ -537,10 +540,11 @@ public struct SettingsView: View {
                             Label("Stopped", systemImage: "moon.fill")
                                 .foregroundStyle(.secondary)
                                 .accessibilityLabel("Monitor stopped")
-                            Button("Start") { monitorService.start() }
+                            // Through the gate: a quiet app never reads chat.
+                            Button("Start") { door.monitor.start() }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
-                                .disabled(!monitor.anySourceEnabled)
+                                .disabled(!monitor.anySourceEnabled || !door.plan.runs)
                         }
                     }
                 }
@@ -586,7 +590,7 @@ public struct SettingsView: View {
                         if hasChatScopes {
                             Label("Chat access granted", systemImage: "checkmark.circle.fill")
                                 .font(.caption).foregroundStyle(.green)
-                            Button("Disconnect") { Task { await GoogleAuth.shared.signOut(purpose: .chat); monitorService.restartIfRunning(); viewModel.objectWillChange.send() } }
+                            Button("Disconnect") { Task { await signOutOfChat() } }
                                 .controlSize(.small)
                         } else {
                             Text("Google grants Chat access separately from Home — a second sign-in.")
@@ -849,13 +853,23 @@ public struct SettingsView: View {
         }
     }
 
+    /// Through the one sign-out rule (`HomeSpeakerEngine.signOut`): a login
+    /// the extension shares is removed here only, never revoked at Google,
+    /// so signing out of a quiet app never signs the extension out.
     private func signOut() {
         Task {
-            await GoogleAuth.shared.signOut()
+            let out = await door.signOut(engine: .app, chatOnly: false)
             configManager.checkConnection()
             monitorService.stop()
-            status("Signed out.")
+            if out.exitCode == 0 { status("Signed out.") } else { status(out.stderr.joined(separator: " "), isError: true) }
         }
+    }
+
+    private func signOutOfChat() async {
+        let out = await door.signOut(engine: .app, chatOnly: true)
+        if out.exitCode != 0 { status(out.stderr.joined(separator: " "), isError: true) }
+        monitorService.restartIfRunning()
+        viewModel.objectWillChange.send()
     }
 
     private func importAntigravity() {

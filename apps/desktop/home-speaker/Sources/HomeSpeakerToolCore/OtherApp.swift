@@ -356,15 +356,15 @@ public enum OtherAppPlan {
             case .quit: return "The app has quit."
             case .oldAppWarning:
                 return "This copy of the app is older than 1.19 and will take the Claude Code hook back if it is opened again. Move it to the Trash, or update it."
-            case .turnOffLoginItem: return "Turn off the app's Open at Login"
-            case .moveToTrash: return "Move HomeSpeaker.app to the Trash"
+            case .turnOffLoginItem: return DoorWords.turnOffLoginItem
+            case .moveToTrash: return DoorWords.moveToTrash
             }
         }
 
         /// What the person is told before they tick it.
         public var warning: String? {
             guard case .moveToTrash = self else { return nil }
-            return "Your phone remote and scripts that call HomeSpeaker.app will stop working until they are pointed at the extension."
+            return DoorWords.trashWarning
         }
     }
 
