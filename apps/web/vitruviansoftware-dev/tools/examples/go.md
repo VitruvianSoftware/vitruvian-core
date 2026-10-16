@@ -58,8 +58,7 @@ func main() {
 ```
 
 `build.sh` builds the program into `tool/bin/tool`, and `tool/` is the
-folder you add in Vitruvian: Settings, Features, Extensions & Tools, Add a
-Tool.
+folder you add in Vitruvian: Settings › Extensions, "Add from Folder…".
 
 ## Drawing
 

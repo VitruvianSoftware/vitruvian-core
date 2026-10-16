@@ -118,4 +118,4 @@ cannot judge, is in
 The list is signed after the merge and served at
 [vitruviansoftware.dev/tools/catalog](https://vitruviansoftware.dev/tools/catalog/),
 where Vitruvian reads it. A tool can still be added from its folder, in
-Vitruvian's Settings, under Features, "Extensions & Tools".
+Vitruvian's Settings › Extensions, with "Add from Folder…".

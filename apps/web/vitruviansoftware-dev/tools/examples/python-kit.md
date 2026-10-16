@@ -52,8 +52,8 @@ def count(app):
 tool.run()
 ```
 
-Add the folder in Vitruvian, `lib/` and all: Settings, Features, Tools from
-outside, Add a Tool.
+Add the folder in Vitruvian, `lib/` and all:
+Settings › Extensions, "Add from Folder…".
 
 ## Drawing
 

@@ -175,5 +175,5 @@ older app is sent the status without the words.
 The manifest says `"protocol": "2"` and lists the two panels under
 `contributes.panels`. The app starts a tool with Apple's `python3`, so the kit
 is installed into `lib/` inside the folder, as `hello-python-kit` does. Add
-the folder in Vitruvian, `lib/` and all: Settings, Features, Tools from
-outside, Add a Tool.
+the folder in Vitruvian, `lib/` and all:
+Settings › Extensions, "Add from Folder…".

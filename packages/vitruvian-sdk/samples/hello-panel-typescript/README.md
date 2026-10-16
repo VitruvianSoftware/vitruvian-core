@@ -157,4 +157,4 @@ function wordsPicker() {
 
 The manifest says `"protocol": "2"` and lists the two panels under
 `contributes.panels`. Add the folder in Vitruvian, `node_modules/` and all:
-Settings, Features, Extensions & Tools, Add a Tool.
+Settings › Extensions, "Add from Folder…".

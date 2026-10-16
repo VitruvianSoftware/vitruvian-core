@@ -88,14 +88,14 @@ enum Words {
                 Next, from anywhere:
                   vitruvian-tool validate \(folder)
                   vitruvian-tool run \(folder)
-                Then add the folder in Vitruvian: Settings, Features, Extensions & Tools.
+                Then add the folder in Vitruvian: Settings › Extensions, "Add from Folder…".
                 """
         case .pythonKit where tool.sdk != nil:
             return """
                 The kit from \(tool.sdk.map { shell($0.standardizedFileURL.path) } ?? "") is in lib/. Next:
                   vitruvian-tool validate \(folder)
                   vitruvian-tool run \(folder)
-                Then add the folder in Vitruvian: Settings, Features, Extensions & Tools.
+                Then add the folder in Vitruvian: Settings › Extensions, "Add from Folder…".
                 To take the published kit instead: rm -r \(folder)/lib, then the pip line below.
                   /usr/bin/python3 -m pip install --target \(folder)/lib -r \(folder)/requirements.txt
                 """
@@ -105,7 +105,7 @@ enum Words {
                   /usr/bin/python3 -m pip install --target \(folder)/lib -r \(folder)/requirements.txt
                   vitruvian-tool validate \(folder)
                   vitruvian-tool run \(folder)
-                Then add the folder in Vitruvian: Settings, Features, Extensions & Tools. lib/ goes with it.
+                Then add the folder in Vitruvian: Settings › Extensions, "Add from Folder…" (lib/ goes with it).
                 """
         case .typescript:
             let install = tool.sdk == nil
@@ -117,7 +117,7 @@ enum Words {
                 \(install)
                   vitruvian-tool validate \(folder)
                   vitruvian-tool run \(folder)
-                Then add the folder in Vitruvian: Settings, Features, Extensions & Tools. node_modules/ goes with it.
+                Then add the folder in Vitruvian: Settings › Extensions, "Add from Folder…" (node_modules/ goes with it).
                 bin/tool starts Node: if yours is not in /opt/homebrew/bin or /usr/local/bin, say where in it.
                 """
         case .swift, .go, .rust:
@@ -133,7 +133,7 @@ enum Words {
                   \(folder)/build.sh
                   vitruvian-tool validate \(folder)/tool
                   vitruvian-tool run \(folder)/tool
-                Then add \(folder)/tool in Vitruvian: Settings, Features, Extensions & Tools.
+                Then add \(folder)/tool in Vitruvian: Settings › Extensions, "Add from Folder…".
                 Build again after each change to the code.
                 """
         }
