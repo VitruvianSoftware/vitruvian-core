@@ -731,6 +731,21 @@ before: the app offers both versions at `initialize`, and the tool picks.
   `NotchExtensionActions` (Services) for its title, symbol and whether it
   shows; the island draws it only while it lists the page
   (`NotchService.quickAccess`).
+- The menu bar panel's Extensions tab (`PanelSectionID.extensions`,
+  `UI/MenuPanel/ExtensionsSection.swift`) shows each extension's island
+  page a second time, drawn by `ToolPanelView`, with no SDK change. It is
+  one page and one session whichever place shows it: a view of the tab
+  calls `ToolPanelHost.openInMenuPanel` once and `closeInMenuPanel` once;
+  `close`, which the island calls, leaves open a page the tab still shows;
+  and the island opening a page the tab has open takes it as it is, asking
+  the tool nothing. The tab is built only while the popover is up or the
+  panel is inside the island, so a page is open only while it can be
+  seen. It is on by default only while an extension has an island page
+  (`PanelSectionID.shownByDefault`); each extension's switch for it is in
+  Settings › Menu bar (`MenuPanelExtensionsSupport`), apart from the
+  island's "Show in the Dynamic Island". Where Settings manages extensions
+  is named once, `MenuPanelExtensions.openExtensionSettings`. A web panel
+  shown in both places at once draws in the view made last.
 - `ToolPanelHost` (`Services/Platform/External/ToolPanelHost.swift`) is the
   one place that knows what a panel shows: for each open panel the last page
   its tool sent, read away from the main thread by `ToolPanelTree.read` and
