@@ -129,13 +129,18 @@ public final class RestoreReport: @unchecked Sendable {
 public enum ExtensionSide {
     /// #3341's chat monitor, built from the extension's engine: its
     /// settings, secrets, speakers, announcer and sign-in, and its own
-    /// status file, `<data>/speaker_monitor_status.json`.
+    /// status file, `<data>/speaker_monitor_status.json`. Beeper is read
+    /// through `beeperSession` (nil: its own short-timeout session), at
+    /// `BeeperClient.defaultBaseURL` unless `HOMESPEAKER_BEEPER_URL` names
+    /// another address on this Mac.
     @MainActor
-    public static func chatMonitor(engine: HomeSpeakerEngine, chatSession: URLSession = .shared) -> ChatMonitorService {
+    public static func chatMonitor(
+        engine: HomeSpeakerEngine, chatSession: URLSession = .shared, beeperSession: URLSession? = nil
+    ) -> ChatMonitorService {
         ChatMonitorService(
             configManager: engine.config, secrets: engine.secrets, home: engine.home, announcer: engine.announcer,
             statusFile: ChatMonitorStatusFile(url: engine.profile.monitorStatusURL), auth: engine.auth,
-            chatSession: chatSession)
+            chatSession: chatSession, beeperSession: beeperSession)
     }
 
     /// Wires every way the monitor is started or stopped to `monitor`: the

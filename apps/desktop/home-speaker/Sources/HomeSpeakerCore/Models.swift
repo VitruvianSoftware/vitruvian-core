@@ -371,9 +371,9 @@ public struct BroadcastLogItem: Identifiable, Codable, Equatable {
     }
 }
 
-/// Settings for the in-app chat monitor. Both sources are OFF by default:
-/// reading someone's Slack and Google Chat is opt-in, never a surprise on
-/// first launch. Tokens never live here — see `SecretStore`.
+/// Settings for the in-app chat monitor. Every source is OFF by default:
+/// reading someone's Slack, Google Chat or Beeper is opt-in, never a
+/// surprise on first launch. Tokens never live here — see `SecretStore`.
 public struct ChatMonitorConfig: Codable, Equatable {
     public static let minPollInterval = 5
     public static let maxPollInterval = 300
@@ -386,6 +386,21 @@ public struct ChatMonitorConfig: Codable, Equatable {
         case auto, api, gws
     }
 
+    /// Which Beeper messages are spoken: direct messages and group
+    /// messages that mention you, or every message.
+    public enum BeeperAnnounce: String, Codable, CaseIterable, Sendable {
+        case directAndMentions = "direct_and_mentions"
+        case all
+
+        /// What the app's and the Vitruvian tool's Settings call it.
+        public var title: String {
+            switch self {
+            case .directAndMentions: return "Direct messages and mentions"
+            case .all: return "Every message"
+            }
+        }
+    }
+
     public var slackEnabled: Bool
     public var googleChatEnabled: Bool
     public var pollIntervalSeconds: Int
@@ -393,6 +408,9 @@ public struct ChatMonitorConfig: Codable, Equatable {
     public var googleChatSource: GoogleChatSource
     /// `--account` passed to gws; empty means gws's default account.
     public var gwsAccount: String
+    /// Read Beeper Desktop's local API on this Mac (BeeperClient).
+    public var beeperEnabled: Bool
+    public var beeperAnnounce: BeeperAnnounce
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case slackEnabled = "slack_enabled"
@@ -401,6 +419,8 @@ public struct ChatMonitorConfig: Codable, Equatable {
         case muteOwnMessages = "mute_own_messages"
         case googleChatSource = "google_chat_source"
         case gwsAccount = "gws_account"
+        case beeperEnabled = "beeper_enabled"
+        case beeperAnnounce = "beeper_announce"
     }
 
     public init(
@@ -409,7 +429,9 @@ public struct ChatMonitorConfig: Codable, Equatable {
         pollIntervalSeconds: Int = 15,
         muteOwnMessages: Bool = true,
         googleChatSource: GoogleChatSource = .auto,
-        gwsAccount: String = ""
+        gwsAccount: String = "",
+        beeperEnabled: Bool = false,
+        beeperAnnounce: BeeperAnnounce = .directAndMentions
     ) {
         self.slackEnabled = slackEnabled
         self.googleChatEnabled = googleChatEnabled
@@ -417,6 +439,8 @@ public struct ChatMonitorConfig: Codable, Equatable {
         self.muteOwnMessages = muteOwnMessages
         self.googleChatSource = googleChatSource
         self.gwsAccount = gwsAccount
+        self.beeperEnabled = beeperEnabled
+        self.beeperAnnounce = beeperAnnounce
     }
 
     public init(from decoder: Decoder) throws {
@@ -427,6 +451,10 @@ public struct ChatMonitorConfig: Codable, Equatable {
         muteOwnMessages = try c.decodeIfPresent(Bool.self, forKey: .muteOwnMessages) ?? true
         googleChatSource = try c.decodeIfPresent(GoogleChatSource.self, forKey: .googleChatSource) ?? .auto
         gwsAccount = try c.decodeIfPresent(String.self, forKey: .gwsAccount) ?? ""
+        beeperEnabled = try c.decodeIfPresent(Bool.self, forKey: .beeperEnabled) ?? false
+        // A choice this version does not know reads as the default, so a
+        // newer file never stops the settings reading.
+        beeperAnnounce = (try? c.decodeIfPresent(BeeperAnnounce.self, forKey: .beeperAnnounce)) ?? .directAndMentions
     }
 
     public var clampedPollInterval: Int {
@@ -434,5 +462,5 @@ public struct ChatMonitorConfig: Codable, Equatable {
     }
 
     /// True when at least one source is switched on.
-    public var anySourceEnabled: Bool { slackEnabled || googleChatEnabled }
+    public var anySourceEnabled: Bool { slackEnabled || googleChatEnabled || beeperEnabled }
 }

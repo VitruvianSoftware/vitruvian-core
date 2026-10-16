@@ -67,6 +67,9 @@ public struct Secrets: Codable, Equatable {
     /// Google Chat login (chat.*.readonly), a separate consent and token.
     public var googleChat: GoogleCredentials?
     public var slackToken: String?
+    /// Beeper Desktop's API token (Settings › Integrations), for the local
+    /// API on this Mac only.
+    public var beeperToken: String?
     /// Optional user-supplied OAuth client, used instead of the one baked
     /// into Info.plist. Lets anyone run the app against their own Google
     /// Cloud project without rebuilding it.
@@ -75,11 +78,13 @@ public struct Secrets: Codable, Equatable {
 
     public init(
         google: GoogleCredentials? = nil, googleChat: GoogleCredentials? = nil, slackToken: String? = nil,
-        oauthClientIdOverride: String? = nil, oauthClientSecretOverride: String? = nil
+        oauthClientIdOverride: String? = nil, oauthClientSecretOverride: String? = nil,
+        beeperToken: String? = nil
     ) {
         self.google = google
         self.googleChat = googleChat
         self.slackToken = slackToken
+        self.beeperToken = beeperToken
         self.oauthClientIdOverride = oauthClientIdOverride
         self.oauthClientSecretOverride = oauthClientSecretOverride
     }

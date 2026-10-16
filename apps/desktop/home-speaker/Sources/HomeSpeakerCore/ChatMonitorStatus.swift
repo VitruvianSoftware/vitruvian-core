@@ -40,16 +40,25 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
     public var slackIdentity: String?
     /// How Google Chat is being read: "api" or "gws"; nil when it is not.
     public var activeGoogleChatBackend: String?
+    /// The Beeper networks being read ("WhatsApp", "Signal"), and the ones
+    /// skipped because HomeSpeaker reads them itself ("Slack (acme)"); nil
+    /// while Beeper is not read or has not listed its accounts yet. Absent
+    /// from a file an older HomeSpeaker wrote.
+    public var beeperNetworks: [String]?
+    public var beeperSkippedNetworks: [String]?
     /// The app process that wrote it.
     public var pid: Int32
 
     public init(isRunning: Bool = false, lastPollDate: Date? = nil, lastError: String? = nil, slackIdentity: String? = nil,
-                activeGoogleChatBackend: String? = nil, pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
+                activeGoogleChatBackend: String? = nil, beeperNetworks: [String]? = nil, beeperSkippedNetworks: [String]? = nil,
+                pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
         self.isRunning = isRunning
         self.lastPollDate = lastPollDate
         self.lastError = lastError
         self.slackIdentity = slackIdentity
         self.activeGoogleChatBackend = activeGoogleChatBackend
+        self.beeperNetworks = beeperNetworks
+        self.beeperSkippedNetworks = beeperSkippedNetworks
         self.pid = pid
     }
 
@@ -60,6 +69,8 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         case lastError = "last_error"
         case slackIdentity = "slack_identity"
         case activeGoogleChatBackend = "active_google_chat_backend"
+        case beeperNetworks = "beeper_networks"
+        case beeperSkippedNetworks = "beeper_skipped_networks"
         case pid
     }
 

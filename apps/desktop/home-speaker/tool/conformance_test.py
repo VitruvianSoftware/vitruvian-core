@@ -60,19 +60,35 @@ status, and the choice file, which both sides share by design, holds only
 the extension's own block, naming the scratch folder.
 
 Last, the chat monitor starting, in a second scratch home and data folder:
-settings with Slack on (as the app's settings copied into the extension
-have) and a choice file that picks the extension. The tool starts its chat
-monitor on the main actor as it starts. HomeSpeaker 1.19.0 crashed there,
-on every start ("Incorrect actor executor assumption"), because its main
-thread had left for `dispatchMain()`. The program must still be running
-and answering a few seconds later, its monitor must have written its
-status, and nothing on its standard error may be a fatal error. Then the
+settings with Slack and Beeper on (as the app's settings copied into the
+extension have) and a choice file that picks the extension. The tool starts
+its chat monitor on the main actor as it starts. HomeSpeaker 1.19.0 crashed
+there, on every start ("Incorrect actor executor assumption"), because its
+main thread had left for `dispatchMain()`. Beeper is read from a stand-in
+Beeper Desktop this test serves on 127.0.0.1 at a port of its own (never
+Beeper's real 23373, which is checked), named by `HOMESPEAKER_BEEPER_URL` as
+`http://localhost:<port>`, with a made-up token. The stand-in serves 51
+made-up messages 20 a page, as Beeper does, so the program must page by
+cursor to reach them all, and must ask for no more than 20 at a time; the
+program handles every message (nothing is spoken: broadcasting is off). The
+program must still be
+running and answering after it has polled more than once, its monitor must
+have written that it runs, which Beeper networks it reads, and that it
+skips Beeper's Slack (Slack is on and its workspace unknown); the stand-in
+must have been asked only with GET and only with the made-up token; and
+nothing on its standard error may be a fatal error. That the stand-in was
+reached at all shows the program, which has no Info.plist, may make a plain
+HTTP request to localhost. Then the same again with the stand-in stopped:
+the monitor runs and its status says Beeper Desktop isn't running. Then the
 Stop hook, `bin/tool --claude-stop-hook`, in the same folder: it reads the
 settings on the main actor, so it must answer `{}`, exit 0 and do so well
 before its own eight-second backstop. Broadcasting is off in these
-settings and no Slack token exists, so nothing is spoken or fetched.
+settings and no Slack token exists, so nothing is spoken, and nothing is
+fetched but from the stand-in.
 """
 
+import datetime
+import http.server
 import importlib.util
 import json
 import os
@@ -80,7 +96,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import urllib.parse
 import uuid
 
 # The five sections of the settings panel (Pages.Section), in order.
@@ -504,6 +522,238 @@ def end_to_end(conf, folder, data, env):
 
 # What a Swift program says on standard error when it stops on a check.
 FATAL = "Fatal error"
+# The port Beeper Desktop really listens on. Nothing here may ever reach it.
+REAL_BEEPER_PORT = 23373
+# A made-up Beeper token, for the stand-in only.
+FAKE_BEEPER_TOKEN = (
+    "fake-beeper-conformance-token"  # gitleaks:allow (made-up test token)
+)
+# How long to wait for the monitor to have polled twice (poll interval 5 s).
+POLLS_WITHIN_SECONDS = 30
+# What the monitor's status says with Beeper Desktop not running.
+NOT_RUNNING = "Beeper Desktop isn't running"
+# Hand-written fake Beeper accounts: what the status must then say.
+BEEPER_ACCOUNTS = [
+    {
+        "accountID": "local-whatsapp_ba_FAKE",
+        "bridge": {"id": "local-whatsapp", "type": "whatsapp", "provider": "local"},
+        "network": "WhatsApp",
+        "user": {"id": "@me-wa:fake.test", "isSelf": True, "fullName": "Me"},
+    },
+    {
+        "accountID": "local-signal_FAKE",
+        "network": "Signal",
+        "user": {"id": "@me-signal:fake.test"},
+    },
+    {
+        "accountID": "slackgo.TFAKE-UFAKE",
+        "network": "Slack",
+        "user": {"id": "@me-slack:fake.test"},
+    },
+    {
+        "accountID": "gmessages.someone@example.test/0",
+        "bridge": {"type": "gmessages"},
+        "network": "Google Messages",
+        "user": {"id": "@me-sms:fake.test"},
+    },
+]
+BEEPER_READS = ["Google Messages", "Signal", "WhatsApp"]
+BEEPER_SKIPS = ["Slack"]
+# The most messages a page holds, as Beeper serves them.
+BEEPER_PAGE = 20
+# The chats the made-up messages are in.
+BEEPER_CHATS = {
+    "wa-dm": {"id": "wa-dm", "type": "single", "title": "Alice", "network": "WhatsApp"},
+    "sig-family": {
+        "id": "sig-family",
+        "type": "group",
+        "title": "Family",
+        "network": "Signal",
+    },
+    "slack-dm": {
+        "id": "slack-dm",
+        "type": "single",
+        "title": "Dee",
+        "network": "Slack",
+    },
+}
+
+
+def beeper_messages(start):
+    """Made-up messages in the second after `start` (the first search's
+    `dateAfter`, which is when the monitor started): one WhatsApp DM, older
+    than a page of Slack (skipped, since Slack is on) and a page of group
+    chat without a mention, so it is only reached by paging."""
+
+    def message(mid, chat, account, sender, seconds_after, text):
+        stamp = start + datetime.timedelta(seconds=seconds_after)
+        return {
+            "id": mid,
+            "chatID": chat,
+            "accountID": account,
+            "senderID": f"@{sender.lower()}:fake.test",
+            "senderName": sender,
+            "timestamp": stamp.strftime("%Y-%m-%dT%H:%M:%S.")
+            + f"{stamp.microsecond // 1000:03d}Z",
+            "type": "TEXT",
+            "text": text,
+            "isSender": False,
+            "isHidden": False,
+            "isDeleted": False,
+            "mentions": None,
+        }
+
+    out = [
+        message(
+            "dm", "wa-dm", "local-whatsapp_ba_FAKE", "Alice", 0.01, "behind the others"
+        )
+    ]
+    out += [
+        message(
+            f"s{n}",
+            "slack-dm",
+            "slackgo.TFAKE-UFAKE",
+            "Dee",
+            0.5 + n / 100,
+            f"busy {n}",
+        )
+        for n in range(25)
+    ]
+    out += [
+        message(
+            f"g{n}",
+            "sig-family",
+            "local-signal_FAKE",
+            "Bob",
+            0.2 + n / 100,
+            f"chat {n}",
+        )
+        for n in range(25)
+    ]
+    return out
+
+
+class StandInBeeper:
+    """Beeper Desktop's API, as far as HomeSpeaker asks it, served on
+    127.0.0.1 at a free port, recording every request: its method, path
+    and token. Anything but GET is refused with 405 and recorded, so a
+    check can fail on it."""
+
+    def __init__(self):
+        self.requests = []
+        self.lock = threading.Lock()
+        # Made at the first search, after the monitor started.
+        self.messages = None
+        stand_in = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, format, *args):  # noqa: A002 (the base class names it)
+                pass
+
+            def answer(self):
+                auth = self.headers.get("Authorization", "")
+                path, _, query_text = self.path.partition("?")
+                query = dict(urllib.parse.parse_qsl(query_text))
+                with stand_in.lock:
+                    stand_in.requests.append((self.command, path, auth, query))
+                if self.command != "GET":
+                    return self.send(405, {"message": "method not allowed"})
+                if auth != f"Bearer {FAKE_BEEPER_TOKEN}":
+                    return self.send(
+                        401, {"message": "Unauthorized", "code": "unauthorized"}
+                    )
+                if path == "/v1/accounts":
+                    return self.send(200, BEEPER_ACCOUNTS)
+                if path == "/v1/messages/search":
+                    return self.send(*stand_in.page(query))
+                return self.send(404, {"message": "not found"})
+
+            def send(self, status, body):
+                data = json.dumps(body).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(data)
+
+            do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = do_HEAD = do_OPTIONS = (
+                answer
+            )
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        if self.port == REAL_BEEPER_PORT:
+            self.server.server_close()
+            raise E2EFailure(
+                f"the stand-in Beeper got port {REAL_BEEPER_PORT}, the real Beeper's"
+            )
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def page(self, query):
+        """One page of the messages after `dateAfter`, newest first, at
+        most `limit` (no more than 20), with `hasMore` and cursors: offsets
+        into that order, carried on with `direction=before`."""
+        try:
+            limit = int(query.get("limit", BEEPER_PAGE))
+        except ValueError:
+            limit = 0
+        if not 1 <= limit <= BEEPER_PAGE:
+            return 400, {"message": f"limit must be 1 to {BEEPER_PAGE}"}
+        with self.lock:
+            if self.messages is None:
+                start = datetime.datetime.strptime(
+                    query.get("dateAfter", ""), "%Y-%m-%dT%H:%M:%S.%fZ"
+                ).replace(tzinfo=datetime.timezone.utc)
+                self.messages = beeper_messages(start)
+            messages = list(self.messages)
+        after = query.get("dateAfter", "")
+        # ISO 8601 in UTC with milliseconds sorts as text.
+        matching = sorted(
+            (m for m in messages if m["timestamp"] > after),
+            key=lambda m: m["timestamp"],
+            reverse=True,
+        )
+        offset = 0
+        if "cursor" in query:
+            if query.get("direction") != "before" or not query["cursor"].startswith(
+                "c"
+            ):
+                return 400, {"message": "bad cursor"}
+            offset = int(query["cursor"][1:])
+        items = matching[offset : offset + limit]
+        end = offset + len(items)
+        return 200, {
+            "items": items,
+            "hasMore": end < len(matching),
+            "oldestCursor": f"c{end}",
+            "newestCursor": f"c{offset}",
+            "chats": BEEPER_CHATS,
+        }
+
+    @property
+    def url(self):
+        # localhost, as HomeSpeaker writes Beeper's own address: App
+        # Transport Security allows plain HTTP to it.
+        return f"http://localhost:{self.port}"
+
+    def seen(self):
+        with self.lock:
+            return list(self.requests)
+
+    def searches(self):
+        return [r for r in self.seen() if r[1] == "/v1/messages/search"]
+
+    def polls(self):
+        """The searches that began a poll: no cursor."""
+        return [r for r in self.searches() if "cursor" not in r[3]]
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
 # How long the tool runs after the handshake before it is asked again: the
 # monitor is started on the main queue, at once, as the tool starts.
 SETTLE_SECONDS = 3
@@ -530,6 +780,7 @@ def monitor_starts(conf, folder, scratch):
     # a worker thread draining the main queue passes. "legacy" makes this
     # program check as the release's does; without it, this run could not
     # catch the 1.19.0 crash.
+    beeper = StandInBeeper()
     env = dict(
         os.environ,
         HOME=home,
@@ -538,9 +789,13 @@ def monitor_starts(conf, folder, scratch):
         HOMESPEAKER_PROGRAM="",
         HOMESPEAKER_MESSAGE_PREFIX=f"test.{uuid.uuid4()}.homespeaker",
         SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE="legacy",
+        HOMESPEAKER_BEEPER_URL=beeper.url,
     )
-    # Slack on, as in settings copied from the app; broadcasting off, no
-    # speaker. The first four keys are the ones a settings file must have.
+    if f":{REAL_BEEPER_PORT}" in env["HOMESPEAKER_BEEPER_URL"]:
+        raise E2EFailure("HOMESPEAKER_BEEPER_URL names the real Beeper's port")
+    # Slack and Beeper on, as in settings copied from the app, polling every
+    # five seconds; broadcasting off, no speaker. The first four keys are
+    # the ones a settings file must have.
     with open(os.path.join(data, "settings.json"), "w", encoding="utf-8") as handle:
         json.dump(
             {
@@ -548,10 +803,19 @@ def monitor_starts(conf, folder, scratch):
                 "default_target": "",
                 "structure_id": "",
                 "targets": {},
-                "chat_monitor": {"slack_enabled": True},
+                "chat_monitor": {
+                    "slack_enabled": True,
+                    "beeper_enabled": True,
+                    "poll_interval_seconds": 5,
+                },
             },
             handle,
         )
+    # The made-up Beeper token, and no Slack token.
+    secrets = os.path.join(data, "secrets.json")
+    with open(secrets, "w", encoding="utf-8") as handle:
+        json.dump({"beeperToken": FAKE_BEEPER_TOKEN}, handle)
+    os.chmod(secrets, 0o600)
     # The person picked the extension, an hour ago: long enough that the
     # tool does not wait for a HomeSpeaker app running on this Mac to go
     # quiet (HomeSpeakerTool.otherStopsWithin) before its monitor starts.
@@ -572,58 +836,99 @@ def monitor_starts(conf, folder, scratch):
     program = os.path.join(folder, manifest["runtime"]["exec"])
     status = os.path.join(data, "speaker_monitor_status.json")
     errors = os.path.join(base, "stderr.txt")
-    started_in = tempfile.mkdtemp(dir=os.environ.get("TEST_TMPDIR"))
     said = []
 
     # The kit's link starts the program with this process's environment,
     # and leaves its standard error to this process's: a shell in front
     # sends it to a file instead, then becomes the program.
     os.environ.update(env)
-    link = conf.Link(
-        ["/bin/sh", "-c", 'exec "$0" 2>>"$1"', program, errors], started_in
-    )
     try:
-        run = conf.Run(link, manifest, started_in)
-        try:
-            said.append("handshake: " + run.handshake())
-        except conf.Failure as failure:
-            raise E2EFailure(f"handshake: {failure}; {stderr_of(errors)}") from None
-        time.sleep(SETTLE_SECONDS)
-        if link.process.poll() is not None:
-            raise E2EFailure(
-                f"the tool ended by itself, status {link.process.returncode}, "
-                f"{SETTLE_SECONDS} s after it started with the chat monitor on; "
-                + stderr_of(errors)
-            )
-        app = Driver(conf, run)
-        try:
-            app.open("settings")
-        except E2EFailure as failure:
-            raise E2EFailure(f"{failure}; {stderr_of(errors)}") from None
-        said.append(f"still running and answering {SETTLE_SECONDS} s after it started")
-        if not os.path.exists(status):
-            raise E2EFailure(
-                f"{status} was not written: the chat monitor never started, "
-                "so this run proves nothing; " + stderr_of(errors)
-            )
-        with open(status, encoding="utf-8") as handle:
-            said.append(
-                "the monitor's status: " + json.dumps(json.load(handle), sort_keys=True)
-            )
-        link.send(
-            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "settings"}}
+        said += run_with_monitor(
+            conf,
+            manifest,
+            program,
+            errors,
+            status,
+            "with the stand-in Beeper",
+            lambda: len(beeper.polls()) >= 2,
+            lambda: (
+                f"the monitor never polled the stand-in Beeper twice in {POLLS_WITHIN_SECONDS} s; "
+                f"it was asked {[(m, p) for m, p, _, _ in beeper.seen()]!r}"
+            ),
         )
-        try:
-            said.append("shutdown: " + run.shutdown())
-        except conf.Failure as failure:
-            raise E2EFailure(f"shutdown: {failure}; {stderr_of(errors)}") from None
+        with open(status, encoding="utf-8") as handle:
+            written = json.load(handle)
+        if written.get("is_running") is not True:
+            raise E2EFailure(f"the monitor's status does not say it runs: {written!r}")
+        if written.get("beeper_networks") != BEEPER_READS:
+            raise E2EFailure(
+                f"the monitor reads Beeper's {written.get('beeper_networks')!r}, not {BEEPER_READS!r}"
+            )
+        if written.get("beeper_skipped_networks") != BEEPER_SKIPS:
+            raise E2EFailure(
+                f"the monitor skips Beeper's {written.get('beeper_skipped_networks')!r}, not {BEEPER_SKIPS!r}"
+            )
+        asked = beeper.seen()
+        wrong = [
+            r for r in asked if r[0] != "GET" or r[2] != f"Bearer {FAKE_BEEPER_TOKEN}"
+        ]
+        if wrong:
+            raise E2EFailure(
+                "the stand-in Beeper was asked with another method or without the made-up "
+                f"token: {[(m, p) for m, p, _, _ in wrong]!r}"
+            )
+        searches = beeper.searches()
+        if any(q.get("limit") != str(BEEPER_PAGE) for _, _, _, q in searches):
+            raise E2EFailure(
+                f"a search asked for more than {BEEPER_PAGE}: {[q for _, _, _, q in searches]!r}"
+            )
+        # 51 messages, 20 a page: each poll reads three pages.
+        paged = [q for _, _, _, q in searches if "cursor" in q]
+        if len(paged) < 2:
+            raise E2EFailure(
+                "the monitor did not page through the stand-in's 51 messages: "
+                f"{[q for _, _, _, q in searches]!r}"
+            )
+        said.append(
+            f"the stand-in Beeper was asked {len(asked)} times, every time a GET with the "
+            f"made-up token: {sorted({p for _, p, _, _ in asked})}; {len(beeper.polls())} polls, "
+            f"{len(paged)} further pages by cursor; plain HTTP to localhost is allowed"
+        )
     finally:
-        link.close()
-    if FATAL in stderr_of(errors):
-        raise E2EFailure(stderr_of(errors))
+        beeper.stop()
+
+    # Beeper Desktop not running: the monitor runs, and says so.
+    def says_not_running():
+        try:
+            with open(status, encoding="utf-8") as handle:
+                return NOT_RUNNING in (json.load(handle).get("last_error") or "")
+        except (OSError, ValueError):
+            return False
+
+    os.remove(status)
+    said += run_with_monitor(
+        conf,
+        manifest,
+        program,
+        errors,
+        status,
+        "with Beeper not running",
+        says_not_running,
+        lambda: (
+            f"the monitor's status never said {NOT_RUNNING!r} with the stand-in stopped"
+        ),
+    )
+    with open(status, encoding="utf-8") as handle:
+        written = json.load(handle)
+    if written.get("is_running") is not True:
+        raise E2EFailure(
+            f"with Beeper not running, the monitor did not run: {written!r}"
+        )
+    said.append("with Beeper not running: " + written.get("last_error"))
 
     # The Stop hook, on the same settings: its own process, which reads them
     # on the main actor, answers `{}` and exits 0.
+    started_in = tempfile.mkdtemp(dir=os.environ.get("TEST_TMPDIR"))
     transcript = os.path.join(base, "transcript.jsonl")
     with open(transcript, "w", encoding="utf-8") as handle:
         handle.write(
@@ -662,6 +967,76 @@ def monitor_starts(conf, folder, scratch):
             f"{HOOK_BACKSTOP_SECONDS} s backstop instead of finishing"
         )
     said.append(f"--claude-stop-hook: {{}} and exit 0 in {took:.1f} s")
+    return said
+
+
+def run_with_monitor(conf, manifest, program, errors, status, name, until, never):
+    """Starts the program with the chat monitor on, waits for `until`
+    (`never()` says why it did not come), checks it is still running and
+    answering, and shuts it down. Its standard error goes to `errors`,
+    which must hold no fatal error."""
+    started_in = tempfile.mkdtemp(dir=os.environ.get("TEST_TMPDIR"))
+    said = []
+    link = conf.Link(
+        ["/bin/sh", "-c", 'exec "$0" 2>>"$1"', program, errors], started_in
+    )
+    try:
+        run = conf.Run(link, manifest, started_in)
+        try:
+            said.append(f"{name}: handshake: " + run.handshake())
+        except conf.Failure as failure:
+            raise E2EFailure(
+                f"{name}: handshake: {failure}; {stderr_of(errors)}"
+            ) from None
+        started = time.monotonic()
+        while not until():
+            if link.process.poll() is not None:
+                raise E2EFailure(
+                    f"{name}: the tool ended by itself, status {link.process.returncode}, "
+                    f"{time.monotonic() - started:.0f} s after it started with the chat monitor on; "
+                    + stderr_of(errors)
+                )
+            if time.monotonic() - started > POLLS_WITHIN_SECONDS:
+                raise E2EFailure(f"{name}: {never()}; " + stderr_of(errors))
+            time.sleep(0.25)
+        waited = time.monotonic() - started
+        time.sleep(SETTLE_SECONDS)
+        if link.process.poll() is not None:
+            raise E2EFailure(
+                f"{name}: the tool ended by itself, status {link.process.returncode}; "
+                + stderr_of(errors)
+            )
+        app = Driver(conf, run)
+        try:
+            app.open("settings")
+        except E2EFailure as failure:
+            raise E2EFailure(f"{name}: {failure}; {stderr_of(errors)}") from None
+        said.append(
+            f"{name}: still running and answering {waited + SETTLE_SECONDS:.0f} s after it started"
+        )
+        if not os.path.exists(status):
+            raise E2EFailure(
+                f"{name}: {status} was not written: the chat monitor never started, "
+                "so this run proves nothing; " + stderr_of(errors)
+            )
+        with open(status, encoding="utf-8") as handle:
+            said.append(
+                f"{name}: the monitor's status: "
+                + json.dumps(json.load(handle), sort_keys=True)
+            )
+        link.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "settings"}}
+        )
+        try:
+            said.append(f"{name}: shutdown: " + run.shutdown())
+        except conf.Failure as failure:
+            raise E2EFailure(
+                f"{name}: shutdown: {failure}; {stderr_of(errors)}"
+            ) from None
+    finally:
+        link.close()
+    if FATAL in stderr_of(errors):
+        raise E2EFailure(f"{name}: " + stderr_of(errors))
     return said
 
 

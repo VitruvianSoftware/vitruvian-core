@@ -167,13 +167,15 @@ private func creds(_ refresh: String, scopes: [String] = []) -> GoogleCredential
     }
 
     @Test func everySourceOffHasNoProblems() {
-        #expect(ChatMonitorService.setupProblems(config: config(), hasSlackToken: false, hasChatScopes: false, gwsInstalled: false).isEmpty)
+        #expect(ChatMonitorService.setupProblems(config: config(), hasSlackToken: false, hasChatScopes: false, gwsInstalled: false, hasBeeperToken: false).isEmpty)
     }
 
     @Test func slackOnWithoutATokenIsAProblemAndWithOneIsNot() {
-        #expect(ChatMonitorService.setupProblems(config: config(slack: true), hasSlackToken: false, hasChatScopes: false, gwsInstalled: false)
+        #expect(ChatMonitorService.setupProblems(config: config(slack: true), hasSlackToken: false, hasChatScopes: false, gwsInstalled: false,
+                                                 hasBeeperToken: false)
                 == [.slackTokenMissing])
-        #expect(ChatMonitorService.setupProblems(config: config(slack: true), hasSlackToken: true, hasChatScopes: false, gwsInstalled: false)
+        #expect(ChatMonitorService.setupProblems(config: config(slack: true), hasSlackToken: true, hasChatScopes: false, gwsInstalled: false,
+                                                 hasBeeperToken: false)
                 .isEmpty)
     }
 
@@ -189,17 +191,20 @@ private func creds(_ refresh: String, scopes: [String] = []) -> GoogleCredential
         ]
         for (source, scopes, gws, expected) in cases {
             let problems = ChatMonitorService.setupProblems(
-                config: config(chat: true, source: source), hasSlackToken: false, hasChatScopes: scopes, gwsInstalled: gws)
+                config: config(chat: true, source: source), hasSlackToken: false, hasChatScopes: scopes, gwsInstalled: gws,
+                hasBeeperToken: false)
             #expect(problems == expected, "\(source) scopes:\(scopes) gws:\(gws)")
         }
     }
 
     @Test func slackComesBeforeGoogleChatAndAnOffSourceSaysNothing() {
         #expect(ChatMonitorService.setupProblems(config: config(slack: true, chat: true, source: .gws),
-                                                 hasSlackToken: false, hasChatScopes: false, gwsInstalled: false)
+                                                 hasSlackToken: false, hasChatScopes: false, gwsInstalled: false,
+                                                 hasBeeperToken: false)
                 == [.slackTokenMissing, .gwsNotInstalled])
         #expect(ChatMonitorService.setupProblems(config: config(slack: false, chat: false, source: .api),
-                                                 hasSlackToken: false, hasChatScopes: false, gwsInstalled: false).isEmpty)
+                                                 hasSlackToken: false, hasChatScopes: false, gwsInstalled: false,
+                                                 hasBeeperToken: false).isEmpty)
     }
 
     /// start() goes by the same rules: Google Chat on through the API with
@@ -239,7 +244,7 @@ final class GatedChatMonitor: ChatMonitorControlling {
         let s = secrets.load()
         let problems = ChatMonitorService.setupProblems(
             config: config.config.effectiveChatMonitor, hasSlackToken: !(s.slackToken?.isEmpty ?? true),
-            hasChatScopes: s.hasChatAccess, gwsInstalled: false)
+            hasChatScopes: s.hasChatAccess, gwsInstalled: false, hasBeeperToken: !(s.beeperToken?.isEmpty ?? true))
         isRunning = config.config.effectiveChatMonitor.anySourceEnabled && problems.isEmpty
     }
     func stop() {

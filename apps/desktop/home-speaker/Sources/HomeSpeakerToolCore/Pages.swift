@@ -103,9 +103,10 @@ public enum Pages {
     }
 
     /// The Chat & Slack credentials and surroundings, as Settings shows
-    /// them: whether a Slack token is saved, never the token.
+    /// them: whether a Slack or Beeper token is saved, never the token.
     public struct Chat: Equatable, Sendable {
         public var hasSlackToken = false
+        public var hasBeeperToken = false
         /// The Google Chat login exists with every Chat scope.
         public var hasChatAccess = false
         /// Where the `gws` command is; nil when it is not installed.
@@ -119,8 +120,9 @@ public enum Pages {
         public var monitor: ChatMonitorStatus?
 
         public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, ownerRunning: Bool = false,
-                    monitor: ChatMonitorStatus? = nil) {
+                    monitor: ChatMonitorStatus? = nil, hasBeeperToken: Bool = false) {
             self.hasSlackToken = hasSlackToken
+            self.hasBeeperToken = hasBeeperToken
             self.hasChatAccess = hasChatAccess
             self.gwsPath = gwsPath
             self.ownerRunning = ownerRunning
@@ -236,6 +238,10 @@ public enum Pages {
         public static let slackEnabled = "slackEnabled"
         public static let slackToken = "slackToken"
         public static let clearSlackToken = "clearSlackToken"
+        public static let beeperEnabled = "beeperEnabled"
+        public static let beeperToken = "beeperToken"
+        public static let clearBeeperToken = "clearBeeperToken"
+        public static let beeperAnnounce = "beeperAnnounce"
         public static let googleChatEnabled = "googleChatEnabled"
         public static let chatSource = "chatSource"
         public static let grantChat = "grantChat"
@@ -652,6 +658,11 @@ public enum Pages {
         }.blocks
     }
 
+    /// Where the token comes from, and what is skipped.
+    public static let beeperHelp = "In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. "
+        + "Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. "
+        + "Slack and Google Chat chats in Beeper are skipped while their own switches above are on."
+
     /// What "Read Google Chat via" offers, in the app's words.
     public static func chatSourceTitle(_ source: ChatMonitorConfig.GoogleChatSource) -> String {
         switch source {
@@ -671,7 +682,8 @@ public enum Pages {
         let monitor = status.config.effectiveChatMonitor
         guard monitor.anySourceEnabled else { return [] }
         return ChatMonitorService.setupProblems(config: monitor, hasSlackToken: status.chat.hasSlackToken,
-                                                hasChatScopes: status.chat.hasChatAccess, gwsInstalled: status.chat.gwsPath != nil)
+                                                hasChatScopes: status.chat.hasChatAccess, gwsInstalled: status.chat.gwsPath != nil,
+                                                hasBeeperToken: status.chat.hasBeeperToken)
     }
 
     /// Chat & Slack, as HomeSpeaker's tab of that name: what reads the
@@ -689,7 +701,7 @@ public enum Pages {
             } else {
                 row(nil, "HomeSpeaker is not running", icon: "moon.fill")
             }
-            text("HomeSpeaker reads new messages in the background while Slack or Google Chat is on, and announces them on your speakers. Nothing is sent anywhere except to Google Home.",
+            text("HomeSpeaker reads new messages in the background while Slack, Google Chat or Beeper is on, and announces them on your speakers. Nothing is sent anywhere except to Google Home.",
                  style: .caption)
             if !chat.ownerRunning && monitor.anySourceEnabled {
                 text(UIText.plain(notReadingLine(status.door.role)), style: .caption)
@@ -739,6 +751,24 @@ public enum Pages {
             text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.",
                  style: .caption)
 
+            heading("Beeper")
+            toggle(Block.beeperEnabled, "Announce Beeper messages", isOn: monitor.beeperEnabled)
+            picker(Block.beeperAnnounce, title: "Announce", value: monitor.beeperAnnounce.rawValue,
+                   options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
+                       UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
+                   },
+                   choice: status.offersChoice)
+            field(Block.beeperToken, title: "Access token", value: "",
+                  placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token and press Return",
+                  kind: .secret)
+            if chat.hasBeeperToken {
+                row(nil, "Beeper token saved", icon: "checkmark.circle.fill")
+                button(Block.clearBeeperToken, "Clear Beeper Token")
+            } else {
+                row(nil, "No Beeper token saved", icon: "exclamationmark.circle")
+            }
+            text(UIText.plain(beeperHelp), style: .caption)
+
             heading("Options")
             toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: monitor.muteOwnMessages)
             field(Block.pollInterval, title: UIText.plain(pollIntervalTitle), value: String(monitor.clampedPollInterval), kind: .number)
@@ -747,8 +777,8 @@ public enum Pages {
 
     /// The monitor itself, as the app's Settings shows it: Running or
     /// Stopped, Start or Stop while HomeSpeaker runs and a source is on, and
-    /// while it runs, when it last polled, who Slack says we are and how
-    /// Google Chat is read.
+    /// while it runs, when it last polled, who Slack says we are, how
+    /// Google Chat is read and which Beeper networks are read.
     static func monitorRunBlocks(_ status: Status) -> [UIBlock] {
         let chat = status.chat
         let running = chat.monitorRunning
@@ -771,6 +801,10 @@ public enum Pages {
                 }
                 if let via = monitor.activeGoogleChatBackend, !via.isEmpty {
                     text(UIText.plain(readingViaLine(via)), style: .caption)
+                }
+                if let line = ChatMonitorService.beeperReadingLine(
+                    networks: monitor.beeperNetworks, skipped: monitor.beeperSkippedNetworks) {
+                    text(UIText.plain(line), style: .caption)
                 }
             }
         }.blocks
