@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.4.1...vitruvian-sdk-v1.5.0) (2026-10-16)
+
+
+### Features
+
+* **vitruvian-sdk:** a reference tool for protocol 2 ([#3400](https://github.com/VitruvianSoftware/vitruvian-core/issues/3400)) ([6e445b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/6e445b4fc43cd6e1af40ce22aabc5fa3b9d38e8e))
+
 ## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.4.0...vitruvian-sdk-v1.4.1) (2026-10-16)
 
 
