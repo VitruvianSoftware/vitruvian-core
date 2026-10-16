@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "generated": "2026-10-16T06:32:54Z",
+  "tools": [
+    {
+      "id": "dev.vitruvian.reference",
+      "name": {
+        "en": "Reference tool"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Says hello. The smallest tool that speaks protocol 1."
+      },
+      "version": "0.1.0",
+      "protocol": "1",
+      "minimumAppVersion": "3.43.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-sdk",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.10.0/reference-tool-0.1.0.zip",
+        "sha256": "5e067d38391a5d87dc17bf507844322b43c5a4e9fc8e47cd6b76196e12283c95",
+        "size": 2213
+      },
+      "uses": ["notify"],
+      "commands": [
+        {
+          "id": "hello",
+          "title": {
+            "en": "Say hello"
+          }
+        }
+      ],
+      "panels": []
+    },
+    {
+      "id": "dev.vitruvian.github",
+      "name": {
+        "en": "GitHub"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Shows whether main is green on the repositories you watch and where your pull requests stand.",
+        "pt-BR": "Mostra se a main está verde nos repositórios que você acompanha e em que pé estão seus pull requests.",
+        "tr": "İzlediğiniz depolarda main’in yeşil olup olmadığını ve pull request’lerinizin durumunu gösterir.",
+        "ru": "Показывает, зелёная ли main в отслеживаемых репозиториях и в каком состоянии ваши pull request.",
+        "es": "Muestra si main está en verde en los repositorios que sigues y en qué punto están tus pull requests.",
+        "sk": "Ukazuje, či je main zelená v repozitároch, ktoré sledujete, a ako sú na tom vaše pull requesty.",
+        "de": "Zeigt, ob main in den beobachteten Repositorys grün ist und wo deine Pull Requests stehen.",
+        "fr": "Indique si main est au vert dans les dépôts que vous suivez et où en sont vos pull requests.",
+        "it": "Mostra se main è verde nei repository che segui e a che punto sono le tue pull request.",
+        "ja": "監視しているリポジトリで main がグリーンかどうかと、プルリクエストの状況を表示します。",
+        "ko": "지켜보는 저장소에서 main이 초록색인지, 내 풀 리퀘스트가 어디까지 왔는지 보여 줍니다.",
+        "uk": "Показує, чи зелена main у репозиторіях, за якими ви стежите, і на якому етапі ваші pull request.",
+        "zh-Hans": "显示你关注的仓库中 main 是否为绿色，以及你的拉取请求进展如何。",
+        "zh-TW": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
+        "zh-HK": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。"
+      },
+      "version": "1.3.0",
+      "protocol": "2",
+      "minimumAppVersion": "3.46.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-tool-github",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.3.0/github-tool-1.3.0.zip",
+        "sha256": "d2b3a8c5f2c325c9c48986e11017032ea1d4d9ee0ed27203be3e31931252afdc",
+        "size": 1247941
+      },
+      "uses": ["notify", "open", "storage"],
+      "commands": [
+        {
+          "id": "refresh",
+          "title": {
+            "en": "Refresh GitHub",
+            "pt-BR": "Atualizar o GitHub",
+            "tr": "GitHub’ı yenile",
+            "ru": "Обновить GitHub",
+            "es": "Actualizar GitHub",
+            "sk": "Obnoviť GitHub",
+            "de": "GitHub aktualisieren",
+            "fr": "Actualiser GitHub",
+            "it": "Aggiorna GitHub",
+            "ja": "GitHub を更新",
+            "ko": "GitHub 새로 고침",
+            "uk": "Оновити GitHub",
+            "zh-Hans": "刷新 GitHub",
+            "zh-TW": "重新整理 GitHub",
+            "zh-HK": "重新整理 GitHub"
+          }
+        },
+        {
+          "id": "openPulls",
+          "title": {
+            "en": "Open my pull requests",
+            "pt-BR": "Abrir meus pull requests",
+            "tr": "Pull request’lerimi aç",
+            "ru": "Открыть мои пул-реквесты",
+            "es": "Abrir mis pull requests",
+            "sk": "Otvoriť moje pull requesty",
+            "de": "Meine Pull Requests öffnen",
+            "fr": "Ouvrir mes pull requests",
+            "it": "Apri le mie pull request",
+            "ja": "自分のプルリクエストを開く",
+            "ko": "내 풀 리퀘스트 열기",
+            "uk": "Відкрити мої пул-реквести",
+            "zh-Hans": "打开我的拉取请求",
+            "zh-TW": "打開我的拉取請求",
+            "zh-HK": "打開我的拉取請求"
+          }
+        }
+      ],
+      "panels": ["island", "settings"]
+    },
+    {
+      "id": "dev.vitruvian.homespeaker",
+      "name": {
+        "en": "HomeSpeaker"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
+      },
+      "version": "1.19.1",
+      "protocol": "2",
+      "minimumAppVersion": "3.45.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.19.1/HomeSpeaker-1.19.1-tool.zip",
+        "sha256": "0301fbf7bc26dd65b4922be2dfd2863694b715ab5a97f6752d59ee0dbd3f1324",
+        "size": 2757993
+      },
+      "uses": ["notify", "clipboard.read", "open"],
+      "commands": [
+        {
+          "id": "sayClipboard",
+          "title": {
+            "en": "Speak the clipboard"
+          }
+        },
+        {
+          "id": "toggleBroadcasting",
+          "title": {
+            "en": "Turn broadcasting on or off"
+          }
+        },
+        {
+          "id": "mute",
+          "title": {
+            "en": "Mute the speaker"
+          }
+        },
+        {
+          "id": "unmute",
+          "title": {
+            "en": "Unmute the speaker"
+          }
+        },
+        {
+          "id": "toggleQuietHours",
+          "title": {
+            "en": "Turn quiet hours on or off"
+          }
+        }
+      ],
+      "panels": ["island", "settings"]
+    }
+  ]
+}

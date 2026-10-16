@@ -91,6 +91,86 @@ After the merge, the workflow **catalog-publish** signs `tools.json` and opens
 a pull request that writes the signed copy into the website. The app sees
 the change once that pull request merges and the site is deployed.
 
+## A new release of a listed tool
+
+Nobody needs to write this pull request by hand. Each hour the workflow
+**catalog-bump** compares the newest release of each tool in
+`sources.json` with its entry. When the release is newer, and has its zip, it
+runs
+
+```sh
+bazel run //catalog:bump -- --id dev.vitruvian.homespeaker --tag home-speaker-v1.20.0
+```
+
+and opens a pull request on `catalog/bump-<id>-<version>`. The command
+refuses, and writes nothing, unless:
+
+- the zip and its `.sha256` were uploaded by the account `sources.json`
+  names for the tool (the release workflow's);
+- the zip's size and SHA-256 are the ones GitHub records for the file, and
+  the SHA-256 is the one in the `.sha256`;
+- the zip is safe to unpack;
+- every program in it runs on the oldest macOS the app runs on
+  (`LSMinimumSystemVersion` in the app's `Info.plist`), and the tool's
+  program holds both Intel and Apple silicon when `sources.json` says it has;
+- its manifest has the entry's id and the tag's version.
+
+These prove the file is the one the release's workflow uploaded, and that it
+runs on every Mac the app does. They do not prove the release's code is
+safe: the pull request links the release and the source's changes for that.
+
+It sets the version and the download, copies what an entry copies from the
+manifest, sets `generated`, and regenerates the website's page. It never
+changes `minimumAppVersion`: when the manifest declares something only newer
+apps draw, the pull request says so.
+
+**Who merges it.** When nothing changed in what the tool asks for (`uses`),
+its commands, its panels, its protocol or its publisher, the pull request may
+merge itself: **catalog-check** arms auto-merge once it passes on the pull
+request, at the commit it checked, and only while the branch holds nothing
+but the workflow's one commit; it turns it off if it fails. A push by anyone
+else to a bump branch turns auto-merge off at once and labels it
+`needs-human`, and so does a branch that changes anything but `tools.json`
+and the website's `_data/tools.yml`.
+
+When anything in that list changed, the pull request is labelled
+`needs-human`, never armed, and its description names each change. New words
+in the name, the summary or a command's title do not hold it.
+
+What that does not cover: on a pull request, GitHub runs catalog-check's
+workflow file as the pull request has it, so someone with push access who
+edits that file on a bump branch runs their own version of it, with the
+App's key. That is true of every workflow in this repository while `main`
+needs no approval. The fix is repository-wide, the App's key in an
+environment only `main` can use, and is tracked on its own.
+
+**Skipped, not failed:** a release with no zip yet, a draft or pre-release, a
+tool not listed yet, a version whose pull request is still open, and a
+version whose pull request a person closed. Reopen that pull request, or run
+the workflow by hand, to bring it back.
+
+**A person's commit is kept.** The workflow's commit on a bump branch carries
+the trailer `Catalog-Bump: <id>@<version>`, and the branch holds only that
+one. When a branch holds anything else, the workflow never rebuilds it over
+them, even when it no longer merges; it says so once, in a comment.
+
+**A refusal is recorded once.** The run that refuses a release fails and
+opens the issue `catalog-bump refused <id> <version>` with the reasons. While
+that issue is open the hourly run skips the version; close it to try again.
+Only a finding about the release itself is a refusal. When GitHub does not
+answer, or a file cannot be downloaded, the run stays red, opens no issue,
+and tries again the next hour.
+
+`sources.json` says, for each tool, the repository its release is in, the
+tag's prefix, the zip's name, its uploader, and whether its program is
+universal. An entry kept by hand is named under `manual` with the reason;
+`//catalog:bump_test` fails for an entry in neither.
+
+Run it by hand, for one release, from the workflow's page (**Run workflow**,
+with the id and the tag) or with the command above. One run goes at a time;
+GitHub drops a run that waits behind another when a third arrives, so if the
+hourly run starts while yours waits, run yours again.
+
 ## The signature
 
 The app trusts a list only when it is signed with VitruvianSoftware's key.
