@@ -39,6 +39,9 @@ public final class EngineSupervisor: @unchecked Sendable {
         /// folder. `message` is the engine's own line ("another Courier engine is using DIR"), nil when it said
         /// nothing the app could read.
         case dataDirectoryInUse(message: String?)
+        /// The engine stopped before it was ready, and said why on standard error (a socket path that is too
+        /// long, a data folder it cannot write): `message` is its own line.
+        case engineFailed(message: String)
     }
 
     /// The engine's exit status when another engine holds its data directory.
@@ -197,7 +200,8 @@ public final class EngineSupervisor: @unchecked Sendable {
                 if isStopping { break loop }
                 if let connectedAt, timing.now() - connectedAt >= timing.resetAfter { attempt = 0 }
                 attempt += 1
-                publish(.reconnecting(attempt: attempt, problem: Self.problem(status: status, errors: errors)))
+                publish(.reconnecting(attempt: attempt, problem: Self.problem(status: status, errors: errors,
+                                                                              wasConnected: connectedAt != nil)))
                 await backOff(Self.backoff(attempt: attempt))
             }
         }
@@ -221,13 +225,16 @@ public final class EngineSupervisor: @unchecked Sendable {
         lock.withLock { backoffTask = nil }
     }
 
-    /// What an exit means for the person, if anything.
-    static func problem(status: Int32?, errors: [String]) -> Problem? {
-        guard status == lockedExitStatus else { return nil }
+    /// What an exit means for the person, if anything. An engine that stopped before it was ready and said why
+    /// has its own words shown; one that stopped after it was ready, or said nothing the app can read, is an
+    /// ordinary crash and gets the plain restart.
+    static func problem(status: Int32?, errors: [String], wasConnected: Bool = false) -> Problem? {
         // Fatal start-up errors are plain text, "courier-engine: <message>"; warnings before them are JSON.
         let prefix = "courier-engine: "
         let message = errors.last { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
-        return .dataDirectoryInUse(message: message)
+        if status == lockedExitStatus { return .dataDirectoryInUse(message: message) }
+        if !wasConnected, let message { return .engineFailed(message: message) }
+        return nil
     }
 
     /// One engine, from launch to its exit.

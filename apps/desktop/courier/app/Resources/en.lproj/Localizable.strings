@@ -24,6 +24,9 @@
 /* The main window when another engine holds the data folder (the engine exits 3). The argument is the engine's own message, which names the folder. The restarts go on. */
 "Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying." = "Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying.";
 
+/* The main window when the engine stopped before it was ready and said why on standard error (for example, a data folder path that is too long). The argument is the engine's own message. The restarts go on. */
+"Courier’s engine stopped while starting: %@. Courier keeps trying." = "Courier’s engine stopped while starting: %@. Courier keeps trying.";
+
 /* As above, when the engine said nothing the app could read. */
 "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying." = "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying.";
 

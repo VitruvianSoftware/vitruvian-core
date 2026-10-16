@@ -22,7 +22,13 @@ struct MainWindow: View {
         switch model.engineState {
         case .connected:
             if inbox.showsAddNetwork {
-                AddNetworkPrompt(add: inbox.addNetwork)
+                VStack(spacing: 0) {
+                    // Telegram's "Set up" is here too: it has to be set up before it can be linked.
+                    ForEach(inbox.banners) { banner in
+                        AccountBannerView(banner: banner) { inbox.perform(banner) }
+                    }
+                    AddNetworkPrompt(add: inbox.addNetwork)
+                }
             } else {
                 panes
             }
@@ -144,6 +150,8 @@ enum StatusText {
             String(localized: "Courier can’t start its engine: \(message). Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying.")
         case .dataDirectoryInUse(nil):
             String(localized: "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying.")
+        case let .engineFailed(message):
+            String(localized: "Courier’s engine stopped while starting: \(message). Courier keeps trying.")
         }
     }
 }

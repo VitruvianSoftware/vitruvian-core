@@ -218,13 +218,62 @@ final class EngineSupervisorTests: XCTestCase {
         await supervisor.waitUntilStopped()
     }
 
-    func testOnlyExit3IsAProblem() {
+    func testEngineThatStopsBeforeReadyShowsItsReason() async throws {
+        let server = try makeServer()
+        let message = "the socket path /tmp/x/engine.sock is 195 bytes, and a Unix socket path can be at most 103"
+        let launcher = FakeLauncher { index, process in
+            guard index < 2 else {
+                process.printReady(socket: server.path)
+                return
+            }
+            // Not exit 3: any exit before the ready line, with the engine's own last line.
+            process.printError(#"{"level":"warn","message":"example warning"}"#)
+            process.printError("courier-engine: \(message)")
+            process.exit(1)
+        }
+        let time = FakeTime()
+        let supervisor = makeSupervisor(launcher, time: time)
+        let recorder = StateRecorder(supervisor)
+        supervisor.start()
+        try await waitUntil { recorder.last == .connected }
+
+        let problem = EngineSupervisor.Problem.engineFailed(message: message)
+        XCTAssertEqual(recorder.states, [
+            .starting,
+            .reconnecting(attempt: 1, problem: problem),
+            .reconnecting(attempt: 2, problem: problem),
+            .connected,
+        ])
+        XCTAssertEqual(time.sleeps, [1, 2], "the back-off goes on")
+        supervisor.stop()
+        await supervisor.waitUntilStopped()
+    }
+
+    func testAnExitAfterReadyIsAPlainCrash() async throws {
+        let server = try makeServer()
+        let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
+        let supervisor = makeSupervisor(launcher, time: FakeTime())
+        let recorder = StateRecorder(supervisor)
+        supervisor.start()
+        try await waitUntil { recorder.last == .connected }
+        launcher.processes[0].printError("courier-engine: something said on the way out")
+        launcher.processes[0].exit(1)
+        try await waitUntil { launcher.count == 2 && recorder.last == .connected }
+        XCTAssertTrue(recorder.states.contains(.reconnecting(attempt: 1)), "no problem is named")
+        supervisor.stop()
+        await supervisor.waitUntilStopped()
+    }
+
+    func testWhichExitsAreAProblem() {
         let line = "courier-engine: another Courier engine is using /tmp/x"
         XCTAssertEqual(EngineSupervisor.problem(status: 3, errors: ["{}", line]),
                        .dataDirectoryInUse(message: "another Courier engine is using /tmp/x"))
         XCTAssertEqual(EngineSupervisor.problem(status: 3, errors: []), .dataDirectoryInUse(message: nil))
-        XCTAssertNil(EngineSupervisor.problem(status: 1, errors: [line]))
-        XCTAssertNil(EngineSupervisor.problem(status: 2, errors: [line]))
+        // Before ready, any exit with the engine's own line has it shown; without one, or after ready, none.
+        XCTAssertEqual(EngineSupervisor.problem(status: 1, errors: [line]), .engineFailed(message: "another Courier engine is using /tmp/x"))
+        XCTAssertEqual(EngineSupervisor.problem(status: 2, errors: ["{}", line]), .engineFailed(message: "another Courier engine is using /tmp/x"))
+        XCTAssertNil(EngineSupervisor.problem(status: 1, errors: [line], wasConnected: true))
+        XCTAssertNil(EngineSupervisor.problem(status: 2, errors: ["goroutine 1 [running]:"]))
         XCTAssertNil(EngineSupervisor.problem(status: nil, errors: []))
     }
 

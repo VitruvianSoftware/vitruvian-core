@@ -9,6 +9,8 @@ import SwiftUI
 struct InboxRowView: View {
     let row: InboxRow
     let networkName: String
+    /// The moment the time is read against; the list moves it on every minute.
+    let now: Date
 
     var body: some View {
         HStack(spacing: 10) {
@@ -25,7 +27,7 @@ struct InboxRowView: View {
                         .font(.headline)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    Text(RelativeTime.text(forMillis: row.lastTS))
+                    Text(RelativeTime.text(forMillis: row.lastTS, now: now))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

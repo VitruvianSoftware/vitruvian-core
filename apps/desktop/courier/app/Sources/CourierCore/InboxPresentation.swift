@@ -44,29 +44,54 @@ extension InboxRow {
 }
 
 /// A row's time: the time of day if it is today, the weekday within the last six days, the short date otherwise.
-/// All in the person's locale and calendar.
+/// All in the person's locale and calendar. A row asks for it on every render, so the formatters are kept: one per
+/// style, locale and calendar.
 public enum RelativeTime {
+    private enum Style: String { case time, weekday, date }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var formatters: [String: DateFormatter] = [:]
+
+    /// How many formatters are kept (a test reads it).
+    static var cachedFormatterCount: Int { lock.withLock { formatters.count } }
+
+    private static func formatter(_ style: Style, calendar: Calendar, locale: Locale) -> DateFormatter {
+        let key = "\(style.rawValue)|\(locale.identifier)|\(calendar.identifier)|\(calendar.timeZone.identifier)"
+        return lock.withLock {
+            if let kept = formatters[key] { return kept }
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            switch style {
+            case .time:
+                formatter.timeStyle = .short
+                formatter.dateStyle = .none
+            case .weekday:
+                formatter.setLocalizedDateFormatFromTemplate("EEEE")
+            case .date:
+                formatter.timeStyle = .none
+                formatter.dateStyle = .short
+            }
+            if formatters.count >= 32 { formatters = [:] } // a person changes locale rarely; this is only a bound
+            formatters[key] = formatter
+            return formatter
+        }
+    }
+
     public static func text(forMillis millis: Int64, now: Date = Date(), calendar: Calendar = .current,
                             locale: Locale = .current) -> String {
         guard millis > 0 else { return "" }
         let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
                                            to: calendar.startOfDay(for: now)).day ?? 0
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
+        let style: Style
         switch days {
-        case 0:
-            formatter.timeStyle = .short
-            formatter.dateStyle = .none
-        case 1 ... 6:
-            formatter.setLocalizedDateFormatFromTemplate("EEEE")
-        default: // older, or ahead of this clock
-            formatter.timeStyle = .none
-            formatter.dateStyle = .short
+        case 0: style = .time
+        case 1 ... 6: style = .weekday
+        default: style = .date // older, or ahead of this clock
         }
-        return formatter.string(from: date)
+        return formatter(style, calendar: calendar, locale: locale).string(from: date)
     }
 }
 

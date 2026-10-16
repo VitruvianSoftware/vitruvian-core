@@ -29,13 +29,16 @@ struct InboxList: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollViewReader { scroll in
-                List(selection: selection) {
-                    ForEach(inbox.rows, id: \.roomID) { row in
-                        InboxRowView(row: row, networkName: inbox.networkName(row.network))
-                            .tag(row.roomID)
+                // The times are read against "now", which moves on: draw again every minute.
+                TimelineView(.everyMinute) { timeline in
+                    List(selection: selection) {
+                        ForEach(inbox.rows, id: \.roomID) { row in
+                            InboxRowView(row: row, networkName: inbox.networkName(row.network), now: timeline.date)
+                                .tag(row.roomID)
+                        }
                     }
+                    .listStyle(.inset)
                 }
-                .listStyle(.inset)
                 .onChange(of: inbox.selectedRoomID) { _, id in
                     // A key moved the selection, which may be off screen.
                     if let id { scroll.scrollTo(id) }

@@ -68,6 +68,7 @@ public final class InboxModel: ObservableObject {
 
     private let appModel: AppModel
     private let window: TimeInterval
+    private let retryDelay: TimeInterval
     private let sleep: @Sendable (TimeInterval) async -> Void
     private var subscription: AnyCancellable?
 
@@ -79,11 +80,13 @@ public final class InboxModel: ObservableObject {
 
     /// - Parameters:
     ///   - window: how long changes are gathered before one read, in seconds.
-    ///   - sleep: waits `window`; tests give one they can open.
-    public init(appModel: AppModel, window: TimeInterval = 0.1,
+    ///   - retryDelay: how long after a failed read the next one waits, in seconds.
+    ///   - sleep: waits `window` and `retryDelay`; tests give one they can open.
+    public init(appModel: AppModel, window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
         self.appModel = appModel
         self.window = window
+        self.retryDelay = retryDelay
         self.sleep = sleep
         // The views watch this model; the open chat and the accounts are the app model's.
         subscription = appModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -218,6 +221,8 @@ public final class InboxModel: ObservableObject {
 
     public func toggleRead() async {
         guard let row = selectedRow, row.unread > 0, let client = appModel.client else { return }
+        // A failure is ignored: the read below shows the chat as the engine has it, and milestone 3 has no place to
+        // say more. Milestone 4's toasts can.
         let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: row.roomID))
         // The engine says the marker moved too; this makes the list right even if that is slow.
         requestRead(waiting: false)
@@ -225,6 +230,7 @@ public final class InboxModel: ObservableObject {
 
     public func toggleMute() async {
         guard let row = selectedRow, let client = appModel.client else { return }
+        // Ignored on failure, as in toggleRead: the read below shows the truth.
         let _: Empty? = try? await client.call("room.setMuted", SetMutedParams(roomID: row.roomID, muted: !row.muted))
         requestRead(waiting: false)
     }
@@ -257,25 +263,41 @@ public final class InboxModel: ObservableObject {
         }
     }
 
-    /// Reads, and reads again for as long as changes came in during the read, each time after a window.
+    /// Reads, and reads again for as long as changes came in during the read, each time after a window. A read
+    /// that failed (the engine did not answer in time) is tried again after `retryDelay`, so the list does not
+    /// wait for the next change to show up.
     private func readUntilQuiet() async {
         readInFlight = true
+        var again: Bool
         repeat {
             readAgain = false
-            await read()
-            if readAgain { await sleep(window) }
-        } while readAgain
+            if await read() {
+                again = readAgain
+                if again { await sleep(window) }
+            } else {
+                again = true
+                await sleep(retryDelay)
+            }
+        } while again
         readInFlight = false
         reading = nil
     }
 
-    private func read() async {
-        guard let client = appModel.client else { return }
-        let result: InboxResult? = try? await client.call("inbox.list", Empty())
+    /// False when the engine that is up failed to answer: the caller tries again.
+    private func read() async -> Bool {
+        guard let client = appModel.client else { return true }
+        let result: InboxResult?
+        do {
+            result = try await client.call("inbox.list", Empty())
+        } catch {
+            // A client that is gone has nothing to retry: the new engine's greeting reads again.
+            return client !== appModel.client
+        }
         // The engine may have restarted while this was in flight: its answer is not today's.
-        guard let result, client === appModel.client else { return }
+        guard let result, client === appModel.client else { return true }
         rows = Self.sorted(result.rooms)
         isLoaded = true
+        return true
     }
 
     /// Newest first; chats with the same time in the id's order, so the list does not shuffle.

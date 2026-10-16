@@ -32,8 +32,9 @@ final class InboxModelTests: XCTestCase {
 
     /// An app model on a stand-in engine, an inbox model on that, and the first inbox read done.
     private func start(rooms: [[String: Any]] = [], accounts: [[String: Any]] = [account("whatsapp", "CONNECTED")],
-                       autoRelease: Bool = false) async throws -> Harness {
+                       autoRelease: Bool = false, failFirstReads: Int = 0) async throws -> Harness {
         let script = InboxScript(rooms: rooms, accounts: accounts)
+        script.failReads = failFirstReads
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
@@ -44,7 +45,7 @@ final class InboxModelTests: XCTestCase {
         let app = AppModel(supervisor: supervisor)
         let sleeps = SleepControl()
         if autoRelease { await sleeps.releaseAlways() }
-        let inbox = InboxModel(appModel: app, window: 0.1, sleep: { await sleeps.sleep($0) })
+        let inbox = InboxModel(appModel: app, window: 0.1, retryDelay: 2, sleep: { await sleeps.sleep($0) })
         app.start()
         try await waitUntil { inbox.isLoaded && !app.accounts.isEmpty }
         return Harness(script: script, server: server, launcher: launcher, supervisor: supervisor, app: app,
@@ -234,6 +235,16 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testAFailedReadIsTriedAgainAfterTwoSeconds() async throws {
+        // The first read fails (the engine did not answer); nothing else changes, so only a retry can fill the list.
+        let h = try await start(rooms: [room("!a", ts: 100)], autoRelease: true, failFirstReads: 2)
+        XCTAssertEqual(h.inbox.rows.map(\.roomID), ["!a"])
+        XCTAssertEqual(h.count("inbox.list"), 3, "two failures and then the read that worked")
+        let waits = await h.sleeps.durations
+        XCTAssertEqual(waits, [2, 2], "each retry waits two seconds")
+        await stop(h)
+    }
+
     func testResyncRefetchesEverything() async throws {
         let h = try await start(rooms: [room("!a", ts: 100)], accounts: [account("whatsapp", "CONNECTING")])
         XCTAssertEqual(h.count("inbox.list"), 1)
@@ -380,6 +391,14 @@ final class InboxModelTests: XCTestCase {
             account("whatsapp", "UNCONFIGURED"), account("telegram", "NOT_STARTED", notStarted: "Needs a key."),
         ])
         XCTAssertTrue(h.inbox.showsAddNetwork)
+        // Telegram can be set up before anything is linked, so its banner is there on this screen too.
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["telegram"])
+        XCTAssertEqual(h.inbox.banners.first?.action, .setUp)
+        XCTAssertEqual(h.inbox.banners.first?.detail, "Needs a key.")
+        var setUp: [String] = []
+        h.inbox.onSetUp = { setUp.append($0) }
+        h.inbox.perform(h.inbox.banners[0])
+        XCTAssertEqual(setUp, ["telegram"])
         var added = 0
         h.inbox.onAddNetwork = { added += 1 }
         h.inbox.addNetwork()
@@ -409,6 +428,7 @@ final class InboxScript: @unchecked Sendable {
     private var _rooms: [[String: Any]]
     private var _accounts: [[String: Any]]
     private var _hold = false
+    private var _failReads = 0
     private var _onMarkRead: (@Sendable (String) -> Void)?
 
     init(rooms: [[String: Any]], accounts: [[String: Any]]) {
@@ -432,6 +452,20 @@ final class InboxScript: @unchecked Sendable {
         set { lock.withLock { _hold = newValue } }
     }
 
+    /// The next this many inbox.list calls fail.
+    var failReads: Int {
+        get { lock.withLock { _failReads } }
+        set { lock.withLock { _failReads = newValue } }
+    }
+
+    private func shouldFailRead() -> Bool {
+        lock.withLock {
+            guard _failReads > 0 else { return false }
+            _failReads -= 1
+            return true
+        }
+    }
+
     var onMarkRead: (@Sendable (String) -> Void)? {
         get { lock.withLock { _onMarkRead } }
         set { lock.withLock { _onMarkRead = newValue } }
@@ -441,7 +475,9 @@ final class InboxScript: @unchecked Sendable {
         switch method {
         case "hello": return TestEngineServer.helloOK
         case "accounts.list": return .result(["accounts": accounts])
-        case "inbox.list": return holdInbox ? .later : .result(["rooms": rooms])
+        case "inbox.list":
+            if shouldFailRead() { return .error(code: -32000, message: "example failure") }
+            return holdInbox ? .later : .result(["rooms": rooms])
         case "room.markRead":
             if let id = params?["room_id"] as? String { onMarkRead?(id) }
             return .result([String: Any]())
@@ -468,10 +504,13 @@ extension TestEngineServer {
 actor SleepControl {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var alwaysOpen = false
+    /// Every wait asked for, in order.
+    private(set) var durations: [TimeInterval] = []
 
     var waiting: Int { waiters.count }
 
     func sleep(_ seconds: TimeInterval) async {
+        durations.append(seconds)
         if alwaysOpen { return }
         await withCheckedContinuation { waiters.append($0) }
     }

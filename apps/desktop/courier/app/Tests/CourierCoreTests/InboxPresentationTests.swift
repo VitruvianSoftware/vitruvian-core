@@ -61,6 +61,24 @@ final class InboxPresentationTests: XCTestCase {
         XCTAssertEqual(text(time(daysAgo: -1)), "10/17/26")
     }
 
+    func testFormattersAreKeptNotBuiltPerRow() {
+        _ = text(time(daysAgo: 0))
+        _ = text(time(daysAgo: 1))
+        _ = text(time(daysAgo: 9))
+        let kept = RelativeTime.cachedFormatterCount
+        for index in 0 ..< 500 { _ = text(time(daysAgo: index % 12)) }
+        XCTAssertEqual(RelativeTime.cachedFormatterCount, kept, "500 rows, no new formatter")
+        XCTAssertEqual(text(time(daysAgo: 1)), "Thursday")
+    }
+
+    func testTheTimeFollowsNow() {
+        // The same message reads as today's time in the evening and as the weekday the next morning.
+        let sent = time(daysAgo: 0)
+        XCTAssertEqual(text(sent), "9:05 AM")
+        let tomorrow = now.addingTimeInterval(24 * 3600)
+        XCTAssertEqual(RelativeTime.text(forMillis: sent, now: tomorrow, calendar: calendar, locale: locale), "Friday")
+    }
+
     func testInitials() {
         XCTAssertEqual(InboxRow.initials(of: "Ada Lovelace"), "AL")
         XCTAssertEqual(InboxRow.initials(of: "ada"), "A")
