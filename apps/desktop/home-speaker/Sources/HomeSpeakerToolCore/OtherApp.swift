@@ -32,6 +32,8 @@ import HomeSpeakerCore
 public protocol RunningAppHandle: AnyObject {
     var bundleIdentifier: String? { get }
     var activationPolicy: NSApplication.ActivationPolicy { get }
+    /// Where the running application was started from.
+    var bundleURL: URL? { get }
     /// Asks the application to quit, as the Dock's Quit does. False when it
     /// could not be asked.
     func terminate() -> Bool
@@ -197,23 +199,36 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     static let quitCheck = 0.1
 
     public func quit(timeout: Double) async -> Bool {
-        // Only an app this controller has found is asked: with none found
-        // (a test's `HOMESPEAKER_PROGRAM=""`, say), a HomeSpeaker that happens
-        // to run on this Mac is never quit.
-        guard locate() != nil else { return !isRunning }
-        // The menu bar app only: a command-line run of the program has the
-        // `.prohibited` policy, and may be a script speaking.
-        let menuBarApps = runningApps().filter {
-            $0.bundleIdentifier == HomeSpeakerProfile.appBundleID && $0.activationPolicy != .prohibited
-        }
-        guard !menuBarApps.isEmpty else { return true }
-        for app in menuBarApps { _ = app.terminate() }
+        // Only the app this controller found is asked, matched by where it
+        // runs from, never by its bundle id alone: with none found (a test's
+        // `HOMESPEAKER_PROGRAM=""`, say), or a copy elsewhere running, no
+        // HomeSpeaker that happens to run on this Mac is quit.
+        guard let bundle else { return !isRunning }
+        let targets = menuBarApps(at: bundle)
+        guard !targets.isEmpty else { return true }
+        for app in targets { _ = app.terminate() }
         let checks = max(1, Int((timeout / Self.quitCheck).rounded(.up)))
         for _ in 0..<checks {
-            if !isRunning { return true }
+            if menuBarApps(at: bundle).isEmpty { return true }
             await wait(timeout / Double(checks))
         }
-        return !isRunning
+        return menuBarApps(at: bundle).isEmpty
+    }
+
+    /// The menu bar apps running from exactly `bundle`. A command-line run
+    /// of the program has the `.prohibited` policy, and may be a script
+    /// speaking: it is never one of them.
+    private func menuBarApps(at bundle: URL) -> [any RunningAppHandle] {
+        let wanted = Self.canonical(bundle)
+        return runningApps().filter {
+            $0.bundleIdentifier == HomeSpeakerProfile.appBundleID && $0.activationPolicy != .prohibited
+                && $0.bundleURL.map(Self.canonical) == wanted
+        }
+    }
+
+    /// A bundle's path with `.`, `..` and links resolved.
+    static func canonical(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     public func turnOffLoginItem() async -> Result<Void, OtherAppProblem> {

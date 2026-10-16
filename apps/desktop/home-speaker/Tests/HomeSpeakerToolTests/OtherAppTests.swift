@@ -34,14 +34,16 @@ import HomeSpeakerToolCore
 private final class StandInApp: RunningAppHandle, @unchecked Sendable {
     let bundleIdentifier: String?
     let activationPolicy: NSApplication.ActivationPolicy
+    let bundleURL: URL?
     /// False for an app that ignores being asked to quit.
     let quitsWhenAsked: Bool
     private(set) var askedToQuit = false
 
     init(_ policy: NSApplication.ActivationPolicy, bundleIdentifier: String? = HomeSpeakerProfile.appBundleID,
-         quitsWhenAsked: Bool = true) {
+         at bundleURL: URL? = nil, quitsWhenAsked: Bool = true) {
         self.bundleIdentifier = bundleIdentifier
         activationPolicy = policy
+        self.bundleURL = bundleURL
         self.quitsWhenAsked = quitsWhenAsked
     }
 
@@ -146,12 +148,18 @@ final class OtherAppTests: XCTestCase {
 
     // MARK: Quitting
 
+    /// `HomeSpeaker.app` for the program `makeApp` made.
+    private func bundle(of program: URL) -> URL {
+        program.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    }
+
     func testQuitAsksOnlyTheMenuBarApp() async throws {
-        let script = StandInApp(.prohibited)
-        let menuBar = StandInApp(.accessory)
-        let stranger = StandInApp(.regular, bundleIdentifier: "com.example.other")
+        let program = try makeApp(version: "1.19.0")
+        let script = StandInApp(.prohibited, at: bundle(of: program))
+        let menuBar = StandInApp(.accessory, at: bundle(of: program))
+        let stranger = StandInApp(.regular, bundleIdentifier: "com.example.other", at: bundle(of: program))
         mac.apps = [script, menuBar, stranger]
-        let other = app(program: try makeApp(version: "1.19.0"))
+        let other = app(program: program)
         XCTAssertTrue(other.isRunning)
 
         let quit = await other.quit(timeout: 5)
@@ -173,6 +181,31 @@ final class OtherAppTests: XCTestCase {
         XCTAssertFalse(menuBar.askedToQuit, "an app it did not find was asked to quit")
     }
 
+    /// Two copies of the app running, from two places: only the one this
+    /// controller found is asked to quit, matched by its path (written
+    /// differently, as `..` and all), never by the bundle id they share.
+    func testQuitAsksOnlyTheAppItFound() async throws {
+        let program = try makeApp(version: "1.19.0")
+        let elsewhere = bundle(of: try makeApp(version: "1.19.0", in: "Elsewhere"))
+        let found = StandInApp(.accessory, at: bundle(of: program).appendingPathComponent("Contents/.."))
+        let other = StandInApp(.accessory, at: elsewhere)
+        let nowhere = StandInApp(.accessory)
+        mac.apps = [other, found, nowhere]
+
+        let quit = await app(program: program).quit(timeout: 1)
+
+        XCTAssertTrue(quit, "the one it found has gone")
+        XCTAssertTrue(found.askedToQuit)
+        XCTAssertFalse(other.askedToQuit, "a copy elsewhere is never asked to quit")
+        XCTAssertFalse(nowhere.askedToQuit, "nor one that does not say where it runs from")
+
+        // Only copies elsewhere running: nothing is asked.
+        let lone = StandInApp(.accessory, at: elsewhere)
+        mac.apps = [lone]
+        _ = await app(program: program).quit(timeout: 1)
+        XCTAssertFalse(lone.askedToQuit)
+    }
+
     func testQuitWithOnlyACommandLineRunHasNothingToDo() async throws {
         let script = StandInApp(.prohibited)
         mac.apps = [script]
@@ -187,9 +220,10 @@ final class OtherAppTests: XCTestCase {
     }
 
     func testQuitSaysWhenTheAppStaysOpen() async throws {
-        let stubborn = StandInApp(.accessory, quitsWhenAsked: false)
+        let program = try makeApp(version: "1.19.0")
+        let stubborn = StandInApp(.accessory, at: bundle(of: program), quitsWhenAsked: false)
         mac.apps = [stubborn]
-        let other = app(program: try makeApp(version: "1.19.0"))
+        let other = app(program: program)
 
         let quit = await other.quit(timeout: 2)
 

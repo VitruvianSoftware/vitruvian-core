@@ -35,7 +35,10 @@ folder in it, `HOMESPEAKER_PROGRAM` set and empty keeps it off the
 HomeSpeaker app Launch Services would find on this Mac, and
 `HOMESPEAKER_MESSAGE_PREFIX` is this run's own, so a HomeSpeaker on this
 Mac hears nothing of it. Before anything runs, the program's hidden
-`--where` flag must name that data folder.
+`--where` flag must name that data folder. `HOMESPEAKER_PROGRAM=""` is what
+keeps the program from finding, and so from ever offering to quit, a real
+HomeSpeaker app running on this Mac: the first page each run shows is
+checked to hold no "Quit the app" button and no old-app line.
 
 Then it plays the app itself, over the same JSON-RPC on stdin and stdout,
 with the conformance script's own link and checks (imported, not copied):
@@ -248,6 +251,22 @@ def block(tree, block_id):
     return next((b for b in tree["blocks"] if b.get("id") == block_id), None)
 
 
+# The extension's offer to quit an app older than 1.19 (Pages.DoorWords,
+# OtherAppPlan.Step.oldAppWarning). Never drawn here: no app is found.
+QUIT_AGAIN = "door.quitAgain"
+OLD_APP = "This copy of the app is older than 1.19"
+
+
+def offers_no_quit(tree, where):
+    """The page holds nothing that would quit an app: with no app found, a
+    HomeSpeaker that happens to run on this Mac must never be offered."""
+    if block(tree, QUIT_AGAIN) is not None or says(tree, OLD_APP):
+        raise E2EFailure(
+            f"{where}: the page offers to quit a HomeSpeaker app, though none was found"
+        )
+    return tree
+
+
 class Driver:
     """The app's side, page by page, through the conformance script's Run."""
 
@@ -340,7 +359,7 @@ def end_to_end(conf, folder, data, env):
         app = Driver(conf, run)
 
         # Before anything is written: the tool must be using this folder.
-        app.open("settings")
+        offers_no_quit(app.open("settings"), "settings, first page")
         cloud = app.section("googleCloud")
         for path in (settings, secrets):
             if not says(cloud, path):
@@ -387,7 +406,7 @@ def end_to_end(conf, folder, data, env):
 
         # The island: the extension is HomeSpeaker, installed by definition,
         # so its controls are drawn, and its broadcasting switch saved.
-        island = app.open("speaker")
+        island = offers_no_quit(app.open("speaker"), "speaker, first page")
         if says(island, "not installed"):
             raise E2EFailure("the island says HomeSpeaker is not installed")
         app.act("speaker", "broadcasting", "toggle", False)
@@ -411,7 +430,7 @@ def end_to_end(conf, folder, data, env):
         run = conf.Run(older, manifest, started_in, features=None)
         said.append("an older app: " + run.handshake())
         app = Driver(conf, run)
-        general = app.open("settings")
+        general = offers_no_quit(app.open("settings"), "an older app's settings, first page")
         drawn = block(general, "quietEnd")
         if drawn is None or drawn.get("type") != "field":
             raise E2EFailure(
