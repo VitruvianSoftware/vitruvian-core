@@ -247,15 +247,16 @@ app's paths. After this change:
 The manifest declares `contributes.status: {"placement": "island"}`. Adding it changes the
 manifest, so Vitruvian shows the agreement sheet again on update, with "It shows a small status
 mark on the closed Dynamic Island". It is sent only to an app that names `ui.status`
-(`App.supports(.status)`). One pure function maps what the tool knows to a mark. The worst row
-that applies wins:
+(`App.supports(.status)`). One pure function maps what the tool knows to a mark. The rows are
+in the order they are tried and the first that applies wins, so the order is the precedence, and
+when the other one is chosen this HomeSpeaker shows nothing at all.
 
 | When | State | Icon | Words (tooltip) |
 |---|---|---|---|
 | The other one is chosen | `none` | | (quiet on purpose) |
-| Both installed, nobody has picked | `attention` | `exclamationmark.circle` | Pick which HomeSpeaker to use |
 | A sign-in stopped working | `failure` | `exclamationmark.triangle` | Sign in to Google again |
 | The chat monitor reports a problem (#3341's `ChatMonitorStatus.lastError`) | `failure` | `exclamationmark.triangle` | its words |
+| Both installed, nobody has picked | `attention` | `exclamationmark.circle` | Pick which HomeSpeaker to use |
 | Not set up: no sign-in, no speaker, and this Mac off | `attention` | `hifispeaker.2` | Set up HomeSpeaker |
 | Speaking now | `busy` | `waveform` | Speaking |
 | Quiet hours now | `ok` | `moon.zzz` | Quiet hours until 07:00 |
