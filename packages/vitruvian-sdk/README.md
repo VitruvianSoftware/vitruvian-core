@@ -34,7 +34,7 @@ not work.
 | `kits/rust` | The same kit in Rust, crate `vitruvian-tool-kit`. Rust 1.75 or later; `serde` and `serde_json`. |
 | `Sources/vitruvian-tool` | A command: `init` starts a new tool from a sample, `validate` reads a folder the way the app will, `run` plays the app's side in a terminal. `Sources/VitruvianToolCLI` is what it is made of. |
 | `Sources/VitruvianToolProtocol` | The protocol as Swift types: the messages, one message per line, the manifest file and its rules. The app links this module. |
-| `conformance/` | A script that plays the app's side to your tool in seven scripted checks, and the smallest tool that passes it. |
+| `conformance/` | A script that plays the app's side to your tool in seven scripted checks, and the two smallest tools that pass it: `reference-tool`, which speaks protocol 1 and has one command, and `reference-tool-2`, the same tool in protocol 2 with one panel, a line of text and a button. Both are plain Python with nothing else. |
 | `.github/workflows/` | The CI and the release of [VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk). They run only there. |
 
 ## Getting it
@@ -147,7 +147,8 @@ The first failure stops the run.
 | shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. What it wrote on the way out is read to the end, and each line must be a message. |
 | an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panel and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails. |
 
-It exits with 0 when all seven pass. Against the reference tool it prints:
+It exits with 0 when all seven pass. Against the reference tool of protocol
+1, `conformance/reference-tool`, it prints:
 
 ```
 ok       handshake: version 1, tool 0.1.0
@@ -157,6 +158,20 @@ ok       a panel: the manifest declares no panel the app draws
 ok       refusals: 1 refused
 ok       shutdown: exited with 0
 ok       an older app: answered the hello, ran hello and left with 0; it sent no ui/status
+```
+
+Against the reference tool of protocol 2, `conformance/reference-tool-2`,
+the panel is opened and its button pressed, and the press is answered with
+the next page:
+
+```
+ok       handshake: version 2, tool 0.1.0
+ok       a command: hello: ran
+ok       unknown: failure -32602
+ok       a panel: hello: a page of 2 blocks, and a new page after a tap on press
+ok       refusals: 1 refused
+ok       shutdown: exited with 0
+ok       an older app: answered the hello, ran hello, drew hello and left with 0; it sent no ui/status
 ```
 
 While a command runs, the script answers your requests as the app would. A
@@ -194,10 +209,10 @@ Passing is not proof that the app will accept everything your tool does.
   floods the app or hangs outside an answer.
 - **It opens one panel and taps one button.** It does not check a web
   panel, a page's every block, or how often a tool sends pages.
-- **It has been proven against** the reference tool, the samples, twelve
-  broken copies of the reference tool, three broken tools that draw and
-  seven that set a status or draw a choice badly, each caught by the check
-  meant for it.
+- **It has been proven against** the two reference tools, the samples,
+  twelve broken copies of the reference tool of protocol 1, three broken
+  tools that draw and seven that set a status or draw a choice badly, each
+  caught by the check meant for it.
 
 ## Working on the package
 
@@ -221,7 +236,7 @@ The first line needs a Mac: the Swift types against the example files, the
 kit against a link made of two files, the command against folders and real
 processes, the three Swift samples against the conformance script, what
 `init` writes, and the Swift tool `init` writes, built. The second runs anywhere: the example files against the
-schemas, the conformance script against the reference tool, the Python sample,
+schemas, the conformance script against the two reference tools, the Python sample,
 the templates `init` holds against the samples they are copies of, every
 example in the guide, the version in its three files, the mirror's workflows
 (with bash, git and jq), and the website's copies of the guide, the protocol

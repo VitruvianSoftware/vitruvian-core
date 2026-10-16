@@ -17,8 +17,9 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-"""The conformance script, proven two ways: the reference tool passes it, and
-a tool that breaks the protocol fails the check meant to catch it."""
+"""The conformance script, proven two ways: the reference tools pass it, one
+for each protocol version, and a tool that breaks the protocol fails the check
+meant to catch it."""
 
 import contextlib
 import io
@@ -35,6 +36,8 @@ sys.path.insert(0, HERE)
 import conformance
 
 REFERENCE = os.path.join(HERE, "reference-tool")
+# The reference tool of protocol 2: the first one, plus one panel.
+REFERENCE_2 = os.path.join(HERE, "reference-tool-2")
 
 # A tool that goes wrong in the way BROKEN_HOW names, and is otherwise the
 # reference tool without its request to the app.
@@ -556,6 +559,37 @@ def the_hello(manifest):
     return problems
 
 
+def answers_with_its_page(folder):
+    """The reference tool of protocol 2 answers a press with the next page,
+    as the guide does, and sends nothing with `ui/render`. The script's
+    printed line reads the same either way, so this asks the run itself:
+    a new page after the tap, and none pushed, means it came in the answer."""
+    with open(os.path.join(folder, "vitruvian-tool.json"), encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    program = os.path.join(folder, manifest["runtime"]["exec"])
+    with tempfile.TemporaryDirectory() as data_folder:
+        link = conformance.Link([sys.executable, program], data_folder)
+        try:
+            run = conformance.Run(link, manifest, data_folder)
+            run.handshake()
+            said = run.a_panel()
+            run.shutdown()
+        except conformance.Failure as failure:
+            return [f"the reference tool of protocol 2 failed: {failure}"]
+        finally:
+            link.close()
+    if "a new page after a tap" not in said:
+        return [
+            f"the reference tool of protocol 2 drew no new page after a tap: {said}"
+        ]
+    if run.rendered:
+        return [
+            "the reference tool of protocol 2 sent its page with ui/render, "
+            "not in its answer to the tap"
+        ]
+    return []
+
+
 def main():
     problems = []
 
@@ -570,6 +604,21 @@ def main():
     ]
     if status != 0 or not all(piece in printed for piece in wanted):
         problems.append(f"the reference tool does not pass:\n{printed}")
+
+    status, printed = check(REFERENCE_2, "--expect-refusal")
+    wanted = [
+        "ok       handshake: version 2, tool 0.1.0",
+        "ok       a command: hello: ran",
+        "ok       unknown",
+        "ok       a panel: hello: a page of 2 blocks, and a new page after a tap on press",
+        "1 refused",
+        "exited with 0",
+        "ok       an older app: answered the hello, ran hello, drew hello and left with 0; "
+        "it sent no ui/status",
+    ]
+    if status != 0 or not all(piece in printed for piece in wanted):
+        problems.append(f"the reference tool of protocol 2 does not pass:\n{printed}")
+    problems += answers_with_its_page(REFERENCE_2)
 
     with open(
         os.path.join(REFERENCE, "vitruvian-tool.json"), encoding="utf-8"

@@ -29,15 +29,28 @@ the schemas and the types cannot drift apart unnoticed:
      a field one side has and the other lacks shows up as a failure there;
      a block's fields count through the definition its kind picks;
   3. methods.json and messages.schema.json name the same messages.
+
+It also runs the reference tool of protocol 2 through a short session and
+holds every line it writes, and each page in it, to messages.schema.json:
+the conformance script checks how a tool behaves, not every field of a page.
 """
 
 import json
 import os
+import queue
+import subprocess
 import sys
+import tempfile
+import threading
 
 from jsonschema import Draft202012Validator
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REFERENCE_2 = os.path.join(
+    HERE, "..", "conformance", "reference-tool-2", "bin", "reference_tool_2.py"
+)
+# How long the reference tool may take to write each line.
+LINE_SECONDS = 10
 ENVELOPES = ("request", "notice", "result", "failure")
 REFUSALS_WITH_DATA = (-32001, -32003)
 
@@ -107,9 +120,10 @@ def manifest_problems():
             problems.append(
                 f"manifest '{example['about']}': an invalid example names its problem"
             )
-    reference = load("../conformance/reference-tool/vitruvian-tool.json")
-    if not validator.is_valid(reference):
-        problems.append("the reference tool's manifest does not pass the schema")
+    for folder in ("reference-tool", "reference-tool-2"):
+        reference = load(f"../conformance/{folder}/vitruvian-tool.json")
+        if not validator.is_valid(reference):
+            problems.append(f"the manifest of {folder} does not pass the schema")
     return problems + unused(schema, "manifest", seen)
 
 
@@ -218,8 +232,117 @@ def message_problems():
     return problems + unused(schema, "message", seen)
 
 
+def session_problems(program=REFERENCE_2):
+    """Plays the app to `program` for a short session: hello, the command,
+    the panel opened, its button pressed, the panel closed, shutdown. Every
+    line the program writes must pass messages.schema.json; an answer must
+    pass the definition of what it answers; each page must pass uiTree."""
+    schema = load("messages.schema.json")
+    whole = Draft202012Validator(schema)
+    table = {row["method"]: row for row in load("methods.json")["methods"]}
+
+    def part(name):
+        return Draft202012Validator(
+            {"$ref": f"#/$defs/{name}", "$defs": schema["$defs"]}
+        )
+
+    problems, pages, asked = [], [], {}
+    with tempfile.TemporaryDirectory() as data_folder:
+        tool = subprocess.Popen(
+            [sys.executable, program],
+            cwd=data_folder,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        lines = queue.Queue()
+        threading.Thread(
+            target=lambda: [lines.put(line) for line in tool.stdout] + [lines.put("")],
+            daemon=True,
+        ).start()
+
+        def write(message):
+            tool.stdin.write(json.dumps(message) + "\n")
+            tool.stdin.flush()
+
+        def judge(line):
+            message = json.loads(line)
+            if not whole.is_valid(message):
+                error = next(whole.iter_errors(message)).message
+                problems.append(
+                    f"the tool wrote a line the schema refuses: {line.strip()} ({error})"
+                )
+                return message
+            kind = kind_of(message)
+            if kind == "result" and message["id"] in asked:
+                answering = asked[message["id"]]
+                check = part(table[answering]["result"])
+                if not check.is_valid(message["result"]):
+                    error = next(check.iter_errors(message["result"])).message
+                    problems.append(
+                        f"the tool's answer to {answering} is not one: {error}"
+                    )
+                if "tree" in message["result"]:
+                    pages.append(message["result"]["tree"])
+            if kind == "notice" and message["method"] == "ui/render":
+                pages.append(message["params"]["tree"])
+            return message
+
+        def call(number, method, params):
+            """Sends a request and reads to its answer, answering the tool's
+            own requests with {} on the way."""
+            asked[number] = method
+            write({"jsonrpc": "2.0", "id": number, "method": method, "params": params})
+            while True:
+                line = lines.get(timeout=LINE_SECONDS)
+                if not line:
+                    raise RuntimeError(f"the tool exited before it answered {method}")
+                message = judge(line)
+                if kind_of(message) == "request":
+                    write({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+                elif message.get("id") == number:
+                    return
+
+        try:
+            call(
+                1,
+                "initialize",
+                {
+                    "protocolVersions": ["1", "2"],
+                    "language": "en-US",
+                    "dataFolder": data_folder,
+                },
+            )
+            call(2, "command/run", {"command": "hello"})
+            call(3, "ui/open", {"panel": "hello"})
+            call(4, "ui/event", {"panel": "hello", "block": "press", "event": "tap"})
+            write(
+                {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "hello"}}
+            )
+            write({"jsonrpc": "2.0", "method": "shutdown"})
+            tool.stdin.close()
+            while line := lines.get(timeout=LINE_SECONDS):
+                judge(line)
+            if tool.wait(timeout=LINE_SECONDS) != 0:
+                problems.append(f"the tool exited with {tool.returncode}")
+        except (queue.Empty, RuntimeError, ValueError) as failure:
+            problems.append(f"the session with the tool broke off: {failure!r}")
+        finally:
+            if tool.poll() is None:
+                tool.kill()
+            tool.wait()
+    tree = part("uiTree")
+    for page in pages:
+        if not tree.is_valid(page):
+            error = next(tree.iter_errors(page)).message
+            problems.append(f"a page the tool sent is not one: {error}")
+    if len(pages) != 2 or pages[0] == pages[1]:
+        problems.append(f"the tool did not send a first page and a new one: {pages!r}")
+    return [f"reference-tool-2: {problem}" for problem in problems]
+
+
 def main():
-    problems = manifest_problems() + message_problems()
+    problems = manifest_problems() + message_problems() + session_problems()
     for problem in problems:
         print(problem, file=sys.stderr)
     print("protocol examples: " + ("FAILED" if problems else "OK"))

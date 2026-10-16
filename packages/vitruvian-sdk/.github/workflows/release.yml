@@ -29,8 +29,8 @@
 #      module under go/ (from SDK 0.10.0; the tag is made from the first
 #      release so every release has both);
 #   2. builds vitruvian-tool for Apple silicon and Intel in one binary, checks
-#      it reports the version, and attaches it, its .sha256, the source and the
-#      reference tool's zip (for the catalogue's entry) to a
+#      it reports the version, and attaches it, its .sha256, the source and a
+#      zip of each reference tool (for the catalogue's entries) to a
 #      GitHub release whose notes say how to clear macOS's quarantine mark;
 #   3. writes Formula/vitruvian-tool.rb to VitruvianSoftware/homebrew-tap, a
 #      formula that builds from that source, with HOMEBREW_TAP_DEPLOY_KEY: a
@@ -140,17 +140,24 @@ jobs:
           source="vitruvian-sdk-$V.tar.gz"
           tar -czf "$dist/$binary" -C "$dist/stage" vitruvian-tool LICENSE README.md
           git archive --format=tar.gz --prefix="vitruvian-sdk-$V/" -o "$dist/$source" "$GITHUB_SHA"
-          # The reference tool, zipped the way the catalogue README says
-          # (from inside its folder, no extra attributes), so a catalogue entry
-          # can pin it to this release without a hand upload. Its name carries
-          # the tool's own version, not the SDK's.
-          tool_version="$(python3 -c 'import json; print(json.load(open("conformance/reference-tool/vitruvian-tool.json"))["version"])')"
-          reference="reference-tool-$tool_version.zip"
-          (cd conformance/reference-tool && zip -q -r -X "$dist/$reference" .)
-          (cd "$dist" && shasum -a 256 "$binary" > "$binary.sha256" && shasum -a 256 "$source" > "$source.sha256" && shasum -a 256 "$reference" > "$reference.sha256")
+          (cd "$dist" && shasum -a 256 "$binary" > "$binary.sha256" && shasum -a 256 "$source" > "$source.sha256")
+          # The reference tools, one for protocol 1 and one for protocol 2,
+          # each zipped the way the catalogue README says (from inside its
+          # folder, no extra attributes), so a catalogue entry can pin it to
+          # this release without a hand upload. Each name carries the tool's
+          # own version, not the SDK's: reference-tool-0.1.0.zip and
+          # reference-tool-2-0.1.0.zip. The list of them is what the release
+          # attaches.
+          : > "$RUNNER_TEMP/references"
+          for tool in reference-tool reference-tool-2; do
+            tool_version="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "conformance/$tool/vitruvian-tool.json")"
+            zipped="$tool-$tool_version.zip"
+            (cd "conformance/$tool" && zip -q -r -X "$dist/$zipped" .)
+            (cd "$dist" && shasum -a 256 "$zipped" > "$zipped.sha256")
+            echo "$zipped" >> "$RUNNER_TEMP/references"
+          done
           {
             echo "SOURCE_SHA256=$(cut -d' ' -f1 "$dist/$source.sha256")"
-            echo "REFERENCE=$reference"
             echo "DIST=$dist"
           } >> "$GITHUB_ENV"
           cat "$dist"/*.sha256
@@ -227,11 +234,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          references=()
+          while read -r zipped; do
+            references+=("$DIST/$zipped" "$DIST/$zipped.sha256")
+          done < "$RUNNER_TEMP/references"
           gh release create "v$V" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "vitruvian-sdk $V" --notes-file "$RUNNER_TEMP/notes.md" \
             "$DIST/vitruvian-tool-$V-macos.tar.gz" "$DIST/vitruvian-tool-$V-macos.tar.gz.sha256" \
             "$DIST/vitruvian-sdk-$V.tar.gz" "$DIST/vitruvian-sdk-$V.tar.gz.sha256" \
-            "$DIST/$REFERENCE" "$DIST/$REFERENCE.sha256"
+            "${references[@]}"
 
       # A formula that builds from the source attached above. Homebrew runs
       # swift build with its own sandbox around it, which SwiftPM's sandbox

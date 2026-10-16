@@ -1,0 +1,33 @@
+{
+  "id": "dev.vitruvian.reference2",
+  "name": { "en": "Reference tool 2" },
+  "description": {
+    "en": "Says hello and draws one panel. The smallest tool that speaks protocol 2."
+  },
+  "version": "0.1.0",
+  "protocol": "2",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "hand.wave",
+  "uses": ["notify"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "hello",
+        "title": { "en": "Say hello" },
+        "icon": "hand.wave",
+        "surfaces": ["commandBar"]
+      }
+    ],
+    "panels": [
+      {
+        "id": "hello",
+        "title": { "en": "Hello" },
+        "placement": "island",
+        "icon": "hand.wave"
+      }
+    ]
+  },
+  "activation": ["onCommand"],
+  "runtime": { "kind": "external", "exec": "bin/reference_tool_2.py" }
+}

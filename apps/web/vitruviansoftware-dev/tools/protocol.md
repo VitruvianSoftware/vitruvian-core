@@ -171,6 +171,12 @@ folder, named by `entry`.
   it always did**: it offers both versions at `initialize`, and the tool
   picks.
 
+The smallest tool of each version is in the SDK's `conformance/` folder, in
+plain Python with nothing else. `reference-tool` speaks version 1.
+`reference-tool-2` is the same tool with one panel, a line of text and a
+button: it answers `ui/open` with a page, and answers the button's `ui/event`
+with the next one.
+
 ## Added to version 2 without a new version
 
 Vitruvian 3.48 added four things to version 2. An older app ignores each
