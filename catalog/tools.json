@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-16T18:41:44Z",
+  "generated": "2026-10-16T22:30:00Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -30,6 +30,35 @@
         }
       ],
       "panels": []
+    },
+    {
+      "id": "dev.vitruvian.reference2",
+      "name": {
+        "en": "Reference tool 2"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Says hello and draws one panel. The smallest tool that speaks protocol 2."
+      },
+      "version": "0.1.0",
+      "protocol": "2",
+      "minimumAppVersion": "3.45.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-sdk",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v1.5.0/reference-tool-2-0.1.0.zip",
+        "sha256": "052339041d1c7ebefa0243e3fb03afaee0ea6f7285e4ebb8ecbaca1742be1f72",
+        "size": 2763
+      },
+      "uses": ["notify"],
+      "commands": [
+        {
+          "id": "hello",
+          "title": {
+            "en": "Say hello"
+          }
+        }
+      ],
+      "panels": ["island"]
     },
     {
       "id": "dev.vitruvian.github",
