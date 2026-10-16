@@ -21,6 +21,10 @@ package enum AppInfo {
     /// release is a tag (`VitruvianReleases`).
     package static let repositoryURL = URL(string: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian")!
     package static let websiteURL = URL(string: "https://vitruviansoftware.dev")!
+    /// What a person who wants to build an extension or tool starts from:
+    /// the protocol, the Swift kit and the `vitruvian-tool` command. The
+    /// Extensions page links to it under the catalog.
+    package static let sdkURL = URL(string: "https://github.com/VitruvianSoftware/vitruvian-sdk")!
     /// Upstream's donation, Discord and X channels belong to upstream. The fork
     /// has none yet, so the Support page and the post-update support prompt are
     /// hidden and these links fall back to the repository.

@@ -52,10 +52,42 @@ package struct CatalogueSheetContent: Equatable {
         case rows([CatalogueRow])
     }
 
+    /// The quiet line at the foot of the catalog's card: where to start
+    /// building one's own, with the SDK's name as the link. The sentence is
+    /// split around the name, so the name is a link wherever a language
+    /// puts it.
+    package struct SDKLine: Equatable {
+        /// The SDK's name, the same in every language.
+        package static let name = "Vitruvian SDK"
+
+        package let before: String
+        /// The words that are the link: `name`, or the whole sentence when a
+        /// language's sentence lacks the name.
+        package let link: String
+        package let after: String
+        package let url: URL
+        /// The whole sentence, as VoiceOver reads it.
+        package var sentence: String { before + link + after }
+
+        package init(_ sentence: String, url: URL) {
+            self.url = url
+            guard let range = sentence.range(of: Self.name) else {
+                (before, link, after) = ("", sentence, "")
+                return
+            }
+            before = String(sentence[..<range.lowerBound])
+            link = Self.name
+            after = String(sentence[range.upperBound...])
+        }
+    }
+
     package let title: String
     package let body: Body
     /// The heading over what a tool says it uses, and the note under it.
     package let usesTitle: String
+    /// Under the list, whatever the list is doing: loading, empty, out of
+    /// reach, refused or listed.
+    package let sdk: SDKLine
     /// The one line in place of the rows when every tool listed is added.
     private let allInstalled: String
 
@@ -65,6 +97,7 @@ package struct CatalogueSheetContent: Equatable {
                  strings: ExternalToolStrings) {
         title = strings.catalogTitle
         usesTitle = strings.usesTitle
+        sdk = SDKLine(strings.sdkLine, url: AppInfo.sdkURL)
         allInstalled = strings.catalogAllInstalled
         switch state {
         case .unknown, .loading:
@@ -182,5 +215,25 @@ struct CatalogueRowView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 8)
+    }
+}
+
+/// The catalog card's last line. The sentence is in the page's quiet grey
+/// and the SDK's name in the link colour; the whole line is one `Link`, the
+/// control the About page uses for GitHub, so it opens the SDK in the
+/// default browser.
+struct CatalogueSDKLineView: View {
+    let line: CatalogueSheetContent.SDKLine
+
+    var body: some View {
+        Link(destination: line.url) {
+            Text(line.before).foregroundStyle(.secondary)
+                + Text(line.link).foregroundStyle(Color.accentColor)
+                + Text(line.after).foregroundStyle(.secondary)
+        }
+        .font(.callout)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel(line.sentence)
     }
 }

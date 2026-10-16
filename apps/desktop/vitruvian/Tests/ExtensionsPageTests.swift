@@ -20,6 +20,7 @@ enum ExtensionsPageTests {
         installButtons(suite)
         installsOutliveThePage(suite)
         spokenButtons(suite)
+        sdkLink(suite)
     }
 
     /// Closures the installer hands back to the main thread, held until the
@@ -212,6 +213,76 @@ enum ExtensionsPageTests {
         suite.expect(waiting == .loading && CatalogueScreensTests.content(empty).notInstalled == .message(english.catalogEmpty)
                          && CatalogueScreensTests.content(unreachable).notInstalled == .message(english.catalogUnreachable),
                      "waiting, an empty catalog and one that cannot be fetched say what the catalog's sheet said")
+    }
+
+    /// The quiet line under the catalog that leads to the SDK. The page draws
+    /// it below the card's switch over the list, so it is there in every
+    /// state the card can be in; these checks hold that the content carries
+    /// it, with the right words and address, in each of them.
+    static func sdkLink(_ suite: TestSuite) {
+        let sdk = URL(string: "https://github.com/VitruvianSoftware/vitruvian-sdk")!
+        let wanted = CatalogueSheetContent.SDKLine(english.sdkLine, url: AppInfo.sdkURL)
+
+        let loading = CatalogueWatchTests.Rig()
+        defer { loading.close() }
+        let empty = CatalogueWatchTests.Rig()
+        defer { empty.close() }
+        empty.serve([])
+        empty.watch.refresh()
+        let offline = CatalogueWatchTests.Rig()
+        defer { offline.close() }
+        offline.watch.refresh()
+        let refused = CatalogueWatchTests.Rig()
+        defer { refused.close() }
+        refused.serve([CatalogueFixtures.entry()], signer: .init())
+        refused.watch.refresh()
+        let listed = CatalogueWatchTests.Rig()
+        defer { listed.close() }
+        listed.serve([CatalogueFixtures.entry()])
+        listed.watch.refresh()
+        let allIn = CatalogueWatchTests.Rig()
+        defer { allIn.close() }
+        allIn.install()
+        allIn.serve([CatalogueFixtures.entry(["version": "1.2.0"])])
+        allIn.watch.refresh()
+
+        let states: [(String, CatalogueSheetContent)] = [
+            ("loading", CatalogueScreensTests.content(loading)),
+            ("empty", CatalogueScreensTests.content(empty)),
+            ("offline", CatalogueScreensTests.content(offline)),
+            ("errored", CatalogueScreensTests.content(refused)),
+            ("listed", CatalogueScreensTests.content(listed)),
+            ("all installed", CatalogueScreensTests.content(allIn)),
+        ]
+        suite.expect(states.map { $0.1.notInstalled } == [
+                         .loading, .message(english.catalogEmpty), .message(english.catalogUnreachable),
+                         .message(english.catalogNotOurs), states[4].1.notInstalled,
+                         .message(english.catalogAllInstalled),
+                     ] && CatalogueScreensTests.rows(states[4].1).count == 1,
+                     "the six states of the catalog's card are each reached")
+        let missing = states.filter { $0.1.sdk != wanted }.map(\.0)
+        suite.expect(missing.isEmpty,
+                     "the line to the SDK is under the catalog however the list stands (\(missing.joined(separator: ", ")))")
+
+        suite.expect(wanted.sentence == "Build your own extension with the Vitruvian SDK."
+                         && wanted.before == "Build your own extension with the " && wanted.link == "Vitruvian SDK"
+                         && wanted.after == ".",
+                     "the line reads \"Build your own extension with the Vitruvian SDK.\", and the SDK's name is the link")
+        suite.expect(AppInfo.sdkURL == sdk && wanted.url == sdk,
+                     "the SDK link opens the vitruvian-sdk repository on GitHub")
+
+        let unlinked = AppLanguage.allCases.filter { language in
+            let line = CatalogueScreensTests.content(loading, language: language).sdk
+            let text = FeatureStrings.externalTools(language).sdkLine
+            return line.link != CatalogueSheetContent.SDKLine.name || line.url != sdk || line.sentence != text
+                || text.components(separatedBy: CatalogueSheetContent.SDKLine.name).count != 2
+        }
+        suite.expect(unlinked.isEmpty,
+                     "every language names the Vitruvian SDK once, untranslated, so its name is the link "
+                         + "(\(unlinked.map(\.rawValue).joined(separator: ", ")))")
+        let whole = CatalogueSheetContent.SDKLine("Build your own.", url: sdk)
+        suite.expect(whole.link == "Build your own." && whole.before.isEmpty && whole.after.isEmpty,
+                     "a sentence without the name is a link as a whole, never a line with no link")
     }
 
     static func updateCount(_ suite: TestSuite) {

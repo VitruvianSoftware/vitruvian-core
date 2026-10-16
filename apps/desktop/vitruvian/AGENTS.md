@@ -315,9 +315,12 @@ agree on one sheet. Every build has that page. Under what is installed, the
 page lists the Vitruvian catalog's tools that are not installed
 (`CatalogueSheetContent.notInstalled`): a curated list, kept in `catalog/`
 at the repository's root, that the person installs a tool from through the
-same sheet. There is no other store of tools. The Features page keeps one
-line for them (`ExtensionsSummaryLine`): how many are added, and a link to
-the page. Every way in, that line, the sidebar, the Settings search and
+same sheet. There is no other store of tools. The catalog's card ends with one
+line, "Build your own extension with the Vitruvian SDK.", whose name links to
+the SDK's public repository (`AppInfo.sdkURL`); it sits below the card's
+switch over the list, so it shows however the list stands. The Features
+page keeps one line for them (`ExtensionsSummaryLine`): how many are added,
+and a link to the page. Every way in, that line, the sidebar, the Settings search and
 command bar, and an extension's island page in the Dynamic Island's
 settings, goes to `ExtensionsPageSupport.destination`. The sidebar's row
 counts the added tools the catalog lists a newer version of
