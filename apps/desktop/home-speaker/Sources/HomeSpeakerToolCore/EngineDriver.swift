@@ -35,11 +35,17 @@ import Foundation
 /// The settings, the history and the sign-ins are the engine's: the
 /// extension's own files, never the app's.
 ///
+/// Each job has the command line's time limit for its flag
+/// (`HomeSpeakerCommandLine.timeLimit(for:settings:)`): when it runs out, the
+/// job answers what the program printed when it gave up, so a call to Google
+/// or a speaker that never returns cannot hold the tool's slot forever. The
+/// job itself is asked to stop; its later answer is dropped.
+///
 /// `run` may be called from any thread and never blocks it: each job runs
 /// in a detached task, and what must run on the main actor (the settings,
 /// the sign-out) is awaited there, as the command line does. So the process
-/// must keep its main actor running. `then` is called on a thread of the
-/// system's.
+/// must keep its main actor running. `then` is called once, on a thread of
+/// the system's.
 public final class EngineDriver: SpeakerDriver, Sendable {
     /// What the jobs run on besides the engine's files. `init(engine:…)`
     /// takes the engine's own; tests put stand-ins in their place.
@@ -70,6 +76,9 @@ public final class EngineDriver: SpeakerDriver, Sendable {
         /// Told after a sign-out: by default the extension's own sign-out
         /// notice, as `--sign-out` posts it.
         public var signedOut: @Sendable (_ chatOnly: Bool) -> Void
+        /// How long a job may run, given the command line's limit for its
+        /// flag: that limit itself, unless a test shortens it.
+        public var allowed: @Sendable (_ limit: TimeInterval) -> TimeInterval
 
         /// The engine's own parts: its announcer, its Google Home client
         /// and its sign-in; the browser and the notices the command line
@@ -93,6 +102,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
             self.standsAside = standsAside
             signedIn = { CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: profile)) }
             signedOut = { SignOutNotice.post(chatOnly: $0, name: SignOutNotice.notificationName(for: profile)) }
+            allowed = { $0 }
         }
     }
 
@@ -120,11 +130,34 @@ public final class EngineDriver: SpeakerDriver, Sendable {
         let door = door
         let history = history
         let parts = parts
-        Task.detached {
-            let printed = await Self.output(of: job, engine: engine, door: door, history: history, parts: parts)
+        let answer = Answer { printed in
             then(ProcessDriver.result(
                 of: job, status: printed.exitCode,
                 output: Self.lines(printed.stdout), error: Self.lines(printed.stderr)))
+        }
+        Task.detached {
+            let command = Self.command(for: job)
+            let limit = await MainActor.run {
+                HomeSpeakerCommandLine.timeLimit(for: command, settings: { engine.config.config })
+            }
+            let work = Task.detached {
+                let printed = await Self.output(of: job, engine: engine, door: door, history: history, parts: parts)
+                answer.give(printed)
+            }
+            guard let limit else { return }
+            let seconds = parts.allowed(limit.seconds)
+            answer.give(limit.timedOut, after: seconds, stopping: work)
+        }
+    }
+
+    /// The command line's command for `job`, as `ProcessDriver.arguments`
+    /// would ask for it.
+    static func command(for job: Job) -> HomeSpeakerCommandLine.Command {
+        switch job {
+        case .say(let text): return .say(text)
+        case .volume, .setVolume, .mute, .unmute: return .volume(volumeRequest(job))
+        case .app(let command): return .app(.success(command))
+        case .signIn(let chatOnly): return .signIn(chatOnly ? .chat : .home)
         }
     }
 
@@ -203,6 +236,52 @@ public final class EngineDriver: SpeakerDriver, Sendable {
     /// Lines as `print` wrote them.
     static func lines(_ lines: [String]) -> String {
         lines.map { $0 + "\n" }.joined()
+    }
+}
+
+/// A job's one answer: what it printed, or, when its time ran out first,
+/// what the command line prints then. Whichever comes second is dropped,
+/// and the other side is asked to stop.
+private final class Answer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var given = false
+    private var timer: Task<Void, Never>?
+    private let then: @Sendable (CLIOutput) -> Void
+
+    init(_ then: @escaping @Sendable (CLIOutput) -> Void) {
+        self.then = then
+    }
+
+    /// Answers `printed`, unless there is an answer already. True when this
+    /// was the answer.
+    @discardableResult
+    func give(_ printed: CLIOutput) -> Bool {
+        let (first, timer) = lock.withLock { () -> (Bool, Task<Void, Never>?) in
+            defer {
+                given = true
+                self.timer = nil
+            }
+            return (!given, self.timer)
+        }
+        timer?.cancel()
+        if first { then(printed) }
+        return first
+    }
+
+    /// After `seconds`, answers `timedOut` if nothing has answered, and asks
+    /// `work` to stop.
+    func give(_ timedOut: CLIOutput, after seconds: TimeInterval, stopping work: Task<Void, Never>) {
+        lock.withLock {
+            guard !given else { return }
+            timer = Task.detached {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+                } catch {
+                    return
+                }
+                if self.give(timedOut) { work.cancel() }
+            }
+        }
     }
 }
 

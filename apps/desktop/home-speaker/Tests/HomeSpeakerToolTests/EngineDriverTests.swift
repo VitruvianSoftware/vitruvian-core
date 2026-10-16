@@ -162,6 +162,58 @@ private final class StandInGoogle: URLProtocol {
     }
 }
 
+/// Calls that never return until released, and ignore being asked to stop,
+/// as a hung call to Google or a speaker would.
+private final class Hang: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func forever() async {
+        await withCheckedContinuation { waiter in lock.withLock { waiting.append(waiter) } }
+    }
+
+    func release() {
+        let all = lock.withLock {
+            defer { waiting = [] }
+            return waiting
+        }
+        all.forEach { $0.resume() }
+    }
+}
+
+/// A home speaker that never answers.
+private struct HungHome: HomeBroadcasting {
+    let hang: Hang
+    func broadcast(
+        text: String, target: SpeakerDevice, structureId: String,
+        config: SpeakerConfig?, force: Bool, at date: Date
+    ) async throws -> Bool {
+        await hang.forever()
+        return true
+    }
+}
+
+/// A speaker whose volume never answers.
+private struct HungVolume: VolumeAndMuteControlling {
+    let hang: Hang
+    func volume(of target: SpeakerDevice, structureId: String) async throws -> SpeakerVolume {
+        await hang.forever()
+        return SpeakerVolume(percent: 40, muted: false, online: true)
+    }
+    func setVolume(_ percent: Int, on target: SpeakerDevice, structureId: String) async throws { await hang.forever() }
+    func setMuted(_ muted: Bool, on target: SpeakerDevice, structureId: String) async throws { await hang.forever() }
+}
+
+/// Homes that never list.
+private struct HungHomes: HomeDiscovering {
+    let hang: Hang
+    func listHomes() async throws -> [HomeStructure] {
+        await hang.forever()
+        return []
+    }
+    func discoverBroadcastTargets(structureId: String) async throws -> [String: SpeakerDevice] { [:] }
+}
+
 // MARK: - Settings and logins
 
 /// Settings: broadcasting on, the Office speaker picked in home `s1`, and
@@ -252,6 +304,20 @@ final class EngineDriverTests: XCTestCase {
         return rig
     }
 
+    /// Every answer `job` gives within `seconds`, so a job that never
+    /// answers fails the test instead of hanging it.
+    private func answers(_ driver: EngineDriver, _ job: Job, within seconds: TimeInterval = 5) async -> Calls<JobResult> {
+        let answers = Calls<JobResult>()
+        let answered = expectation(description: "\(job) answered")
+        answered.assertForOverFulfill = false
+        driver.run(job) {
+            answers.add($0)
+            answered.fulfill()
+        }
+        await fulfillment(of: [answered], timeout: seconds)
+        return answers
+    }
+
     private func run(_ driver: EngineDriver, _ job: Job) async -> JobResult {
         await withCheckedContinuation { done in driver.run(job) { done.resume(returning: $0) } }
     }
@@ -260,6 +326,68 @@ final class EngineDriverTests: XCTestCase {
         let driver = try rig().driver
         XCTAssertTrue(driver.isInstalled)
         XCTAssertEqual(driver.program, Rig.program, "the hook points at the tool's own program")
+    }
+
+    // MARK: Time limits
+
+    func testAJobThatNeverEndsAnswersWhatTheProgramPrintedWhenItGaveUp() async throws {
+        // What the program printed when its time ran out (Task 4's
+        // `everyCommandKeepsItsTimeLimit`), and what the tool read from it.
+        let timedOut = CLIOutput(stderr: ["error: timed out"], exitCode: 1)
+        let volumeTimedOut = CLIOutput(stdout: [#"{"available":false,"reason":"timed out"}"#], exitCode: 1)
+        let cases: [(job: Job, printed: CLIOutput, answer: JobResult)] = [
+            (.say("dinner is ready"), timedOut, .notSpoken("error: timed out")),
+            (.volume, volumeTimedOut, .unavailable("timed out")),
+            (.setVolume(55), volumeTimedOut, .unavailable("timed out")),
+            (.mute, volumeTimedOut, .unavailable("timed out")),
+            (.app(.discover(save: false, home: nil)), timedOut, .failed("timed out")),
+            (.signIn(chatOnly: false), timedOut, .failed("timed out")),
+        ]
+        for example in cases {
+            let hang = Hang()
+            addTeardownBlock { hang.release() }
+            var rig = try rig()
+            rig.parts.announcer = Announcer(home: HungHome(hang: hang), local: rig.local, media: NoMediaPause())
+            rig.parts.speaker = HungVolume(hang: hang)
+            rig.parts.homes = HungHomes(hang: hang)
+            rig.parts.signIn = { _, _ in
+                await hang.forever()
+                throw StandInFailure("released")
+            }
+            rig.parts.allowed = { _ in 0.2 }
+
+            let given = await answers(rig.driver, example.job)
+
+            XCTAssertEqual(given.all, [asTheProgramAnswered(example.job, example.printed)], "\(example.job)")
+            XCTAssertEqual(given.all, [example.answer], "\(example.job)")
+            // The hung call ending later changes nothing: one answer only.
+            hang.release()
+            try await Task.sleep(nanoseconds: 300_000_000)
+            XCTAssertEqual(given.all.count, 1, "\(example.job) must answer exactly once")
+        }
+    }
+
+    func testEachJobHasTheCommandLinesOwnLimit() async throws {
+        let cases: [(job: Job, seconds: TimeInterval?)] = [
+            (.say("hi"), 20),
+            (.volume, 40), (.setVolume(55), 40), (.mute, 40), (.unmute, 40),
+            (.app(.discover(save: false, home: nil)), 60),
+            (.app(.signOut(chatOnly: true)), 30),
+            (.signIn(chatOnly: false), 300),
+            // Answered at once, as the command line prints it at once.
+            (.app(.loginItem(.status)), nil),
+        ]
+        for example in cases {
+            var rig = try rig()
+            let asked = Calls<TimeInterval>()
+            rig.parts.allowed = {
+                asked.add($0)
+                return $0
+            }
+            let given = await answers(rig.driver, example.job)
+            XCTAssertEqual(given.all.count, 1, "\(example.job)")
+            XCTAssertEqual(asked.all, example.seconds.map { [$0] } ?? [], "\(example.job)")
+        }
     }
 
     // MARK: --say
