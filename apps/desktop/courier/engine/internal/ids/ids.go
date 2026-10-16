@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -14,6 +15,9 @@ import (
 const ServerName = "courier.local"
 
 const Me id.UserID = "@me:" + ServerName
+
+// contentHashRE is the only shape of media name we will accept: a lower-case SHA-256 hex string.
+var contentHashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func h(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
@@ -58,7 +62,12 @@ func ContentURI(hash string) id.ContentURIString {
 	return id.ContentURIString("mxc://" + ServerName + "/" + hash)
 }
 
+// ParseContentURI returns the media hash for one of our own mxc:// URIs. It
+// returns ok=false for foreign servers and for any suffix that is not a real hash.
 func ParseContentURI(uri id.ContentURIString) (string, bool) {
 	rest, ok := strings.CutPrefix(string(uri), "mxc://"+ServerName+"/")
-	return rest, ok && rest != ""
+	if !ok || !contentHashRE.MatchString(rest) {
+		return "", false
+	}
+	return rest, true
 }

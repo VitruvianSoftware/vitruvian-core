@@ -18,5 +18,6 @@ go_test(
     deps = [
         "@com_github_stretchr_testify//require",
         "@net_maunium_go_mautrix//bridgev2/networkid",
+        "@net_maunium_go_mautrix//id",
     ],
 )

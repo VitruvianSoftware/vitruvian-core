@@ -15,17 +15,29 @@ import (
 
 var ErrMissing = errors.New("media file missing")
 
+// ErrInvalidHash means a name is not a 64-character lower-case SHA-256 hex string.
+var ErrInvalidHash = errors.New("invalid media hash")
+
 var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type Store struct{ Dir string }
 
-func (m *Store) Path(hash string) string { return filepath.Join(m.Dir, hash[:2], hash) }
+// Path returns where a blob lives on disk. Anything that is not a real hash is
+// refused, so a hostile name can neither panic nor escape Dir.
+func (m *Store) Path(hash string) (string, error) {
+	if !hashRE.MatchString(hash) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidHash, hash)
+	}
+	return filepath.Join(m.Dir, hash[:2], hash), nil
+}
 
 func (m *Store) Put(data []byte) (string, error) {
 	return m.PutStream(func(w io.Writer) error { _, err := w.Write(data); return err })
 }
 
-// PutStream writes to a temp file while hashing, then renames into place atomically.
+// PutStream writes to a temp file while hashing, then renames into place.
+// The data is synced before the rename so a crash cannot leave an empty file
+// under its final hash name. On any failure it returns "" and leaves no temp file.
 func (m *Store) PutStream(write func(io.Writer) error) (string, error) {
 	if err := os.MkdirAll(m.Dir, 0o700); err != nil {
 		return "", err
@@ -40,21 +52,33 @@ func (m *Store) PutStream(write func(io.Writer) error) (string, error) {
 		tmp.Close()
 		return "", err
 	}
+	if err = tmp.Sync(); err != nil {
+		tmp.Close()
+		return "", err
+	}
 	if err = tmp.Close(); err != nil {
 		return "", err
 	}
 	hash := hex.EncodeToString(hasher.Sum(nil))
-	if err = os.MkdirAll(filepath.Dir(m.Path(hash)), 0o700); err != nil {
+	final, err := m.Path(hash)
+	if err != nil {
 		return "", err
 	}
-	return hash, os.Rename(tmp.Name(), m.Path(hash))
+	if err = os.MkdirAll(filepath.Dir(final), 0o700); err != nil {
+		return "", err
+	}
+	if err = os.Rename(tmp.Name(), final); err != nil {
+		return "", err
+	}
+	return hash, nil
 }
 
 func (m *Store) Read(hash string) ([]byte, error) {
-	if !hashRE.MatchString(hash) {
-		return nil, fmt.Errorf("invalid media hash %q", hash)
+	p, err := m.Path(hash)
+	if err != nil {
+		return nil, err
 	}
-	b, err := os.ReadFile(m.Path(hash))
+	b, err := os.ReadFile(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%w: %s", ErrMissing, hash)
 	}

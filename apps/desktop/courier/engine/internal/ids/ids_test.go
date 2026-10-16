@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 )
 
 func TestGhostRoundTrip(t *testing.T) {
@@ -27,10 +28,25 @@ func TestDeterministicIDs(t *testing.T) {
 	require.NotEqual(t, EventID(r1, key, "m1", ""), EventID(r1, key, "m1", "p2"))
 }
 
+const testHash = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+
 func TestContentURIRoundTrip(t *testing.T) {
-	hash, ok := ParseContentURI(ContentURI("abc123"))
+	hash, ok := ParseContentURI(ContentURI(testHash))
 	require.True(t, ok)
-	require.Equal(t, "abc123", hash)
+	require.Equal(t, testHash, hash)
 	_, ok = ParseContentURI("mxc://matrix.org/abc")
 	require.False(t, ok)
+}
+
+func TestParseContentURIRejectsNonHashes(t *testing.T) {
+	for _, bad := range []string{
+		"mxc://courier.local/a",
+		"mxc://courier.local/../x",
+		"mxc://courier.local/",
+		"mxc://courier.local/" + testHash[:63] + "G",
+	} {
+		hash, ok := ParseContentURI(id.ContentURIString(bad))
+		require.False(t, ok, "%q must be rejected", bad)
+		require.Empty(t, hash)
+	}
 }
