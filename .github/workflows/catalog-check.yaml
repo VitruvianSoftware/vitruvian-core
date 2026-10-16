@@ -34,6 +34,16 @@
 # place a bump is armed, so none merges while this check fails or before it
 # has run: the merge queue does not wait for it, as it is not required. The
 # job bump-guard turns it off at once when someone else pushes to the branch.
+#
+# What that protects, and what it doesn't. Both jobs check out main's
+# catalog/bump.py, which decides; catalog-bump's own commits only ever touch
+# catalog/tools.json and the site's _data/tools.yml, and bump.py holds any
+# bump pull request that changes anything else. But on `pull_request` GitHub
+# runs THIS FILE as it stands in the pull request's merge commit: a person
+# with push access who edits it on a bump branch runs their own version,
+# with the App key. That is true of every workflow here while main needs no
+# approval; the fix is repo-wide (the App key in an environment only main
+# can use), not in this file.
 name: catalog-check
 
 on:
@@ -100,7 +110,8 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      # main's bump.py, not the pull request's.
+      # main's bump.py decides, while the pull request leaves this file alone
+      # (see the top of the file for what that does not cover).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.base_ref }}
@@ -110,6 +121,9 @@ jobs:
             catalog
             .github/actions
 
+      # Pull requests only: it turns auto-merge off, labels, comments and
+      # reads a compare (the repository is public). It can neither push nor
+      # merge.
       - name: Mint App token
         id: app-token
         uses: ./.github/actions/mint-sync-app-token
@@ -117,6 +131,7 @@ jobs:
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
           owner: VitruvianSoftware
           repositories: vitruvian-core
+          permission-pull-requests: write
 
       - name: Hold a person's commit at once
         env:
@@ -143,7 +158,8 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      # main's bump.py, not the pull request's.
+      # main's bump.py decides, while the pull request leaves this file alone
+      # (see the top of the file for what that does not cover).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.base_ref }}
@@ -153,6 +169,9 @@ jobs:
             catalog
             .github/actions
 
+      # The App's full token: arming auto-merge needs the right to merge
+      # (contents: write) as well as pull-requests: write, and the shared
+      # minting action can narrow a token to pull requests only.
       - name: Mint App token
         id: app-token
         uses: ./.github/actions/mint-sync-app-token
