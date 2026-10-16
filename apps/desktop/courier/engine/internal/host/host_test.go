@@ -5,6 +5,7 @@ package host
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -139,4 +140,27 @@ func TestStartBridgeConfigMatchesExampleDefaults(t *testing.T) {
 	require.False(t, c.SplitPortals)
 	require.False(t, c.AsyncEvents)
 	require.False(t, c.Relay.Enabled)
+}
+
+func TestStartKeepsTheDataDirAndBridgeDatabasePrivate(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o755), "fixture: the data dir already exists and is world-readable")
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+
+	h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop())
+	require.NoError(t, err)
+	defer h.Stop()
+
+	for path, want := range map[string]os.FileMode{
+		dir:                                      0o700,
+		filepath.Join(dir, "bridges"):            0o700,
+		filepath.Join(dir, "bridges", "fake.db"): 0o600, // the WhatsApp device keys live in here
+		filepath.Join(dir, "courier.db"):         0o600,
+	} {
+		fi, err := os.Stat(path)
+		require.NoError(t, err)
+		require.Equal(t, want, fi.Mode().Perm(), path)
+	}
 }

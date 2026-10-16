@@ -7,7 +7,6 @@ package host
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -35,8 +34,11 @@ type Host struct {
 // and starts the bridge with the local user (@me) as admin. Starting again on the same dataDir
 // reloads the logins made before.
 func Start(ctx context.Context, dataDir, network string, s *store.Store, m *media.Store, nc bridgev2.NetworkConnector, log zerolog.Logger) (*Host, error) {
-	if err := os.MkdirAll(filepath.Join(dataDir, "bridges"), 0o700); err != nil {
-		return nil, err
+	// The bridge database holds the linked device's keys: keep the whole tree private, even if dataDir existed.
+	for _, d := range []string{dataDir, filepath.Join(dataDir, "bridges")} {
+		if err := sqlite.PrivateDir(d); err != nil {
+			return nil, err
+		}
 	}
 	// A connector's example config is the contents of its own "network:" section, with no wrapper key
 	// (mxmain indents it under "network:" itself when it builds the full file). We have no user config

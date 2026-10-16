@@ -27,6 +27,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -112,7 +113,7 @@ func main() {
 }
 
 func run(ctx context.Context, a args) error {
-	if err := os.MkdirAll(a.data, 0o700); err != nil {
+	if err := sqlite.PrivateDir(a.data); err != nil {
 		return err
 	}
 	unlock, err := lockDataDir(a.data)
