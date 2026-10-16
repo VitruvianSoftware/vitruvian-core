@@ -41,6 +41,9 @@ go_library(
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
         "//apps/desktop/courier/engine/internal/engine",
+        "//apps/desktop/courier/engine/internal/media",
+        "//apps/desktop/courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
         "@fi_mau_go_mautrix_gmessages//pkg/connector",
         "@fi_mau_go_mautrix_slack//pkg/connector",
         "@fi_mau_go_mautrix_telegram//pkg/connector",

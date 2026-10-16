@@ -23,6 +23,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
@@ -152,7 +153,7 @@ func run(ctx context.Context, a args) error {
 	if err := sqlite.PrivateDir(a.data); err != nil {
 		return err
 	}
-	unlock, err := lockDataDir(a.data)
+	unlock, err := datadir.Lock(a.data)
 	if err != nil {
 		return err
 	}
@@ -170,7 +171,7 @@ func run(ctx context.Context, a args) error {
 		target, _ = networks.Get(a.network)
 		nets = []networks.Network{target}
 	}
-	eng, errs := startNetworks(ctx, a.data, s, &media.Store{Dir: filepath.Join(a.data, "media")}, nets, log)
+	eng, errs := networks.Start(ctx, a.data, s, &media.Store{Dir: filepath.Join(a.data, "media")}, nets, log)
 	defer eng.Stop()
 	reportNotStarted(os.Stderr, errs)
 	switch a.cmd {
@@ -194,26 +195,6 @@ func run(ctx context.Context, a args) error {
 		return send(ctx, eng, s, a, loginWait)
 	}
 	return nil
-}
-
-// startNetworks starts every network it can. One that can't start (Telegram without its app credentials, say)
-// is reported under its name and the others carry on.
-func startNetworks(ctx context.Context, dataDir string, s *store.Store, m *media.Store, nets []networks.Network, log zerolog.Logger) (*engine.Engine, map[string]error) {
-	errs := map[string]error{}
-	var specs []engine.Spec
-	for _, n := range nets {
-		spec, err := n.Spec()
-		if err != nil {
-			errs[n.Name] = err
-			continue
-		}
-		specs = append(specs, spec)
-	}
-	eng, startErrs := engine.Start(ctx, dataDir, s, m, specs, log)
-	for name, err := range startErrs {
-		errs[name] = err
-	}
-	return eng, errs
 }
 
 // reportNotStarted prints one line per network that did not start.

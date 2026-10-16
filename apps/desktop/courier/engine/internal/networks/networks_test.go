@@ -4,6 +4,7 @@
 package networks
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -147,4 +148,13 @@ func TestTelegramRejectsMalformedCredentialsWithoutEchoingThem(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNotStartedKeepsTheReasonAndDropsDuplicateKeys(t *testing.T) {
+	got := NotStarted(map[string]error{
+		"telegram":          errors.New("Telegram needs its own app credentials"),
+		"slack (duplicate)": errors.New("network slack is already running; names must be unique"),
+	})
+	require.Equal(t, map[string]string{"telegram": "Telegram needs its own app credentials"}, got)
+	require.Empty(t, NotStarted(nil))
 }

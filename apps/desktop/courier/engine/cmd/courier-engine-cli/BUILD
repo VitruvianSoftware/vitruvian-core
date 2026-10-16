@@ -3,7 +3,6 @@ load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 go_library(
     name = "courier-engine-cli_lib",
     srcs = [
-        "lock.go",
         "login.go",
         "main.go",
     ],
@@ -11,6 +10,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//apps/desktop/courier/engine/internal/actions",
+        "//apps/desktop/courier/engine/internal/datadir",
         "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/login",
@@ -36,7 +36,6 @@ go_binary(
 go_test(
     name = "courier-engine-cli_test",
     srcs = [
-        "lock_test.go",
         "login_test.go",
         "main_test.go",
     ],
