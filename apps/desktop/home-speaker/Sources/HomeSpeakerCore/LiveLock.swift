@@ -55,6 +55,16 @@ public final class LiveLock: @unchecked Sendable {
     /// one live process per side. A lock taken only for a look is waited
     /// out (`retries`).
     public static func hold(at url: URL) throws -> LiveLock {
+        try hold(at: url, retries: retries, wait: retryWait, onBusy: { _ in })
+    }
+
+    /// `hold` with its wait made visible, for tests. `onBusy(n)` is called
+    /// each time the lock is found taken, as try number `n` (1, 2, ...),
+    /// just before the wait. A test lets go of its own lock there, so the
+    /// retry is exercised without a timer.
+    static func hold(
+        at url: URL, retries: Int, wait: useconds_t, onBusy: (Int) -> Void
+    ) throws -> LiveLock {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let fd = open(url.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
@@ -67,7 +77,8 @@ public final class LiveLock: @unchecked Sendable {
                 throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EWOULDBLOCK)
             }
             tries += 1
-            usleep(retryWait)
+            onBusy(tries)
+            usleep(wait)
         }
         return LiveLock(url: url, fd: fd)
     }
