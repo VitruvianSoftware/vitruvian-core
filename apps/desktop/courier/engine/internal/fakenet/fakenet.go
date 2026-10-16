@@ -3,6 +3,7 @@ package fakenet
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.mau.fi/util/configupgrade"
@@ -15,13 +16,19 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 )
 
+// Sent is one message the bridge delivered to the fake network.
+type Sent struct {
+	PortalID string // the remote chat the message was sent to
+	Body     string
+}
+
 // Network is a fake bridgev2.NetworkConnector. Messages the bridge delivers to the "network" land on Sent.
 type Network struct {
 	br   *bridgev2.Bridge
-	Sent chan string
+	Sent chan Sent
 }
 
-func New() *Network { return &Network{Sent: make(chan string, 16)} }
+func New() *Network { return &Network{Sent: make(chan Sent, 16)} }
 
 var _ bridgev2.NetworkConnector = (*Network)(nil)
 
@@ -101,7 +108,12 @@ func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomF
 	return &event.RoomFeatures{}
 }
 func (c *client) HandleMatrixMessage(_ context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
-	c.n.Sent <- msg.Content.Body
+	// Never block the bridge's event loop if nobody is draining Sent.
+	select {
+	case c.n.Sent <- Sent{PortalID: string(msg.Portal.ID), Body: msg.Content.Body}:
+	default:
+		return nil, errors.New("fakenet: Sent buffer is full")
+	}
 	return &bridgev2.MatrixMessageResponse{DB: &database.Message{ID: networkid.MessageID("out-" + string(msg.Event.ID)),
 		SenderID: "me", Timestamp: time.Now()}}, nil
 }

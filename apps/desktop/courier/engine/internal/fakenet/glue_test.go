@@ -2,6 +2,7 @@ package fakenet
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,13 +28,14 @@ func TestRemoteMessageLandsAndReplyGoesOut(t *testing.T) {
 	s, err := store.Open(filepath.Join(dir, "courier.db"))
 	require.NoError(t, err)
 	defer s.Close()
+	// br.Stop closes the bridge database itself (ExternallyManagedDB is false), so bdb needs no Close here.
 	bdb, err := sqlite.Open(filepath.Join(dir, "fake.db"))
 	require.NoError(t, err)
 	net := New()
 	conn := localmatrix.New("fake", s, &media.Store{Dir: filepath.Join(dir, "media")})
 	cfg := &bridgeconfig.BridgeConfig{CommandPrefix: "!fake",
 		Permissions: bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin}}
-	br := bridgev2.NewBridge("fake", bdb, zerolog.Nop(), cfg, conn, net, func(b *bridgev2.Bridge) bridgev2.CommandProcessor { return commands.NewProcessor(b) })
+	br := bridgev2.NewBridge("fake", bdb, zerolog.New(zerolog.NewTestWriter(t)), cfg, conn, net, func(b *bridgev2.Bridge) bridgev2.CommandProcessor { return commands.NewProcessor(b) })
 	require.NoError(t, br.Start(ctx))
 	defer br.Stop()
 
@@ -45,9 +47,18 @@ func TestRemoteMessageLandsAndReplyGoesOut(t *testing.T) {
 	// Don't assume how bridgev2 picks the room ID: find whichever room received the message.
 	var roomID id.RoomID
 	require.Eventually(t, func() bool {
-		rooms, _ := s.ListRooms(ctx)
+		// Eventually runs this off the test goroutine, so report errors with t.Error rather than FailNow.
+		rooms, err := s.ListRooms(ctx)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
 		for _, r := range rooms {
-			evs, _ := s.Events(ctx, r.ID, 10)
+			evs, err := s.Events(ctx, r.ID, 10)
+			if err != nil {
+				t.Error(err)
+				return false
+			}
 			for _, e := range evs {
 				if e.Type == event.EventMessage.Type && strings.Contains(string(e.Content), "hello from the network") {
 					roomID = id.RoomID(r.ID)
@@ -58,13 +69,47 @@ func TestRemoteMessageLandsAndReplyGoesOut(t *testing.T) {
 		return false
 	}, 5*time.Second, 50*time.Millisecond, "remote message never reached courier.db")
 
+	// Exactly one such message, in a room of this network, sent by the remote user's ghost.
+	rooms, err := s.ListRooms(ctx)
+	require.NoError(t, err)
+	var matches []store.Event
+	for _, r := range rooms {
+		evs, err := s.Events(ctx, r.ID, 50)
+		require.NoError(t, err)
+		for _, e := range evs {
+			if e.Type == event.EventMessage.Type && strings.Contains(string(e.Content), "hello from the network") {
+				require.Equal(t, "fake", r.Network)
+				matches = append(matches, e)
+			}
+		}
+	}
+	require.Len(t, matches, 1)
+	require.Equal(t, string(ids.GhostMXID("fake", "alice")), matches[0].Sender)
+
+	// The reply follows the production order: the app stores the user's event as pending, then queues it.
 	reply := &event.Event{Type: event.EventMessage, RoomID: roomID, Sender: ids.Me, ID: ids.RandomEventID(),
 		Timestamp: time.Now().UnixMilli(), Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText, Body: "hi alice"}}}
+	raw, err := json.Marshal(&reply.Content)
+	require.NoError(t, err)
+	inserted, err := s.InsertEvent(ctx, store.Event{RoomID: string(roomID), EventID: string(reply.ID), Sender: string(ids.Me),
+		Type: event.EventMessage.Type, Content: raw, TS: time.Now(), Status: "pending"})
+	require.NoError(t, err)
+	require.True(t, inserted)
 	br.QueueMatrixEvent(ctx, reply)
 	select {
-	case body := <-net.Sent:
-		require.Equal(t, "hi alice", body)
+	case got := <-net.Sent:
+		require.Equal(t, Sent{PortalID: "chat1", Body: "hi alice"}, got)
 	case <-time.After(5 * time.Second):
 		t.Fatal("reply never reached the fake network")
 	}
+
+	// The bridge reports the outcome back through SendMessageStatus; it must land on the stored event.
+	require.Eventually(t, func() bool {
+		e, ok, err := s.GetEvent(ctx, string(reply.ID))
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+		return ok && e.Status == "sent"
+	}, 5*time.Second, 50*time.Millisecond, "reply status never became sent in courier.db")
 }
