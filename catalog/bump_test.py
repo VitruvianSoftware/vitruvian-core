@@ -30,6 +30,7 @@ import struct
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from pathlib import Path
 
 import bump
@@ -587,6 +588,25 @@ class BumpTest(unittest.TestCase):
             HS, "home-speaker-v1.20.0", "lib/stub is a Mach-O that cannot be read"
         )
 
+    def test_a_zip_that_could_not_be_downloaded_is_not_a_refusal(self):
+        """Round 3 B: a download blip retries; it opens no issue."""
+        data = zip_of(manifest_for(HS, "1.20.0"))
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", data)
+        (self.f.release / "HomeSpeaker-1.20.0-tool.zip").unlink()
+        before = self.f.files()
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertEqual((status, result["status"]), (bump.UNAVAILABLE, "unavailable"))
+        self.assertNotIn("issue_title", result)
+        self.assertEqual(self.f.files(), before)
+
+    def test_a_checksum_that_could_not_be_downloaded_is_not_a_refusal(self):
+        data = zip_of(manifest_for(HS, "1.20.0"))
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", data)
+        (self.f.release / "HomeSpeaker-1.20.0-tool.zip.sha256").unlink()
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertEqual((status, result["status"]), (bump.UNAVAILABLE, "unavailable"))
+        self.assertIn(".sha256 could not be downloaded", result["message"])
+
     def test_a_refusal_names_the_issue_that_records_it(self):
         data = zip_of(manifest_for(HS, "1.20.0"))
         self.f.publish("HomeSpeaker-1.20.0-tool.zip", data, uploader="someone")
@@ -716,7 +736,10 @@ class BumpTest(unittest.TestCase):
 
     def test_a_skip_never_exits_as_bazel_or_argparse_fail(self):
         """I4: 2 is a usage error to Bazel and argparse, so it means nothing here."""
-        self.assertNotIn(2, (bump.OK, bump.REFUSED, bump.NOT_READY, bump.NOT_LISTED))
+        self.assertNotIn(
+            2,
+            (bump.OK, bump.REFUSED, bump.NOT_READY, bump.NOT_LISTED, bump.UNAVAILABLE),
+        )
         with self.assertRaises(SystemExit) as usage:
             bump.main(["bump", "--tag", "x"])
         self.assertEqual(usage.exception.code, 2)
@@ -809,9 +832,13 @@ class WorkflowHelpersTest(unittest.TestCase):
 
 
 class ArmTest(unittest.TestCase):
-    """catalog-check arms auto-merge on a bump pull request, only when it passed."""
+    """catalog-check arms auto-merge on a bump pull request, only when it passed
+    and the branch holds nothing but catalog-bump's one commit."""
 
     SHA = "d" * 40
+
+    def setUp(self):
+        self.mine = {"commits": [WorkflowHelpersTest().workflows()]}
 
     def pull(self, **changes):
         pull = {
@@ -827,23 +854,24 @@ class ArmTest(unittest.TestCase):
         pull.update(changes)
         return pull
 
+    def arm(self, pull, check="success", sha=None, compare=None):
+        return bump.arm(pull, compare or self.mine, sha or self.SHA, check)
+
     def test_arms_when_catalog_check_passed(self):
-        self.assertEqual(bump.arm(self.pull(), self.SHA, "success"), "arm")
+        self.assertEqual(self.arm(self.pull()), "arm")
 
     def test_never_arms_when_catalog_check_failed(self):
-        self.assertTrue(bump.arm(self.pull(), self.SHA, "failure").startswith("leave"))
+        self.assertTrue(self.arm(self.pull(), "failure").startswith("leave"))
         armed = self.pull(autoMergeRequest={"enabledBy": {}})
-        self.assertEqual(bump.arm(armed, self.SHA, "failure"), "disarm")
-        self.assertTrue(
-            bump.arm(self.pull(), self.SHA, "cancelled").startswith("leave")
-        )
+        self.assertEqual(self.arm(armed, "failure"), "disarm")
+        self.assertTrue(self.arm(self.pull(), "cancelled").startswith("leave"))
 
     def test_a_held_pull_request_is_not_armed(self):
         for label in ("needs-human", "do-not-automerge"):
             held = self.pull(labels=[{"name": label}])
-            self.assertTrue(bump.arm(held, self.SHA, "success").startswith("leave"))
+            self.assertTrue(self.arm(held).startswith("leave"))
             held["autoMergeRequest"] = {}
-            self.assertEqual(bump.arm(held, self.SHA, "success"), "disarm")
+            self.assertEqual(self.arm(held), "disarm")
 
     def test_only_a_marked_pull_request_from_the_workflow_is_armed(self):
         for pull in (
@@ -853,18 +881,135 @@ class ArmTest(unittest.TestCase):
             self.pull(isDraft=True),
             self.pull(state="CLOSED"),
         ):
-            self.assertTrue(
-                bump.arm(pull, self.SHA, "success").startswith("leave"), pull
-            )
+            self.assertTrue(self.arm(pull).startswith("leave"), pull)
 
     def test_a_moved_branch_waits_for_its_own_run(self):
-        self.assertIn("moved", bump.arm(self.pull(), "e" * 40, "success"))
+        self.assertIn("moved", self.arm(self.pull(), sha="e" * 40))
 
     def test_an_armed_pull_request_is_not_armed_again(self):
         armed = self.pull(autoMergeRequest={"enabledBy": {}})
-        self.assertEqual(
-            bump.arm(armed, self.SHA, "success"), "leave: auto-merge is already on"
+        self.assertEqual(self.arm(armed), "leave: auto-merge is already on")
+
+    def persons(self):
+        helpers = WorkflowHelpersTest()
+        return {
+            "commits": [
+                helpers.workflows(),
+                helpers.commit("b" * 40, "feat: ask for keystrokes", name="wren"),
+            ]
+        }
+
+    def test_a_persons_commit_is_held_even_when_catalog_check_passed(self):
+        """Round 3 (a): the body's verdict was for the workflow's change only."""
+        verdict = self.arm(self.pull(), compare=self.persons())
+        self.assertTrue(verdict.startswith("hold: "), verdict)
+        self.assertIn("bbbbbbbbbbbb by wren", verdict)
+        armed = self.pull(autoMergeRequest={"enabledBy": {}})
+        self.assertTrue(self.arm(armed, compare=self.persons()).startswith("hold: "))
+
+    def test_a_push_of_a_persons_commit_is_held_at_once(self):
+        """Round 3 (b): on the push, before catalog-check has run on it."""
+        armed = self.pull(autoMergeRequest={"enabledBy": {}})
+        self.assertTrue(
+            self.arm(armed, "pushed", compare=self.persons()).startswith("hold: ")
         )
+
+    def test_a_push_of_the_workflows_own_commit_is_left_for_catalog_check(self):
+        self.assertEqual(
+            self.arm(self.pull(), "pushed"),
+            "leave: catalog-bump's own commit; catalog-check decides",
+        )
+
+    def test_another_versions_commit_is_a_persons(self):
+        helpers = WorkflowHelpersTest()
+        other = {"commits": [helpers.workflows("1.19.0")]}
+        self.assertTrue(self.arm(self.pull(), compare=other).startswith("hold: "))
+
+
+class ActingGitHub:
+    """Records what automerge does, for one pull request."""
+
+    def __init__(self, pull, compare):
+        self.pull, self.compare_answer = pull, compare
+        self.actions, self.comments = [], []
+
+    def pull_view(self, number):
+        return self.pull
+
+    def compare(self, head, base="main"):
+        self.actions.append(("compare", base, head))
+        return self.compare_answer
+
+    def enable_auto(self, number, sha):
+        self.actions.append(("arm", sha))
+
+    def disable_auto(self, number):
+        self.actions.append(("disarm",))
+
+    def add_label(self, number, label):
+        self.actions.append(("label", label))
+
+    def comment_once(self, number, mark, text):
+        if any(mark in c for c in self.comments):
+            return False
+        self.comments.append(mark + "\n" + text)
+        return True
+
+
+class AutomergeTest(unittest.TestCase):
+    """What the catalog-check jobs do with a decision."""
+
+    def setUp(self):
+        self.arm = ArmTest()
+        self.arm.setUp()
+
+    def run_it(self, pull, compare, check="success"):
+        github = ActingGitHub(pull, compare)
+        decision = bump.automerge(github, 7, ArmTest.SHA, check)
+        return decision, github
+
+    def test_arms_only_at_the_tested_commit(self):
+        """Round 3, Minor A: --match-head-commit, so a later push is not armed."""
+        decision, github = self.run_it(self.arm.pull(), self.arm.mine)
+        self.assertEqual(decision, "arm")
+        self.assertIn(("arm", ArmTest.SHA), github.actions)
+        self.assertIn(("compare", "main", ArmTest.SHA), github.actions)
+
+    def test_a_persons_commit_is_disarmed_labelled_and_said_once(self):
+        armed = self.arm.pull(autoMergeRequest={"enabledBy": {}})
+        decision, github = self.run_it(armed, self.arm.persons())
+        self.assertTrue(decision.startswith("hold: "))
+        self.assertEqual(github.actions[1:], [("disarm",), ("label", "needs-human")])
+        bump.automerge(github, 7, ArmTest.SHA, "success")
+        self.assertEqual(len(github.comments), 1)
+        self.assertTrue(github.comments[0].startswith(bump.HELD_MARK))
+        self.assertNotIn(("arm", ArmTest.SHA), github.actions)
+
+    def test_a_push_of_a_persons_commit_disarms_at_once(self):
+        armed = self.arm.pull(autoMergeRequest={"enabledBy": {}})
+        _, github = self.run_it(armed, self.arm.persons(), check="pushed")
+        self.assertIn(("disarm",), github.actions)
+        self.assertIn(("label", "needs-human"), github.actions)
+
+    def test_a_push_of_the_workflows_commit_does_nothing(self):
+        _, github = self.run_it(self.arm.pull(), self.arm.mine, check="pushed")
+        self.assertEqual([a for a in github.actions if a[0] != "compare"], [])
+
+    def test_a_failed_check_disarms(self):
+        armed = self.arm.pull(autoMergeRequest={"enabledBy": {}})
+        _, github = self.run_it(armed, self.arm.mine, check="failure")
+        self.assertEqual(github.actions[1:], [("disarm",)])
+
+
+class GhCallTest(unittest.TestCase):
+    def test_arming_names_the_commit_github_must_still_hold(self):
+        """Minor A: GitHub refuses to arm if the head moved after the check."""
+        with mock.patch.object(bump, "gh", return_value=b"") as gh:
+            bump.GitHub().enable_auto(7, "f" * 40)
+        args = gh.call_args.args[0]
+        self.assertEqual(args[:4], ["pr", "merge", "7", "--squash"])
+        self.assertIn("--auto", args)
+        self.assertEqual(args[args.index("--match-head-commit") + 1], "f" * 40)
 
 
 class FakeGitHub:
