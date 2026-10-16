@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.21.0...home-speaker-v1.22.0) (2026-10-16)
+
+
+### Features
+
+* **home-speaker:** a More settings button on the island ([#3411](https://github.com/VitruvianSoftware/vitruvian-core/issues/3411)) ([6f626c0](https://github.com/VitruvianSoftware/vitruvian-core/commit/6f626c0bb980a0d71cc53960a1f0a99ccd9315bb))
+
 ## [1.21.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.20.0...home-speaker-v1.21.0) (2026-10-16)
 
 
