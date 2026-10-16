@@ -52,11 +52,13 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
   `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`
   holds `settings.json`, `secrets.json` (0600), `history.json` and `speaker_monitor_status.json`,
   in the same formats as the app's files. The same engine reads both, told which set of files to
-  use (`Profile`). Never point the extension at the app's files, or the app at the extension's.
+  use (`Profile`). Do not point the extension at the app's files, or the app at the extension's; the only
+  crossing is the copy the person asks for in the choice (`DoorCopy`).
 - **`~/.gemini/speaker_door.json` is the one file both read.** It records which of the app and the
   extension the person chose (`chosen`), and the extension's program, data folder and version
   (the `extension` block, written by the extension each time it starts). Writers merge under its
-  own lock; never replace it blind. Only the chosen one speaks on its own.
+  own lock; never replace it blind. Until someone picks, the app runs as today and the extension
+  waits. After a pick, only the chosen one speaks, reads chat and answers the Claude Code hook.
 - **`~/.gemini/speaker_monitor_status.json` is the app's to write.** The running app reports its
   chat monitor there (`ChatMonitorStatusFile`) and takes Start/Stop over a distributed notification
   (`ChatMonitorControlNotice`, also `HomeSpeaker --chat-monitor start|stop`). A reader must treat
