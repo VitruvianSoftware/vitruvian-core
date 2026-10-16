@@ -66,9 +66,17 @@ private func requireInside(_ root: URL, _ profile: HomeSpeakerProfile) throws {
     }
 }
 
-/// Real-looking tokens, unique to each test, so a leak is easy to find.
+/// The sign-in client both sides ship, so both sides' logins carry it, as
+/// real ones do.
+private let shippedClientID = "shipped-client.apps.googleusercontent.test"
+
+/// Real-looking tokens, unique to each test, so a leak is easy to find. Each
+/// login is the shipped client's, for `account` (nil: not known).
 private struct Planted {
     let id = UUID().uuidString
+    var account: String? = "1234"
+    var email: String? = "person@example.test"
+    var client = shippedClientID
     var slack: String { "xoxp-secret-123-\(id)" }
     var homeRefresh: String { "1//secret-home-\(id)" } // gitleaks:allow (made-up test token: a UUID behind a fake prefix)
     var chatRefresh: String { "1//secret-chat-\(id)" }
@@ -84,15 +92,15 @@ private struct Planted {
     var secrets: Secrets {
         Secrets(
             google: GoogleCredentials(
-                clientId: "client-\(id)", clientSecret: clientSecret,
+                clientId: client, clientSecret: clientSecret,
                 accessToken: homeAccess, refreshToken: homeRefresh,
                 expiry: Date(timeIntervalSince1970: 2_000_000_000), scopes: [GoogleAuth.homeScope],
-                userId: "1234", email: "person@example.test"),
+                userId: account, email: email),
             googleChat: GoogleCredentials(
-                clientId: "client-\(id)", clientSecret: clientSecret,
+                clientId: client, clientSecret: clientSecret,
                 accessToken: chatAccess, refreshToken: chatRefresh,
                 expiry: Date(timeIntervalSince1970: 2_000_000_000), scopes: GoogleAuth.chatScopes,
-                userId: "1234", email: "person@example.test"),
+                userId: account, email: email),
             slackToken: slack,
             oauthClientIdOverride: "own-client-\(id)", oauthClientSecretOverride: ownClientSecret)
     }
@@ -443,63 +451,99 @@ private struct QuietLocal: LocalSpeaking {
 
 // MARK: - Signing the quiet side out (design 7.7)
 
+/// Revoking at Google ends the whole grant for a client and an account, not
+/// one token. So a login here counts as shared, and is never revoked, when
+/// the other side holds one with the same client and an account that is the
+/// same or not known.
 @MainActor
 @Suite struct QuietSignOutTests {
-    @Test func theQuietSideNeverRevokesASharedLogin() async throws {
+    /// Signs the quiet side, holding `mine`, out of everything, with the
+    /// active side holding `theirs`. The active side's file must not change.
+    private func signOut(
+        mine: Secrets, theirs: Secrets?, chatOnly: Bool = false
+    ) async throws -> CLIOutput {
         let root = try scratchDir()
         defer { try? FileManager.default.removeItem(at: root) }
         let active = try appShaped(root)
         let quiet = try extensionShaped(root)
-        let planted = Planted()
-        try fill(active, planted, history: [])
-        _ = try DoorCopy.copy(from: active, to: quiet)
-        let activeSecrets = try #require(bytes(active.secretsURL))
-
-        // The two hold the same logins: the quiet side signs out here only.
+        if let theirs { try SecretStore(fileURL: active.secretsURL).save(theirs) }
+        let activeBefore = bytes(active.secretsURL)
         let engine = HomeSpeakerEngine(profile: quiet, session: StandInGoogle.session, local: QuietLocal())
-        let out = await engine.signOut(chatOnly: false, otherSecrets: SecretStore(fileURL: active.secretsURL).load())
+        try engine.secrets.save(mine)
+
+        let out = await engine.signOut(
+            chatOnly: chatOnly, otherSecrets: theirs.map { _ in SecretStore(fileURL: active.secretsURL).load() })
 
         #expect(out.exitCode == 0)
-        #expect(StandInGoogle.revokes(of: planted.homeRefresh).isEmpty, "the shared Home login was revoked at Google")
-        #expect(StandInGoogle.revokes(of: planted.chatRefresh).isEmpty, "the shared Chat login was revoked at Google")
-        #expect(engine.secrets.load().google == nil && engine.secrets.load().googleChat == nil, "still signed in here")
-        #expect(bytes(active.secretsURL) == activeSecrets, "the active side's sign-ins changed")
+        let left = engine.secrets.load()
+        #expect(left.googleChat == nil, "still signed in to Chat here")
+        if !chatOnly { #expect(left.google == nil, "still signed in to Home here") }
+        #expect(bytes(active.secretsURL) == activeBefore, "the active side's sign-ins changed")
+        return out
+    }
 
-        // Logins the other side does not hold are revoked, as always.
-        let own = Planted()
-        try engine.secrets.save(own.secrets)
-        let separate = await engine.signOut(chatOnly: false, otherSecrets: SecretStore(fileURL: active.secretsURL).load())
-        #expect(separate.exitCode == 0)
-        #expect(StandInGoogle.revokes(of: own.homeRefresh).count == 1)
-        #expect(StandInGoogle.revokes(of: own.chatRefresh).count == 1)
+    @Test func theQuietSideNeverRevokesASharedLogin() async throws {
+        // The same logins on both sides, as a copy leaves them.
+        let copied = Planted()
+        _ = try await signOut(mine: copied.secrets, theirs: copied.secrets)
+        #expect(StandInGoogle.revokes(of: copied.homeRefresh).isEmpty, "the shared Home login was revoked at Google")
+        #expect(StandInGoogle.revokes(of: copied.chatRefresh).isEmpty, "the shared Chat login was revoked at Google")
 
-        // With no other side at all, too.
+        // With no other side at all, logins are revoked as always.
         let alone = Planted()
-        try engine.secrets.save(alone.secrets)
-        _ = await engine.signOut(chatOnly: true, otherSecrets: nil)
+        _ = try await signOut(mine: alone.secrets, theirs: nil, chatOnly: true)
         #expect(StandInGoogle.revokes(of: alone.chatRefresh).count == 1)
         #expect(StandInGoogle.revokes(of: alone.homeRefresh).isEmpty, "--chat signs out of Chat only")
     }
 
+    @Test func theSameAccountWithOtherTokensIsNotRevoked() async throws {
+        // Two separate sign-ins, same client and account: revoking either
+        // would end the other.
+        let mine = Planted()
+        let theirs = Planted()
+        _ = try await signOut(mine: mine.secrets, theirs: theirs.secrets)
+        #expect(StandInGoogle.revokes(of: mine.homeRefresh).isEmpty, "the active side's account was revoked")
+        #expect(StandInGoogle.revokes(of: mine.chatRefresh).isEmpty, "the active side's account was revoked")
+    }
+
+    @Test func aDifferentKnownAccountIsRevoked() async throws {
+        let mine = Planted(account: "1111", email: "me@example.test")
+        let theirs = Planted(account: "2222", email: "someone@example.test")
+        _ = try await signOut(mine: mine.secrets, theirs: theirs.secrets)
+        #expect(StandInGoogle.revokes(of: mine.homeRefresh).count == 1)
+        #expect(StandInGoogle.revokes(of: mine.chatRefresh).count == 1)
+    }
+
+    @Test func anUnknownAccountIsNotRevoked() async throws {
+        // Either side's account not stored, with the same client: it may
+        // be the same account, so it is never revoked.
+        let unknownHere = Planted(account: nil, email: nil)
+        _ = try await signOut(mine: unknownHere.secrets, theirs: Planted(account: "2222", email: "x@example.test").secrets)
+        #expect(StandInGoogle.revokes(of: unknownHere.homeRefresh).isEmpty)
+        #expect(StandInGoogle.revokes(of: unknownHere.chatRefresh).isEmpty)
+
+        let known = Planted(account: "1111", email: "me@example.test")
+        _ = try await signOut(mine: known.secrets, theirs: Planted(account: nil, email: nil).secrets)
+        #expect(StandInGoogle.revokes(of: known.homeRefresh).isEmpty)
+        #expect(StandInGoogle.revokes(of: known.chatRefresh).isEmpty)
+    }
+
+    @Test func aDifferentClientIsRevoked() async throws {
+        // The person's own client here, the shipped one there: two grants.
+        let mine = Planted(client: "own-client.apps.googleusercontent.test")
+        _ = try await signOut(mine: mine.secrets, theirs: Planted().secrets)
+        #expect(StandInGoogle.revokes(of: mine.homeRefresh).count == 1)
+        #expect(StandInGoogle.revokes(of: mine.chatRefresh).count == 1)
+    }
+
     @Test func aPartlySharedSignOutRevokesOnlyTheUnshared() async throws {
-        let root = try scratchDir()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let active = try appShaped(root)
-        let quiet = try extensionShaped(root)
-        // The two share the Home login; the Chat login is the quiet side's own.
-        let shared = Planted()
-        let own = Planted()
-        try SecretStore(fileURL: active.secretsURL).save(Secrets(google: shared.secrets.google))
-        let activeSecrets = try #require(bytes(active.secretsURL))
-        let engine = HomeSpeakerEngine(profile: quiet, session: StandInGoogle.session, local: QuietLocal())
-        try engine.secrets.save(Secrets(google: shared.secrets.google, googleChat: own.secrets.googleChat))
-
-        let out = await engine.signOut(chatOnly: false, otherSecrets: SecretStore(fileURL: active.secretsURL).load())
-
-        #expect(out.exitCode == 0)
+        // Home is the active side's account; Chat here is another account's.
+        let shared = Planted(account: "1111", email: "me@example.test")
+        let other = Planted(account: "2222", email: "work@example.test")
+        _ = try await signOut(
+            mine: Secrets(google: shared.secrets.google, googleChat: other.secrets.googleChat),
+            theirs: Secrets(google: shared.secrets.google))
         #expect(StandInGoogle.revokes(of: shared.homeRefresh).isEmpty, "the shared Home login was revoked at Google")
-        #expect(StandInGoogle.revokes(of: own.chatRefresh).count == 1, "the unshared Chat login was left valid at Google")
-        #expect(engine.secrets.load().google == nil && engine.secrets.load().googleChat == nil, "still signed in here")
-        #expect(bytes(active.secretsURL) == activeSecrets, "the active side's sign-ins changed")
+        #expect(StandInGoogle.revokes(of: other.chatRefresh).count == 1, "the unshared Chat login was left valid at Google")
     }
 }
