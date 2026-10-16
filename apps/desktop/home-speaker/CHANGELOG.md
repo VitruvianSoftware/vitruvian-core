@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.19.0...home-speaker-v1.19.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **home-speaker:** the extension no longer crashes when it starts reading chat ([#3361](https://github.com/VitruvianSoftware/vitruvian-core/issues/3361)) ([a161c9c](https://github.com/VitruvianSoftware/vitruvian-core/commit/a161c9c4edf04ac4f728ef6f3979b2c53c777893))
+
 ## [1.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.18.0...home-speaker-v1.19.0) (2026-10-16)
 
 
