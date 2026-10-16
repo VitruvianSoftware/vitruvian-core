@@ -12,9 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/host"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -194,4 +198,89 @@ func TestRunLoginCannotWaitCancels(t *testing.T) {
 	f := &fakeLogin{start: qrStep("code")}
 	require.Error(t, runLogin(context.Background(), f, &bytes.Buffer{}), "a QR step on a process that cannot wait is unusable")
 	require.Equal(t, 1, f.cancelled)
+}
+
+// startFake runs a host on the fake network, with one login whose client reports "logged in"
+// only loginDelay after Connect, the way WhatsApp does once the server's success message arrives.
+func startFake(t *testing.T, loginDelay time.Duration) (*host.Host, *store.Store, *fakenet.Network) {
+	t.Helper()
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	n := fakenet.New()
+	n.LoginDelay = loginDelay
+	h, err := host.Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, n, zerolog.Nop())
+	require.NoError(t, err)
+	t.Cleanup(h.Stop)
+	_, err = n.Login(ctx, h.Bridge)
+	require.NoError(t, err)
+	return h, s, n
+}
+
+func TestWaitForLoginWaitsOutTheHandshake(t *testing.T) {
+	h, _, _ := startFake(t, 600*time.Millisecond)
+	me, err := h.Me(context.Background())
+	require.NoError(t, err)
+	require.False(t, me.GetUserLogins()[0].Client.IsLoggedIn(), "fixture: the login must start out not logged in")
+
+	start := time.Now()
+	require.NoError(t, waitForLogin(context.Background(), h, 10*time.Second))
+	require.GreaterOrEqual(t, time.Since(start), 400*time.Millisecond, "must have waited for the login, not returned at once")
+	require.True(t, me.GetUserLogins()[0].Client.IsLoggedIn())
+}
+
+func TestWaitForLoginReturnsAtOnceWhenLoggedIn(t *testing.T) {
+	h, _, _ := startFake(t, 0)
+	start := time.Now()
+	require.NoError(t, waitForLogin(context.Background(), h, 10*time.Second))
+	require.Less(t, time.Since(start), time.Second)
+}
+
+func TestWaitForLoginTimesOut(t *testing.T) {
+	h, _, _ := startFake(t, time.Hour)
+	err := waitForLogin(context.Background(), h, 400*time.Millisecond)
+	require.ErrorIs(t, err, errNotConnected)
+}
+
+func TestWaitForLoginCancel(t *testing.T) {
+	h, _, _ := startFake(t, time.Hour)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(100 * time.Millisecond); cancel() }()
+	require.ErrorIs(t, waitForLogin(ctx, h, 10*time.Second), errNotConnected)
+}
+
+func TestSendBeforeLoginSendsNothing(t *testing.T) {
+	ctx := context.Background()
+	h, s, n := startFake(t, time.Hour)
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
+
+	err := send(ctx, h, s, args{cmd: "send", room: "!r:courier.local", text: "hello"}, 300*time.Millisecond)
+	require.ErrorIs(t, err, errNotConnected)
+	require.EqualError(t, err, "not connected to WhatsApp yet — nothing was sent")
+
+	evs, err := s.Events(ctx, "!r:courier.local", 10)
+	require.NoError(t, err)
+	require.Empty(t, evs, "nothing may be stored when the send is refused")
+	select {
+	case got := <-n.Sent:
+		t.Fatalf("a message reached the network: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestEnsureNotLinked(t *testing.T) {
+	ctx := context.Background()
+	h, _, _ := startFake(t, 0)
+	err := ensureNotLinked(ctx, h)
+	require.EqualError(t, err, "already linked — unlink this device in WhatsApp → Linked devices first, or use a fresh --data dir")
+
+	dir := t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	empty, err := host.Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop())
+	require.NoError(t, err)
+	defer empty.Stop()
+	require.NoError(t, ensureNotLinked(ctx, empty), "a fresh data dir has no login, so link may proceed")
 }

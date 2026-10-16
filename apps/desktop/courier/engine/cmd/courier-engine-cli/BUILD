@@ -36,7 +36,11 @@ go_test(
     ],
     embed = [":courier-engine-cli_lib"],
     deps = [
+        "//apps/desktop/courier/engine/internal/fakenet",
+        "//apps/desktop/courier/engine/internal/host",
+        "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
         "@net_maunium_go_mautrix//bridgev2",
     ],

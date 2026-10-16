@@ -30,6 +30,12 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
+// loginWait is how long send waits for WhatsApp to finish logging in before giving up.
+const loginWait = 30 * time.Second
+
+// errNotConnected means the engine never became logged in to the network, so nothing was queued.
+var errNotConnected = errors.New("not connected to WhatsApp yet — nothing was sent")
+
 const usage = "usage: courier-engine-cli [--data DIR] link|chats|tail|send <room-id> <text>"
 
 type args struct{ data, cmd, room, text string }
@@ -137,12 +143,54 @@ func run(ctx context.Context, a args) error {
 	case "tail":
 		return tail(ctx, s)
 	case "send":
-		return send(ctx, h, s, a)
+		return send(ctx, h, s, a, loginWait)
 	}
 	return nil
 }
 
-func send(ctx context.Context, h *host.Host, s *store.Store, a args) error {
+// waitForLogin waits until at least one of the local user's logins reports it is logged in. The bridge's Start
+// only connects the logins: the connection counts as logged in a moment later, when the server's success
+// message arrives. A message queued before then is refused as "not logged in" and marked failed.
+func waitForLogin(ctx context.Context, h *host.Host, timeout time.Duration) error {
+	me, err := h.Me(ctx)
+	if err != nil {
+		return err
+	}
+	deadline := time.After(timeout)
+	for {
+		for _, login := range me.GetUserLogins() {
+			if login.Client != nil && login.Client.IsLoggedIn() {
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return errNotConnected
+		case <-deadline:
+			return errNotConnected
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+
+// ensureNotLinked refuses to link when the data dir already has a login: a second run would link a second
+// device and orphan the first, which would stay listed in WhatsApp's Linked devices.
+func ensureNotLinked(ctx context.Context, h *host.Host) error {
+	me, err := h.Me(ctx)
+	if err != nil {
+		return err
+	}
+	if len(me.GetUserLogins()) > 0 {
+		return errors.New("already linked — unlink this device in WhatsApp → Linked devices first, or use a fresh --data dir")
+	}
+	return nil
+}
+
+func send(ctx context.Context, h *host.Host, s *store.Store, a args, loginTimeout time.Duration) error {
+	// Wait before storing or queueing anything, so a refused send leaves no trace.
+	if err := waitForLogin(ctx, h, loginTimeout); err != nil {
+		return err
+	}
 	now := time.Now()
 	evt := &event.Event{Type: event.EventMessage, RoomID: id.RoomID(a.room), Sender: ids.Me, ID: ids.RandomEventID(),
 		Timestamp: now.UnixMilli(), Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText, Body: a.text}}}
@@ -159,6 +207,9 @@ func send(ctx context.Context, h *host.Host, s *store.Store, a args) error {
 }
 
 func link(ctx context.Context, h *host.Host) error {
+	if err := ensureNotLinked(ctx, h); err != nil {
+		return err
+	}
 	me, err := h.Me(ctx)
 	if err != nil {
 		return err

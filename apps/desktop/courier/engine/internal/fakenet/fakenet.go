@@ -7,6 +7,7 @@ package fakenet
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"go.mau.fi/util/configupgrade"
@@ -29,6 +30,10 @@ type Sent struct {
 type Network struct {
 	br   *bridgev2.Bridge
 	Sent chan Sent
+	// LoginDelay makes a client report IsLoggedIn()==false until this long after Connect, the way a real
+	// network connector does: Connect returns after the socket handshake, and the login only counts once the
+	// server's success message is handled. Zero (the default) means logged in at once.
+	LoginDelay time.Duration
 }
 
 func New() *Network { return &Network{Sent: make(chan Sent, 16)} }
@@ -87,15 +92,25 @@ func (n *Network) Incoming(login *bridgev2.UserLogin, chatID, senderID, msgID, b
 }
 
 type client struct {
-	n     *Network
-	login *bridgev2.UserLogin
+	n           *Network
+	login       *bridgev2.UserLogin
+	connectedAt atomic.Pointer[time.Time]
 }
 
 var _ bridgev2.NetworkAPI = (*client)(nil)
 
-func (c *client) Connect(context.Context)      {}
-func (c *client) Disconnect()                  {}
-func (c *client) IsLoggedIn() bool             { return true }
+func (c *client) Connect(context.Context) {
+	now := time.Now()
+	c.connectedAt.Store(&now)
+}
+func (c *client) Disconnect() { c.connectedAt.Store(nil) }
+func (c *client) IsLoggedIn() bool {
+	if c.n.LoginDelay <= 0 {
+		return true
+	}
+	at := c.connectedAt.Load()
+	return at != nil && time.Since(*at) >= c.n.LoginDelay
+}
 func (c *client) LogoutRemote(context.Context) {}
 func (c *client) IsThisUser(_ context.Context, uid networkid.UserID) bool {
 	return uid == "me"
