@@ -44,4 +44,9 @@ INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, sta
   ('$b4', '!busy:courier.local', '@ghost2:courier.local', 'm.room.message', NULL, '{"msgtype":"m.image","body":"pic.jpg"}',     60000, '', '', 6),
   ('$b5', '!busy:courier.local', '@me:courier.local',     'm.room.message', NULL, '{"msgtype":"m.text","body":"still sending"}', 70000, 'pending', '', 7);
 
+-- A bridged edit of '$o2', newer than every message in its room: the backfill must not let it set last_ts or the preview.
+INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq) VALUES
+  ('$o3', '!old:courier.local', '@ghost1:courier.local', 'm.room.message', NULL,
+   '{"msgtype":"m.text","body":"* second old, edited","m.relates_to":{"rel_type":"m.replace","event_id":"$o2"}}', 25000, '', '', 8);
+
 INSERT INTO reads (room_id, event_id, ts) VALUES ('!busy:courier.local', '$b2', 40000);

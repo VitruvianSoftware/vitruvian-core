@@ -246,7 +246,7 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 		}
 		n, _ := res.RowsAffected()
 		inserted = n == 1
-		if inserted && isMessageLike(e.Type) {
+		if inserted && isMessageLike(e.Type, e.Content) {
 			// Only a message newer than the current newest moves the room: a backfilled older one must not.
 			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
 				e.RoomID, e.TS.UnixMilli(), e.EventID)
@@ -262,9 +262,25 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	return inserted, nil
 }
 
-// isMessageLike reports whether an event of this type can be a room's latest message.
-func isMessageLike(typ string) bool {
-	return typ == "m.room.message" || typ == "m.sticker" || typ == "m.room.encrypted"
+// isMessageLike reports whether an event can be a room's latest message: a message, sticker or encrypted
+// placeholder that is not an edit of an earlier message. (SQL twin: messageLikeTypes with notEditSQL.)
+func isMessageLike(typ string, content json.RawMessage) bool {
+	switch typ {
+	case "m.room.message", "m.sticker", "m.room.encrypted":
+		return !isEdit(content)
+	}
+	return false
+}
+
+// isEdit reports whether content replaces an earlier message (m.relates_to.rel_type = m.replace). Content that
+// is not JSON is not an edit. (SQL twin: notEditSQL.)
+func isEdit(content json.RawMessage) bool {
+	var c struct {
+		RelatesTo struct {
+			RelType string `json:"rel_type"`
+		} `json:"m.relates_to"`
+	}
+	return json.Unmarshal(content, &c) == nil && c.RelatesTo.RelType == "m.replace"
 }
 
 const eventCols = "room_id, event_id, sender, type, state_key, content, ts, status, status_reason, seq"

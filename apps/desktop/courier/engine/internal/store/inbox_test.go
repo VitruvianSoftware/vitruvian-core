@@ -343,9 +343,9 @@ func TestMigrationFromMilestone2(t *testing.T) {
 	rows := inboxByID(t, s)
 	require.Len(t, rows, 3)
 	old := rows["!old:courier.local"]
-	require.Equal(t, time.UnixMilli(20000).UnixMilli(), old.LastTS.UnixMilli(), "last_ts is backfilled from events")
+	require.Equal(t, time.UnixMilli(20000).UnixMilli(), old.LastTS.UnixMilli(), "last_ts is backfilled from events, ignoring the newer edit")
 	require.Equal(t, "second old", old.Preview)
-	require.Equal(t, 2, old.Unread, "never read: both messages are unread")
+	require.Equal(t, 2, old.Unread, "never read: both messages are unread; the edit is not a third")
 	busy := rows["!busy:courier.local"]
 	require.Equal(t, time.UnixMilli(70000).UnixMilli(), busy.LastTS.UnixMilli(), "the reaction at 50000 does not count")
 	require.Equal(t, "still sending", busy.Preview)
@@ -485,4 +485,139 @@ func TestInboxAndPagingAreIndexed(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, evs, 50)
 	require.Less(t, took, bound*2, "200 pages of a 10,000-message chat")
+}
+
+func lastEventID(t *testing.T, s *Store, roomID string) string {
+	t.Helper()
+	var id string
+	require.NoError(t, s.db.QueryRow(context.Background(), "SELECT last_event_id FROM rooms WHERE room_id=$1", roomID).Scan(&id))
+	return id
+}
+
+const editOf = `{"msgtype":"m.text","body":"* edited","m.relates_to":{"rel_type":"m.replace","event_id":"$orig"}}`
+
+func TestEditsDoNotBumpAChat(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkRoom(t, s, "!other", time.Unix(2, 0))
+	mkMsg(t, s, "!r", "$orig", ghost, "m.room.message", text("original"), time.Unix(10, 0))
+	mkMsg(t, s, "!other", "$o", ghost, "m.room.message", text("o"), time.Unix(20, 0))
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$orig", time.Unix(10, 0)))
+
+	mkMsg(t, s, "!r", "$edit", ghost, "m.room.message", editOf, time.Unix(30, 0))
+	row := inboxByID(t, s)["!r"]
+	require.Equal(t, "original", row.Preview, "an edit is not the preview")
+	require.Equal(t, time.Unix(10, 0).UnixMilli(), row.LastTS.UnixMilli(), "an edit does not move the sort time")
+	require.Equal(t, 0, row.Unread, "an edit is not unread")
+	require.Equal(t, "$orig", lastEventID(t, s, "!r"))
+	rows, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "!other", rows[0].ID, "the edited chat does not jump to the top")
+
+	// The edit is still stored: it is history, just not news.
+	evs, err := s.Events(ctx, "!r", 10)
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+
+	// Content that is not JSON, or has no relation, is an ordinary message.
+	mkMsg(t, s, "!r", "$odd", ghost, "m.room.message", `not json`, time.Unix(40, 0))
+	row = inboxByID(t, s)["!r"]
+	require.Equal(t, 1, row.Unread)
+	require.Equal(t, "$odd", lastEventID(t, s, "!r"))
+}
+
+func TestUnreadTieBreaksBySeq(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	same := time.Unix(10, 0)
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("a"), same)
+	mkMsg(t, s, "!r", "$b", ghost, "m.room.message", text("b"), same) // same millisecond, arrived later
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$a", same))
+	require.Equal(t, 1, inboxByID(t, s)["!r"].Unread, "$b is in the marker's millisecond but arrived after it")
+
+	// The same through the network marker.
+	require.NoError(t, s.SetRead(ctx, "!r", "$b", same))
+	require.Equal(t, 0, inboxByID(t, s)["!r"].Unread)
+	mkRoom(t, s, "!n", time.Unix(2, 0))
+	mkMsg(t, s, "!n", "$x", ghost, "m.room.message", text("x"), same)
+	mkMsg(t, s, "!n", "$y", ghost, "m.room.message", text("y"), same)
+	require.NoError(t, s.SetRead(ctx, "!n", "$x", same))
+	require.Equal(t, 1, inboxByID(t, s)["!n"].Unread)
+
+	// A marker whose event we do not have falls back to ts alone.
+	mkRoom(t, s, "!u", time.Unix(3, 0))
+	mkMsg(t, s, "!u", "$p", ghost, "m.room.message", text("p"), same)
+	mkMsg(t, s, "!u", "$q", ghost, "m.room.message", text("q"), time.Unix(20, 0))
+	require.NoError(t, s.SetRead(ctx, "!u", "$unknown", same))
+	require.Equal(t, 1, inboxByID(t, s)["!u"].Unread)
+}
+
+func TestMarkReadLocalOnlyMovesForward(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	for i := 1; i <= 4; i++ {
+		mkMsg(t, s, "!r", fmt.Sprintf("$%d", i), ghost, "m.room.message", text("m"), time.Unix(int64(i*10), 0))
+	}
+	// Two more in one millisecond.
+	mkMsg(t, s, "!r", "$5a", ghost, "m.room.message", text("m"), time.Unix(50, 0))
+	mkMsg(t, s, "!r", "$5b", ghost, "m.room.message", text("m"), time.Unix(50, 0))
+
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$3", time.Unix(30, 0))) // no network read exists
+	require.Equal(t, 3, inboxByID(t, s)["!r"].Unread)
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$1", time.Unix(10, 0)))
+	require.Equal(t, 3, inboxByID(t, s)["!r"].Unread, "an older mark never moves the marker back")
+	select {
+	case c := <-ch:
+		t.Fatalf("a mark that moved nothing published %+v", c)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$5b", time.Unix(50, 0)))
+	require.Equal(t, 0, inboxByID(t, s)["!r"].Unread)
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$5a", time.Unix(50, 0))) // same ms, lower seq: not later
+	require.Equal(t, 0, inboxByID(t, s)["!r"].Unread)
+	require.Equal(t, Change{Kind: "read", RoomID: "!r", EventID: "$5b"}, nextChange(t, ch))
+}
+
+func TestEncryptedPlaceholderBecomesLastEvent(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$m", ghost, "m.room.message", text("readable"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$enc", ghost, "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2","ciphertext":"x"}`, time.Unix(20, 0))
+	require.Equal(t, "$enc", lastEventID(t, s, "!r"))
+	row := inboxByID(t, s)["!r"]
+	require.Equal(t, time.Unix(20, 0).UnixMilli(), row.LastTS.UnixMilli())
+	require.Equal(t, "", row.Preview)
+	require.Equal(t, "", row.PreviewKind)
+	require.Equal(t, 1, row.Unread, "only the readable message is counted as unread")
+}
+
+func TestFailedMigrationRollsBack(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	fixture, err := os.ReadFile("testdata/m2.sql")
+	require.NoError(t, err)
+	db, err := sqlite.Open(path)
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = db.Exec(ctx, string(fixture))
+	require.NoError(t, err)
+
+	// Migration 1 succeeds, then a second step fails: the whole thing must roll back, including migration 1.
+	err = migrateWith(ctx, db, []string{migrations[0], "ALTER TABLE no_such_table ADD COLUMN x INTEGER"})
+	require.ErrorContains(t, err, "migration 2")
+	var v int
+	require.NoError(t, db.QueryRow(ctx, "PRAGMA user_version").Scan(&v))
+	require.Equal(t, 0, v, "user_version is unchanged")
+	_, err = db.Exec(ctx, "SELECT last_ts FROM rooms")
+	require.Error(t, err, "migration 1's columns were rolled back with it")
+	_, err = db.Exec(ctx, "SELECT * FROM room_prefs")
+	require.Error(t, err, "migration 1's tables were rolled back with it")
+
+	// The real migration still applies cleanly afterwards.
+	require.NoError(t, migrate(ctx, db))
+	require.NoError(t, db.QueryRow(ctx, "PRAGMA user_version").Scan(&v))
+	require.Equal(t, 1, v)
 }
