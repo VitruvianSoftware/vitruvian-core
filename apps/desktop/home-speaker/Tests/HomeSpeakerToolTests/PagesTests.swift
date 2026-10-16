@@ -134,6 +134,8 @@ final class PagesTests: XCTestCase {
         XCTAssertTrue(lines.contains("History · /data/history.json"))
     }
 
+    /// An app before 3.48: the speaker list and the typed volume, as
+    /// before, with Mute a switch and no Quieter, Louder or Read.
     func testTheIslandPageHasTheFieldTheSwitchesAndTheSpeaker() {
         var status = Pages.Status()
         status.config = configured
@@ -141,24 +143,122 @@ final class PagesTests: XCTestCase {
         status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
         status.quietNow = true
         let page = Pages.island(status)
-        XCTAssertEqual(ids(page), ["say", "broadcasting", "quiet", "mute", "volume", "quieter", "louder", "refresh", "speakers",
-                                   "output.home", "output.local"])
-        XCTAssertTrue(texts(page).contains("Kitchen · Volume 40 %"))
+        XCTAssertEqual(ids(page), ["say", "broadcasting", "quiet", "speakers", "volume", "mute", "output.home", "output.local"])
+        XCTAssertFalse(texts(page).contains("HomeSpeaker"), "the island's header names it already")
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
+        XCTAssertFalse(page.blocks.contains { if case .choice = $0.content { return true } else { return false } },
+                       "an app without the choice block gets none")
         guard case .list(let speakers)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no list") }
         XCTAssertEqual(speakers.rows.map(\.id), ["kitchen", "all"], "the person's speaker first, the whole home after")
         XCTAssertEqual(speakers.rows.first?.trailing?.text(for: "en"), "✓")
+        guard case .field(let volume)? = page.blocks.first(where: { $0.id == "volume" })?.content else { return XCTFail("no field") }
+        XCTAssertEqual(volume.value, "40")
+        guard case .toggle(let mute)? = page.blocks.first(where: { $0.id == "mute" })?.content else { return XCTFail("no switch") }
+        XCTAssertEqual(mute.value, false)
         status.volume?.muted = true
-        XCTAssertTrue(ids(Pages.island(status)).contains("unmute"))
-        XCTAssertTrue(texts(Pages.island(status)).contains("Kitchen · Muted"))
+        guard case .toggle(let muted)? = Pages.island(status).blocks.first(where: { $0.id == "mute" })?.content else {
+            return XCTFail("no switch")
+        }
+        XCTAssertEqual(muted.value, true, "muted: the same switch, on")
         status.volume = Volume(speaker: "Kitchen", online: false)
-        XCTAssertTrue(texts(Pages.island(status)).contains("Kitchen · Offline"))
+        XCTAssertTrue(texts(Pages.island(status)).contains("Kitchen is offline"))
         status.busy = .say("x")
         status.notice = "Sent to Kitchen"
         XCTAssertTrue(texts(Pages.island(status)).contains("Speaking…") && texts(Pages.island(status)).contains("Sent to Kitchen"))
         status.config.defaultTarget = ""
         XCTAssertEqual(ids(Pages.island(status)), ["say", "broadcasting", "quiet", "speakers", "output.home", "output.local"],
                        "no speaker, no volume controls")
+        XCTAssertTrue(texts(Pages.island(status)).contains("No speaker picked yet"))
+    }
+
+    /// An app from 3.48: the speaker and the volume are a menu each.
+    func testTheIslandPageHasMenusWhereTheAppDrawsThem() {
+        var status = Pages.Status()
+        status.config = configured
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
+        status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
+        status.offersChoice = true
+        let page = Pages.island(status)
+        XCTAssertEqual(ids(page), ["say", "broadcasting", "quiet", "speakers", "volume", "mute", "output.home", "output.local"])
+        guard case .choice(let speaker)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
+        XCTAssertEqual(speaker.title?.text(for: "en"), "Speaker")
+        XCTAssertEqual(speaker.value, "kitchen")
+        XCTAssertEqual(speaker.options.map(\.value), ["kitchen", "all"])
+        XCTAssertEqual(speaker.options.map { $0.title.text(for: "en") }, ["Kitchen", "Whole Home"])
+        guard case .choice(let volume)? = page.blocks.first(where: { $0.id == "volume" })?.content else { return XCTFail("no menu") }
+        XCTAssertEqual(volume.title?.text(for: "en"), "Volume")
+        XCTAssertEqual(volume.value, "40")
+        XCTAssertEqual(volume.options.map(\.value), Pages.volumeSteps.map(String.init))
+        XCTAssertEqual(volume.options.first?.title.text(for: "en"), "0 %")
+        XCTAssertEqual(volume.options.count, 11)
+        XCTAssertFalse(texts(page).contains("Speaker"), "the menu carries its own title")
+
+        // No default speaker: the menu says so, and nothing about the volume.
+        status.config.defaultTarget = ""
+        let none = Pages.island(status)
+        guard case .choice(let unpicked)? = none.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
+        XCTAssertEqual(unpicked.value, "")
+        XCTAssertEqual(unpicked.options.first?.title.text(for: "en"), "None picked")
+        XCTAssertFalse(ids(none).contains("volume"))
+        XCTAssertFalse(ids(none).contains("mute"))
+    }
+
+    func testTheVolumeMenuKeepsALevelBetweenTwoSteps() {
+        XCTAssertEqual(Pages.volumeOptions(35).map(\.value), ["0", "10", "20", "30", "35", "40", "50", "60", "70", "80", "90", "100"],
+                       "35 is kept, in its place")
+        XCTAssertEqual(Pages.volumeOptions(30).map(\.value), Pages.volumeSteps.map(String.init), "a step is not added twice")
+        let unread = Pages.volumeOptions(nil)
+        XCTAssertEqual(unread.first?.value, "")
+        XCTAssertEqual(unread.first?.title.text(for: "en"), "—")
+        XCTAssertEqual(unread.count, 12)
+
+        var status = Pages.Status()
+        status.config = configured
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
+        status.offersChoice = true
+        status.volume = Volume(speaker: "Kitchen", percent: 35)
+        guard case .choice(let menu)? = Pages.island(status).blocks.first(where: { $0.id == "volume" })?.content else {
+            return XCTFail("no menu")
+        }
+        XCTAssertEqual(menu.value, "35")
+        XCTAssertTrue(menu.options.contains { $0.value == "35" && $0.title.text(for: "en") == "35 %" })
+        status.volume = nil
+        guard case .choice(let notRead)? = Pages.island(status).blocks.first(where: { $0.id == "volume" })?.content else {
+            return XCTFail("no menu")
+        }
+        XCTAssertEqual(notRead.value, "", "not read yet: the menu shows a dash, not a level")
+    }
+
+    func testTheIslandEndsWithWhereTheOtherSettingsAre() {
+        XCTAssertEqual(Pages.moreSettings, "More settings: Vitruvian Settings › Extensions › HomeSpeaker")
+        var status = Pages.Status()
+        status.config = configured
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
+        for offersChoice in [false, true] {
+            status.offersChoice = offersChoice
+            XCTAssertEqual(texts(Pages.island(status)).last, Pages.moreSettings)
+        }
+        // Before setup, and while the other HomeSpeaker is in use, too.
+        status.account.isSignedIn = false
+        XCTAssertEqual(texts(Pages.island(status)).last, Pages.moreSettings)
+        status.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
+        XCTAssertEqual(texts(Pages.island(status)).last, Pages.moreSettings)
+        XCTAssertFalse(texts(Pages.island(status)).contains("HomeSpeaker"), "no heading on the quiet card either")
+        XCTAssertFalse(texts(Pages.settings(status)).contains(Pages.moreSettings), "Settings is where it points")
+    }
+
+    /// The read on every opening says nothing while a level is shown; one
+    /// with no level yet, or any other job, still says what it is doing.
+    func testTheReadOnOpeningIsQuietWhileALevelIsShown() {
+        var status = Pages.Status()
+        status.config = configured
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
+        status.busy = .volume
+        XCTAssertTrue(texts(Pages.island(status)).contains("Reading the volume…"), "nothing to show yet")
+        status.volume = Volume(speaker: "Kitchen", percent: 40)
+        XCTAssertFalse(texts(Pages.island(status)).contains("Reading the volume…"))
+        status.busy = .setVolume(50)
+        XCTAssertTrue(texts(Pages.island(status)).contains("Setting the volume to 50 %…"))
     }
 
     func testTheGeneralSectionDrawsTheFileAsHomeSpeakersPageDoes() {

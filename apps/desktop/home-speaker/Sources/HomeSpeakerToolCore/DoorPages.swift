@@ -124,10 +124,6 @@ extension Pages {
     /// The quiet-hours choices: every half hour, "00:00" to "23:30".
     public static let halfHours: [String] = (0..<48).map { String(format: "%02d:%02d", $0 / 2, ($0 % 2) * 30) }
 
-    /// Louder and Quieter: ten at a time, held to 0 to 100.
-    public static func louder(_ percent: Int) -> Int { min(100, percent + 10) }
-    public static func quieter(_ percent: Int) -> Int { max(0, percent - 10) }
-
     // MARK: - The card
 
     /// At the top of the island and of General: the card while nobody has
@@ -289,7 +285,4 @@ extension Pages.Block {
     public static let doorCopyAgain = "door.copyAgain"
     public static let doorBack = "door.back"
     public static let doorQuitAgain = "door.quitAgain"
-    // Beside the typed volume.
-    public static let quieter = "quieter"
-    public static let louder = "louder"
 }

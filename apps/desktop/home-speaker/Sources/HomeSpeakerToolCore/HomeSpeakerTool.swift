@@ -220,6 +220,30 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     public private(set) var volume: Volume?
     /// The speaker job running: speaking, the volume, muting.
     public private(set) var busy: Job?
+    /// The default speaker (its key) a volume or mute job was started
+    /// for. HomeSpeaker reads the default when the job runs, so an answer
+    /// for any other is the old speaker's and is not shown as the new one's.
+    private var busyFor: String?
+    /// A speaker job asked for while the volume was being read: it runs
+    /// when the read ends, rather than being refused. The island reads the
+    /// volume when it opens, and a pick made just after must not be lost
+    /// to that read.
+    public private(set) var waiting: Job?
+    /// The default speaker `waiting` was asked for: a change of speaker
+    /// meanwhile drops a waiting volume or mute, which was meant for the
+    /// old one.
+    private var waitingFor: String?
+    /// A read of the volume is wanted as soon as the speaker slot is free:
+    /// the speaker changed while a job ran. It reads whichever speaker is
+    /// the default then, so a second change needs no second read.
+    public private(set) var readPending = false
+    /// When the default speaker's volume last came back.
+    private var volumeReadAt: Date?
+    /// The speaker (its key) `volume` was read for. The phone, the app or
+    /// a hand edit can change the default without the island knowing; a
+    /// reading for another speaker is then dropped, never shown as the
+    /// new one's.
+    private var volumeFor: String?
     /// The setup job running beside it: signing in or out, discovery, the
     /// login item, the media-pause test. Its own slot, so a browser sign-in
     /// that takes minutes never holds up speech or a mute.
@@ -331,7 +355,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         }
         openPanels.insert(Self.islandPanel)
         reload()
-        if readsVolume, volume == nil, busy == nil { try? run(.volume) }
+        // An opening reads the volume again (the app asks for this page
+        // only when the island or the menu bar panel opens it), so the
+        // menu shows the level as it is now. Not within `volumeFreshFor`
+        // of the last read: each read asks Google's Home API afresh, and
+        // opening and closing quickly would ask it every time.
+        if readsVolume, busy == nil, !volumeIsFresh { try? run(.volume) }
         listHomesForSetup()
         return Pages.island(status())
     }
@@ -342,6 +371,42 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// nothing.
     private var readsVolume: Bool {
         parts.driver.isInstalled && config.defaultDevice != nil && config.effectiveSpeakHome && !parts.role().isQuiet
+    }
+
+    /// How long a volume read stands before an opening reads it again.
+    public static let volumeFreshFor: TimeInterval = 30
+
+    private var volumeIsFresh: Bool {
+        guard volume != nil, volumeFor == config.defaultTarget, let at = volumeReadAt else { return false }
+        return parts.now().timeIntervalSince(at) < Self.volumeFreshFor
+    }
+
+    /// The level shown is no longer the default speaker's.
+    private func forgetVolume() {
+        volume = nil
+        volumeReadAt = nil
+        volumeFor = nil
+    }
+
+    /// The default speaker changed: its level is unknown, and a volume or
+    /// mute waiting for the old one is dropped, and said to be.
+    private func speakerChanged() {
+        forgetVolume()
+        if let job = waiting, job.controlsSpeaker {
+            waiting = nil
+            waitingFor = nil
+            notice = Pages.pendingDropped
+        }
+    }
+
+    /// Reads the new default's volume now, or once the slot is free.
+    private func readVolumeSoon() {
+        guard readsVolume else { return }
+        if busy == nil {
+            try? run(.volume, keepingNotice: true)
+        } else {
+            readPending = true
+        }
     }
 
     /// Signed in with no speakers: the island's setup offers each home, so
@@ -374,35 +439,36 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 reload()
                 config.quietHoursEnabled = isOn
                 try save()
-            case Pages.Block.mute?: try speakerJob(.mute)
-            case Pages.Block.unmute?: try speakerJob(.unmute)
-            case Pages.Block.refresh?: try speakerJob(.volume)
+            case Pages.Block.mute?:
+                guard let isOn = event.isOn else { return .keep }
+                try speakerJob(isOn ? .mute : .unmute)
             case Pages.Block.volume?:
-                guard let text = event.text, let level = Int(text.trimmingCharacters(in: .whitespaces)), (0...100).contains(level) else {
+                // The menu's pick or the typed level, both as text. The
+                // menu's "—" (not read yet) and an empty field ask nothing.
+                guard let text = event.text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else { return .keep }
+                guard let level = Int(text), (0...100).contains(level) else {
                     notice = "A volume is a whole number from 0 to 100"
                     return .page(Pages.island(status()))
                 }
+                guard level != volume?.percent else { return .keep }
                 try speakerJob(.setVolume(level))
-            case Pages.Block.quieter?, Pages.Block.louder?:
-                // From the level last read: with none, there is nothing to
-                // go up or down from.
-                guard let percent = volume?.percent else { return .keep }
-                try speakerJob(.setVolume(event.block == Pages.Block.louder ? Pages.louder(percent) : Pages.quieter(percent)))
             case Pages.Block.speakers?:
-                guard let key = event.row else { return .keep }
+                // The menu answers with the speaker's key as text, the
+                // list with the row tapped.
+                guard let key = event.text ?? event.row, !key.isEmpty else { return .keep }
                 reload()
-                guard config.targets[key] != nil else { return .keep }
+                guard config.targets[key] != nil, key != config.defaultTarget else { return .keep }
                 config.defaultTarget = key
                 try save()
-                volume = nil
-                if readsVolume { try run(.volume) }
+                speakerChanged()
+                readVolumeSoon()
             case Pages.Block.outputHome?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
                 config.effectiveSpeakHome = isOn
                 try save()
                 // A reading from before Home speakers went off is stale.
-                volume = nil
+                forgetVolume()
             case Pages.Block.outputLocal?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
@@ -687,7 +753,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 config.defaultTarget = key
             }
             // The island's reading was the old default's.
-            if config.defaultTarget != before { volume = nil }
+            if config.defaultTarget != before { speakerChanged() }
         case Pages.Block.voice?:
             guard let picked, !picked.isEmpty else { return false }
             config.effectiveLocalVoice = picked
@@ -1198,8 +1264,22 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             if setupBusy == job { setupBusy = nil }
             finishedSetup(job, result)
         } else {
-            if busy == job { busy = nil }
-            finishedSpeaking(job, result)
+            // The speaker the running job was started for; nil for an
+            // answer to no job this tool started, taken as it is.
+            let startedFor = busy == job ? busyFor : nil
+            if busy == job {
+                busy = nil
+                busyFor = nil
+            }
+            reload()
+            if job.controlsSpeaker, let startedFor, startedFor != config.defaultTarget {
+                // For a speaker that is no longer the default: not shown
+                // as the new one's, which is read instead.
+                if readsVolume { readPending = true }
+            } else {
+                finishedSpeaking(job, result)
+            }
+            startNext()
         }
         refreshOpenPanels()
         updateMark()
@@ -1215,9 +1295,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             parts.link.showMessage(notice ?? "Not spoken", icon: "speaker.slash")
         case .volume(let read):
             volume = read
+            volumeReadAt = parts.now()
+            volumeFor = config.defaultTarget
             if case .setVolume = job { notice = nil }
         case .unavailable(let why), .failed(let why):
-            volume = nil
+            forgetVolume()
             notice = why.capitalizingFirst
         case .done, .homes, .loginItem:
             break
@@ -1279,7 +1361,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.installed = parts.driver.isInstalled
         status.config = config
         status.volume = volume
-        status.busy = busy
+        status.busy = waiting ?? busy
         status.notice = notice
         status.quietNow = config.isInQuietHours(at: parts.now())
         status.offersChoice = parts.link.supports(.choice)
@@ -1456,20 +1538,54 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     private func say(_ text: String) throws {
-        try refuseWhileQuiet()
-        guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
-        reload()
-        guard config.defaultDevice != nil || config.effectiveSpeakLocal else { throw CommandRefused(Self.notSetUp) }
-        guard config.enabled else { throw CommandRefused("broadcasting is switched off") }
+        try check(.say(text))
         try run(.say(text))
     }
 
     private func speakerJob(_ job: Job) throws {
+        try check(job)
+        try run(job)
+    }
+
+    /// What a speaker job needs, when it is asked for and again when it
+    /// has waited.
+    private func check(_ job: Job) throws {
         try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         reload()
-        guard config.defaultDevice != nil else { throw CommandRefused("no default speaker; pick one in HomeSpeaker") }
-        try run(job)
+        if case .say = job {
+            guard config.defaultDevice != nil || config.effectiveSpeakLocal else { throw CommandRefused(Self.notSetUp) }
+            guard config.enabled else { throw CommandRefused("broadcasting is switched off") }
+        } else {
+            guard config.defaultDevice != nil else { throw CommandRefused("no default speaker; pick one in HomeSpeaker") }
+        }
+    }
+
+    /// Runs what waited for the slot: the job the person asked for, if it
+    /// still holds, then a read the speaker change left.
+    private func startNext() {
+        guard busy == nil else { return }
+        if let next = waiting {
+            let wantedFor = waitingFor
+            waiting = nil
+            waitingFor = nil
+            do {
+                try check(next)
+                if next.controlsSpeaker {
+                    // Meant for this speaker, with Home speakers on.
+                    guard wantedFor == config.defaultTarget else { throw CommandRefused(Pages.pendingDropped) }
+                    guard config.effectiveSpeakHome else { throw CommandRefused(Pages.homeSpeakersOff) }
+                }
+                try run(next)
+            } catch {
+                notice = Self.words(error)
+            }
+            if busy != nil { return }
+        }
+        if readPending {
+            readPending = false
+            if readsVolume { try? run(.volume, keepingNotice: true) }
+        }
     }
 
     /// A setup job needs HomeSpeaker and nothing more: not a speaker, and
@@ -1484,15 +1600,33 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// two speaker jobs at once would read a volume the other is setting. A
     /// second in the same slot is refused, saying what is still running;
     /// a setup job and a speaker job run side by side.
-    private func run(_ job: Job) throws {
+    private func run(_ job: Job, keepingNotice: Bool = false) throws {
         if job.isSetup {
             if let setupBusy { throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(setupBusy))") }
             setupBusy = job
             setupNotice = nil
         } else {
-            if let busy { throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(busy))") }
+            if let busy {
+                if job == .volume {
+                    // A read already running for this speaker is enough;
+                    // otherwise one follows whatever runs.
+                    if busy != .volume || busyFor != config.defaultTarget { readPending = true }
+                    return
+                }
+                // Behind a read of the volume, one job waits; behind
+                // anything else, or a second, it is refused.
+                guard busy == .volume, waiting == nil else {
+                    throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(waiting ?? busy))")
+                }
+                waiting = job
+                waitingFor = config.defaultTarget
+                notice = nil
+                updateMark()
+                return
+            }
             busy = job
-            notice = nil
+            busyFor = job.controlsSpeaker ? config.defaultTarget : nil
+            if !keepingNotice { notice = nil }
         }
         let later = parts.later
         parts.driver.run(job) { [weak self] result in
@@ -1511,6 +1645,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case .unreadable(let why):
             configProblem = why.localizedDescription
         }
+        // The default changed outside the tool: the level shown was the
+        // old speaker's.
+        if volume != nil, volumeFor != config.defaultTarget { forgetVolume() }
     }
 
     /// Never over a file that does not read: the tool's copy would replace
@@ -1537,5 +1674,16 @@ extension String {
     var capitalizingFirst: String {
         guard let first = first else { return self }
         return first.uppercased() + dropFirst()
+    }
+}
+
+extension Job {
+    /// Reads or changes the default speaker's volume: HomeSpeaker picks the
+    /// speaker from the settings when it runs.
+    var controlsSpeaker: Bool {
+        switch self {
+        case .volume, .setVolume, .mute, .unmute: return true
+        case .say, .app, .signIn: return false
+        }
     }
 }

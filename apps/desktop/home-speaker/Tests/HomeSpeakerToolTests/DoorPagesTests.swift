@@ -293,8 +293,8 @@ final class DoorPagesTests: XCTestCase {
     func testTheCardShowsWhileWaiting() throws {
         let tool = tool()
         let island = tool.islandPage()
-        let card = Array(words(island).prefix(5))
-        XCTAssertEqual(card, ["HomeSpeaker", Pages.DoorWords.heading, Pages.DoorWords.body, "Use the extension", "Use the app"])
+        let card = Array(words(island).prefix(4))
+        XCTAssertEqual(card, [Pages.DoorWords.heading, Pages.DoorWords.body, "Use the extension", "Use the app"])
         XCTAssertEqual(Pages.DoorWords.heading, "HomeSpeaker is installed twice")
         XCTAssertEqual(Pages.DoorWords.body,
                        "The HomeSpeaker app and the Vitruvian extension can both speak on your speakers. Use one, so nothing is said twice.")
@@ -314,7 +314,7 @@ final class DoorPagesTests: XCTestCase {
         let tool = tool()
         let island = tool.islandPage()
         XCTAssertEqual(ids(island), [Pages.Block.doorUseThis], "the card is all there is")
-        XCTAssertEqual(words(island), ["HomeSpeaker", "The HomeSpeaker app is in use, so this one stays quiet.", "Use this one instead"])
+        XCTAssertEqual(words(island), ["The HomeSpeaker app is in use, so this one stays quiet.", "Use this one instead", Pages.moreSettings])
 
         let general = tool.settingsPage()
         let which = try XCTUnwrap(words(general).firstIndex(of: "Which HomeSpeaker"))
@@ -412,7 +412,7 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertEqual(SpeakerConfigFile(url: mine.settingsURL).read(), SpeakerConfigFile(url: app.settingsURL).read(),
                        "the app's settings came across")
         XCTAssertEqual(door.read()?.chosen, .extension)
-        XCTAssertEqual(Array(words(page).prefix(3)), ["HomeSpeaker", Pages.DoorWords.heading, "The app has quit."])
+        XCTAssertEqual(Array(words(page).prefix(2)), [Pages.DoorWords.heading, "The app has quit."])
         XCTAssertEqual(toggle(page, Pages.Block.doorLoginItem)?.title.text(for: "en"), "Turn off the app's Open at Login")
         XCTAssertEqual(toggle(page, Pages.Block.doorLoginItem)?.value, true)
         XCTAssertEqual(toggle(page, Pages.Block.doorTrash)?.title.text(for: "en"), "Move HomeSpeaker.app to the Trash")
