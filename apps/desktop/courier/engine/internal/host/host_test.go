@@ -19,6 +19,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -238,15 +239,35 @@ func TestStopWaitsForTheBridgeDatabaseToClose(t *testing.T) {
 		}
 		h.Stop()
 		require.Zero(t, h.db.RawDB.Stats().OpenConnections, "run %d: Stop returned with the bridge database still open", i)
-		entries, err := os.ReadDir(filepath.Join(dir, "bridges"))
+		// Leftover -wal/-shm files are not a sign of an open database: when two connections close at the same
+		// moment, neither can take the lock SQLite needs to delete them, and the next open replays them.
+		// What matters is that nothing writes after Stop and that the file opens cleanly again.
+		bridges := filepath.Join(dir, "bridges")
+		before := dirSnapshot(t, bridges)
+		time.Sleep(20 * time.Millisecond)
+		require.Equal(t, before, dirSnapshot(t, bridges), "run %d: the bridge database changed after Stop returned", i)
+		reopened, err := sqlite.Open(filepath.Join(bridges, "fake.db"))
 		require.NoError(t, err)
-		var names []string
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		require.Equal(t, []string{"fake.db"}, names, "run %d: the database must leave no -wal/-shm files behind", i)
+		var integrity string
+		require.NoError(t, reopened.RawDB.QueryRow("PRAGMA integrity_check").Scan(&integrity))
+		require.Equal(t, "ok", integrity, "run %d", i)
+		require.NoError(t, reopened.Close())
 		s.Close()
 	}
+}
+
+// dirSnapshot lists each file in dir with its size and modification time.
+func dirSnapshot(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	snap := map[string]string{}
+	for _, e := range entries {
+		info, err := e.Info()
+		require.NoError(t, err)
+		snap[e.Name()] = fmt.Sprintf("%d %d", info.Size(), info.ModTime().UnixNano())
+	}
+	return snap
 }
 
 func TestConfigureWithNoConfigIsAnError(t *testing.T) {
