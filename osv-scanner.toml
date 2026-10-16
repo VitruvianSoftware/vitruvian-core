@@ -51,6 +51,9 @@
 #     expiry date on an unfixable advisory would be a fiction: no future date
 #     makes it actionable. These are suppressed outright and must be revisited
 #     only if the dependency itself is dropped.
+#     Added 2026-10-16: 3 more PERMANENT entries (RUSTSEC "unmaintained crate"
+#     notices: bincode, paste, proc-macro-error2) from libsignal's Rust tree,
+#     third_party/libsignal/Cargo.lock; see the note above those entries.
 #
 # KNOWN REMEDIATION, deliberately NOT bundled into the CI swap that introduced
 # this file: infrastructure/pulumi/platform/repo_config/go.mod was previously

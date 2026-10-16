@@ -282,8 +282,13 @@ llvm.toolchain(
 #
 # REMOVE THIS once upstream lld can read `arm64e.x1`: delete both tags and the
 # toolchain goes back to following xcrun.
+# boring-sys's BORING_BSSL_SYSROOT (libsignal, below) reads the same _MACOS_SDK:
+# remove or change it together with this pin, or bindgen keeps reading the 26
+# SDK while the compiler follows xcrun.
+_MACOS_SDK = "/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk"
+
 llvm.sysroot(
-    path = "/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk",
+    path = _MACOS_SDK,
     targets = [
         "darwin-aarch64",
         "darwin-x86_64",
@@ -427,15 +432,15 @@ crate.from_cargo(
 # BoringSSL that Bazel built itself (@signal_boringssl, below, with the same
 # post-quantum patch boring-sys would apply), laid out as BORING_BSSL_PATH
 # expects. Its bindgen step loads libclang from the hermetic LLVM toolchain
-# and reads system headers from the same SDK llvm.sysroot pins (keep the two in
-# step). ASSUME_PATCHED only records that @signal_boringssl carries the patch;
-# with BORING_BSSL_PATH set, boring-sys skips patching anyway.
+# and reads system headers from _MACOS_SDK, the SDK llvm.sysroot pins.
+# ASSUME_PATCHED only records that @signal_boringssl carries the patch; with
+# BORING_BSSL_PATH set, boring-sys skips patching anyway.
 crate.annotation(
     build_script_data = ["@@//third_party/libsignal:boringssl_prefix"],
     build_script_env = {
         "BORING_BSSL_ASSUME_PATCHED": "1",
         "BORING_BSSL_PATH": "$(execpath @@//third_party/libsignal:boringssl_prefix)",
-        "BORING_BSSL_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk",
+        "BORING_BSSL_SYSROOT": _MACOS_SDK,
         "LIBCLANG_PATH": "$(execpath @@//third_party/libsignal:libclang)",
     },
     build_script_tools = [

@@ -1,4 +1,5 @@
 <!--
+Copyright 2026 VitruvianSoftware
 Upstream: https://github.com/signalapp/libsignal (AGPL-3.0-only); this
 directory is build glue for it, under the same licence.
 SPDX-License-Identifier: AGPL-3.0-only
@@ -15,6 +16,10 @@ What Go links is `//third_party/libsignal:signal_ffi`. It is macOS only
 
 The guard is `//apps/desktop/courier/engine/internal/networks:networks_test`:
 it calls into the library and checks a real signature round trip.
+Run it with `bazel test`. Plain `go test ./...` on a Mac fails to link
+`internal/networks` (`ld: library 'signal_ffi' not found`): upstream
+libsignalgo expects a prebuilt `-lsignal_ffi`, and the patch that points it at
+this build applies only under Bazel.
 
 ## What is pinned
 

@@ -1,3 +1,4 @@
+# Copyright 2026 VitruvianSoftware
 # Upstream: https://github.com/signalapp/libsignal (AGPL-3.0-only); this file
 # is build glue for it, under the same licence.
 # SPDX-License-Identifier: AGPL-3.0-only

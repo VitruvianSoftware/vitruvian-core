@@ -132,9 +132,10 @@ pin.
 - **Apple silicon only, macOS only.** The 1.98.1 toolchain is registered for
   arm64 hosts building macOS arm64 or x86_64. Linux builds skip it. An Intel
   Mac or Linux bridge would need more toolchain entries.
-- **One machine path.** Signal's bindgen step and `ring` read the macOS 26
-  SDK at `/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk`, the same
-  path `llvm.sysroot` already pins. If that pin moves, move these too.
+- **One machine path.** Signal's bindgen step reads the macOS 26 SDK through
+  `_MACOS_SDK` in `MODULE.bazel`, the same constant `llvm.sysroot` pins, so
+  the two move together. Removing the pin means removing
+  `BORING_BSSL_SYSROOT` too (the comment there says so).
 - **Annotations are tied to this libsignal version.** Each one is commented.
   A future libsignal can add or drop crates with build scripts; the first
   build after a re-pin will say which.
