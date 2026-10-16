@@ -477,3 +477,21 @@ func TestReportNotStartedIsSortedAndSilentWhenEmpty(t *testing.T) {
 	reportNotStarted(&out, map[string]error{"slack": errors.New("b"), "gmessages": errors.New("a")})
 	require.Equal(t, "gmessages: not started — a\nslack: not started — b\n", out.String())
 }
+
+func TestFirstCtrlCHandsTheSecondToTheDefaultHandler(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	released := make(chan struct{})
+	releaseSignalWhenDone(ctx, func() { close(released) })
+	select {
+	case <-released:
+		t.Fatal("Ctrl-C was handed back before the first one arrived")
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel() // the first Ctrl-C
+	select {
+	case <-released:
+	case <-time.After(5 * time.Second):
+		t.Fatal("after the first Ctrl-C a second one must end the process, not be swallowed")
+	}
+}

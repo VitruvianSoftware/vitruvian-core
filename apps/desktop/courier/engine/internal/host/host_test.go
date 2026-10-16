@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"go.mau.fi/util/configupgrade"
+	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
@@ -259,4 +260,70 @@ func TestConfigureWithNoConfigIsAnError(t *testing.T) {
 	require.ErrorContains(t, err, "fake has no config to configure")
 	require.False(t, called)
 	require.NoFileExists(t, filepath.Join(dir, "bridges", "fake.db"))
+}
+
+// stuckNet is a network whose logins never finish disconnecting, like a connector stuck on a dead socket.
+type stuckNet struct {
+	*fakenet.Network
+	release chan struct{}
+}
+
+func (n *stuckNet) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
+	if err := n.Network.LoadUserLogin(ctx, login); err != nil {
+		return err
+	}
+	login.Client = &stuckClient{NetworkAPI: login.Client, release: n.release}
+	return nil
+}
+
+type stuckClient struct {
+	bridgev2.NetworkAPI
+	release chan struct{}
+}
+
+func (c *stuckClient) Disconnect() { <-c.release }
+
+func TestStopDoesNotHangOnALoginThatWontDisconnect(t *testing.T) {
+	old := stopTimeout
+	stopTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { stopTimeout = old })
+
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	n := &stuckNet{Network: fakenet.New(), release: make(chan struct{})}
+	defer close(n.release)
+	h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, n, zerolog.Nop())
+	require.NoError(t, err)
+	_, err = n.Login(ctx, h.Bridge)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() { h.Stop(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop is still waiting for a login that will never disconnect")
+	}
+}
+
+// panicNet is a connector whose Start panics.
+type panicNet struct{ *fakenet.Network }
+
+func (n *panicNet) Start(context.Context) error { panic("start panic") }
+
+func TestPanicDuringStartClosesTheBridgeDatabase(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	require.Panics(t, func() {
+		_, _ = Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, &panicNet{fakenet.New()}, zerolog.Nop())
+	})
+	// An open SQLite database in WAL mode keeps its -wal and -shm files; a closed one leaves only the .db.
+	require.Eventually(t, func() bool {
+		entries, err := os.ReadDir(filepath.Join(dir, "bridges"))
+		return err == nil && len(entries) == 1 && entries[0].Name() == "fake.db"
+	}, 5*time.Second, 20*time.Millisecond, "the bridge database must be closed when start-up panics")
 }

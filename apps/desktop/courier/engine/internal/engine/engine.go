@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"sync"
 
@@ -53,16 +54,7 @@ func Start(ctx context.Context, dataDir string, s *store.Store, m *media.Store, 
 			errs[spec.Name+" (duplicate)"] = fmt.Errorf("network %s is already running; names must be unique", spec.Name)
 			continue
 		}
-		nc, err := spec.Connector()
-		if err != nil {
-			errs[spec.Name] = err
-			continue
-		}
-		var opts []host.Option
-		if spec.Configure != nil {
-			opts = append(opts, host.WithConfigure(spec.Configure))
-		}
-		h, err := host.Start(ctx, dataDir, spec.Name, s, m, nc, log, opts...)
+		h, err := startOne(ctx, dataDir, spec, s, m, log)
 		if err != nil {
 			errs[spec.Name] = err
 			continue
@@ -71,6 +63,30 @@ func Start(ctx context.Context, dataDir string, s *store.Store, m *media.Store, 
 		e.order = append(e.order, spec.Name)
 	}
 	return e, errs
+}
+
+// startOne builds one network's connector and starts its host. A panic while doing so (in the connector's
+// constructor, Init or Start, or in bridgev2's own start-up) is caught and returned as that network's error, so
+// the other networks still start. Only start-up is covered: a panic later, in a goroutine a bridge starts for
+// itself, is not recovered by bridgev2 and still stops the whole engine.
+func startOne(ctx context.Context, dataDir string, spec Spec, s *store.Store, m *media.Store, log zerolog.Logger) (h *host.Host, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// The stack goes to the log only; the error stays one line for the person reading it.
+			log.Error().Str("network", spec.Name).Any("panic", r).Bytes("stack", debug.Stack()).
+				Msg("network panicked while starting")
+			h, err = nil, fmt.Errorf("%s panicked while starting: %v", spec.Name, r)
+		}
+	}()
+	nc, err := spec.Connector()
+	if err != nil {
+		return nil, err
+	}
+	var opts []host.Option
+	if spec.Configure != nil {
+		opts = append(opts, host.WithConfigure(spec.Configure))
+	}
+	return host.Start(ctx, dataDir, spec.Name, s, m, nc, log, opts...)
 }
 
 // Host returns the running host for a network.

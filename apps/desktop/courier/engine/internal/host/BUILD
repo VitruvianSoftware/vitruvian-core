@@ -32,5 +32,6 @@ go_test(
         "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
         "@fi_mau_go_util//configupgrade",
+        "@net_maunium_go_mautrix//bridgev2",
     ],
 )

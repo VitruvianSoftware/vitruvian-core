@@ -83,6 +83,14 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 	if err != nil {
 		return nil, err
 	}
+	// Closed again on every way out but success, a panic in the connector included (the engine recovers it and
+	// carries on with the other networks, so the file must not stay open).
+	started := false
+	defer func() {
+		if !started {
+			db.Close()
+		}
+	}()
 	cfg := &bridgeconfig.BridgeConfig{
 		CommandPrefix: "!" + network,
 		// The rest of this section follows mxmain's v0.31.0 example config unless a comment says otherwise.
@@ -118,20 +126,21 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 	br := bridgev2.NewBridge(networkid.BridgeID(network), db, log.With().Str("bridge", network).Logger(), cfg, conn, nc,
 		func(b *bridgev2.Bridge) bridgev2.CommandProcessor { return commands.NewProcessor(b) })
 	if err = br.Start(ctx); err != nil {
-		db.Close()
 		return nil, fmt.Errorf("start %s bridge: %w", network, err)
 	}
+	started = true
 	return &Host{Bridge: br, Network: network, db: db, log: log.With().Str("bridge", network).Logger()}, nil
 }
 
 // Stop disconnects the logins and shuts the bridge down, and returns once its database is closed.
-// bridgev2 closes the database itself but does not wait for goroutines still mid-query (portal loops, the
-// backfill queue, bridge-state sending), and sql.DB.Close does not wait for connections in use. Until the
-// last one is released SQLite's -wal and -shm files stay on disk, which a restart or a directory cleanup
-// would trip over. Safe to call more than once.
+// A login whose network won't disconnect is given stopTimeout, then left behind, so quitting never hangs on
+// one network. bridgev2 closes the database itself but does not wait for goroutines still mid-query (portal
+// loops, the backfill queue, bridge-state sending), and sql.DB.Close does not wait for connections in use.
+// Until the last one is released SQLite's -wal and -shm files stay on disk, which a restart or a directory
+// cleanup would trip over. Safe to call more than once.
 func (h *Host) Stop() {
 	h.stop.Do(func() {
-		h.Bridge.Stop()
+		h.Bridge.StopWithTimeout(stopTimeout)
 		deadline := time.Now().Add(dbCloseTimeout)
 		for h.db.RawDB.Stats().OpenConnections > 0 {
 			if time.Now().After(deadline) {
@@ -146,6 +155,9 @@ func (h *Host) Stop() {
 
 // dbCloseTimeout bounds how long Stop waits for in-flight queries to finish.
 const dbCloseTimeout = 5 * time.Second
+
+// stopTimeout bounds how long Stop waits for each login to disconnect. A variable so a test can shorten it.
+var stopTimeout = 10 * time.Second
 
 // Me returns the local user, whose logins this host runs.
 func (h *Host) Me(ctx context.Context) (*bridgev2.User, error) {

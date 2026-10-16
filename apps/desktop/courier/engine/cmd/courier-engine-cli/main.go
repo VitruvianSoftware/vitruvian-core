@@ -135,11 +135,21 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	releaseSignalWhenDone(ctx, stop)
 	if err = run(ctx, a); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		stop()
 		os.Exit(1)
 	}
+}
+
+// releaseSignalWhenDone hands Ctrl-C back to Go's default handler once the first one has been caught, so a
+// second Ctrl-C ends the process at once if shutting down (engine, then store, then the data-dir lock) hangs.
+func releaseSignalWhenDone(ctx context.Context, stop context.CancelFunc) {
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 }
 
 func run(ctx context.Context, a args) error {

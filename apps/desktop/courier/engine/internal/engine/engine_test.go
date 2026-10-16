@@ -263,3 +263,28 @@ func TestInvalidAndDuplicateNamesAreSkipped(t *testing.T) {
 	require.ErrorContains(t, errs[""], "name")
 	require.True(t, strings.Contains(errs["Fake_Bad"].Error(), "[a-z]"), "the error should say what a valid name looks like")
 }
+
+// panicStartNet is a connector whose Start panics, as a bridge with a bug in its start-up might.
+type panicStartNet struct{ *fakenet.Network }
+
+func (n *panicStartNet) Start(context.Context) error { panic("sentinel start panic") }
+
+func TestPanicWhileStartingIsConfinedToThatNetwork(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	good := fakenet.New()
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, []Spec{
+		{Name: "fakeconstruct", Connector: func() (bridgev2.NetworkConnector, error) { panic("sentinel constructor panic") }},
+		{Name: "fakestart", Connector: func() (bridgev2.NetworkConnector, error) { return &panicStartNet{fakenet.New()}, nil }},
+		goodSpec("fakegood", good),
+	}, zerolog.New(zerolog.NewTestWriter(t)))
+	defer e.Stop()
+	require.Len(t, errs, 2)
+	for _, name := range []string{"fakeconstruct", "fakestart"} {
+		require.ErrorContains(t, errs[name], name+" panicked while starting", "the error names the network")
+		require.NotContains(t, errs[name].Error(), "goroutine", "the stack goes to the log, not into the error")
+	}
+	require.ErrorContains(t, errs["fakeconstruct"], "sentinel constructor panic")
+	require.ErrorContains(t, errs["fakestart"], "sentinel start panic")
+	requireGoodHostStillWorks(t, e, s, good)
+}
