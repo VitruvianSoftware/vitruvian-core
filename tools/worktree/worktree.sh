@@ -31,7 +31,8 @@
 #   bazel run //tools/worktree -- --remove <branch> --force          # ...with its uncommitted files
 #   bazel run //tools/worktree -- --remove <branch> --delete-branch  # ...and its branch, if clean AND landed
 #   bazel run //tools/worktree -- --prune               # DRY RUN: what would be removed, what is kept and why
-#   bazel run //tools/worktree -- --prune --execute     # remove every clean, landed, unlocked worktree + branch
+#   bazel run //tools/worktree -- --prune --execute     # remove every clean, landed, unlocked worktree + branch,
+#                                                       # and every landed branch that has no worktree
 #
 # Environment:
 #   WORKTREE_ROOT    parent dir for worktrees (default: <repo-parent>/<repo>-worktrees)
@@ -108,7 +109,7 @@ is_landed() {
   local script rc
   script="$(landed_script)" || { LANDED_SAYS="cannot find tools/landed/landed.sh"; return 1; }
   LANDED_SAYS="$(BUILD_WORKSPACE_DIRECTORY="${REPO}" LANDED_BASE="${BASE_REF}" LANDED_NO_FETCH=1 \
-    bash "${script}" --branch "$1" 2>&1)" && rc=0 || rc=$?
+    bash "${script}" --branch "$1" 2>&1 </dev/null)" && rc=0 || rc=$?
   LANDED_SAYS="$(printf '%s' "${LANDED_SAYS}" | sed -e $'s/\033\\[[0-9;]*m//g' -e 's/^✓ //' -e 's/^✗ //' -e 's/^→ //' | head -1)"
   return "${rc}"
 }
@@ -266,8 +267,16 @@ remove_one() {
 # its own (a branch level with main is far more often a worktree just created
 # than one abandoned), and landed --branch says every commit is on main.
 # Everything else is KEPT and the reason printed. Dry run unless --execute.
+#
+# Then the same for local branches that are not checked out in any worktree,
+# such as one whose worktree was removed by hand or with plain --remove. Such a
+# branch is deleted only if it has commits of its own and landed --branch says
+# every one of them is on main (which also refuses a branch that grew commits
+# past what its pull request merged). The checkout's own branch, and main, are
+# never touched; nor is anything checked out anywhere.
 cmd_prune() {
   local execute=0 path br locked prunable reason n_rm=0 n_keep=0 failed=0 candidates=()
+  local checked_out b_rm=0 b_keep=0 b_failed=0 branch_candidates=()
   for a in "$@"; do
     case "${a}" in
       --execute) execute=1 ;;
@@ -298,10 +307,34 @@ cmd_prune() {
       n_rm=$((n_rm + 1))
     fi
   done < <(worktrees)
+
+  echo
+  echo "worktree: branches with no worktree"
+  checked_out="$(worktrees | awk -F'\037' '$2 != "" {print $2}')"
+  while IFS= read -r br; do
+    [ -n "${br}" ] || continue
+    grep -qxF -- "${br}" <<<"${checked_out}" && continue
+    reason=""
+    if [ "${br}" = "main" ] || [ "${br}" = "${BASE_REF#origin/}" ]; then reason="the base branch"
+    elif git merge-base --is-ancestor "refs/heads/${br}" "${BASE_REF}" 2>/dev/null; then
+      reason="no commits of its own (new or unused); delete by hand: git branch -D ${br}"
+    elif ! is_landed "${br}"; then reason="not landed: ${LANDED_SAYS}"
+    fi
+    if [ -n "${reason}" ]; then
+      printf '  KEEP    branch %s\n          %s\n' "${br}" "${reason}"
+      b_keep=$((b_keep + 1))
+    else
+      printf '  REMOVE  branch %s\n          %s\n' "${br}" "${LANDED_SAYS}"
+      branch_candidates+=("${br}")
+      b_rm=$((b_rm + 1))
+    fi
+  done < <(git for-each-ref --format='%(refname:short)' refs/heads)
+
   echo
   if [ "${execute}" != "1" ]; then
     echo "worktree: DRY RUN: would remove ${n_rm} worktree(s) and their branches, keep ${n_keep}."
-    [ "${n_rm}" -eq 0 ] || echo "worktree: re-run with --prune --execute to remove them."
+    echo "worktree: DRY RUN: would delete ${b_rm} branch(es) with no worktree, keep ${b_keep}."
+    [ $((n_rm + b_rm)) -eq 0 ] || echo "worktree: re-run with --prune --execute to remove them."
     return 0
   fi
   for br in ${candidates[@]+"${candidates[@]}"}; do
@@ -309,8 +342,25 @@ cmd_prune() {
     # the listing above (new file, lock, server) is kept after all.
     remove_one "${br}" 0 1 || failed=$((failed + 1))
   done
+  for br in ${branch_candidates[@]+"${branch_candidates[@]}"}; do
+    # Checked again: since the listing it may have been checked out somewhere,
+    # or have grown a commit.
+    if worktrees | awk -F'\037' -v b="${br}" '$2 == b {found=1} END {exit !found}'; then
+      echo "worktree: ${br} is now checked out in a worktree, so it is kept" >&2
+      b_failed=$((b_failed + 1))
+    elif ! is_landed "${br}"; then
+      echo "worktree: ${br} is no longer landed, so it is kept: ${LANDED_SAYS}" >&2
+      b_failed=$((b_failed + 1))
+    elif git branch -D "${br}" >/dev/null; then
+      echo "worktree: deleted branch ${br} (landed: ${LANDED_SAYS})"
+    else
+      echo "worktree: could not delete branch ${br}" >&2
+      b_failed=$((b_failed + 1))
+    fi
+  done
   echo "worktree: removed $((n_rm - failed)) worktree(s), kept ${n_keep}$([ "${failed}" -eq 0 ] || echo ", ${failed} refused on re-check")."
-  [ "${failed}" -eq 0 ]
+  echo "worktree: deleted $((b_rm - b_failed)) branch(es) with no worktree, kept ${b_keep}$([ "${b_failed}" -eq 0 ] || echo ", ${b_failed} refused on re-check")."
+  [ "${failed}" -eq 0 ] && [ "${b_failed}" -eq 0 ]
 }
 
 case "${1:-}" in
