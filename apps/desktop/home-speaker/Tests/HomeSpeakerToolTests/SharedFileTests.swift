@@ -138,7 +138,12 @@ final class SharedFileTests: XCTestCase {
             engine: engine, program: root.appendingPathComponent("bin/tool"), link: Link(), later: { $0() },
             driverParts: EngineDriver.Parts(engine: engine, otherSecrets: { nil }), monitor: GatedMonitor(NoMonitor()),
             check: DoorCheck(file: DoorFile(url: DoorFile.defaultURL(home: home)), appInstalled: { false }),
-            appProgram: nil, runningApps: { [] },
+            appProgram: nil,
+            appProfile: HomeSpeakerProfile(
+                door: .app, settingsURL: appsFile, historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),
+                secretsURL: root.appendingPathComponent("app-secrets.json"), messagePrefix: "test.\(UUID().uuidString).app",
+                liveLockURL: nil, toolFolder: nil),
+            runningApps: { [] },
             runProgram: { _, _ in
                 XCTFail("ran a program")
                 return ProgramRun(status: 1, output: "", error: "")

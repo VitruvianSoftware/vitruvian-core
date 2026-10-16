@@ -509,7 +509,13 @@ final class ExtensionPartsTests: XCTestCase {
             engine: engine, program: program, link: HomeSpeakerToolTests.Link(),
             later: { work in DispatchQueue.main.async(execute: work) },
             driverParts: driverParts, monitor: gate, check: check,
-            appProgram: Self.appProgram, runningApps: { [] },
+            appProgram: Self.appProgram,
+            appProfile: HomeSpeakerProfile(
+                door: .app, settingsURL: home.appendingPathComponent(".gemini/speaker_broadcast.json"),
+                historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),
+                secretsURL: root.appendingPathComponent("app-secrets.json"), messagePrefix: testPrefix(),
+                liveLockURL: nil, toolFolder: nil),
+            runningApps: { [] },
             runProgram: { program, arguments in
                 ran.add([program.path] + arguments)
                 return ProgramRun(status: 1, output: "", error: "error: the test's stand-in never runs the app")

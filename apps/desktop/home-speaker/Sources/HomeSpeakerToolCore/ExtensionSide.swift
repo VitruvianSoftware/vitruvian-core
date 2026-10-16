@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import Combine
 import Foundation
 @preconcurrency import HomeSpeakerCore
 
@@ -145,6 +146,26 @@ extension GatedMonitor: @preconcurrency ChatMonitorControlling {
     }
 }
 
+/// The last thing the engine said when it put a speaker back
+/// (`VolumeRestoreCoordinator.lastReport`), kept where the kit's thread can
+/// read it: the coordinator is the main actor's.
+public final class RestoreReport: @unchecked Sendable {
+    private let lock = NSLock()
+    private var latest: String?
+    private var watching: AnyCancellable?
+
+    @MainActor
+    public init(_ coordinator: VolumeRestoreCoordinator) {
+        latest = coordinator.lastReport
+        watching = coordinator.$lastReport.sink { [weak self] report in
+            guard let self else { return }
+            self.lock.withLock { self.latest = report }
+        }
+    }
+
+    public var value: String? { lock.withLock { latest } }
+}
+
 /// The extension's long-lived parts, put together.
 public enum ExtensionSide {
     /// #3341's chat monitor, built from the extension's engine: its
@@ -208,6 +229,8 @@ extension HomeSpeakerTool.Parts {
     /// - `appProgram`, `runningApps` and `runProgram` are the app as the
     ///   extension sees it (`SystemOtherApp`): `runProgram` is the one way a
     ///   program of the app's is started, and no job uses it.
+    /// - `appProfile` is the app's files, which the choice card compares
+    ///   with the extension's and copies from or into.
     /// - `home` is where the coding agents keep their files.
     @MainActor
     public static func `extension`(
@@ -219,6 +242,7 @@ extension HomeSpeakerTool.Parts {
         monitor: GatedMonitor,
         check: DoorCheck,
         appProgram: URL?,
+        appProfile: HomeSpeakerProfile,
         runningApps: @escaping @Sendable () -> [any RunningAppHandle],
         runProgram: @escaping ProgramRunning,
         home: URL,
@@ -234,6 +258,7 @@ extension HomeSpeakerTool.Parts {
             program: appProgram, runningApps: runningApps, run: runProgram, fileManager: .default,
             wait: { try? await Task.sleep(for: .seconds($0)) })
         let credentialsChanged = CredentialsChangedNotice.notificationName(for: profile)
+        let restored = RestoreReport(engine.volumeRestore)
         return Self(
             link: link,
             store: FileConfigStore(url: profile.settingsURL),
@@ -258,6 +283,14 @@ extension HomeSpeakerTool.Parts {
             door: check.file,
             copy: DoorCopy.copy,
             sendStatus: sendStatus,
-            monitorMayRun: { permission.set($0) })
+            monitorMayRun: { permission.set($0) },
+            profile: profile,
+            appProfile: appProfile,
+            appProgram: appProgram,
+            otherInstalled: { check.appInstalled() },
+            // After a copy, the side that took it: the app's names when the
+            // app took it, so the running app re-reads its sign-ins.
+            credentialsChangedIn: { CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: $0)) },
+            volumeRestoreReport: { restored.value })
     }
 }

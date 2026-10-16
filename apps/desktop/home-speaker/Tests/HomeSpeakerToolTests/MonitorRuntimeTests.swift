@@ -70,7 +70,6 @@ final class MonitorRuntimeTests: XCTestCase {
     private func opened() -> HomeSpeakerTool {
         let tool = tool()
         _ = tool.settingsPage()
-        driver.answer(.app(.loginItem(.status)), .loginItem(.notRegistered))
         _ = event(tool, Pages.Block.section, .tap, .string(Pages.Section.monitor.rawValue))
         return tool
     }
@@ -188,7 +187,7 @@ final class MonitorRuntimeTests: XCTestCase {
         appRunning = false
         let warnings = Pages.chatWarnings(tool.status())
         XCTAssertFalse(warnings.contains("Google Chat: 503"))
-        XCTAssertTrue(warnings.contains(Pages.appNotReadingChat))
+        XCTAssertEqual(warnings, [], "no app to start: nothing more is said")
     }
 
     func testChatWarningsListSetupProblemsThenTheRuntimeError() {

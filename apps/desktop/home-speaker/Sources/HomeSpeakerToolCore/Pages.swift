@@ -87,14 +87,16 @@ public enum Pages {
     public struct Files: Equatable, Sendable {
         public var settings = ""
         public var secrets = ""
+        public var history = ""
         public var toolVersion = ToolVersion.current
         /// The installed HomeSpeaker's version; nil when it cannot be read.
         public var homeSpeakerVersion: String?
 
-        public init(settings: String = "", secrets: String = "", toolVersion: String = ToolVersion.current,
+        public init(settings: String = "", secrets: String = "", history: String = "", toolVersion: String = ToolVersion.current,
                     homeSpeakerVersion: String? = nil) {
             self.settings = settings
             self.secrets = secrets
+            self.history = history
             self.toolVersion = toolVersion
             self.homeSpeakerVersion = homeSpeakerVersion
         }
@@ -156,8 +158,6 @@ public enum Pages {
         /// The last thing a setup job said.
         public var setupNotice: String?
         public var account = Account()
-        /// Nil until `--login-item status` has answered.
-        public var loginItem: LoginItemState?
         /// What the last media-pause test said.
         public var mediaPauseReport: String?
         /// The homes this account sees; nil until they have been listed.
@@ -179,6 +179,11 @@ public enum Pages {
         /// The shared history (`BroadcastHistory`), newest first: what the
         /// app, `HomeSpeaker --say` and the Stop hook have spoken.
         public var recentBroadcasts: [BroadcastLogItem] = []
+        /// Which HomeSpeaker is in use, and the step the person is on.
+        public var door = DoorState()
+        /// What the engine said when it last put a speaker back
+        /// (`VolumeRestoreCoordinator.lastReport`); nil until it has.
+        public var volumeRestoreReport: String?
 
         public init() {}
 
@@ -195,7 +200,6 @@ public enum Pages {
     public static let maxSetupHomes = 10
     public static let noRecentBroadcasts = "No recent announcements"
     public static let homeSpeakersOff = "Home speakers are off"
-    public static let appNotReadingChat = "HomeSpeaker isn't running, so nothing is reading chat"
     public static let fixChatInSettings = "Fix it in Settings > Chat & Slack"
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
@@ -213,7 +217,6 @@ public enum Pages {
         public static let signIn = "signIn"
         public static let signOut = "signOut"
         public static let importAntigravity = "importAntigravity"
-        public static let loginItem = "loginItem"
         public static let speechLength = "speechLength"
         public static let speakHome = "speakHome"
         public static let speakLocal = "speakLocal"
@@ -290,35 +293,44 @@ public enum Pages {
 
     // MARK: - The island page
 
+    /// The island. While the other HomeSpeaker is in use, the quiet card
+    /// (or the step the person started from it) is all there is; otherwise
+    /// the choice card, when there is one, comes first.
     public static func island(_ status: Status) -> UITree {
-        UITree {
-            heading("HomeSpeaker")
-            configProblemBlocks(status)
-            if !status.installed {
-                text("HomeSpeaker is not installed on this Mac. The tool speaks through it.", style: .secondary)
-                link("Get HomeSpeaker", url: releases)
-            } else {
-                chatWarningBlocks(status)
-                // Before setup only this Mac can speak: offer the field
-                // when it would.
-                if !status.needsSetup || status.config.effectiveSpeakLocal {
-                    field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
-                }
-                if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
-                if let busy = status.busy { text(UIText.plain(busyLine(busy)), style: .caption) }
-                toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
-                toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
-                if status.quietNow, let until = status.config.quietHoursEnd {
-                    text(UIText.plain("Quiet hours until \(until): what you type still plays"), style: .caption)
-                }
-                divider()
-                if status.needsSetup {
-                    setupBlocks(status)
-                } else {
-                    speakerBlocks(status)
-                }
-                outputBlocks(status)
+        var quietFor: HomeSpeakerProfile.Door?
+        if case .quiet(let other) = status.door.role { quietFor = other }
+        if let other = quietFor {
+            return UITree {
+                heading("HomeSpeaker")
+                if status.door.step == nil { quietCardBlocks(other: other) } else { doorCardBlocks(status) }
+                doorReportBlocks(status)
             }
+        }
+        return UITree {
+            heading("HomeSpeaker")
+            doorCardBlocks(status)
+            doorReportBlocks(status)
+            configProblemBlocks(status)
+            chatWarningBlocks(status)
+            // Before setup only this Mac can speak: offer the field
+            // when it would.
+            if !status.needsSetup || status.config.effectiveSpeakLocal {
+                field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
+            }
+            if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
+            if let busy = status.busy { text(UIText.plain(busyLine(busy)), style: .caption) }
+            toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
+            toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
+            if status.quietNow, let until = status.config.quietHoursEnd {
+                text(UIText.plain("Quiet hours until \(until): what you type still plays"), style: .caption)
+            }
+            divider()
+            if status.needsSetup {
+                setupBlocks(status)
+            } else {
+                speakerBlocks(status)
+            }
+            outputBlocks(status)
             divider()
             recentBroadcastBlocks(status)
         }
@@ -348,6 +360,10 @@ public enum Pages {
                 }
                 field(Block.volume, title: "Volume (0 to 100)", value: status.volume?.percent.map(String.init) ?? "",
                       placeholder: "Type a level and press Return", kind: .number)
+                // Ten at a time, from the level last read: none before it is.
+                let percent = status.volume?.percent
+                button(Block.quieter, "Quieter", enabled: percent.map { $0 > 0 } ?? false)
+                button(Block.louder, "Louder", enabled: percent.map { $0 < 100 } ?? false)
                 button(Block.refresh, "Read the volume")
             }
             let speakers = status.config.uniqueTargets()
@@ -407,14 +423,12 @@ public enum Pages {
         }.blocks
     }
 
-    /// Why the chat monitor, switched on, reads nothing: each problem, and
-    /// HomeSpeaker not running, then where to fix it. Empty while every
-    /// source is off.
+    /// Why the chat monitor, switched on, reads nothing: each problem, then
+    /// where to fix it. Empty while every source is off. The extension is
+    /// what reads chat, so there is no app to say is not running.
     public static func chatWarnings(_ status: Status) -> [String] {
         guard status.config.effectiveChatMonitor.anySourceEnabled else { return [] }
-        var lines = monitorProblemLines(status)
-        if !status.chat.ownerRunning { lines.append(appNotReadingChat) }
-        return lines
+        return monitorProblemLines(status)
     }
 
     /// The setup problems, then what went wrong while the monitor ran, as
@@ -507,9 +521,6 @@ public enum Pages {
             picker(Block.section, title: "Section", value: status.section.rawValue,
                    options: Section.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title)) },
                    choice: status.offersChoice)
-            if !status.installed {
-                text("HomeSpeaker is not installed on this Mac; these are its settings, which it reads too.", style: .caption)
-            }
             configProblemBlocks(status)
             if let busy = status.setupBusy { text(UIText.plain(busyLine(busy)), style: .caption) }
             if let notice = status.setupNotice { text(UIText.plain(notice), style: .caption) }
@@ -542,6 +553,9 @@ public enum Pages {
         let config = status.config
         let canRun = status.installed && status.setupBusy == nil
         return UITree {
+            doorCardBlocks(status)
+            doorReportBlocks(status)
+            whichBlocks(status)
             heading("Google Home Account")
             if status.account.isSignedIn {
                 row(nil, UIText.plain(status.account.email ?? "Connected"), subtitle: "Signed in", icon: "checkmark.circle.fill")
@@ -562,7 +576,7 @@ public enum Pages {
 
             heading("Broadcast Controls")
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
-            loginItem(status)
+            text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
             picker(Block.speechLength, title: "Speak", value: config.effectiveSpeechLength.rawValue,
                    options: SpeechLength.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
                    choice: status.offersChoice)
@@ -570,7 +584,8 @@ public enum Pages {
             if config.effectiveAnnounceVolumeEnabled {
                 field(Block.announceLevel, title: "Announcement volume (0 to 100)", value: String(config.effectiveAnnounceVolume),
                       kind: .number)
-                text("The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime. Needs HomeSpeaker running to put it back.",
+                text(UIText.plain(status.volumeRestoreReport
+                                  ?? "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."),
                      style: .caption)
             }
             toggle(Block.pauseMedia, "Pause media while announcing", isOn: config.effectivePauseMedia)
@@ -585,36 +600,9 @@ public enum Pages {
 
             heading("Quiet Hours")
             toggle(Block.quiet, "Enable Quiet Hours", isOn: config.quietHoursEnabled ?? false)
-            field(Block.quietStart, title: "From (HH:mm)", value: config.quietHoursStart ?? "22:00")
-            field(Block.quietEnd, title: "Until (HH:mm)", value: config.quietHoursEnd ?? "07:00")
+            quietHourBlocks(status)
             text("Automated announcements are held during quiet hours. What you type yourself still plays.", style: .caption)
         }.blocks
-    }
-
-    /// Open at Login, as `--login-item` last said it is. Waiting for
-    /// approval reads as on, since HomeSpeaker asked for it; a HomeSpeaker
-    /// that is not an app in Applications cannot have one at all.
-    static func loginItem(_ status: Status) -> [UIBlock] {
-        let title = "Open HomeSpeaker at Login"
-        guard status.installed, let state = status.loginItem else {
-            return [toggle(Block.loginItem, UIText.plain(title), isOn: false, enabled: false)]
-        }
-        let changing: Bool
-        if case .app(.loginItem)? = status.setupBusy { changing = true } else { changing = false }
-        switch state {
-        case .enabled, .notRegistered:
-            return [toggle(Block.loginItem, UIText.plain(title), isOn: state == .enabled, enabled: !changing && status.setupBusy == nil)]
-        case .requiresApproval:
-            return [
-                toggle(Block.loginItem, UIText.plain(title), isOn: true, enabled: !changing && status.setupBusy == nil),
-                text("Approve HomeSpeaker under System Settings > General > Login Items.", style: .caption),
-            ]
-        case .notFound:
-            return [
-                toggle(Block.loginItem, UIText.plain(title), isOn: false, enabled: false),
-                text("Only HomeSpeaker.app, run from its app bundle, can open at login.", style: .caption),
-            ]
-        }
     }
 
     static func speakers(_ status: Status) -> [UIBlock] {
@@ -700,7 +688,7 @@ public enum Pages {
             text("HomeSpeaker reads new messages in the background while Slack or Google Chat is on, and announces them on your speakers. Nothing is sent anywhere except to Google Home.",
                  style: .caption)
             if !chat.ownerRunning && monitor.anySourceEnabled {
-                text("Open HomeSpeaker to start: it is what reads the messages.", style: .caption)
+                text(UIText.plain(notReadingLine(status.door.role)), style: .caption)
             }
             monitorRunBlocks(status)
             problemRows(monitorProblemLines(status))
@@ -932,6 +920,7 @@ public enum Pages {
             heading("Files")
             row(nil, "Settings", subtitle: UIText.plain(status.files.settings))
             row(nil, "Secrets", subtitle: UIText.plain(status.files.secrets))
+            row(nil, "History", subtitle: UIText.plain(status.files.history))
             row(nil, "Tool version", subtitle: UIText.plain(status.files.toolVersion))
             if status.installed {
                 row(nil, "HomeSpeaker version", subtitle: UIText.plain(status.files.homeSpeakerVersion ?? "Unknown"))

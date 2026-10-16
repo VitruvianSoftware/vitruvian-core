@@ -218,6 +218,7 @@ func runProgram() -> Never {
         later: { work in waker.later { _ in work() } },
         driverParts: driverParts, monitor: gate, check: check,
         appProgram: appProgram,
+        appProfile: HomeSpeakerProfile.app(home: home),
         runningApps: { NSRunningApplication.runningApplications(withBundleIdentifier: HomeSpeakerProfile.appBundleID) },
         runProgram: SystemOtherApp.runProgram,
         home: home,

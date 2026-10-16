@@ -62,13 +62,11 @@ final class SettingsTests: XCTestCase {
                                             historyURL: HomeSpeakerToolTests.noHistory))
     }
 
-    /// Settings opened, and its one read of the login item answered.
-    private func opened(_ state: LoginItemState = .notRegistered, choice: Bool = false) -> HomeSpeakerTool {
+    /// Settings opened.
+    private func opened(choice: Bool = false) -> HomeSpeakerTool {
         link.features = choice ? [.choice] : []
         let tool = tool()
         _ = tool.settingsPage()
-        XCTAssertEqual(driver.jobs.last, .app(.loginItem(.status)), "Settings reads the login item when it opens")
-        driver.answer(.app(.loginItem(.status)), .loginItem(state))
         return tool
     }
 
@@ -220,7 +218,7 @@ final class SettingsTests: XCTestCase {
         driver.answer(.signIn(chatOnly: false), .done(["signed in as me@example.com; scopes: x"]))
         XCTAssertNil(tool.setupBusy)
         XCTAssertEqual(tool.setupNotice, "Signed in as me@example.com")
-        XCTAssertEqual(driver.jobs.count, 2, "speakers known already: nothing discovered")
+        XCTAssertEqual(driver.jobs.count, 1, "speakers known already: nothing discovered")
         tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("me@example.com · Signed in"))
         XCTAssertEqual(link.rendered.last?.panel, HomeSpeakerTool.settingsPanel, "the open panel is drawn again")
@@ -273,70 +271,22 @@ final class SettingsTests: XCTestCase {
         let tool = opened()
         _ = event(tool, Pages.Block.importAntigravity, .tap)
         XCTAssertEqual(tool.setupNotice, "Imported the Antigravity Google Home login")
-        XCTAssertEqual(driver.jobs.count, 1, "only the login item was asked")
+        XCTAssertEqual(driver.jobs.count, 0, "nothing was asked")
         account.isSignedIn = false
         account.importFinds = false
         _ = event(tool, Pages.Block.importAntigravity, .tap)
         XCTAssertEqual(tool.setupNotice, "No Google Home login found in the Antigravity token file")
     }
 
-    func testOpenAtLoginFollowsWhatHomeSpeakerSays() {
-        let title = "Open HomeSpeaker at Login"
-        let cases: [(LoginItemState, Bool, Bool, String?)] = [(.enabled, true, true, nil),
-                                                (.notRegistered, false, true, nil),
-                                                (.requiresApproval, true, true, "System Settings > General > Login Items"),
-                                                (.notFound, false, false, "run from its app bundle")]
-        for (state, isOn, enabled, caption) in cases {
-            setUp()
-            let tool = opened(state)
-            let tree = tool.settingsPage()
-            let item = toggle(tree, Pages.Block.loginItem)
-            XCTAssertEqual(item?.title.text(for: "en"), title)
-            XCTAssertEqual(item?.value, isOn, "\(state)")
-            XCTAssertEqual(item?.enabled ?? true, enabled, "\(state)")
-            if let caption {
-                XCTAssertTrue(texts(tree).contains { $0.contains(caption) }, "\(state)")
-            }
-            XCTAssertEqual(driver.jobs.filter { $0 == .app(.loginItem(.status)) }.count, 1, "read once, not at every redraw")
-        }
-    }
-
-    func testOpenAtLoginIsSwitchedThroughHomeSpeaker() {
-        let tool = opened(.notRegistered)
-        var tree = event(tool, Pages.Block.loginItem, .toggle, .bool(true))
-        XCTAssertEqual(driver.jobs.last, .app(.loginItem(.enable)))
-        XCTAssertEqual(toggle(tree, Pages.Block.loginItem)?.enabled, false, "not touched while it changes")
-        driver.answer(.app(.loginItem(.enable)),
-                      ProcessDriver.result(of: .app(.loginItem(.enable)), status: 0,
-                                           output: "login item: requires approval\napprove HomeSpeaker under System Settings > General > Login Items\n",
-                                           error: ""))
-        XCTAssertEqual(tool.loginItem, .requiresApproval)
-        tree = tool.settingsPage()
-        XCTAssertEqual(toggle(tree, Pages.Block.loginItem)?.value, true)
-        _ = event(tool, Pages.Block.loginItem, .toggle, .bool(false))
-        XCTAssertEqual(driver.jobs.last, .app(.loginItem(.disable)))
-        driver.answer(.app(.loginItem(.disable)), .loginItem(.notRegistered))
-        XCTAssertEqual(toggle(tool.settingsPage(), Pages.Block.loginItem)?.value, false)
-    }
-
-    func testAFailedSwitchStillShowsTheLoginItemsStateAndWhy() {
-        let tool = opened(.notRegistered)
-        _ = event(tool, Pages.Block.loginItem, .toggle, .bool(true))
-        driver.answer(.app(.loginItem(.enable)),
-                      ProcessDriver.result(of: .app(.loginItem(.enable)), status: 1,
-                                           output: "login item: not found\n",
-                                           error: "error: the login item is not found after enable; run HomeSpeaker from its .app bundle\n"))
-        XCTAssertEqual(tool.loginItem, .notFound, "the state HomeSpeaker ended in, not the stale one")
-        XCTAssertEqual(tool.status().setupNotice,
-                       "The login item is not found after enable; run HomeSpeaker from its .app bundle")
-    }
-
-    func testTheLoginItemIsReadAgainWhenSettingsOpensAgain() {
-        let tool = opened(.enabled)
-        _ = tool.settingsPage()
-        tool.panelClosed(HomeSpeakerTool.settingsPanel)
-        _ = tool.settingsPage()
-        XCTAssertEqual(driver.jobs.filter { $0 == .app(.loginItem(.status)) }.count, 2)
+    /// The extension has no login item of its own: it runs while Vitruvian
+    /// does, and General says so where the switch was. Nothing is asked.
+    func testGeneralSaysItRunsWithVitruvianInPlaceOfOpenAtLogin() {
+        let tool = opened()
+        let tree = tool.settingsPage()
+        XCTAssertNil(content(tree, "loginItem"))
+        XCTAssertTrue(texts(tree).contains(Pages.DoorWords.runsWithVitruvian))
+        XCTAssertFalse(driver.jobs.contains { if case .app(.loginItem) = $0 { return true } else { return false } },
+                       "Settings asks nothing about a login item")
     }
 
     func testWithoutHomeSpeakerTheSetupControlsAreOff() {
@@ -344,7 +294,6 @@ final class SettingsTests: XCTestCase {
         let tool = tool()
         let tree = tool.settingsPage()
         XCTAssertTrue(driver.jobs.isEmpty)
-        XCTAssertEqual(toggle(tree, Pages.Block.loginItem)?.enabled, false)
         XCTAssertEqual(button(tree, Pages.Block.signIn)?.enabled, false)
         _ = event(tool, Pages.Block.signIn, .tap)
         XCTAssertEqual(tool.setupNotice, "HomeSpeaker is not installed")
@@ -466,7 +415,7 @@ final class SettingsTests: XCTestCase {
         store.config = SpeakerConfig()
         let tool = opened()
         let tree = show(tool, .speakers)
-        XCTAssertEqual(driver.jobs.count, 1, "no homes listed without a sign-in")
+        XCTAssertEqual(driver.jobs.count, 0, "no homes listed without a sign-in")
         XCTAssertEqual(button(tree, Pages.Block.discover)?.title.text(for: "en"), "Find Speakers")
         XCTAssertEqual(button(tree, Pages.Block.discover)?.enabled, false)
         XCTAssertTrue(texts(tree).contains("Sign in under General first."))

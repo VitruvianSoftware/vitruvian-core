@@ -83,7 +83,6 @@ final class AgentsCloudTests: XCTestCase {
     private func opened(_ section: Pages.Section) -> HomeSpeakerTool {
         let tool = tool()
         _ = tool.settingsPage()
-        if driver.isInstalled { driver.answer(.app(.loginItem(.status)), .loginItem(.notRegistered)) }
         _ = event(tool, Pages.Block.section, .tap, .string(section.rawValue))
         XCTAssertEqual(tool.section, section)
         return tool
