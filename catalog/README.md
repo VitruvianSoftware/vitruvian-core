@@ -91,6 +91,36 @@ After the merge, the workflow **catalog-publish** signs `tools.json` and opens
 a pull request that writes the signed copy into the website. The app sees
 the change once that pull request merges and the site is deployed.
 
+## A new release of a listed tool
+
+Nobody needs to write this pull request by hand. Each hour the workflow
+**catalog-bump** compares the newest release of each tool in
+`sources.json` with its entry. When the release is newer it runs
+
+```sh
+bazel run //catalog:bump -- --id dev.vitruvian.homespeaker --tag home-speaker-v1.20.0
+```
+
+and opens a pull request on `catalog/bump-<id>-<version>`. The command
+refuses, and writes nothing, unless the zip's size and SHA-256 are the ones
+GitHub records for the file and the SHA-256 is the one in the release's
+`.sha256`, the zip is safe to unpack, and its manifest has the entry's id and
+the tag's version. It sets the version and the download, copies what an
+entry copies from the manifest, sets `generated`, and regenerates the
+website's page. It never changes `minimumAppVersion`: when the manifest
+declares something only newer apps draw, the pull request says so, and the
+reviewer decides. A release with no zip yet, a draft, or a tool not listed
+yet is skipped with a notice.
+
+`sources.json` says, for each tool, the repository its release is in, the
+tag's prefix and the zip's name. An entry kept by hand is named under
+`manual` with the reason; `//catalog:bump_test` fails for an entry in
+neither. The reviewer reads the pull request as any other: the checklist
+above still holds, and **catalog-check** still runs.
+
+Run it by hand, for one release, from the workflow's page (**Run workflow**,
+with the id and the tag) or with the command above.
+
 ## The signature
 
 The app trusts a list only when it is signed with VitruvianSoftware's key.

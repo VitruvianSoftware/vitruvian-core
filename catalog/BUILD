@@ -131,3 +131,27 @@ py_test(
         ":signing",
     ],
 )
+
+# bazel run //catalog:bump -- --id dev.vitruvian.homespeaker --tag home-speaker-v1.20.0
+#
+# Updates one entry, and _data/tools.yml, from one release, after checking
+# its zip against GitHub's record and its .sha256 and reading its manifest.
+# sources.json says which release updates which entry. Run by
+# .github/workflows/catalog-bump.yaml, which opens the pull request; its
+# `plan` (python3 catalog/bump.py plan) runs there without Bazel.
+py_binary(
+    name = "bump",
+    srcs = ["bump.py"],
+    data = [
+        "catalog.schema.json",
+        "sources.json",
+        "tools.json",
+    ],
+    main = "bump.py",
+    deps = [
+        ":rules",
+        "//tools/sync-site-tools:catalogue",
+        "@pip//jsonschema",
+    ],
+)
+

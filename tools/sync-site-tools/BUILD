@@ -25,7 +25,7 @@
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 
 # The files the catalog's part is written from, and the file it writes.
 SITE_FILES = [
@@ -34,6 +34,15 @@ SITE_FILES = [
     "//catalog:public-key.txt",
     "//catalog:tools.json",
 ]
+
+# The catalog's part alone, for //catalog:bump, which rewrites _data/tools.yml
+# after it changes an entry.
+py_library(
+    name = "catalogue",
+    srcs = ["catalogue.py"],
+    imports = ["."],
+    visibility = ["//catalog:__pkg__"],
+)
 
 py_binary(
     name = "sync",
