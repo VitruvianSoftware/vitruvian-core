@@ -102,7 +102,7 @@ import Testing
     // MARK: - Is the other one installed (design 7.2)
 
     @Test func theAppInTheTrashIsNotInstalled() {
-        for app in ["~/.Trash/HomeSpeaker.app", "/Users/x/.Trash/HomeSpeaker 2.app",
+        for app in ["/Users/x/.Trash/HomeSpeaker.app", "/Users/x/.Trash/HomeSpeaker 2.app",
                     "/Volumes/Disk/.Trashes/501/HomeSpeaker.app"] {
             let program = URL(fileURLWithPath: app).appendingPathComponent("Contents/MacOS/HomeSpeaker")
             #expect(!OtherDoorPresence.appInstalled(locate: { program }), "\(app) is in the Trash")
@@ -235,6 +235,23 @@ import Testing
         try garbage.write(to: file.url)
         #expect(throws: DoorFileError.self) { try file.update { $0.chosen = .app } }
         #expect(try Data(contentsOf: file.url) == garbage)
+    }
+
+    @Test func aCorruptFileFailsSafeTowardToday() throws {
+        // A choice file that does not read changes nothing for today's
+        // user: the app runs, and the extension waits and asks. Neither
+        // stays quiet, so a hook pointed at either still speaks.
+        let file = scratchFile()
+        try FileManager.default.createDirectory(at: file.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: file.url)
+        #expect(file.read() == nil)
+
+        let check = DoorCheck(file: file, appInstalled: { true }, fileExists: { _ in true })
+
+        #expect(check.role(me: .app) == .active)
+        #expect(check.role(me: .extension) == .waitingAsking)
+        #expect(!check.standsAside(me: .app))
+        #expect(!check.standsAside(me: .extension))
     }
 
     @Test func twoWritersBothLand() throws {
