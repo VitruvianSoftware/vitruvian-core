@@ -104,6 +104,7 @@ BROKEN_PANEL_TOOL = """
 import json, os, sys
 how = os.environ["BROKEN_HOW"]
 count = 0
+features = []
 def send(message):
     sys.stdout.write(json.dumps(message) + "\\n")
     sys.stdout.flush()
@@ -114,6 +115,7 @@ for line in sys.stdin:
     message = json.loads(line)
     method = message.get("method")
     if method == "initialize":
+        features = message["params"].get("features", [])
         send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "2", "toolVersion": "0"}})
     elif method == "command/run":
         if message["params"]["command"] == "hello":
@@ -128,6 +130,14 @@ for line in sys.stdin:
         else:
             send({"jsonrpc": "2.0", "id": message["id"], "result": {"tree": page()}})
     elif method == "ui/event":
+        opens = {"opens its settings": "settings", "opens its settings without asking": "settings",
+                 "opens a window": "log", "opens an undeclared panel": "elsewhere",
+                 "opens its island page": "counter"}.get(how)
+        if how == "opens its settings" and "ui.open.settings" not in features:
+            opens = None
+        if opens:
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {"open": opens}})
+            continue
         if how != "answers a tap with the same page":
             count += 1
         send({"jsonrpc": "2.0", "id": message["id"], "result": {"tree": page()}})
@@ -140,6 +150,17 @@ BROKEN_PANEL = {
     "renders an unknown panel": "NOT OK   a panel: ui/render for a panel the manifest does not declare: nowhere",
     "opens with no page": "NOT OK   a panel: ui/open was not answered with a page",
     "answers a tap with the same page": "NOT OK   a panel: a tap on add was answered with the same page",
+    "opens an undeclared panel": "NOT OK   a panel: a tap's open names elsewhere, a panel the manifest does not declare",
+    "opens its island page": "NOT OK   a panel: a tap's open names counter, a panel of the island",
+    "opens its settings without asking": "NOT OK   an older app: a tap's open names the settings panel settings, "
+    "which an app without ui.open.settings does not open",
+}
+
+# A tap answered with `open` alone, and no page, passes when it names a
+# window or, on an app that names ui.open.settings, the settings panel.
+OPENS_WELL = {
+    "opens a window": "ok       a panel: counter: a page of 2 blocks, and the window log after a tap on add",
+    "opens its settings": "ok       a panel: counter: a page of 2 blocks, and the settings panel settings after a tap on add",
 }
 
 # A tool of protocol 2 written with no kit, which shows a status and draws a
@@ -372,7 +393,9 @@ def panels(manifest):
     manifest["runtime"] = {"kind": "external", "exec": "panel.py"}
     manifest["contributes"] = dict(manifest["contributes"])
     manifest["contributes"]["panels"] = [
-        {"id": "counter", "title": {"en": "Counter"}, "placement": "island"}
+        {"id": "counter", "title": {"en": "Counter"}, "placement": "island"},
+        {"id": "settings", "title": {"en": "Counter"}, "placement": "settings"},
+        {"id": "log", "title": {"en": "Log"}, "placement": "window"},
     ]
     with tempfile.TemporaryDirectory() as folder:
         with open(
@@ -390,6 +413,11 @@ def panels(manifest):
             or "ok       handshake: version 2" not in printed
         ):
             problems.append(f"a tool that draws well does not pass:\n{printed}")
+        for how, line in OPENS_WELL.items():
+            os.environ["BROKEN_HOW"] = how
+            status, printed = check(folder)
+            if status != 0 or line not in printed:
+                problems.append(f"a tool that {how} does not pass:\n{printed}")
         for how, line in BROKEN_PANEL.items():
             os.environ["BROKEN_HOW"] = how
             status, printed = check(folder)
@@ -546,7 +574,13 @@ def the_hello(manifest):
     for features, wanted in (
         (
             conformance.FEATURES,
-            ["ui.status", "ui.choice", "preferences.options", "ui.status.activity"],
+            [
+                "ui.status",
+                "ui.choice",
+                "preferences.options",
+                "ui.status.activity",
+                "ui.open.settings",
+            ],
         ),
         (None, None),
     ):

@@ -86,7 +86,7 @@ final class RunTests: XCTestCase {
             *'"command":"status"'*)
               n=$((n + 1))
               case "$hello" in
-                *'"features":["ui.status","ui.choice","preferences.options","ui.status.activity"]'*)
+                *'"features":["ui.status","ui.choice","preferences.options","ui.status.activity","ui.open.settings"]'*)
                   say '{"jsonrpc":"2.0","method":"log","params":{"message":"the app has a status"}}' ;;
               esac
               ask ui/status '{"state":"busy","text":"Working"}' || say '{"jsonrpc":"2.0","method":"log","params":{"message":"no status"}}'

@@ -220,6 +220,18 @@ each new field and key and ignore it, so the mark is still drawn there.
 - **`ui.status.activity` in `features`**: the app draws them. Each kit sends
   the two fields only to an app that names it.
 
+Vitruvian 3.58 lets a tool open its own settings, with no new field and no
+new version: only what the app does with `open` changed.
+
+- **`open` in the answer to `ui/event` may name the tool's settings panel**:
+  the app brings Settings to the front on the tool's detail, where that
+  panel is drawn. The id is looked up in the asking tool's own manifest, so
+  a tool can open only its own; an id the manifest does not declare, or one
+  of an island panel, opens nothing, and the tool's log says so.
+- **`ui.open.settings` in `features`**: the app does this. A tool asks before
+  it offers the button. An app before 3.58 opens nothing for such an answer,
+  writes a line in the tool's log, and still draws a `tree` sent with it.
+
 ## Changing the protocol
 
 A new message or field needs no new version when an old tool or an old app can

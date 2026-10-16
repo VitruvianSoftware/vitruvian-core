@@ -901,6 +901,7 @@ test("supports is true only for what the hello listed", () => {
     choice: "ui.choice",
     preferenceOptions: "preferences.options",
     statusActivity: "ui.status.activity",
+    openSettings: "ui.open.settings",
   });
 });
 
@@ -916,7 +917,7 @@ test("an app that says nothing has none of them", () => {
       }),
     );
   expect(tool.serve()).toBe(0);
-  expect(has).toEqual([false, false, false, false]);
+  expect(has).toEqual([false, false, false, false, false]);
 });
 
 test("a choice is built as the protocol's example", () => {

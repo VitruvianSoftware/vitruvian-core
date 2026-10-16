@@ -962,8 +962,15 @@ class PanelTests(unittest.TestCase):
                 Feature.CHOICE,
                 Feature.PREFERENCE_OPTIONS,
                 Feature.STATUS_ACTIVITY,
+                Feature.OPEN_SETTINGS,
             ),
-            ("ui.status", "ui.choice", "preferences.options", "ui.status.activity"),
+            (
+                "ui.status",
+                "ui.choice",
+                "preferences.options",
+                "ui.status.activity",
+                "ui.open.settings",
+            ),
         )
 
     def test_an_app_that_says_nothing_has_none_of_them(self):
@@ -982,13 +989,14 @@ class PanelTests(unittest.TestCase):
                             Feature.CHOICE,
                             Feature.PREFERENCE_OPTIONS,
                             Feature.STATUS_ACTIVITY,
+                            Feature.OPEN_SETTINGS,
                         )
                     ),
                 )
             )
         )
         self.assertEqual(tool.serve(), 0)
-        self.assertEqual(has, [False, False, False, False])
+        self.assertEqual(has, [False, False, False, False, False])
 
     def test_a_choice_is_built_as_the_protocols_example(self):
         options = [

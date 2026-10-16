@@ -18,6 +18,7 @@ enum ToolPanelHostTests {
         fourASecond(suite)
         aPageReadLate(suite)
         acting(suite)
+        aToolOpensItsOwnSettings(suite)
         closing(suite)
         aToolThatEnds(suite)
         webPanels(suite)
@@ -81,6 +82,8 @@ enum ToolPanelHostTests {
         /// whether it does.
         var opened: [URL] = []
         var opens = true
+        /// The tools whose settings Settings was asked to show.
+        var settingsOpened: [ToolID] = []
         /// How many pages the host has had read.
         var reads = 0
         /// Pages handed to the reader and not read yet, when reading waits.
@@ -136,7 +139,8 @@ enum ToolPanelHostTests {
                 openLink: { [unowned self] _, url in
                     opened.append(url)
                     return opens
-                }))
+                },
+                openSettings: { [unowned self] in settingsOpened.append($0) }))
             tool.start()
         }
 
@@ -302,9 +306,9 @@ enum ToolPanelHostTests {
                                                        params: .object(["panel": .string("log")])),
                      "an answer may open one of the tool's windows, which is asked for its page")
         bench.host.act(key("deploys"), block: "deploys", event: .tap, value: .string("web"))
-        bench.current.answers(7, #"{"open":"settings"}"#)
-        suite.expect(bench.host.shown[key("settings")] == nil
-                         && bench.logged.last == "the window settings was not opened: not a panel of this place",
+        bench.current.answers(7, #"{"open":"deploys"}"#)
+        suite.expect(bench.host.windows == [key("log")]
+                         && bench.logged.last == "the window deploys was not opened: not a panel of this place",
                      "an answer that names a panel that is not a window opens nothing")
 
         let beeps = bench.beeps
@@ -312,6 +316,41 @@ enum ToolPanelHostTests {
         bench.clock.advance(by: 2)
         suite.expect(bench.beeps == beeps + 1 && text(bench.host.shown[key("deploys")]) == "Deploying",
                      "an event the tool does not answer plays the alert sound and leaves the page")
+    }
+
+    /// `open` naming the tool's own settings panel opens Settings on the
+    /// tool's detail, and only the asking tool's: the id is looked up in its
+    /// own manifest. Anything else it may not open is refused as before.
+    static func aToolOpensItsOwnSettings(_ suite: TestSuite) {
+        func answer(_ bench: Bench, _ result: String) {
+            bench.host.act(key("deploys"), block: "more", event: .tap)
+            if let asked = bench.current.lastRequest { bench.current.answers(asked, result) }
+        }
+
+        let bench = Bench.open()
+        let sent = bench.current.sent.count
+        answer(bench, #"{"open":"settings"}"#)
+        suite.expect(bench.settingsOpened == [id] && bench.host.shown[key("settings")] == nil
+                         && bench.host.windows.isEmpty && bench.current.sent.count == sent + 1 && bench.logged.isEmpty,
+                     "an answer that names the tool's settings panel opens Settings on that tool's detail, and no window")
+
+        answer(bench, #"{"open":"settings","tree":\#(page("Opening"))}"#)
+        suite.expect(bench.settingsOpened == [id, id] && text(bench.host.shown[key("deploys")]) == "Opening",
+                     "a page sent with it is drawn too")
+
+        answer(bench, #"{"open":"com.acme.other"}"#)
+        answer(bench, #"{"open":"deploys"}"#)
+        suite.expect(bench.settingsOpened == [id, id]
+                         && bench.logged == ["the window com.acme.other was not opened: no such panel",
+                                             "the window deploys was not opened: not a panel of this place"],
+                     "an id the manifest does not declare, or its island page, opens nothing, and the tool's log says so")
+
+        let menu = Bench()
+        menu.host.openInMenuPanel(key("deploys"), viewer: UUID())
+        menu.current.greets()
+        if let asked = menu.current.lastRequest { menu.current.answers(asked, #"{"tree":\#(page("first"))}"#) }
+        answer(menu, #"{"open":"settings"}"#)
+        suite.expect(menu.settingsOpened == [id], "the button works the same from the menu bar panel's tab")
     }
 
     static func closing(_ suite: TestSuite) {

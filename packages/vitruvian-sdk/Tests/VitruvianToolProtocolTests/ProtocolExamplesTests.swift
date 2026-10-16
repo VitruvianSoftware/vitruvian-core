@@ -318,7 +318,8 @@ final class ProtocolExamplesTests: XCTestCase {
         let new = InitializeParams(protocolVersions: ["2"], language: "en", dataFolder: "/d",
                                    features: ProtocolFeature.allCases.map(\.rawValue) + ["ui.later"])
         let read = try JSONValue(encoding: new).decode(InitializeParams.self)
-        XCTAssertEqual(read.features, ["ui.status", "ui.choice", "preferences.options", "ui.status.activity", "ui.later"],
+        XCTAssertEqual(read.features, ["ui.status", "ui.choice", "preferences.options", "ui.status.activity",
+                                       "ui.open.settings", "ui.later"],
                        "a name nobody knows is kept, not refused")
         let said = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["initializeParams"]?["properties"]?[
             "features"]?["description"]?.stringValue ?? ""
@@ -353,10 +354,11 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(definition?["properties"]?["activity"]?["$ref"]?.stringValue, "#/$defs/uiText")
     }
 
-    func testTheAppMayHaveFourFeatures() {
+    func testTheAppMayHaveFiveFeatures() {
         XCTAssertEqual(ProtocolFeature.allCases.map(\.rawValue),
-                       ["ui.status", "ui.choice", "preferences.options", "ui.status.activity"])
+                       ["ui.status", "ui.choice", "preferences.options", "ui.status.activity", "ui.open.settings"])
         XCTAssertEqual(ProtocolFeature.statusActivity.rawValue, "ui.status.activity")
+        XCTAssertEqual(ProtocolFeature.openSettings.rawValue, "ui.open.settings")
     }
 
     func testAChoiceIsHeldToItsRules() throws {

@@ -146,6 +146,9 @@ package final class ToolPanelHost: ObservableObject {
         /// Opens a link of a tool's page through the tool's own `open`
         /// service. False when it was refused, or nothing opened it.
         package var openLink: @MainActor (ToolID, URL) -> Bool
+        /// Brings Settings to the front on the Extensions page, showing this
+        /// tool's detail, where its settings panel is drawn.
+        package var openSettings: @MainActor (ToolID) -> Void
 
         package init(clock: any ToolClock, limits: ToolLimits = .standard,
                      tool: @escaping @MainActor (ToolID) -> ExternalTool?,
@@ -156,7 +159,8 @@ package final class ToolPanelHost: ObservableObject {
                      log: @escaping @MainActor (ToolID, String) -> Void = { _, _ in },
                      beep: @escaping @MainActor () -> Void = {},
                      misbehaved: @escaping @MainActor (ToolID) -> Void = { _ in },
-                     openLink: @escaping @MainActor (ToolID, URL) -> Bool = { _, _ in false }) {
+                     openLink: @escaping @MainActor (ToolID, URL) -> Bool = { _, _ in false },
+                     openSettings: @escaping @MainActor (ToolID) -> Void = { _ in }) {
             self.clock = clock
             self.limits = limits
             self.tool = tool
@@ -167,6 +171,7 @@ package final class ToolPanelHost: ObservableObject {
             self.beep = beep
             self.misbehaved = misbehaved
             self.openLink = openLink
+            self.openSettings = openSettings
         }
 
         /// The app as it is.
@@ -181,6 +186,14 @@ package final class ToolPanelHost: ObservableObject {
             openLink: { id, url in
                 guard let manifest = ExternalToolStore.shared.installed[id]?.tool.manifest else { return false }
                 return (try? CapabilityBroker.shared.services(for: manifest).open.url(url).get()) == true
+            },
+            openSettings: { id in
+                // The island closes first, as for its own Settings buttons;
+                // the menu bar panel stays beside Settings.
+                NotchService.shared.perform {
+                    SettingsRouter.shared.request(extension: id)
+                    appShell()?.openSettingsWindow()
+                }
             })
     }
 
@@ -445,8 +458,8 @@ package final class ToolPanelHost: ObservableObject {
 
     /// Tells the tool what the person did in an open panel. The answer's
     /// page is drawn at once; `keep` leaves the page as it is; `open` opens
-    /// one of the tool's windows. An event that was not answered plays the
-    /// alert sound.
+    /// one of the tool's windows, or its own settings. An event that was not
+    /// answered plays the alert sound.
     @discardableResult
     package func act(_ key: Key, block: String, event: UIEventKind, value: JSONValue? = nil) -> Refusal? {
         guard shown[key] != nil else { return .notOpen(key.panel) }
@@ -472,9 +485,16 @@ package final class ToolPanelHost: ObservableObject {
         }
     }
 
-    /// A window the tool asked to open in answer to the person. Only one of
-    /// its own window panels.
+    /// A window the tool asked to open in answer to the person, or its
+    /// settings. Only one of its own window panels, or its own settings
+    /// panel: the id is looked up in the asking tool's manifest, so no tool
+    /// can name another's. Its settings panel opens Settings on the tool's
+    /// detail (`ProtocolFeature.openSettings`); anything else is refused as
+    /// a window that is not one.
     private func openAsked(_ tool: ToolID, _ panel: String) {
+        if parts.described(tool)?.panel(panel)?.placement == .settings {
+            return parts.openSettings(tool)
+        }
         if let refusal = open(Key(tool: tool, panel: panel), in: .window) {
             parts.log(tool, "the window \(panel) was not opened: \(refusal.error.message)")
         }

@@ -371,9 +371,12 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 	}
 	names := []string{
 		toolkit.FeatureStatus, toolkit.FeatureChoice, toolkit.FeaturePreferenceOptions,
-		toolkit.FeatureStatusActivity,
+		toolkit.FeatureStatusActivity, toolkit.FeatureOpenSettings,
 	}
-	if !reflect.DeepEqual(names, []string{"ui.status", "ui.choice", "preferences.options", "ui.status.activity"}) {
+	if !reflect.DeepEqual(names, []string{
+		"ui.status", "ui.choice", "preferences.options", "ui.status.activity",
+		"ui.open.settings",
+	}) {
 		t.Errorf("names %v", names)
 	}
 
@@ -388,7 +391,7 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 		return nil
 	})
 	before.Serve()
-	if !reflect.DeepEqual(none, []bool{false, false, false, false}) {
+	if !reflect.DeepEqual(none, []bool{false, false, false, false, false}) {
 		t.Errorf("none %v", none)
 	}
 }

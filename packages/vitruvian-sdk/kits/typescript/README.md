@@ -46,6 +46,11 @@ tool.run();
   seconds the app keeps. The manifest's status says `"activity": true`. An
   app before 3.50 does not have `Feature.statusActivity`; the status is sent
   to it without them.
+- **Your settings, from a button.** Answering `{ open: "settings" }`, with
+  the id of your settings panel, opens Settings on your tool's detail. Only
+  your own panel opens. An app before 3.58 does not have
+  `Feature.openSettings` and opens nothing, so offer the button only when
+  `app.supports(Feature.openSettings)`.
 
 ## Shipping it
 

@@ -54,6 +54,9 @@ public enum ProtocolFeature: String, CaseIterable, Sendable {
     /// `activity` and `since` on `ui/status`: a few words, or a count of
     /// seconds, beside the tool's mark on the closed island. From 3.50.
     case statusActivity = "ui.status.activity"
+    /// `open` in the answer to `ui/event` may name the tool's own settings
+    /// panel: the app opens Settings on the tool's detail. From 3.58.
+    case openSettings = "ui.open.settings"
 }
 
 /// Every message of the protocol, by its name on the link. The last six

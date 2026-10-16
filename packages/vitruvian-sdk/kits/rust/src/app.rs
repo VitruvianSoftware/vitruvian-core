@@ -47,6 +47,9 @@ pub mod features {
     /// `activity` and `since` on `ui/status`: a few words, or a count of
     /// seconds, beside the mark. From 3.50.
     pub const STATUS_ACTIVITY: &str = "ui.status.activity";
+    /// `open` in a panel's answer may name the tool's own settings panel:
+    /// the app opens Settings on the tool's detail. From 3.58.
+    pub const OPEN_SETTINGS: &str = "ui.open.settings";
 }
 
 /// What [`Ui::status_with`] takes beside the state. Every field may be left

@@ -322,9 +322,10 @@ pub struct InitializeParams {
     #[serde(rename = "dataFolder")]
     pub data_folder: String,
     /// What this app has beyond the first release of the protocol version, by
-    /// name: ui.status, ui.choice, preferences.options, ui.status.activity. A
-    /// name the tool does not know is ignored. An app before 3.48 sends none,
-    /// and has none of them; 3.48 and 3.49 send the first three.
+    /// name: ui.status, ui.choice, preferences.options, ui.status.activity,
+    /// ui.open.settings. A name the tool does not know is ignored. An app
+    /// before 3.48 sends none, and has none of them; 3.48 and 3.49 send the
+    /// first three, 3.50 to 3.57 the first four.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub features: Option<Vec<String>>,
 }
@@ -549,8 +550,11 @@ pub struct UiEventResult {
     /// For bridge: what the page's call gets back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply: Option<Value>,
-    /// A window panel of the same tool to open, in answer to what the person
-    /// did. A tool cannot open a window at any other time.
+    /// A panel of the same tool to open, in answer to what the person did: a
+    /// window panel, or, on an app that names ui.open.settings, the tool's
+    /// settings panel, which opens Settings on the tool's detail. A panel the
+    /// tool does not declare, or one of another place, opens nothing. A tool
+    /// cannot open either at any other time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open: Option<String>,
 }

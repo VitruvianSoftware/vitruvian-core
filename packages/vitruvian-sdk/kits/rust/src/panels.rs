@@ -82,7 +82,9 @@ pub enum PanelAnswer {
     Page(UiTree),
     /// The page stays as it is.
     Keep,
-    /// One of the tool's window panels opens, by its id.
+    /// One of the tool's window panels opens, by its id. On an app that
+    /// has `features::OPEN_SETTINGS`, the id of the tool's settings panel
+    /// opens Settings on the tool's detail.
     Open(String),
     /// What a web panel's `window.vitruvian.call` gets back.
     Reply(Value),

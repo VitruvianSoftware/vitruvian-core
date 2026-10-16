@@ -692,6 +692,16 @@
       "message": { "jsonrpc": "2.0", "id": 19, "result": { "open": "log" } }
     },
     {
+      "about": "in answer, the tool's settings panel opens, in Settings, on an app that names ui.open.settings",
+      "valid": true,
+      "answers": "ui/event",
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 19,
+        "result": { "open": "settings" }
+      }
+    },
+    {
       "about": "a web panel's page calls the app through the tool",
       "valid": true,
       "message": {
@@ -1077,6 +1087,27 @@
             "ui.choice",
             "preferences.options",
             "ui.status.activity"
+          ]
+        }
+      }
+    },
+    {
+      "about": "the app starts, and says a tool may open its own settings",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersions": ["1", "2"],
+          "language": "en-US",
+          "dataFolder": "/Users/example/Library/Application Support/Vitruvian/ToolData/com.acme.deploys",
+          "features": [
+            "ui.status",
+            "ui.choice",
+            "preferences.options",
+            "ui.status.activity",
+            "ui.open.settings"
           ]
         }
       }
