@@ -11,13 +11,13 @@ GPL-3.0-or-later like the app, not MIT like the kit it links.
 
 ## Get it
 
-In the app: Settings, Features, Extensions & Tools, Browse Tools…, GitHub,
+In the app: the Vitruvian catalog on Settings › Extensions, GitHub,
 Install. The app verifies the download against the signed catalog and shows
 the same agreement sheet as for any tool. Nothing here is audited by that:
 the tool runs as you, with every permission the app has.
 
 By hand: the zip on a [release](https://github.com/VitruvianSoftware/vitruvian-tool-github/releases),
-unpacked anywhere, then Add a Tool… in the same place.
+unpacked anywhere, then Add from Folder… on Settings › Extensions.
 
 ## What it does
 

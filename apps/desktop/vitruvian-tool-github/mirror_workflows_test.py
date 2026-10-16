@@ -148,7 +148,11 @@ def notes_problems(release):
                 f"notes with {name}: exit {done.returncode}\n{done.stdout}{done.stderr}"
             )
             continue
-        for line in ["Browse Tools", "`size`: 1234, `sha256`: " + "ab" * 32, *wanted]:
+        for line in [
+            "the Vitruvian catalog on Settings › Extensions",
+            "`size`: 1234, `sha256`: " + "ab" * 32,
+            *wanted,
+        ]:
             if line not in text:
                 problems.append(f"notes with {name}: no {line!r}\n{text}")
         for line in unwanted:
