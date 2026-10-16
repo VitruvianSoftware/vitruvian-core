@@ -51,7 +51,7 @@ final class KitLink: ToolLink, @unchecked Sendable {
     func showMessage(_ message: String, icon: String) { try? app?.showMessage(message, icon: icon) }
     func log(_ message: String) { app?.log(message) }
     func clipboardText() -> String? { (try? app?.clipboardText()) ?? nil }
-    func supports(_ feature: ProtocolFeature) -> Bool { app?.supports(feature) ?? false }
+    func supports(featureNamed name: String) -> Bool { app?.supports(name) ?? false }
 
     /// The mark on the closed island. A refusal (an app that cannot show
     /// it) is no failure of the tool's.

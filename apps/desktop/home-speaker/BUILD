@@ -125,8 +125,9 @@ genrule(
 # up, an unknown command, the island panel opened and tapped, refusals, a
 # status, and a clean exit. Then end to end over the same JSON-RPC: the
 # island and all five settings sections drawn within the protocol's limits,
-# and changes read back from the settings and secrets files in the data
-# folder. Then none of the app's files in the scratch home's .gemini. Last,
+# changes read back from the settings and secrets files in the data folder,
+# and the island's More settings button answered with `open` (a caption, and
+# no `open`, for an app without ui.open.settings). Then none of the app's files in the scratch home's .gemini. Last,
 # in a second scratch home, the chat monitor started from settings with
 # Slack on and the extension chosen: the program must still answer seconds
 # later (1.19.0 crashed there), and `bin/tool --claude-stop-hook` must answer

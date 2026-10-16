@@ -608,6 +608,74 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(saying.notice, "Broadcasting is switched off")
     }
 
+    // MARK: - More settings
+
+    /// Every feature name an app from 3.50 to 3.57 gives: all but opening
+    /// the settings panel.
+    private static let before358: Set<ProtocolFeature> = [.status, .choice, .preferenceOptions, .statusActivity]
+
+    func testAnAppThatOpensSettingsGetsAMoreSettingsButton() {
+        link.features = Self.before358
+        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        let page = tool().islandPage()
+        XCTAssertEqual(page.blocks.last?.id, Pages.Block.moreSettings)
+        XCTAssertEqual(button(page, Pages.Block.moreSettings)?.title.text(for: "en"), "More settings…")
+        XCTAssertFalse(texts(page).contains(Pages.moreSettings), "the button replaces the caption")
+    }
+
+    func testTheFeatureIsAskedForByItsNameOnTheLink() {
+        // The kit's name for it, from 1.6.0 (ProtocolFeature.openSettings):
+        // the protocol's, which an app sends in its hello.
+        XCTAssertEqual(HomeSpeakerTool.openSettingsFeature, "ui.open.settings")
+    }
+
+    func testAnAppWithoutItKeepsTheCaption() {
+        for features in [[], Self.before358] as [Set<ProtocolFeature>] {
+            link.features = features
+            let page = tool().islandPage()
+            XCTAssertEqual(texts(page).last, Pages.moreSettings, "\(features)")
+            XCTAssertNil(button(page, Pages.Block.moreSettings), "\(features)")
+        }
+    }
+
+    /// The tap is answered with `open` naming the settings panel, and no
+    /// page: the island stays as it is, and nothing else happens.
+    func testTheTapOpensTheSettingsPanel() {
+        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        let tool = tool()
+        _ = tool.islandPage()
+        let saves = store.saves
+        let jobs = driver.jobs
+        let answer = tool.islandEvent(PanelEvent(block: Pages.Block.moreSettings, kind: .tap))
+        XCTAssertEqual(answer, .open(HomeSpeakerTool.settingsPanel))
+        XCTAssertEqual(HomeSpeakerTool.settingsPanel, "settings", "the manifest's settings panel")
+        XCTAssertTrue(link.rendered.isEmpty, "nothing redrawn")
+        XCTAssertEqual(store.saves, saves, "nothing saved")
+        XCTAssertEqual(driver.jobs, jobs, "nothing more asked of HomeSpeaker than the opening's read")
+        XCTAssertTrue(link.messages.isEmpty)
+    }
+
+    /// An app from 3.57 or before never gets `open`: it would open nothing
+    /// and log it. A tap on the button's id (from a page drawn before, or
+    /// any other app) is kept, and no block on its island answers `open`.
+    func testAnOlderAppNeverGetsOpen() {
+        for features in [[], Self.before358] as [Set<ProtocolFeature>] {
+            link.features = features
+            let tool = tool()
+            _ = tool.islandPage()
+            XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.moreSettings, kind: .tap)), .keep, "\(features)")
+            for signedIn in [true, false] {
+                account.isSignedIn = signedIn
+                let tool = self.tool()
+                for id in ids(tool.islandPage()) {
+                    if case .open = tool.islandEvent(PanelEvent(block: id, kind: .tap)) {
+                        XCTFail("a tap on \(id) answered open for an app without \(HomeSpeakerTool.openSettingsFeature)")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - The chat monitor's problems
 
     func testTheChatMonitorsProblemsAreWarnedAbove() {

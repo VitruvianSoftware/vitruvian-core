@@ -51,7 +51,7 @@ final class SharedFileTests: XCTestCase {
         func showMessage(_ message: String, icon: String) { messages.append(message) }
         func log(_ message: String) { logged.append(message) }
         func clipboardText() -> String? { nil }
-        func supports(_ feature: ProtocolFeature) -> Bool { false }
+        func supports(featureNamed name: String) -> Bool { false }
     }
 
     final class Driver: SpeakerDriver {

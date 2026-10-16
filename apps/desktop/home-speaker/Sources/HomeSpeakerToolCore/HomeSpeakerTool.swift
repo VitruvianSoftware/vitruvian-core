@@ -30,9 +30,16 @@ public protocol ToolLink: AnyObject {
     func showMessage(_ message: String, icon: String)
     func log(_ message: String)
     func clipboardText() -> String?
-    /// Whether the app has something a later protocol release added, such
-    /// as the `choice` block.
-    func supports(_ feature: ProtocolFeature) -> Bool
+    /// Whether the app named this feature in its hello: something a later
+    /// protocol release added, such as the `choice` block. By its name on
+    /// the link, so a feature newer than the kit HomeSpeaker builds
+    /// against can still be asked about (`HomeSpeakerTool.openSettingsFeature`).
+    func supports(featureNamed name: String) -> Bool
+}
+
+extension ToolLink {
+    /// Whether the app has a feature the kit names.
+    public func supports(_ feature: ProtocolFeature) -> Bool { supports(featureNamed: feature.rawValue) }
 }
 
 /// What the tool is: HomeSpeaker's settings file, HomeSpeaker's program,
@@ -44,6 +51,12 @@ public protocol ToolLink: AnyObject {
 public final class HomeSpeakerTool: @unchecked Sendable {
     public static let islandPanel = "speaker"
     public static let settingsPanel = "settings"
+    /// The hello's name for "an answer's `open` may name the tool's own
+    /// settings panel" (Vitruvian 3.58 and later). Held here as text, not
+    /// as `ProtocolFeature.openSettings`: the SwiftPM build, which is what
+    /// ships, uses the published kit, and that case first comes with kit
+    /// 1.6.0. The kit's `supports` takes the name as text in every 1.x.
+    public static let openSettingsFeature = "ui.open.settings"
 
     public enum Command {
         public static let sayClipboard = "sayClipboard"
@@ -419,6 +432,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
+        if event.block == Pages.Block.moreSettings {
+            // Settings opens on HomeSpeaker's detail; the island's page
+            // stays as it is, so the answer carries no page. An app without
+            // the feature never drew the button, and would only log an
+            // `open` it cannot do: it gets none.
+            guard event.kind == .tap, opensSettings else { return .keep }
+            return .open(Self.settingsPanel)
+        }
         if doorEvent(event) {
             if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
             return .page(Pages.island(status()))
@@ -1356,6 +1377,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         if !config.hasSpeakers, setupBusy == nil { try? discover() }
     }
 
+    /// The app opens HomeSpeaker's settings panel when an answer names it.
+    private var opensSettings: Bool { parts.link.supports(featureNamed: Self.openSettingsFeature) }
+
     public func status() -> Pages.Status {
         var status = Pages.Status()
         status.installed = parts.driver.isInstalled
@@ -1365,6 +1389,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.notice = notice
         status.quietNow = config.isInQuietHours(at: parts.now())
         status.offersChoice = parts.link.supports(.choice)
+        status.opensSettings = opensSettings
         status.configProblem = configProblem
         status.section = section
         status.setupBusy = setupBusy

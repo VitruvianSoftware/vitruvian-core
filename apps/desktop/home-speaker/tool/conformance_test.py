@@ -48,7 +48,10 @@ bytes, the choice rules), switches, choices and fields are changed, and the
 settings file and the secrets file are read back from the data folder. The
 quiet hours are a choice of half hours for this app, which has `choice`;
 a time that is not HH:mm is typed, and refused, by an app from before 3.48,
-which has no `features` and so is given the typed field.
+which has no `features` and so is given the typed field. The island ends
+with a More settings button for this app, which names `ui.open.settings`,
+and its tap is answered with `{"open": "settings"}` alone; the older app's
+island ends with where the settings are instead, and is never sent `open`.
 Nothing is written until the tool has said, on its Files rows, that both
 files are in that folder. The island draws its controls because the
 extension is installed by definition; no HomeSpeaker program is run. Only
@@ -292,6 +295,11 @@ def block(tree, block_id):
     return next((b for b in tree["blocks"] if b.get("id") == block_id), None)
 
 
+# The island's last line (Pages.Block.moreSettings, Pages.moreSettings): a
+# button for an app that names ui.open.settings, where to look otherwise.
+MORE_SETTINGS = "moreSettings"
+MORE_SETTINGS_CAPTION = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
+
 # The extension's offer to quit an app older than 1.19 (Pages.DoorWords,
 # OtherAppPlan.Step.oldAppWarning). Never drawn here: no app is found.
 QUIT_AGAIN = "door.quitAgain"
@@ -453,6 +461,26 @@ def end_to_end(conf, folder, data, env):
         app.act("speaker", "broadcasting", "toggle", False)
         said.append("speaker: drawn, broadcasting switched off")
 
+        # This app names ui.open.settings: the island ends with a More
+        # settings button, and its tap opens the settings panel, with no
+        # page (the island stays as it is).
+        island = app.current["speaker"]
+        last = island["blocks"][-1]
+        if last.get("id") != MORE_SETTINGS or last.get("type") != "button":
+            raise E2EFailure(
+                f"speaker: the last block is not the More settings button: {last!r}"
+            )
+        opened = app.ask(
+            "ui/event",
+            {"panel": "speaker", "block": MORE_SETTINGS, "event": "tap"},
+            "speaker: tap moreSettings",
+        )
+        if opened != {"open": "settings"}:
+            raise E2EFailure(
+                f"speaker: More settings was not answered with open settings alone: {opened!r}"
+            )
+        said.append("speaker: More settings answered open settings")
+
         link.send(
             {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "speaker"}}
         )
@@ -482,10 +510,32 @@ def end_to_end(conf, folder, data, env):
         bad = app.act("settings", "quietEnd", "submit", "soon")
         if not says(bad, "HH:mm"):
             raise E2EFailure("a quiet hour that is not HH:mm was not said on the page")
+        # It cannot open the settings panel: the island says where they are
+        # instead, and a tap on the button's id opens nothing.
+        island = app.open("speaker")
+        if block(island, MORE_SETTINGS) is not None or not says(
+            island, MORE_SETTINGS_CAPTION
+        ):
+            raise E2EFailure(
+                "an older app's island does not end with where the settings are"
+            )
+        kept = app.ask(
+            "ui/event",
+            {"panel": "speaker", "block": MORE_SETTINGS, "event": "tap"},
+            "an older app's speaker: tap moreSettings",
+        )
+        if "open" in kept:
+            raise E2EFailure(f"an older app was answered with open: {kept!r}")
+        older.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "speaker"}}
+        )
         older.send(
             {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "settings"}}
         )
-        said.append("an older app: the typed quiet hour refused; " + run.shutdown())
+        said.append(
+            "an older app: the typed quiet hour refused, More settings a caption; "
+            + run.shutdown()
+        )
         said.extend(app.pages)
     finally:
         older.close()
