@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.55.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.54.0...vitruvian-v3.55.0) (2026-10-16)
+
+
+### Features
+
+* **desktop:** the menu bar panel shows your extensions ([#3372](https://github.com/VitruvianSoftware/vitruvian-core/issues/3372)) ([7fe1866](https://github.com/VitruvianSoftware/vitruvian-core/commit/7fe18668e26836ec47b3d4757f756aa90eefbd3a))
+
 ## [3.54.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.53.1...vitruvian-v3.54.0) (2026-10-16)
 
 
