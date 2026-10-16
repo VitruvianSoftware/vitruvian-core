@@ -399,7 +399,8 @@ function render(state) {
     `${open} open · checking every ${pace.intervalSeconds}s (${pace.reason})`;
   $("version").textContent = state.version ? `v${state.version}` : "";
   fillSettings(state);
-  renderReviews(state.reviews ?? { items: [] });
+  lastWatches = state.watches ?? [];
+  renderLists(state.lists ?? {});
   renderFlaky(state.flaky ?? []);
 }
 
@@ -437,18 +438,18 @@ function reviewButtons(pr) {
           onclick: async () => {
             if (!isArmed) {
               armed = { id, until: Date.now() + ARM_MS };
-              renderReviews(lastReviews);
+              renderLists(lastReviews);
               setTimeout(() => {
                 if (armed?.id === id) {
                   armed = null;
-                  renderReviews(lastReviews);
+                  renderLists(lastReviews);
                 }
               }, ARM_MS);
               return;
             }
             armed = null;
             sending.add(id);
-            renderReviews(lastReviews);
+            renderLists(lastReviews);
             reviewResult(null);
             try {
               await callApi("/api/review-action", {
@@ -486,26 +487,117 @@ function reviewResult(message, isError = false) {
   box.hidden = !message;
 }
 
-// Pull requests where someone is waiting on the user's review, with a tick
-// box per repository to choose which ones are listed.
-function renderReviews(reviews) {
-  lastReviews = reviews;
-  const items = reviews.items ?? [];
-  const repos = reviews.repos ?? [];
-  const total = reviews.total ?? items.length;
-  $("reviews").hidden = total === 0 && repos.length === 0 && !reviews.error;
-  // GitHub is asked for one page, so a full page means "that many or more".
-  const more = reviews.capped ? "+" : "";
-  $("reviews-count").textContent =
-    items.length === total
-      ? `${total}${more}`
-      : `${items.length} of ${total}${more}`;
-  $("reviews-error").textContent = reviews.error ?? "";
-  $("reviews-error").hidden = !reviews.error;
+// The three lists of open pull requests share one repository filter and one
+// row layout: title, author, then on the right any buttons and the conflict
+// and CI badges.
+//   Waiting on your review  Approve and Approve & merge once fully green
+//   Your open pull requests Watch, to tie one to this conversation
+//   All open pull requests  Watch as well
+let lastWatches = [];
 
-  // One repository needs no filter, unless it is the one switched off.
-  $("reviews-filter").hidden =
-    repos.length < 2 && repos.every((row) => row.shown);
+function count(list) {
+  const shown = list.items.length;
+  const more = list.capped ? "+" : "";
+  // GitHub is asked for one page, so a full page means "that many or more".
+  return shown === list.total
+    ? `${list.total}${more}`
+    : `${shown} of ${list.total}${more}`;
+}
+
+function watchOf(pr) {
+  const key = `${pr.repo.toLowerCase()}#${pr.number}`;
+  return lastWatches.find((w) => w.key === key) ?? null;
+}
+
+function watchButton(pr) {
+  const watch = watchOf(pr);
+  if (watch) {
+    const here = watch.conversationId === sidecar.conversationId;
+    return el(
+      "span",
+      { class: "muted small" },
+      here ? "Watched here" : "Watched elsewhere",
+    );
+  }
+  if (!sidecar.conversationId) return null;
+  return el(
+    "button",
+    {
+      type: "button",
+      class: "secondary small",
+      "data-focus": `watch:${pr.repo}#${pr.number}`,
+      title:
+        "Watch it for this conversation: wake it if CI fails, and say when it lands",
+      onclick: async () => {
+        reviewResult(null);
+        try {
+          await callApi("/api/watch", {
+            method: "POST",
+            body: { ref: pr.url, conversationId: sidecar.conversationId },
+          });
+          reviewResult(`Watching #${pr.number} for this conversation.`);
+        } catch (err) {
+          reviewResult(`#${pr.number}: ${err.message}`, true);
+        }
+        await load();
+      },
+    },
+    "Watch",
+  );
+}
+
+function prRow(pr, { singleRepo, kind }) {
+  const label = singleRepo
+    ? `#${pr.number} ${pr.title}`
+    : `${pr.repo}#${pr.number} ${pr.title}`;
+  return el(
+    "li",
+    { class: "review-row" },
+    el(
+      "div",
+      { class: "review-main" },
+      el("a", { href: pr.url, target: "_blank", rel: "noreferrer" }, label),
+      el("span", { class: "muted small" }, ` · ${pr.author}`),
+    ),
+    el(
+      "span",
+      { class: "review-side" },
+      // Approving is only offered where a review was asked for, and only once
+      // the whole pipeline is green, not before.
+      kind === "review" && pr.ready ? reviewButtons(pr) : null,
+      kind === "watch" ? watchButton(pr) : null,
+      pr.isDraft ? el("span", { class: "badge done" }, "Draft") : null,
+      pr.conflict
+        ? el("span", { class: `badge ${pr.conflict.tone}` }, pr.conflict.text)
+        : null,
+      pr.status
+        ? el("span", { class: `badge ${pr.status.tone}` }, pr.status.text)
+        : null,
+    ),
+  );
+}
+
+function renderList(id, list, { singleRepo, kind, hideWhenEmpty }) {
+  $(id).hidden = hideWhenEmpty && list.total === 0;
+  $(`${id}-count`).textContent = count(list);
+  $(`${id}-none`).hidden = list.items.length > 0;
+  redraw(
+    $(`${id}-list`),
+    list.items.map((pr) => prRow(pr, { singleRepo, kind })),
+  );
+}
+
+function renderLists(lists) {
+  lastReviews = lists;
+  const empty = { items: [], total: 0, capped: false };
+  const reviews = lists.reviews ?? empty;
+  const mine = lists.mine ?? empty;
+  const all = lists.all ?? empty;
+  const repos = lists.repos ?? [];
+
+  $("repos-card").hidden = repos.length === 0 && !lists.error;
+  $("lists-error").textContent = lists.error ?? "";
+  $("lists-error").hidden = !lists.error;
   redraw(
     $("reviews-repos"),
     repos.map((row) =>
@@ -531,43 +623,23 @@ function renderReviews(reviews) {
       ),
     ),
   );
-  $("reviews-none").hidden = !(items.length === 0 && total > 0);
-  const singleRepo =
-    reviews.singleRepo ?? repos.filter((row) => row.shown).length === 1;
-  redraw(
-    $("reviews-list"),
-    items.map((pr) => {
-      const label = singleRepo
-        ? `#${pr.number} ${pr.title}`
-        : `${pr.repo}#${pr.number} ${pr.title}`;
-      return el(
-        "li",
-        { class: "review-row" },
-        el(
-          "div",
-          { class: "review-main" },
-          el("a", { href: pr.url, target: "_blank", rel: "noreferrer" }, label),
-          el("span", { class: "muted small" }, ` · ${pr.author}`),
-        ),
-        el(
-          "span",
-          { class: "review-side" },
-          // Only once the whole pipeline is green, and not before.
-          pr.ready ? reviewButtons(pr) : null,
-          pr.conflict
-            ? el(
-                "span",
-                { class: `badge ${pr.conflict.tone}` },
-                pr.conflict.text,
-              )
-            : null,
-          pr.status
-            ? el("span", { class: `badge ${pr.status.tone}` }, pr.status.text)
-            : null,
-        ),
-      );
-    }),
-  );
+
+  const singleRepo = lists.singleRepo === true;
+  renderList("reviews", reviews, {
+    singleRepo,
+    kind: "review",
+    hideWhenEmpty: true,
+  });
+  renderList("mine", mine, { singleRepo, kind: "watch", hideWhenEmpty: true });
+  // Shown whenever there are repositories to tick, so an empty list still
+  // says why it is empty.
+  $("everyone").hidden = repos.length === 0;
+  renderList("everyone", all, {
+    singleRepo,
+    kind: "watch",
+    hideWhenEmpty: false,
+  });
+  $("everyone").hidden = repos.length === 0;
 }
 
 // Checks that have recently failed and then passed with no code change.

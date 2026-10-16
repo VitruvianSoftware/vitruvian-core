@@ -106,6 +106,13 @@ js_library(
 )
 
 js_test(
+    name = "search_test",
+    size = "small",
+    data = [":lib"],
+    entry_point = "sidecars/panel/lib/search.test.mjs",
+)
+
+js_test(
     name = "version_test",
     size = "small",
     data = [":release_files"],
@@ -141,6 +148,7 @@ pipeline_unit(
         ":notices_test",
         ":pace_test",
         ":reviews_test",
+        ":search_test",
         ":version_test",
         ":watcher_test",
     ],

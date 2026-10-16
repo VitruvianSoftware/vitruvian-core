@@ -2,6 +2,17 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.7.0
+
+- Two new lists under "Waiting on your review": **Your open pull requests**
+  (everything you opened, anywhere on GitHub, drafts included) and **All
+  open pull requests** (everyone's, in the repositories you have ticked).
+  Each row has the same CI and conflict badges, and a Watch button that ties
+  it to the conversation the panel is open in, or says it is already watched.
+- The repository tick boxes now sit above the lists and apply to all three.
+  They cover every repository seen in your review requests, your own pull
+  requests and your watched ones. Ticking one reads the lists again at once.
+
 ## 0.6.1
 
 - "Waiting on your review" shows merge conflicts as their own red

@@ -31,7 +31,9 @@ switch in Claude Code's desktop app.
   the next time it fails the agent is told to re-run it before changing code.
 - The panel also lists the pull requests waiting on your review, anywhere on
   GitHub, with a tick box per repository so you can choose which ones are
-  listed. A row with merge conflicts says so in its own red badge, even when
+  listed. Two more lists show your own open pull requests and all open pull
+  requests in the ticked repositories, each with a Watch button. A row with
+  merge conflicts says so in its own red badge, even when
   CI is passing. Once a pull request's pipeline is fully green and GitHub
   has confirmed it has no conflicts, its row gets Approve and Approve & merge
   buttons. It marks a watched pull request "Ready to merge" when it is green
