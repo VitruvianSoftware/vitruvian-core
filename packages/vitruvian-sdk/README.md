@@ -15,9 +15,8 @@ among fixed options as a pop-up menu: as a setting, or on a page.
 **A tool is trusted like an app.** It runs as you, with every permission
 Vitruvian has. The app does not limit or check what it does.
 
-**The app adds a tool from a folder**, in Settings, under Features, in the
-section "Extensions & Tools". The person picks the folder and agrees on one
-sheet.
+**The app adds a tool from a folder**, on Settings › Extensions, with "Add
+from Folder…". The person picks the folder and agrees on one sheet.
 
 **To write a tool, read [`docs/writing-a-tool.md`](docs/writing-a-tool.md).**
 It gets you from nothing to a working tool in ten minutes, and then covers
