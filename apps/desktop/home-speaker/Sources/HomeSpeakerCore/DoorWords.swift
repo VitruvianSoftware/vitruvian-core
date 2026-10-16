@@ -70,7 +70,7 @@ public enum DoorWords {
 
     // The app's own ("The strings", "App, after choosing it").
     public static let appChosen =
-        "The extension is quiet now. To remove it: Vitruvian > Settings > Features > Tools from outside > HomeSpeaker > Remove."
+        "The extension is quiet now. To remove it: Vitruvian > Settings > Extensions > HomeSpeaker > Remove."
     public static let openVitruvian = "Open Vitruvian"
     // Not in the plan's table; in the same voice (listed in the task's report).
     public static let quit = "Quit"

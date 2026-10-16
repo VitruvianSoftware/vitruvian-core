@@ -33,7 +33,7 @@ the updated extension has run once.)
   sign-ins across. The app is then quit, and you are offered to turn off its
   Open at Login and to move it to the Trash.
 - **Use the app:** the extension goes quiet by itself. The app cannot remove
-  an extension, so it tells you how, in Vitruvian's Settings.
+  an extension, so it tells you how, in Vitruvian's Settings › Extensions.
 
 Once you have chosen, only that one speaks on its own, reads chat and answers
 the Claude Code hook. You can change your mind from either one's *Which
