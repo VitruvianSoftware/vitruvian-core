@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.54.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.53.1...vitruvian-v3.54.0) (2026-10-16)
+
+
+### Features
+
+* **desktop:** extensions get their own Settings page ([#3362](https://github.com/VitruvianSoftware/vitruvian-core/issues/3362)) ([03735f8](https://github.com/VitruvianSoftware/vitruvian-core/commit/03735f8e7744d7c3de2eeca13cde1571e9c5c3de))
+
+
+### Bug Fixes
+
+* **desktop:** a failed recorder export says why, so the flaky CI read failure can be diagnosed ([#3364](https://github.com/VitruvianSoftware/vitruvian-core/issues/3364)) ([25fc232](https://github.com/VitruvianSoftware/vitruvian-core/commit/25fc232671fcb240e7d975415699dc93295fc010))
+
 ## [3.53.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.53.0...vitruvian-v3.53.1) (2026-10-15)
 
 
