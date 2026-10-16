@@ -86,6 +86,15 @@ private struct SilentMac: LocalSpeaking {
     func speak(_ text: String, voiceID: String) async throws {}
 }
 
+/// This Mac's media, as these tests see it: never paused, and never asked
+/// under the app's message names (the default pauser's in a test process).
+/// No test here speaks, so being asked at all fails the test.
+private struct NoMediaPause: MediaPausing {
+    func pause(seconds: Double) async { Issue.record("asked to pause this Mac's media") }
+    func extend(seconds: Double) async { Issue.record("asked to hold this Mac's media paused") }
+    func resumeNow() async { Issue.record("asked to resume this Mac's media") }
+}
+
 /// One Mac, in a temporary folder: the choice file, the agents' home, the
 /// app's files and program, and the extension's program and data folder.
 @MainActor
@@ -591,7 +600,7 @@ private final class AppRig {
         let rigHistory = BroadcastHistory(fileURL: rig.appProfile.historyURL)
         let announcer = Announcer(home: GoogleHomeClient(
             auth: GoogleAuth(store: SecretStore(fileURL: rig.appProfile.secretsURL), session: AppRoleGoogle.session),
-            session: AppRoleGoogle.session), local: SilentMac())
+            session: AppRoleGoogle.session), local: SilentMac(), media: NoMediaPause())
         var off = SpeakerConfig()
         off.enabled = false
         func say() async -> [String] {
