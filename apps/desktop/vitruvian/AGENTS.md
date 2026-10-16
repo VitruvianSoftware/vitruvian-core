@@ -731,6 +731,31 @@ before: the app offers both versions at `initialize`, and the tool picks.
   `NotchExtensionActions` (Services) for its title, symbol and whether it
   shows; the island draws it only while it lists the page
   (`NotchService.quickAccess`).
+- The menu bar panel's Extensions tab (`PanelSectionID.extensions`,
+  `UI/MenuPanel/ExtensionsSection.swift`) shows each extension's island
+  page a second time, drawn by `ToolPanelView`, with no SDK change. It is
+  one page and one session whichever place shows it: each card of the tab
+  opens the page with `ToolPanelHost.openInMenuPanel` under a token of its
+  own and lets go of that token alone with `closeInMenuPanel`, so the order
+  cards come and go in (an updated extension's new card can appear before
+  the old one goes) never closes another card's page;
+  `close`, which the island calls, leaves open a page the tab still shows;
+  and the island opening a page the tab has open takes it as it is, asking
+  the tool nothing. The tab is built only while the popover is up or the
+  panel is inside the island, so a page is open only while it can be
+  seen. It is on by default only while an extension has an island page
+  (`PanelSectionID.shownByDefault`); each extension's switch for it is in
+  Settings › Menu bar (`MenuPanelExtensionsSupport`), apart from the
+  island's "Show in the Dynamic Island". Where Settings manages extensions
+  is named once, `MenuPanelExtensions.openExtensionSettings`. A web page
+  is one web view, which one place can hold: while the island shows a web
+  page the tab draws a line in its place (`ToolPanelHost.defersToIsland`),
+  with a button that opens the island on it
+  (`MenuPanelExtensions.showInIsland`, through `NotchService.openExtensionSection`),
+  and draws the page again when the island lets go. Known limit: two views
+  of the tab at once (the popover and the panel inside the island) showing
+  one web page still share that one web view. Opening the tab starts the
+  program of every extension it lists, one `ui/open` each.
 - `ToolPanelHost` (`Services/Platform/External/ToolPanelHost.swift`) is the
   one place that knows what a panel shows: for each open panel the last page
   its tool sent, read away from the main thread by `ToolPanelTree.read` and
