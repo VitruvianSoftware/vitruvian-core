@@ -21,11 +21,10 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
-	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
@@ -36,7 +35,7 @@ import (
 const loginWait = 30 * time.Second
 
 // errNotConnected means a linked network never became logged in, so nothing was queued.
-var errNotConnected = errors.New("not connected yet")
+var errNotConnected = actions.ErrNotConnected
 
 const usage = "usage: courier-engine-cli [--data DIR] [--network NAME --flow ID] link|chats|tail|send <room-id> <text>"
 
@@ -47,10 +46,6 @@ type args struct{ data, network, flow, cmd, room, text string }
 var linkWarnings = map[string]string{
 	"gmessages": "Google Messages allows one web session. Linking here disconnects it in Beeper. Continue?",
 }
-
-// bridgeCommandPrefix is a bridge's command prefix ("!" + network name). A message body starting with it
-// is run by that network's bridge as an admin command instead of being sent.
-func bridgeCommandPrefix(network string) string { return "!" + network }
 
 func defaultDataDir(home string, homeErr error) (string, error) {
 	if homeErr != nil || home == "" {
@@ -232,33 +227,9 @@ func reportNotStarted(w io.Writer, errs map[string]error) {
 	}
 }
 
-// waitForLogin waits until at least one of the local user's logins on this network reports it is logged in.
-// The bridge's Start only connects the logins: the connection counts as logged in a moment later, when the
-// server's success message arrives. A message queued before then is refused as "not logged in" and marked
-// failed. A network with no login at all is not going to get one by waiting, so that fails at once.
+// waitForLogin waits for a linked network to finish logging in; see actions.WaitForLogin.
 func waitForLogin(ctx context.Context, h *host.Host, timeout time.Duration) error {
-	me, err := h.Me(ctx)
-	if err != nil {
-		return err
-	}
-	if len(me.GetUserLogins()) == 0 {
-		return fmt.Errorf("%s isn't linked — run link --network %s first", h.Network, h.Network)
-	}
-	deadline := time.After(timeout)
-	for {
-		for _, login := range me.GetUserLogins() {
-			if login.Client != nil && login.Client.IsLoggedIn() {
-				return nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("%s: %w — nothing was sent", h.Network, errNotConnected)
-		case <-deadline:
-			return fmt.Errorf("%s: %w — nothing was sent", h.Network, errNotConnected)
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
+	return actions.WaitForLogin(ctx, h, timeout)
 }
 
 // ensureNotLinked refuses to link when the network already has a login: a second run would link a second
@@ -274,38 +245,16 @@ func ensureNotLinked(ctx context.Context, h *host.Host, displayName string) erro
 	return nil
 }
 
-// send queues a text message in a room, through the bridge of the network the room belongs to.
+// send queues a text message in a room, through the bridge of the network the room belongs to, and waits to
+// hear what became of it.
 func send(ctx context.Context, eng *engine.Engine, s *store.Store, a args, loginTimeout time.Duration) error {
-	// Never the first host or any other fallback: a reply must go out through the room's own network.
-	h, err := eng.HostForRoom(ctx, a.room)
+	act := actions.New(eng, s, nil) // text only: no media store needed
+	act.LoginWait = loginTimeout
+	eventID, err := act.SendText(ctx, a.room, a.text, "")
 	if err != nil {
 		return err
 	}
-	prefix := bridgeCommandPrefix(h.Network)
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.text)), prefix) {
-		return fmt.Errorf("refusing to send text starting with %s: the bridge would run it as an admin command", prefix)
-	}
-	// Wait before storing or queueing anything, so a refused send leaves no trace.
-	if err := waitForLogin(ctx, h, loginTimeout); err != nil {
-		return err
-	}
-	now := time.Now()
-	evt := &event.Event{
-		Type: event.EventMessage, RoomID: id.RoomID(a.room), Sender: ids.Me, ID: ids.RandomEventID(),
-		Timestamp: now.UnixMilli(), Content: event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgText, Body: a.text}},
-	}
-	raw, err := json.Marshal(&evt.Content)
-	if err != nil {
-		return err
-	}
-	if _, err = s.InsertEvent(ctx, store.Event{
-		RoomID: a.room, EventID: string(evt.ID), Sender: string(ids.Me),
-		Type: evt.Type.Type, Content: raw, TS: now, Status: "pending",
-	}); err != nil {
-		return err
-	}
-	h.Bridge.QueueMatrixEvent(ctx, evt)
-	return waitStatus(ctx, s, string(evt.ID), 30*time.Second)
+	return waitStatus(ctx, s, eventID, 30*time.Second)
 }
 
 // link signs in to one network and reports whether it did. Declining a warning is not an error; it just

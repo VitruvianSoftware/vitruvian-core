@@ -1,0 +1,649 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package actions
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
+)
+
+// world is an engine running the fake network under some network's name, over a real store.
+type world struct {
+	eng   *engine.Engine
+	s     *store.Store
+	m     *media.Store
+	n     *fakenet.Network
+	a     *Actions
+	login *bridgev2.UserLogin // nil when the world is not linked
+}
+
+// startWorld runs the fake network as `name`. With linked, it has one login, whose client reports "logged in"
+// only loginDelay after Connect, the way a real network does once the server's success message arrives.
+func startWorld(t *testing.T, name string, linked bool, loginDelay ...time.Duration) world {
+	t.Helper()
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	n := fakenet.New()
+	if len(loginDelay) > 0 {
+		n.LoginDelay = loginDelay[0]
+	}
+	eng, errs := engine.Start(ctx, dir, s, m,
+		[]engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(eng.Stop)
+	w := world{eng: eng, s: s, m: m, n: n, a: New(eng, s, m)}
+	if linked {
+		h, ok := eng.Host(name)
+		require.True(t, ok)
+		w.login, err = n.Login(ctx, h.Bridge)
+		require.NoError(t, err)
+	}
+	return w
+}
+
+// chat has the network deliver a message from a contact, which makes the bridge create a real room for it.
+// It returns the room and the event ID of that message. Call it once per world.
+func (w world) chat(t *testing.T, chatID, msgID string) (room, eventID string) {
+	t.Helper()
+	w.n.Incoming(w.login, chatID, "alice", msgID, "hi")
+	return w.firstMessage(t, "")
+}
+
+// secondChat is chat for another contact: it returns the room that is not `not`.
+func (w world) secondChat(t *testing.T, chatID, msgID, not string) (room, eventID string) {
+	t.Helper()
+	w.n.Incoming(w.login, chatID, "bob", msgID, "hello")
+	return w.firstMessage(t, not)
+}
+
+// firstMessage waits for a room other than `not` to hold a message, and returns that room and message.
+func (w world) firstMessage(t *testing.T, not string) (room, eventID string) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		rooms, err := w.s.ListRooms(context.Background())
+		if err != nil {
+			return false
+		}
+		for _, r := range rooms {
+			if r.ID == not {
+				continue
+			}
+			evs, err := w.s.Events(context.Background(), r.ID, 10)
+			if err != nil || len(evs) == 0 {
+				continue
+			}
+			room, eventID = r.ID, evs[0].EventID
+			return true
+		}
+		return false
+	}, 5*time.Second, 20*time.Millisecond, "the bridge never stored the contact's message")
+	return room, eventID
+}
+
+func (w world) get(t *testing.T, eventID string) store.Event {
+	t.Helper()
+	e, ok, err := w.s.GetEvent(context.Background(), eventID)
+	require.NoError(t, err)
+	require.True(t, ok, "event %s should exist", eventID)
+	return e
+}
+
+func (w world) waitStatus(t *testing.T, eventID, want string) store.Event {
+	t.Helper()
+	var e store.Event
+	require.Eventually(t, func() bool {
+		var ok bool
+		var err error
+		e, ok, err = w.s.GetEvent(context.Background(), eventID)
+		return err == nil && ok && e.Status == want
+	}, 5*time.Second, 20*time.Millisecond, "event %s never became %s", eventID, want)
+	return e
+}
+
+func (w world) unread(t *testing.T, room string) int {
+	t.Helper()
+	rows, err := w.s.Inbox(context.Background())
+	require.NoError(t, err)
+	for _, r := range rows {
+		if r.ID == room {
+			return r.Unread
+		}
+	}
+	t.Fatalf("room %s not in the inbox", room)
+	return 0
+}
+
+func recv[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatalf("%s never reached the network", what)
+	}
+	var zero T
+	return zero
+}
+
+func none[T any](t *testing.T, ch <-chan T, what string) {
+	t.Helper()
+	select {
+	case v := <-ch:
+		t.Fatalf("%s reached the network: %+v", what, v)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func relatesTo(t *testing.T, e store.Event) map[string]any {
+	t.Helper()
+	var c struct {
+		RelatesTo map[string]any `json:"m.relates_to"`
+	}
+	require.NoError(t, json.Unmarshal(e.Content, &c))
+	return c.RelatesTo
+}
+
+func TestSendTextQueuesPendingThenSent(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.n.Hold = make(chan struct{}) // the network sits on the message until we let go
+
+	type result struct {
+		id  string
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		id, err := w.a.SendText(ctx, room, "hello there", "")
+		done <- result{id, err}
+	}()
+
+	var pending store.Event
+	require.Eventually(t, func() bool {
+		evs, err := w.s.Events(ctx, room, 1)
+		if err != nil || len(evs) != 1 {
+			return false
+		}
+		pending = evs[0]
+		return pending.Sender == string(ids.Me)
+	}, 5*time.Second, 20*time.Millisecond, "the message is never stored")
+	require.Equal(t, "pending", pending.Status, "stored as pending before the network has it")
+	require.Equal(t, event.EventMessage.Type, pending.Type)
+	require.JSONEq(t, `{"msgtype":"m.text","body":"hello there"}`, string(pending.Content))
+	none(t, w.n.Sent, "a held message")
+
+	close(w.n.Hold)
+	var r result
+	select {
+	case r = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SendText never returned")
+	}
+	require.NoError(t, r.err)
+	require.Equal(t, pending.EventID, r.id, "SendText returns the ID of the stored row")
+	got := recv(t, w.n.Sent, "the message")
+	require.Equal(t, fakenet.Sent{PortalID: "chat1", Body: "hello there"}, got)
+	w.waitStatus(t, r.id, "sent")
+}
+
+func TestReplyCarriesInReplyTo(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, target := w.chat(t, "chat1", "m1")
+
+	id, err := w.a.SendText(ctx, room, "answering you", target)
+	require.NoError(t, err)
+	e := w.get(t, id)
+	inReplyTo, _ := relatesTo(t, e)["m.in_reply_to"].(map[string]any)
+	require.Equal(t, target, inReplyTo["event_id"], "the stored content points at the message it answers")
+	got := recv(t, w.n.Sent, "the reply")
+	require.Equal(t, fakenet.Sent{PortalID: "chat1", Body: "answering you", ReplyTo: "m1"}, got,
+		"the bridge resolved the reply to the network's own message ID")
+
+	t.Run("a target that does not exist is refused", func(t *testing.T) {
+		_, err := w.a.SendText(ctx, room, "x", "$nope")
+		require.ErrorContains(t, err, "$nope")
+	})
+	t.Run("a target in another chat is refused", func(t *testing.T) {
+		_, otherEvt := w.secondChat(t, "chat2", "m2", room)
+		_, err := w.a.SendText(ctx, room, "x", otherEvt)
+		require.ErrorContains(t, err, "not in this chat")
+	})
+	// Neither refusal stored or sent anything.
+	evs, err := w.s.Events(ctx, room, 50)
+	require.NoError(t, err)
+	require.Len(t, evs, 2, "the contact's message and the one reply")
+	none(t, w.n.Sent, "a refused reply")
+}
+
+func TestReactReachesTheNetwork(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, target := w.chat(t, "chat1", "m1")
+
+	id, err := w.a.React(ctx, room, target, "👍")
+	require.NoError(t, err)
+	require.Equal(t, fakenet.Reaction{PortalID: "chat1", TargetID: "m1", Emoji: "👍"}, recv(t, w.n.Reactions, "the reaction"))
+
+	e := w.waitStatus(t, id, "sent") // bridgev2 reports a reaction's outcome the way it does a message's
+	require.Equal(t, event.EventReaction.Type, e.Type)
+	require.Equal(t, string(ids.Me), e.Sender)
+	rel := relatesTo(t, e)
+	require.Equal(t, "m.annotation", rel["rel_type"])
+	require.Equal(t, target, rel["event_id"])
+	require.Equal(t, "👍", rel["key"])
+
+	t.Run("a reaction the bridge cannot place ends up failed", func(t *testing.T) {
+		// An event the store has but the bridge never bridged.
+		stray := ids.RandomEventID()
+		_, err := w.s.InsertEvent(ctx, store.Event{
+			RoomID: room, EventID: string(stray), Sender: "@alice:courier.local", Type: event.EventMessage.Type,
+			Content: json.RawMessage(`{"msgtype":"m.text","body":"x"}`), TS: time.Now(), Status: "sent",
+		})
+		require.NoError(t, err)
+		id, err := w.a.React(ctx, room, string(stray), "❤️")
+		require.NoError(t, err)
+		e := w.waitStatus(t, id, "failed")
+		require.NotEmpty(t, e.StatusReason)
+	})
+	t.Run("the target must be in this chat, and the key must not be empty", func(t *testing.T) {
+		_, err := w.a.React(ctx, room, "$nope", "👍")
+		require.ErrorContains(t, err, "$nope")
+		_, err = w.a.React(ctx, room, target, "  ")
+		require.Error(t, err)
+	})
+	none(t, w.n.Reactions, "a refused reaction")
+}
+
+func pngBytes(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	img.Set(0, 0, color.RGBA{R: 200, A: 255})
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
+
+func writeFile(t *testing.T, name string, data []byte) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), name)
+	require.NoError(t, os.WriteFile(p, data, 0o600))
+	return p
+}
+
+func TestSendFileStoresMediaAndSendsMessage(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, target := w.chat(t, "chat1", "m1")
+
+	t.Run("an image", func(t *testing.T) {
+		data := pngBytes(t, 3, 2)
+		id, err := w.a.SendFile(ctx, room, writeFile(t, "pic.png", data), "")
+		require.NoError(t, err)
+		f := recv(t, w.n.Files, "the image")
+		require.Equal(t, event.MsgImage, f.MsgType)
+		require.Equal(t, "pic.png", f.Body)
+		require.Equal(t, "pic.png", f.FileName)
+		require.Equal(t, "image/png", f.MimeType)
+		require.Equal(t, len(data), f.Size)
+		require.Equal(t, 3, f.Width)
+		require.Equal(t, 2, f.Height)
+
+		e := w.waitStatus(t, id, "sent")
+		var c event.MessageEventContent
+		require.NoError(t, json.Unmarshal(e.Content, &c))
+		require.Equal(t, event.MsgImage, c.MsgType)
+		require.Equal(t, f.URL, string(c.URL))
+		hash, ok := ids.ParseContentURI(c.URL)
+		require.True(t, ok, "the URL is one of our own")
+		stored, err := w.m.Read(hash)
+		require.NoError(t, err)
+		require.Equal(t, data, stored, "the bytes are in the media store under their hash")
+	})
+
+	t.Run("anything else is a file, and it can be a reply", func(t *testing.T) {
+		id, err := w.a.SendFile(ctx, room, writeFile(t, "notes.txt", []byte("some plain notes\n")), target)
+		require.NoError(t, err)
+		f := recv(t, w.n.Files, "the file")
+		require.Equal(t, event.MsgFile, f.MsgType)
+		require.Equal(t, "text/plain", f.MimeType, "the content type has no parameters")
+		require.Zero(t, f.Width)
+		require.Equal(t, "m1", f.ReplyTo)
+		inReplyTo, _ := relatesTo(t, w.waitStatus(t, id, "sent"))["m.in_reply_to"].(map[string]any)
+		require.Equal(t, target, inReplyTo["event_id"])
+	})
+
+	t.Run("a file that is not there, or not a file, is refused", func(t *testing.T) {
+		_, err := w.a.SendFile(ctx, room, filepath.Join(t.TempDir(), "missing.png"), "")
+		require.Error(t, err)
+		_, err = w.a.SendFile(ctx, room, t.TempDir(), "")
+		require.ErrorContains(t, err, "not a regular file")
+	})
+	none(t, w.n.Files, "a refused file")
+}
+
+func TestSendFileOverTheCapIsRefusedWithNothingStored(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+
+	require.EqualValues(t, 90*1024*1024, MaxFileBytes)
+	// A sparse file: one byte over the cap without writing 90 MB.
+	big := filepath.Join(t.TempDir(), "big.bin")
+	f, err := os.Create(big)
+	require.NoError(t, err)
+	require.NoError(t, f.Truncate(MaxFileBytes+1))
+	require.NoError(t, f.Close())
+
+	_, err = w.a.SendFile(ctx, room, big, "")
+	require.ErrorIs(t, err, ErrTooLarge)
+	require.NoDirExists(t, w.m.Dir, "nothing was read, so nothing was stored")
+	evs, err := w.s.Events(ctx, room, 10)
+	require.NoError(t, err)
+	require.Len(t, evs, 1, "only the contact's message")
+	none(t, w.n.Files, "a file over the cap")
+
+	// The cap is inclusive: a file of exactly the cap is fine. Checked with a small cap, to keep the test small.
+	w.a.maxFile = 10
+	_, err = w.a.SendFile(ctx, room, writeFile(t, "ten.bin", bytes.Repeat([]byte{1}, 10)), "")
+	require.NoError(t, err)
+	recv(t, w.n.Files, "a file of exactly the cap")
+	_, err = w.a.SendFile(ctx, room, writeFile(t, "eleven.bin", bytes.Repeat([]byte{1}, 11)), "")
+	require.ErrorIs(t, err, ErrTooLarge)
+}
+
+func TestSendFileKinds(t *testing.T) {
+	tests := []struct {
+		name, sniffed, byExt string
+		wantMime             string
+		wantType             event.MessageType
+	}{
+		{"png by content", "image/png", "", "image/png", event.MsgImage},
+		{"content wins over a wrong extension", "image/jpeg", "image/png", "image/jpeg", event.MsgImage},
+		{"extension fills in when content says nothing", "application/octet-stream", "image/png", "image/png", event.MsgImage},
+		{"text is a file", "text/plain; charset=utf-8", "", "text/plain", event.MsgFile},
+		{"video by content", "video/mp4", "", "video/mp4", event.MsgVideo},
+		{"an audio extension beats a video container", "video/mp4", "audio/mp4", "audio/mp4", event.MsgAudio},
+		{"audio by content", "audio/mpeg", "", "audio/mpeg", event.MsgAudio},
+		{"unknown is a file", "application/octet-stream", "", "application/octet-stream", event.MsgFile},
+		{"a pdf is a file", "application/pdf", "", "application/pdf", event.MsgFile},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mt, typ := pickType(tc.sniffed, tc.byExt)
+			require.Equal(t, tc.wantMime, mt)
+			require.Equal(t, tc.wantType, typ)
+		})
+	}
+
+	t.Run("sniffing real bytes", func(t *testing.T) {
+		mp4 := append([]byte{0, 0, 0, 0x18}, []byte("ftypmp42")...)
+		mp4 = append(mp4, make([]byte, 16)...)
+		mt, typ := detect(append([]byte(nil), mp4...), ".mp4")
+		require.Equal(t, "video/mp4", mt)
+		require.Equal(t, event.MsgVideo, typ)
+		mt, typ = detect([]byte("ID3\x03\x00\x00\x00\x00\x00\x00"), ".mp3")
+		require.Equal(t, "audio/mpeg", mt)
+		require.Equal(t, event.MsgAudio, typ)
+	})
+}
+
+func TestMarkReadSendsReceiptAndClearsUnread(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	require.Equal(t, 1, w.unread(t, room))
+
+	require.NoError(t, w.a.MarkRead(ctx, room))
+	require.Equal(t, fakenet.Receipt{PortalID: "chat1", MessageID: "m1"}, recv(t, w.n.Receipts, "the read receipt"),
+		"the receipt names the newest message, as the network knows it")
+	require.Equal(t, 0, w.unread(t, room), "the app's unread clears")
+
+	// Again with nothing new: harmless, and the network is told again (it is idempotent there).
+	require.NoError(t, w.a.MarkRead(ctx, room))
+	recv(t, w.n.Receipts, "the second read receipt")
+	require.Equal(t, 0, w.unread(t, room))
+
+	t.Run("the unread count clears even if the network never hears of it", func(t *testing.T) {
+		// A chat on a network that is not running: the receipt cannot go anywhere, but this device has read it.
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!tg:courier.local", Network: "telegram", Name: "Elsewhere"}))
+		_, err := w.s.InsertEvent(ctx, store.Event{
+			RoomID: "!tg:courier.local", EventID: "$tg1", Sender: "@alice:courier.local", Type: event.EventMessage.Type,
+			Content: json.RawMessage(`{"msgtype":"m.text","body":"x"}`), TS: time.Now(), Status: "sent",
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, w.unread(t, "!tg:courier.local"))
+		err = w.a.MarkRead(ctx, "!tg:courier.local")
+		require.ErrorContains(t, err, "not running")
+		require.Equal(t, 0, w.unread(t, "!tg:courier.local"))
+	})
+	t.Run("a chat nobody has written in is not an error", func(t *testing.T) {
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!empty:courier.local", Network: "fake", Name: "Empty"}))
+		require.NoError(t, w.a.MarkRead(ctx, "!empty:courier.local"))
+	})
+	t.Run("an unknown chat is an error", func(t *testing.T) {
+		require.Error(t, w.a.MarkRead(ctx, "!nope:courier.local"))
+	})
+	none(t, w.n.Receipts, "a receipt nobody asked for")
+}
+
+func TestRetryRequeuesOnlyFailed(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+
+	// A message the network refuses ends up failed.
+	w.n.FailWith(errors.New("the network said no"))
+	failedID, err := w.a.SendText(ctx, room, "try me again", "")
+	require.NoError(t, err, "a refused delivery is a failed row, not an error from SendText")
+	e := w.waitStatus(t, failedID, "failed")
+	require.NotEmpty(t, e.StatusReason)
+	none(t, w.n.Sent, "a message the network refused")
+
+	// A message that went through cannot be retried.
+	w.n.FailWith(nil)
+	sentID, err := w.a.SendText(ctx, room, "fine the first time", "")
+	require.NoError(t, err)
+	w.waitStatus(t, sentID, "sent")
+	recv(t, w.n.Sent, "the good message")
+	require.ErrorIs(t, w.a.Retry(ctx, sentID), ErrNotFailed)
+
+	// Nor one that is still pending.
+	pendingID := string(ids.RandomEventID())
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID: room, EventID: pendingID, Sender: string(ids.Me), Type: event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"p"}`), TS: time.Now(), Status: "pending",
+	})
+	require.NoError(t, err)
+	require.ErrorIs(t, w.a.Retry(ctx, pendingID), ErrNotFailed)
+	require.Error(t, w.a.Retry(ctx, "$nope"), "an unknown message")
+	none(t, w.n.Sent, "a message that was not failed")
+
+	// The failed one goes out again, as the same message.
+	require.NoError(t, w.a.Retry(ctx, failedID))
+	require.Equal(t, fakenet.Sent{PortalID: "chat1", Body: "try me again"}, recv(t, w.n.Sent, "the retried message"))
+	e = w.waitStatus(t, failedID, "sent")
+	require.Empty(t, e.StatusReason, "the old failure reason is gone")
+	require.ErrorIs(t, w.a.Retry(ctx, failedID), ErrNotFailed, "a second retry has nothing to do")
+	none(t, w.n.Sent, "a second retry")
+}
+
+func TestRetryOfAFailedReaction(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, target := w.chat(t, "chat1", "m1")
+	w.n.FailWith(errors.New("no"))
+	id, err := w.a.React(ctx, room, target, "👍")
+	require.NoError(t, err)
+	w.waitStatus(t, id, "failed")
+
+	w.n.FailWith(nil)
+	require.NoError(t, w.a.Retry(ctx, id))
+	require.Equal(t, "👍", recv(t, w.n.Reactions, "the retried reaction").Emoji)
+	w.waitStatus(t, id, "sent")
+}
+
+func TestDiscardRemovesOnlyFailed(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+
+	w.n.FailWith(errors.New("no"))
+	failedID, err := w.a.SendText(ctx, room, "never mind", "")
+	require.NoError(t, err)
+	w.waitStatus(t, failedID, "failed")
+	w.n.FailWith(nil)
+	sentID, err := w.a.SendText(ctx, room, "this one went", "")
+	require.NoError(t, err)
+	w.waitStatus(t, sentID, "sent")
+
+	require.ErrorIs(t, w.a.Discard(ctx, sentID), ErrNotFailed)
+	_, ok, err := w.s.GetEvent(ctx, sentID)
+	require.NoError(t, err)
+	require.True(t, ok, "a sent message is not discarded")
+	require.Error(t, w.a.Discard(ctx, "$nope"))
+
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	require.NoError(t, w.a.Discard(ctx, failedID))
+	_, ok, err = w.s.GetEvent(ctx, failedID)
+	require.NoError(t, err)
+	require.False(t, ok, "the failed message is gone")
+	select {
+	case c := <-feed:
+		require.Equal(t, store.Change{Kind: "status", RoomID: room, EventID: failedID, Seq: c.Seq}, c)
+	case <-time.After(time.Second):
+		t.Fatal("no change announced the discard")
+	}
+	require.Error(t, w.a.Discard(ctx, failedID), "it is gone")
+
+	// The chat still shows the messages that are left.
+	rows, err := w.s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "this one went", rows[0].Preview)
+}
+
+func TestBridgeCommandPrefixRefused(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "telegram", true)
+	room, _ := w.chat(t, "chat1", "m1")
+
+	// Telegram's bridge runs "!telegram ..." as an admin command: never send that as a chat message.
+	for _, text := range []string{"!telegram logout", "  !Telegram   list-logins", "!telegram"} {
+		_, err := w.a.SendText(ctx, room, text, "")
+		require.ErrorIs(t, err, ErrBridgeCommand, text)
+		require.ErrorContains(t, err, "refusing to send text starting with !telegram: the bridge would run it as an admin command", text)
+	}
+	// A file's name is its body, so the same rule covers it.
+	_, err := w.a.SendFile(ctx, room, writeFile(t, "!telegram logout.txt", []byte("x")), "")
+	require.ErrorIs(t, err, ErrBridgeCommand)
+
+	evs, err := w.s.Events(ctx, room, 50)
+	require.NoError(t, err)
+	require.Len(t, evs, 1, "only the contact's message is stored: a refused command leaves no trace")
+	none(t, w.n.Sent, "a bridge command")
+	none(t, w.n.Files, "a bridge command")
+
+	// Another network's prefix, and a prefix that is not at the start, are just text here.
+	for _, text := range []string{"!whatsapp logout", "hey !telegram is cool", "!important", "telegram !logout"} {
+		_, err := w.a.SendText(ctx, room, text, "")
+		require.NoError(t, err, text)
+		require.Equal(t, text, recv(t, w.n.Sent, text).Body)
+	}
+}
+
+func TestNotLinkedFailsFast(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", false) // running, but never linked: no login at all
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
+	w.a.LoginWait = 30 * time.Second // failing fast must not depend on the wait
+
+	start := time.Now()
+	_, err := w.a.SendText(ctx, "!r:courier.local", "hello", "")
+	require.Less(t, time.Since(start), time.Second, "an unlinked network must not make a send wait for a login")
+	require.ErrorIs(t, err, ErrNotLinked)
+	require.EqualError(t, err, "fake isn't linked — run link --network fake first")
+
+	_, err = w.a.SendFile(ctx, "!r:courier.local", writeFile(t, "a.txt", []byte("x")), "")
+	require.ErrorIs(t, err, ErrNotLinked)
+	require.NoDirExists(t, w.m.Dir, "nothing may be stored when the send is refused")
+
+	evs, err := w.s.Events(ctx, "!r:courier.local", 10)
+	require.NoError(t, err)
+	require.Empty(t, evs, "nothing may be stored")
+	none(t, w.n.Sent, "a message")
+}
+
+func TestSendWaitsForALoginThatIsStillConnecting(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true, 600*time.Millisecond)
+	room, _ := w.chat(t, "chat1", "m1")
+
+	start := time.Now()
+	_, sendErr := w.a.SendText(ctx, room, "hello", "")
+	require.NoError(t, sendErr)
+	require.GreaterOrEqual(t, time.Since(start), 300*time.Millisecond, "waited out the handshake instead of failing")
+	recv(t, w.n.Sent, "the message")
+}
+
+func TestSendGivesUpOnALoginThatNeverFinishes(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true, time.Hour)
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
+	w.a.LoginWait = 300 * time.Millisecond
+
+	_, err := w.a.SendText(ctx, "!r:courier.local", "hello", "")
+	require.ErrorIs(t, err, ErrNotConnected)
+	require.EqualError(t, err, "fake: not connected yet — nothing was sent")
+	evs, err := w.s.Events(ctx, "!r:courier.local", 10)
+	require.NoError(t, err)
+	require.Empty(t, evs, "nothing was stored")
+	none(t, w.n.Sent, "a message")
+
+	// Cancelling the wait is the same.
+	cctx, cancel := context.WithCancel(ctx)
+	w.a.LoginWait = 10 * time.Second
+	go func() { time.Sleep(100 * time.Millisecond); cancel() }()
+	_, err = w.a.SendText(cctx, "!r:courier.local", "hello", "")
+	require.ErrorIs(t, err, ErrNotConnected)
+}
+
+func TestEmptyTextIsRefused(t *testing.T) {
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	_, err := w.a.SendText(context.Background(), room, "   ", "")
+	require.ErrorIs(t, err, ErrEmpty)
+	none(t, w.n.Sent, "an empty message")
+}
+
+func TestUnknownRoomNeverFallsBack(t *testing.T) {
+	w := startWorld(t, "fake", true)
+	_, err := w.a.SendText(context.Background(), "!nope:courier.local", "hi", "")
+	require.ErrorContains(t, err, "!nope:courier.local")
+	none(t, w.n.Sent, "a message to an unknown chat")
+}

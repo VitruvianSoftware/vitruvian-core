@@ -621,3 +621,43 @@ func TestFailedMigrationRollsBack(t *testing.T) {
 	require.NoError(t, db.QueryRow(ctx, "PRAGMA user_version").Scan(&v))
 	require.Equal(t, 1, v)
 }
+
+func TestDeleteEventForgetsItAndFixesTheChatRow(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$old", ghost, "m.room.message", text("older"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$mine", me, "m.room.message", text("mine"), time.Unix(20, 0))
+	require.Equal(t, "$mine", lastEventID(t, s, "!r"))
+	ch, cancel := s.Subscribe()
+	defer cancel()
+
+	require.NoError(t, s.DeleteEvent(ctx, "$mine"))
+
+	_, ok, err := s.GetEvent(ctx, "$mine")
+	require.NoError(t, err)
+	require.False(t, ok, "the event is gone")
+	require.Equal(t, "$old", lastEventID(t, s, "!r"), "the chat points at the newest message that is left")
+	row := inboxByID(t, s)["!r"]
+	require.Equal(t, "older", row.Preview)
+	require.Equal(t, time.Unix(10, 0).UnixMilli(), row.LastTS.UnixMilli(), "the chat sorts by the message that is left")
+	c := nextChange(t, ch)
+	require.Equal(t, "status", c.Kind)
+	require.Equal(t, "!r", c.RoomID)
+	require.Equal(t, "$mine", c.EventID)
+
+	// Deleting the last message of a chat leaves it with no message, and an unknown event is not an error.
+	require.NoError(t, s.DeleteEvent(ctx, "$old"))
+	require.Equal(t, "", lastEventID(t, s, "!r"))
+	require.True(t, inboxByID(t, s)["!r"].LastTS.IsZero())
+	require.NoError(t, s.DeleteEvent(ctx, "$never-existed"))
+}
+
+func TestDeleteEventOfAnOlderMessageLeavesTheChatRowAlone(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("a"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$b", ghost, "m.room.message", text("b"), time.Unix(20, 0))
+	require.NoError(t, s.DeleteEvent(ctx, "$a"))
+	require.Equal(t, "$b", lastEventID(t, s, "!r"))
+	require.Equal(t, "b", inboxByID(t, s)["!r"].Preview)
+}

@@ -10,9 +10,9 @@ go_library(
     importpath = "github.com/VitruvianSoftware/courier/engine/cmd/courier-engine-cli",
     visibility = ["//visibility:private"],
     deps = [
+        "//apps/desktop/courier/engine/internal/actions",
         "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/host",
-        "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/sqlite",
@@ -22,7 +22,6 @@ go_library(
         "@fi_mau_go_util//curl",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//event",
-        "@net_maunium_go_mautrix//id",
         "@org_golang_x_term//:term",
     ],
 )

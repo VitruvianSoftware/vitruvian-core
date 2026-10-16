@@ -329,6 +329,31 @@ func (s *Store) SetStatus(ctx context.Context, eventID, status, reason string) e
 	return err
 }
 
+// DeleteEvent forgets one event. If it was the chat's latest message, the chat goes back to the newest message
+// that is left (or to none), so the inbox does not keep pointing at something that is gone. The change feed gets
+// a "status" change for it, which tells a client to re-read that chat. An unknown event is not an error.
+func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
+	var roomID string
+	var seq int64
+	found := false
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		err := s.db.QueryRow(ctx, "DELETE FROM events WHERE event_id=$1 RETURNING room_id, seq", eventID).Scan(&roomID, &seq)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		found = true
+		_, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, eventID)
+		return err
+	})
+	if err == nil && found {
+		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID, Seq: seq})
+	}
+	return err
+}
+
 func (s *Store) SetRead(ctx context.Context, roomID, eventID string, ts time.Time) error {
 	_, err := s.db.Exec(ctx, `INSERT INTO reads (room_id, event_id, ts) VALUES ($1,$2,$3)
 		ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, ts.UnixMilli())
