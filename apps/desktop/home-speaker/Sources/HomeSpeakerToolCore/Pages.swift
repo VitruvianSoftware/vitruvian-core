@@ -151,6 +151,10 @@ public enum Pages {
         public var quietNow = false
         /// The app draws a `choice` block; without it, a list stands in.
         public var offersChoice = false
+        /// The app opens HomeSpeaker's settings panel when the tool's answer
+        /// names it (`HomeSpeakerTool.openSettingsFeature`): the island's
+        /// last line is then a "More settings…" button, not where to look.
+        public var opensSettings = false
         /// Why the settings file does not read, while it does not. Nothing
         /// is saved until it reads again.
         public var configProblem: String?
@@ -209,8 +213,10 @@ public enum Pages {
     public static let pendingDropped = "The waiting volume or mute change was dropped: the speaker changed"
     public static let fixChatInSettings = "Fix it in Settings > Chat & Slack"
     /// Where the rest of HomeSpeaker's settings are, at the foot of the
-    /// island: it cannot open them itself (yet; see `moreSettingsBlocks`).
+    /// island, for an app that cannot open them (3.57 and before).
     public static let moreSettings = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
+    /// The button that opens them, for an app that can.
+    public static let moreSettingsButton = "More settings…"
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
 
@@ -264,6 +270,9 @@ public enum Pages {
         public static let removeLegacyAgent = "removeLegacyAgent"
         public static let startChatMonitor = "startChatMonitor"
         public static let stopChatMonitor = "stopChatMonitor"
+        /// The island's last line, as a button: opens Settings on
+        /// HomeSpeaker's detail.
+        public static let moreSettings = "moreSettings"
         // The island's first-run setup and its outputs. Their own ids, so
         // the island never answers to a settings control's.
         public static let setupSignIn = "setup.signIn"
@@ -363,11 +372,13 @@ public enum Pages {
         return busy
     }
 
-    /// The island's last line: where the rest of the settings are. The one
-    /// place that says it, so a later change can draw a "More settings…"
-    /// button here instead, for an app that can open them.
+    /// The island's last line: the rest of the settings. A button that
+    /// opens them, for an app that can; otherwise where to find them.
     static func moreSettingsBlocks(_ status: Status) -> [UIBlock] {
-        [text(UIText.plain(moreSettings), style: .caption)]
+        if status.opensSettings {
+            return [button(Block.moreSettings, UIText.plain(moreSettingsButton))]
+        }
+        return [text(UIText.plain(moreSettings), style: .caption)]
     }
 
     /// The settings file is there and does not read: said first, on both

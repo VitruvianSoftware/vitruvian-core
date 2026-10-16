@@ -247,6 +247,34 @@ final class PagesTests: XCTestCase {
         XCTAssertFalse(texts(Pages.settings(status)).contains(Pages.moreSettings), "Settings is where it points")
     }
 
+    /// For an app that opens the settings panel, the island's last line is
+    /// a "More settings…" button in place of the caption: in every state
+    /// the caption was drawn in, and never on Settings itself.
+    func testTheIslandEndsWithAMoreSettingsButtonForAnAppThatOpensThem() {
+        XCTAssertEqual(Pages.moreSettingsButton, "More settings…")
+        var status = Pages.Status()
+        status.config = configured
+        status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
+        status.opensSettings = true
+        func endsWithTheButton(_ tree: UITree, _ why: String) {
+            guard case .button(let button)? = tree.blocks.last?.content else { return XCTFail("\(why): no button last") }
+            XCTAssertEqual(tree.blocks.last?.id, Pages.Block.moreSettings, why)
+            XCTAssertEqual(button.title.text(for: "en"), Pages.moreSettingsButton, why)
+            XCTAssertNil(button.style, "\(why): a plain button, not the page's main action")
+            XCTAssertNotEqual(button.enabled, false, why)
+            XCTAssertFalse(texts(tree).contains(Pages.moreSettings), "\(why): the button, not the caption too")
+        }
+        for offersChoice in [false, true] {
+            status.offersChoice = offersChoice
+            endsWithTheButton(Pages.island(status), "set up, choice \(offersChoice)")
+        }
+        status.account.isSignedIn = false
+        endsWithTheButton(Pages.island(status), "before setup")
+        status.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
+        endsWithTheButton(Pages.island(status), "the other HomeSpeaker in use")
+        XCTAssertFalse(ids(Pages.settings(status)).contains(Pages.Block.moreSettings), "Settings is where it opens")
+    }
+
     /// The read on every opening says nothing while a level is shown; one
     /// with no level yet, or any other job, still says what it is doing.
     func testTheReadOnOpeningIsQuietWhileALevelIsShown() {

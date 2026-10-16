@@ -37,11 +37,16 @@ final class HomeSpeakerToolTests: XCTestCase {
         var clipboard: String?
         /// What the app named at hello; none, as before 3.48.
         var features: Set<ProtocolFeature> = []
+        /// Names the app gave at hello that the kit may not know yet, such
+        /// as `HomeSpeakerTool.openSettingsFeature`.
+        var featureNames: Set<String> = []
         func render(panel: String, _ tree: UITree) { rendered.append((panel, tree)) }
         func showMessage(_ message: String, icon: String) { messages.append(message) }
         func log(_ message: String) { logged.append(message) }
         func clipboardText() -> String? { clipboard }
-        func supports(_ feature: ProtocolFeature) -> Bool { features.contains(feature) }
+        func supports(featureNamed name: String) -> Bool {
+            featureNames.contains(name) || features.contains { $0.rawValue == name }
+        }
     }
 
     final class Store: ConfigStore {
