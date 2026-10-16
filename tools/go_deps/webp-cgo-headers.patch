@@ -1,0 +1,58 @@
+--- /dev/null
++++ b/BUILD.bazel
+@@ -0,0 +1,50 @@
++# Hand-written BUILD for go.mau.fi/webp (see MODULE.bazel). Gazelle's
++# generated BUILD lists the vendored libwebp sources only as `embedsrcs`
++# (the module has `//go:embed internal` so `go mod vendor` keeps them), and
++# embedsrcs are not inputs of the cgo action, so `#include "webp.h"` and the
++# z_libwebp_*.c files that `#include` libwebp's .c files cannot find them.
++# Here they are a cc_library of textual headers, passed in via cdeps.
++load("@io_bazel_rules_go//go:def.bzl", "go_library")
++load("@rules_cc//cc:defs.bzl", "cc_library")
++
++cc_library(
++    name = "libwebp_sources",
++    hdrs = glob([
++        "internal/**/*.c",
++        "internal/**/*.h",
++    ]),
++    includes = [
++        "internal/include",
++        "internal/libwebp-1.6.0",
++        "internal/libwebp-1.6.0/src",
++    ],
++)
++
++go_library(
++    name = "webp",
++    srcs = glob(
++        [
++            "*.go",
++            "*.c",
++        ],
++        exclude = [
++            "*_test.go",
++            "gen_helper.go",
++            "hello.go",
++        ],
++    ),
++    cdeps = [":libwebp_sources"],
++    cgo = True,
++    clinkopts = select({
++        "@io_bazel_rules_go//go/platform:windows": [],
++        "//conditions:default": ["-lm"],
++    }),
++    copts = [
++        "-Wno-pointer-sign",
++        "-DWEBP_USE_THREAD",
++    ],
++    embedsrcs = glob(["internal/**"]),
++    importpath = "go.mau.fi/webp",
++    visibility = ["//visibility:public"],
++)
++
++alias(
++    name = "go_default_library",
++    actual = ":webp",
++    visibility = ["//visibility:public"],
++)
