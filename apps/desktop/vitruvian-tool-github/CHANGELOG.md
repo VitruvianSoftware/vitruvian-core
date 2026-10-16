@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.4.0...vitruvian-tool-github-v1.4.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **vitruvian-tool-github:** point people to Settings › Extensions ([#3368](https://github.com/VitruvianSoftware/vitruvian-core/issues/3368)) ([594e2d2](https://github.com/VitruvianSoftware/vitruvian-core/commit/594e2d2dc3eb203ffdc5388f6108b34d347e3964))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.3.0...vitruvian-tool-github-v1.4.0) (2026-10-15)
 
 
