@@ -7,6 +7,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -110,4 +111,32 @@ func TestStartGivesLocalUserAdminAndBackfill(t *testing.T) {
 	require.False(t, bf.Queue.AnyEnabled(), "the backwards queue only applies to Beeper's server")
 	require.False(t, h.Bridge.Config.CleanupOnLogout.Enabled)
 	require.FileExists(t, filepath.Join(dir, "bridges", "fake.db"), "each network gets its own database")
+}
+
+// The bridge section mirrors mxmain's v0.31.0 example config, except where a local single-user app differs.
+func TestStartBridgeConfigMatchesExampleDefaults(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+
+	h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop())
+	require.NoError(t, err)
+	defer h.Stop()
+
+	c := h.Bridge.Config
+	require.True(t, c.PrivateChatPortalMeta, "without this, DMs get no name or avatar from the contact")
+	require.Equal(t, 15*time.Second, c.SendReconnectWait, "a send during a reconnect waits instead of failing at once")
+	require.Equal(t, 5*time.Minute, c.UnknownErrorAutoReconnect, "nothing restarts a local app that hit an unknown error")
+	require.Equal(t, 10, c.UnknownErrorMaxAutoReconnects)
+	require.True(t, c.TagOnlyOnCreate)
+	require.True(t, c.MuteOnlyOnCreate)
+	// Deliberate departures from the example config:
+	require.Empty(t, c.BridgeStatusNotices, "there is no admin-command room to post notices into")
+	require.Zero(t, c.PortalEventBuffer, "events are handled synchronously so statuses are acknowledged in order")
+	require.False(t, c.PersonalFilteringSpaces, "spaces are a Matrix-client feature; the app has no use for them")
+	require.False(t, c.KickMatrixUsers, "@me is the only Matrix user, so never remove anyone")
+	require.False(t, c.SplitPortals)
+	require.False(t, c.AsyncEvents)
+	require.False(t, c.Relay.Enabled)
 }

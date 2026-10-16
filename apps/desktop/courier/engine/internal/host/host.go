@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
@@ -51,7 +52,24 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 	}
 	cfg := &bridgeconfig.BridgeConfig{
 		CommandPrefix: "!" + network,
-		Permissions:   bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
+		// The rest of this section follows mxmain's v0.31.0 example config unless a comment says otherwise.
+		// Without this, bridgev2 never names a DM after the contact (portal.go and ghost.go check it).
+		PrivateChatPortalMeta: true,
+		// Connecting a login returns before the network says it is logged in. A send in that gap, or during a
+		// reconnect, waits this long instead of failing at once. The example's 0s is wrong for a local app.
+		SendReconnectWait: 15 * time.Second,
+		// The example leaves auto-reconnect off because an operator restarts a server bridge. Nobody restarts
+		// this one, so retry after an unknown error (the minimum bridgev2 accepts is 1 minute).
+		UnknownErrorAutoReconnect:     5 * time.Minute,
+		UnknownErrorMaxAutoReconnects: 10,
+		TagOnlyOnCreate:               true,
+		MuteOnlyOnCreate:              true,
+		// Deliberately not the example's values:
+		//  - BridgeStatusNotices stays "": there is no admin-command room to post into.
+		//  - PortalEventBuffer stays 0: events are handled and acknowledged synchronously, in order.
+		//  - PersonalFilteringSpaces stays false: a space per login is a Matrix-client feature the app has no use for.
+		//  - KickMatrixUsers stays false: @me is the only Matrix user and must never be removed from a room.
+		Permissions: bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
 		// Enabled alone loads nothing: bridgev2 skips backfill when the message limits are zero. The numbers are
 		// mautrix's own example-config defaults. The backwards queue stays off; it only applies to Beeper's server.
 		Backfill: bridgeconfig.BackfillConfig{
