@@ -75,6 +75,7 @@ func TestStartRejectsUnparseableConnectorConfig(t *testing.T) {
 	bad := &badConfigNet{configNet: n}
 	_, err = Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, bad, zerolog.Nop())
 	require.Error(t, err, "a broken default config must fail loudly, not be skipped")
+	require.NoFileExists(t, filepath.Join(dir, "bridges", "fake.db"), "a failed config must not leave a database behind")
 }
 
 type badConfigNet struct{ *configNet }
@@ -96,7 +97,14 @@ func TestStartGivesLocalUserAdminAndBackfill(t *testing.T) {
 	me, err := h.Me(ctx)
 	require.NoError(t, err)
 	require.True(t, me.Permissions.Admin, "@me must be admin of its own bridge")
-	require.True(t, h.Bridge.Config.Backfill.Enabled)
+	// "Enabled" alone loads nothing: bridgev2 skips backfill when the message limits are zero.
+	bf := h.Bridge.Config.Backfill
+	require.True(t, bf.Enabled)
+	require.Equal(t, 50, bf.MaxInitialMessages, "history for a new room")
+	require.Equal(t, 500, bf.MaxCatchupMessages, "messages missed while courier was closed")
+	require.Equal(t, 720, bf.UnreadHoursThreshold)
+	require.Equal(t, 50, bf.Threads.MaxInitialMessages)
+	require.False(t, bf.Queue.AnyEnabled(), "the backwards queue only applies to Beeper's server")
 	require.False(t, h.Bridge.Config.CleanupOnLogout.Enabled)
 	require.FileExists(t, filepath.Join(dir, "bridges", "fake.db"), "each network gets its own database")
 }

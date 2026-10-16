@@ -47,9 +47,17 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		return nil, err
 	}
 	cfg := &bridgeconfig.BridgeConfig{
-		CommandPrefix:   "!" + network,
-		Permissions:     bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
-		Backfill:        bridgeconfig.BackfillConfig{Enabled: true},
+		CommandPrefix: "!" + network,
+		Permissions:   bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
+		// Enabled alone loads nothing: bridgev2 skips backfill when the message limits are zero. The numbers are
+		// mautrix's own example-config defaults. The backwards queue stays off; it only applies to Beeper's server.
+		Backfill: bridgeconfig.BackfillConfig{
+			Enabled:              true,
+			MaxInitialMessages:   50,
+			MaxCatchupMessages:   500,
+			UnreadHoursThreshold: 720,
+			Threads:              bridgeconfig.BackfillThreadsConfig{MaxInitialMessages: 50},
+		},
 		CleanupOnLogout: bridgeconfig.CleanupOnLogouts{Enabled: false},
 	}
 	conn := localmatrix.New(network, s, m)
