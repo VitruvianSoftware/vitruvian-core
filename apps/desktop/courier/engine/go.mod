@@ -5,6 +5,7 @@ go 1.26.6
 require (
 	github.com/stretchr/testify v1.12.1
 	go.mau.fi/util v0.10.1
+	maunium.net/go/mautrix v0.31.0
 )
 
 require (

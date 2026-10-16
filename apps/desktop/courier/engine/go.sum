@@ -21,3 +21,5 @@ golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba/go.mod h1:50RgIsmK7OwqzTTeqc
 golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
 golang.org/x/sys v0.48.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=
+maunium.net/go/mautrix v0.31.0 h1:x6XNBSa0kOaBgcleI+ZBLkGvBdHIE0qdeY6TZ4wWUeI=
+maunium.net/go/mautrix v0.31.0/go.mod h1:vfPYtoGAjlTnIF+W8tl+rjX3yB4PEfqYR2sDXvQo4Co=
