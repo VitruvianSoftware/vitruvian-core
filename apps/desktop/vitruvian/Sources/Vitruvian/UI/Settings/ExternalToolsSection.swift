@@ -49,6 +49,10 @@ package struct ExternalToolRow: Identifiable, Equatable {
     /// "Update available", for a tool from the catalog with a newer version
     /// listed; nil otherwise.
     package let updateText: String?
+    /// What VoiceOver says for the row's Update button: the button and the
+    /// tool's name, so a list of them is not read as "Update" each time; nil
+    /// when the row has no Update button.
+    package let updateSpoken: String?
     /// False for a tool that is held back: its switch does nothing until
     /// the person updates it from its folder.
     package var canSwitch: Bool { status != .changed }
@@ -62,6 +66,7 @@ package struct ExternalToolRow: Identifiable, Equatable {
         id = listed.id
         updateText = updateAvailable ? strings.updateAvailable : nil
         name = listed.tool?.name.text(for: language.rawValue) ?? agreed.name
+        updateSpoken = updateAvailable ? ExtensionsPageContent.spoken(strings.updateNow, name: name) : nil
         byline = "\(listed.tool?.publisher ?? agreed.publisher) · \(listed.tool?.version ?? agreed.version)"
         let wanted = listed.tool?.manifest.tool.symbol ?? ExternalToolManifest.defaultSymbol
         symbol = hasSymbol(wanted) ? wanted : ExternalToolManifest.defaultSymbol
@@ -491,6 +496,33 @@ package enum ExtensionsPageContent {
         store.listed.filter { watch.update(for: $0) != nil }.count
     }
 
+    /// How a row's Install or Update button is drawn, while one tool at a
+    /// time is fetched from the catalog or added.
+    package enum InstallButton: Equatable, Sendable {
+        /// This row's tool is being fetched or added: a spinner in place of
+        /// the button, as the catalog's sheet drew it.
+        case progress
+        case enabled
+        /// Another tool is being fetched or added, or its result waits:
+        /// the button is there and does nothing until that is done.
+        case disabled
+    }
+
+    /// The button of the row for `id`. `fetching` is the tool being fetched
+    /// from the catalog, `waiting` is true while what a fetch came to waits
+    /// for the page, and `adding` holds the tools agreed to that are not
+    /// added yet.
+    package static func installButton(for id: ToolID, fetching: ToolID?, waiting: Bool,
+                                      adding: Set<ToolID>) -> InstallButton {
+        if fetching == id || adding.contains(id) { return .progress }
+        return fetching == nil && !waiting && adding.isEmpty ? .enabled : .disabled
+    }
+
+    /// What VoiceOver says for a row's button: its words, then whose it is.
+    package static func spoken(_ button: String, name: String) -> String {
+        button + ", " + name
+    }
+
     /// The line the Features page shows for what the person added.
     @MainActor package static func summary(store: ExternalToolStore, language: AppLanguage) -> ExtensionsPageSupport.Summary {
         ExtensionsPageSupport.summary(installed: store.listed.count, strings: FeatureStrings.externalTools(language))
@@ -513,7 +545,8 @@ package struct ExtensionsSummaryLine: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
-            Text(summary.text)
+            // VoiceOver reads the line once, as the link's label.
+            Text(summary.text).accessibilityHidden(true)
             Text(verbatim: "·").foregroundStyle(.tertiary).accessibilityHidden(true)
             Button(summary.link) { SettingsRouter.shared.request(summary.destination) }
                 .buttonStyle(.link)
@@ -547,9 +580,10 @@ package struct ExtensionsSettings: View {
     @ObservedObject private var registry = ToolRegistry.shared
     /// The catalog, and which added tool has a newer version listed.
     @ObservedObject private var watch = CatalogueWatch.shared
+    /// The tool from the catalog being fetched, and what it came to. Kept
+    /// outside the page, so leaving it loses neither.
+    @ObservedObject private var installs = CatalogueInstalls.shared
     @State private var asked: Asked?
-    /// The tool from the catalog being fetched.
-    @State private var installing: ToolID?
     /// The tools the person agreed to that are not added yet: an add waits
     /// for whatever the app hands the tool to be ready, never on the main
     /// thread (`ExternalToolStore.add(_:then:)`).
@@ -593,6 +627,7 @@ package struct ExtensionsSettings: View {
                                                     setOn: { store.setOn(row.id, $0) },
                                                     startAgain: { store.startAgain(row.id) },
                                                     update: updateAction(for: row.id),
+                                                    updateButton: button(for: row.id),
                                                     open: { shown = Shown(tool: row.id) })
                                 if row.id != rows.last?.id {
                                     Divider().padding(.leading, 8)
@@ -614,7 +649,7 @@ package struct ExtensionsSettings: View {
                         VStack(spacing: 0) {
                             ForEach(entries) { row in
                                 CatalogueRowView(row: row, usesTitle: catalogue.usesTitle,
-                                                 installing: installing ?? adding.first,
+                                                 button: button(for: row.id),
                                                  install: { install($0) })
                                 if row.id != entries.last?.id { Divider().padding(.leading, 8) }
                             }
@@ -627,6 +662,10 @@ package struct ExtensionsSettings: View {
         // The list is asked for each time the page opens, as the catalog's
         // sheet did when it opened, with the ETag of the one kept.
         .onAppear { watch.refresh() }
+        // What a fetch came to is shown when it arrives, or when the page
+        // is next opened if the person had left it, once no other sheet is up.
+        .onChange(of: installs.waiting, initial: true) { _, _ in showWaiting() }
+        .onChange(of: asked == nil && shown == nil) { _, _ in showWaiting() }
         .sheet(item: $asked) { asked in
             ToolAgreementSheet(
                 offer: asked.offer,
@@ -690,6 +729,27 @@ package struct ExtensionsSettings: View {
                 } message: { kept in
                     Text(kept.text)
                 }
+        }
+    }
+
+    private func button(for id: ToolID) -> ExtensionsPageContent.InstallButton {
+        ExtensionsPageContent.installButton(for: id, fetching: installs.fetching, waiting: installs.waiting != nil,
+                                            adding: adding)
+    }
+
+    /// Shows what a fetch from the catalog came to: the agreement sheet, or
+    /// why there is none. It waits while another sheet is up.
+    private func showWaiting() {
+        guard asked == nil, shown == nil, installs.waiting != nil else { return }
+        switch installs.take() {
+        case .ready(let offer)?:
+            asked = Asked(offer: offer)
+        case .refused(let refused, let entry)?:
+            refusal = ToolRefusalMessage(catalogue: refused,
+                                         name: entry.name.text(for: l10n.language.rawValue) ?? entry.id.rawValue,
+                                         language: l10n.language, strings: text)
+        case nil:
+            break
         }
     }
 
@@ -769,23 +829,12 @@ package struct ExtensionsSettings: View {
         refusal = ToolRefusalMessage(refused, language: l10n.language, strings: text, installing: name)
     }
 
-    /// Fetches a tool from the catalog, then shows the agreement sheet for
-    /// it, as for a folder. Nothing is installed here.
+    /// Fetches a tool from the catalog. What it comes to waits in
+    /// `CatalogueInstalls` until the page shows it (`showWaiting`): the
+    /// agreement sheet, as for a folder. Nothing is installed here.
     private func install(_ entry: CatalogueEntry) {
-        guard installing == nil, adding.isEmpty else { return }
-        installing = entry.id
-        installer.prepare(entry) { result in
-            installing = nil
-            switch result {
-            case .success(let offer):
-                // One sheet at a time: the detail may still be closing.
-                DispatchQueue.main.async { asked = Asked(offer: offer) }
-            case .failure(let refused):
-                refusal = ToolRefusalMessage(catalogue: refused,
-                                             name: entry.name.text(for: l10n.language.rawValue) ?? entry.id.rawValue,
-                                             language: l10n.language, strings: text)
-            }
-        }
+        guard adding.isEmpty else { return }
+        installs.start(entry)
     }
 }
 
@@ -800,6 +849,8 @@ private struct ExternalToolRowView: View {
     let startAgain: () -> Void
     /// Installs the newer version the catalog lists; nil when it lists none.
     let update: (() -> Void)?
+    /// How the Update button is drawn while a tool is fetched or added.
+    let updateButton: ExtensionsPageContent.InstallButton
     let open: () -> Void
     @State private var hovering = false
 
@@ -848,7 +899,14 @@ private struct ExternalToolRowView: View {
                 Button(text.startAgain, action: startAgain).controlSize(.small)
             }
             if let update, row.updateText != nil {
-                Button(text.updateNow, action: update).controlSize(.small)
+                if updateButton == .progress {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button(text.updateNow, action: update)
+                        .controlSize(.small)
+                        .disabled(updateButton == .disabled)
+                        .accessibilityLabel(row.updateSpoken ?? text.updateNow)
+                }
             }
             Toggle(row.name, isOn: Binding(get: { row.isOn }, set: setOn))
                 .labelsHidden()

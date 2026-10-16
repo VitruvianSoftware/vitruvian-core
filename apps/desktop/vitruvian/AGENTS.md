@@ -652,6 +652,12 @@ of it but the protocol.
     `ExternalToolStore.offer`. A refusal at any step deletes what it wrote.
     It never makes a `ToolConsent`: the agreement sheet does, as for a
     folder, and `only_the_agreement_sheet_consents` holds it.
+  - The Extensions page starts an install or update through
+    `CatalogueInstalls.shared`, not its own state: one at a time, and what
+    it comes to waits there until the page shows it, so leaving the page
+    mid-download loses nothing. While one is fetched its row draws a
+    spinner and every other Install or Update is disabled
+    (`ExtensionsPageContent.installButton`).
   - The download runs off the main thread; the store is touched only on it.
     Tests hand in a table for the network (`FakeCatalogueFetcher`) and run
     the steps in order on the main thread; the zip is unpacked by the real

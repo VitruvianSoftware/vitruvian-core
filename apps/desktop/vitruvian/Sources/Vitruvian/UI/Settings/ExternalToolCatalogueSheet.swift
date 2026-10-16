@@ -33,6 +33,8 @@ package struct CatalogueRow: Identifiable, Equatable {
     package let uses: [String]
     package let action: Action
     package let actionText: String
+    /// What VoiceOver says for the button: its words, then the tool's name.
+    package var actionSpoken: String { ExtensionsPageContent.spoken(actionText, name: name) }
 }
 
 /// Everything the catalog says, as plain values: on the Extensions page
@@ -128,8 +130,8 @@ extension ToolRefusalMessage {
 struct CatalogueRowView: View {
     let row: CatalogueRow
     let usesTitle: String
-    /// The tool being fetched, if any. Every button waits while one is.
-    let installing: ToolID?
+    /// How the button is drawn while a tool is fetched or added.
+    let button: ExtensionsPageContent.InstallButton
     let install: (CatalogueEntry) -> Void
 
     var body: some View {
@@ -165,14 +167,15 @@ struct CatalogueRowView: View {
                 }
             }
             Spacer(minLength: 8)
-            if installing == row.id {
+            if button == .progress {
                 ProgressView().controlSize(.small)
             } else if row.action == .installed {
                 Text(row.actionText).font(.caption).foregroundStyle(.secondary)
             } else {
                 Button(row.actionText) { install(row.entry) }
                     .controlSize(.small)
-                    .disabled(installing != nil)
+                    .disabled(button == .disabled)
+                    .accessibilityLabel(row.actionSpoken)
             }
         }
         .padding(.vertical, 8)
