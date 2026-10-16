@@ -60,6 +60,57 @@ nonisolated enum RecorderExportRenderingTests {
 
     private enum FixtureFailure: Error { case writeFailed }
 
+    /// What an exporter last said about why it failed, kept for a message.
+    private final class FailureNote: Sendable {
+        private let note = OSAllocatedUnfairLock(initialState: "no reason reported")
+
+        func record(_ failure: RecorderExporter.Failure, _ error: Error?) {
+            let text: String
+            if let error = error as NSError? {
+                let underlying = (error.userInfo[NSUnderlyingErrorKey] as? NSError)
+                    .map { ", underlying \($0.domain) \($0.code)" } ?? ""
+                text = "\(failure): \(error.domain) \(error.code)\(underlying) — \(error.localizedDescription)"
+            } else {
+                text = "\(failure) with no AVFoundation error"
+            }
+            note.withLock { $0 = text }
+        }
+
+        var text: String { note.withLock { $0 } }
+    }
+
+    /// A recording whose frames cannot be decoded fails to read, and the
+    /// exporter says why: `.readFailed` alone left a CI failure unexplained.
+    private static func unreadable(_ suite: TestSuite, folder: URL) async throws {
+        let damagedFolder = folder.appendingPathComponent("unreadable")
+        try FileManager.default.createDirectory(at: damagedFolder, withIntermediateDirectories: true)
+        let take = RecorderTakeStore.Take(id: UUID(), folder: damagedFolder)
+        try await writePhaseVideo(to: take.videoURL)
+        // Point every chunk offset in the index past the end of the file. The
+        // file still opens and reports its track, but no frame can be read.
+        // (Garbage written over the frames themselves decodes "fine".)
+        var bytes = try Data(contentsOf: take.videoURL)
+        guard let stco = bytes.range(of: Data("stco".utf8)) else { throw FixtureFailure.writeFailed }
+        let countAt = stco.upperBound + 4
+        let count = bytes[countAt..<countAt + 4].reduce(0) { $0 << 8 | Int($1) }
+        guard count > 0 else { throw FixtureFailure.writeFailed }
+        for entry in 0..<count {
+            let at = countAt + 4 + entry * 4
+            bytes.replaceSubrange(at..<at + 4, with: [0x7F, 0xFF, 0xFF, 0x00])
+        }
+        try bytes.write(to: take.videoURL)
+
+        let note = FailureNote()
+        let exporter = RecorderExporter(reportFailure: { note.record($0, $1) })
+        let destination = folder.appendingPathComponent("unreadable.mp4")
+        let failure = await exporter.export(take: take, document: RecorderEditDocument(), output: .video,
+                                            to: destination, progress: { _ in })
+        suite.expect(failure == .readFailed,
+                     "a recording that cannot be decoded fails to read, found \(String(describing: failure))")
+        suite.expect(note.text.hasPrefix("readFailed: "),
+                     "a read failure reports AVFoundation's reason, found \(note.text)")
+    }
+
     private static func probe(_ suite: TestSuite) async throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("recorder-export-test-\(UUID().uuidString)")
@@ -102,6 +153,8 @@ nonisolated enum RecorderExportRenderingTests {
         try await audioAndGIF(suite, take: take)
         enter("exporting an uncomposable edit")
         await uncomposable(suite, take: take, folder: folder)
+        enter("exporting a recording whose frames cannot be decoded")
+        try await unreadable(suite, folder: folder)
         // The last case ends protection in the removed interval. The frame
         // held immediately before the splice must retain the pre-cut blur.
         let cases: [(cuts: Bool, blurStart: Double, blurEnd: Double, protectedTime: Double, clearTime: Double)] = [
@@ -221,10 +274,13 @@ nonisolated enum RecorderExportRenderingTests {
             doc.cuts = [.init(start: 0.2, end: 0.25)]
             let output = folder.appendingPathComponent("audio-\(speed).mp4")
             enter("exporting audio at \(speed)x")
-            let failure = await RecorderExporter().export(take: audioTake, document: doc, output: .video, to: output, progress: { _ in })
-            // Naming the failure, read or write, says where to look if this
-            // fails again: it has failed once in about sixty CI runs.
-            suite.expect(failure == nil, "audio export succeeds at \(speed)x, found \(String(describing: failure))")
+            let note = FailureNote()
+            let exporter = RecorderExporter(reportFailure: { note.record($0, $1) })
+            let failure = await exporter.export(take: audioTake, document: doc, output: .video, to: output, progress: { _ in })
+            // This has failed about once in sixty CI runs, on virtual Macs
+            // only, with .readFailed, and never in 60 local runs. The note
+            // carries AVFoundation's own error, which says why next time.
+            suite.expect(failure == nil, "audio export succeeds at \(speed)x, found \(String(describing: failure)) (\(note.text))")
             guard failure == nil else { continue }
             enter("reading the audio export at \(speed)x")
             let samples = try await readAudio(output)
