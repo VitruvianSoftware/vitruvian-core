@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "login.wait",
+    "params": {
+      "login_id": "00000000000000000000000000000000"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "error": {
+      "code": -32015,
+      "message": "no sign-in in progress with that ID"
+    }
+  }
+}

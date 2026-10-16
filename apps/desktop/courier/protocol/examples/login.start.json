@@ -1,0 +1,25 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "login.start",
+    "params": {
+      "network": "signal",
+      "flow": "qr"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "result": {
+      "login_id": "8e1f4a7c2b9d6e3f0a5c8b1d4e7f2a9c",
+      "step_id": "fi.mau.signal.qr",
+      "type": "display_and_wait",
+      "instructions": "Scan the QR code with the app on your phone.",
+      "display": {
+        "kind": "qr",
+        "data": "sgnl://linkdevice?uuid=example"
+      }
+    }
+  }
+}

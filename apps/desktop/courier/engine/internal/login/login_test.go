@@ -6,6 +6,7 @@ package login
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -530,9 +531,11 @@ func TestACallThatDoesNotFitTheStepIsRefusedAndLeavesTheLoginOpen(t *testing.T) 
 func TestSessionsAreIndependent(t *testing.T) {
 	w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"))
 	a := w.start(t).LoginID
+	// One sign-in per network at a time, so the second is on another network.
 	other := &fakenet.ScriptedLogin{Steps: []*bridgev2.LoginStep{displayStep("qr", bridgev2.LoginDisplayTypeQR, "y")}}
-	w.n.Script = other
-	b := w.start(t).LoginID
+	step, err := w.d.StartProcess(context.Background(), "other", other)
+	require.NoError(t, err)
+	b := step.LoginID
 	require.NotEqual(t, a, b)
 	w.d.Cancel(a)
 	require.Equal(t, 1, w.script.Cancelled())
@@ -568,4 +571,94 @@ func TestCallsOnOneSessionRunOneAtATime(t *testing.T) {
 	close(w.script.Hold)
 	wg.Wait()
 	require.ElementsMatch(t, []string{"qr2", "fi.mau.fake.complete"}, kinds, "each Wait got its own step; none was lost or doubled")
+}
+
+// A second sign-in on a network that has one in progress is refused, so a double-click can't pair two devices.
+// The one in progress is left alone, and once it is over, by any way out, the network can be signed in to again.
+func TestOneSignInPerNetworkAtATime(t *testing.T) {
+	ctx := context.Background()
+	qr := func() []*bridgev2.LoginStep {
+		return []*bridgev2.LoginStep{displayStep("qr", bridgev2.LoginDisplayTypeQR, "x")}
+	}
+
+	t.Run("refused while one is live, free again after Cancel", func(t *testing.T) {
+		w := newWorld(t, false, qr()...)
+		first := w.start(t).LoginID
+		second := &fakenet.ScriptedLogin{Steps: qr()}
+		w.n.Script = second
+		_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		require.ErrorIs(t, err, ErrLoginInProgress)
+		require.Zero(t, w.script.Cancelled(), "the sign-in in progress is not touched")
+		_, err = w.d.Wait(ctx, first)
+		require.NotErrorIs(t, err, ErrUnknownLogin, "the first sign-in is still there")
+
+		w.d.Cancel(first)
+		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		require.NoError(t, err, "cancelling frees the network")
+	})
+
+	t.Run("free again after it completes", func(t *testing.T) {
+		w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"), complete())
+		id := w.start(t).LoginID
+		step, err := w.d.Wait(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, StepComplete, step.Type)
+		w.n.Script = &fakenet.ScriptedLogin{Steps: qr()}
+		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		require.NoError(t, err)
+	})
+
+	t.Run("free again after it fails", func(t *testing.T) {
+		w := newWorld(t, false, qr()...) // no step left for the Wait: the connector fails
+		id := w.start(t).LoginID
+		_, err := w.d.Wait(ctx, id)
+		require.Error(t, err)
+		w.n.Script = &fakenet.ScriptedLogin{Steps: qr()}
+		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		require.NoError(t, err)
+	})
+
+	t.Run("free again after it times out", func(t *testing.T) {
+		w := newWorld(t, false, qr()...)
+		w.d.IdleTimeout = 50 * time.Millisecond
+		w.start(t)
+		require.Eventually(t, func() bool { return w.script.Cancelled() == 1 }, 5*time.Second, 10*time.Millisecond)
+		w.n.Script = &fakenet.ScriptedLogin{Steps: qr()}
+		_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		require.NoError(t, err)
+	})
+
+	t.Run("of many at once, one starts", func(t *testing.T) {
+		w := newWorld(t, false, qr()...)
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		started, refused := 0, 0
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+				mu.Lock()
+				defer mu.Unlock()
+				switch {
+				case err == nil:
+					started++
+				case errors.Is(err, ErrLoginInProgress):
+					refused++
+				default:
+					t.Errorf("unexpected error: %v", err)
+				}
+			}()
+		}
+		wg.Wait()
+		require.Equal(t, 1, started)
+		require.Equal(t, 7, refused)
+	})
+
+	t.Run("a sign-in on another network does not count", func(t *testing.T) {
+		w := newWorld(t, false, qr()...)
+		_, err := w.d.StartProcess(ctx, "other", &fakenet.ScriptedLogin{Steps: qr()})
+		require.NoError(t, err)
+		w.start(t)
+	})
 }

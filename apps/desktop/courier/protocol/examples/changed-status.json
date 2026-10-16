@@ -1,0 +1,11 @@
+{
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "changed",
+    "params": {
+      "kind": "status",
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "event_id": "$c0ffee00112233445566778899aabbcc"
+    }
+  }
+}

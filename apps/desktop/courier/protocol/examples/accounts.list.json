@@ -1,0 +1,42 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "accounts.list"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "accounts": [
+        {
+          "network": "whatsapp",
+          "display_name": "WhatsApp",
+          "flows": ["qr", "phone"],
+          "state": "CONNECTED",
+          "error": "",
+          "remote_name": "Test Account",
+          "not_started": ""
+        },
+        {
+          "network": "signal",
+          "display_name": "Signal",
+          "flows": ["qr"],
+          "state": "UNCONFIGURED",
+          "error": "",
+          "remote_name": "",
+          "not_started": ""
+        },
+        {
+          "network": "telegram",
+          "display_name": "Telegram",
+          "flows": ["qr", "phone"],
+          "state": "NOT_STARTED",
+          "error": "",
+          "remote_name": "",
+          "not_started": "Telegram needs an api_id and api_hash"
+        }
+      ]
+    }
+  }
+}

@@ -227,6 +227,73 @@ func TestUnreadSubscriberDoesNotBlockWriters(t *testing.T) {
 	}
 }
 
+// A subscriber that falls behind loses changes, but it is told: the next change it can take comes after one
+// "resync", however many were dropped, and a subscriber that kept up never sees one.
+func TestDroppedChangesAreFollowedByOneResync(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	slow, cancelSlow := s.Subscribe()
+	defer cancelSlow()
+	fast, cancelFast := s.Subscribe()
+	defer cancelFast()
+	fastGot := make(chan []Change, 1)
+	go func() {
+		var got []Change
+		for c := range fast {
+			got = append(got, c)
+			if c.RoomID == "last" {
+				break
+			}
+		}
+		fastGot <- got
+	}()
+
+	const burst = SubscriberBuffer + 50 // more than the buffer holds, while slow reads nothing
+	for i := 0; i < burst; i++ {
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	for i := 0; i < SubscriberBuffer; i++ { // what fitted is delivered, in order, with no resync among it
+		c := nextChange(t, slow)
+		require.Equal(t, Change{Kind: "bridge", RoomID: fmt.Sprintf("n%d", i)}, c)
+	}
+	select {
+	case c := <-slow:
+		t.Fatalf("the dropped changes must not be delivered, got %+v", c)
+	default:
+	}
+
+	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "resync"}, nextChange(t, slow), "the first delivery after a drop is a resync")
+	require.Equal(t, Change{Kind: "bridge", RoomID: "after"}, nextChange(t, slow))
+
+	require.NoError(t, s.SetBridgeState(ctx, "last", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "bridge", RoomID: "last"}, nextChange(t, slow), "one resync, not one per drop")
+
+	got := <-fastGot
+	require.Len(t, got, burst+2, "a subscriber that keeps up loses nothing")
+	for _, c := range got {
+		require.NotEqual(t, "resync", c.Kind, "a subscriber that keeps up is never told to resync")
+	}
+}
+
+// A subscriber whose buffer has room for the change but not for the resync before it keeps dropping, so the
+// resync is never lost behind a change it should have come before.
+func TestResyncWaitsForRoomForBoth(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	for i := 0; i <= SubscriberBuffer; i++ { // one more than fits: dropped
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	<-ch // one slot free
+	require.NoError(t, s.SetBridgeState(ctx, "one-slot", json.RawMessage(`{}`)))
+	for i := 1; i < SubscriberBuffer; i++ {
+		require.Equal(t, fmt.Sprintf("n%d", i), nextChange(t, ch).RoomID)
+	}
+	require.NoError(t, s.SetBridgeState(ctx, "room-for-both", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "resync"}, nextChange(t, ch))
+	require.Equal(t, "room-for-both", nextChange(t, ch).RoomID)
+}
+
 func TestProfileRoundTripAndPartialUpdate(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	_, _, ok, err := s.GetProfile(ctx, "@g:courier.local")

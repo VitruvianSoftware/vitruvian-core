@@ -36,6 +36,9 @@ var (
 	ErrBadValue = errors.New("that isn't accepted")
 	// ErrNotRunning means the network didn't start (Telegram without its credentials, say), so it can't be linked.
 	ErrNotRunning = errors.New("this network isn't running")
+	// ErrLoginInProgress means the network already has a sign-in in progress. Only one runs per network at a time,
+	// so a double-click can't pair two devices; cancelling, finishing or timing out frees the network.
+	ErrLoginInProgress = errors.New("a sign-in is already in progress for this network")
 )
 
 // DefaultIdleTimeout is how long a sign-in may sit with nobody touching it before it is cancelled.
@@ -55,6 +58,7 @@ type Driver struct {
 
 	mu       sync.Mutex
 	sessions map[string]*session
+	starting map[string]bool // networks a Start is setting up a sign-in for; guarded by mu
 }
 
 // NewDriver makes a driver that starts sign-ins on e's networks. flows says which login flows a network offers,
@@ -86,7 +90,8 @@ func (r refusal) Unwrap() error { return r.error }
 
 // Start begins signing in to a network with one of its login flows ("" means its first) and returns the first
 // step. A flow the network doesn't offer is ErrBadValue; a network that isn't running is ErrNotRunning; a
-// network that already has an account that works is ErrAlreadyLinked.
+// network with a sign-in already in progress is ErrLoginInProgress; a network that already has an account that
+// works is ErrAlreadyLinked.
 func (d *Driver) Start(ctx context.Context, network, flow string) (Step, error) {
 	if d.flows == nil || d.eng == nil {
 		return Step{}, errors.New("this driver has no networks to sign in to")
@@ -105,6 +110,10 @@ func (d *Driver) Start(ctx context.Context, network, flow string) (Step, error) 
 	if !ok {
 		return Step{}, fmt.Errorf("%w: %s", ErrNotRunning, network)
 	}
+	if !d.reserve(network) {
+		return Step{}, fmt.Errorf("%w: %s", ErrLoginInProgress, network)
+	}
+	defer d.unreserve(network) // by then the session is registered, or there is none
 	me, err := h.Me(ctx)
 	if err != nil {
 		return Step{}, err
@@ -121,6 +130,32 @@ func (d *Driver) Start(ctx context.Context, network, flow string) (Step, error) 
 		return Step{}, fmt.Errorf("start %s login (%s): %w", network, flow, err)
 	}
 	return d.begin(ctx, network, proc, override)
+}
+
+// reserve claims a network for one Start, unless a sign-in for it is live or another Start holds it. It is one
+// step under d.mu, so of two Starts at once only one gets through.
+func (d *Driver) reserve(network string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.starting[network] {
+		return false
+	}
+	for _, s := range d.sessions {
+		if s.network == network {
+			return false
+		}
+	}
+	if d.starting == nil {
+		d.starting = map[string]bool{}
+	}
+	d.starting[network] = true
+	return true
+}
+
+func (d *Driver) unreserve(network string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.starting, network)
 }
 
 // mayRelink reports whether the network's account is one the person is allowed to replace: it has signed out or

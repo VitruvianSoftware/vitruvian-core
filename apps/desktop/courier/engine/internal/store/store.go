@@ -42,12 +42,19 @@ type Change struct {
 	Seq                   int64
 }
 
+// ChangeResync is the Kind of the change a subscriber is given after changes for it were dropped: it has missed
+// something, so it must re-read everything it shows. It carries no room or event.
+const ChangeResync = "resync"
+
 type Store struct {
 	db   *dbutil.Database
 	seq  int64
 	mu   sync.Mutex // guards seq and subs
-	subs map[chan Change]struct{}
+	subs map[chan Change]*subscriber
 }
+
+// subscriber is one change feed. dropped is set when a change could not be delivered to it; guarded by Store.mu.
+type subscriber struct{ dropped bool }
 
 func Open(path string) (*Store, error) {
 	db, err := sqlite.Open(path)
@@ -62,7 +69,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Store{db: db, subs: map[chan Change]struct{}{}}
+	s := &Store{db: db, subs: map[chan Change]*subscriber{}}
 	if err = db.QueryRow(context.Background(), "SELECT COALESCE(MAX(seq),0) FROM events").Scan(&s.seq); err != nil {
 		db.Close()
 		return nil, err
@@ -72,22 +79,38 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// publish hands c to every subscriber without ever waiting for one. A subscriber whose buffer is full loses c and
+// is marked; the next change that reaches it is preceded by one ChangeResync, however many it lost, so it never
+// goes stale without knowing. The resync and that change go in together: until the buffer has room for both, the
+// subscriber keeps dropping. Only publish sends on the channels, under s.mu, so len(ch) cannot grow under it.
 func (s *Store) publish(c Change) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for ch := range s.subs {
+	for ch, sub := range s.subs {
+		if sub.dropped {
+			if cap(ch)-len(ch) < 2 {
+				continue // still no room for the resync and the change after it
+			}
+			ch <- Change{Kind: ChangeResync}
+			sub.dropped = false
+		}
 		select {
 		case ch <- c:
-		default: // slow subscriber: drop; it re-reads state on its next query
+		default:
+			sub.dropped = true
 		}
 	}
 }
 
-// Subscribe returns a buffered change feed and a cancel function.
+// SubscriberBuffer is how many changes a subscriber's feed holds before changes for it are dropped.
+const SubscriberBuffer = 256
+
+// Subscribe returns a buffered change feed and a cancel function. A subscriber that falls more than
+// SubscriberBuffer changes behind loses changes, and is then given a ChangeResync before the next one it gets.
 func (s *Store) Subscribe() (<-chan Change, func()) {
-	ch := make(chan Change, 256)
+	ch := make(chan Change, SubscriberBuffer)
 	s.mu.Lock()
-	s.subs[ch] = struct{}{}
+	s.subs[ch] = &subscriber{}
 	s.mu.Unlock()
 	return ch, func() {
 		s.mu.Lock()

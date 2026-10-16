@@ -1,0 +1,44 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "login.start",
+    "params": {
+      "network": "telegram",
+      "flow": "phone"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "result": {
+      "login_id": "8e1f4a7c2b9d6e3f0a5c8b1d4e7f2a9c",
+      "step_id": "fi.mau.telegram.phone",
+      "type": "user_input",
+      "instructions": "Enter your details.",
+      "fields": [
+        {
+          "id": "username",
+          "name": "Username",
+          "description": "The name you sign in with",
+          "type": "username"
+        },
+        {
+          "id": "code",
+          "name": "Code",
+          "description": "The code the app shows",
+          "type": "2fa_code",
+          "pattern": "^[0-9]{6}$"
+        },
+        {
+          "id": "server",
+          "name": "Server",
+          "description": "Which server to use",
+          "type": "select",
+          "options": ["main", "test"],
+          "default_value": "main"
+        }
+      ]
+    }
+  }
+}
