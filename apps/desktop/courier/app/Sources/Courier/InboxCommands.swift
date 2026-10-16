@@ -8,12 +8,13 @@ import SwiftUI
 /// are in MainWindow, since a menu item has one key.)
 struct InboxCommands: Commands {
     @ObservedObject var inbox: InboxModel
+    @ObservedObject var login: LoginFlowModel
 
     var body: some Commands {
         // The first-run window has its own button; once a network is linked, this is the way to add another.
         CommandGroup(after: .newItem) {
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
-                .disabled(inbox.accounts.isEmpty)
+                .disabled(inbox.accounts.isEmpty || login.screen != .closed)
         }
         CommandMenu(String(localized: "Chat")) {
             Button(String(localized: "Next Chat"), action: inbox.selectNext)

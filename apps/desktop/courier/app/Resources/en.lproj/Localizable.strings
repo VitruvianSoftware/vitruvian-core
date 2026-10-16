@@ -368,8 +368,8 @@
 /* The end of a sign-in that worked. The argument is what the network calls the account (a name, a phone number or an email address). */
 "Linked as %@" = "Linked as %@";
 
-/* The warning before linking Google Messages, which allows only one web session at a time (spec §5). */
-"Google Messages allows one web session. Linking here disconnects it in Beeper." = "Google Messages allows one web session. Linking here disconnects it in Beeper.";
+/* The warning before linking Google Messages, which allows only one web session at a time (spec §5). No other app is named. */
+"Google Messages allows one web session at a time. Linking it here signs out any other place it’s open on the web, including other messaging apps." = "Google Messages allows one web session at a time. Linking it here signs out any other place it’s open on the web, including other messaging apps.";
 
 /* While the engine is working on a sign-in. The argument is the network's name. */
 "Waiting for %@…" = "Waiting for %@…";
@@ -448,6 +448,9 @@
 
 /* The sign-in window's accessibility label for the page's address. The argument is the host name, such as slack.com. */
 "Page address: %@" = "Page address: %@";
+
+/* The sign-in window's address bar when the page is not an https page (no lock is shown). */
+"Not a secure page" = "Not a secure page";
 
 /* In the sign-in window, after I've signed in, when a value the network needs is not on the page yet. */
 "Courier hasn’t found everything it needs yet. Finish signing in, then try again." = "Courier hasn’t found everything it needs yet. Finish signing in, then try again.";

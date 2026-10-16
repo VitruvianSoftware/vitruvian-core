@@ -27,13 +27,20 @@ struct QRCodeView: View {
         }
     }
 
+    /// Drawn codes by their data: a redraw of the same code draws nothing again.
+    private static let cache = NSCache<NSString, NSImage>()
+    private static let context = CIContext()
+
     /// The code at one point per module, scaled up without smoothing by the view.
     static func image(for data: String) -> NSImage? {
+        if let cached = cache.object(forKey: data as NSString) { return cached }
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(data.utf8)
         filter.correctionLevel = "M"
         guard let output = filter.outputImage,
-              let cgImage = CIContext().createCGImage(output, from: output.extent) else { return nil }
-        return NSImage(cgImage: cgImage, size: NSSize(width: output.extent.width, height: output.extent.height))
+              let cgImage = context.createCGImage(output, from: output.extent) else { return nil }
+        let image = NSImage(cgImage: cgImage, size: NSSize(width: output.extent.width, height: output.extent.height))
+        cache.setObject(image, forKey: data as NSString)
+        return image
     }
 }

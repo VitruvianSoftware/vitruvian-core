@@ -25,7 +25,7 @@ struct AddNetworkView: View {
             picker
         case let .googleWarning(network, _):
             framed(title: String(localized: "Link \(login.displayName(network))")) {
-                Label(String(localized: "Google Messages allows one web session. Linking here disconnects it in Beeper."),
+                Label(String(localized: "Google Messages allows one web session at a time. Linking it here signs out any other place it’s open on the web, including other messaging apps."),
                       systemImage: "exclamationmark.triangle")
                     .fixedSize(horizontal: false, vertical: true)
             } buttons: {

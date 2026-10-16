@@ -309,6 +309,39 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertFalse(late.caller.calls.contains(.wait(loginID: "L1")))
     }
 
+    func testTypedValuesAreClearedWhenTheSignInEnds() async {
+        let harness = make()
+        harness.caller.answer("start", step(.userInput, fields: [inputField("password", type: .password)]))
+        harness.model.begin(network: "telegram", flow: "phone")
+        await harness.model.settle()
+        harness.model.inputValues["password"] = "made-up-secret"
+        harness.model.close()
+        XCTAssertEqual(harness.model.inputValues, [:], "a closed sign-in keeps nothing typed")
+
+        harness.caller.answer("start", step(.userInput, fields: [inputField("password", type: .password)]))
+        harness.caller.answer("submit", step(.complete, remoteName: "Made-up"))
+        harness.model.begin(network: "telegram", flow: "phone")
+        await harness.model.settle()
+        harness.model.inputValues["password"] = "made-up-secret"
+        harness.model.submitInput()
+        await harness.model.settle()
+        XCTAssertEqual(harness.model.screen, .linked(network: "telegram", remoteName: "Made-up"))
+        XCTAssertEqual(harness.model.inputValues, [:], "nor does a finished one")
+    }
+
+    func testASignInThatCompletesAfterCancelStillReloadsAccounts() async {
+        let harness = make()
+        harness.caller.holdStart()
+        harness.model.begin(network: "whatsapp")
+        try? await waitUntil { harness.caller.calls.contains(.start(network: "whatsapp", flow: "qr")) }
+        harness.model.close()
+        harness.caller.releaseStart(step(.complete, remoteName: "Made-up"))
+        await harness.model.settle()
+        XCTAssertEqual(harness.model.screen, .closed, "the person walked away; nothing reopens")
+        XCTAssertEqual(harness.counts.reloads, 1, "but the account it linked shows")
+        XCTAssertFalse(harness.caller.calls.contains(.cancel(loginID: "L1")), "a finished sign-in has nothing to cancel")
+    }
+
     func testStartErrorsSayWhatHappened() async {
         let harness = make()
         harness.caller.fail("start", rpc(.loginInProgress))
@@ -434,16 +467,20 @@ final class ScriptedLoginCaller: LoginCalling, @unchecked Sendable {
     private func record(_ call: Call) { lock.withLock { _calls.append(call) } }
 
     func start(network: String, flow: String) async throws -> LoginStep {
-        record(.start(network: network, flow: flow))
         let hold = lock.withLock { () -> Bool in
             defer { holdingStart = false }
             return holdingStart
         }
         if hold {
+            // Held, then written down, under one lock: a test that sees the call can release it.
             return try await withCheckedThrowingContinuation { continuation in
-                lock.withLock { heldStart = continuation }
+                lock.withLock {
+                    heldStart = continuation
+                    _calls.append(.start(network: network, flow: flow))
+                }
             }
         }
+        record(.start(network: network, flow: flow))
         guard let answer = next("start") else { throw EngineError.badResponse }
         return try answer.get()
     }

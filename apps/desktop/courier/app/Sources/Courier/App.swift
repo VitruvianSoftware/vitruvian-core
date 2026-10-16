@@ -15,7 +15,7 @@ struct CourierApp: App {
         }
         .defaultSize(width: 960, height: 640)
         .commands {
-            InboxCommands(inbox: delegate.inbox)
+            InboxCommands(inbox: delegate.inbox, login: delegate.login)
             ConversationCommands(conversation: delegate.conversation)
         }
     }

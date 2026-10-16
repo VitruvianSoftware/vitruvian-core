@@ -46,18 +46,25 @@ final class SignInWindowPresenter {
 /// What the window's bar shows.
 @MainActor
 final class SignInWindowState: ObservableObject {
-    @Published var host = ""
+    /// Worked out from the page's address as it is now, every time it changes: never a host from before.
+    @Published var address = SignInPage.address(of: nil)
     @Published var notice: String?
 }
 
 /// The sign-in window: the step's page in a web view that keeps nothing (a non-persistent data store, so no
 /// cookie or storage outlives the window), and an "I've signed in" button.
 ///
+/// The page itself may only be https (SignInPage.allows), and the bar shows where it really is, with a lock only
+/// for https, so a page can't put a form of its own under another site's name.
+///
 /// It looks for the step's values after every page load and every second while it is open: the page's cookies,
-/// its local storage, and what the step's ExtractJS resolves to (run with callAsyncJavaScript, at most 15
-/// seconds a time). Once every required value is there and the address matches wait_for_url (if the step has
-/// one), it hands them over and closes. "I've signed in" hands over whatever is there if every required value
-/// is, address or not. Closing the window any other way cancels the sign-in.
+/// its local storage, and what the step's ExtractJS resolves to. Local storage and the script are read only on
+/// the step's own site (its host or a subdomain). The script runs once per page load, with callAsyncJavaScript:
+/// one run at a time, a new page load replacing it. Its answer is waited for 15 seconds; after that a press of
+/// "I've signed in" may run it again, and a late answer from the run still counts. Once every required value is
+/// there and the address matches wait_for_url (if the step has one), it hands them over and closes. "I've signed
+/// in" hands over whatever is there if every required value is, address or not. Closing the window any other way
+/// cancels the sign-in.
 @MainActor
 final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
     static let extractTimeout: TimeInterval = 15
@@ -76,9 +83,11 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
     private var timer: Timer?
     /// Handed over, cancelled or dismissed: nothing more is reported.
     private var finished = false
-    private var loaded = false
     private var checking = false
-    private var extracting = false
+    /// The script's current run, by number; nil when none is running or the last one ran past its time.
+    private var extractRun: Int?
+    private var extractRuns = 0
+    private var urlObservation: NSKeyValueObservation?
     private var extracted: [String: String] = [:]
     /// Local storage values seen, kept across pages (the page that has them may navigate on).
     private var storage: [String: String] = [:]
@@ -108,14 +117,18 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
         let content = SignInWindowContent(state: state, webView: webView, networkName: networkName,
                                           signedIn: { [weak self] in self?.signedInPressed() })
         window.contentView = NSHostingView(rootView: content)
+        // Every change of address, a redirect or a page's own history change included.
+        urlObservation = webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
+            MainActor.assumeIsolated { self?.state.address = SignInPage.address(of: webView.url) }
+        }
     }
 
     func show() {
         webView.load(URLRequest(url: page))
-        state.host = page.host ?? ""
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        self.timer?.invalidate()
         let timer = Timer(timeInterval: Self.checkInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.check(manual: false) }
         }
@@ -132,19 +145,23 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
     // MARK: - Looking for the values
 
     private func signedInPressed() {
+        // A run that went past its time may have missed what the page has now.
+        if extractRun == nil { runExtract() }
         Task { await check(manual: true) }
     }
+
+    /// Whether the page is on the step's own site now.
+    private var onStepSite: Bool { SignInPage.isOnStepSite(webView.url, step: page) }
 
     private func check(manual: Bool) async {
         guard !finished, manual || !checking else { return }
         checking = true
         defer { checking = false }
-        if loaded, !extracting, !(lastCollected?.isComplete ?? false) { runExtract() }
         let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
             .map { BrowserCookie(name: $0.name, domain: $0.domain, value: $0.value) }
         await readLocalStorage()
         guard !finished else { return }
-        state.host = webView.url?.host ?? state.host
+        state.address = SignInPage.address(of: webView.url)
         let collected = CookieCollector.collect(params, cookies: cookies, localStorage: storage, extracted: extracted)
         lastCollected = collected
         if CookieCollector.isReady(params, url: webView.url?.absoluteString, collected: collected)
@@ -163,24 +180,32 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
     }
 
     /// Runs the step's ExtractJS in the page's own world (it reads the page's state and may add to the page),
-    /// awaiting the promise it evaluates to, for at most 15 seconds; then it may run again.
+    /// on the step's own site only. This run replaces any earlier one, whose answer then no longer counts. After
+    /// 15 seconds the run stops holding its place, but its answer still counts if no run has replaced it.
     private func runExtract() {
-        guard let js = params.extractJS, !js.isEmpty else { return }
-        extracting = true
+        guard !finished, let js = params.extractJS, !js.isEmpty, onStepSite,
+              !(lastCollected?.isComplete ?? false) else { return }
+        extractRuns += 1
+        let run = extractRuns
+        extractRun = run
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.extractTimeout) { [weak self] in
+            if self?.extractRun == run { self?.extractRun = nil }
+        }
         Task {
-            let values = await evaluate(CookieCollector.extractScript(js), arguments: [:], in: .page,
-                                        timeout: Self.extractTimeout)
-            extracting = false
-            guard !finished, let values, !values.isEmpty else { return }
+            let values = await evaluate(CookieCollector.extractScript(js), arguments: [:], in: .page, timeout: nil)
+            if extractRun == run { extractRun = nil }
+            // Replaced by a later run (a new page): not this page's answer.
+            guard !finished, run == extractRuns, let values, !values.isEmpty else { return }
             extracted.merge(values) { _, new in new }
             await check(manual: false)
         }
     }
 
-    /// Reads the step's local storage keys, in a world of Courier's own so the page can't see or change it.
+    /// Reads the step's local storage keys, on the step's own site only, in a world of Courier's own so the
+    /// page can't see or change it.
     private func readLocalStorage() async {
         let keys = CookieCollector.localStorageKeys(params)
-        guard !keys.isEmpty else { return }
+        guard !keys.isEmpty, onStepSite else { return }
         let body = """
             const out = {};
             for (const key of keys) {
@@ -194,9 +219,10 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
         storage.merge(values) { _, new in new }
     }
 
-    /// The string values of the object a function body returns, or nil if it failed or ran past `timeout`.
+    /// The string values of the object a function body returns, or nil if it failed or ran past `timeout` (nil:
+    /// no limit; the answer comes, or WebKit fails the call when the page goes away).
     private func evaluate(_ body: String, arguments: [String: Any], in world: WKContentWorld,
-                          timeout: TimeInterval) async -> [String: String]? {
+                          timeout: TimeInterval?) async -> [String: String]? {
         await withCheckedContinuation { (continuation: CheckedContinuation<[String: String]?, Never>) in
             let answered = Flag()
             webView.callAsyncJavaScript(body, arguments: arguments, in: nil, in: world) { result in
@@ -206,9 +232,11 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
                 case .failure: continuation.resume(returning: nil)
                 }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
-                guard answered.set() else { return }
-                continuation.resume(returning: nil)
+            if let timeout {
+                DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+                    guard answered.set() else { return }
+                    continuation.resume(returning: nil)
+                }
             }
         }
     }
@@ -218,6 +246,7 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
     func windowWillClose(_ notification: Notification) {
         timer?.invalidate()
         timer = nil
+        urlObservation = nil
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -230,17 +259,18 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-        // The web only: a link into a network's own app ("slack://…") would only fail here.
-        let scheme = action.request.url?.scheme?.lowercased() ?? ""
-        decisionHandler(["https", "http", "about", "blob", "data"].contains(scheme) ? .allow : .cancel)
+        // No target frame is a new window, which loads in this view: the page itself.
+        let mainFrame = action.targetFrame?.isMainFrame ?? true
+        decisionHandler(SignInPage.allows(action.request.url, mainFrame: mainFrame) ? .allow : .cancel)
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        state.host = webView.url?.host ?? state.host
+        state.address = SignInPage.address(of: webView.url)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        loaded = true
+        state.address = SignInPage.address(of: webView.url)
+        runExtract()
         Task { await check(manual: false) }
     }
 
@@ -275,15 +305,15 @@ private struct SignInWindowContent: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "lock.fill")
-                    .foregroundStyle(.secondary)
+                Image(systemName: state.address.isSecure ? "lock.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(state.address.isSecure ? Color.secondary : Color.orange)
                     .accessibilityHidden(true)
-                Text(state.host)
+                Text(state.address.text)
                     .font(.callout.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(state.address.isSecure ? Color.secondary : Color.orange)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .accessibilityLabel(String(localized: "Page address: \(state.host)"))
+                    .accessibilityLabel(String(localized: "Page address: \(state.address.text)"))
                 Spacer(minLength: 12)
                 Text(String(localized: "Sign in to \(networkName) here."))
                     .foregroundStyle(.secondary)

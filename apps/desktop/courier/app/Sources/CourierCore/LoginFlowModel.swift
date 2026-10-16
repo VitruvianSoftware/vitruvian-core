@@ -282,8 +282,13 @@ public final class LoginFlowModel: ObservableObject {
 
     private func apply(_ step: LoginStep, session: Int) {
         guard session == self.session, let network else {
-            // The person walked away while the engine was answering: leave nothing open.
-            if step.type != .complete { cancelOnEngine(step.loginID) }
+            // The person walked away while the engine was answering: leave nothing open. A sign-in that
+            // finished all the same linked an account, so the accounts are read again to show it.
+            if step.type == .complete {
+                run { await self.reloadAccounts() }
+            } else {
+                cancelOnEngine(step.loginID)
+            }
             return
         }
         loginID = step.loginID
@@ -308,6 +313,7 @@ public final class LoginFlowModel: ObservableObject {
             screen = .signIn(network: network, step: step)
         case .complete:
             loginID = nil
+            inputValues = [:]
             self.session += 1
             let name = step.remoteName ?? ""
             screen = .linked(network: network, remoteName: name)
@@ -440,6 +446,8 @@ public final class LoginFlowModel: ObservableObject {
     private func endSignIn() {
         session += 1
         notice = nil
+        // Nothing typed (a password, say) outlives its sign-in.
+        inputValues = [:]
         if let loginID { cancelOnEngine(loginID) }
         loginID = nil
     }

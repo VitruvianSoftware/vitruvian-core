@@ -18,12 +18,13 @@ struct TelegramSetupView: View {
             Text(String(localized: "Telegram asks every app for its own credentials. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain."))
                 .fixedSize(horizontal: false, vertical: true)
             Link(String(localized: "Open my.telegram.org"), destination: TelegramSetup.appsURL)
-            TextField("api_id", text: $apiID)
+            // Telegram's own names for the two values: never translated.
+            TextField(text: $apiID, prompt: Text(verbatim: "api_id")) { Text(verbatim: "api_id") }
                 .textFieldStyle(.roundedBorder)
             if problems.contains(.apiID), !apiID.isEmpty {
                 hint(String(localized: "api_id is a whole number."))
             }
-            SecureField("api_hash", text: $apiHash)
+            SecureField(text: $apiHash, prompt: Text(verbatim: "api_hash")) { Text(verbatim: "api_hash") }
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(save)
             if problems.contains(.apiHash), !apiHash.isEmpty {
