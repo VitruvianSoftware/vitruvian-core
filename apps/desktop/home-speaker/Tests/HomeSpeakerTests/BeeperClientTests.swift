@@ -125,8 +125,20 @@ private final class StandInBeeper: URLProtocol {
         case refused
         /// A 302 to `location`.
         case redirect(String)
+        /// The first page of these messages, with paging that never moves on.
+        case brokenPaging([String], BrokenPaging)
         /// `answer`, after `seconds`.
         indirect case delayed(Double, Answer)
+    }
+
+    /// How a Beeper's paging can fail to move on, all with `hasMore` true.
+    enum BrokenPaging: CaseIterable, Sendable {
+        /// Page 1 again for any cursor, with the same cursor to go on.
+        case repeatsFirstPage
+        /// No cursor at all.
+        case noCursor
+        /// A new cursor each time, but the same messages.
+        case nothingNew
     }
 
     /// What one test's Beeper says. Each poll's first search takes the
@@ -166,6 +178,28 @@ private final class StandInBeeper: URLProtocol {
                 }
             }
         }
+    }
+
+    /// Page 1 of `items` (newest first), whatever is asked, with `hasMore`
+    /// and the cursors `broken` says.
+    static func brokenPage(_ items: [String], _ broken: BrokenPaging, query: [String: String]) -> (Int, String) {
+        var (status, body) = page(items, newestFirst: true, query: query.filter { $0.key != "cursor" && $0.key != "direction" })
+        guard status == 200,
+              var json = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any] else { return (status, body) }
+        json["hasMore"] = true
+        switch broken {
+        case .repeatsFirstPage:
+            json["oldestCursor"] = "c20"
+        case .noCursor:
+            json.removeValue(forKey: "oldestCursor")
+            json.removeValue(forKey: "newestCursor")
+        case .nothingNew:
+            let offset = Int((query["cursor"] ?? "c0").dropFirst()) ?? 0
+            json["oldestCursor"] = "c\(offset + 20)"
+        }
+        body = String(decoding: try! JSONSerialization.data(withJSONObject: json), as: UTF8.self)
+        status = 200
+        return (status, body)
     }
 
     /// One page of `items` for `query`, as `Answer.messages` describes.
@@ -243,6 +277,9 @@ private final class StandInBeeper: URLProtocol {
         switch answer {
         case .delayed(let seconds, let later):
             DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { self.respond(later, to: seen) }
+        case .brokenPaging(let items, let broken):
+            let (status, body) = Self.brokenPage(items, broken, query: seen.query)
+            finish(status: status, body: body)
         case .redirect(let location):
             let response = HTTPURLResponse(url: request.url!, statusCode: 302, httpVersion: "HTTP/1.1",
                                            headerFields: ["Location": location])!
@@ -282,10 +319,18 @@ private final class StandInSlack: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
 
+    private var slowDone = false
+
     override func startLoading() {
         let url = request.url!
         let body: String
         let bearer = request.value(forHTTPHeaderField: "Authorization") ?? ""
+        // A token starting `fake-slack-slow` is answered 0.4 s later.
+        if bearer.hasPrefix("Bearer fake-slack-slow"), !slowDone {
+            slowDone = true
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { self.startLoading() }
+            return
+        }
         let flaky = bearer.hasPrefix("Bearer fake-slack-flaky") && Self.lock.withLock { Self.failedOnce.insert(bearer).inserted }
         switch url.path {
         case "/api/auth.test" where flaky: body = #"{"ok":false,"error":"fatal_error"}"#
@@ -945,6 +990,47 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         #expect(rig.monitor.slackUser == "me")
         #expect(rig.monitor.beeperSkippedNetworks == ["Slack (acme)"])
         #expect(rig.monitor.beeperNetworks?.contains("Slack") == true, "the other workspace is read")
+    }
+
+    /// Paging that never moves on, while Beeper says there is more: page
+    /// 1's direct message is spoken once, and the notice says some may be
+    /// missed, rather than reading page 1 alone in silence.
+    @Test(arguments: StandInBeeper.BrokenPaging.allCases)
+    fileprivate func pagingThatDoesNotMoveOnSaysSo(broken: StandInBeeper.BrokenPaging) async throws {
+        let dm = message("dm", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 50, text: "on page one")
+        let chatter = (0..<29).map {
+            message("g\($0)", chat: "sig-family", account: "local-signal_FAKE", from: "Bob", at: 10 + Double($0), text: "chat \($0)")
+        }
+        let scenario = StandInBeeper.Scenario(searches: [.brokenPaging([dm] + chatter, broken)])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true), beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 60)
+        await rig.poll(at: 90)
+        #expect(rig.spoken == ["WhatsApp message from Alice: on page one"])
+        #expect(rig.monitor.lastError == ChatMonitorError.beeperTooMany.localizedDescription, "\(rig.monitor.lastError ?? "")")
+        #expect(ChatMonitorStatusFile(url: rig.engine.profile.monitorStatusURL).read()?.lastError
+                == ChatMonitorError.beeperTooMany.localizedDescription)
+        #expect(rig.beeper.searches.count <= 4, "it stops, rather than asking again and again")
+        rig.expectOnlyGoodGETs()
+    }
+
+    /// Slack's answer arriving after the monitor restarted is not taken as
+    /// the new run's.
+    @Test func aSlackAnswerFromBeforeARestartWritesNothing() async throws {
+        let scenario = StandInBeeper.Scenario(searches: [.messages([])])
+        let rig = try Rig(monitorConfig: ChatMonitorConfig(slackEnabled: true, beeperEnabled: true),
+                          beeperToken: fakeToken(), slackToken: "fake-slack-slow-\(UUID().uuidString)", // gitleaks:allow (made-up test token)
+                          beeper: scenario)
+        defer { rig.finish() }
+        let monitor = rig.monitor
+        monitor.start()
+        let stale = Task { @MainActor in await monitor.readSlackIdentity() }
+        try await Task.sleep(for: .milliseconds(100))
+        monitor.stop()
+        monitor.start()
+        await stale.value
+        #expect(monitor.slackUser == nil, "the old run's answer was written into the new one")
     }
 
     /// A poll still waiting on Beeper when the monitor restarts writes
