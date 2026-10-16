@@ -74,20 +74,20 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// it is not installed.
         public var gwsLocation: () -> String?
         /// The process that runs this side's chat monitor is alive, so it
-        /// reads messages: for the app, HomeSpeaker.app is running as an app
-        /// (`ProcessDriver.isAppRunning()`).
+        /// reads messages: for the extension, its own `running.lock` is held
+        /// (`HomeSpeakerProfile.ownerRunning()`).
         public var ownerRunning: () -> Bool
-        /// Tells a running HomeSpeaker that a login or token changed
-        /// (`CredentialsChangedNotice.post()`), so it re-reads them and
-        /// starts or restarts its chat monitor.
+        /// Tells this HomeSpeaker's long-lived process that a login or token
+        /// changed (`CredentialsChangedNotice`, under the profile's name),
+        /// so it re-reads them and starts or restarts its chat monitor.
         public var credentialsChanged: () -> Void
         /// The home folder the coding agents keep their files in.
         public var home: URL
         /// Where HomeSpeaker's settings and secrets files are, for Files.
         public var settingsURL: URL
         public var secretsURL: URL
-        /// The installed HomeSpeaker's version, from its bundle; nil when
-        /// it is not installed or does not say.
+        /// The HomeSpeaker version Files shows: the engine this tool runs
+        /// on. Nil when it does not say.
         public var homeSpeakerVersion: () -> String?
         /// Stops a launchd job (`AgentIntegration.launchctlBootout`); the
         /// tests record instead, so they never touch the live session.
@@ -100,10 +100,54 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// (`ChatMonitorStatusFile`): by default beside the settings file,
         /// so a test's temporary settings never read this Mac's.
         public var monitorStatusURL: URL
-        /// Asks a running HomeSpeaker to start or stop its chat monitor
-        /// (`ChatMonitorControlNotice.post`). The default asks nothing, so
-        /// a test never reaches a real running app.
+        /// Starts or stops this side's chat monitor: for the extension, the
+        /// one in its own process. The default does nothing, so a test never
+        /// reaches a real monitor or a real running app.
         public var controlChatMonitor: (ChatMonitorAction) -> Void
+        /// What this HomeSpeaker does now, given the other one and the
+        /// person's choice (`DoorCheck.role(me:)`), asked afresh each time.
+        public var role: () -> DoorRole
+        /// The other HomeSpeaker, the app, as far as the extension needs it:
+        /// whether it still runs. Nil when there is none to ask.
+        public var other: (any OtherAppControlling)?
+        /// The choice file (`~/.gemini/speaker_door.json`); nil in a test
+        /// that has none.
+        public var door: DoorFile?
+        /// Copies one HomeSpeaker's settings and sign-ins into the other's
+        /// (`DoorCopy.copy`).
+        public var copy: (_ from: HomeSpeakerProfile, _ to: HomeSpeakerProfile) throws -> CopyReport
+        /// Shows the mark on the closed island (`ui/status`). Called only
+        /// when the app has it, and only with a mark that changed.
+        public var sendStatus: (MarkChoice) -> Void
+        /// Told when this side's chat monitor may start, and when it may no
+        /// longer: the monitor's own triggers (its settings changing on
+        /// disk, a sign-in, the control message) start nothing otherwise.
+        public var monitorMayRun: (Bool) -> Void
+        /// This HomeSpeaker's files, and the app's: what the choice card
+        /// compares and copies (design 7.4, 7.5). Nil in a test that has
+        /// none, and then nothing is compared or copied.
+        public var profile: HomeSpeakerProfile?
+        public var appProfile: HomeSpeakerProfile?
+        /// The app's program as it is found now (`ProcessDriver.locate`),
+        /// asked afresh at each switch: the agents' hooks are pointed at it
+        /// when the person picks the app. Nil when there is none; a copy in
+        /// the Trash is never used.
+        public var appProgram: () -> URL?
+        /// While this side runs, a HomeSpeaker hook left pointing at a
+        /// program that is gone or in the Trash is pointed at this side's
+        /// program. Only the extension's real parts turn it on: a test's
+        /// default home is this Mac's.
+        public var repairsHooks: Bool
+        /// The app is installed (`DoorCheck.appInstalled`), for General's
+        /// "Which HomeSpeaker" row.
+        public var otherInstalled: () -> Bool
+        /// Tells one HomeSpeaker its sign-ins changed, under that profile's
+        /// own message names: after a copy, the side that took it (design
+        /// 7.5). The default tells no one, so a test never posts.
+        public var credentialsChangedIn: (HomeSpeakerProfile) -> Void
+        /// What the engine said when it last put a speaker back after an
+        /// announcement (`VolumeRestoreCoordinator.lastReport`).
+        public var volumeRestoreReport: () -> String?
 
         public init(link: ToolLink, store: ConfigStore, driver: SpeakerDriver,
                     later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void, now: @escaping () -> Date = Date.init,
@@ -116,7 +160,17 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     homeSpeakerVersion: @escaping () -> String? = { nil },
                     launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
                     historyURL: URL? = nil, monitorStatusURL: URL? = nil,
-                    controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in }) {
+                    controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in },
+                    role: @escaping () -> DoorRole = { .active }, other: (any OtherAppControlling)? = nil,
+                    door: DoorFile? = nil,
+                    copy: @escaping (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = DoorCopy.copy,
+                    sendStatus: @escaping (MarkChoice) -> Void = { _ in },
+                    monitorMayRun: @escaping (Bool) -> Void = { _ in },
+                    profile: HomeSpeakerProfile? = nil, appProfile: HomeSpeakerProfile? = nil, appProgram: @escaping () -> URL? = { nil },
+                    repairsHooks: Bool = false,
+                    otherInstalled: @escaping () -> Bool = { false },
+                    credentialsChangedIn: @escaping (HomeSpeakerProfile) -> Void = { _ in },
+                    volumeRestoreReport: @escaping () -> String? = { nil }) {
             self.link = link
             self.store = store
             self.driver = driver
@@ -137,6 +191,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.historyURL = historyURL ?? Self.historyURL(beside: settingsURL)
             self.monitorStatusURL = monitorStatusURL ?? ChatMonitorStatusFile.url(beside: settingsURL)
             self.controlChatMonitor = controlChatMonitor
+            self.role = role
+            self.other = other
+            self.door = door
+            self.copy = copy
+            self.sendStatus = sendStatus
+            self.monitorMayRun = monitorMayRun
+            self.profile = profile
+            self.appProfile = appProfile
+            self.appProgram = appProgram
+            self.repairsHooks = repairsHooks
+            self.otherInstalled = otherInstalled
+            self.credentialsChangedIn = credentialsChangedIn
+            self.volumeRestoreReport = volumeRestoreReport
         }
 
         /// `speaker_history.json` in the settings file's folder, where
@@ -162,7 +229,6 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     public private(set) var openPanels: Set<String> = []
     /// The settings section shown, kept across redraws.
     public private(set) var section = Pages.Section.general
-    public private(set) var loginItem: LoginItemState?
     public private(set) var mediaPauseReport: String?
     public private(set) var homes: [HomeStructure]?
     public private(set) var selectedHomeId: String?
@@ -175,13 +241,33 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private var voices: [LocalVoice]?
     /// Asked once each time Settings opens, so a failure is not asked again
     /// at every redraw.
-    private var askedLoginItem = false
     private var askedHomes = false
     /// The island's setup lists the homes once each time it opens.
     private var askedIslandHomes = false
     /// The chat monitor as last drawn, so a change the app writes is drawn
     /// and an unchanged one is not (`refreshMonitorStatus`).
     private var drawnChat: Pages.Chat?
+    /// The role as the last `refreshRole` found it; nil before the first.
+    public private(set) var role: DoorRole?
+    /// When this side last became one that runs, for the wait when no
+    /// choice says when it was made.
+    private var runsSince: Date?
+    /// Whether this side's chat monitor may run, as last told
+    /// (`Parts.monitorMayRun`).
+    public private(set) var monitorMayRun = false
+    /// The wait for the other side to stop its monitor is over for the
+    /// role this side has now; cleared when the role changes.
+    private var waitedForTheOther = false
+    /// The mark as last sent, so an unchanged one is not sent again.
+    private var sentMark: MarkChoice?
+    /// The step of the choice card the person is on (design 7.4); nil
+    /// before they tap it and once it is done.
+    public private(set) var doorStep: Pages.DoorStep?
+    /// What the last step did, a sentence each, until a page opens afresh.
+    public private(set) var doorReport: [String] = []
+    /// The app was opened when the person picked it, and has not been seen
+    /// running since.
+    public private(set) var otherStarting = false
 
     public init(parts: Parts) {
         self.parts = parts
@@ -208,6 +294,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     public func start() {
         reload()
+        refreshRole()
         if readsVolume { try? run(.volume) }
         if !parts.driver.isInstalled { parts.link.log("HomeSpeaker is not installed: the tool can only show its settings") }
     }
@@ -238,7 +325,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     // MARK: - Panels
 
     public func islandPage() -> UITree {
-        if !openPanels.contains(Self.islandPanel) { askedIslandHomes = false }
+        if !openPanels.contains(Self.islandPanel) {
+            askedIslandHomes = false
+            if doorStep == nil { doorReport = [] }
+        }
         openPanels.insert(Self.islandPanel)
         reload()
         if readsVolume, volume == nil, busy == nil { try? run(.volume) }
@@ -248,9 +338,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// The volume is read only where it can answer: HomeSpeaker installed,
     /// a speaker picked, and Home speakers on. With them off a read would
-    /// only wait on a Cast speaker nobody is using.
+    /// only wait on a Cast speaker nobody is using. A quiet side reads
+    /// nothing.
     private var readsVolume: Bool {
-        parts.driver.isInstalled && config.defaultDevice != nil && config.effectiveSpeakHome
+        parts.driver.isInstalled && config.defaultDevice != nil && config.effectiveSpeakHome && !parts.role().isQuiet
     }
 
     /// Signed in with no speakers: the island's setup offers each home, so
@@ -263,6 +354,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
+        if doorEvent(event) {
+            if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
+            return .page(Pages.island(status()))
+        }
         if let answer = islandSetupEvent(event) { return answer }
         do {
             switch event.block {
@@ -288,6 +383,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     return .page(Pages.island(status()))
                 }
                 try speakerJob(.setVolume(level))
+            case Pages.Block.quieter?, Pages.Block.louder?:
+                // From the level last read: with none, there is nothing to
+                // go up or down from.
+                guard let percent = volume?.percent else { return .keep }
+                try speakerJob(.setVolume(event.block == Pages.Block.louder ? Pages.louder(percent) : Pages.quieter(percent)))
             case Pages.Block.speakers?:
                 guard let key = event.row else { return .keep }
                 reload()
@@ -345,8 +445,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     public func settingsPage() -> UITree {
         if !openPanels.contains(Self.settingsPanel) {
             // Opened, not redrawn: what Settings reads once is read again.
-            askedLoginItem = false
             askedHomes = false
+            if doorStep == nil { doorReport = [] }
             voices = nil
             draftClientId = parts.account.customOAuthClientId ?? ""
             draftClientSecret = ""
@@ -357,6 +457,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     public func settingsEvent(_ event: PanelEvent) -> PanelAnswer {
+        if doorEvent(event) {
+            if openPanels.contains(Self.islandPanel) { parts.link.render(panel: Self.islandPanel, Pages.island(status())) }
+            return .page(settingsTree())
+        }
         reload()
         // The value a picker answers with: a choice's as text, a list's as
         // the row tapped.
@@ -415,9 +519,6 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 try setupJob(.signIn(chatOnly: true))
             case Pages.Block.disconnectChat?:
                 try setupJob(.app(.signOut(chatOnly: true)))
-            case Pages.Block.loginItem?:
-                guard let isOn = event.isOn else { return .keep }
-                try setupJob(.app(.loginItem(isOn ? .enable : .disable)))
             case Pages.Block.testMediaPause?:
                 mediaPauseReport = nil
                 try setupJob(.app(.testMediaPause))
@@ -457,12 +558,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return .page(settingsTree())
     }
 
-    /// Asks the running HomeSpeaker to start or stop its monitor. The page
-    /// says Running once the app has written that it is; the request alone
-    /// changes nothing on it.
+    /// Starts or stops this side's monitor. The page says Running once the
+    /// monitor has written that it is; the request alone changes nothing on
+    /// it. Refused while the other HomeSpeaker is in use: its monitor is the
+    /// one that runs. Start is refused, too, while nobody has picked: the
+    /// app may be running its own.
     private func controlChatMonitor(_ action: ChatMonitorAction) throws {
-        guard parts.ownerRunning() else {
-            throw CommandRefused("HomeSpeaker isn't running: open it, then \(action.rawValue) the chat monitor")
+        switch parts.role() {
+        case .quiet(let other):
+            throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so its monitor is the one that runs")
+        case .waitingAsking where action == .start:
+            throw CommandRefused(Self.pickFirst)
+        case .active, .activeAsking, .waitingAsking:
+            break
         }
         if action == .start, !config.effectiveChatMonitor.anySourceEnabled {
             throw CommandRefused("turn on Slack or Google Chat first")
@@ -610,6 +718,149 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         openPanels.remove(panel)
     }
 
+    // MARK: - Which HomeSpeaker runs
+
+    /// How long a side that has just become the one in use waits for the
+    /// other to stop its chat monitor before starting its own (design 7.6).
+    public static let otherStopsWithin: TimeInterval = 5
+
+    /// What a refusal says while nobody has picked a HomeSpeaker.
+    public static let pickFirst = "Pick which HomeSpeaker to use first"
+    /// What `say` says with nowhere to speak.
+    public static let notSetUp = "Set up HomeSpeaker first: pick a speaker, or turn on This Mac"
+
+    /// Reads the settings and the role afresh (the choice file, and whether
+    /// the other is installed) and acts on a change: the chat monitor may
+    /// run only while this side runs, and, once it does, only after the
+    /// other has stopped or `otherStopsWithin` has passed since the choice
+    /// was written. That wait is over once it has passed for this role: a
+    /// choice written again later (the same side, a newer time) does not
+    /// stop a monitor that runs. Then the pages are drawn again and the
+    /// mark sent, from the settings as they are on disk now (a copy into
+    /// this side, or `--discover`, may have changed them with no page
+    /// open). Asked at start and on the five-second tick.
+    public func refreshRole() {
+        reload()
+        let now = parts.now()
+        let role = parts.role()
+        let changed = role != self.role
+        let runs = Self.runs(role)
+        if changed {
+            if !runs {
+                runsSince = nil
+            } else if !(self.role.map(Self.runs) ?? false) {
+                runsSince = now
+            }
+            waitedForTheOther = false
+            self.role = role
+        }
+        if changed, case .compare(let compare)? = doorStep, choiceChanged(since: compare) {
+            // Picked elsewhere, in the app: the step is stale.
+            doorStep = nil
+            doorReport = [Pages.DoorWords.choiceChanged]
+        }
+        if otherStarting, parts.other?.isRunning ?? true || !role.isQuiet { otherStarting = false }
+        var mayRun = false
+        if runs {
+            if parts.repairsHooks { repairStrandedHooks() }
+            let otherRunning = parts.other?.isRunning ?? false
+            // Only an app that is found: with none (a test's
+            // `HOMESPEAKER_PROGRAM=""`), there is nothing to wait for or quit.
+            let appFound = parts.appProgram() != nil
+            // An app older than 1.19 never hears the choice and keeps its
+            // own monitor: this side's waits until it has quit, however
+            // long that takes (design 7.6, item 4). A newer one goes quiet
+            // by itself, so five seconds is the most this side waits, once
+            // for each time this side comes to run.
+            let waited = waitedForTheOther || !otherRunning || {
+                let since = parts.door?.read()?.chosenAt ?? runsSince ?? now
+                return now.timeIntervalSince(since) >= Self.otherStopsWithin
+            }()
+            mayRun = !(otherRunning && appFound && Self.isOld(parts.other)) && waited
+            if mayRun { waitedForTheOther = true }
+        }
+        if mayRun != monitorMayRun {
+            monitorMayRun = mayRun
+            parts.monitorMayRun(mayRun)
+            if mayRun {
+                // As the app does at launch: only a monitor switched on.
+                if config.effectiveChatMonitor.anySourceEnabled { parts.controlChatMonitor(.start) }
+            } else {
+                parts.controlChatMonitor(.stop)
+            }
+        }
+        if changed || drawnStarting != otherStarting { refreshOpenPanels() }
+        drawnStarting = otherStarting
+        updateMark()
+    }
+
+    /// Whether the open pages last showed the app as starting.
+    private var drawnStarting = false
+
+    /// An app that cannot hear the choice file: older than 1.19, or of a
+    /// version that does not read.
+    private static func isOld(_ other: (any OtherAppControlling)?) -> Bool {
+        guard let other else { return false }
+        return OtherAppVersion.isOlder(other.version, than: OtherAppPlan.hearsTheChoiceSince)
+    }
+
+    /// Points a HomeSpeaker hook stranded on a program that is gone or in
+    /// the Trash (the app dragged there by hand, say) at this side's own
+    /// program, so the replies are spoken again. A hook that runs a
+    /// program that is there is left alone, as is one that is not
+    /// HomeSpeaker's program.
+    private func repairStrandedHooks() {
+        guard let program = parts.driver.program else { return }
+        let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
+        for agent in CodingAgent.allCases where agent.supportsHook {
+            let status = integration.status(of: agent)
+            guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isHomeSpeakerProgram(runs),
+                  OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
+            do {
+                try integration.installHook(for: agent)
+            } catch {
+                parts.link.log("the \(agent.displayName) hook could not be pointed at this HomeSpeaker: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// A side that runs: the hook, the chat monitor, listening.
+    private static func runs(_ role: DoorRole) -> Bool {
+        switch role {
+        case .active, .activeAsking: return true
+        case .waitingAsking, .quiet: return false
+        }
+    }
+
+    /// What the mark is worked out from (`IslandStatus.mark`). Set up means
+    /// something to speak with: a Google sign-in, a default speaker, or
+    /// this Mac's speech on (design 6, "not set up").
+    public func statusInputs() -> StatusInputs {
+        let monitorProblem = config.effectiveChatMonitor.anySourceEnabled
+            ? Pages.Chat(ownerRunning: parts.ownerRunning(),
+                         monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read()).runtimeError
+            : nil
+        let speaking: Bool
+        if case .say? = busy { speaking = true } else { speaking = false }
+        return StatusInputs(
+            role: role ?? parts.role(),
+            monitorProblem: monitorProblem,
+            setUp: parts.account.isSignedIn || config.defaultDevice != nil || config.effectiveSpeakLocal,
+            speaking: speaking,
+            quietUntil: config.isInQuietHours(at: parts.now()) ? config.quietHoursEnd : nil,
+            broadcasting: config.enabled,
+            defaultSpeaker: config.defaultDevice?.name)
+    }
+
+    /// Sends the mark when it changed, to an app that shows one.
+    private func updateMark() {
+        guard parts.link.supports(.status) else { return }
+        let mark = IslandStatus.mark(statusInputs())
+        guard mark != sentMark else { return }
+        sentMark = mark
+        parts.sendStatus(mark)
+    }
+
     /// Draws the open pages again when what the chat monitor says about
     /// itself has changed since they were drawn: a Start pressed here shows
     /// Running once the app has started, without another tap. Asked on a
@@ -620,6 +871,309 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         guard settingsShowsIt || islandShowsIt else { return }
         reload()
         guard chatStatus() != drawnChat else { return }
+        refreshOpenPanels()
+    }
+
+    // MARK: - The choice card
+
+    /// This HomeSpeaker: the extension, for the tool.
+    private var me: HomeSpeakerProfile.Door { parts.profile?.door ?? .extension }
+
+    /// Which HomeSpeaker is in use, read afresh, and the step the person is on.
+    private func doorState(role: DoorRole? = nil) -> Pages.DoorState {
+        let role = role ?? parts.role()
+        let oldAppRunning = Self.runs(role) && parts.appProgram() != nil && (parts.other?.isRunning ?? false)
+            && Self.isOld(parts.other)
+        return Pages.DoorState(me: me, role: role, otherInstalled: parts.otherInstalled(), step: doorStep, report: doorReport,
+                               oldAppRunning: oldAppRunning, otherStarting: otherStarting)
+    }
+
+    /// The app's program as it is found now; never a copy in the Trash.
+    private func appProgramNow() -> URL? {
+        guard let program = parts.appProgram(), !OtherDoorPresence.isInTrash(program.path) else { return nil }
+        return program
+    }
+
+    /// The choice file no longer says what it did when `compare` began.
+    private func choiceChanged(since compare: Pages.DoorCompare) -> Bool {
+        let record = parts.door?.read()
+        return record?.chosen != compare.seenChoice || record?.chosenAt != compare.seenChosenAt
+    }
+
+    private static func other(of door: HomeSpeakerProfile.Door) -> HomeSpeakerProfile.Door {
+        door == .app ? .extension : .app
+    }
+
+    /// The card's buttons and toggles, on either page (design 7.4 and 7.7).
+    /// False for any other block. What goes wrong is said on the card.
+    private func doorEvent(_ event: PanelEvent) -> Bool {
+        guard let id = event.block, id.hasPrefix(Pages.Block.doorPrefix) else { return false }
+        do {
+            switch id {
+            case Pages.Block.doorUseExtension: try compare(choosing: .extension)
+            case Pages.Block.doorUseApp: try compare(choosing: .app)
+            case Pages.Block.doorBack:
+                // Nothing is committed before Copy or Keep.
+                if case .compare? = doorStep { doorStep = nil }
+            case Pages.Block.doorQuitAgain: quitAgain()
+            case Pages.Block.doorUseThis: try compare(choosing: me)
+            case Pages.Block.doorSwitch:
+                guard let inUse = doorState().inUse else { return true }
+                try compare(choosing: Self.other(of: inUse))
+            case Pages.Block.doorCopyAgain:
+                guard let inUse = doorState().inUse else { return true }
+                try compare(from: Self.other(of: inUse), into: inUse, purpose: .copyOnly)
+            case Pages.Block.doorCopy: finishCompare(copy: true)
+            case Pages.Block.doorKeep: finishCompare(copy: false)
+            case Pages.Block.doorLoginItem, Pages.Block.doorTrash:
+                guard case .offers(var offers) = doorStep, !offers.working, let isOn = event.isOn else { return true }
+                if id == Pages.Block.doorTrash {
+                    offers.trash = isOn
+                } else if offers.loginItemOptional {
+                    offers.loginItem = isOn
+                }
+                doorStep = .offers(offers)
+            case Pages.Block.doorDone: closeOffers()
+            default: break
+            }
+        } catch {
+            doorReport = [Self.words(error)]
+        }
+        return true
+    }
+
+    private func profile(_ door: HomeSpeakerProfile.Door) throws -> HomeSpeakerProfile {
+        guard let profile = door == me ? parts.profile : parts.appProfile else {
+            throw CommandRefused("the \(door.rawValue)'s files are not known here, so nothing can be compared")
+        }
+        return profile
+    }
+
+    /// Step 2 for choosing `door`: what the other one has, beside it.
+    private func compare(choosing door: HomeSpeakerProfile.Door) throws {
+        try compare(from: Self.other(of: door), into: door, purpose: .choose)
+    }
+
+    private func compare(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door,
+                         purpose: Pages.DoorCompare.Purpose) throws {
+        // The app is offered only while it is installed, and picked only
+        // while its program can be found: the hook must have it to run.
+        if purpose == .choose, into != me {
+            guard parts.otherInstalled() else { return }
+            guard appProgramNow() != nil else { throw CommandRefused(Pages.DoorWords.appNotFound) }
+        }
+        let source = try profile(from)
+        let destination = try profile(into)
+        let record = parts.door?.read()
+        doorReport = []
+        doorStep = .compare(Pages.DoorCompare(
+            purpose: purpose, from: from, into: into,
+            source: DoorSnapshot(profile: source), destination: DoorSnapshot(profile: destination),
+            seenChoice: record?.chosen, seenChosenAt: record?.chosenAt))
+    }
+
+    /// Copy or Keep, then, when choosing, the rest in order (design 7.6):
+    /// the copy reads the other side while it still writes its files; the
+    /// choice is written; the hooks follow it; then the app is closed.
+    private func finishCompare(copy: Bool) {
+        guard case .compare(var compare) = doorStep else { return }
+        // A choice made elsewhere since this step began (in the app, say)
+        // is never overridden: the step goes, and the page shows what is.
+        if choiceChanged(since: compare) {
+            doorStep = nil
+            doorReport = [Pages.DoorWords.choiceChanged]
+            refreshRole()
+            return
+        }
+        // The hook must have the app's program to run: without it, nothing
+        // is copied or chosen.
+        var appProgram: URL?
+        if compare.purpose == .choose, compare.into != me {
+            appProgram = appProgramNow()
+            if appProgram == nil {
+                compare.problem = Pages.DoorWords.appNotFound
+                doorStep = .compare(compare)
+                return
+            }
+        }
+        do {
+            let source = try profile(compare.from)
+            let destination = try profile(compare.into)
+            doorReport = []
+            compare.problem = nil
+            if copy {
+                do {
+                    doorReport = try parts.copy(source, destination).lines
+                } catch let partial as DoorCopyPartial {
+                    // Stopped part-way: say what came across and what did
+                    // not, and tell the destination if its sign-ins changed.
+                    if partial.signInsWritten { parts.credentialsChangedIn(destination) }
+                    doorReport = partial.copied + partial.notCopied
+                    doorStep = .compare(compare)
+                    return
+                }
+                // The side that took the copy re-reads its sign-ins.
+                parts.credentialsChangedIn(destination)
+            }
+            if compare.purpose == .choose { try choose(compare.into) }
+        } catch {
+            compare.problem = Self.words(error)
+            doorStep = .compare(compare)
+            return
+        }
+        guard compare.purpose == .choose else {
+            doorStep = nil
+            return
+        }
+        doorReport += repointHooks(at: compare.into, program: compare.into == me ? parts.driver.program : appProgram)
+        if compare.into == me {
+            closeTheOther()
+        } else if let other = parts.other, !other.isRunning {
+            openTheOther(other)
+        } else {
+            doorStep = nil
+        }
+        refreshRole()
+    }
+
+    /// Writes the person's choice into the choice file, under its lock.
+    private func choose(_ door: HomeSpeakerProfile.Door) throws {
+        guard let file = parts.door else { throw CommandRefused("the choice file is not available, so nothing was chosen") }
+        let now = parts.now()
+        try file.update {
+            $0.chosen = door
+            $0.chosenAt = now
+            $0.chosenBy = "HomeSpeaker extension \(ToolVersion.current)"
+        }
+    }
+
+    /// Points every agent's HomeSpeaker hook at the chosen side's program
+    /// (design 7.6): otherwise each reply would go to a program that stands
+    /// aside, or one in the Trash. An agent with no HomeSpeaker hook gets
+    /// none. What could not be done, a sentence each.
+    private func repointHooks(at door: HomeSpeakerProfile.Door, program: URL?) -> [String] {
+        guard let program else { return [] }
+        let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
+        var problems: [String] = []
+        for agent in CodingAgent.allCases where agent.supportsHook {
+            guard case .stale = integration.status(of: agent).hook else { continue }
+            do {
+                try integration.installHook(for: agent)
+            } catch {
+                problems.append(Self.words(error))
+            }
+        }
+        return problems
+    }
+
+    /// Asks the app to quit, and waits for it, off the kit's thread; then
+    /// step 3's offers.
+    private func closeTheOther() {
+        guard let other = parts.other else {
+            // Nothing to ask: say nothing about a quit.
+            doorStep = nil
+            return
+        }
+        doorStep = .closing
+        let later = parts.later
+        let timeout = Self.otherStopsWithin
+        Task.detached { [weak self] in
+            let quit = await other.quit(timeout: timeout)
+            let version = other.version
+            later { [weak self] in self?.appClosed(quit: quit, version: version) }
+        }
+    }
+
+    /// Quit, asked again: from step 3, or the line an app older than 1.19
+    /// leaves while it still runs.
+    private func quitAgain() {
+        // Never a HomeSpeaker this side has not found.
+        guard let other = parts.other, parts.appProgram() != nil else { return }
+        let later = parts.later
+        let timeout = Self.otherStopsWithin
+        Task.detached { [weak self] in
+            let quit = await other.quit(timeout: timeout)
+            later { [weak self] in self?.quitAgainDone(quit) }
+        }
+    }
+
+    private func quitAgainDone(_ quit: Bool) {
+        if case .offers(var offers)? = doorStep {
+            offers.quit = quit
+            doorStep = .offers(offers)
+        }
+        refreshRole()
+        refreshOpenPanels()
+    }
+
+    /// The person picked the app, which is not running: it is opened, as
+    /// they asked, and its Open at Login, which picking the extension
+    /// turned off, is turned back on. Off the kit's thread.
+    private func openTheOther(_ other: any OtherAppControlling) {
+        doorStep = .opening
+        let later = parts.later
+        Task.detached { [weak self] in
+            let opened = await other.open()
+            let loginItem = await other.turnOnLoginItem()
+            later { [weak self] in self?.otherOpened(opened, loginItem: loginItem) }
+        }
+    }
+
+    private func otherOpened(_ opened: Bool, loginItem: Result<Void, OtherAppProblem>) {
+        doorStep = nil
+        otherStarting = opened
+        if !opened { doorReport.append(Pages.DoorWords.couldNotOpen) }
+        switch loginItem {
+        case .success: doorReport.append(Pages.DoorWords.loginItemOn)
+        case .failure(let problem): doorReport.append(problem.sentence)
+        }
+        refreshRole()
+        refreshOpenPanels()
+    }
+
+    private func appClosed(quit: Bool, version: String?) {
+        doorStep = .offers(Pages.DoorOffers(quit: quit, plan: OtherAppPlan.forChoosingTheExtension(appVersion: version)))
+        refreshRole()
+        refreshOpenPanels()
+    }
+
+    /// Done: the offers left ticked, the login item first, since it runs
+    /// the app's own program, which the Trash would move.
+    private func closeOffers() {
+        guard case .offers(var offers) = doorStep, !offers.working else { return }
+        guard let other = parts.other else {
+            doorStep = nil
+            return
+        }
+        offers.working = true
+        doorStep = .offers(offers)
+        let (loginItem, trash) = (offers.loginItem, offers.trash)
+        let later = parts.later
+        Task.detached { [weak self] in
+            var lines: [String] = []
+            if loginItem {
+                switch await other.turnOffLoginItem() {
+                case .success: lines.append(Pages.DoorWords.loginItemOff)
+                case .failure(let problem): lines.append(problem.sentence)
+                }
+            }
+            if trash {
+                do {
+                    _ = try other.moveToTrash()
+                    lines.append(Pages.DoorWords.inTheTrash)
+                } catch {
+                    lines.append(error.localizedDescription)
+                }
+            }
+            let said = lines
+            later { [weak self] in self?.offersDone(said) }
+        }
+    }
+
+    private func offersDone(_ lines: [String]) {
+        doorStep = nil
+        doorReport += lines
+        refreshRole()
         refreshOpenPanels()
     }
 
@@ -635,6 +1189,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             finishedSpeaking(job, result)
         }
         refreshOpenPanels()
+        updateMark()
     }
 
     private func finishedSpeaking(_ job: Job, _ result: JobResult) {
@@ -667,8 +1222,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             if selectedHomeId == nil || !listed.contains(where: { $0.id == selectedHomeId }) {
                 selectedHomeId = listed.first(where: { $0.id == config.structureId })?.id ?? listed.first?.id
             }
-        case (_, .loginItem(let state, let problem)):
-            loginItem = state
+        case (_, .loginItem(_, let problem)):
             if let problem { setupNotice = problem.capitalizingFirst }
         case (.signIn(chatOnly: true), .done):
             // HomeSpeaker's `--sign-in --chat` told the running app itself.
@@ -720,12 +1274,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.section = section
         status.setupBusy = setupBusy
         status.setupNotice = setupNotice
-        status.loginItem = loginItem
         status.mediaPauseReport = mediaPauseReport
         status.homes = homes
         status.selectedHomeId = selectedHomeId
         status.previewing = previewing
         status.removingSpeakers = removingSpeakers
+        let role = parts.role()
+        status.door = doorState(role: role)
+        status.volumeRestoreReport = parts.volumeRestoreReport()
         let account = parts.account
         let islandOpen = openPanels.contains(Self.islandPanel)
         if islandOpen || openPanels.contains(Self.settingsPanel) {
@@ -737,7 +1293,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // The island warns about the chat monitor only while it is on,
             // so nothing is looked for otherwise.
             if config.effectiveChatMonitor.anySourceEnabled {
-                status.chat = chatStatus()
+                status.chat = chatStatus(role: role)
                 drawnChat = status.chat
             }
         }
@@ -749,6 +1305,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 status.draftClientId = draftClientId
                 status.draftClientSecretTyped = !draftClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 status.files = Pages.Files(settings: parts.settingsURL.path, secrets: parts.secretsURL.path,
+                                           history: parts.historyURL.path,
                                            homeSpeakerVersion: parts.driver.isInstalled ? parts.homeSpeakerVersion() : nil)
             }
             if section == .agents {
@@ -763,7 +1320,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     legacyLaunchAgent: integration.isLegacyLaunchAgentInstalled())
             }
             if section == .monitor {
-                status.chat = chatStatus()
+                status.chat = chatStatus(role: role)
                 drawnChat = status.chat
             }
             if section == .speakers, config.effectiveSpeakLocal {
@@ -774,25 +1331,24 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return status
     }
 
-    private func chatStatus() -> Pages.Chat {
+    /// The chat monitor as the pages show it. Its owner counts as running
+    /// only while this side runs and its process is alive: a waiting or
+    /// quiet side runs no monitor, so it offers no Start or Stop.
+    private func chatStatus(role: DoorRole? = nil) -> Pages.Chat {
         let chat = parts.chat
         return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
-                          gwsPath: parts.gwsLocation(), ownerRunning: parts.ownerRunning(),
+                          gwsPath: parts.gwsLocation(), ownerRunning: Self.runs(role ?? parts.role()) && parts.ownerRunning(),
                           monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read())
     }
 
     /// The settings page, after starting what Settings reads by itself:
-    /// the login item once it opens, the homes once Speakers shows with a
-    /// sign-in. Each waits for the setup slot and is asked once an opening.
+    /// the homes once Speakers shows with a sign-in. It waits for the setup
+    /// slot and is asked once an opening.
     private func settingsTree() -> UITree {
-        if parts.driver.isInstalled, setupBusy == nil {
-            if !askedLoginItem {
-                askedLoginItem = true
-                try? setupJob(.app(.loginItem(.status)))
-            } else if section == .speakers, homes == nil, !askedHomes, parts.account.isSignedIn {
-                askedHomes = true
-                try? setupJob(.app(.discover(save: false, home: nil)))
-            }
+        if parts.driver.isInstalled, setupBusy == nil, section == .speakers, homes == nil, !askedHomes,
+           parts.account.isSignedIn {
+            askedHomes = true
+            try? setupJob(.app(.discover(save: false, home: nil)))
         }
         return Pages.settings(status())
     }
@@ -861,14 +1417,26 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         refreshOpenPanels()
     }
 
+    /// While the other HomeSpeaker is in use this one does nothing, even
+    /// asked by hand: the other is the one the person picked. While nobody
+    /// has picked, what the person asks for is done.
+    private func refuseWhileQuiet() throws {
+        if case .quiet(let other) = parts.role() {
+            throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so this one stays quiet")
+        }
+    }
+
     private func say(_ text: String) throws {
+        try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         reload()
+        guard config.defaultDevice != nil || config.effectiveSpeakLocal else { throw CommandRefused(Self.notSetUp) }
         guard config.enabled else { throw CommandRefused("broadcasting is switched off") }
         try run(.say(text))
     }
 
     private func speakerJob(_ job: Job) throws {
+        try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         reload()
         guard config.defaultDevice != nil else { throw CommandRefused("no default speaker; pick one in HomeSpeaker") }
@@ -878,6 +1446,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// A setup job needs HomeSpeaker and nothing more: not a speaker, and
     /// not the speaker slot.
     private func setupJob(_ job: Job) throws {
+        try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         try run(job)
     }
@@ -900,6 +1469,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         parts.driver.run(job) { [weak self] result in
             later { [weak self] in self?.finished(job, result) }
         }
+        updateMark()
     }
 
     private func reload() {
@@ -919,6 +1489,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private func save() throws {
         if let configProblem { throw CommandRefused("refusing to save: \(configProblem)") }
         try parts.store.save(config)
+        updateMark()
     }
 
     /// An error as a sentence for the page: a refusal's own words, not

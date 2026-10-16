@@ -97,16 +97,21 @@ public protocol SpeakerDriver: AnyObject {
 /// Its lasting role is how the extension finds the app and reads it:
 /// `locate`, `isAppRunning`, `arguments` and `result` stay. `SystemOtherApp`
 /// uses them to run the app's own `--login-item disable` when the person
-/// picks the extension. Once the extension runs on its own engine, the tool
-/// gives it no jobs.
+/// picks the extension. The extension runs on its own engine
+/// (`EngineDriver`), so the tool gives this no jobs.
+///
+/// A job it is given runs through `run`, the one place a program of the
+/// app's is started (`SystemOtherApp.runProgram` by default).
 public final class ProcessDriver: SpeakerDriver {
     public static let bundleID = HomeSpeakerProfile.appBundleID
     public static let usualPlaces = ["/Applications/HomeSpeaker.app", "~/Applications/HomeSpeaker.app"]
 
     public let binary: URL?
+    private let runProgram: ProgramRunning
 
-    public init(binary: URL?) {
+    public init(binary: URL?, run: @escaping ProgramRunning = SystemOtherApp.runProgram) {
         self.binary = binary
+        runProgram = run
     }
 
     /// HomeSpeaker.app is running as an app, by the app profile's own check
@@ -234,26 +239,16 @@ public final class ProcessDriver: SpeakerDriver {
         }
     }
 
+    /// Starts the program and does not wait for it; its end is reported to
+    /// `then` on a thread of the system's. A program that could not be
+    /// started reads as `runProgram` says (status -1, "could not be started").
     public func run(_ job: Job, then: @escaping @Sendable (JobResult) -> Void) {
         guard let binary else { return then(job.isSetup ? .failed("HomeSpeaker is not installed") : .unavailable("HomeSpeaker is not installed")) }
-        let process = Process()
-        process.executableURL = binary
-        process.arguments = Self.arguments(for: job)
-        let output = Pipe()
-        let error = Pipe()
-        process.standardOutput = output
-        process.standardError = error
-        process.standardInput = FileHandle.nullDevice
-        process.terminationHandler = { process in
-            let printed = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            let complained = String(decoding: error.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            then(Self.result(of: job, status: process.terminationStatus, output: printed, error: complained))
-        }
-        do {
-            try process.run()
-        } catch {
-            let why = "HomeSpeaker could not be started: \(error.localizedDescription)"
-            then(job.isSetup ? .failed(why) : .unavailable(why))
+        let runProgram = runProgram
+        let arguments = Self.arguments(for: job)
+        Task.detached {
+            let ran = await runProgram(binary, arguments)
+            then(Self.result(of: job, status: ran.status, output: ran.output, error: ran.error))
         }
     }
 }

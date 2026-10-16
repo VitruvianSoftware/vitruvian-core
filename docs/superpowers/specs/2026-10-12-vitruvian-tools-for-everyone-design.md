@@ -529,6 +529,7 @@ web panel needs it.
 **HomeSpeaker, third.** It stays a menu bar app and gains a `vitruvian-tool.json`
 beside its binary: commands ("Say this", "Pause the room") and a settings
 panel. Its menu bar extra stays; the tool is a second door.
+Changed 2026-10-15: the tool runs on its own; see 2026-10-15-homespeaker-extension-independent-design.md.
 
 Each move is its own spec with its own by-hand checks; this design fixes
 only the order and the rule that the built-in and the tool overlap for one

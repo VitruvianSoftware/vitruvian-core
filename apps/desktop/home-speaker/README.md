@@ -13,6 +13,34 @@ Home API over HTTPS, and needs nothing else installed.
 
 ---
 
+## Two ways to run HomeSpeaker
+
+You can use HomeSpeaker as this menu bar app, as a Vitruvian extension, or
+both installed, though only one of them speaks.
+
+| | The app | The Vitruvian extension |
+|---|---|---|
+| What you see | A menu bar icon and a Settings window | A mark on Vitruvian's closed island, and pages in its island and Settings |
+| Needs the other one installed | No | No. It runs on its own and does not use the app's files, except to copy them when you ask |
+| Keeps its files in | `~/.gemini/` and `~/Library/Application Support/HomeSpeaker/` | The extension's own data folder (see [What's stored where](#whats-stored-where)) |
+
+With only one installed, nothing changes. With both installed, both ask which
+one to use, and nothing is announced twice. Until you answer, the app keeps
+working as before and the extension waits. (The app only starts asking once
+the updated extension has run once.)
+
+- **Use the extension:** you see both sides and can copy your settings and
+  sign-ins across. The app is then quit, and you are offered to turn off its
+  Open at Login and to move it to the Trash.
+- **Use the app:** the extension goes quiet by itself. The app cannot remove
+  an extension, so it tells you how, in Vitruvian's Settings.
+
+Once you have chosen, only that one speaks on its own, reads chat and answers
+the Claude Code hook. You can change your mind from either one's *Which
+HomeSpeaker* row in Settings.
+
+---
+
 ## Before you start
 
 You need all three of these. The app cannot work without them.
@@ -205,10 +233,25 @@ Google.
 
 | File | Contents |
 |---|---|
-| `~/.gemini/speaker_broadcast.json` | Non-secret settings: speakers, default target, quiet hours, monitor toggles. Shared with the `speaker-broadcast` CLI and Gemini/Antigravity skills. |
+| `~/.gemini/speaker_broadcast.json` | The app's non-secret settings: speakers, default target, quiet hours, monitor toggles (the extension keeps its own, below). Shared with the `speaker-broadcast` CLI and Gemini/Antigravity skills. |
 | `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, OAuth client override. Mode `0600`. |
 | `~/.gemini/speaker_history.json` | The last 30 announcements shown in the menu. |
-| `~/.gemini/speaker_monitor_status.json` | What the running chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the app's pid), written by the app for the Vitruvian tool. Not settings: a crashed app leaves it saying "running", so readers check the app is up. |
+| `~/.gemini/speaker_door.json` | Which of the two, app or extension, you chose to use, and where the extension keeps its files. The one file both read. |
+| `~/.gemini/speaker_monitor_status.json` | What the app's chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the app's pid), written by the app. The extension writes its own, below, and its Vitruvian tool reads that one. Not settings: a crashed app leaves it saying "running", so a reader checks the app is up. |
+
+The extension keeps the same four things in its own data folder instead,
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`:
+`settings.json`, `secrets.json` (mode `0600`), `history.json` and
+`speaker_monitor_status.json`. The formats are the same as the app's. To
+move settings or sign-ins between the two, use the copy offered in the
+choice (or *Copy settings from…* in Settings), not a hand copy: it follows
+rules a plain file copy does not.
+
+To put the Slack token on this Mac from Bitwarden, run
+`bazel run //apps/desktop/home-speaker:sync-secrets` for the app, or add
+`-- --extension` for the extension. `--extension` finds the extension's folder
+in `speaker_door.json`, and stops without writing anything if the extension
+has not recorded itself there yet.
 
 Nothing leaves your Mac except requests to Google (Home API, OAuth, Chat API
 if enabled) and Slack (if enabled). The app has no telemetry.

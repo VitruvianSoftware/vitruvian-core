@@ -303,6 +303,10 @@ public enum AppCommandRunner {
         }
     }
 
+    /// What `--login-item enable` adds while macOS waits for the person's
+    /// approval; macOS 15 on names the pane "Login Items & Extensions".
+    public static let approveLoginItem = "approve HomeSpeaker under System Settings > General > Login Items & Extensions"
+
     public static func loginItem(_ action: LoginItemAction, control: LoginItemControlling) -> CLIOutput {
         do {
             switch action {
@@ -320,7 +324,7 @@ public enum AppCommandRunner {
         var out = CLIOutput(stdout: ["login item: \(state.rawValue)"])
         switch (action, state) {
         case (.enable, .requiresApproval):
-            out.stdout.append("approve HomeSpeaker under System Settings > General > Login Items")
+            out.stdout.append(approveLoginItem)
         case (.enable, .enabled), (.disable, .notRegistered), (.disable, .notFound), (.status, _):
             break
         case (.enable, _), (.disable, _):

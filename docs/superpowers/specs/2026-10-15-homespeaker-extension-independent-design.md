@@ -554,7 +554,8 @@ James approved every recommendation below.
 ## 11. Not in this design
 
 - The chat monitor's own behaviour and its end-to-end harness: #3341's (section 9).
-- `macagent` and `speaker-broadcast` following the extension (question 1).
+- `macagent` and `speaker-broadcast` following the extension. Decided yes on 2026-10-15
+  (section 10, question 1); it lands as a follow-up after 1.19.0, not in this design.
 - Retiring the standalone app.
 - Words beside the closed-island mark (`activity`).
 - A protocol request to switch a tool off (question 4).

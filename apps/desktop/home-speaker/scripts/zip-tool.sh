@@ -27,6 +27,13 @@
 #
 #   scripts/zip-tool.sh <universal homespeaker-tool binary> <version> <dist dir>
 #
+# With HOMESPEAKER_GOOGLE_CLIENT_ID set (the release job sets it, and
+# HOMESPEAKER_GOOGLE_CLIENT_SECRET, for publish.sh, which this inherits),
+# the zip also holds google-oauth-client.json, the Google sign-in client the
+# extension reads beside its program, as bundle.sh embeds it in the app.
+# Without it, no such file: signing in then needs a client of the
+# person's own.
+#
 # Prints the zip's size and SHA-256, which a catalog entry
 # (catalog/tools.json) pins.
 set -euo pipefail
@@ -59,6 +66,16 @@ mkdir -p "${STAGE}/homespeaker/bin"
 cp "${MANIFEST}" "${STAGE}/homespeaker/vitruvian-tool.json"
 cp "${BINARY}" "${STAGE}/homespeaker/bin/tool"
 chmod 755 "${STAGE}/homespeaker/bin/tool"
+
+# A JSON string's inside: backslashes and quotes escaped.
+json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+if [[ -n "${HOMESPEAKER_GOOGLE_CLIENT_ID:-}" ]]; then
+	echo "==> Shipping the Google OAuth client in the tool"
+	printf '{"client_id": "%s", "client_secret": "%s"}\n' \
+		"$(json_escape "${HOMESPEAKER_GOOGLE_CLIENT_ID}")" \
+		"$(json_escape "${HOMESPEAKER_GOOGLE_CLIENT_SECRET:-}")" \
+		>"${STAGE}/homespeaker/google-oauth-client.json"
+fi
 
 # The zip is made from inside the staging folder, so the dist folder is made
 # whole first: `./dist` would otherwise name a folder in the staging one.

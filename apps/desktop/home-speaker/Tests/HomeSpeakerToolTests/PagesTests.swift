@@ -47,13 +47,91 @@ final class PagesTests: XCTestCase {
                       quietHoursEnabled: true, quietHoursStart: "22:00", quietHoursEnd: "07:00")
     }
 
-    func testWithoutHomeSpeakerTheIslandPageSaysSoAndLinksToIt() {
+    /// The extension is HomeSpeaker: no page sends the person to get the
+    /// app, or says the app must run, and Open at Login is Vitruvian's.
+    func testNoPageSaysHomeSpeakerIsMissing() {
+        let gone = ["is not installed on this Mac", "Get HomeSpeaker", "Needs HomeSpeaker running",
+                    "isn't running, so nothing is reading chat", "Open HomeSpeaker at Login"]
+        for installed in [true, false] {
+            var status = Pages.Status()
+            status.installed = installed
+            status.config = configured
+            status.config.effectiveAnnounceVolumeEnabled = true
+            status.config.effectiveChatMonitor.slackEnabled = true
+            var pages = [Pages.island(status)]
+            for section in Pages.Section.allCases {
+                status.section = section
+                pages.append(Pages.settings(status))
+            }
+            for page in pages {
+                for line in texts(page) {
+                    XCTAssertFalse(gone.contains { line.contains($0) }, line)
+                }
+                XCTAssertFalse(ids(page).contains("loginItem"), "the login-item switch is gone")
+            }
+            status.section = .general
+            XCTAssertTrue(texts(Pages.settings(status)).contains(Pages.DoorWords.runsWithVitruvian))
+        }
+        XCTAssertEqual(Pages.DoorWords.runsWithVitruvian,
+                       "Runs whenever Vitruvian runs. To start it at login, turn on Vitruvian's Open at Login.")
+    }
+
+    func testQuietHoursPickerOnNewApps() throws {
         var status = Pages.Status()
-        status.installed = false
-        let page = Pages.island(status)
-        XCTAssertEqual(ids(page), [])
-        XCTAssertTrue(texts(page).contains("Get HomeSpeaker"))
-        XCTAssertTrue(texts(page).contains { $0.contains("not installed") })
+        status.config = configured
+        status.offersChoice = true
+        var page = Pages.settings(status)
+        guard case .choice(let from)? = page.blocks.first(where: { $0.id == "quietStart" })?.content,
+              case .choice(let until)? = page.blocks.first(where: { $0.id == "quietEnd" })?.content else {
+            return XCTFail("no choices")
+        }
+        XCTAssertEqual(from.options.map(\.value), Pages.halfHours)
+        XCTAssertEqual(Pages.halfHours.count, 48)
+        XCTAssertEqual(Pages.halfHours.first, "00:00")
+        XCTAssertEqual(Pages.halfHours[45], "22:30")
+        XCTAssertEqual(Pages.halfHours.last, "23:30")
+        XCTAssertEqual(from.value, "22:00")
+        XCTAssertEqual(until.value, "07:00")
+        XCTAssertEqual(from.title?.text(for: "en"), "From")
+        XCTAssertEqual(until.title?.text(for: "en"), "Until")
+
+        // A time typed before, off the half hour, is kept and offered.
+        status.config.quietHoursStart = "23:15"
+        page = Pages.settings(status)
+        guard case .choice(let kept)? = page.blocks.first(where: { $0.id == "quietStart" })?.content else { return XCTFail("no choice") }
+        XCTAssertEqual(kept.value, "23:15")
+        XCTAssertEqual(kept.options.count, 49)
+        XCTAssertEqual(Set(kept.options.map(\.value)).count, kept.options.count, "no two options alike")
+        XCTAssertTrue(kept.options.map(\.value).contains("23:15"))
+
+        // An app without the choice block: the typed field, as before.
+        status.offersChoice = false
+        page = Pages.settings(status)
+        guard case .field(let field)? = page.blocks.first(where: { $0.id == "quietStart" })?.content else { return XCTFail("no field") }
+        XCTAssertEqual(field.title?.text(for: "en"), "From (HH:mm)")
+        XCTAssertEqual(field.value, "23:15")
+    }
+
+    func testTheRestoreReportIsTheEngines() {
+        var status = Pages.Status()
+        status.config = configured
+        status.config.effectiveAnnounceVolumeEnabled = true
+        let plain = "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."
+        XCTAssertTrue(texts(Pages.settings(status)).contains(plain))
+        status.volumeRestoreReport = "Put Kitchen back to 30% after announcing at 60%."
+        XCTAssertTrue(texts(Pages.settings(status)).contains("Put Kitchen back to 30% after announcing at 60%."))
+        XCTAssertFalse(texts(Pages.settings(status)).contains(plain))
+    }
+
+    func testFilesListTheExtensionsThreeFiles() {
+        var status = Pages.Status()
+        status.section = .googleCloud
+        status.files = Pages.Files(settings: "/data/settings.json", secrets: "/data/secrets.json", history: "/data/history.json",
+                                   homeSpeakerVersion: "1.19.0")
+        let lines = texts(Pages.settings(status))
+        XCTAssertTrue(lines.contains("Settings · /data/settings.json"))
+        XCTAssertTrue(lines.contains("Secrets · /data/secrets.json"))
+        XCTAssertTrue(lines.contains("History · /data/history.json"))
     }
 
     func testTheIslandPageHasTheFieldTheSwitchesAndTheSpeaker() {
@@ -63,7 +141,8 @@ final class PagesTests: XCTestCase {
         status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
         status.quietNow = true
         let page = Pages.island(status)
-        XCTAssertEqual(ids(page), ["say", "broadcasting", "quiet", "mute", "volume", "refresh", "speakers", "output.home", "output.local"])
+        XCTAssertEqual(ids(page), ["say", "broadcasting", "quiet", "mute", "volume", "quieter", "louder", "refresh", "speakers",
+                                   "output.home", "output.local"])
         XCTAssertTrue(texts(page).contains("Kitchen · Volume 40 %"))
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
         guard case .list(let speakers)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no list") }
@@ -86,9 +165,8 @@ final class PagesTests: XCTestCase {
         var status = Pages.Status()
         status.config = configured
         status.config.effectiveAnnounceVolumeEnabled = true
-        status.loginItem = .enabled
         let page = Pages.settings(status)
-        XCTAssertEqual(ids(page), ["section", "signIn", "openGoogleCloud", "broadcasting", "loginItem", "speechLength", "announceVolume", "announceLevel",
+        XCTAssertEqual(ids(page), ["section", "signIn", "openGoogleCloud", "broadcasting", "speechLength", "announceVolume", "announceLevel",
                                    "pauseMedia", "quiet", "quietStart", "quietEnd"])
         XCTAssertEqual(texts(page).filter { ["Google Home Account", "Broadcast Controls", "Quiet Hours"].contains($0) },
                        ["Google Home Account", "Broadcast Controls", "Quiet Hours"])
@@ -103,7 +181,7 @@ final class PagesTests: XCTestCase {
         status.account = Pages.Account(isSignedIn: true, email: "me@example.com", hasOAuthClient: true)
         status.offersChoice = true
         let more = Pages.settings(status)
-        XCTAssertEqual(ids(more), ["section", "signOut", "broadcasting", "loginItem", "speechLength", "announceVolume", "pauseMedia",
+        XCTAssertEqual(ids(more), ["section", "signOut", "broadcasting", "speechLength", "announceVolume", "pauseMedia",
                                    "pauseExtra", "testMediaPause", "quiet", "quietStart", "quietEnd"])
         guard case .choice(let choice)? = more.blocks.first(where: { $0.id == "speechLength" })?.content else { return XCTFail("no choice") }
         XCTAssertEqual(choice.options.map { $0.title.text(for: "en") }, SpeechLength.allCases.map(\.label))
@@ -201,8 +279,28 @@ final class PagesTests: XCTestCase {
         cloud.draftClientId = String(repeating: "d", count: 300)
         cloud.files = Pages.Files(settings: String(repeating: "s", count: 1_000), secrets: String(repeating: "s", count: 1_000),
                                   homeSpeakerVersion: "1.14.0")
+        // Both installed: the card at each step, on both pages.
+        let snapshot = DoorSnapshot(settingsChanged: Date(), googleEmail: String(repeating: "e", count: 300), hasHomeLogin: true,
+                                    homeName: String(repeating: "h", count: 300), speakerCount: 40,
+                                    defaultSpeaker: String(repeating: "d", count: 300), quietHours: "22:00 to 07:00",
+                                    chatSources: ["Slack", "Google Chat"])
+        let compare = Pages.DoorCompare(purpose: .choose, from: .app, into: .extension, source: snapshot, destination: DoorSnapshot(),
+                                        problem: String(repeating: "p", count: 300))
+        var doors: [Pages.Status] = []
+        for step: Pages.DoorStep? in [nil, .compare(compare), .closing,
+                                      .offers(Pages.DoorOffers(quit: false, plan: OtherAppPlan.forChoosingTheExtension(appVersion: nil)))] {
+            var door = choices
+            door.section = .general
+            door.door = Pages.DoorState(role: .waitingAsking, otherInstalled: true, step: step,
+                                        report: (0..<8).map { _ in String(repeating: "r", count: 300) })
+            doors.append(door)
+        }
+        var quiet = choices
+        quiet.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
+        doors.append(quiet)
+        let doorPages = doors.flatMap { [Pages.island($0), Pages.settings($0)] }
         for tree in [Pages.island(status), Pages.island(setup), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
-                     Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] {
+                     Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] + doorPages {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
         }

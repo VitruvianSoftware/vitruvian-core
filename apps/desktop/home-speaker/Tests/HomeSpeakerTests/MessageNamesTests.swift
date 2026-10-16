@@ -118,6 +118,64 @@ private struct SilentLocal: LocalSpeaking {
         again.release()
     }
 
+    /// `isHeld` takes the lock for a moment to look. A process starting at
+    /// that moment must still get it: `hold` waits a moment and tries again.
+    /// No timer: the looker lets go the first time `hold` finds it busy, so
+    /// the retry is certain to happen and certain to succeed.
+    @Test func aProcessStartingWhileSomeoneLooksStillHoldsIt() throws {
+        let url = try scratchDir().appendingPathComponent("running.lock")
+        _ = try LiveLock.hold(at: url).release()
+        // Someone looking: the lock taken on a file description of its own,
+        // as `isHeld` takes it.
+        let looker = open(url.path, O_RDONLY | O_CLOEXEC)
+        try #require(looker >= 0)
+        try #require(flock(looker, LOCK_EX | LOCK_NB) == 0)
+        defer { close(looker) }
+        var busyCalls = 0
+        let lock = try LiveLock.hold(
+            at: url, retries: LiveLock.retries, wait: LiveLock.retryWait,
+            onBusy: { _ in
+                busyCalls += 1
+                if busyCalls == 1 { flock(looker, LOCK_UN) }
+            })
+        #expect(busyCalls == 1, "it found the lock taken once, let the look finish, and got it")
+        #expect(LiveLock.isHeld(at: url))
+        lock.release()
+    }
+
+    /// With no retries a lock taken for a look is a refusal: the failure
+    /// the wait above exists to avoid.
+    @Test func withNoRetriesALockTakenForALookRefusesAtOnce() throws {
+        let url = try scratchDir().appendingPathComponent("running.lock")
+        _ = try LiveLock.hold(at: url).release()
+        let looker = open(url.path, O_RDONLY | O_CLOEXEC)
+        try #require(looker >= 0)
+        try #require(flock(looker, LOCK_EX | LOCK_NB) == 0)
+        defer { close(looker) }
+        var busyCalls = 0
+        #expect(throws: POSIXError.self) {
+            _ = try LiveLock.hold(
+                at: url, retries: 0, wait: LiveLock.retryWait, onBusy: { _ in busyCalls += 1 })
+        }
+        #expect(busyCalls == 0, "no retry means no wait")
+        do {
+            _ = try LiveLock.hold(at: url, retries: 0, wait: 0, onBusy: { _ in })
+            Issue.record("expected EWOULDBLOCK")
+        } catch let error as POSIXError {
+            #expect(error.code == .EWOULDBLOCK)
+        }
+    }
+
+    /// The wait is short: a real holder still refuses a second one, soon.
+    @Test func aRealHolderStillRefusesASecondOneSoon() throws {
+        let url = try scratchDir().appendingPathComponent("running.lock")
+        let holder = try LiveLock.hold(at: url)
+        let started = Date()
+        #expect(throws: (any Error).self) { try LiveLock.hold(at: url) }
+        #expect(Date().timeIntervalSince(started) < 2, "a real holder is refused within moments")
+        holder.release()
+    }
+
     @Test func canRestoreAsksTheLockForTheExtension() async throws {
         let profile = testProfile(in: try scratchDir())
         let lockURL = try #require(profile.liveLockURL)

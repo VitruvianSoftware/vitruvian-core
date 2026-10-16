@@ -101,10 +101,14 @@ cat >"$APP/scripts/bundle.sh" <<'STUB'
 mkdir -p "$3/HomeSpeaker.app/Contents/MacOS"
 cp "$1" "$3/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
 STUB
+# The zip's stand-in also says which sign-in client it was given: the
+# release job sets the two variables for publish.sh, and the real
+# zip-tool.sh ships them in the tool's zip.
 cat >"$APP/scripts/zip-tool.sh" <<'STUB'
 #!/bin/sh
 mkdir -p "$3"
 echo zip > "$3/HomeSpeaker-$2-tool.zip"
+printf '%s|%s\n' "${HOMESPEAKER_GOOGLE_CLIENT_ID:-}" "${HOMESPEAKER_GOOGLE_CLIENT_SECRET:-}" > "${ZIP_CLIENT:?}"
 STUB
 # The helper's stand-in. HELPER_MODE says how it behaves:
 #   good      makes every artifact and checksum, exits 0
@@ -137,6 +141,7 @@ STUB
 chmod +x "$STUBS"/* "$APP/scripts"/*.sh "$ROOT/tools/desktop-package/package-desktop.sh"
 
 HELPER_ARGS="$TMP_DIR/helper.args"
+ZIP_CLIENT="$TMP_DIR/zip.client"
 # run_publish <shell> <helper mode> [TAG=...] -- [publish args]; leaves RC, OUT.
 run_publish() {
 	local shell="$1" mode="$2"
@@ -149,8 +154,9 @@ run_publish() {
 	shift
 	: >"$HELPER_ARGS"
 	RC=0
-	OUT="$(env -u TAG -u GH_TOKEN -u GITHUB_TOKEN PATH="$STUBS:$PATH" FAKE_BIN="$FAKE_BIN" \
-		HELPER_ARGS="$HELPER_ARGS" HELPER_MODE="$mode" VERSION=9.9.9 ${envs[@]+"${envs[@]}"} \
+	OUT="$(env -u TAG -u GH_TOKEN -u GITHUB_TOKEN \
+		-u HOMESPEAKER_GOOGLE_CLIENT_ID -u HOMESPEAKER_GOOGLE_CLIENT_SECRET PATH="$STUBS:$PATH" FAKE_BIN="$FAKE_BIN" \
+		HELPER_ARGS="$HELPER_ARGS" ZIP_CLIENT="$ZIP_CLIENT" HELPER_MODE="$mode" VERSION=9.9.9 ${envs[@]+"${envs[@]}"} \
 		"$shell" "$APP/scripts/publish.sh" "$@" 2>&1)" || RC=$?
 }
 
@@ -186,6 +192,12 @@ $OUT"
 	grep -Fq -- "--require-asset HomeSpeaker-9.9.9-tool.zip" "$HELPER_ARGS" || fail "[$ver] the tool zip was not required of the helper: $(cat "$HELPER_ARGS")"
 	grep -Eq -- '--(dry-run|tag)' "$HELPER_ARGS" && fail "[$ver] a plain run passed --dry-run or --tag: $(cat "$HELPER_ARGS")"
 	ok "[$ver] a healthy plain run succeeds and requires the tool zip"
+
+	run_publish "$shell" good HOMESPEAKER_GOOGLE_CLIENT_ID=made-up-id HOMESPEAKER_GOOGLE_CLIENT_SECRET=made-up-secret -- # gitleaks:allow
+	[[ "$RC" -eq 0 ]] || fail "[$ver] a run with a sign-in client: exit $RC
+$OUT"
+	[[ "$(cat "$ZIP_CLIENT")" == "made-up-id|made-up-secret" ]] || fail "[$ver] the sign-in client did not reach zip-tool.sh: $(cat "$ZIP_CLIENT")"
+	ok "[$ver] the release's sign-in client reaches the tool's zip"
 
 	run_publish "$shell" good TAG=home-speaker-v9.9.9 -- --dry-run
 	[[ "$RC" -eq 0 ]] || fail "[$ver] dry run with a tag: exit $RC

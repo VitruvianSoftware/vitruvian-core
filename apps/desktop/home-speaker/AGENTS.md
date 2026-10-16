@@ -30,7 +30,9 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
   sweep proves nothing about this app.
 - **Release package exactly as CI does:** `./scripts/publish.sh --dry-run` (universal .app,
   zip, sha256). Slack token onto this Mac from Bitwarden:
-  `bazel run //apps/desktop/home-speaker:sync-secrets`.
+  `bazel run //apps/desktop/home-speaker:sync-secrets` for the app, or
+  `bazel run //apps/desktop/home-speaker:sync-secrets -- --extension` for the extension's
+  `secrets.json` (found through `speaker_door.json`; it stops and writes nothing if that is missing).
 
 ## Conventions & landmines
 
@@ -42,13 +44,27 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 - **Secrets never in git.** `HOMESPEAKER_GOOGLE_CLIENT_ID` / `HOMESPEAKER_GOOGLE_CLIENT_SECRET`
   come from the environment locally and from repository secrets in CI; the Slack token lives
   only in the Bitwarden vault and in this Mac's secrets file.
-- **`~/.gemini/speaker_broadcast.json` is a shared contract.** This app watches it, the Android
-  remote's HomeSpeaker module rewrites it through `macagent`, and local tooling reads it.
-  Changing its schema touches all of them; keep old keys readable.
+- **`~/.gemini/speaker_broadcast.json` is the app's settings, and a shared contract.** This app
+  watches it, the Android remote's HomeSpeaker module rewrites it through `macagent`, and local
+  tooling reads it. Changing its schema touches all of them; keep old keys readable. The Vitruvian
+  extension does not use it: it has its own `settings.json` with exactly the same schema.
+- **The extension's files are in its data folder**, not under `~/.gemini/`:
+  `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`
+  holds `settings.json`, `secrets.json` (0600), `history.json` and `speaker_monitor_status.json`,
+  in the same formats as the app's files. The same engine reads both, told which set of files to
+  use (`Profile`). Do not point the extension at the app's files, or the app at the extension's; the only
+  crossing is the copy the person asks for in the choice (`DoorCopy`).
+- **`~/.gemini/speaker_door.json` is the one file both read.** It records which of the app and the
+  extension the person chose (`chosen`), and the extension's program, data folder and version
+  (the `extension` block, written by the extension each time it starts). Writers merge under its
+  own lock; never replace it blind. Until someone picks, the app runs as today and the extension
+  waits. After a pick, only the chosen one speaks, reads chat and answers the Claude Code hook.
 - **`~/.gemini/speaker_monitor_status.json` is the app's to write.** The running app reports its
   chat monitor there (`ChatMonitorStatusFile`) and takes Start/Stop over a distributed notification
-  (`ChatMonitorControlNotice`, also `HomeSpeaker --chat-monitor start|stop`). A reader must treat
-  "running" from an app that is not running as stopped: a crash leaves the file behind.
+  (`ChatMonitorControlNotice`, also `HomeSpeaker --chat-monitor start|stop`). The extension writes
+  its own `speaker_monitor_status.json` in its data folder, and its tool reads only that one. A
+  reader must treat "running" from an app that is not running as stopped: a crash leaves the file
+  behind.
 - **Google's gates are not bugs.** The Home API needs a Google Home Premium Advanced plan — an
   empty speaker list after a successful sign-in is that. Home and Chat refuse a single consent,
   so they are separate sign-ins.

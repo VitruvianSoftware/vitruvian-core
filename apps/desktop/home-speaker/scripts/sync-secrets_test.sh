@@ -23,7 +23,10 @@
 # Pins: the USER token is chosen over the bot token, every other key in the
 # secrets file survives, the file stays 0600, a second run is a no-op, an item
 # that does not hold exactly one user token changes nothing, and no token
-# value ever reaches stdout or stderr.
+# value ever reaches stdout or stderr. With --extension the token goes into the
+# HomeSpeaker extension's own secrets.json (the data folder the choice file,
+# ~/.gemini/speaker_door.json, names) and never into the app's; without a
+# usable choice file it fails and writes nothing, never falling back to the app.
 set -euo pipefail
 
 SCRIPT="${TEST_SRCDIR:-}/${TEST_WORKSPACE:-_main}/apps/desktop/home-speaker/scripts/sync-secrets.sh"
@@ -116,5 +119,91 @@ reset
 before="$(shasum "$HOMESPEAKER_SECRETS")"
 run --dry-run || fail "dry run failed"
 [ "$(shasum "$HOMESPEAKER_SECRETS")" = "$before" ] || fail "dry run wrote the file"
+
+# --- --extension: the extension's file, never the app's ----------------------
+# HOME is the scratch $WORK/home, so the choice file is $WORK/home/.gemini/...
+DOOR="$HOME/.gemini/speaker_door.json"
+EXT_DIR="$WORK/ext-data"
+EXT_SECRETS="$EXT_DIR/secrets.json"
+write_door() { # $1 = data folder to record
+	mkdir -p "$HOME/.gemini"
+	printf '{"version":1,"chosen":"extension","extension":{"program":"/p","data_folder":"%s","version":"1.19.0","door":1}}' "$1" >"$DOOR"
+}
+reset_ext() {
+	mkdir -p "$EXT_DIR"
+	printf '{"google":{"refreshToken":"ext-g"}}' >"$EXT_SECRETS"
+	chmod 600 "$EXT_SECRETS"
+}
+
+# 6. --extension writes the extension's file and not the app's
+reset
+reset_ext
+write_door "$EXT_DIR"
+app_before="$(shasum "$HOMESPEAKER_SECRETS")"
+run --extension || {
+	cat "$WORK/out"
+	fail "--extension run failed"
+}
+no_leak "--extension write"
+[ "$(jq -r .slackToken "$EXT_SECRETS")" = "$USER_TOK" ] || fail "--extension did not write the user token to the extension's file"
+[ "$(jq -r .google.refreshToken "$EXT_SECRETS")" = ext-g ] || fail "--extension dropped the extension's other keys"
+[ "$(stat -f %Lp "$EXT_SECRETS" 2>/dev/null || stat -c %a "$EXT_SECRETS")" = 600 ] || fail "extension secrets file is not 0600"
+[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$app_before" ] || fail "--extension touched the app's secrets file"
+[ "$(jq -r '.slackToken // "none"' "$HOMESPEAKER_SECRETS")" = none ] || fail "--extension put the token in the app's file"
+for leftover in "$EXT_DIR"/.secrets.json.sync-*; do
+	[ -e "$leftover" ] && fail "--extension left a temp file behind"
+done
+
+# 6b. a second --extension run is a no-op
+ext_before="$(shasum "$EXT_SECRETS")"
+run --extension || fail "second --extension run failed"
+grep -q "nothing to do" "$WORK/out" || fail "second --extension run did not say it was a no-op"
+[ "$(shasum "$EXT_SECRETS")" = "$ext_before" ] || fail "second --extension run rewrote the file"
+
+# 6c. no secrets file in the extension's folder yet: it is created (0600)
+rm -f "$EXT_SECRETS"
+run --extension || fail "--extension with no secrets file yet failed"
+[ "$(jq -r .slackToken "$EXT_SECRETS")" = "$USER_TOK" ] || fail "new extension secrets file has no token"
+[ "$(stat -f %Lp "$EXT_SECRETS" 2>/dev/null || stat -c %a "$EXT_SECRETS")" = 600 ] || fail "new extension secrets file is not 0600"
+
+# 6d. --extension --dry-run writes nothing
+reset_ext
+ext_before="$(shasum "$EXT_SECRETS")"
+run --extension --dry-run || fail "--extension dry run failed"
+[ "$(shasum "$EXT_SECRETS")" = "$ext_before" ] || fail "--extension dry run wrote the file"
+grep -q "$EXT_SECRETS" "$WORK/out" || fail "--extension dry run did not name the extension's file"
+
+# 7. no usable choice file: fail clearly, write nothing anywhere, no fallback
+refuse_ext() { # $1 = why
+	reset
+	reset_ext
+	app_before="$(shasum "$HOMESPEAKER_SECRETS")"
+	ext_before="$(shasum "$EXT_SECRETS")"
+	if run --extension; then fail "--extension should have been refused: $1"; fi
+	no_leak "--extension refused ($1)"
+	grep -q "sync-secrets:" "$WORK/out" || fail "--extension refused ($1) without a clear message"
+	[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$app_before" ] || fail "--extension ($1) fell back to the app's file"
+	[ "$(shasum "$EXT_SECRETS")" = "$ext_before" ] || fail "--extension ($1) changed the extension's file"
+}
+rm -f "$DOOR"
+refuse_ext "no choice file"
+printf '{"version":1,"chosen":"app"}' >"$DOOR"
+refuse_ext "no extension block"
+printf '{"version":1,"extension":{"program":"/p","version":"1.19.0"}}' >"$DOOR"
+refuse_ext "no data_folder"
+write_door "$WORK/no-such-folder"
+refuse_ext "data folder missing"
+[ ! -e "$WORK/no-such-folder" ] || fail "--extension created the missing data folder"
+printf 'not json' >"$DOOR"
+refuse_ext "choice file is not JSON"
+
+# 8. without --extension the choice file is not consulted: the app's file is used
+write_door "$EXT_DIR"
+reset
+reset_ext
+ext_before="$(shasum "$EXT_SECRETS")"
+run || fail "default run failed with a choice file present"
+[ "$(jq -r .slackToken "$HOMESPEAKER_SECRETS")" = "$USER_TOK" ] || fail "default run did not write the app's file"
+[ "$(shasum "$EXT_SECRETS")" = "$ext_before" ] || fail "default run touched the extension's file"
 
 echo "PASS"

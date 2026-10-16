@@ -58,6 +58,8 @@ public struct MenuBarView: View {
     @ObservedObject var monitorService: ChatMonitorService
     @ObservedObject var viewModel: MenuBarViewModel
     @FocusState private var quickTextFocused: Bool
+    @ObservedObject var door: AppDoor = AppSide.shared.door
+    @ObservedObject var switcher: AppSwitch = AppSide.shared.switcher
 
     public init(
         configManager: ConfigManager,
@@ -89,6 +91,12 @@ public struct MenuBarView: View {
 
     public var body: some View {
         VStack(spacing: 12) {
+            // Which HomeSpeaker (design 7.4): a line at the top while the
+            // app asks or is quiet, not only the window, which is easy to miss.
+            if door.plan.asks || door.plan.showsQuiet || door.plan.inTrash || switcher.step != nil {
+                DoorCard(door: door, switcher: switcher, compact: true)
+                Divider()
+            }
             // Header: single switch that both shows and controls the state.
             Toggle(isOn: broadcastingBinding) {
                 HStack(spacing: 8) {

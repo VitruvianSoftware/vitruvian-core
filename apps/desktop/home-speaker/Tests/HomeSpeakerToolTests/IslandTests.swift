@@ -323,6 +323,38 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(driver.jobs, [.volume])
     }
 
+    // MARK: - Quieter and Louder
+
+    func testLouderAddsTenAndStopsAt100() {
+        let tool = tool()
+        _ = tool.islandPage()
+        driver.answer(.volume, .volume(Volume(speaker: "Kitchen", percent: 40)))
+        var page = tool.islandPage()
+        XCTAssertEqual(button(page, Pages.Block.quieter)?.title.text(for: "en"), "Quieter")
+        XCTAssertEqual(button(page, Pages.Block.louder)?.title.text(for: "en"), "Louder")
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.louder, kind: .tap))
+        XCTAssertEqual(driver.jobs.last, .setVolume(50))
+        driver.answer(.setVolume(50), .volume(Volume(speaker: "Kitchen", percent: 95)))
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.louder, kind: .tap))
+        XCTAssertEqual(driver.jobs.last, .setVolume(100), "never past 100")
+        driver.answer(.setVolume(100), .volume(Volume(speaker: "Kitchen", percent: 100)))
+        page = tool.islandPage()
+        XCTAssertEqual(button(page, Pages.Block.louder)?.enabled, false, "at 100 there is no louder")
+        XCTAssertEqual(Pages.louder(100), 100)
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.quieter, kind: .tap))
+        XCTAssertEqual(driver.jobs.last, .setVolume(90))
+        driver.answer(.setVolume(90), .volume(Volume(speaker: "Kitchen", percent: 4)))
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.quieter, kind: .tap))
+        XCTAssertEqual(driver.jobs.last, .setVolume(0), "never below 0")
+        XCTAssertEqual(Pages.quieter(0), 0)
+
+        // Not read yet: neither can say what it would set.
+        let unread = self.tool()
+        let first = unread.islandPage()
+        XCTAssertEqual(button(first, Pages.Block.louder)?.enabled, false)
+        XCTAssertEqual(unread.islandEvent(PanelEvent(block: Pages.Block.louder, kind: .tap)), .keep)
+    }
+
     // MARK: - The chat monitor's problems
 
     func testTheChatMonitorsProblemsAreWarnedAbove() {
@@ -330,11 +362,11 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(Pages.chatWarnings(status), [], "every source off: nothing to warn about")
         status.config.effectiveChatMonitor.slackEnabled = true
         status.chat = Pages.Chat(hasSlackToken: false, ownerRunning: false)
-        XCTAssertEqual(Pages.chatWarnings(status), [ChatMonitorError.slackTokenMissing.localizedDescription, Pages.appNotReadingChat])
-        XCTAssertEqual(Pages.appNotReadingChat, "HomeSpeaker isn't running, so nothing is reading chat")
+        XCTAssertEqual(Pages.chatWarnings(status), [ChatMonitorError.slackTokenMissing.localizedDescription],
+                       "the extension is what reads chat: there is no app to start")
         let page = Pages.island(status)
         XCTAssertTrue(texts(page).contains("\(ChatMonitorError.slackTokenMissing.localizedDescription) · "))
-        XCTAssertTrue(texts(page).contains("HomeSpeaker isn't running, so nothing is reading chat · "))
+        XCTAssertFalse(texts(page).contains { $0.contains("isn't running") })
         XCTAssertTrue(texts(page).contains("Fix it in Settings > Chat & Slack"))
         guard let warning = texts(page).firstIndex(of: "Fix it in Settings > Chat & Slack"),
               let say = page.blocks.firstIndex(where: { $0.id == Pages.Block.say }) else { return XCTFail("missing") }
@@ -344,18 +376,18 @@ final class IslandTests: XCTestCase {
         status.chat = Pages.Chat(hasSlackToken: true, ownerRunning: true)
         XCTAssertEqual(Pages.chatWarnings(status), [])
         XCTAssertFalse(texts(Pages.island(status)).contains("Fix it in Settings > Chat & Slack"))
-        // Only the app not running.
+        // Not running, with nothing wrong: nothing to warn about either.
         status.chat.ownerRunning = false
-        XCTAssertEqual(Pages.chatWarnings(status), [Pages.appNotReadingChat])
+        XCTAssertEqual(Pages.chatWarnings(status), [])
     }
 
     func testTheToolLooksAtTheChatMonitorOnlyWhileItIsOn() {
         let tool = tool()
         XCTAssertFalse(texts(tool.islandPage()).contains(Pages.fixChatInSettings))
         store.config?.effectiveChatMonitor.slackEnabled = true
-        chat.token = "xoxp-1"
         var page = tool.islandPage()
-        XCTAssertTrue(texts(page).contains("\(Pages.appNotReadingChat) · "))
+        XCTAssertTrue(texts(page).contains("\(ChatMonitorError.slackTokenMissing.localizedDescription) · "))
+        chat.token = "xoxp-1"
         appRunning = true
         page = tool.islandPage()
         XCTAssertFalse(texts(page).contains(Pages.fixChatInSettings))

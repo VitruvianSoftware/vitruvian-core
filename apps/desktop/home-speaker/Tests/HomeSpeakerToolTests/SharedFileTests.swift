@@ -114,4 +114,60 @@ final class SharedFileTests: XCTestCase {
         XCTAssertEqual(ProcessDriver(binary: appProgram).program, appProgram)
         XCTAssertNil(ProcessDriver(binary: nil).program)
     }
+
+    /// The shared file is the app's now. The extension keeps its own
+    /// settings in its data folder, and the app's, beside them in the same
+    /// home, change nothing it shows.
+    @MainActor
+    func testTheExtensionNeverReadsTheAppsSettings() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-shared-file-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let home = root.appendingPathComponent("home")
+        let appsFile = home.appendingPathComponent(".gemini/speaker_broadcast.json")
+        try FileManager.default.createDirectory(at: appsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"enabled": false, "default_target": "attic", "targets": {"attic": {"id": "a1", "type": "SPEAKER", "name": "Attic"}}}"#.utf8)
+            .write(to: appsFile)
+        let profile = HomeSpeakerProfile.extension(
+            dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
+            messagePrefix: "test.\(UUID().uuidString).homespeaker")
+        let engine = HomeSpeakerEngine(profile: profile)
+        engine.config.config = SpeakerConfig(enabled: true, defaultTarget: "kitchen",
+                                             targets: ["kitchen": SpeakerDevice(id: "d1", type: "SPEAKER", name: "Kitchen")])
+        try engine.config.trySaveConfig()
+        let parts = HomeSpeakerTool.Parts.extension(
+            engine: engine, program: root.appendingPathComponent("bin/tool"), link: Link(), later: { $0() },
+            driverParts: EngineDriver.Parts(engine: engine, otherSecrets: { nil }), monitor: GatedMonitor(NoMonitor()),
+            holdsLiveLock: true, check: DoorCheck(file: DoorFile(url: DoorFile.defaultURL(home: home)), appInstalled: { false }),
+            appProgram: { nil },
+            appProfile: HomeSpeakerProfile(
+                door: .app, settingsURL: appsFile, historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),
+                secretsURL: root.appendingPathComponent("app-secrets.json"), messagePrefix: "test.\(UUID().uuidString).app",
+                liveLockURL: nil, toolFolder: nil),
+            runningApps: { [] },
+            runProgram: { _, _ in
+                XCTFail("ran a program")
+                return ProgramRun(status: 1, output: "", error: "")
+            },
+            openApp: { _ in
+                XCTFail("opened the app")
+                return false
+            },
+            home: home, onMain: { work in MainActor.assumeIsolated { work() } })
+        let tool = HomeSpeakerTool(parts: parts)
+        // Read and saved, with no page drawn: a page would start jobs.
+        try tool.run(command: HomeSpeakerTool.Command.toggleQuietHours)
+        XCTAssertTrue(tool.config.enabled, "the app's broadcasting switch is not the extension's")
+        XCTAssertEqual(tool.config.defaultTarget, "kitchen", "nor is its speaker")
+        XCTAssertEqual(tool.status().config.targets.keys.sorted(), ["kitchen"])
+        XCTAssertEqual(try Data(contentsOf: appsFile),
+                       Data(#"{"enabled": false, "default_target": "attic", "targets": {"attic": {"id": "a1", "type": "SPEAKER", "name": "Attic"}}}"#.utf8),
+                       "and the app's file is exactly as it was")
+    }
+
+    /// A chat monitor that does nothing.
+    final class NoMonitor: ChatMonitorControlling {
+        var isRunning: Bool { false }
+        func start() {}
+        func stop() {}
+    }
 }

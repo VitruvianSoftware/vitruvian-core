@@ -93,7 +93,6 @@ final class ChatSlackTests: XCTestCase {
         link.features = choice ? [.choice] : []
         let tool = tool()
         _ = tool.settingsPage()
-        driver.answer(.app(.loginItem(.status)), .loginItem(.notRegistered))
         _ = event(tool, Pages.Block.section, .tap, .string(Pages.Section.monitor.rawValue))
         XCTAssertEqual(tool.section, .monitor)
         return tool
@@ -248,7 +247,6 @@ final class ChatSlackTests: XCTestCase {
     func testTheEnvironmentIsAskedOnlyOnChatAndSlack() {
         let tool = tool()
         _ = tool.settingsPage()
-        driver.answer(.app(.loginItem(.status)), .loginItem(.notRegistered))
         _ = tool.settingsPage()
         _ = tool.islandPage()
         XCTAssertEqual(gwsAsked, 0, "General never looks for gws")
@@ -385,7 +383,7 @@ final class ChatSlackTests: XCTestCase {
         chat.hasChatAccess = true
         driver.answer(.signIn(chatOnly: true), .done(["signed in as me@example.com; scopes: chat"]))
         XCTAssertEqual(tool.setupNotice, "Google Chat access granted")
-        XCTAssertEqual(driver.jobs.count, 2, "a Chat sign-in finds no speakers")
+        XCTAssertEqual(driver.jobs.count, 1, "a Chat sign-in finds no speakers")
         tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("Chat access granted · "))
         XCTAssertEqual(icons(tree)["Chat access granted"], "checkmark.circle.fill")
@@ -522,7 +520,6 @@ final class ChatSlackTests: XCTestCase {
         account.hasAntigravityTokens = true
         let tool = tool()
         _ = tool.settingsPage()
-        driver.answer(.app(.loginItem(.status)), .loginItem(.notRegistered))
         _ = event(tool, Pages.Block.importAntigravity, .tap)
         XCTAssertEqual(account.imports, 1)
         XCTAssertEqual(posted, 1)

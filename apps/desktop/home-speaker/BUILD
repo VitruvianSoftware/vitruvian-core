@@ -91,7 +91,9 @@ swift_binary(
 )
 
 # The tool as a folder the app can add: the manifest and bin/tool, as the
-# release zips them (scripts/publish.sh).
+# release zips them (scripts/publish.sh). Without google-oauth-client.json,
+# which only the release's zip holds (scripts/zip-tool.sh): CI has no
+# secrets, and the tests need no sign-in client.
 #
 #   bazel build --config=macos-app //apps/desktop/home-speaker:tool-folder
 #
@@ -112,13 +114,16 @@ genrule(
 )
 
 # The built folder through `vitruvian-tool validate` and the conformance
-# script, under a home of its own with no HomeSpeaker in it: the handshake,
-# a command, an unknown command, the island panel opened and tapped,
-# refusals, and a clean exit. Then end to end over the same JSON-RPC, with
-# a stand-in HomeSpeaker program that never speaks: the island and all five
-# settings sections drawn within the protocol's limits, and changes read
-# back from the settings and secrets files in that home. It starts the real
-# program (bin/tool, from :tool-folder below).
+# script, in a scratch folder of its own: its home, its data folder
+# (HOMESPEAKER_DATA_FOLDER), no HomeSpeaker app (HOMESPEAKER_PROGRAM empty)
+# and messages under a prefix of its own. The program's `--where` must name
+# that data folder first. Then the handshake, a command refused as not set
+# up, an unknown command, the island panel opened and tapped, refusals, a
+# status, and a clean exit. Then end to end over the same JSON-RPC: the
+# island and all five settings sections drawn within the protocol's limits,
+# and changes read back from the settings and secrets files in the data
+# folder. Last, none of the app's files in the scratch home's .gemini. It
+# starts the real program (bin/tool, from :tool-folder below).
 py_test(
     name = "tool_conformance_test",
     size = "medium",

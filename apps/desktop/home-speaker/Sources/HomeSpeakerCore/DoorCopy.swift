@@ -153,6 +153,27 @@ public enum DoorCopyError: Error, Equatable, LocalizedError {
     }
 }
 
+/// A copy that stopped part-way, after it had started writing: what was
+/// copied, what was not, and whether the sign-ins were replaced, so the
+/// destination can be told. It names no token.
+public struct DoorCopyPartial: Error, Equatable, LocalizedError {
+    /// A sentence for each part that was written.
+    public let copied: [String]
+    /// A sentence for each part that was not: the one that failed, with
+    /// why, then the ones after it.
+    public let notCopied: [String]
+    /// The destination's sign-ins were replaced before it stopped.
+    public let signInsWritten: Bool
+
+    public init(copied: [String], notCopied: [String], signInsWritten: Bool) {
+        self.copied = copied
+        self.notCopied = notCopied
+        self.signInsWritten = signInsWritten
+    }
+
+    public var errorDescription: String? { (copied + notCopied).joined(separator: " ") }
+}
+
 /// What a copy did, in words. It names no token: only which sign-ins came
 /// along, and whose.
 public struct CopyReport: Equatable {
@@ -216,6 +237,10 @@ public enum DoorCopy {
     /// It posts nothing. The caller tells the destination its sign-ins
     /// changed, by posting `CredentialsChangedNotice` under the
     /// destination profile's names (design 7.5), never the source's.
+    ///
+    /// A write that fails after the first one throws `DoorCopyPartial`,
+    /// which says what was copied and what was not; the caller still tells
+    /// the destination when its sign-ins were replaced.
     public static func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
         let from = name(source.door)
 
@@ -229,28 +254,51 @@ public enum DoorCopy {
         let incoming = BroadcastHistory(fileURL: source.historyURL).load()
 
         var lines: [String] = []
+        var signInsWritten = false
+        // The part that failed, with why, and the parts after it.
+        func stopped(_ part: String, _ error: Error, then rest: [String]) -> DoorCopyPartial {
+            DoorCopyPartial(
+                copied: lines,
+                notCopied: ["\(part): not copied (\(error.localizedDescription))."] + rest.map { "\($0): not copied." },
+                signInsWritten: signInsWritten)
+        }
 
         var settingsCopied = false
         if case .loaded(let config) = sourceSettings {
-            try destinationFile.write(config)
+            do {
+                try destinationFile.write(config)
+            } catch {
+                throw stopped("Settings", error, then: ["Sign-ins", "History"])
+            }
             settingsCopied = true
             lines.append("Settings: copied from \(from).")
         } else {
             lines.append("Settings: \(from) has none saved, so this one's were kept.")
         }
 
-        try SecretStore(fileURL: destination.secretsURL).update { $0 = secrets }
+        do {
+            try SecretStore(fileURL: destination.secretsURL).update { $0 = secrets }
+        } catch {
+            throw stopped("Sign-ins", error, then: ["History"])
+        }
+        signInsWritten = true
         lines.append(signInLine(secrets, from: from))
 
         let history = BroadcastHistory(fileURL: destination.historyURL)
-        let (count, added) = try FileLock.withExclusiveLock(at: history.lockURL) { () throws -> (Int, Int) in
-            let mine = history.load()
-            let merged = merge(mine, incoming)
-            if merged != mine {
-                try JSONEncoder().encode(merged).write(to: history.fileURL, options: .atomic)
+        let count: Int
+        let added: Int
+        do {
+            (count, added) = try FileLock.withExclusiveLock(at: history.lockURL) { () throws -> (Int, Int) in
+                let mine = history.load()
+                let merged = merge(mine, incoming)
+                if merged != mine {
+                    try JSONEncoder().encode(merged).write(to: history.fileURL, options: .atomic)
+                }
+                let mineIDs = Set(mine.map(\.id))
+                return (merged.count, merged.filter { !mineIDs.contains($0.id) }.count)
             }
-            let mineIDs = Set(mine.map(\.id))
-            return (merged.count, merged.filter { !mineIDs.contains($0.id) }.count)
+        } catch {
+            throw stopped("History", error, then: [])
         }
         lines.append("History: \(count) \(count == 1 ? "entry" : "entries"), \(added) of them from \(from).")
 

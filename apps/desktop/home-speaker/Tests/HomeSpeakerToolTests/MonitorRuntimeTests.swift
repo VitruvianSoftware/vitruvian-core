@@ -70,7 +70,6 @@ final class MonitorRuntimeTests: XCTestCase {
     private func opened() -> HomeSpeakerTool {
         let tool = tool()
         _ = tool.settingsPage()
-        driver.answer(.app(.loginItem(.status)), .loginItem(.notRegistered))
         _ = event(tool, Pages.Block.section, .tap, .string(Pages.Section.monitor.rawValue))
         return tool
     }
@@ -188,7 +187,7 @@ final class MonitorRuntimeTests: XCTestCase {
         appRunning = false
         let warnings = Pages.chatWarnings(tool.status())
         XCTAssertFalse(warnings.contains("Google Chat: 503"))
-        XCTAssertTrue(warnings.contains(Pages.appNotReadingChat))
+        XCTAssertEqual(warnings, [], "no app to start: nothing more is said")
     }
 
     func testChatWarningsListSetupProblemsThenTheRuntimeError() {
@@ -215,12 +214,12 @@ final class MonitorRuntimeTests: XCTestCase {
         XCTAssertEqual(tool.setupNotice, "Asked HomeSpeaker to stop the chat monitor")
     }
 
-    func testStartIsRefusedWithoutTheAppOrASource() {
+    func testStartNeedsNoRunningAppButIsRefusedWithoutASource() {
         let tool = opened()
         appRunning = false
         _ = event(tool, Pages.Block.startChatMonitor, .tap)
-        XCTAssertEqual(asked, [])
-        XCTAssertEqual(tool.setupNotice, "HomeSpeaker isn't running: open it, then start the chat monitor")
+        XCTAssertEqual(asked, [.start], "the extension's monitor runs in its own process: no app is asked")
+        asked = []
         appRunning = true
         store.config?.effectiveChatMonitor.slackEnabled = false
         _ = event(tool, Pages.Block.startChatMonitor, .tap)

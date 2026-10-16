@@ -21,12 +21,12 @@
 import Foundation
 import HomeSpeakerCore
 
-/// HomeSpeaker's settings file, `~/.gemini/speaker_broadcast.json`: the
-/// contract the app, the `speaker-broadcast` command and the Mac agent
-/// share. The tool reads it before each page and writes it back through
-/// `SpeakerConfigFile`, as the app does: merged into what is there, so keys
-/// the tool does not know survive, and never over a file that does not
-/// read. The app watches the folder and follows within a second.
+/// One HomeSpeaker's settings file: the extension's `<data>/settings.json`.
+/// The tool reads it before each page and writes it back through
+/// `SpeakerConfigFile`, as the app does its own: merged into what is there,
+/// so keys the tool does not know survive, and never over a file that does
+/// not read. The extension's engine watches the folder and follows within a
+/// second.
 public protocol ConfigStore: AnyObject {
     /// The file: missing, read, or there but not readable as HomeSpeaker's
     /// settings, and why.
@@ -46,7 +46,9 @@ public final class FileConfigStore: ConfigStore {
     public let file: SpeakerConfigFile
     public var url: URL { file.url }
 
-    public init(url: URL = ConfigManager.defaultConfigURL(), fileSystem: ConfigFileSystem = LocalConfigFileSystem()) {
+    /// `url` is always named: a default would be the app's settings, which
+    /// the extension never reads.
+    public init(url: URL, fileSystem: ConfigFileSystem = LocalConfigFileSystem()) {
         self.file = SpeakerConfigFile(url: url, fileSystem: fileSystem)
     }
 

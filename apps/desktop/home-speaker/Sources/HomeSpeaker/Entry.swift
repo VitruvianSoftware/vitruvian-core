@@ -34,7 +34,10 @@ enum Entry {
         let arguments = Array(CommandLine.arguments.dropFirst())
         if HomeSpeakerCommandLine.recognizes(arguments) {
             MainActor.assumeIsolated {
-                HomeSpeakerCommandLine.run(arguments, engine: .app, parts: .app())
+                // The Stop hook and `--announce` stand aside while the
+                // extension is chosen and installed, or this app is in the
+                // Trash, so a stale hook never says a reply twice.
+                HomeSpeakerCommandLine.run(arguments, engine: .app, parts: AppStartup.commandLineParts())
             }
         }
         HomeSpeakerApp.main()
