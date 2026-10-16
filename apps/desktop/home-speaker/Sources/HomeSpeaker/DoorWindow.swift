@@ -64,7 +64,7 @@ final class DoorWindow {
             window.center()
             self.window = window
         }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
     }
 }
@@ -94,7 +94,7 @@ struct DoorCard: View {
             case .extensionChosen(let offers):
                 if compact { inWindow } else { extensionChosen(offers) }
             }
-            ForEach(switcher.report, id: \.self) { line in
+            ForEach(Array(switcher.report.enumerated()), id: \.offset) { _, line in
                 Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -221,13 +221,15 @@ struct CompareStep: View {
 }
 
 /// Settings > General: which one this Mac uses, switch, and copy again
-/// (design 7.7). While nobody has picked, or a step is under way, the card.
+/// (design 7.7), quiet or not: a quiet app is where the person changed
+/// something they now want copied. While nobody has picked, or a step is
+/// under way, or the app is in the Trash, the card.
 struct WhichHomeSpeakerSection: View {
     @ObservedObject var door: AppDoor
     @ObservedObject var switcher: AppSwitch
 
     var body: some View {
-        if door.plan.asks || door.plan.showsQuiet || switcher.step != nil || door.plan.inTrash {
+        if door.plan.asks || switcher.step != nil || door.plan.inTrash {
             Section(DoorWords.which) {
                 DoorCard(door: door, switcher: switcher, compact: true)
             }
@@ -245,7 +247,7 @@ struct WhichHomeSpeakerSection: View {
                         DoorWindow.shared.show()
                     }
                 }
-                ForEach(switcher.report, id: \.self) { line in
+                ForEach(Array(switcher.report.enumerated()), id: \.offset) { _, line in
                     Text(line).font(.caption).foregroundStyle(.secondary)
                 }
             }

@@ -83,9 +83,13 @@ public enum AppStartup {
     /// The plan from the choice file as read (`record`), whether a file
     /// exists, and where the app's own bundle is now.
     public static func plan(record: DoorRecord?, fileExists: (String) -> Bool, bundlePath: String) -> Plan {
+        plan(role: role(record: record, fileExists: fileExists), inTrash: OtherDoorPresence.isInTrash(bundlePath + "/"))
+    }
+
+    /// The app's role from the choice file alone, the Trash aside.
+    static func role(record: DoorRecord?, fileExists: (String) -> Bool) -> DoorRole {
         let installed = OtherDoorPresence.extensionInstalled(record: record, fileExists: fileExists)
-        let role = DoorRole.decide(me: .app, otherInstalled: installed, chosen: record?.chosen)
-        return plan(role: role, inTrash: OtherDoorPresence.isInTrash(bundlePath + "/"))
+        return DoorRole.decide(me: .app, otherInstalled: installed, chosen: record?.chosen)
     }
 
     /// The plan, reading the choice file afresh.
@@ -122,11 +126,26 @@ public enum AppStartup {
     /// extension is chosen and installed; `inTheTrashNote` when the app
     /// stands aside only because it is in the Trash.
     public static func asideNote(record: DoorRecord?, fileExists: (String) -> Bool, bundlePath: String) -> String? {
-        let plan = plan(record: record, fileExists: fileExists, bundlePath: bundlePath)
-        guard plan.inTrash else { return nil }
-        let installed = OtherDoorPresence.extensionInstalled(record: record, fileExists: fileExists)
-        let role = DoorRole.decide(me: .app, otherInstalled: installed, chosen: record?.chosen)
-        return role.isQuiet ? nil : inTheTrashNote
+        guard OtherDoorPresence.isInTrash(bundlePath + "/") else { return nil }
+        return role(record: record, fileExists: fileExists).isQuiet ? nil : inTheTrashNote
+    }
+
+    /// Is the extension's chat monitor reading chat now? Only while its
+    /// long-lived process holds its lock (`profile.liveLockURL`) and its
+    /// status file says the monitor runs: a status left behind by a crash,
+    /// with nobody holding the lock, does not count. Read, never written.
+    public static func extensionReadsChat(_ profile: HomeSpeakerProfile) -> Bool {
+        guard let lock = profile.liveLockURL, LiveLock.isHeld(at: lock) else { return false }
+        return ChatMonitorStatusFile(url: profile.monitorStatusURL).read()?.isRunning == true
+    }
+
+    /// May the app start its chat monitor now that it runs (design 7.6,
+    /// step 4)? Only once the extension is seen not reading chat: its
+    /// lock not held, or its monitor stopped. A 1.19 extension stops its
+    /// own within one look at the choice file (five seconds); until it is
+    /// seen to, the app waits, so no message is read by both.
+    public static func monitorMayStart(extensionReadsChat: Bool) -> Bool {
+        !extensionReadsChat
     }
 
     /// The extension's sign-ins, while it is installed and runs without the
@@ -190,17 +209,34 @@ public final class AppDoor: ObservableObject {
     public let check: DoorCheck
     private let bundlePath: () -> String
     private let effects: Effects
+    /// Is the extension's monitor reading chat (`AppStartup.extensionReadsChat`)?
+    private let extensionReadsChat: (HomeSpeakerProfile) -> Bool
+    /// Runs `work` again a moment later, while the monitor waits.
+    private let later: (@escaping @MainActor () -> Void) -> Void
     /// What runs now, as started here; nothing until the first refresh.
     private var running = false
+    /// Running, but the monitor waits for the extension to stop reading
+    /// chat (design 7.6, step 4).
+    @Published public private(set) var monitorWaiting = false
+    /// A re-check is already asked for.
+    private var recheckAsked = false
     /// The choice the hooks were last repaired for, while running.
     private var repairedFor: HomeSpeakerProfile.Door??
 
+    /// `later` runs its work again a second later by default; a test runs
+    /// it by hand.
     public init(
-        check: DoorCheck, bundlePath: @escaping () -> String, monitor: any ChatMonitorControlling, effects: Effects
+        check: DoorCheck, bundlePath: @escaping () -> String, monitor: any ChatMonitorControlling, effects: Effects,
+        extensionReadsChat: @escaping (HomeSpeakerProfile) -> Bool = AppStartup.extensionReadsChat,
+        later: @escaping (@escaping @MainActor () -> Void) -> Void = { work in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated { work() } }
+        }
     ) {
         self.check = check
         self.bundlePath = bundlePath
         self.effects = effects
+        self.extensionReadsChat = extensionReadsChat
+        self.later = later
         self.monitor = GatedMonitor(monitor)
         let record = check.file.read()
         self.record = record
@@ -209,14 +245,15 @@ public final class AppDoor: ObservableObject {
 
     /// Reads the role afresh and acts on a change. Going quiet stops the
     /// monitor and the listeners; becoming active starts them in today's
-    /// order, after re-pointing the hooks for the choice. A change of
-    /// choice while running re-points them again. Nothing changed: nothing
-    /// is done.
+    /// order, after re-pointing the hooks for the choice. The monitor
+    /// itself waits while the extension's still reads chat, and is started
+    /// once it is seen to stop (design 7.6, step 4). A change of choice
+    /// while running re-points the hooks again. Nothing changed: nothing is
+    /// done.
     public func refresh() {
         let record = check.file.read()
         let new = AppStartup.plan(record: record, fileExists: check.fileExists, bundlePath: bundlePath())
         let runs = new.runs
-        monitor.permission.set(runs)
         if !runs, running {
             effects.stopMonitor()
             effects.stopListening()
@@ -227,16 +264,34 @@ public final class AppDoor: ObservableObject {
                 effects.repairHooks(choice)
                 repairedFor = .some(choice)
             }
-            if !running {
+            if !running { monitorWaiting = true }
+            if monitorWaiting, AppStartup.monitorMayStart(extensionReadsChat: extensionReading(record)) {
+                monitorWaiting = false
+                monitor.permission.set(true)
                 effects.startMonitorIfConfigured()
-                effects.startListening()
             }
+            if !running { effects.startListening() }
         } else {
             repairedFor = nil
+            monitorWaiting = false
         }
+        monitor.permission.set(runs && !monitorWaiting)
         running = runs
+        if monitorWaiting, !recheckAsked {
+            recheckAsked = true
+            later { [weak self] in
+                self?.recheckAsked = false
+                self?.refresh()
+            }
+        }
         if record != self.record { self.record = record }
         if new != plan { plan = new }
+    }
+
+    /// The extension's monitor reads chat, by its block in the choice file.
+    private func extensionReading(_ record: DoorRecord?) -> Bool {
+        guard let profile = AppStartup.extensionProfile(record: record) else { return false }
+        return extensionReadsChat(profile)
     }
 
     /// The extension, when it is installed and runs without the app.

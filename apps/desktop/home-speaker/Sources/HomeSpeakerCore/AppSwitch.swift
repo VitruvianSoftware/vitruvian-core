@@ -58,8 +58,6 @@ public final class AppSwitch: ObservableObject {
         public var appProfile: HomeSpeakerProfile
         /// Where the coding agents keep their files.
         public var home: URL
-        /// The app's own program, for a hook.
-        public var appProgram: String
         public var now: () -> Date
         /// `DoorCopy.copy`.
         public var copy: (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport
@@ -74,7 +72,7 @@ public final class AppSwitch: ObservableObject {
         public var openVitruvian: () -> Bool
 
         public init(
-            appProfile: HomeSpeakerProfile, home: URL, appProgram: String, now: @escaping () -> Date,
+            appProfile: HomeSpeakerProfile, home: URL, now: @escaping () -> Date,
             copy: @escaping (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport,
             credentialsChangedIn: @escaping (HomeSpeakerProfile) -> Void,
             turnOffLoginItem: @escaping () throws -> Void, moveToTrash: @escaping () throws -> Void,
@@ -82,7 +80,6 @@ public final class AppSwitch: ObservableObject {
         ) {
             self.appProfile = appProfile
             self.home = home
-            self.appProgram = appProgram
             self.now = now
             self.copy = copy
             self.credentialsChangedIn = credentialsChangedIn
@@ -110,7 +107,7 @@ public final class AppSwitch: ObservableObject {
     /// the app (1.19 on: the mark in its block), and never by an app in
     /// the Trash.
     public var canChooseExtension: Bool {
-        !door.plan.inTrash && OtherDoorPresence.extensionInstalled(record: door.check.file.read(), fileExists: door.check.fileExists)
+        !door.plan.inTrash && door.extensionInstalled
     }
 
     /// The one in use, once the person has chosen and both are installed.
@@ -173,7 +170,8 @@ public final class AppSwitch: ObservableObject {
             step = nil
             return
         }
-        guard canChooseExtension, let extensionProfile = AppStartup.extensionProfile(record: record),
+        guard OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists),
+              let extensionProfile = AppStartup.extensionProfile(record: record),
               let extensionProgram = record?.installedExtension?.program else {
             compare.problem = DoorWords.extensionNotFound
             step = .compare(compare)

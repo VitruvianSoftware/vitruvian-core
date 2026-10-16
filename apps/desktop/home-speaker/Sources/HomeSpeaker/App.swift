@@ -115,7 +115,6 @@ final class AppSide {
         switcher = AppSwitch(door: door, parts: AppSwitch.Parts(
             appProfile: engine.profile,
             home: FileManager.default.homeDirectoryForCurrentUser,
-            appProgram: AgentIntegration.shared.hookExecutablePath,
             now: { Date() },
             copy: DoorCopy.copy,
             credentialsChangedIn: { CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: $0)) },

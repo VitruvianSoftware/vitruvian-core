@@ -104,6 +104,10 @@ private final class AppRig {
     /// Everything the app was asked to do, in order.
     var calls: [String] = []
     let monitor = FakeChatMonitor(running: false)
+    /// The extension's chat monitor, as the app sees it: running or not.
+    var extensionReading = false
+    /// Re-checks the app asked for while it waits; run by hand.
+    var scheduled: [@MainActor () -> Void] = []
 
     init() throws {
         root = try scratchDir()
@@ -169,7 +173,16 @@ private final class AppRig {
                 startMonitorIfConfigured: { [unowned self] in self.calls.append("startMonitor") },
                 stopMonitor: { [unowned self] in self.calls.append("stopMonitor") },
                 startListening: { [unowned self] in self.calls.append("startListening") },
-                stopListening: { [unowned self] in self.calls.append("stopListening") }))
+                stopListening: { [unowned self] in self.calls.append("stopListening") }),
+            extensionReadsChat: { [unowned self] _ in self.extensionReading },
+            later: { [unowned self] in self.scheduled.append($0) })
+    }
+
+    /// Runs the re-checks asked for so far.
+    func runScheduled() {
+        let due = scheduled
+        scheduled = []
+        for work in due { work() }
     }
 
     var copied: [HomeSpeakerProfile.Door] = []
@@ -179,7 +192,6 @@ private final class AppRig {
         AppSwitch(door: appDoor, parts: AppSwitch.Parts(
             appProfile: appProfile,
             home: home,
-            appProgram: appProgram.path,
             now: { Date(timeIntervalSince1970: 1_900_000_000) },
             copy: { [unowned self] from, to in
                 self.calls.append("copy(\(from.door.rawValue)->\(to.door.rawValue))")
@@ -301,6 +313,66 @@ private final class AppRig {
         door.refresh()
         #expect(rig.calls == ["repairHooks(app)", "startMonitor", "startListening"])
         #expect(door.plan.role == .active)
+    }
+
+    @Test func theAppsMonitorWaitsForTheExtensionToStop() throws {
+        let rig = try AppRig()
+        try rig.installExtension(chosen: .extension)
+        rig.extensionReading = true
+        let door = rig.makeDoor()
+        door.refresh()
+        let side = rig.makeSwitch(door)
+
+        // Picked in the app: the extension reads chat until its next look.
+        side.choose(.app)
+        side.finish(copy: false)
+        #expect(rig.calls == ["repairHooks(app)", "startListening"], "the monitor started beside the extension's: \(rig.calls)")
+        #expect(!door.monitor.permission.value)
+        ChatMonitorControlNotice.apply(.start, monitor: door.monitor)
+        #expect(rig.monitor.calls.isEmpty, "a start went past the wait")
+        #expect(!rig.scheduled.isEmpty, "nothing will look again")
+
+        // Still reading: still waiting.
+        rig.runScheduled()
+        #expect(!rig.calls.contains("startMonitor"))
+        #expect(!rig.scheduled.isEmpty)
+
+        // Seen quiet: now it starts, once.
+        rig.extensionReading = false
+        rig.runScheduled()
+        #expect(rig.calls.filter { $0 == "startMonitor" }.count == 1)
+        #expect(door.monitor.permission.value)
+        rig.runScheduled()
+        door.refresh()
+        #expect(rig.calls.filter { $0 == "startMonitor" }.count == 1, "started twice")
+
+        // At launch, the same: an extension still reading holds it back.
+        rig.calls = []
+        rig.extensionReading = true
+        let launched = rig.makeDoor()
+        launched.refresh()
+        #expect(!rig.calls.contains("startMonitor"))
+        rig.extensionReading = false
+        launched.refresh()
+        #expect(rig.calls.contains("startMonitor"))
+    }
+
+    @Test func theExtensionReadsChatOnlyWhileItsLockIsHeldAndItSaysSo() throws {
+        let rig = try AppRig()
+        try rig.installExtension(chosen: .app)
+        let profile = try #require(AppStartup.extensionProfile(record: rig.door.read()))
+        let lockURL = try #require(profile.liveLockURL)
+        try #require(lockURL.path.hasPrefix(rig.root.path + "/"))
+        let status = ChatMonitorStatusFile(url: profile.monitorStatusURL)
+
+        #expect(!AppStartup.extensionReadsChat(profile), "no process, no status")
+        try status.write(ChatMonitorStatus(isRunning: true))
+        #expect(!AppStartup.extensionReadsChat(profile), "a crashed extension left 'running' behind: nobody holds its lock")
+        let lock = try LiveLock.hold(at: lockURL)
+        #expect(AppStartup.extensionReadsChat(profile))
+        try status.write(ChatMonitorStatus(isRunning: false))
+        #expect(!AppStartup.extensionReadsChat(profile), "running, but its monitor stopped")
+        lock.release()
     }
 
     @Test func quietNeverRepairsTheHook() throws {
