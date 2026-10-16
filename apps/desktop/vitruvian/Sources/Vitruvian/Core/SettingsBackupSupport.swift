@@ -78,6 +78,8 @@ package enum SettingsBackupSupport {
         DefaultsKey.panelCollapsedSections,
         DefaultsKey.panelShowExtensions,
         DefaultsKey.panelHiddenExtensions,
+        DefaultsKey.panelExtensionOrder,
+        DefaultsKey.panelCollapsedExtensions,
         DefaultsKey.quickLauncherItemOrder,
         // Legacy island layouts stay restorable; absence selects the new layout.
         DefaultsKey.notchQuickAccessSide,
