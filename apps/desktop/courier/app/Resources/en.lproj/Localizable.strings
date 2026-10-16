@@ -104,3 +104,207 @@
 
 /* Banner button: asks for what the network needs before it can start. */
 "Set up" = "Set up";
+
+/* The date line in a chat for messages sent today. */
+"Today" = "Today";
+
+/* The date line in a chat for messages sent yesterday. */
+"Yesterday" = "Yesterday";
+
+/* The divider in a chat above the messages that have not been read. */
+"New" = "New";
+
+/* Spoken name of the divider above unread messages. */
+"New messages" = "New messages";
+
+/* What a deleted message says in a chat. Also the quote of a deleted message. */
+"This message was deleted" = "This message was deleted";
+
+/* What a message says when it could not be decrypted. */
+"Waiting for this message to be decrypted" = "Waiting for this message to be decrypted";
+
+/* Under a message whose text was changed after it was sent. */
+"Edited" = "Edited";
+
+/* The name of the person using Courier, in a quote and for screen readers. */
+"You" = "You";
+
+/* In a reply: the message it answers is older than what is loaded. */
+"Original message not loaded" = "Original message not loaded";
+
+/* Under a message of yours that the network has not taken yet. */
+"Sending…" = "Sending…";
+
+/* Under your newest message once the network has taken it. */
+"Sent" = "Sent";
+
+/* Under a message of yours that the network refused. */
+"Not sent" = "Not sent";
+
+/* Tooltip on Not sent when the network gave no reason. */
+"The network did not take this message." = "The network did not take this message.";
+
+/* Button under a message that was not sent: send it again. */
+"Retry" = "Retry";
+
+/* Button under a message that was not sent: remove it from this device. */
+"Delete" = "Delete";
+
+/* Button, menu item and tooltip: reply to this message. */
+"Reply" = "Reply";
+
+/* Menu in a message's context menu: add a reaction. */
+"React" = "React";
+
+/* Tooltip and spoken name of a quick reaction. The argument is the emoji. */
+"React with %@" = "React with %@";
+
+/* Menu item: copy a message's text. */
+"Copy" = "Copy";
+
+/* Spoken name of a reaction under a message: the emoji, then how many gave it. */
+"%@, %lld" = "%@, %lld";
+
+/* Spoken name of a reaction you gave: the emoji, then how many gave it. */
+"%@, %lld, including you" = "%@, %lld, including you";
+
+/* Spoken form of a deleted message. The argument is who sent it. */
+"%@: deleted message" = "%@: deleted message";
+
+/* Spoken form of a message that could not be decrypted. The argument is who sent it. */
+"%@: message waiting to be decrypted" = "%@: message waiting to be decrypted";
+
+/* Spoken form of an image. The arguments are who sent it and its caption. */
+"%@: image %@" = "%@: image %@";
+
+/* Spoken form of a sticker. The argument is who sent it. */
+"%@: sticker" = "%@: sticker";
+
+/* Spoken form of a video. The arguments are who sent it and its caption. */
+"%@: video %@" = "%@: video %@";
+
+/* Spoken form of a voice note. The argument is who sent it. */
+"%@: voice note" = "%@: voice note";
+
+/* Spoken form of a file. The arguments are who sent it, the file's name and its caption. */
+"%@: file %@ %@" = "%@: file %@ %@";
+
+/* In a chat, in place of a picture that could not be read. */
+"Image can’t be shown" = "Image can’t be shown";
+
+/* On a picture or file of a message whose file is not on this Mac yet. */
+"Not downloaded yet" = "Not downloaded yet";
+
+/* Tooltip on a file in a chat: opens it in the default app. */
+"Open" = "Open";
+
+/* Spoken hint on a file in a chat. */
+"Opens the file" = "Opens the file";
+
+/* Tooltip on the button that takes a file out of the message being written. */
+"Remove attachment" = "Remove attachment";
+
+/* Spoken name of the button that takes a file out of the message being written. The argument is the file's name. */
+"Remove %@" = "Remove %@";
+
+/* Tooltip on the paperclip in the composer. */
+"Attach files (⌘O)" = "Attach files (⌘O)";
+
+/* Spoken name of the paperclip in the composer. */
+"Attach files" = "Attach files";
+
+/* Message in the file picker. */
+"Choose files to send" = "Choose files to send";
+
+/* Button of the file picker. */
+"Attach" = "Attach";
+
+/* The composer's placeholder. */
+"Type a message…" = "Type a message…";
+
+/* Tooltip on the emoji button in the composer. */
+"Emoji & Symbols (⌃⌘Space)" = "Emoji & Symbols (⌃⌘Space)";
+
+/* Spoken name of the emoji button in the composer. */
+"Emoji and symbols" = "Emoji and symbols";
+
+/* Tooltip on the send button. */
+"Send (Return)" = "Send (Return)";
+
+/* Spoken name of the send button. */
+"Send" = "Send";
+
+/* Closes a notice or banner. */
+"Dismiss" = "Dismiss";
+
+/* Above the composer: the message being replied to. The argument is who wrote it. */
+"Replying to %@" = "Replying to %@";
+
+/* Above the composer: the message being replied to is your own. */
+"Replying to yourself" = "Replying to yourself";
+
+/* Tooltip on the button that drops the reply. */
+"Clear quoted message (Esc)" = "Clear quoted message (Esc)";
+
+/* Spoken name of the button that drops the reply. */
+"Clear quoted message" = "Clear quoted message";
+
+/* Under the composer when a file would take the files to send past 90 MB. The argument is the file's name. */
+"Could not attach %@ — total size would exceed 90 MB." = "Could not attach %@ — total size would exceed 90 MB.";
+
+/* Under the composer when what was dropped is a folder or cannot be read. The argument is its name. */
+"Could not attach %@. Courier can send files, not folders." = "Could not attach %@. Courier can send files, not folders.";
+
+/* Under the composer after a send got no answer. */
+"Courier’s engine did not answer. The message may have been sent: check the chat before sending it again." = "Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.";
+
+/* Under the composer when a send was refused with no reason to give. */
+"The message could not be sent." = "The message could not be sent.";
+
+/* Under the composer when a send was refused. The argument is the engine's reason. */
+"The message could not be sent: %@" = "The message could not be sent: %@";
+
+/* The engine refused a file for its size. */
+"A file is over 90 MB." = "A file is over 90 MB.";
+
+/* A send could not be made because the engine is not up. */
+"Courier’s engine is not connected." = "Courier’s engine is not connected.";
+
+/* A reaction, retry or delete got no answer. */
+"Courier’s engine did not answer in time." = "Courier’s engine did not answer in time.";
+
+/* A reaction, retry or delete failed for no reason to give. */
+"Courier’s engine could not do that." = "Courier’s engine could not do that.";
+
+/* In a bar above the composer when the newest messages could not be read. */
+"Courier could not read the latest messages." = "Courier could not read the latest messages.";
+
+/* Button in that bar: read them again. */
+"Try again" = "Try again";
+
+/* In a chat with no messages. */
+"No messages yet" = "No messages yet";
+
+/* On the jump button: one message arrived while scrolled up. */
+"1 new message" = "1 new message";
+
+/* On the jump button: several messages arrived while scrolled up. */
+"%lld new messages" = "%lld new messages";
+
+/* Tooltip on the jump button. */
+"Jump to the newest message (⌘↓)" = "Jump to the newest message (⌘↓)";
+
+/* Spoken name of the jump button. */
+"Jump to the newest message" = "Jump to the newest message";
+
+/* Over a chat while files are dragged onto it. */
+"Drop files here to attach" = "Drop files here to attach";
+
+/* Name of the menu with the chat's keys. */
+"Message" = "Message";
+
+/* Menu item: pick files to send. */
+"Attach Files…" = "Attach Files…";
+
+/* Menu item: scroll the chat to its newest message. */
+"Jump to Newest Message" = "Jump to Newest Message";

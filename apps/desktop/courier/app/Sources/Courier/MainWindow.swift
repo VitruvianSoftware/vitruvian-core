@@ -5,10 +5,11 @@ import CourierCore
 import SwiftUI
 
 /// The main window: how the engine is doing until it is up, then two panes, the inbox and the conversation.
-/// (The conversation is the next task's; the space bar and the right pane are milestone 4's.)
+/// (The space bar and the right pane are milestone 4's.)
 struct MainWindow: View {
     @ObservedObject var model: AppModel
     @ObservedObject var inbox: InboxModel
+    @ObservedObject var conversation: ConversationModel
 
     var body: some View {
         content
@@ -60,7 +61,11 @@ struct MainWindow: View {
             InboxList(inbox: inbox)
                 .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 480)
         } detail: {
-            ConversationPlaceholder(name: inbox.selectedRow?.name)
+            if model.selectedRoomID != nil {
+                ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox)
+            } else {
+                NoChatSelected()
+            }
         }
         .background { alternateShortcuts }
     }
@@ -91,20 +96,12 @@ struct MainWindow: View {
     }
 }
 
-/// The right-hand pane until the conversation view exists.
-private struct ConversationPlaceholder: View {
-    let name: String?
-
+/// The right-hand pane while no chat is open.
+private struct NoChatSelected: View {
     var body: some View {
-        VStack(spacing: 8) {
-            if let name {
-                Text(name).font(.title2)
-            } else {
-                Text(String(localized: "Select a chat"))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Text(String(localized: "Select a chat"))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

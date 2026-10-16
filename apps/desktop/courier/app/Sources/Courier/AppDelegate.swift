@@ -10,6 +10,7 @@ import CourierCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model: AppModel
     let inbox: InboxModel
+    let conversation: ConversationModel
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
@@ -20,7 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launcher: FoundationProcessLauncher()
         )
         model = AppModel(supervisor: supervisor)
-        inbox = InboxModel(appModel: model)
+        let inbox = InboxModel(appModel: model)
+        self.inbox = inbox
+        // The "New" divider goes above as many messages as the inbox counted unread when the chat was opened.
+        conversation = ConversationModel(appModel: model, unreadCount: { id in
+            inbox.rows.first { $0.roomID == id }?.unread ?? 0
+        })
         super.init()
     }
 
