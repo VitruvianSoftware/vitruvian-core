@@ -49,7 +49,8 @@ func Start(ctx context.Context, dataDir string, s *store.Store, m *media.Store, 
 			continue
 		}
 		if _, dup := e.hosts[spec.Name]; dup {
-			errs[spec.Name] = fmt.Errorf("network %s is already running; names must be unique", spec.Name)
+			// Under its own key: errs[name] must stay absent for the network that IS running.
+			errs[spec.Name+" (duplicate)"] = fmt.Errorf("network %s is already running; names must be unique", spec.Name)
 			continue
 		}
 		nc, err := spec.Connector()

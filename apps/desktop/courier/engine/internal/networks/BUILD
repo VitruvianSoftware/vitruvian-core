@@ -1,17 +1,45 @@
-load("@rules_go//go:def.bzl", "go_test")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_test(
     name = "networks_test",
-    srcs = ["signal_link_test.go"],
-    deps = select({
+    srcs = [
+        "networks_test.go",
+        "offline_test.go",
+        "signal_link_test.go",
+    ],
+    embed = [":networks"],
+    deps = [
+        "//apps/desktop/courier/engine/internal/host",
+        "//apps/desktop/courier/engine/internal/media",
+        "//apps/desktop/courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
+        "@com_github_stretchr_testify//require",
+        "@fi_mau_go_mautrix_telegram//pkg/connector",
+        "@fi_mau_go_mautrix_whatsapp//pkg/connector",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+    ] + select({
         "@rules_go//go/platform:darwin": [
-            "@com_github_stretchr_testify//require",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
         "@rules_go//go/platform:ios": [
-            "@com_github_stretchr_testify//require",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
         "//conditions:default": [],
     }),
+)
+
+go_library(
+    name = "networks",
+    srcs = ["networks.go"],
+    importpath = "github.com/VitruvianSoftware/courier/engine/internal/networks",
+    visibility = ["//apps/desktop/courier/engine:__subpackages__"],
+    deps = [
+        "//apps/desktop/courier/engine/internal/engine",
+        "@fi_mau_go_mautrix_gmessages//pkg/connector",
+        "@fi_mau_go_mautrix_slack//pkg/connector",
+        "@fi_mau_go_mautrix_telegram//pkg/connector",
+        "@fi_mau_go_mautrix_whatsapp//pkg/connector",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+        "@net_maunium_go_mautrix//bridgev2",
+    ],
 )
