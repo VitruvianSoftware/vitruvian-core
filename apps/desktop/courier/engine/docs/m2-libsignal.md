@@ -139,8 +139,12 @@ pin.
 - **Annotations are tied to this libsignal version.** Each one is commented.
   A future libsignal can add or drop crates with build scripts; the first
   build after a re-pin will say which.
-- **Not in CI yet.** No presubmit lane runs the courier engine's tests today.
-  The test is ready for one; it needs a macOS (xcode-27) lane.
+- **CI runs it on macOS.** The presubmit unit `courier-engine-macos`
+  (declared in `apps/desktop/courier/engine/BUILD`) runs
+  `bazel test //apps/desktop/courier/engine/...` on the xcode-27 runner. It is
+  chosen for any change to the engine or to `third_party/libsignal`, and for
+  repo-wide changes such as `MODULE.bazel`. The Linux lanes run the same tests
+  without Signal.
 
 ## Signal in the engine (Task 5)
 
