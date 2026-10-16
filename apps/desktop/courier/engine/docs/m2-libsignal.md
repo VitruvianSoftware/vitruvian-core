@@ -175,13 +175,21 @@ point cgo at the directory it landed in:
 
 ```sh
 bazel build //third_party/libsignal:signal_ffi
-LIBDIR=$(dirname "$(bazel info execution_root)/$(bazel cquery --output=files \
-  'deps(//third_party/libsignal:signal_ffi, 2)' 2>/dev/null | grep '/libsignal_ffi\.a$')")
-cd apps/desktop/courier/engine
-CGO_LDFLAGS="-L$LIBDIR" go test ./internal/networks/
+LIB=$(bazel cquery --output=files \
+  'kind(rust_static_library, deps(//third_party/libsignal:signal_ffi))' \
+  2>/dev/null | grep '/libsignal_ffi\.a$')
+if [ "$(printf '%s' "$LIB" | grep -c '')" != 1 ]; then
+  echo "expected exactly one libsignal_ffi.a, found: ${LIB:-none}" >&2
+else
+  LIBDIR=$(dirname "$(bazel info execution_root)/$LIB")
+  (cd apps/desktop/courier/engine && CGO_LDFLAGS="-L$LIBDIR" go test ./internal/networks/)
+fi
 ```
 
-The directory has a build-configuration hash in its name
+The query asks for the Rust static library anywhere below `:signal_ffi`, so
+it doesn't depend on how many wrapper targets sit in between, and it stops
+with a message if it finds none or more than one. The directory has a
+build-configuration hash in its name
 (`bazel-out/darwin_arm64-fastbuild-ST-<hash>/bin/third_party/libsignal`), so
 look it up each time rather than writing it down. Without `CGO_LDFLAGS` the
 link fails with `ld: library 'signal_ffi' not found`. The `go.mod` entries for
