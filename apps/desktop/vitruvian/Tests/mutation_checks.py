@@ -1536,6 +1536,13 @@ MUTATIONS = [
      "    package static let summaryFade: Double = 0.06\n",
      "    package static let summaryFade: Double = 0.22\n",
      "an opening stack's summary is gone well before its first message slides in"),
+    ("the agent mark stays beside a tool's words", "platform",
+     "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+     "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n"
+     "        wing == .allowance\n",
+     "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n"
+     "        wing != nil\n",
+     "the agent mark shows only while the right wing draws the allowance percent"),
 ]
 
 
