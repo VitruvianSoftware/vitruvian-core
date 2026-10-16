@@ -306,7 +306,8 @@ class BumpTest(unittest.TestCase):
         self.assertIn("It offered 1.19.1", result["body"])
         self.assertNotIn("Also copied", result["body"])
         self.assertTrue(result["automerge"])
-        self.assertIn("merges itself once its checks pass", result["body"])
+        self.assertIn("merges itself once **catalog-check** passes", result["body"])
+        self.assertIn(bump.AUTOMERGE_MARK, result["body"])
         self.assertNotIn("needs-human", result["body"])
         self.assertIn(
             "(https://github.com/VitruvianSoftware/vitruvian-core/compare/"
@@ -357,6 +358,7 @@ class BumpTest(unittest.TestCase):
             result["body"],
         )
         self.assertNotIn("merges itself", result["body"])
+        self.assertNotIn(bump.AUTOMERGE_MARK, result["body"])
 
     def test_a_new_command_holds_the_pull_request_for_a_person(self):
         manifest = manifest_for(HS, "1.20.0")
@@ -369,20 +371,71 @@ class BumpTest(unittest.TestCase):
         self.assertFalse(result["automerge"])
         self.assertIn("It offers new commands: `shout`.", result["body"])
 
-    def test_taking_a_service_away_still_merges_itself(self):
-        self.publish_homespeaker(uses=["notify", "open"])
+    def held(self, manifest, *words):
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", zip_of(manifest))
         status, result = self.f.run(HS, "home-speaker-v1.20.0")
         self.assertEqual(status, bump.OK, result)
-        self.assertTrue(result["automerge"])
+        self.assertFalse(result["automerge"], result["body"])
+        self.assertNotIn(bump.AUTOMERGE_MARK, result["body"])
+        for text in words:
+            self.assertIn(text, result["body"])
+        return result
+
+    def merges_itself(self, manifest):
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", zip_of(manifest))
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertEqual(status, bump.OK, result)
+        self.assertTrue(result["automerge"], result["body"])
+        return result
+
+    def test_taking_a_service_away_holds_the_pull_request(self):
+        self.held(
+            manifest_for(HS, "1.20.0", uses=["notify", "open"]),
+            "It no longer asks for `clipboard.read`.",
+        )
         self.assertEqual(entry_of(self.f.catalog(), HS)["uses"], ["notify", "open"])
 
-    def test_new_words_hold_the_pull_request(self):
-        self.publish_homespeaker(description={"en": "Speaks."})
-        status, result = self.f.run(HS, "home-speaker-v1.20.0")
-        self.assertFalse(result["automerge"])
-        self.assertIn(
-            "The words or panels the app shows changed: summary.", result["body"]
+    def test_taking_a_command_away_holds_the_pull_request(self):
+        manifest = manifest_for(HS, "1.20.0")
+        manifest["contributes"]["commands"] = [
+            c for c in manifest["contributes"]["commands"] if c["id"] != "mute"
+        ]
+        self.held(manifest, "It no longer offers `mute`.")
+
+    def test_reordered_panels_hold_the_pull_request(self):
+        manifest = manifest_for(HS, "1.20.0")
+        manifest["contributes"]["panels"].reverse()
+        self.held(
+            manifest,
+            'Its panels changed from ["island", "settings"] to ["settings", "island"].',
         )
+
+    def test_a_removed_panel_holds_the_pull_request(self):
+        manifest = manifest_for(HS, "1.20.0")
+        manifest["contributes"]["panels"] = manifest["contributes"]["panels"][:1]
+        self.held(manifest, "Its panels changed")
+
+    def test_another_publisher_holds_the_pull_request(self):
+        self.held(
+            manifest_for(HS, "1.20.0", publisher="Someone Else"),
+            "It says it comes from 'Someone Else', not 'VitruvianSoftware'.",
+        )
+
+    def test_another_protocol_holds_the_pull_request(self):
+        self.held(
+            manifest_for(HS, "1.20.0", protocol="1"),
+            "Its protocol changed from 2 to 1.",
+        )
+
+    def test_new_words_alone_merge_themselves(self):
+        """Name, summary and command titles are text: the ruling lets them merge."""
+        manifest = manifest_for(
+            HS, "1.20.0", description={"en": "Speaks."}, name={"en": "Home Speaker"}
+        )
+        manifest["contributes"]["commands"][0]["title"] = {"en": "Say the clipboard"}
+        result = self.merges_itself(manifest)
+        self.assertIn("`name`, `summary`, `commands`", result["body"])
+        self.assertEqual(entry_of(self.f.catalog(), HS)["summary"], {"en": "Speaks."})
 
     def test_what_the_manifest_says_is_copied_and_new_uses_are_flagged(self):
         manifest = manifest_for(
@@ -513,6 +566,41 @@ class BumpTest(unittest.TestCase):
         self.assert_refused(
             HS, "home-speaker-v1.20.0", "bin/tool is not a Mach-O, not universal"
         )
+
+    def test_every_mach_o_must_be_universal(self):
+        """Not just the program: an arm64-only helper would fail on Intel Macs."""
+        self.f.publish(
+            "HomeSpeaker-1.20.0-tool.zip",
+            zip_of(manifest_for(HS, "1.20.0"), extra={"lib/helper.dylib": thin(ARM64)}),
+        )
+        self.assert_refused(
+            HS, "home-speaker-v1.20.0", "lib/helper.dylib is arm64, not universal"
+        )
+
+    def test_a_short_fat_header_is_a_clean_refusal(self):
+        stub = struct.pack(">II", 0xCAFEBABE, 2) + b"\0" * 8
+        self.f.publish(
+            "HomeSpeaker-1.20.0-tool.zip",
+            zip_of(manifest_for(HS, "1.20.0"), extra={"lib/stub": stub}),
+        )
+        self.assert_refused(
+            HS, "home-speaker-v1.20.0", "lib/stub is a Mach-O that cannot be read"
+        )
+
+    def test_a_refusal_names_the_issue_that_records_it(self):
+        data = zip_of(manifest_for(HS, "1.20.0"))
+        self.f.publish("HomeSpeaker-1.20.0-tool.zip", data, uploader="someone")
+        status, result = self.f.run(HS, "home-speaker-v1.20.0")
+        self.assertEqual(status, bump.REFUSED)
+        self.assertEqual(
+            result["issue_title"],
+            "catalog-bump refused dev.vitruvian.homespeaker 1.20.0",
+        )
+        self.assertIn(
+            "- HomeSpeaker-1.20.0-tool.zip was uploaded by someone",
+            result["issue_body"],
+        )
+        self.assertIn("Close the issue to let it try again", result["issue_body"])
 
     def test_a_pre_release_version_is_refused(self):
         self.assert_refused(HS, "home-speaker-v1.21.0-rc.1", "X.Y.Z releases only")
@@ -662,19 +750,52 @@ class MachOTest(unittest.TestCase):
 
 
 class WorkflowHelpersTest(unittest.TestCase):
-    def commit(self, sha, name, email):
-        return {"sha": sha, "commit": {"author": {"name": name, "email": email}}}
+    EMAIL = "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
 
-    def test_a_persons_commit_on_a_bump_branch_is_foreign(self):
-        """I3: the workflow never force-pushes over these."""
-        compare = {
-            "commits": [
-                self.commit("a" * 40, "vitruvian-wren-agent[bot]", bump.BOT_EMAIL),
-                self.commit("b" * 40, "James", "james@example.com"),
-            ]
+    def commit(self, sha, message, name="vitruvian-wren-agent[bot]"):
+        return {
+            "sha": sha,
+            "commit": {
+                "message": message,
+                "author": {"name": name, "email": self.EMAIL},
+            },
         }
-        self.assertEqual(bump.foreign(compare), ["bbbbbbbbbbbb by James"])
-        self.assertEqual(bump.foreign({"commits": compare["commits"][:1]}), [])
+
+    def workflows(self, version="1.20.0"):
+        return self.commit(
+            "a" * 40,
+            "feat(catalog): HomeSpeaker 1.20.0\n\nWritten by catalog-bump.\n\n"
+            f"Catalog-Bump: {HS}@{version}",
+        )
+
+    def test_the_workflows_own_commit_is_not_foreign(self):
+        self.assertEqual(
+            bump.foreign({"commits": [self.workflows()]}, HS, "1.20.0"), []
+        )
+        self.assertEqual(bump.foreign({"commits": []}, HS, "1.20.0"), [])
+
+    def test_a_session_using_the_bots_email_is_still_a_person(self):
+        """I3: agent sessions share the bot's email; only the trailer counts."""
+        session = self.commit("b" * 40, "chore: raise the floor", name="wren")
+        self.assertEqual(
+            bump.foreign({"commits": [self.workflows(), session]}, HS, "1.20.0"),
+            ["bbbbbbbbbbbb by wren"],
+        )
+        self.assertEqual(
+            bump.foreign({"commits": [session]}, HS, "1.20.0"), ["bbbbbbbbbbbb by wren"]
+        )
+
+    def test_a_second_commit_is_foreign_even_with_the_trailer(self):
+        second = dict(self.workflows(), sha="c" * 40)
+        self.assertEqual(
+            bump.foreign({"commits": [self.workflows(), second]}, HS, "1.20.0"),
+            ["cccccccccccc by vitruvian-wren-agent[bot]"],
+        )
+
+    def test_another_versions_trailer_is_foreign(self):
+        self.assertEqual(
+            len(bump.foreign({"commits": [self.workflows("1.19.0")]}, HS, "1.20.0")), 1
+        )
 
     def test_only_older_versions_are_replaced(self):
         pulls = [
@@ -685,6 +806,93 @@ class WorkflowHelpersTest(unittest.TestCase):
             {"number": 5, "headRefName": "feature/other"},
         ]
         self.assertEqual(bump.older(pulls, HS, "1.20.0"), [1])
+
+
+class ArmTest(unittest.TestCase):
+    """catalog-check arms auto-merge on a bump pull request, only when it passed."""
+
+    SHA = "d" * 40
+
+    def pull(self, **changes):
+        pull = {
+            "state": "OPEN",
+            "isDraft": False,
+            "headRefName": f"catalog/bump-{HS}-1.20.0",
+            "headRefOid": self.SHA,
+            "author": {"login": "app/vitruvian-copybara-sync"},
+            "labels": [],
+            "body": "text\n" + bump.AUTOMERGE_MARK + "\n",
+            "autoMergeRequest": None,
+        }
+        pull.update(changes)
+        return pull
+
+    def test_arms_when_catalog_check_passed(self):
+        self.assertEqual(bump.arm(self.pull(), self.SHA, "success"), "arm")
+
+    def test_never_arms_when_catalog_check_failed(self):
+        self.assertTrue(bump.arm(self.pull(), self.SHA, "failure").startswith("leave"))
+        armed = self.pull(autoMergeRequest={"enabledBy": {}})
+        self.assertEqual(bump.arm(armed, self.SHA, "failure"), "disarm")
+        self.assertTrue(
+            bump.arm(self.pull(), self.SHA, "cancelled").startswith("leave")
+        )
+
+    def test_a_held_pull_request_is_not_armed(self):
+        for label in ("needs-human", "do-not-automerge"):
+            held = self.pull(labels=[{"name": label}])
+            self.assertTrue(bump.arm(held, self.SHA, "success").startswith("leave"))
+            held["autoMergeRequest"] = {}
+            self.assertEqual(bump.arm(held, self.SHA, "success"), "disarm")
+
+    def test_only_a_marked_pull_request_from_the_workflow_is_armed(self):
+        for pull in (
+            self.pull(body="no mark"),
+            self.pull(author={"login": "james"}),
+            self.pull(headRefName="feature/x"),
+            self.pull(isDraft=True),
+            self.pull(state="CLOSED"),
+        ):
+            self.assertTrue(
+                bump.arm(pull, self.SHA, "success").startswith("leave"), pull
+            )
+
+    def test_a_moved_branch_waits_for_its_own_run(self):
+        self.assertIn("moved", bump.arm(self.pull(), "e" * 40, "success"))
+
+    def test_an_armed_pull_request_is_not_armed_again(self):
+        armed = self.pull(autoMergeRequest={"enabledBy": {}})
+        self.assertEqual(
+            bump.arm(armed, self.SHA, "success"), "leave: auto-merge is already on"
+        )
+
+
+class FakeGitHub:
+    def __init__(self, test):
+        self.test = test
+        self.comments = {}
+
+    def tags(self, repo, prefix):
+        return [t for t in self.test.TAGS[repo] if t.startswith(prefix)]
+
+    def release(self, repo, tag):
+        return self.test.releases.get(tag)
+
+    def pull(self, branch):
+        return self.test.pulls.get(branch)
+
+    def compare(self, branch):
+        return self.test.compares.get(branch, {"commits": []})
+
+    def refused_open(self, title):
+        return title in self.test.issues
+
+    def comment_once(self, number, mark, text):
+        bodies = self.comments.setdefault(number, [])
+        if any(mark in b for b in bodies):
+            return False
+        bodies.append(mark + "\n" + text)
+        return True
 
 
 class PlanTest(unittest.TestCase):
@@ -716,18 +924,15 @@ class PlanTest(unittest.TestCase):
             "v1.10.0-rc.1": {"assets": [{"name": "github-tool-1.10.0-rc.1.zip"}]},
         }
         self.pulls = {}
+        self.compares = {}
+        self.issues = set()
+        self.github = FakeGitHub(self)
 
     def plan(self, versions):
         catalog = real_catalog()
         for tool_id, version in versions.items():
             entry_of(catalog, tool_id)["version"] = version
-        return bump.plan(
-            catalog,
-            bump.load_sources(HERE / "sources.json"),
-            lambda repo, prefix: [t for t in self.TAGS[repo] if t.startswith(prefix)],
-            lambda repo, tag: self.releases.get(tag),
-            self.pulls.get,
-        )
+        return bump.plan(catalog, bump.load_sources(HERE / "sources.json"), self.github)
 
     def test_newer_published_releases_are_planned(self):
         """A pre-release flag and an -rc version (M2) are both passed over."""
@@ -764,6 +969,41 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}), [])
         self.pulls[branch]["state"] = "MERGED"
         self.assertEqual(self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}), [])
+
+    def test_a_refused_version_is_skipped_while_its_issue_is_open(self):
+        """Refused once: one red run and an issue, then no Bazel run each hour."""
+        self.issues.add("catalog-bump refused dev.vitruvian.homespeaker 1.20.0")
+        self.assertEqual(self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}), [])
+        self.issues.clear()
+        self.assertEqual(
+            self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}),
+            [{"id": HS, "tag": "home-speaker-v1.20.0"}],
+        )
+
+    def test_a_conflicting_branch_with_a_persons_commit_is_left_and_said_once(self):
+        """I3 in the plan: seconds an hour, no Bazel, and one comment."""
+        branch = bump.branch_for(HS, "1.20.0")
+        self.pulls[branch] = {"number": 7, "state": "OPEN", "mergeable": "CONFLICTING"}
+        helpers = WorkflowHelpersTest()
+        self.compares[branch] = {
+            "commits": [helpers.workflows(), helpers.commit("b" * 40, "raise floor")]
+        }
+        versions = {HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}
+        self.assertEqual(self.plan(versions), [])
+        self.assertEqual(self.plan(versions), [])
+        self.assertEqual(len(self.github.comments[7]), 1)
+        self.assertIn("bbbbbbbbbbbb", self.github.comments[7][0])
+        self.assertTrue(self.github.comments[7][0].startswith(bump.FOREIGN_MARK))
+
+    def test_a_conflicting_branch_with_only_the_workflows_commit_is_rebuilt(self):
+        branch = bump.branch_for(HS, "1.20.0")
+        self.pulls[branch] = {"number": 7, "state": "OPEN", "mergeable": "CONFLICTING"}
+        self.compares[branch] = {"commits": [WorkflowHelpersTest().workflows()]}
+        self.assertEqual(
+            self.plan({HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}),
+            [{"id": HS, "tag": "home-speaker-v1.20.0"}],
+        )
+        self.assertEqual(self.github.comments, {})
 
 
 if __name__ == "__main__":
