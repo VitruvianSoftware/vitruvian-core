@@ -200,6 +200,7 @@ enum TestGroups {
                 CatalogueInstallerTests.run(suite)
                 CatalogueWatchTests.run(suite)
                 CatalogueScreensTests.run(suite)
+                ExtensionsPageTests.run(suite)
                 ByHandRulesTests.run(suite)
             }),
             ("utilities", {

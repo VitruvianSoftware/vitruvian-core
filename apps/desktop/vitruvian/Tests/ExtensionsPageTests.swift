@@ -1,0 +1,177 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 VitruvianSoftware
+
+import Foundation
+import VitruvianCore
+import VitruvianServices
+import VitruvianUI
+
+/// The Extensions page in Settings, as plain values: where it sits in the
+/// sidebar, the line the Features page shows in place of the old card, the
+/// catalog under what is installed, the sidebar's count of updates, and
+/// every way in landing on it. No test draws a view.
+enum ExtensionsPageTests {
+    static func run(_ suite: TestSuite) {
+        sidebar(suite)
+        featuresLine(suite)
+        catalog(suite)
+        updateCount(suite)
+        waysIn(suite)
+    }
+
+    static let english = FeatureStrings.externalTools(.enUS)
+
+    static func sidebar(_ suite: TestSuite) {
+        for available in [true, false] {
+            let sections = SettingsDirectory.sidebarSections(Strings.enUS, language: .enUS,
+                                                             isAvailable: { _ in available })
+            let essentials = sections.first?.items.map(\.id) ?? []
+            let features = essentials.firstIndex(of: .page(.features))
+            let row = sections.first?.items.first { $0.id == .page(.extensions) }
+            suite.expect(features != nil && essentials.firstIndex(of: .page(.extensions)) == features.map { $0 + 1 }
+                             && row?.title == "Extensions" && row?.destination == FeatureSettingsDestination(.extensions)
+                             && sections.dropFirst().allSatisfy { !$0.items.contains { $0.id == .page(.extensions) } },
+                         "the sidebar lists Extensions once, in Essentials, right after Features, with every hub "
+                             + "feature \(available ? "on" : "off")")
+        }
+        let french = SettingsDirectory.sidebarSections(Strings.enUS, language: .fr, isAvailable: { _ in true })
+        suite.expect(french.first?.items.contains { $0.id == .page(.extensions) && $0.title == "Modules d’extension" } == true,
+                     "the sidebar's row follows the app's language")
+    }
+
+    static func featuresLine(_ suite: TestSuite) {
+        let none = ExtensionsPageSupport.summary(installed: 0, strings: english)
+        let one = ExtensionsPageSupport.summary(installed: 1, strings: english)
+        let many = ExtensionsPageSupport.summary(installed: 3, strings: english)
+        suite.expect(none.text == "No extensions yet" && none.link == "Browse"
+                         && one.text == "1 extension installed" && one.link == "Manage"
+                         && many.text == "3 extensions installed" && many.link == "Manage"
+                         && many.spoken == "3 extensions installed. Manage",
+                     "the Features page says how many extensions are added, one in the singular, and none as "
+                         + "No extensions yet with Browse")
+        suite.expect([none, one, many].allSatisfy { $0.destination == FeatureSettingsDestination(.extensions) },
+                     "the Features page's line leads to the Extensions page, whatever it says")
+        let router = SettingsRouter()
+        router.page = .features
+        router.request(many.destination)
+        suite.expect(router.page == .extensions && router.destination == ExtensionsPageSupport.destination
+                         && router.canGoBack(),
+                     "following the line opens the Extensions page, and Back returns to Features")
+
+        let rig = CatalogueWatchTests.Rig()
+        defer { rig.close() }
+        let before = ExtensionsPageContent.summary(store: rig.bench.store, language: .enUS)
+        rig.install()
+        let after = ExtensionsPageContent.summary(store: rig.bench.store, language: .enUS)
+        rig.bench.store.setOn(rig.bench.store.listed[0].id, false)
+        let off = ExtensionsPageContent.summary(store: rig.bench.store, language: .enUS)
+        suite.expect(before.text == "No extensions yet" && after.text == "1 extension installed" && off == after,
+                     "the line counts what the store lists, a tool that is switched off included")
+    }
+
+    static func catalog(_ suite: TestSuite) {
+        let rig = CatalogueWatchTests.Rig()
+        defer { rig.close() }
+        rig.install()
+        rig.serve([CatalogueFixtures.entry(["version": "1.3.0"]),
+                   CatalogueFixtures.entry(["id": "com.acme.other", "name": ["en": "Other"], "panels": [] as [String]]),
+                   CatalogueFixtures.entry(["id": "com.acme.github", "name": ["en": "GitHub"],
+                                            "panels": ["island"]])])
+        rig.watch.refresh()
+        let content = CatalogueScreensTests.content(rig)
+        guard case .rows(let rows) = content.notInstalled else {
+            suite.expect(false, "the Extensions page lists the catalog's tools that are not installed")
+            return
+        }
+        suite.expect(rows.map(\.id.rawValue) == ["com.acme.other", "com.acme.github"]
+                         && rows.allSatisfy { $0.action == .install }
+                         && rows.map(\.kindBadge) == ["Tool", "Extension"] && content.title == "The Vitruvian catalog",
+                     "the Extensions page lists the catalog's tools that are not installed, each with Install and "
+                         + "its kind pill, under the catalog's heading")
+
+        rig.serve([CatalogueFixtures.entry(["version": "1.2.0"])], etag: "\"b\"")
+        rig.watch.refresh()
+        suite.expect(CatalogueScreensTests.content(rig).notInstalled == .message(english.catalogAllInstalled),
+                     "when everything the catalog lists is installed, one line says so")
+
+        let byHand = CatalogueWatchTests.Rig()
+        defer { byHand.close() }
+        byHand.install(fromCatalog: false)
+        byHand.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
+        byHand.watch.refresh()
+        suite.expect(CatalogueScreensTests.content(byHand).notInstalled == .message(english.catalogAllInstalled),
+                     "a tool added from a folder with the catalog's id is installed, and not listed again")
+
+        let empty = CatalogueWatchTests.Rig()
+        defer { empty.close() }
+        let waiting = CatalogueScreensTests.content(empty).notInstalled
+        empty.serve([])
+        empty.watch.refresh()
+        let unreachable = CatalogueWatchTests.Rig()
+        defer { unreachable.close() }
+        unreachable.watch.refresh()
+        suite.expect(waiting == .loading && CatalogueScreensTests.content(empty).notInstalled == .message(english.catalogEmpty)
+                         && CatalogueScreensTests.content(unreachable).notInstalled == .message(english.catalogUnreachable),
+                     "waiting, an empty catalog and one that cannot be fetched say what the catalog's sheet said")
+    }
+
+    static func updateCount(_ suite: TestSuite) {
+        let rig = CatalogueWatchTests.Rig()
+        defer { rig.close() }
+        rig.install()
+        let unfetched = ExtensionsPageContent.updates(store: rig.bench.store, watch: rig.watch)
+        rig.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
+        rig.watch.refresh()
+        let newer = ExtensionsPageContent.updates(store: rig.bench.store, watch: rig.watch)
+        let row = ExternalToolRow.all(store: rig.bench.store, language: .enUS, strings: english, watch: rig.watch).first
+        rig.serve([CatalogueFixtures.entry(["version": "1.2.0"])], etag: "\"b\"")
+        rig.watch.refresh()
+        let same = ExtensionsPageContent.updates(store: rig.bench.store, watch: rig.watch)
+
+        let byHand = CatalogueWatchTests.Rig()
+        defer { byHand.close() }
+        byHand.install(fromCatalog: false)
+        byHand.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
+        byHand.watch.refresh()
+        suite.expect(unfetched == 0 && newer == 1 && row?.updateText == "Update available" && same == 0
+                         && ExtensionsPageContent.updates(store: byHand.bench.store, watch: byHand.watch) == 0,
+                     "the sidebar counts the tools installed from the catalog that it lists a newer version of, "
+                         + "the ones whose rows say Update available; none before the list is fetched, and never "
+                         + "one added from a folder")
+    }
+
+    static func waysIn(_ suite: TestSuite) {
+        suite.expect(ExtensionsPageSupport.destination == FeatureSettingsDestination(.extensions)
+                         && ExtensionsPageSupport.destination.hasValidSectionAnchor
+                         && FeatureVisibilitySupport.isPageVisible(.extensions, isAvailable: { _ in false })
+                         && FeatureVisibilitySupport.features(for: .extensions).isEmpty,
+                     "the Extensions page is one destination, with no anchor, and shows whatever the hub has on")
+
+        let items = SettingsDirectory.searchItems(Strings.enUS, language: .enUS)
+        for available in [true, false] {
+            let lost = ["extensions", "tools", "catalog", "Add from Folder"].filter { query in
+                let groups = SettingsSearchSupport.groupedMatchingItems(query: query, items: items,
+                                                                        isAvailable: { _ in available })
+                guard let group = groups.first(where: { $0.pageItem.destination.page == .extensions }) else { return true }
+                let routes = ([group.parentSuggestion] + group.suggestions).map {
+                    SettingsSearchSupport.route(for: $0, isAvailable: { _ in available }).destination
+                }
+                return !routes.allSatisfy { $0 == ExtensionsPageSupport.destination }
+            }
+            suite.expect(lost.isEmpty,
+                         "the Settings search and the command bar, which lists the same items, find the Extensions "
+                             + "page by \"extensions\", \"tools\", \"catalog\" and its Add button, and open it, with "
+                             + "every hub feature \(available ? "on" : "off") (\(lost.joined(separator: ", ")))")
+        }
+        let page = items.first { $0.id == .page(.extensions) }
+        suite.expect(page?.feature == nil && page?.destination == ExtensionsPageSupport.destination,
+                     "the Extensions page belongs to no hub feature, so it never falls back to Features")
+
+        suite.expect(FeatureStrings.notchEditor(.enUS).extensionSummary.hasSuffix("Its own settings are in Extensions.")
+                         && english.openExtensions == "Open Extensions",
+                     "an extension's island page in Settings says its own settings are in Extensions, and its button opens it")
+        suite.expect(ByHandRules.Words.extensionsPage == english.pageTitle && ByHandRules.Words.addTool == english.addButton
+                         && ByHandRules.Words.agreeToAdd == english.agreeAdd,
+                     "the by-hand command looks for the page and presses its buttons by the app's own English words")
+    }
+}
