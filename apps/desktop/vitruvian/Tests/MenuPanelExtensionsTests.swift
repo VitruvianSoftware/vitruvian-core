@@ -21,6 +21,7 @@ enum MenuPanelExtensionsTests {
         theIslandAndTheTabShareOnePage(suite)
         twoViewsOfTheTabShareOnePage(suite)
         anOldCardGoingLateLeavesTheNewCardsPage(suite)
+        aProgramThatEndsAndStartsAgain(suite)
         whatThePersonDoesInTheTabReachesTheTool(suite)
         aPageEndsWithItsToolInTheTabToo(suite)
         theIslandKeepsAWebPage(suite)
@@ -379,5 +380,53 @@ enum MenuPanelExtensionsTests {
         suite.expect(switches.page == .general && switches.sectionAnchor == .panelConfiguration
                          && switches.hasValidSectionAnchor,
                      "with every extension switched off, it leads to Settings › Menu bar, where the switches are")
+    }
+
+    /// The extension's program ends by itself (a crash) and may start again
+    /// after the wait the runtime holds it back for. The same steps for the
+    /// island, as main has them, and for the tab: in both places the page
+    /// ends with the program, nothing opens it again by itself, and asking
+    /// again once the wait is over draws it.
+    static func aProgramThatEndsAndStartsAgain(_ suite: TestSuite) {
+        let wait = ToolLimits.standard.firstRestartWait
+        func answer(_ bench: Bench, _ text: String) {
+            bench.current.greets()
+            if let asked = bench.current.lastRequest {
+                bench.current.answers(asked, #"{"tree":\#(ToolPanelHostTests.page(text))}"#)
+            }
+        }
+
+        let island = Bench.open()
+        island.current.ends(0)
+        suite.expect(island.host.shown[key("deploys")] == nil && island.host.island == nil,
+                     "island: the page ends with the program")
+        island.host.open(key("deploys"), in: .island)
+        suite.expect(island.host.shown[key("deploys")] == .notShown,
+                     "island: asked again while the program waits to start, the page cannot be shown")
+        island.host.close(key("deploys"))
+        island.clock.advance(by: wait + 0.1)
+        suite.expect(island.host.shown.isEmpty,
+                     "island: once the program may start again, nothing reopens the page by itself")
+        island.host.open(key("deploys"), in: .island)
+        answer(island, "again")
+        suite.expect(ToolPanelHostTests.text(island.host.shown[key("deploys")]) == "again",
+                     "island: opened again by the person, the program starts and its page is drawn")
+
+        let tab = openedInTheTab()
+        tab.current.ends(0)
+        suite.expect(tab.host.shown[key("deploys")] == nil && tab.host.inMenuPanel.isEmpty,
+                     "tab: the page ends with the program, as the island's does")
+        let early = UUID()
+        tab.host.openInMenuPanel(key("deploys"), viewer: early)
+        suite.expect(tab.host.shown[key("deploys")] == .notShown,
+                     "tab: asked again while the program waits to start, the page cannot be shown, as in the island")
+        tab.host.closeInMenuPanel(key("deploys"), viewer: early)
+        tab.clock.advance(by: wait + 0.1)
+        suite.expect(tab.host.shown.isEmpty,
+                     "tab: once the program may start again, nothing reopens the page by itself, as in the island")
+        tab.host.openInMenuPanel(key("deploys"), viewer: UUID())
+        answer(tab, "again")
+        suite.expect(ToolPanelHostTests.text(tab.host.shown[key("deploys")]) == "again",
+                     "tab: a card shown again asks again, the program starts and its page is drawn")
     }
 }
