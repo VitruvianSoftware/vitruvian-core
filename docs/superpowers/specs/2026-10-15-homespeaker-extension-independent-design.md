@@ -352,7 +352,7 @@ The same three steps in whichever one the person opens first.
      The Trash is `NSWorkspace.recycle`, never a delete. When the login item offer is left
      ticked, the extension runs the app's own `--login-item disable` (there since 1.13.2): a
      login item can only be switched off by its own app. An app older than 1.13.2 cannot be
-     told, so the extension says where to do it: System Settings > General > Login Items.
+     told, so the extension says where to do it: System Settings > General > Login Items & Extensions.
    - **App chosen.** The extension goes quiet by itself within five seconds (it reads the choice
      file on its five-second tick). The app then offers to remove it, but cannot do it itself:
      the protocol has no message for that. "To remove the extension: Vitruvian > Settings >

@@ -105,7 +105,7 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     /// The first version with `--login-item` (`AppCommands.swift`, #3325).
     public static let loginItemFlagSince = "1.13.2"
     /// Where a person turns Open at Login off by hand.
-    public static let whereToLook = "Turn it off in System Settings > General > Login Items."
+    public static let whereToLook = "Turn it off in System Settings > General > Login Items & Extensions."
     static let tooOldForLoginItem = "This copy of the app is too old to turn off its own Open at Login."
 
     public let program: URL?

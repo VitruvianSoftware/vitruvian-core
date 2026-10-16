@@ -222,7 +222,7 @@ final class OtherAppTests: XCTestCase {
     }
 
     func testAVeryOldAppIsToldWhereToLook() async throws {
-        XCTAssertEqual(SystemOtherApp.whereToLook, "Turn it off in System Settings > General > Login Items.")
+        XCTAssertEqual(SystemOtherApp.whereToLook, "Turn it off in System Settings > General > Login Items & Extensions.")
         let old = app(program: try makeApp(version: "1.13.1", in: "old"))
 
         let result = await old.turnOffLoginItem()
