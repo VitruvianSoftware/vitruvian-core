@@ -1,0 +1,99 @@
+.TabList-module__tablist {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  position: relative;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  height: var(--density-area-12xl);
+  min-height: var(--density-area-12xl);
+  max-height: var(--density-area-12xl);
+}
+.TabList-module__tablist .TabList-module__tab {
+  flex: 1;
+  padding: var(--density-space-xl) var(--density-space-4xl);
+  margin: 0;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background-color: transparent;
+  color: var(--text-secondary, #6b7280);
+  font-weight: 400;
+  border-bottom: 2px solid transparent;
+  transition: ease;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+.TabList-module__tablist
+  .TabList-module__tab:hover:not(.TabList-module__active) {
+  background-color: var(--hover-bg, #99b5dc);
+}
+.TabList-module__tablist .TabList-module__tab:focus {
+  outline: none;
+  box-shadow: none;
+}
+.TabList-module__tablist .TabList-module__tab:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+.TabList-module__tablist .TabList-module__tab.TabList-module__active {
+  color: var(--color-brand);
+  font-weight: 400;
+  border-bottom: 2px solid var(--color-brand);
+}
+.TabList-module__tablist.TabList-module__segmented {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  padding: var(--density-space-xs);
+  gap: 0;
+  border-radius: var(--semantic-sizes-control-radius);
+  background-color: var(--color-bg-fill-primary);
+  vertical-align: middle;
+}
+.TabList-module__tablist.TabList-module__segmented .TabList-module__tab {
+  flex: none;
+  margin: 0;
+  min-width: var(--density-area-4xl);
+  min-height: var(--density-area-4xl);
+  padding: 0 var(--density-space-md);
+  border-radius: var(--radius-4);
+  border-bottom: none;
+  background-color: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  font-weight: 600;
+  font-size: var(--semantic-typo-size-label-xs);
+  line-height: var(--semantic-typo-line-height-label-xs);
+  letter-spacing: var(--semantic-typo-letter-spacing-label-xs);
+}
+.TabList-module__tablist.TabList-module__segmented
+  .TabList-module__tab:hover:not(.TabList-module__active) {
+  background-color: transparent;
+}
+.TabList-module__tablist.TabList-module__segmented
+  .TabList-module__tab:focus-visible {
+  box-shadow: var(--shadows-interactive-focus);
+}
+.TabList-module__tablist.TabList-module__segmented
+  .TabList-module__tab.TabList-module__active {
+  border-bottom: none;
+  background-color: var(--color-background-grouped);
+  color: var(--color-text-primary);
+}
+@media (prefers-color-scheme: dark) {
+  .TabList-module__tab {
+    --text-secondary: #9ca3af;
+    --hover-bg: #374151;
+  }
+}

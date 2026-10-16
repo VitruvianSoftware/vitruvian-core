@@ -1,0 +1,1200 @@
+{
+  "skippedUnpacked": [
+    {
+      "path": "node_modules/@beeper/beeper-client-sdk/package.json",
+      "size": 36,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "6c6d0540da068482e9f18a06cfc9c0123a9c7cbd5a39ff688e8e3a1285233b61",
+        "blockSize": 4194304,
+        "blocks": [
+          "6c6d0540da068482e9f18a06cfc9c0123a9c7cbd5a39ff688e8e3a1285233b61"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@beeper/beeper-client-sdk/node/lib/napi-v8/beeper_client_sdk_napi_binding.node",
+      "size": 167481186,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "55cfa570ad574c1d1f3fc461567d6c4e92e012466d279eb1b410f8f6019485dd",
+        "blockSize": 4194304,
+        "blocks": [
+          "b7763ef37a899dbafa1d74aac5a454bbd44b2373e89271c8f75319ec0f08e4dd",
+          "48ae7b2298a34e48c4caf642170dc568704406656a4877dcb4e61cd78c7de16a",
+          "bf0838f8691e75aadc9882ee9c8f4d65760c22bb73bcf425a396237702907c49",
+          "7c1227f89e112a5c9aa8cdc76623ae5f4805a5319fa30934a2c88048a2b8bac9",
+          "9b21fe6fa5c6c21b1c0a20fd867e0673e65c39fec944268510698d6a6a18efa9",
+          "f24fb9555e2a2d64bdbcd50354c9c27f9ea0460972716333263a7a7cbcc25bd7",
+          "6a6e0762b245a90b5dee41d05a79b38d8660b168de6788829edb1504fa2c5870",
+          "27c9792360c66219805b789ab96073f582148dea8a722dba195b3292dc73e374",
+          "cc1609f22cb7a9096f19b9f3da8bdedd09a55a7fd322244abff352baf0040f37",
+          "6648200dbb48dfeea21f4a90267f8e39ec6af4e38889c1ae874a5ce29ebcc31e",
+          "ff7bb41e9dcca33725e933c9e3ba19bf7e00e22a246bd533b5133a8c4c25f58c",
+          "05b62f5168e2d0e470e7d3faefd81c6a9008e9a62fafb4de59944a685f10bfb4",
+          "bdebe43cc0460be72b8f85fb0f732097ee4f00a0834d7fbe29d8644209165197",
+          "1c5a15cda7af36e879605e38d1cfc140a1e39956d36e11a437c42a4cb16c38ce",
+          "8814bfb9f8f8f58f1c8d5ff181d3479457fdaa78c0890661ac83a9cd3849f45d",
+          "bce921d82dc41d288df7a121dc15b2db9e398b4975745a02cdadd094acccc0c2",
+          "83a5edc9db16049c0725719a10e26fa5872296fed4532ff3146b8d5c752e89f2",
+          "2bd22c67545aed2cbc390b1c84bfbe282d27ec1f958a461817c3fa948ec7929a",
+          "37f3624abdcae93fc10a52c6b89a88b055e5deedb00cb6aaa7f63050c4d3514e",
+          "ffbb4296fa3bebd083882fac1803149303540a083b36d57dc53f3a52de901f14",
+          "76acf30b557be4026575db1bac186c72f7643849de31c29d866126fab7267f7f",
+          "b4da70ff59a19ed21cdf65fc621ae6f03d3094c83cad3d9cde86a8072ec77106",
+          "586b45374244c63a8d2bca680f528683ecfbe589376a2075a6711076ba579fad",
+          "71f102f77c18cfa34daa356672aefcf6cc07a65a8abdf908541da84fbcef4924",
+          "58089b2eee0e48879cc9e99c0a3e45ffd939aee675d6eb3e11787e1d1116dc22",
+          "ba9f6baf4dafe692e22a67878afd3313e26c948599661fce64b9eb6996df8764",
+          "1715f46f38a93f65aac884780a620378cb5a02ca2a7489f720503049a4b08e6f",
+          "ac053bf88bd9ef372e175958a818d5430f30a840c488a2e6d839da5058df38d9",
+          "1694144a7d2e2aa10e09c8a42e176ff4216d08caa976aa19da3097668dd115a0",
+          "cdc42ea861affe527cfa60191cbd723043763e62f94844ebdddeb3217aac05c1",
+          "b5ae094fa409ee95906fb6049305a441727e1ed93752ba81ff9b818f00af2b40",
+          "fb9be62006cdd4ba63070bcfbbb84f1cc71e73b8c72b9c1d1b19c6a01557ea65",
+          "2441c19756ab6adcd389c0f0d59a29f415f69dd3fa7d26e6a66309aebc4aef35",
+          "cabd051b65fda3aa945edb8040c8f8d185c0ac4948205aa10af16873a399758e",
+          "30f8973493284def9fe9b77b91c41ffb75fddc64d5f7c2c8e9fcdfb467446c29",
+          "7fd10fe64d83902dbb6ebd0d65f549a7b49ed10d7b8ce6dbea1725c01b9d6761",
+          "dcf7f9dbd3835478f49aaa81f8118eaa4ffd018e623524fea2aac6cc64181ac1",
+          "a7cccf599501d8eba8c92be45f1ffb5b97ed4e4774589c05166f9984f117fe93",
+          "1db35ee259324ff3d2bd4c6971f5b373cb591139458d58a3d2e11924d4c8beac",
+          "8770d7dc08f547f287b18ca4f30f4a388b862e5a471c8c39bc7cf1821f14de46"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-darwin-arm64/LICENSE",
+      "size": 10273,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68",
+        "blockSize": 4194304,
+        "blocks": [
+          "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-darwin-arm64/package.json",
+      "size": 886,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "68267cc8da25117cc10d2856a2b04b33fc1c1fe2811827f7cee60f1c774dbc02",
+        "blockSize": 4194304,
+        "blocks": [
+          "68267cc8da25117cc10d2856a2b04b33fc1c1fe2811827f7cee60f1c774dbc02"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-darwin-arm64/lib/sharp-darwin-arm64.node",
+      "size": 262312,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "75f3448f198ffe91069b1ddeb6dfe027a3ef90859a56f279c1446c406d520b68",
+        "blockSize": 4194304,
+        "blocks": [
+          "75f3448f198ffe91069b1ddeb6dfe027a3ef90859a56f279c1446c406d520b68"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-libvips-darwin-arm64/lib/glib-2.0/include/glibconfig.h",
+      "size": 6044,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "8b0e556d057658e931e9394602cdf6476b207d3c3ed61079fae3bb00b01db9a4",
+        "blockSize": 4194304,
+        "blocks": [
+          "8b0e556d057658e931e9394602cdf6476b207d3c3ed61079fae3bb00b01db9a4"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-libvips-darwin-arm64/lib/index.js",
+      "size": 28,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "516a08c06660cddb50d5f30ccac29a0514b05724956a11e8a7e6b799f2e1ab72",
+        "blockSize": 4194304,
+        "blocks": [
+          "516a08c06660cddb50d5f30ccac29a0514b05724956a11e8a7e6b799f2e1ab72"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-libvips-darwin-arm64/lib/libvips-cpp.8.17.1.dylib",
+      "size": 16018856,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "e5f9e2d12c98779b090516f0bfebcf4fcb20d94e7107b46f561a843a250b1b58",
+        "blockSize": 4194304,
+        "blocks": [
+          "56a68f1b6673fe1fba34337f086aabca417fb5d81780cd0e59dc2e125c0364b4",
+          "f091e0f372fe9aab0622434ff208ae0db238307f94279027a2d6a1a2d9f1779a",
+          "4d7f230d2ab4f11520317942b77dcc14acf1623189ab307ffd01baa6b8a9e8b2",
+          "1385c01ce9f4f3faf5d50337bd1de8e19ac088975503e3f56b4240a9beacd6ff"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-libvips-darwin-arm64/package.json",
+      "size": 826,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "e92ec39e15602d349f187615e5c89b461fb906cfb2c29736f4b2e30e2c2b5a6e",
+        "blockSize": 4194304,
+        "blocks": [
+          "e92ec39e15602d349f187615e5c89b461fb906cfb2c29736f4b2e30e2c2b5a6e"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/@img/sharp-libvips-darwin-arm64/versions.json",
+      "size": 592,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "cb5fc5ebccbfbc0e18f5530ee0527035cef3bdc4024912a759ca796cb0830da4",
+        "blockSize": 4194304,
+        "blocks": [
+          "cb5fc5ebccbfbc0e18f5530ee0527035cef3bdc4024912a759ca796cb0830da4"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/better-sqlite3/index.js",
+      "size": 18138,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "12808ed9dae870faf146363fe2f1ea72f9240248ea8c782c0f1166a64006ae74",
+        "blockSize": 4194304,
+        "blocks": [
+          "12808ed9dae870faf146363fe2f1ea72f9240248ea8c782c0f1166a64006ae74"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/better-sqlite3/package.json",
+      "size": 26,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "6424d1ceaebf17928c7e95650af5131a7e725aca5fb590b0a1ff024b7244aff9",
+        "blockSize": 4194304,
+        "blocks": [
+          "6424d1ceaebf17928c7e95650af5131a7e725aca5fb590b0a1ff024b7244aff9"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/better-sqlite3/prebuilds/darwin-arm64.node",
+      "size": 1980736,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "98e0e8acd01c632fe5615243e1296af0372826f8783b18fc31c506f73c47459c",
+        "blockSize": 4194304,
+        "blocks": [
+          "98e0e8acd01c632fe5615243e1296af0372826f8783b18fc31c506f73c47459c"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/bufferutil/index.js",
+      "size": 662,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "c3972240d550802432d6dadede9231925850282be3f9c5962d9d53bba220a6eb",
+        "blockSize": 4194304,
+        "blocks": [
+          "c3972240d550802432d6dadede9231925850282be3f9c5962d9d53bba220a6eb"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/bufferutil/package.json",
+      "size": 22,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "956f786795c003b1b2e85ae4915a8e7ae8a425fab1e43390c8ee194e45c1e729",
+        "blockSize": 4194304,
+        "blocks": [
+          "956f786795c003b1b2e85ae4915a8e7ae8a425fab1e43390c8ee194e45c1e729"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/bufferutil/build/Release/bufferutil.node",
+      "size": 52576,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "595ad72c7027b4c30880758ee5963274b84c67837640ebf9caece7538ed78858",
+        "blockSize": 4194304,
+        "blocks": [
+          "595ad72c7027b4c30880758ee5963274b84c67837640ebf9caece7538ed78858"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/bufferutil/prebuilds/darwin-arm64/bufferutil.node",
+      "size": 34064,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "688f957f5a989f6406e5caa26382e213c8b7316eb600303307dc95be60c287c0",
+        "blockSize": 4194304,
+        "blocks": [
+          "688f957f5a989f6406e5caa26382e213c8b7316eb600303307dc95be60c287c0"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/cbor-extract/bin/download-prebuilds.js",
+      "size": 290,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "3c580c2ea763c9aa73e068eb80810ef385d8344d2ce16e478d292c6e6cc5fe29",
+        "blockSize": 4194304,
+        "blocks": [
+          "3c580c2ea763c9aa73e068eb80810ef385d8344d2ce16e478d292c6e6cc5fe29"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/cbor-extract/bin/darwin-arm64-149/cbor-extract.node",
+      "size": 52368,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "957c676f818829515cd517c6c3c8b6f83bf5429bdbba78d180f072a62a6056df",
+        "blockSize": 4194304,
+        "blocks": [
+          "957c676f818829515cd517c6c3c8b6f83bf5429bdbba78d180f072a62a6056df"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/cbor-extract/index.js",
+      "size": 11063,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "4406976835e6f2a7b0249c88e67ab15b0c6ee0c75b8c43dc28bce696642d9760",
+        "blockSize": 4194304,
+        "blocks": [
+          "4406976835e6f2a7b0249c88e67ab15b0c6ee0c75b8c43dc28bce696642d9760"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/cbor-extract/package.json",
+      "size": 24,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "fbc766c9bf6cc357f4f8bab2b99c7985e315e0aa4194ede26c738cc8bd53711c",
+        "blockSize": 4194304,
+        "blocks": [
+          "fbc766c9bf6cc357f4f8bab2b99c7985e315e0aa4194ede26c738cc8bd53711c"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/classic-level/index.js",
+      "size": 50370,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "459979f200a22506bd4b2fe007edf239ea6cb06bfccee425f9e3c6f7de887edf",
+        "blockSize": 4194304,
+        "blocks": [
+          "459979f200a22506bd4b2fe007edf239ea6cb06bfccee425f9e3c6f7de887edf"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/classic-level/package.json",
+      "size": 25,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "cf26508d56883740d151525998a8cafea2acbc14bac0e633c1eefd14199fcf9b",
+        "blockSize": 4194304,
+        "blocks": [
+          "cf26508d56883740d151525998a8cafea2acbc14bac0e633c1eefd14199fcf9b"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/classic-level/prebuilds/darwin-x64+arm64/classic-level.node",
+      "size": 679904,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "790ec5457f9ed41d41d130e5589eae68f25ded30d3483f6165ad10486755c3cc",
+        "blockSize": 4194304,
+        "blocks": [
+          "790ec5457f9ed41d41d130e5589eae68f25ded30d3483f6165ad10486755c3cc"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/credential-extractor/index.js",
+      "size": 842,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "b758db07e3605522c1ca4382ed0013ce47c138b90de8e4847cbcdafb0929b58d",
+        "blockSize": 4194304,
+        "blocks": [
+          "b758db07e3605522c1ca4382ed0013ce47c138b90de8e4847cbcdafb0929b58d"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/credential-extractor/package.json",
+      "size": 32,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "b225739b2e8bc4693a0d0169022e10e8d908a38f4564db952f39cf324e6d8bf4",
+        "blockSize": 4194304,
+        "blocks": [
+          "b225739b2e8bc4693a0d0169022e10e8d908a38f4564db952f39cf324e6d8bf4"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/credential-extractor/ce.node",
+      "size": 1255672,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "51ae05895b674286d61133db130c582c2d7b38c1466cba30c67c7514d087752d",
+        "blockSize": 4194304,
+        "blocks": [
+          "51ae05895b674286d61133db130c582c2d7b38c1466cba30c67c7514d087752d"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/diskusage/index.js",
+      "size": 9265,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "3d0d73778c93ccaef13b4356e9308f510d345b03e6e3b8f6a5a054f7aecd214e",
+        "blockSize": 4194304,
+        "blocks": [
+          "3d0d73778c93ccaef13b4356e9308f510d345b03e6e3b8f6a5a054f7aecd214e"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/diskusage/package.json",
+      "size": 21,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "5b156a3f796c3410b5ffbaf673c4bcf6a14d216b6fdbc4e1b535c43f8e7f0c66",
+        "blockSize": 4194304,
+        "blocks": [
+          "5b156a3f796c3410b5ffbaf673c4bcf6a14d216b6fdbc4e1b535c43f8e7f0c66"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/diskusage/build/Release/diskusage.node",
+      "size": 61216,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "82c6f03a2642ec7621b7e6050f070d0e06f4d9c80695431f8cedfe1cf13bacf0",
+        "blockSize": 4194304,
+        "blocks": [
+          "82c6f03a2642ec7621b7e6050f070d0e06f4d9c80695431f8cedfe1cf13bacf0"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/electron-drag-click/index.js",
+      "size": 576,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "02662aefc1bf11f9944f7915951d547329c43b7986b21eb2ad23ad2e4c01a5d7",
+        "blockSize": 4194304,
+        "blocks": [
+          "02662aefc1bf11f9944f7915951d547329c43b7986b21eb2ad23ad2e4c01a5d7"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/electron-drag-click/package.json",
+      "size": 31,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "a92d440bb2d9e91fc4b1f01a1fb61a5031f14bad0cf0a44ec145cf2a0801dca9",
+        "blockSize": 4194304,
+        "blocks": [
+          "a92d440bb2d9e91fc4b1f01a1fb61a5031f14bad0cf0a44ec145cf2a0801dca9"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/electron-drag-click/build/Release/electron_drag_click.node",
+      "size": 57112,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "60a8c4e914f3f910c33eac57cca711874770cc85fe32680c4484b79804db5a6a",
+        "blockSize": 4194304,
+        "blocks": [
+          "60a8c4e914f3f910c33eac57cca711874770cc85fe32680c4484b79804db5a6a"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/keytar/index.js",
+      "size": 1073,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "63ab0f605fbf909e1d8db8bf48e9f172fcf9235ede9fd6055aa7b28f3ae9d29c",
+        "blockSize": 4194304,
+        "blocks": [
+          "63ab0f605fbf909e1d8db8bf48e9f172fcf9235ede9fd6055aa7b28f3ae9d29c"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/keytar/package.json",
+      "size": 18,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "604b098839325fc1ea2cf80b94e3875ae4315be7a8f629d15e23b80965e2a413",
+        "blockSize": 4194304,
+        "blocks": [
+          "604b098839325fc1ea2cf80b94e3875ae4315be7a8f629d15e23b80965e2a413"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/keytar/build/Release/keytar.node",
+      "size": 99528,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "6c32c41c0e5a9e546616607b0383eada5bb646d0164324f20baab59d5b7963fa",
+        "blockSize": 4194304,
+        "blocks": [
+          "6c32c41c0e5a9e546616607b0383eada5bb646d0164324f20baab59d5b7963fa"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/node-mac-contacts/index.js",
+      "size": 2982,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "b9ba9f440e3a53452e7ae4c57456b3da90f502fe3db95e89fd9158a2c43a24a4",
+        "blockSize": 4194304,
+        "blocks": [
+          "b9ba9f440e3a53452e7ae4c57456b3da90f502fe3db95e89fd9158a2c43a24a4"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/node-mac-contacts/package.json",
+      "size": 29,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "a99b36d1199ea5181c3cefeeec5acc51f6c617842e817e88e1dec625ae918a3d",
+        "blockSize": 4194304,
+        "blocks": [
+          "a99b36d1199ea5181c3cefeeec5acc51f6c617842e817e88e1dec625ae918a3d"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/node-mac-contacts/build/Release/contacts.node",
+      "size": 115792,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "1c7264bbbf31d04810ecd911c23d3dee4937a60b10fb9f1f70557671c0cb6ee5",
+        "blockSize": 4194304,
+        "blocks": [
+          "1c7264bbbf31d04810ecd911c23d3dee4937a60b10fb9f1f70557671c0cb6ee5"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/node-mac-permissions/index.js",
+      "size": 1851,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "a1533db5d4c50c4453f34de825f9659e2cdfabb712cd3a90a7405a63a988ef78",
+        "blockSize": 4194304,
+        "blocks": [
+          "a1533db5d4c50c4453f34de825f9659e2cdfabb712cd3a90a7405a63a988ef78"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/node-mac-permissions/package.json",
+      "size": 32,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "b9ccdec8dfbafc2a628b93d841731b4cc92f42be7180d9406b11dc0cd8375f2a",
+        "blockSize": 4194304,
+        "blocks": [
+          "b9ccdec8dfbafc2a628b93d841731b4cc92f42be7180d9406b11dc0cd8375f2a"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/node-mac-permissions/build/Release/permissions.node",
+      "size": 133040,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "2b3de2f8cee03b3c6f066bba99638d866f6410e139fa9f2ed81857a048fed52d",
+        "blockSize": 4194304,
+        "blocks": [
+          "2b3de2f8cee03b3c6f066bba99638d866f6410e139fa9f2ed81857a048fed52d"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/utf-8-validate/index.js",
+      "size": 1055,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "a85f0fe489437f6b3514011cd67cd581393ac56767ce9aaec82d32b0f2156abb",
+        "blockSize": 4194304,
+        "blocks": [
+          "a85f0fe489437f6b3514011cd67cd581393ac56767ce9aaec82d32b0f2156abb"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/utf-8-validate/package.json",
+      "size": 26,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "01af75d356bfa76718ffbcba4e8571b468acec07184fad05a6130be10c184501",
+        "blockSize": 4194304,
+        "blocks": [
+          "01af75d356bfa76718ffbcba4e8571b468acec07184fad05a6130be10c184501"
+        ]
+      }
+    },
+    {
+      "path": "node_modules/utf-8-validate/prebuilds/darwin-x64+arm64/node.napi.node",
+      "size": 116000,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "0ed3fef7154849143b7b064d33e32b339b86590c0f5719cee8b46b150e83a3e5",
+        "blockSize": 4194304,
+        "blocks": [
+          "0ed3fef7154849143b7b064d33e32b339b86590c0f5719cee8b46b150e83a3e5"
+        ]
+      }
+    },
+    {
+      "path": "build/ContactsServer",
+      "size": 137744,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "e384303c98a6af2480fb8093000bc6a0e2c7dbb3a1465067337a7b303e7bdbbb",
+        "blockSize": 4194304,
+        "blocks": [
+          "e384303c98a6af2480fb8093000bc6a0e2c7dbb3a1465067337a7b303e7bdbbb"
+        ]
+      }
+    },
+    {
+      "path": "build/_darwin-arm64/NodeAPI.framework/NodeAPI"
+    },
+    {
+      "path": "build/_darwin-arm64/NodeAPI.framework/Resources"
+    },
+    {
+      "path": "build/_darwin-arm64/NodeAPI.framework/Versions/A/NodeAPI",
+      "size": 419896,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "b9f20b5d17d11bda362e989aa595d51a3f375742a6f70a469b9101a4f4cea5b0",
+        "blockSize": 4194304,
+        "blocks": [
+          "b9f20b5d17d11bda362e989aa595d51a3f375742a6f70a469b9101a4f4cea5b0"
+        ]
+      }
+    },
+    {
+      "path": "build/_darwin-arm64/NodeAPI.framework/Versions/A/Resources/Info.plist",
+      "size": 1276,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "a787f565df75cd79b45e9014e32d037725447c7e06d04da828491aaba263f252",
+        "blockSize": 4194304,
+        "blocks": [
+          "a787f565df75cd79b45e9014e32d037725447c7e06d04da828491aaba263f252"
+        ]
+      }
+    },
+    {
+      "path": "build/_darwin-arm64/NodeAPI.framework/Versions/Current"
+    },
+    {
+      "path": "build/_darwin-arm64/TextsSwift.framework/Resources"
+    },
+    {
+      "path": "build/_darwin-arm64/TextsSwift.framework/Versions/A/Resources/Info.plist",
+      "size": 1290,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "127bca8711740b5014012658c56f51e311de869825c8d3ab0119526102d26d91",
+        "blockSize": 4194304,
+        "blocks": [
+          "127bca8711740b5014012658c56f51e311de869825c8d3ab0119526102d26d91"
+        ]
+      }
+    },
+    {
+      "path": "build/_darwin-arm64/TextsSwift.framework/Versions/A/Resources/knicknack-bold.woff",
+      "size": 28508,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "c577ea0a68e2ee755577db5a6a514609f8ec330375b0861b7a98dc2cc2e398da",
+        "blockSize": 4194304,
+        "blocks": [
+          "c577ea0a68e2ee755577db5a6a514609f8ec330375b0861b7a98dc2cc2e398da"
+        ]
+      }
+    },
+    {
+      "path": "build/_darwin-arm64/TextsSwift.framework/Versions/A/TextsSwift.node",
+      "size": 687440,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "8cc42dc9132a0831e903e02548a85d096062ded45a849e5bdab050252a52aeca",
+        "blockSize": 4194304,
+        "blocks": [
+          "8cc42dc9132a0831e903e02548a85d096062ded45a849e5bdab050252a52aeca"
+        ]
+      }
+    },
+    {
+      "path": "build/_darwin-arm64/TextsSwift.framework/Versions/Current"
+    },
+    {
+      "path": "build/_darwin-arm64/TextsSwift.framework/TextsSwift.node"
+    },
+    {
+      "path": "build/app-icons/Beeper Squared.png",
+      "size": 341373,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "18ba108cc76466475265742e3d61db1a80b6286b41852448c3638656111c11af",
+        "blockSize": 4194304,
+        "blocks": [
+          "18ba108cc76466475265742e3d61db1a80b6286b41852448c3638656111c11af"
+        ]
+      }
+    },
+    {
+      "path": "build/app-icons/Beeper.png",
+      "size": 234892,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "1f49ae37540e1a2ee6930a45a21f2b48e7ee62281448710ef3e3ddce97636a6b",
+        "blockSize": 4194304,
+        "blocks": [
+          "1f49ae37540e1a2ee6930a45a21f2b48e7ee62281448710ef3e3ddce97636a6b"
+        ]
+      }
+    },
+    {
+      "path": "build/browser-session-import/beeper-browser-session-import",
+      "size": 9266274,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "27e8d16dc22551aa4f1fb65a901f665e96f9339a80ff79686aa6a22aa5381c56",
+        "blockSize": 4194304,
+        "blocks": [
+          "89599c102691b813b27b8283370651a3919963a4096a8bf893a8baa2cadbeb29",
+          "e34e806e8f140feed65088d2dc01a1fe8764d9ea3a08d1878ccc1ec24b12d191",
+          "756638f735d4273744377b4d91e10ca319c3005d202814538e5a09f64cc46d7a"
+        ]
+      }
+    },
+    {
+      "path": "build/ffmpeg",
+      "size": 11367704,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "f4977521cfa55b8acaf5c5e9861d2cc8ea05e9d99fd1c21e80e1c215a7b4585a",
+        "blockSize": 4194304,
+        "blocks": [
+          "7c69c59070c6b4fb18d6eeafdff100b07d540d87dba3bbbd67c2f95c9103d911",
+          "78779c09f2fc4cf366e21dd0d5e0a2e6b340a7a244b53b939c2df05672008adc",
+          "fcaf20c2b3c276439114db8802c7c0ddefef9e9299f36106e1ffed01779d1852"
+        ]
+      }
+    },
+    {
+      "path": "build/ffprobe",
+      "size": 11326280,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "5caf744dd5a0da0507d09620f2ff78d7e58b9dcf9c4ddfa06b059c01da0f5e91",
+        "blockSize": 4194304,
+        "blocks": [
+          "165db0d81208b1b20ceae62f8ea6e9561b731c68f96c52b2e2e83223d0af9216",
+          "cb2a0977bdebf06951e18dec2f6a60fe379f9c2369b4123ad0d3104fe3a5ee2d",
+          "23e3e878b670e64a89c426f69af4242ef99cc94d0799ab51375c87739c113397"
+        ]
+      }
+    },
+    {
+      "path": "build/img/blackbox.jpg",
+      "size": 381,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "1feef964c37eeb9ced237de1698a4c8cffdb6d836f99638125951285528e66a0",
+        "blockSize": 4194304,
+        "blocks": [
+          "1feef964c37eeb9ced237de1698a4c8cffdb6d836f99638125951285528e66a0"
+        ]
+      }
+    },
+    {
+      "path": "build/opusdec",
+      "size": 614536,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "82236d9b35d9bf3aeb0caa287fd2b25f2769e84e3b911b13a843bd8c3832c8e6",
+        "blockSize": 4194304,
+        "blocks": [
+          "82236d9b35d9bf3aeb0caa287fd2b25f2769e84e3b911b13a843bd8c3832c8e6"
+        ]
+      }
+    },
+    {
+      "path": "build/platform-imessage/darwin-arm64/IMessage.node",
+      "size": 4899824,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "ffbe557b0d8936988901d44af3539f1b633146f1fa92f0ee6b04e0a37e59c7d0",
+        "blockSize": 4194304,
+        "blocks": [
+          "634b8b18cabb12eea3694d5982e93c27658dc06f6e7e4df0c04ecbc129712944",
+          "6f3536e8a963c99a216789a0bdfee589ccc14d2f8b44c339fea0172bf0122c39"
+        ]
+      }
+    },
+    {
+      "path": "build/set-icon",
+      "size": 118064,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "1a3b93f2ab36688a5fd792cf7dd73f74652f9032a40a5c5394ee938d63d778d9",
+        "blockSize": 4194304,
+        "blocks": [
+          "1a3b93f2ab36688a5fd792cf7dd73f74652f9032a40a5c5394ee938d63d778d9"
+        ]
+      }
+    },
+    {
+      "path": "build/sounds/Texts-Double.m4a",
+      "size": 123662,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "6570d38da59e5b36d13bf3913c41bb8791b515e45baf340e0d752ca372dc0e55",
+        "blockSize": 4194304,
+        "blocks": [
+          "6570d38da59e5b36d13bf3913c41bb8791b515e45baf340e0d752ca372dc0e55"
+        ]
+      }
+    },
+    {
+      "path": "build/sounds/Texts-Dreams.m4a",
+      "size": 123490,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "f6929f465109d85a6275990506411d4af35483d1ee837355c1a48fe923647a82",
+        "blockSize": 4194304,
+        "blocks": [
+          "f6929f465109d85a6275990506411d4af35483d1ee837355c1a48fe923647a82"
+        ]
+      }
+    },
+    {
+      "path": "build/sounds/Texts-Not Marimba.m4a",
+      "size": 123448,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "8dfd6cc4e4bf9b41dad9384918d039f74ed4714b7cdbeb54928d68a53c64783d",
+        "blockSize": 4194304,
+        "blocks": [
+          "8dfd6cc4e4bf9b41dad9384918d039f74ed4714b7cdbeb54928d68a53c64783d"
+        ]
+      }
+    },
+    {
+      "path": "build/sounds/Texts-Rain Harp.m4a",
+      "size": 123483,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "27905ea52986a892469840115215bf9425239acf0cd72645143e236a45d86a9a",
+        "blockSize": 4194304,
+        "blocks": [
+          "27905ea52986a892469840115215bf9425239acf0cd72645143e236a45d86a9a"
+        ]
+      }
+    },
+    {
+      "path": "build/sounds/Texts-Record.m4a",
+      "size": 123456,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "375fcc5c01339ba97c9e361668ff834698accca56e8f295efde0086228b6223d",
+        "blockSize": 4194304,
+        "blocks": [
+          "375fcc5c01339ba97c9e361668ff834698accca56e8f295efde0086228b6223d"
+        ]
+      }
+    },
+    {
+      "path": "build/sounds/Texts-Spirit.m4a",
+      "size": 91623,
+      "integrity": {
+        "algorithm": "SHA256",
+        "hash": "494be67110bc23ec39d07f27af5c3bc2e355728b7a6d1c9c056ad040aaf31021",
+        "blockSize": 4194304,
+        "blocks": [
+          "494be67110bc23ec39d07f27af5c3bc2e355728b7a6d1c9c056ad040aaf31021"
+        ]
+      }
+    }
+  ],
+  "skippedLargeBin": [
+    {
+      "path": "build-browser/Beeper Squared-DK7opYwx.png",
+      "size": 341373,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/Beeper-BhxRqtDC.png",
+      "size": 234892,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-Bold-D1DByk76.woff",
+      "size": 143068,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-BoldItalic-OZS0LB__.woff",
+      "size": 150928,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-Italic-Co7JNwOd.woff",
+      "size": 144348,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-Medium-B1UZGw08.woff",
+      "size": 142408,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-MediumItalic-BBUc2KqI.woff",
+      "size": 150828,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-Regular-Bo88OAmM.woff",
+      "size": 133772,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-SemiBold-xp7aUKQW.woff",
+      "size": 142796,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/Inter-SemiBoldItalic-B1rS9dOT.woff",
+      "size": 151060,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/OggOpusEncoder-1273bzW9.wasm",
+      "size": 225576,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/TwemojiMozilla-colr-5nLksoPs.woff2",
+      "size": 476956,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/TwemojiMozilla-sbix-ComUXfH0.woff2",
+      "size": 2839492,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/WebMOpusEncoder-B0MqkG19.wasm",
+      "size": 248423,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/app-icons/Beeper Squared.png",
+      "size": 341373,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/app-icons/Beeper.png",
+      "size": 234892,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/dark-cIUKRNEA.png",
+      "size": 147204,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/ffmpeg",
+      "size": 11367704,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/ffprobe",
+      "size": 11326280,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/img/dark.png",
+      "size": 147204,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/img/light.png",
+      "size": 148893,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/img/system.png",
+      "size": 151155,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/light-D5Ydg-6s.png",
+      "size": 148893,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/ogv/ogv-decoder-audio-opus-wasm.wasm",
+      "size": 156104,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/ogv/ogv-decoder-audio-vorbis-wasm.wasm",
+      "size": 155856,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/omr/OggOpusEncoder.wasm",
+      "size": 225576,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/omr/WebMOpusEncoder.wasm",
+      "size": 248423,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/opusdec",
+      "size": 614536,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/sound_push-C5a9nWpR.wav",
+      "size": 370334,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/sound_react_dislike-BD8mRUHq.wav",
+      "size": 234044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/sound_react_emphasize-DscuW4Dl.wav",
+      "size": 144044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/sound_react_haha-DnUNfrns.wav",
+      "size": 216044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/sound_react_heart-BPTGkYx1.wav",
+      "size": 288044,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/sound_react_like-C4vB7ENH.wav",
+      "size": 288044,
+      "reason": "binary-asset"
+    },
+    {
+      "path": "build-browser/sound_react_question-CKDa__gm.wav",
+      "size": 234044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build-browser/system-DhfuksO5.png",
+      "size": 151155,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/img/dark.png",
+      "size": 147204,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/img/light.png",
+      "size": 148893,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/img/system.png",
+      "size": 151155,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/ogv/ogv-decoder-audio-opus-wasm.wasm",
+      "size": 156104,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/ogv/ogv-decoder-audio-vorbis-wasm.wasm",
+      "size": 155856,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/omr/OggOpusEncoder.wasm",
+      "size": 225576,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/omr/WebMOpusEncoder.wasm",
+      "size": 248423,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Beeper Squared-DK7opYwx.png",
+      "size": 341373,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Beeper-BhxRqtDC.png",
+      "size": 234892,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-Bold-D1DByk76.woff",
+      "size": 143068,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-BoldItalic-OZS0LB__.woff",
+      "size": 150928,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-Italic-Co7JNwOd.woff",
+      "size": 144348,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-Medium-B1UZGw08.woff",
+      "size": 142408,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-MediumItalic-BBUc2KqI.woff",
+      "size": 150828,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-Regular-Bo88OAmM.woff",
+      "size": 133772,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-SemiBold-xp7aUKQW.woff",
+      "size": 142796,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/Inter-SemiBoldItalic-B1rS9dOT.woff",
+      "size": 151060,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/OggOpusEncoder-1273bzW9.wasm",
+      "size": 225576,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/TwemojiMozilla-colr-5nLksoPs.woff2",
+      "size": 476956,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/TwemojiMozilla-sbix-ComUXfH0.woff2",
+      "size": 2839492,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/WebMOpusEncoder-B0MqkG19.wasm",
+      "size": 248423,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/dark-cIUKRNEA.png",
+      "size": 147204,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/light-D5Ydg-6s.png",
+      "size": 148893,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/sound_push-C5a9nWpR.wav",
+      "size": 370334,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/sound_react_dislike-BD8mRUHq.wav",
+      "size": 234044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/sound_react_emphasize-DscuW4Dl.wav",
+      "size": 144044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/sound_react_haha-DnUNfrns.wav",
+      "size": 216044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/sound_react_heart-BPTGkYx1.wav",
+      "size": 288044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/sound_react_like-C4vB7ENH.wav",
+      "size": 288044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/sound_react_question-CKDa__gm.wav",
+      "size": 234044,
+      "reason": "media-or-wasm-binary"
+    },
+    {
+      "path": "build/renderer/system-DhfuksO5.png",
+      "size": 151155,
+      "reason": "media-or-wasm-binary"
+    }
+  ]
+}

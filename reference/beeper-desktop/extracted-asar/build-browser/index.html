@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Beeper</title>
+    <script>
+      window.PAGE_BOOT_TIME = Date.now();
+      window.handleFatalError = (ev) => {
+        console.error(ev.error);
+        const el = document.getElementById("loading-root");
+        if (!el) return;
+        document.body.classList.add("crashed");
+        el.innerText =
+          "Something went wrong – send a screenshot to help@beeper.com\n\n" +
+          navigator.userAgent +
+          "\n" +
+          (ev.error?.stack || ev.error);
+      };
+      // window.addEventListener('error', window.handleFatalError)
+    </script>
+    <style id="loading-style">
+      :root {
+        --frame-gap: 8px;
+        --frame-gap-double: 16px;
+
+        --color-base-white: rgb(255, 255, 255);
+        --color-base-white-rgb: from var(--color-base-white) r g b;
+        --color-base-black: rgb(0, 0, 0);
+        --color-base-black-rgb: from var(--color-base-black) r g b;
+        --color-base-gray-120: rgb(23, 23, 23);
+        --color-base-gray-120-rgb: from var(--color-base-gray-120) r g b;
+
+        --color-background-app: var(--color-base-white);
+        --color-text-neutrals: var(--color-base-gray-120);
+        --color-border-translucent: rgba(var(--color-base-black-rgb) / 0.1);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-base-gray-10: rgb(22, 22, 22);
+          --color-base-gray-10-rgb: from var(--color-base-gray-10) r g b;
+          --color-base-gray-120: rgb(237, 237, 237);
+          --color-base-gray-120-rgb: from var(--color-base-gray-120) r g b;
+
+          --color-background-app: var(--color-base-gray-10);
+          --color-border-translucent: rgba(var(--color-base-white-rgb) / 0.1);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: var(--color-text-neutrals);
+      }
+      .home {
+        display: flex;
+        overflow: hidden;
+        height: 100%;
+      }
+      .right-wrapper {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        height: 100%;
+        min-width: 0px;
+        -webkit-app-region: drag;
+      }
+      .left {
+        display: flex;
+        margin-left: 8px;
+        position: relative;
+        z-index: 1;
+        flex-direction: column;
+        transition: all 0.2s cubic-bezier(0.165, 0.84, 0.44, 1);
+        transform: translate3d(0, 0, 0);
+        flex: 0;
+      }
+      .right {
+        display: flex;
+        flex: 1;
+        padding: var(--frame-gap);
+        border-radius: 10px;
+        flex-direction: column;
+        position: relative;
+        -webkit-app-region: no-drag;
+        align-items: center;
+        justify-content: center;
+      }
+      #logo {
+        opacity: 0.1;
+        position: fixed;
+        inset: 0;
+        margin: auto;
+      }
+      #root {
+        display: none !important;
+      }
+      #loading-root {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+      }
+      @media (max-width: 600px) {
+        .left {
+          display: none !important;
+        }
+      }
+    </style>
+    <style>
+      #screen-measurer {
+        position: fixed;
+        pointer-events: none;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        visibility: hidden;
+      }
+      .crashed #loading-root {
+        font: 14px monospace;
+        white-space: pre-wrap;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+      }
+    </style>
+    <link rel="icon" type="image/png" href="app-icons/Beeper.png" />
+    <script type="module" crossorigin src="./index-5FBEE1WD.js"></script>
+  </head>
+  <body>
+    <div id="screen-measurer"></div>
+    <div id="root"></div>
+    <div id="portal-root"></div>
+    <div id="loading-root">
+      <div class="home">
+        <div class="left"></div>
+        <div class="right-wrapper">
+          <div class="right">
+            <svg
+              id="logo"
+              width="100"
+              height="100"
+              viewBox="0 0 12 12"
+              fill="currentColor"
+            >
+              <path
+                d="M1 3.375C1 1.523 2.563 0 4.537 0h2.926C9.416 0 11 1.507 11 3.375a3.312 3.312 0 0 1-1.101 2.45l-.67.638c.975.544 1.763 1.399 1.763 2.557 0 1.735-1.47 2.98-3.285 2.98H2.765V6.299C1.72 5.716 1 4.625 1 3.375ZM4.537.937c-1.43 0-2.557 1.1-2.557 2.438 0 1.339 1.128 2.438 2.557 2.438h1.218l-.677 3.275L9.21 5.157c.473-.422.81-1.06.81-1.782 0-1.36-1.165-2.452-2.557-2.438H4.537Z"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      document.getElementsByClassName("left")[0].style.minWidth =
+        `${window.localStorage["sidebar-width"] || 320}px`;
+    </script>
+    <!-- these need early execution; esm import order is undefined, but non-{defer,async} <script>s execute in order -->
+  </body>
+</html>

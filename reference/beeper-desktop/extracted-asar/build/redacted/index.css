@@ -1,0 +1,12 @@
+@font-face {
+  font-family: "redacted_regular";
+  src: url(redacted-regular.eot);
+  src:
+    url(redacted-regular.eot?#iefix) format("embedded-opentype"),
+    url(redacted-regular.woff2) format("woff2"),
+    url(redacted-regular.woff) format("woff"),
+    url(redacted-regular.ttf) format("truetype"),
+    url(redacted-regular.svg#redacted_regular) format("svg");
+  font-weight: 400;
+  font-style: normal;
+}

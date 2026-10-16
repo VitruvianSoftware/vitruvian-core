@@ -1,0 +1,71 @@
+.HelpHubView-module__modal.modal-container {
+  z-index: auto;
+}
+.HelpHubView-module__titleBar {
+  font-weight: 600;
+  font-size: var(--semantic-typo-size-body-sm);
+  line-height: var(--semantic-typo-line-height-body-sm);
+  letter-spacing: var(--semantic-typo-letter-spacing-body-sm);
+  text-align: center;
+  padding: var(--dimension-400) 0;
+  -webkit-app-region: drag;
+  color: var(--color-on-surface);
+}
+.HelpHubView-module__titleBar.HelpHubView-module__isMac {
+  padding: 0 0 var(--dimension-400);
+}
+.HelpHubView-module__container {
+  position: relative;
+  background: var(--appearance-color-bg-primary);
+  border-radius: var(--radius-12);
+  color: var(--color-on-surface);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.HelpHubView-module__iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  flex: 1;
+  min-height: 0;
+}
+.HelpHubView-module__iframeLoading {
+  visibility: hidden;
+}
+.HelpHubView-module__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--appearance-color-bg-primary);
+}
+.HelpHubView-module__error {
+  color: var(--color-on-surface);
+  font-weight: 400;
+  font-size: var(--semantic-typo-size-body-sm);
+  line-height: var(--semantic-typo-line-height-body-sm);
+  letter-spacing: var(--semantic-typo-letter-spacing-body-sm);
+  text-align: center;
+  padding: 0 var(--dimension-800);
+}
+.HelpHubView-module__retry {
+  margin-top: var(--dimension-500);
+  font-weight: 600;
+  font-size: var(--semantic-typo-size-body-sm);
+  line-height: var(--semantic-typo-line-height-body-sm);
+  letter-spacing: var(--semantic-typo-letter-spacing-body-sm);
+  color: var(--color-primary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: var(--dimension-300) var(--dimension-500);
+}
+.HelpHubView-module__retry:hover {
+  text-decoration: underline;
+}

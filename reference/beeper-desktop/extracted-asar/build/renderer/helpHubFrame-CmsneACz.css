@@ -1,0 +1,32 @@
+:root {
+  color-scheme: light dark;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+#eng-mount {
+  height: 100%;
+}
+#resource-center-modal {
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+#resource-center-modal [data-testid="drag-zone"] > :last-child {
+  display: none !important;
+}
+button[aria-label="close"],
+button[aria-label="minimize"],
+button[aria-label="expand"] {
+  display: none !important;
+}

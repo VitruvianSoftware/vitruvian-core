@@ -1,0 +1,29 @@
+._window_prm9o_1 {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 8px;
+  color: var(--color-on-surface);
+}
+._titleBar_prm9o_11 {
+  flex: none;
+  font-weight: 600;
+  font-size: var(--semantic-typo-size-body-sm);
+  line-height: var(--semantic-typo-line-height-body-sm);
+  letter-spacing: var(--semantic-typo-letter-spacing-body-sm);
+  text-align: center;
+  padding: var(--dimension-400) 0;
+  -webkit-app-region: drag;
+}
+._titleBar_prm9o_11._isMac_prm9o_21 {
+  padding: 0 0 var(--dimension-400);
+}
+._card_prm9o_25 {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--appearance-color-bg-primary);
+  border-radius: var(--radius-12);
+}

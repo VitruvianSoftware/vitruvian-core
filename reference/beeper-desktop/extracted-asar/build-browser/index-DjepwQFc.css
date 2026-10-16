@@ -1,0 +1,91 @@
+._cancelButton_ctbs0_1 {
+  padding: var(--dimension-400);
+}
+._cancelButton_ctbs0_1 svg {
+  display: block;
+}
+._recorder_ctbs0_8 {
+  --waveform-color: var(--color-on-secondary-container);
+  --waveform-progress-color: var(--color-on-surface);
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-radius: 24px;
+  padding: 0 var(--dimension-700);
+  color: var(--compose-message-accent);
+  font-size: 12px;
+  box-shadow: inset 0 0 0 2px var(--audio-bar-border);
+}
+.has-chat-wallpaper ._recorder_ctbs0_8 {
+  background: var(--appearance-color-bg-primary);
+}
+._recorder_ctbs0_8:not(._paused_ctbs0_27):before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 6px;
+  background-color: var(--color-on-error-container);
+  flex-shrink: 0;
+}
+._recorder_ctbs0_8._paused_ctbs0_27 {
+  box-shadow: inset 0 0 0 2px var(--audio-bar-bg);
+}
+._progressWrapper_ctbs0_39 {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  position: relative;
+}
+._paused_ctbs0_27 ._progressWrapper_ctbs0_39 {
+  justify-content: flex-start;
+}
+._waveform_ctbs0_50 {
+  width: 100%;
+  flex-grow: 1;
+  margin: 0 6px;
+  height: 24px;
+  position: relative;
+}
+._waveform_ctbs0_50 wave {
+  max-width: 100%;
+  overflow: hidden !important;
+}
+._waveform_ctbs0_50 .recording-waves {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+}
+._recorder_ctbs0_8:not(._paused_ctbs0_27) ._waveform_ctbs0_50 wave {
+  visibility: hidden;
+}
+._seekSlider_ctbs0_74 {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: calc(100% - 4px);
+}
+._paused_ctbs0_27 ._seekSlider_ctbs0_74 {
+  pointer-events: all;
+}
+._time_ctbs0_84 {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-variant: tabular-nums;
+  white-space: nowrap;
+}
+._playPauseButton_ctbs0_94,
+._actionButton_ctbs0_99 {
+  font-size: 18px;
+  display: flex;
+}

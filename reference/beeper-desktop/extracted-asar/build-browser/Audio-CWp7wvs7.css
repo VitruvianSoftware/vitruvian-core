@@ -1,0 +1,11 @@
+._button_1wtoy_1 {
+  border-radius: 2px;
+  font-weight: 600;
+  font-size: var(--semantic-typo-size-label-sm);
+  line-height: var(--semantic-typo-line-height-label-sm);
+  letter-spacing: var(--semantic-typo-letter-spacing-label-sm);
+  background: rgba(var(--color-fg-rgb) / 0.2);
+  color: var(--appearance-color-text-on-main);
+  padding: 1px 4px;
+  white-space: nowrap;
+}

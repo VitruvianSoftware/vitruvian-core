@@ -1,0 +1,41 @@
+{
+  "macho-IMessage.node.json": {
+    "evidence_id": "ev_87583aa2d01a2f7d923a40a8298af0d956259126884dd4c2dfe60b2817f82181",
+    "subject": {
+      "name": "IMessage.node",
+      "digest": {
+        "sha256": "14c349ea45b346823183a5e0350acb086bac36a10a093a70a9ba5b5eeb32ab39"
+      },
+      "format": "mach-o",
+      "architecture": "arm64",
+      "local_path": "/Applications/Beeper Desktop.app/Contents/Resources/app.asar.unpacked/build/platform-imessage/darwin-arm64/IMessage.node"
+    },
+    "slices": []
+  },
+  "macho-TextsSwift.node.json": {
+    "evidence_id": "ev_631f98ff9bc3f1b59afef181d2a7f88415963c63c5dfdf64450437c611c05335",
+    "subject": {
+      "name": "TextsSwift.node",
+      "digest": {
+        "sha256": "724cf83262e4e41d0e3290df034979f82311edea951685bc30948ba4db6fce41"
+      },
+      "format": "mach-o",
+      "architecture": "arm64",
+      "local_path": "/Applications/Beeper Desktop.app/Contents/Resources/app.asar.unpacked/build/_darwin-arm64/TextsSwift.framework/Versions/A/TextsSwift.node"
+    },
+    "slices": []
+  },
+  "macho-beeper_client_sdk_napi_binding.node.json": {
+    "evidence_id": "ev_fd243a0428f83bd14d359f388df2e4f8ce56500fc0c679aa3ecbae3cdb53f3b0",
+    "subject": {
+      "name": "beeper_client_sdk_napi_binding.node",
+      "digest": {
+        "sha256": "22b6612da0e26ada32a0028f69edc556942968e08b74a5210192942aef6ef720"
+      },
+      "format": "mach-o",
+      "architecture": "arm64",
+      "local_path": "/Applications/Beeper Desktop.app/Contents/Resources/app.asar.unpacked/node_modules/@beeper/beeper-client-sdk/node/lib/napi-v8/beeper_client_sdk_napi_binding.node"
+    },
+    "slices": []
+  }
+}

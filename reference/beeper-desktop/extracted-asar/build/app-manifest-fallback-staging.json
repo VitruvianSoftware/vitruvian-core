@@ -1,0 +1,36 @@
+{
+  "matrix_server_name": "beeper-staging.com",
+  "matrix_url": "https://matrix.beeper-staging.com",
+  "roomserv_url": "https://roomserv.beeper-staging.com",
+  "sygnal_url": "https://sygnal.beeper-staging.com",
+  "rageshake_url": "https://rageshake.beeper-staging.com",
+  "bpns_url": "https://bpns.beeper-staging.com",
+  "growthbook_api_url": "https://api.growthbook.beeper-staging.com",
+  "ai_services_url": "https://ai-services.beeper-staging.com",
+  "user_url_template": "https://{username}.users.beeper-staging.com",
+  "user_bridge_url_template": "https://{username}.users.{clusterId}.bridges.beeper-staging.com",
+  "echobot_url": "https://echobot.beeper-staging.com",
+  "rudderstack_write_key": "2VIRlNGR0i4nVOFrZAfQnEcbNFm",
+  "rudderstack": {
+    "url": "https://rudderstack.beeper-tools.com",
+    "desktop": {
+      "events_key": "2VIRlNGR0i4nVOFrZAfQnEcbNFm"
+    },
+    "android": {
+      "events_key": "2VISleyRlI5twJt3aHCZxxfttAH"
+    },
+    "ios": {
+      "events_key": "2VISpM3wwUSFmf3aEgZWyFtTgRI"
+    },
+    "a8c_desktop": {
+      "events_key": "2gCBE2xTbUONyNQvydjNZFKzTDC"
+    },
+    "a8c_android": {
+      "events_key": "2gCBH0PyQzEiINDndANyzBTEReL"
+    },
+    "a8c_ios": {
+      "events_key": "2g8fFQikoBhAlwdFPUjAIXQIwXA"
+    }
+  },
+  "server_oauth_id": "440503658061-l7elbm78tp74979ktsu2jjbeu5selifs.apps.googleusercontent.com"
+}

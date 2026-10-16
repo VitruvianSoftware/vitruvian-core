@@ -1,0 +1,36 @@
+{
+  "matrix_server_name": "beeper-dev.com",
+  "matrix_url": "https://matrix.beeper-dev.com",
+  "roomserv_url": "https://roomserv.beeper-dev.com",
+  "sygnal_url": "https://sygnal.beeper-dev.com",
+  "rageshake_url": "https://rageshake.beeper-dev.com",
+  "bpns_url": "https://bpns.beeper-dev.com",
+  "growthbook_api_url": "https://api.growthbook.beeper-dev.com",
+  "ai_services_url": "https://ai-services.beeper-dev.com",
+  "user_url_template": "https://{username}.users.beeper-dev.com",
+  "user_bridge_url_template": "https://{username}.users.{clusterId}.bridges.beeper-dev.com",
+  "echobot_url": "https://echobot.beeper-dev.com",
+  "rudderstack_write_key": "2V4IqsolqkAi80PWS3wuCxgXVww",
+  "rudderstack": {
+    "url": "https://rudderstack.beeper-tools.com",
+    "desktop": {
+      "events_key": "2V4IqsolqkAi80PWS3wuCxgXVww"
+    },
+    "android": {
+      "events_key": null
+    },
+    "ios": {
+      "events_key": null
+    },
+    "a8c_desktop": {
+      "events_key": null
+    },
+    "a8c_android": {
+      "events_key": null
+    },
+    "a8c_ios": {
+      "events_key": null
+    }
+  },
+  "server_oauth_id": "440503658061-l7elbm78tp74979ktsu2jjbeu5selifs.apps.googleusercontent.com"
+}

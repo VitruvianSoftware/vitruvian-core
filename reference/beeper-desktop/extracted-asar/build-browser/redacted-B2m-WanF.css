@@ -1,0 +1,18 @@
+.redacted .redacted-region {
+  font-family: redacted_regular;
+}
+.redacted .redacted-region canvas,
+.redacted .redacted-region img,
+.redacted .redacted-region video {
+  filter: brightness(0);
+  background: #000;
+}
+.negate-redacted-region {
+  font-family: var(--font-family);
+}
+.negate-redacted-region canvas,
+.negate-redacted-region img,
+.negate-redacted-region video {
+  filter: none;
+  background: initial;
+}
