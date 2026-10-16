@@ -2,6 +2,15 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.6.1
+
+- "Waiting on your review" shows merge conflicts as their own red
+  "Conflicts" badge. Before, a conflicted pull request with passing CI showed
+  only "Passing", and the missing buttons were the only hint.
+- Approve and Approve & merge now need GitHub to have confirmed there is no
+  conflict. While GitHub is still working that out, the row shows "Checking
+  for conflicts" and no buttons.
+
 ## 0.6.0
 
 - "Waiting on your review" rows get Approve and Approve & merge buttons, shown

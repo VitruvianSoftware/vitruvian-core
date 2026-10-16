@@ -31,8 +31,10 @@ switch in Claude Code's desktop app.
   the next time it fails the agent is told to re-run it before changing code.
 - The panel also lists the pull requests waiting on your review, anywhere on
   GitHub, with a tick box per repository so you can choose which ones are
-  listed. Once a pull request's pipeline is fully green, its row gets
-  Approve and Approve & merge buttons. It marks a watched pull request "Ready to merge" when it is green
+  listed. A row with merge conflicts says so in its own red badge, even when
+  CI is passing. Once a pull request's pipeline is fully green and GitHub
+  has confirmed it has no conflicts, its row gets Approve and Approve & merge
+  buttons. It marks a watched pull request "Ready to merge" when it is green
   and mergeable but nothing is set to merge it.
 - When an agent runs `gh pr create`, the new pull request is watched
   automatically for the conversation that opened it.
