@@ -196,13 +196,21 @@ public enum Pages {
 
     public static let releases = "https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker"
     public static let maxSpeakerRows = 20
-    /// How many of the history's entries the island lists.
-    public static let maxRecentBroadcasts = 5
+    /// How many of the history's entries the island lists: the island has
+    /// little room, and the menu bar app keeps the rest.
+    public static let maxRecentBroadcasts = 3
+    /// The island's volume menu: every ten, 0 to 100.
+    public static let volumeSteps = Array(stride(from: 0, through: 100, by: 10))
     /// How many homes the island's setup offers as buttons.
     public static let maxSetupHomes = 10
     public static let noRecentBroadcasts = "No recent announcements"
     public static let homeSpeakersOff = "Home speakers are off"
+    /// A volume or mute that waited, dropped: it was for the old speaker.
+    public static let pendingDropped = "The waiting volume or mute change was dropped: the speaker changed"
     public static let fixChatInSettings = "Fix it in Settings > Chat & Slack"
+    /// Where the rest of HomeSpeaker's settings are, at the foot of the
+    /// island: it cannot open them itself (yet; see `moreSettingsBlocks`).
+    public static let moreSettings = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
 
@@ -210,10 +218,9 @@ public enum Pages {
         public static let say = "say"
         public static let broadcasting = "broadcasting"
         public static let quiet = "quiet"
+        /// The island's Mute switch: on mutes, off unmutes.
         public static let mute = "mute"
-        public static let unmute = "unmute"
         public static let volume = "volume"
-        public static let refresh = "refresh"
         public static let speakers = "speakers"
         public static let section = "section"
         public static let signIn = "signIn"
@@ -301,23 +308,23 @@ public enum Pages {
 
     /// The island. While the other HomeSpeaker is in use, the quiet card
     /// (or the step the person started from it) is all there is; otherwise
-    /// the choice card, when there is one, comes first.
+    /// the choice card, when there is one, comes first. No heading: the
+    /// island's header, and the menu bar panel's card, already name it.
     public static func island(_ status: Status) -> UITree {
         var quietFor: HomeSpeakerProfile.Door?
         if case .quiet(let other) = status.door.role { quietFor = other }
         if let other = quietFor {
             return UITree {
-                heading("HomeSpeaker")
                 if status.door.step == nil {
                     quietCardBlocks(other: other, starting: status.door.otherStarting)
                 } else {
                     doorCardBlocks(status)
                 }
                 doorReportBlocks(status)
+                moreSettingsBlocks(status)
             }
         }
         return UITree {
-            heading("HomeSpeaker")
             doorCardBlocks(status)
             doorReportBlocks(status)
             configProblemBlocks(status)
@@ -328,7 +335,7 @@ public enum Pages {
                 field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
             }
             if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
-            if let busy = status.busy { text(UIText.plain(busyLine(busy)), style: .caption) }
+            if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }
             toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
             toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
             if status.quietNow, let until = status.config.quietHoursEnd {
@@ -343,7 +350,24 @@ public enum Pages {
             outputBlocks(status)
             divider()
             recentBroadcastBlocks(status)
+            moreSettingsBlocks(status)
         }
+    }
+
+    /// The speaker job the island mentions. The read on every opening is
+    /// not, while a level from before is shown: it would only make the
+    /// page jump each time it opens.
+    static func shownBusy(_ status: Status) -> Job? {
+        guard let busy = status.busy else { return nil }
+        if busy == .volume, status.volume?.percent != nil { return nil }
+        return busy
+    }
+
+    /// The island's last line: where the rest of the settings are. The one
+    /// place that says it, so a later change can draw a "More settings…"
+    /// button here instead, for an app that can open them.
+    static func moreSettingsBlocks(_ status: Status) -> [UIBlock] {
+        [text(UIText.plain(moreSettings), style: .caption)]
     }
 
     /// The settings file is there and does not read: said first, on both
@@ -356,32 +380,61 @@ public enum Pages {
         ]
     }
 
-    /// The default speaker, its volume and the picker. With Home speakers
-    /// off the volume is not read, so the controls give way to a note.
+    /// The default speaker, its volume and Mute. Where the app draws a
+    /// `choice`, the speaker and the volume are one-line menus; before 3.48
+    /// they are the list and the typed field. With Home speakers off the
+    /// volume is not read, so its controls give way to a note.
     static func speakerBlocks(_ status: Status) -> [UIBlock] {
-        UITree {
-            row(nil, UIText.plain(status.config.defaultDevice?.name ?? "No speaker picked"),
-                subtitle: UIText.plain(volumeLine(status)), icon: "hifispeaker.2")
-            if status.config.defaultDevice != nil && status.config.effectiveSpeakHome {
-                if status.volume?.muted == true {
-                    button(Block.unmute, "Unmute")
-                } else {
-                    button(Block.mute, "Mute")
-                }
-                field(Block.volume, title: "Volume (0 to 100)", value: status.volume?.percent.map(String.init) ?? "",
-                      placeholder: "Type a level and press Return", kind: .number)
-                // Ten at a time, from the level last read: none before it is.
-                let percent = status.volume?.percent
-                button(Block.quieter, "Quieter", enabled: percent.map { $0 > 0 } ?? false)
-                button(Block.louder, "Louder", enabled: percent.map { $0 < 100 } ?? false)
-                button(Block.refresh, "Read the volume")
-            }
-            let speakers = status.config.uniqueTargets()
-            if !speakers.isEmpty {
+        let config = status.config
+        let speakers = config.uniqueTargets()
+        return UITree {
+            if status.offersChoice {
+                choice(Block.speakers, title: "Speaker", value: config.defaultDevice == nil ? "" : config.defaultTarget,
+                       options: speakerOptions(status))
+            } else if !speakers.isEmpty {
                 text("Speaker", style: .caption)
-                list(Block.speakers, speakerRows(speakers, chosen: status.config.defaultTarget))
+                list(Block.speakers, speakerRows(speakers, chosen: config.defaultTarget))
             }
+            if config.defaultDevice != nil && config.effectiveSpeakHome {
+                if status.offersChoice {
+                    choice(Block.volume, title: "Volume", value: status.volume?.percent.map(String.init) ?? "",
+                           options: volumeOptions(status.volume?.percent))
+                } else {
+                    field(Block.volume, title: "Volume (0 to 100)", value: status.volume?.percent.map(String.init) ?? "",
+                          placeholder: "Type a level and press Return", kind: .number)
+                }
+                toggle(Block.mute, "Mute", isOn: status.volume?.muted == true)
+            }
+            if let note = speakerNote(status) { text(UIText.plain(note), style: .caption) }
         }.blocks
+    }
+
+    /// The speaker menu: each speaker once, and "None picked" first while
+    /// no speaker is the default, so the menu always shows what is so.
+    static func speakerOptions(_ status: Status) -> [UIChoiceOption] {
+        var options = status.config.uniqueTargets().map { UIChoiceOption(value: $0.key, title: UIText.plain($0.device.displayLine)) }
+        if status.config.defaultDevice == nil { options.insert(UIChoiceOption(value: "", title: "None picked"), at: 0) }
+        return Array(options.prefix(UILimits.maxChoiceOptions))
+    }
+
+    /// The volume menu: every ten, with the level read kept in its place
+    /// when it is between two, so the menu never quietly changes it. "—"
+    /// stands first until the level is read.
+    public static func volumeOptions(_ percent: Int?) -> [UIChoiceOption] {
+        var levels = volumeSteps
+        if let percent, !levels.contains(percent) { levels = (levels + [percent]).sorted() }
+        var options = levels.map { UIChoiceOption(value: String($0), title: UIText.plain("\($0) %")) }
+        if percent == nil { options.insert(UIChoiceOption(value: "", title: "—"), at: 0) }
+        return options
+    }
+
+    /// What the controls cannot show, only when it is not as usual: Home
+    /// speakers off, the speaker offline, or (without a menu) none picked.
+    public static func speakerNote(_ status: Status) -> String? {
+        guard let device = status.config.defaultDevice else { return status.offersChoice ? nil : "No speaker picked yet" }
+        guard status.config.effectiveSpeakHome else { return homeSpeakersOff }
+        if status.volume?.online == false { return "\(device.name) is offline" }
+        return nil
     }
 
     /// The first run, inline: the island cannot open Settings. Sign in,
@@ -504,16 +557,6 @@ public enum Pages {
         case .app(.loginItem): return "Changing Open at Login…"
         case .app(.testMediaPause): return "Pausing what this Mac plays for 3 seconds…"
         }
-    }
-
-    /// "Volume 40 %", "Muted", "Offline", or that it has not been read.
-    public static func volumeLine(_ status: Status) -> String {
-        guard status.config.defaultDevice != nil else { return "Pick one in HomeSpeaker, or below" }
-        guard status.config.effectiveSpeakHome else { return homeSpeakersOff }
-        guard let volume = status.volume else { return "Volume not read yet" }
-        if volume.online == false { return "Offline" }
-        if volume.muted == true { return "Muted" }
-        return volume.percent.map { "Volume \($0) %" } ?? "Volume unknown"
     }
 
     public static func speakerRows(_ speakers: [(key: String, device: SpeakerDevice)], chosen: String) -> [UIListRow] {
