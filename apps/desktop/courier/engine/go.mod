@@ -6,6 +6,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	go.mau.fi/util v0.10.1
+	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.31.0
 )
 
@@ -32,5 +33,4 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
