@@ -405,9 +405,12 @@ package final class ExternalToolStore {
         guard ToolFolders.weight(of: folder, within: most) != nil else {
             return .failure(.tooBig(bytes: most.bytes, items: most.items))
         }
-        let before = records.first { $0.id == tool.manifest.id.rawValue }?.agreement
-        return .success(ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint, replaces: before,
-                                  catalogue: catalogue))
+        let known = records.first { $0.id == tool.manifest.id.rawValue }
+        // A tool added from a folder, offered from the catalog: agreeing
+        // moves it onto the catalog.
+        let movesFromFolder = catalogue != nil && known?.catalogue == nil ? known?.agreement.source : nil
+        return .success(ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint, replaces: known?.agreement,
+                                  catalogue: catalogue, movesFromFolder: movesFromFolder))
     }
 
     /// The second step, as the app takes it: `add`, once whatever the app
@@ -503,7 +506,8 @@ package final class ExternalToolStore {
         if let known {
             next[known].agreement = agreement
             // Updated from a folder, a tool from the catalog is one added
-            // by hand from then on, and no longer compared with the catalog.
+            // by hand from then on. Updated from the catalog, a tool added
+            // from a folder is one from the catalog from then on.
             next[known].catalogue = offer.catalogue
         } else {
             next.append(ToolRecord(id: id.rawValue, isOn: true, agreement: agreement, catalogue: offer.catalogue))

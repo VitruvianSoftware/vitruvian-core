@@ -17,6 +17,7 @@ enum CatalogueWatchTests {
         olderThanBefore(suite)
         keptAcrossLaunches(suite)
         updates(suite)
+        aToolAddedFromAFolder(suite)
     }
 
     final class Rig {
@@ -172,15 +173,51 @@ enum CatalogueWatchTests {
         suite.expect(wrong.isEmpty, "a tool from the catalog has an update only when the catalog lists a newer "
                          + "version this app can install (\(wrong.joined(separator: ", ")))")
 
-        let byHand = Rig()
-        defer { byHand.close() }
-        byHand.install(fromCatalog: false)
-        byHand.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
-        byHand.watch.start()
-        byHand.watch.refresh()
-        suite.expect(byHand.watch.update(for: byHand.bench.store.listed[0]) == nil
-                         && byHand.asked == ["tools.json", "tools.json.sig"],
-                     "a tool added from a folder is never matched to the catalog by its id, and does not make the "
-                         + "app fetch at launch")
+    }
+
+    /// A tool added from a folder whose id the catalog lists: offered the
+    /// catalog's version only when it is newer than the one agreed to.
+    static func aToolAddedFromAFolder(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.close() }
+        rig.install(fromCatalog: false)
+        rig.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
+        rig.watch.start()
+        suite.expect(rig.fetcher.asked.isEmpty,
+                     "a tool added from a folder does not make the app fetch the list at launch")
+        rig.watch.refresh()
+        let listed = { rig.bench.store.listed[0] }
+        suite.expect(listed().record.catalogue == nil && rig.watch.update(for: listed())?.version == "1.3.0"
+                         && CatalogueWatch.comparedVersion(of: listed()) == "1.2.0",
+                     "a tool added from a folder is offered the catalog's newer version under its id, compared at "
+                         + "the version the person agreed to")
+
+        let cases: [(String, [String: Any])] = [
+            ("the same version", [:]),
+            ("an older version", ["version": "1.1.0"]),
+            ("another tool's newer version", ["id": "com.acme.other", "version": "9.0.0"]),
+            ("a newer version this app cannot speak", ["version": "1.3.0", "protocol": "3"]),
+        ]
+        var wrong: [String] = []
+        for (index, (reason, change)) in cases.enumerated() {
+            rig.serve([CatalogueFixtures.entry(change)], generated: "2026-11-0\(index + 3)T10:00:00Z",
+                      etag: "\"f\(index)\"")
+            rig.watch.refresh()
+            if rig.watch.update(for: listed()) != nil { wrong.append(reason) }
+        }
+        suite.expect(wrong.isEmpty, "a tool added from a folder is never offered the catalog's version when it is "
+                         + "not newer (\(wrong.joined(separator: ", ")))")
+
+        // The app's copy is rewritten: it is held back at the next launch.
+        rig.serve([CatalogueFixtures.entry(["version": "1.3.0"])], generated: "2026-11-09T10:00:00Z", etag: "\"h\"")
+        rig.watch.refresh()
+        try? ExternalToolManifestTests.file(#"{"version": "1.2.0", "uses": ["notify"]}"#)
+            .write(to: rig.bench.files.appendingPathComponent("vitruvian-tool.json"))
+        let next = rig.bench.relaunched()
+        next.store.restore()
+        suite.expect(next.store.listed.first?.isHeld == true
+                         && next.store.listed.first.flatMap(rig.watch.update(for:)) == nil,
+                     "a held-back tool added from a folder is not offered the catalog's version: only its folder "
+                         + "brings it back")
     }
 }

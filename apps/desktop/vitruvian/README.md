@@ -133,6 +133,11 @@ What to expect:
 - The app runs its copy, not your folder. After you change the tool, open
   its row and choose "Update from Folder…": the app asks again and replaces
   the copy. A folder may hold up to 256 MB and 10,000 files.
+- When the catalog lists a newer version of a tool you added from a folder,
+  under the same id, its row offers "Update from the catalog". The download
+  is checked as any install from the catalog is, the sheet says the tool
+  moves onto the catalog, and `ToolData/<id>/` is kept. From then on it
+  updates from the catalog.
 - Remove, in the tool's detail, deletes the copy. It deletes `ToolData/<id>/`
   and the tool's settings only if you pick that button. It first waits up
   to one second for the tool's program to end. If the program is still

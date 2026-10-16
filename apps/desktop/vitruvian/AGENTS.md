@@ -320,8 +320,9 @@ line for them (`ExtensionsSummaryLine`): how many are added, and a link to
 the page. Every way in, that line, the sidebar, the Settings search and
 command bar, and an extension's island page in the Dynamic Island's
 settings, goes to `ExtensionsPageSupport.destination`. The sidebar's row
-counts the tools from the catalog that have a newer version listed
-(`ExtensionsPageContent.updates`).
+counts the added tools the catalog lists a newer version of
+(`ExtensionsPageContent.updates`), whether they came from the catalog or
+from a folder.
 
 Each row of the Installed list carries a pill, `ExternalToolRow.kind`: a package
 whose manifest has any `panels` (island, Settings or window) is an
@@ -666,10 +667,20 @@ of it but the protocol.
     once a day only while a tool from the catalog is installed, with the
     ETag of the list it kept. It keeps the last list that verified in
     `Catalog.json` in the app's support folder, verifies it again whenever
-    it reads it, and refuses a list older than it. Only a record with
+    it reads it, and refuses a list older than it. A record with
     `catalogue` set, written when a tool was installed from the catalog, is
-    ever compared with it: a tool added from a folder is never matched by
-    its id.
+    compared at that entry's version. A tool added from a folder is matched
+    by its id and compared at the version the person agreed to, unless it
+    is held back (`CatalogueWatch.comparedVersion`); only a newer version is
+    offered, never the same or an older one. Its row's button says "Update
+    from the catalog" (`ExternalToolRow.updateWords`), the download is
+    checked as for any install, and the agreement sheet says the tool moves
+    from its folder onto the catalog (`ToolOffer.movesFromFolder`). Agreeing
+    replaces `Tools/<id>/`, keeps `ToolData/<id>/`, and records `catalogue`,
+    so it is a tool from the catalog from then on. The list is still
+    fetched on the app's own only while a tool from the catalog is
+    installed: for a Mac with only folder tools, it is the list fetched
+    when the Extensions page last opened.
   - `CatalogueSource.inUse` is the website's list. Only a by-hand build
     (`--define=vitruvian_sample_tool=true`) can point it at a rehearsal on
     this Mac, from `main.swift`, given `VITRUVIAN_CATALOGUE_URL` and

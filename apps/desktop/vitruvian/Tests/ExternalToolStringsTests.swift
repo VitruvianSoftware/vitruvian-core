@@ -11,7 +11,7 @@ import VitruvianCore
 enum ExternalToolStringsTests {
     /// How many texts the screens for tools from outside add. A text added
     /// or taken away changes this number on purpose, with the plan's table.
-    static let count = 78
+    static let count = 81
 
     static func run(_ suite: TestSuite) {
         let english = FeatureStrings.externalTools(.enUS).all
@@ -53,6 +53,8 @@ enum ExternalToolStringsTests {
         suite.expect(strings.agreeTitle("Deploys") == "Add “Deploys” to Vitruvian?"
                          && strings.updateVersions(agreed: "1.2.0", offered: "1.3.0")
                          == "You have version 1.2.0. This folder has version 1.3.0."
+                         && strings.updateVersionsFromCatalog(agreed: "1.2.0", offered: "1.3.0")
+                         == "You have version 1.2.0. The catalog has version 1.3.0."
                          && strings.refusalTooBig(size: "256 MB", items: "10,000")
                          == "The folder is too large. A tool can hold up to 256 MB and 10,000 files."
                          && strings.stopped("Deploys") == "“Deploys” stopped working"

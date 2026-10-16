@@ -150,6 +150,15 @@ package struct ExternalToolStrings {
     /// The button by an extension's page in the Dynamic Island's settings,
     /// to where its own settings are.
     package let openExtensions: String
+    /// The button on the row of an extension added from a folder when the catalog lists a newer
+    /// version of it: it fetches that version, and the extension is from the catalog from then on.
+    package let updateFromCatalog: String
+    /// The agreement sheet's line for that update: the source moves from a folder to the catalog.
+    /// `%@` is the folder it was added from, with a tilde for the home folder.
+    package let updateMovesToCatalogFormat: String
+    /// The agreement sheet's versions for an update from the catalog. `%1$@` is the version the
+    /// person agreed to; `%2$@` is the one the catalog lists.
+    package let updateVersionsCatalogFormat: String
 
     package func agreeTitle(_ name: String) -> String {
         String(format: agreeTitleFormat, locale: Locale.current, name)
@@ -165,6 +174,14 @@ package struct ExternalToolStrings {
 
     package func updateVersions(agreed: String, offered: String) -> String {
         String(format: updateVersionsFormat, locale: Locale.current, agreed, offered)
+    }
+
+    package func updateVersionsFromCatalog(agreed: String, offered: String) -> String {
+        String(format: updateVersionsCatalogFormat, locale: Locale.current, agreed, offered)
+    }
+
+    package func updateMovesToCatalog(_ folder: String) -> String {
+        String(format: updateMovesToCatalogFormat, locale: Locale.current, folder)
     }
 
     package func removeTitle(_ name: String) -> String {
@@ -317,6 +334,9 @@ package struct ExternalToolStrings {
             ("summaryManage", summaryManage),
             ("summaryBrowse", summaryBrowse),
             ("openExtensions", openExtensions),
+            ("updateFromCatalog", updateFromCatalog),
+            ("updateMovesToCatalogFormat", updateMovesToCatalogFormat),
+            ("updateVersionsCatalogFormat", updateVersionsCatalogFormat),
         ]
     }
 }
@@ -400,7 +420,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d extensions installed",
         summaryManage: "Manage",
         summaryBrowse: "Browse",
-        openExtensions: "Open Extensions")
+        openExtensions: "Open Extensions",
+        updateFromCatalog: "Update from the catalog",
+        updateMovesToCatalogFormat: "You added it from the folder %@; from now on it comes from the Vitruvian catalog.",
+        updateVersionsCatalogFormat: "You have version %1$@. The catalog has version %2$@.")
 
     package static let ptBR = ExternalToolStrings(
         sectionTitle: "Extensões e ferramentas",
@@ -480,7 +503,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d extensões instaladas",
         summaryManage: "Gerenciar",
         summaryBrowse: "Explorar",
-        openExtensions: "Abrir Extensões")
+        openExtensions: "Abrir Extensões",
+        updateFromCatalog: "Atualizar pelo catálogo",
+        updateMovesToCatalogFormat: "Você a adicionou a partir da pasta %@; de agora em diante, ela vem do catálogo do Vitruvian.",
+        updateVersionsCatalogFormat: "Você tem a versão %1$@. O catálogo tem a versão %2$@.")
 
     package static let tr = ExternalToolStrings(
         sectionTitle: "Uzantılar ve araçlar",
@@ -560,7 +586,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d uzantı yüklü",
         summaryManage: "Yönet",
         summaryBrowse: "Göz at",
-        openExtensions: "Uzantılar’ı aç")
+        openExtensions: "Uzantılar’ı aç",
+        updateFromCatalog: "Katalogdan güncelle",
+        updateMovesToCatalogFormat: "Bunu %@ klasöründen eklediniz; bundan sonra Vitruvian kataloğundan gelecek.",
+        updateVersionsCatalogFormat: "Sizde %1$@ sürümü var. Katalogda %2$@ sürümü var.")
 
     package static let ru = ExternalToolStrings(
         sectionTitle: "Расширения и инструменты",
@@ -640,7 +669,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "Установлено расширений: %d",
         summaryManage: "Управлять",
         summaryBrowse: "Обзор",
-        openExtensions: "Открыть расширения")
+        openExtensions: "Открыть расширения",
+        updateFromCatalog: "Обновить из каталога",
+        updateMovesToCatalogFormat: "Вы добавили его из папки %@; теперь он будет поступать из каталога Vitruvian.",
+        updateVersionsCatalogFormat: "У вас версия %1$@. В каталоге версия %2$@.")
 
     package static let es = ExternalToolStrings(
         sectionTitle: "Extensiones y herramientas",
@@ -720,7 +752,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d extensiones instaladas",
         summaryManage: "Gestionar",
         summaryBrowse: "Explorar",
-        openExtensions: "Abrir Extensiones")
+        openExtensions: "Abrir Extensiones",
+        updateFromCatalog: "Actualizar desde el catálogo",
+        updateMovesToCatalogFormat: "La añadiste desde la carpeta %@; a partir de ahora viene del catálogo de Vitruvian.",
+        updateVersionsCatalogFormat: "Tienes la versión %1$@. El catálogo tiene la versión %2$@.")
 
     package static let sk = ExternalToolStrings(
         sectionTitle: "Rozšírenia a nástroje",
@@ -800,7 +835,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "Nainštalované rozšírenia: %d",
         summaryManage: "Spravovať",
         summaryBrowse: "Prehľadávať",
-        openExtensions: "Otvoriť Rozšírenia")
+        openExtensions: "Otvoriť Rozšírenia",
+        updateFromCatalog: "Aktualizovať z katalógu",
+        updateMovesToCatalogFormat: "Pridali ste ho z priečinka %@; odteraz pochádza z katalógu Vitruvian.",
+        updateVersionsCatalogFormat: "Máte verziu %1$@. V katalógu je verzia %2$@.")
 
     package static let de = ExternalToolStrings(
         sectionTitle: "Erweiterungen und Werkzeuge",
@@ -880,7 +918,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d Erweiterungen installiert",
         summaryManage: "Verwalten",
         summaryBrowse: "Durchsuchen",
-        openExtensions: "Erweiterungen öffnen")
+        openExtensions: "Erweiterungen öffnen",
+        updateFromCatalog: "Aus dem Katalog aktualisieren",
+        updateMovesToCatalogFormat: "Du hast es aus dem Ordner %@ hinzugefügt; ab jetzt kommt es aus dem Vitruvian-Katalog.",
+        updateVersionsCatalogFormat: "Du hast Version %1$@. Der Katalog enthält Version %2$@.")
 
     package static let fr = ExternalToolStrings(
         sectionTitle: "Extensions et outils",
@@ -960,7 +1001,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d modules d’extension installés",
         summaryManage: "Gérer",
         summaryBrowse: "Parcourir",
-        openExtensions: "Ouvrir Modules d’extension")
+        openExtensions: "Ouvrir Modules d’extension",
+        updateFromCatalog: "Mettre à jour depuis le catalogue",
+        updateMovesToCatalogFormat: "Vous l’avez ajouté depuis le dossier %@\u{00A0}; désormais, il provient du catalogue Vitruvian.",
+        updateVersionsCatalogFormat: "Vous avez la version %1$@. Le catalogue contient la version %2$@.")
 
     package static let it = ExternalToolStrings(
         sectionTitle: "Estensioni e strumenti",
@@ -1040,7 +1084,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d estensioni installate",
         summaryManage: "Gestisci",
         summaryBrowse: "Sfoglia",
-        openExtensions: "Apri Estensioni")
+        openExtensions: "Apri Estensioni",
+        updateFromCatalog: "Aggiorna dal catalogo",
+        updateMovesToCatalogFormat: "L’hai aggiunto dalla cartella %@; d’ora in poi arriva dal catalogo di Vitruvian.",
+        updateVersionsCatalogFormat: "Hai la versione %1$@. Il catalogo contiene la versione %2$@.")
 
     package static let ja = ExternalToolStrings(
         sectionTitle: "拡張機能とツール",
@@ -1120,7 +1167,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "%d個の拡張機能がインストール済み",
         summaryManage: "管理",
         summaryBrowse: "参照",
-        openExtensions: "拡張機能を開く")
+        openExtensions: "拡張機能を開く",
+        updateFromCatalog: "カタログからアップデート",
+        updateMovesToCatalogFormat: "このツールはフォルダ %@ から追加しましたが、今後はVitruvianカタログから入手します。",
+        updateVersionsCatalogFormat: "現在のバージョンは%1$@です。カタログのバージョンは%2$@です。")
 
     package static let ko = ExternalToolStrings(
         sectionTitle: "확장 프로그램 및 도구",
@@ -1200,7 +1250,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "확장 프로그램 %d개 설치됨",
         summaryManage: "관리",
         summaryBrowse: "둘러보기",
-        openExtensions: "확장 프로그램 열기")
+        openExtensions: "확장 프로그램 열기",
+        updateFromCatalog: "카탈로그에서 업데이트",
+        updateMovesToCatalogFormat: "이 도구는 %@ 폴더에서 추가했지만, 이제부터는 Vitruvian 카탈로그에서 받습니다.",
+        updateVersionsCatalogFormat: "현재 버전은 %1$@입니다. 카탈로그의 버전은 %2$@입니다.")
 
     package static let uk = ExternalToolStrings(
         sectionTitle: "Розширення та інструменти",
@@ -1280,7 +1333,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "Встановлено розширень: %d",
         summaryManage: "Керувати",
         summaryBrowse: "Огляд",
-        openExtensions: "Відкрити Розширення")
+        openExtensions: "Відкрити Розширення",
+        updateFromCatalog: "Оновити з каталогу",
+        updateMovesToCatalogFormat: "Ви додали його з папки %@; відтепер він надходитиме з каталогу Vitruvian.",
+        updateVersionsCatalogFormat: "У вас версія %1$@. У каталозі версія %2$@.")
 
     package static let zhHans = ExternalToolStrings(
         sectionTitle: "扩展与工具",
@@ -1360,7 +1416,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "已安装 %d 个扩展",
         summaryManage: "管理",
         summaryBrowse: "浏览",
-        openExtensions: "打开扩展")
+        openExtensions: "打开扩展",
+        updateFromCatalog: "从目录更新",
+        updateMovesToCatalogFormat: "你是从文件夹 %@ 添加的此工具；今后它将来自 Vitruvian 目录。",
+        updateVersionsCatalogFormat: "你当前的版本是 %1$@。目录中的版本是 %2$@。")
 
     package static let zhTW = ExternalToolStrings(
         sectionTitle: "擴充功能與工具",
@@ -1440,7 +1499,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "已安裝 %d 個擴充功能",
         summaryManage: "管理",
         summaryBrowse: "瀏覽",
-        openExtensions: "打開擴充功能")
+        openExtensions: "打開擴充功能",
+        updateFromCatalog: "從目錄更新",
+        updateMovesToCatalogFormat: "你是從檔案夾 %@ 加入此工具的；今後它將來自 Vitruvian 目錄。",
+        updateVersionsCatalogFormat: "你目前的版本是 %1$@。目錄中的版本是 %2$@。")
 
     package static let zhHK = ExternalToolStrings(
         sectionTitle: "擴充功能與工具",
@@ -1520,7 +1582,10 @@ extension ExternalToolStrings {
         summaryCountFormat: "已安裝 %d 個擴充功能",
         summaryManage: "管理",
         summaryBrowse: "瀏覽",
-        openExtensions: "打開擴充功能")
+        openExtensions: "打開擴充功能",
+        updateFromCatalog: "從目錄更新",
+        updateMovesToCatalogFormat: "你是從資料夾 %@ 加入此工具的；今後它會來自 Vitruvian 目錄。",
+        updateVersionsCatalogFormat: "你目前的版本是 %1$@。目錄中的版本是 %2$@。")
 }
 
 extension FeatureStrings {

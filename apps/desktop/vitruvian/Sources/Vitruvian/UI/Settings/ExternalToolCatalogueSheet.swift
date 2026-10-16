@@ -13,9 +13,11 @@ import VitruvianToolProtocol
 package struct CatalogueRow: Identifiable, Equatable {
     package enum Action: Equatable, Sendable {
         case install
-        /// Added already, from the catalog with nothing newer, or from a
-        /// folder: there is nothing to press.
+        /// Added already, with nothing newer listed: there is nothing to
+        /// press.
         case installed
+        /// Added already, from the catalog or from a folder, and the catalog
+        /// lists a newer version.
         case update
     }
 
@@ -87,8 +89,8 @@ package struct CatalogueSheetContent: Equatable {
                     summary: entry.summary.text(for: tag) ?? "",
                     uses: entry.uses.compactMap { Capability(rawValue: $0).flatMap(strings.use) },
                     action: action,
-                    actionText: [.install: strings.installButton, .installed: strings.installedLabel,
-                                 .update: strings.updateNow][action] ?? "")
+                    actionText: action == .update ? added.map { ExternalToolRow.updateWords($0, strings: strings) } ?? ""
+                        : action == .install ? strings.installButton : strings.installedLabel)
             })
         }
     }

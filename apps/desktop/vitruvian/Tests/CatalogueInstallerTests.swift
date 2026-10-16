@@ -16,7 +16,21 @@ enum CatalogueInstallerTests {
         refusals(suite)
         aStoreRefusal(suite)
         anUpdate(suite)
+        fromAFolderOntoTheCatalog(suite)
         onlyItsOwn(suite)
+    }
+
+    /// Every file under `folder`, by its path inside it, with its bytes; a
+    /// folder is listed with no bytes.
+    static func snapshot(_ folder: URL) -> [String: Data] {
+        var files: [String: Data] = [:]
+        let base = folder.resolvingSymlinksInPath().path
+        guard let walk = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil) else { return files }
+        for case let url as URL in walk {
+            let path = String(url.resolvingSymlinksInPath().path.dropFirst(base.count))
+            files[path] = (try? Data(contentsOf: url)) ?? Data()
+        }
+        return files
     }
 
     typealias Item = TestZip.Item
@@ -262,6 +276,72 @@ enum CatalogueInstallerTests {
         rig.bench.add(picked)
         suite.expect(rig.bench.records.first?.catalogue == nil && rig.bench.exists(picked),
                      "updated from a folder, it is a tool added by hand from then on")
+    }
+
+    /// A tool added from a folder, updated from the catalog: the download is
+    /// checked as for any install, its saved data stays byte for byte, and it
+    /// is a tool from the catalog from then on.
+    static func fromAFolderOntoTheCatalog(_ suite: TestSuite) {
+        let id = ExternalToolStoreTests.id
+        let rig = Rig()
+        defer { rig.close() }
+        let picked = rig.bench.folder("Remote")
+        try? Data("only in the folder".utf8).write(to: picked.appendingPathComponent("notes"))
+        rig.bench.add(picked)
+        let nested = rig.bench.data.appendingPathComponent("cache/day", isDirectory: true)
+        try? FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try? Data("kept".utf8).write(to: rig.bench.data.appendingPathComponent("saved"))
+        try? Data((0...255).map { UInt8($0) }).write(to: nested.appendingPathComponent("bytes.bin"))
+        let saved = snapshot(rig.bench.data)
+
+        // A download that is not the one the catalog pins changes nothing.
+        let zip = TestZip.tool(version: "1.3.0")
+        let bad = rig.entry(zip, version: "1.3.0", pin: ["sha256": TestZip.sha256(TestZip.tool(version: "1.4.0"))])
+        suite.expect(rig.prepare(bad) == .failure(.mismatch) && rig.bench.records.first?.catalogue == nil
+                         && rig.bench.records.first?.agreement.version == "1.2.0" && rig.bench.store.isInstalled(id)
+                         && rig.leftover.isEmpty,
+                     "a tool added from a folder is updated from the catalog only with the download the catalog pins: "
+                         + "a refused download leaves it as it was")
+
+        let entry = rig.entry(zip, version: "1.3.0")
+        guard case .success(let offer)? = rig.prepare(entry) else {
+            suite.expect(false, "a tool added from a folder is offered its newer version from the catalog")
+            return
+        }
+        suite.expect(offer.replaces?.version == "1.2.0" && offer.catalogue == entry.origin
+                         && offer.movesFromFolder == picked.resolvingSymlinksInPath().path && offer.manifestChanged
+                         && rig.bench.records.first?.catalogue == nil && rig.bench.store.installed[id]?.tool.version == "1.2.0",
+                     "the offer replaces the tool added from a folder, names that folder, and until the person "
+                         + "agrees the tool stands as it was")
+        let later = Date(timeIntervalSince1970: 1_780_000_000)
+        guard case .success = rig.bench.store.add(ToolConsent(to: offer, on: later)) else {
+            suite.expect(false, "agreed to, the tool is updated from the catalog")
+            return
+        }
+        rig.installer.finished(with: offer)
+        let record = rig.bench.records.first
+        suite.expect(snapshot(rig.bench.data) == saved && saved.count == 4,
+                     "updating a tool added from a folder from the catalog keeps what it saved, byte for byte")
+        suite.expect(rig.bench.records.count == 1 && record?.catalogue == entry.origin
+                         && record?.agreement.source == entry.download.url.absoluteString
+                         && record?.agreement.version == "1.3.0" && record?.agreement.date == later
+                         && rig.bench.store.installed[id]?.tool.version == "1.3.0"
+                         && !rig.bench.exists(rig.bench.files.appendingPathComponent("notes"))
+                         && rig.bench.exists(picked.appendingPathComponent("notes")) && rig.leftover.isEmpty,
+                     "updated from the catalog, a tool added from a folder is recorded as from the catalog: its copy "
+                         + "is the download's, and the folder it came from is not touched")
+
+        // From then on it is compared as a tool from the catalog.
+        let after = rig.bench.relaunched()
+        after.store.restore()
+        suite.expect(after.store.listed.first?.record.catalogue == entry.origin && after.store.isInstalled(id)
+                         && CatalogueWatch.comparedVersion(of: after.store.listed[0]) == "1.3.0",
+                     "at the next launch it is a tool from the catalog, compared at the version it came from")
+        let newer = rig.entry(TestZip.tool(version: "1.4.0"), version: "1.4.0")
+        guard case .success(let next)? = rig.prepare(newer) else { return }
+        suite.expect(next.movesFromFolder == nil && next.replaces?.version == "1.3.0",
+                     "its next update from the catalog is the usual one")
+        rig.installer.finished(with: next)
     }
 
     static func onlyItsOwn(_ suite: TestSuite) {
