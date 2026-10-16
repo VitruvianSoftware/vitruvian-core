@@ -139,4 +139,175 @@ final class RemoteMenuCoreTests: XCTestCase {
         XCTAssertEqual(StatusSnapshot(state: .running(version: nil), tailnetReachable: false).tailnetLine,
                        "Phone can't reach it over Tailscale")
     }
+
+    func testExtensionFoldersResolveFromToolBinaryPath() throws {
+        let bin = URL(fileURLWithPath: "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.remote/bin/tool")
+        let folders = try XCTUnwrap(RemoteProfile.extensionFolders(program: bin))
+        XCTAssertEqual(folders.tool.path, "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.remote")
+        XCTAssertEqual(folders.data.path, "/Users/x/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.remote")
+
+        let prof = RemoteProfile.extension(dataFolder: folders.data, toolFolder: folders.tool, home: URL(fileURLWithPath: "/Users/x"))
+        XCTAssertEqual(prof.settingsURL.path, "/Users/x/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.remote/settings.json")
+        XCTAssertEqual(prof.configDirURL.path, "/Users/x/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.remote/config")
+        XCTAssertEqual(prof.agentBinaryURL.path, "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent")
+        // Quotes paths with spaces in hookCommandLine and mcpAddCommand.
+        XCTAssertEqual(
+            prof.hookCommandLine(home: URL(fileURLWithPath: "/Users/x")),
+            "'/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent' permission-hook --config-dir '/Users/x/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.remote/config'"
+        )
+        XCTAssertTrue(prof.mcpAddCommand.contains("'/Users/x/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.remote/config/mcp-token'"))
+    }
+
+    func testSettingsParseLaunchAgentPlistAndBuildAgentArgsWithSafetyGuards() throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("remote-settings-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let plistURL = tmp.appendingPathComponent("com.vitruvian.remote-agent.plist")
+        let plist: [String: Any] = [
+            "Label": "com.vitruvian.remote-agent",
+            "ProgramArguments": [
+                "/Users/x/.local/bin/vitruvian-remote-agent",
+                "--tailscale=false",
+                "--interval", "5s",
+                "--kubeconfig", "/Users/x/.kube/config",
+                "--kube-context", "homelab",
+                "--prometheus-url", "https://prometheus.example.com",
+                "--ntfy-url", "https://ntfy.example.com",
+                "--ntfy-topic", "my-topic",
+                "--gh-extra-repos", "org/one,org/two",
+                "--exec-dir", tmp.path,
+                "--permission-wait", "90s",
+            ],
+        ]
+        let plistData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try plistData.write(to: plistURL)
+
+        let imported = try XCTUnwrap(RemoteSettings.importFromLaunchAgentPlist(at: plistURL)).settings
+        XCTAssertFalse(imported.tailscale)
+        XCTAssertEqual(imported.intervalSeconds, 5)
+        XCTAssertEqual(imported.kubeconfig, "/Users/x/.kube/config")
+        XCTAssertEqual(imported.kubeContext, "homelab")
+        XCTAssertEqual(imported.prometheusURL, "https://prometheus.example.com")
+        XCTAssertEqual(imported.ntfyURL, "https://ntfy.example.com")
+        XCTAssertEqual(imported.ntfyTopic, "my-topic")
+        XCTAssertEqual(imported.ghExtraRepos, "org/one,org/two")
+        XCTAssertEqual(imported.execDir, tmp.path)
+        XCTAssertEqual(imported.permissionWaitSeconds, 90)
+
+        let extProfile = RemoteProfile.extension(
+            dataFolder: tmp.appendingPathComponent("data", isDirectory: true),
+            toolFolder: tmp.appendingPathComponent("tool", isDirectory: true),
+            home: tmp
+        )
+        try FileManager.default.createDirectory(at: extProfile.configDirURL, withIntermediateDirectories: true)
+
+        // Without token files on disk, --ntfy-token-file and --prometheus-token-file are omitted.
+        let argsWithoutTokens = imported.agentArguments(for: extProfile, home: tmp)
+        XCTAssertTrue(argsWithoutTokens.contains("--config-dir"))
+        XCTAssertTrue(argsWithoutTokens.contains("--ntfy-url"))
+        XCTAssertTrue(argsWithoutTokens.contains("--ntfy-topic"))
+        XCTAssertFalse(argsWithoutTokens.contains("--ntfy-token-file"))
+        XCTAssertFalse(argsWithoutTokens.contains("--prometheus-token-file"))
+
+        // When only ntfyURL is set without ntfyTopic, neither flag is passed so the agent does not exit(2).
+        var halfNtfy = imported
+        halfNtfy.ntfyTopic = ""
+        let halfArgs = halfNtfy.agentArguments(for: extProfile, home: tmp)
+        XCTAssertFalse(halfArgs.contains("--ntfy-url"))
+        XCTAssertFalse(halfArgs.contains("--ntfy-topic"))
+
+        // When execDir does not exist, --exec-dir is omitted so the agent does not exit(2).
+        var missingExec = imported
+        missingExec.execDir = tmp.appendingPathComponent("does-not-exist").path
+        XCTAssertFalse(missingExec.agentArguments(for: extProfile, home: tmp).contains("--exec-dir"))
+    }
+
+    func testCoexistenceRoleAndDataCopyPreserveSecrets() throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("remote-coexist-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let appProfile = RemoteProfile.app(home: tmp)
+        let extData = tmp.appendingPathComponent("Library/Application Support/Vitruvian/ToolData/dev.vitruvian.remote", isDirectory: true)
+        let extTool = tmp.appendingPathComponent("Library/Application Support/Vitruvian/Tools/dev.vitruvian.remote", isDirectory: true)
+        let extProfile = RemoteProfile.extension(dataFolder: extData, toolFolder: extTool, home: tmp)
+
+        // Alone initially when only one side is installed.
+        let emptyChoice = RemoteChoiceFile.read(at: extProfile.choiceFileURL)
+        XCTAssertEqual(RemoteRole.resolve(for: .extension, choice: emptyChoice, appInstalled: false, extensionInstalled: true), .activeAlone)
+
+        // Create standalone paired token + ntfy token + settings.
+        try FileManager.default.createDirectory(at: appProfile.configDirURL, withIntermediateDirectories: true)
+        try Data("secret-bearer-token\n".utf8).write(to: appProfile.configDirURL.appendingPathComponent("token"))
+        try Data("2026-10-15T12:00:00Z\n".utf8).write(to: appProfile.configDirURL.appendingPathComponent("paired"))
+        try Data("ntfy-secret\n".utf8).write(to: appProfile.configDirURL.appendingPathComponent("ntfy-token"))
+
+        let appStore = RemoteSettingsStore(profile: appProfile)
+        var appSettings = RemoteSettings()
+        appSettings.ntfyURL = "https://ntfy.sh"
+        appSettings.ntfyTopic = "remote-alerts"
+        appSettings.kubeContext = "homelab"
+        try appStore.save(appSettings)
+
+        // Record extension presence; with standalone installed and no choice made:
+        // standalone is .activeAsking, extension is .quietAsking.
+        let unchosen = try RemoteChoiceFile.recordExtension(
+            program: extTool.appendingPathComponent("bin/tool").path,
+            dataFolder: extData.path,
+            at: extProfile.choiceFileURL
+        )
+        XCTAssertEqual(RemoteRole.resolve(for: .app, choice: unchosen, appInstalled: true, extensionInstalled: true), .activeAsking)
+        XCTAssertEqual(RemoteRole.resolve(for: .extension, choice: unchosen, appInstalled: true, extensionInstalled: true), .quietAsking)
+
+        // Choose extension and copy standalone data across.
+        try RemoteDataCopy.copy(from: appProfile, to: extProfile, home: tmp)
+        let chosenExt = try RemoteChoiceFile.choose(.extension, at: extProfile.choiceFileURL)
+        XCTAssertEqual(RemoteRole.resolve(for: .extension, choice: chosenExt, appInstalled: true, extensionInstalled: true), .activeChosen)
+        XCTAssertEqual(RemoteRole.resolve(for: .app, choice: chosenExt, appInstalled: true, extensionInstalled: true), .quietChosen)
+
+        let extSummary = RemoteSideSummary.inspect(extProfile)
+        XCTAssertTrue(extSummary.isPaired)
+        XCTAssertEqual(extSummary.ntfyTopic, "remote-alerts")
+        XCTAssertEqual(extSummary.kubeContext, "homelab")
+        let copiedToken = try String(contentsOf: extProfile.configDirURL.appendingPathComponent("token"), encoding: .utf8)
+        XCTAssertEqual(copiedToken.trimmingCharacters(in: .whitespacesAndNewlines), "secret-bearer-token")
+        let extStore = RemoteSettingsStore(profile: extProfile)
+        XCTAssertTrue(extStore.hasNtfyToken)
+    }
+
+    func testClaudeHookInspectorDetectsHook() throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("remote-hook-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let claudeDir = tmp.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
+        let settingsFile = claudeDir.appendingPathComponent("settings.json")
+        let json = """
+        {
+          "hooks": {
+            "PermissionRequest": [
+              {
+                "hooks": [
+                  {
+                    "type": "command",
+                    "command": "'/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent' permission-hook --config-dir '/Users/x/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.remote/config'"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """
+        try Data(json.utf8).write(to: settingsFile)
+        XCTAssertTrue(ClaudeHookInspector.isInstalled(at: settingsFile))
+    }
+
+    func testQRPairingGeneratesPNGDataURL() {
+        let url = "http://100.124.228.116:7411/pair?code=482917"
+        let dataURL = QRPairing.pngDataURL(for: url)
+        XCTAssertNotNil(dataURL)
+        XCTAssertTrue(dataURL?.hasPrefix("data:image/png;base64,") == true)
+    }
 }

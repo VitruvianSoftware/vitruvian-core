@@ -1,0 +1,112 @@
+{
+  "id": "dev.vitruvian.remote",
+  "name": {
+    "en": "Vitruvian Remote"
+  },
+  "description": {
+    "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
+  },
+  "version": "0.1.3",
+  "protocol": "2",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "iphone.radiowaves.left.and.right",
+  "uses": [
+    "notify",
+    "clipboard.write",
+    "open"
+  ],
+  "activation": [
+    "onLaunch"
+  ],
+  "contributes": {
+    "status": {
+      "placement": "island"
+    },
+    "commands": [
+      {
+        "id": "pairWithQR",
+        "title": {
+          "en": "Pair a phone with a QR code"
+        },
+        "icon": "qrcode",
+        "surfaces": [
+          "commandBar",
+          "quickPanel"
+        ]
+      },
+      {
+        "id": "restartAgent",
+        "title": {
+          "en": "Restart the Vitruvian Remote agent"
+        },
+        "icon": "arrow.clockwise",
+        "surfaces": [
+          "commandBar"
+        ]
+      },
+      {
+        "id": "toggleNotifications",
+        "title": {
+          "en": "Turn push notifications on or off"
+        },
+        "icon": "bell",
+        "surfaces": [
+          "commandBar",
+          "quickPanel"
+        ]
+      },
+      {
+        "id": "togglePermissionHook",
+        "title": {
+          "en": "Turn the Claude Code permission hook on or off"
+        },
+        "icon": "checkmark.shield",
+        "surfaces": [
+          "commandBar"
+        ]
+      },
+      {
+        "id": "copyMCPCommand",
+        "title": {
+          "en": "Copy the Claude Code Phone MCP command"
+        },
+        "icon": "doc.on.doc",
+        "surfaces": [
+          "commandBar"
+        ]
+      },
+      {
+        "id": "openLog",
+        "title": {
+          "en": "Open the Vitruvian Remote agent log"
+        },
+        "icon": "doc.text",
+        "surfaces": [
+          "commandBar"
+        ]
+      }
+    ],
+    "panels": [
+      {
+        "id": "remote",
+        "title": {
+          "en": "Vitruvian Remote"
+        },
+        "placement": "island",
+        "icon": "iphone.radiowaves.left.and.right"
+      },
+      {
+        "id": "settings",
+        "title": {
+          "en": "Vitruvian Remote"
+        },
+        "placement": "settings"
+      }
+    ]
+  },
+  "runtime": {
+    "kind": "external",
+    "exec": "bin/tool"
+  }
+}

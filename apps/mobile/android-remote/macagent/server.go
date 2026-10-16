@@ -122,7 +122,7 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	}
 	// An error here leaves hookCommand empty, and the toggle then refuses
 	// to enable with a 500 rather than writing a command that cannot run.
-	srv.hookCommand, _ = hookCommandLine()
+	srv.hookCommand, _ = hookCommandLineForDir(store.dir)
 	mux := http.NewServeMux()
 
 	// --- read ---
