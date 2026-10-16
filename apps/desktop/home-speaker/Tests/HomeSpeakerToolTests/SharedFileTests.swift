@@ -137,7 +137,7 @@ final class SharedFileTests: XCTestCase {
         let parts = HomeSpeakerTool.Parts.extension(
             engine: engine, program: root.appendingPathComponent("bin/tool"), link: Link(), later: { $0() },
             driverParts: EngineDriver.Parts(engine: engine, otherSecrets: { nil }), monitor: GatedMonitor(NoMonitor()),
-            check: DoorCheck(file: DoorFile(url: DoorFile.defaultURL(home: home)), appInstalled: { false }),
+            holdsLiveLock: true, check: DoorCheck(file: DoorFile(url: DoorFile.defaultURL(home: home)), appInstalled: { false }),
             appProgram: { nil },
             appProfile: HomeSpeakerProfile(
                 door: .app, settingsURL: appsFile, historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),

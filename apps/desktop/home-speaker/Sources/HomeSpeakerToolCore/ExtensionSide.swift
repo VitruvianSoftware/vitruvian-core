@@ -215,6 +215,10 @@ extension HomeSpeakerTool.Parts {
     /// - `appProfile` is the app's files, which the choice card compares
     ///   with the extension's and copies from or into.
     /// - `home` is where the coding agents keep their files.
+    /// - `holdsLiveLock` is whether this process holds the extension's
+    ///   `running.lock`. A second `bin/tool` that could not take it (the
+    ///   old one still exiting) never lets its chat monitor start, whatever
+    ///   the role: the process that holds the lock is the one that reads.
     @MainActor
     public static func `extension`(
         engine: HomeSpeakerEngine,
@@ -223,6 +227,7 @@ extension HomeSpeakerTool.Parts {
         later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
         driverParts: EngineDriver.Parts,
         monitor: GatedMonitor,
+        holdsLiveLock: Bool,
         check: DoorCheck,
         appProgram: @escaping @Sendable () -> URL?,
         appProfile: HomeSpeakerProfile,
@@ -267,7 +272,7 @@ extension HomeSpeakerTool.Parts {
             door: check.file,
             copy: DoorCopy.copy,
             sendStatus: sendStatus,
-            monitorMayRun: { permission.set($0) },
+            monitorMayRun: { permission.set(holdsLiveLock && $0) },
             profile: profile,
             appProfile: appProfile,
             appProgram: appProgram,

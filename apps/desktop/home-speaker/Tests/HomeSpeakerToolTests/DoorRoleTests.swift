@@ -476,7 +476,9 @@ final class ExtensionPartsTests: XCTestCase {
     /// Where the app would be. Nothing is there, and nothing may run it.
     static let appProgram = URL(fileURLWithPath: "/nonexistent/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
 
-    private func rig(appInstalled: Bool = false, session: URLSession = StandInChat.session) throws -> Rig {
+    private func rig(
+        appInstalled: Bool = false, holdsLiveLock: Bool = true, session: URLSession = StandInChat.session
+    ) throws -> Rig {
         let root = try scratchDir()
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let home = root.appendingPathComponent("home")
@@ -516,7 +518,7 @@ final class ExtensionPartsTests: XCTestCase {
             // while a test is reading the tool.
             engine: engine, program: program, link: HomeSpeakerToolTests.Link(),
             later: { work in DispatchQueue.main.async(execute: work) },
-            driverParts: driverParts, monitor: gate, check: check,
+            driverParts: driverParts, monitor: gate, holdsLiveLock: holdsLiveLock, check: check,
             appProgram: { Self.appProgram },
             appProfile: HomeSpeakerProfile(
                 door: .app, settingsURL: home.appendingPathComponent(".gemini/speaker_broadcast.json"),
@@ -614,6 +616,35 @@ final class ExtensionPartsTests: XCTestCase {
         XCTAssertEqual(rig.monitor.calls, ["start", "stop"], "Stop stops this process's monitor")
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.startChatMonitor, kind: .tap))
         XCTAssertEqual(rig.monitor.calls, ["start", "stop", "start"], "Start starts it")
+    }
+
+    func testAProcessWithoutTheLockNeverReadsChat() async throws {
+        let rig = try rig(holdsLiveLock: false)
+        rig.engine.config.config.effectiveChatMonitor.slackEnabled = true
+        try rig.engine.config.trySaveConfig()
+        let tokens = ExtensionSide.watch(engine: rig.engine, monitor: rig.gate)
+        defer {
+            rig.engine.config.stopWatchingConfigFile()
+            tokens.forEach(DistributedNotificationCenter.default().removeObserver)
+        }
+        let tool = HomeSpeakerTool(parts: rig.parts)
+        tool.start()
+        XCTAssertEqual(tool.role, .active, "the role alone would let it run")
+        XCTAssertFalse(rig.gate.permission.value, "a second process, without the lock, may not read chat")
+        _ = tool.settingsPage()
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.section, kind: .tap, value: .string(Pages.Section.monitor.rawValue)))
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.startChatMonitor, kind: .tap))
+        ChatMonitorControlNotice.post(.start, name: rig.profile.messageName(.chatMonitorControl))
+        tool.refreshRole()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(rig.monitor.calls, [], "the process without the lock started its monitor")
+
+        // Control: the same, holding the lock, starts it.
+        let holder = try self.rig(holdsLiveLock: true)
+        holder.engine.config.config.effectiveChatMonitor.slackEnabled = true
+        try holder.engine.config.trySaveConfig()
+        HomeSpeakerTool(parts: holder.parts).start()
+        XCTAssertEqual(holder.monitor.calls, ["start"])
     }
 
     func testAQuietSideIgnoresSettingsAndNotices() async throws {

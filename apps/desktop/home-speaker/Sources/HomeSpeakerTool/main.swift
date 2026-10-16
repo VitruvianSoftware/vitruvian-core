@@ -194,12 +194,14 @@ func runProgram() -> Never {
             tokens += engine.listen()
         } catch {
             FileHandle.standardError.write(Data(
-                "another HomeSpeaker extension holds \(lockURL.path): this one does not listen\n".utf8))
+                ("another HomeSpeaker extension holds \(lockURL.path): this one does not listen "
+                    + "or read chat\n").utf8))
         }
     }
 
     // The chat monitor, in this process, on the engine; it starts only
-    // while this side may run (`HomeSpeakerTool.refreshRole`).
+    // while this side may run (`HomeSpeakerTool.refreshRole`), and never
+    // in a process that does not hold the lock above.
     let monitor = ExtensionSide.chatMonitor(engine: engine)
     let gate = GatedMonitor(monitor)
     tokens += ExtensionSide.watch(engine: engine, monitor: gate)
@@ -216,7 +218,7 @@ func runProgram() -> Never {
     let speaker = HomeSpeakerTool(parts: .extension(
         engine: engine, program: program, link: link,
         later: { work in waker.later { _ in work() } },
-        driverParts: driverParts, monitor: gate, check: check,
+        driverParts: driverParts, monitor: gate, holdsLiveLock: live != nil, check: check,
         // Found afresh at each switch: the app may be installed, moved or
         // put in the Trash while the extension runs.
         appProgram: { locateApp() },
