@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.4.0...vitruvian-sdk-v1.4.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **vitruvian-sdk:** tell tool authors to use Settings › Extensions ([#3369](https://github.com/VitruvianSoftware/vitruvian-core/issues/3369)) ([c87d071](https://github.com/VitruvianSoftware/vitruvian-core/commit/c87d0717f0d1e61d9db96bfb48f3ea2b55242d1a))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.3.0...vitruvian-sdk-v1.4.0) (2026-10-14)
 
 
