@@ -228,7 +228,7 @@ func (s *Store) GetEvent(ctx context.Context, eventID string) (Event, bool, erro
 }
 
 func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, error) {
-	rows, err := s.db.Query(ctx, "SELECT "+eventCols+" FROM events WHERE room_id=$1 ORDER BY seq DESC LIMIT $2", roomID, limit)
+	rows, err := s.db.Query(ctx, "SELECT "+eventCols+" FROM events WHERE room_id=$1 ORDER BY ts DESC, seq DESC LIMIT $2", roomID, limit)
 	if err != nil {
 		return nil, err
 	}
