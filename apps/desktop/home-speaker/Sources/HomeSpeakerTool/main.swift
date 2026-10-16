@@ -25,10 +25,13 @@
 // monitor, and answers the app through the kit.
 //
 // Threads: the kit's loop blocks, so it runs on a thread of its own, and
-// the main thread is parked in `dispatchMain()`. The settings, the sign-out
-// and the chat monitor are the main actor's, and each job awaits them
-// there, so the main queue must keep running. Nothing here starts a plain
-// `Task {}` from this file's main-actor code.
+// the main thread runs its run loop (`MainThreadLoop`). The settings, the
+// sign-out and the chat monitor are the main actor's, and each job awaits
+// them there, so the main queue must keep running on the main thread
+// itself: `dispatchMain()` would hand it to a worker thread, where
+// `ExtensionSide.onMain`'s `MainActor.assumeIsolated` traps (1.19.0
+// crashed so on every start with the chat monitor on). Nothing here
+// starts a plain `Task {}` from this file's main-actor code.
 
 import AppKit
 import Foundation
@@ -234,7 +237,7 @@ func runProgram() -> Never {
 
     KitThread(tool: tool, link: link, speaker: speaker, located: located, program: program, door: door).start()
     // The kit's thread exits the process when the app says goodbye.
-    withExtendedLifetime((engine, live, tokens, monitor, gate)) { dispatchMain() }
+    withExtendedLifetime((engine, live, tokens, monitor, gate)) { MainThreadLoop.run() }
 }
 
 // Top-level code runs on the main thread.

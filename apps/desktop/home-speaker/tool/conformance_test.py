@@ -54,10 +54,23 @@ files are in that folder. The island draws its controls because the
 extension is installed by definition; no HomeSpeaker program is run. Only
 a block on the page the tool last drew is acted on.
 
-Last, nothing was written where the app keeps its files: the scratch
+Then nothing was written where the app keeps its files: the scratch
 home's `.gemini` holds none of the app's settings, history or monitor
 status, and the choice file, which both sides share by design, holds only
 the extension's own block, naming the scratch folder.
+
+Last, the chat monitor starting, in a second scratch home and data folder:
+settings with Slack on (as the app's settings copied into the extension
+have) and a choice file that picks the extension. The tool starts its chat
+monitor on the main actor as it starts. HomeSpeaker 1.19.0 crashed there,
+on every start ("Incorrect actor executor assumption"), because its main
+thread had left for `dispatchMain()`. The program must still be running
+and answering a few seconds later, its monitor must have written its
+status, and nothing on its standard error may be a fatal error. Then the
+Stop hook, `bin/tool --claude-stop-hook`, in the same folder: it reads the
+settings on the main actor, so it must answer `{}`, exit 0 and do so well
+before its own eight-second backstop. Broadcasting is off in these
+settings and no Slack token exists, so nothing is spoken or fetched.
 """
 
 import importlib.util
@@ -67,6 +80,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 # The five sections of the settings panel (Pages.Section), in order.
@@ -159,9 +173,16 @@ def main():
         print(f"--- the app's files: NOT OK: {failure}")
         return 1
     print(f"--- the app's files: {said}")
+    try:
+        said = monitor_starts(load(conformance), folder, scratch)
+    except E2EFailure as failure:
+        print(f"--- the chat monitor starting: NOT OK: {failure}")
+        return 1
+    print("--- the chat monitor starting: ok\n" + "\n".join(said))
     print(
         "the built HomeSpeaker tool validates, passes the conformance script, "
-        "draws and saves its pages end to end, and keeps to its scratch folder"
+        "draws and saves its pages end to end, keeps to its scratch folder, "
+        "and stays up when its chat monitor starts"
     )
     return 0
 
@@ -226,6 +247,8 @@ def load(path):
     """The SDK's conformance script as a module: its link, its checks and
     its limits, so this test holds the tool to the same rules."""
     spec = importlib.util.spec_from_file_location("vitruvian_conformance", path)
+    if spec is None or spec.loader is None:
+        raise E2EFailure(f"{path} cannot be loaded as a module")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -477,6 +500,179 @@ def end_to_end(conf, folder, data, env):
         raise E2EFailure(f"{secrets}: the OAuth client was not saved")
     said.append(f"{os.path.relpath(secrets, data)}: holds the OAuth client")
     return said
+
+
+# What a Swift program says on standard error when it stops on a check.
+FATAL = "Fatal error"
+# How long the tool runs after the handshake before it is asked again: the
+# monitor is started on the main queue, at once, as the tool starts.
+SETTLE_SECONDS = 3
+# The Stop hook's own backstop (HomeSpeakerCommandLine.timeLimit): a run
+# that takes this long timed out, though it still printed `{}` and exit 0.
+HOOK_BACKSTOP_SECONDS = 8
+
+
+def monitor_starts(conf, folder, scratch):
+    """The tool starts its chat monitor and stays up; then the Stop hook
+    answers. In a home and data folder of their own, so the checks above
+    on the first home's choice file are not disturbed. Returns what was
+    done, a line each."""
+    base = os.path.join(scratch, "monitor")
+    home = os.path.join(base, "home")
+    data = os.path.join(base, "data")
+    gemini = os.path.join(home, ".gemini")
+    os.makedirs(gemini)
+    os.makedirs(data)
+    # SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE: the release's program
+    # (SwiftPM, macOS 14 and up) records SDK 14, so the Swift runtime checks
+    # `MainActor.assumeIsolated` by thread, and traps off the main thread.
+    # Bazel's records this Mac's SDK, so the runtime checks by queue, which
+    # a worker thread draining the main queue passes. "legacy" makes this
+    # program check as the release's does; without it, this run could not
+    # catch the 1.19.0 crash.
+    env = dict(
+        os.environ,
+        HOME=home,
+        CFFIXED_USER_HOME=home,
+        HOMESPEAKER_DATA_FOLDER=data,
+        HOMESPEAKER_PROGRAM="",
+        HOMESPEAKER_MESSAGE_PREFIX=f"test.{uuid.uuid4()}.homespeaker",
+        SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE="legacy",
+    )
+    # Slack on, as in settings copied from the app; broadcasting off, no
+    # speaker. The first four keys are the ones a settings file must have.
+    with open(os.path.join(data, "settings.json"), "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "enabled": False,
+                "default_target": "",
+                "structure_id": "",
+                "targets": {},
+                "chat_monitor": {"slack_enabled": True},
+            },
+            handle,
+        )
+    # The person picked the extension, an hour ago: long enough that the
+    # tool does not wait for a HomeSpeaker app running on this Mac to go
+    # quiet (HomeSpeakerTool.otherStopsWithin) before its monitor starts.
+    with open(os.path.join(gemini, DOOR_FILE), "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "version": 1,
+                "chosen": "extension",
+                "chosen_at": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3600)
+                ),
+                "chosen_by": "conformance test",
+            },
+            handle,
+        )
+    with open(os.path.join(folder, "vitruvian-tool.json"), encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    program = os.path.join(folder, manifest["runtime"]["exec"])
+    status = os.path.join(data, "speaker_monitor_status.json")
+    errors = os.path.join(base, "stderr.txt")
+    started_in = tempfile.mkdtemp(dir=os.environ.get("TEST_TMPDIR"))
+    said = []
+
+    # The kit's link starts the program with this process's environment,
+    # and leaves its standard error to this process's: a shell in front
+    # sends it to a file instead, then becomes the program.
+    os.environ.update(env)
+    link = conf.Link(
+        ["/bin/sh", "-c", 'exec "$0" 2>>"$1"', program, errors], started_in
+    )
+    try:
+        run = conf.Run(link, manifest, started_in)
+        try:
+            said.append("handshake: " + run.handshake())
+        except conf.Failure as failure:
+            raise E2EFailure(f"handshake: {failure}; {stderr_of(errors)}") from None
+        time.sleep(SETTLE_SECONDS)
+        if link.process.poll() is not None:
+            raise E2EFailure(
+                f"the tool ended by itself, status {link.process.returncode}, "
+                f"{SETTLE_SECONDS} s after it started with the chat monitor on; "
+                + stderr_of(errors)
+            )
+        app = Driver(conf, run)
+        try:
+            app.open("settings")
+        except E2EFailure as failure:
+            raise E2EFailure(f"{failure}; {stderr_of(errors)}") from None
+        said.append(f"still running and answering {SETTLE_SECONDS} s after it started")
+        if not os.path.exists(status):
+            raise E2EFailure(
+                f"{status} was not written: the chat monitor never started, "
+                "so this run proves nothing; " + stderr_of(errors)
+            )
+        with open(status, encoding="utf-8") as handle:
+            said.append(
+                "the monitor's status: " + json.dumps(json.load(handle), sort_keys=True)
+            )
+        link.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "settings"}}
+        )
+        try:
+            said.append("shutdown: " + run.shutdown())
+        except conf.Failure as failure:
+            raise E2EFailure(f"shutdown: {failure}; {stderr_of(errors)}") from None
+    finally:
+        link.close()
+    if FATAL in stderr_of(errors):
+        raise E2EFailure(stderr_of(errors))
+
+    # The Stop hook, on the same settings: its own process, which reads them
+    # on the main actor, answers `{}` and exits 0.
+    transcript = os.path.join(base, "transcript.jsonl")
+    with open(transcript, "w", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": f"test {uuid.uuid4()}: done."}
+                        ],
+                    },
+                }
+            )
+            + "\n"
+        )
+    started = time.monotonic()
+    done = subprocess.run(
+        [program, "--claude-stop-hook"],
+        input=json.dumps({"transcript_path": transcript}),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env=env,
+        cwd=started_in,
+    )
+    took = time.monotonic() - started
+    if done.returncode != 0 or done.stdout.strip() != "{}" or FATAL in done.stderr:
+        raise E2EFailure(
+            f"--claude-stop-hook exited {done.returncode}: {done.stdout!r} {done.stderr!r}"
+        )
+    if took >= HOOK_BACKSTOP_SECONDS - 1:
+        raise E2EFailure(
+            f"--claude-stop-hook took {took:.1f} s: it ran into its "
+            f"{HOOK_BACKSTOP_SECONDS} s backstop instead of finishing"
+        )
+    said.append(f"--claude-stop-hook: {{}} and exit 0 in {took:.1f} s")
+    return said
+
+
+def stderr_of(path):
+    """What the program wrote on standard error, for a failure's message."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            text = handle.read().strip()
+    except OSError:
+        return "no standard error was kept"
+    return f"its standard error: {text!r}" if text else "nothing on its standard error"
 
 
 if __name__ == "__main__":
