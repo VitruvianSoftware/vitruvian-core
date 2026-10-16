@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.4...android-remote-v0.1.5) (2026-10-16)
+
+
+### Features
+
+* **android-remote:** the release publishes the Mac extension as a tool zip ([#3386](https://github.com/VitruvianSoftware/vitruvian-core/issues/3386)) ([f7abed7](https://github.com/VitruvianSoftware/vitruvian-core/commit/f7abed7a8e6b791baabed51fc85aac20102108cf))
+
 ## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.3...android-remote-v0.1.4) (2026-10-16)
 
 
