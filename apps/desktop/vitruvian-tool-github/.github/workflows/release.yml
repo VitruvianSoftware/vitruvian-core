@@ -143,9 +143,9 @@ jobs:
             echo
             echo "## Install it"
             echo
-            echo "In Vitruvian: Settings, Features, Extensions & Tools, Browse Tools…, GitHub. The app checks the download against the catalog's pinned checksum and shows its agreement sheet."
+            echo "In Vitruvian: the Vitruvian catalog on Settings › Extensions, GitHub, Install. The app checks the download against the catalog's pinned checksum and shows its agreement sheet."
             echo
-            echo "By hand: download \`$ASSET\` below, check it, unpack it and add the folder with Add a Tool…:"
+            echo "By hand: download \`$ASSET\` below, check it, unpack it and add the folder with Add from Folder… on Settings › Extensions:"
             echo
             echo '```sh'
             echo "shasum -a 256 -c $ASSET.sha256"
