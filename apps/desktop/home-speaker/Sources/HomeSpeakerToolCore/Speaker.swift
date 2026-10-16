@@ -125,7 +125,9 @@ public final class ProcessDriver: SpeakerDriver {
 
     /// HomeSpeaker's program: the one the environment names, else the app
     /// Launch Services knows by its bundle id, else the app in one of the
-    /// usual places; nil with none.
+    /// usual places; nil with none. A copy in the Trash is passed over:
+    /// Launch Services still knows apps there, and one found first must not
+    /// hide the copy that is installed.
     public static func locate(environment: [String: String], known: () -> URL?, home: String,
                               isExecutable: (String) -> Bool) -> URL? {
         if let named = environment[programVariable] {
@@ -135,7 +137,7 @@ public final class ProcessDriver: SpeakerDriver {
         var candidates: [URL] = []
         if let known = known() { candidates.append(known) }
         candidates += usualPlaces.map { URL(fileURLWithPath: $0.replacingOccurrences(of: "~", with: home)) }
-        for app in candidates {
+        for app in candidates where !OtherDoorPresence.isInTrash(app.path) {
             let program = app.appendingPathComponent("Contents/MacOS/HomeSpeaker")
             if isExecutable(program.path) { return program }
         }

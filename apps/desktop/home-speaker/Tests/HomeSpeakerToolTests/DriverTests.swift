@@ -138,6 +138,22 @@ final class DriverTests: XCTestCase {
         XCTAssertFalse(ProcessDriver(binary: nil).isInstalled)
     }
 
+    func testATrashCopyDoesNotHideTheRealOne() {
+        // Launch Services knows apps in the Trash. A copy there, found
+        // first, must not hide the one installed in a usual place.
+        let trashed = URL(fileURLWithPath: "/Users/me/.Trash/HomeSpeaker.app")
+        let executables: Set<String> = ["/Users/me/.Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+                                        "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"]
+        XCTAssertEqual(ProcessDriver.locate(environment: [:], known: { trashed }, home: "/Users/me", isExecutable: executables.contains)?.path,
+                       "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        // Only in the Trash (or a volume's Trashes): not installed.
+        XCTAssertNil(ProcessDriver.locate(environment: [:], known: { trashed }, home: "/Users/me",
+                                          isExecutable: { $0.hasPrefix("/Users/me/.Trash/") }))
+        let volumeTrash = URL(fileURLWithPath: "/Volumes/Disk/.Trashes/501/HomeSpeaker.app")
+        XCTAssertNil(ProcessDriver.locate(environment: [:], known: { volumeTrash }, home: "/Users/me",
+                                          isExecutable: { $0.hasPrefix("/Volumes/") }))
+    }
+
     func testAMissingProgramAnswersWithoutStartingAnything() {
         let done = expectation(description: "answered")
         ProcessDriver(binary: nil).run(.volume) { result in
