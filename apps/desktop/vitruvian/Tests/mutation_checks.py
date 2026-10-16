@@ -1556,6 +1556,11 @@ MUTATIONS = [
      "        return entries.filter { kept.contains($0.key.tool) }\n",
      "        return entries\n",
      "one turned off leaves the tab and stays in Settings, where it can be turned on again"),
+    ("the Extensions tab takes a web page from the island", "tool-runtime",
+     "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+     "        return island == key\n",
+     "        return false\n",
+     "a web page the island shows is a line in the tab, so the island keeps its one web view"),
 ]
 
 

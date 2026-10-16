@@ -22,6 +22,9 @@ enum MenuPanelExtensionsTests {
         twoViewsOfTheTabShareOnePage(suite)
         whatThePersonDoesInTheTabReachesTheTool(suite)
         aPageEndsWithItsToolInTheTabToo(suite)
+        theIslandKeepsAWebPage(suite)
+        anUpdatedExtensionIsAskedAgain(suite)
+        whetherAnyExtensionHasAnIslandPageIsKnownOncePerChange(suite)
     }
 
     /// The names saved in a layout before the tab existed.
@@ -289,5 +292,51 @@ enum MenuPanelExtensionsTests {
         bench.host.closeInMenuPanel(key("deploys"))
         suite.expect(bench.runs.flatMap(\.sent).count == sent && bench.host.shown.isEmpty,
                      "and the tab letting go afterwards sends nothing")
+    }
+
+    // MARK: - Review fixes
+
+    static func theIslandKeepsAWebPage(_ suite: TestSuite) {
+        let page = URL(fileURLWithPath: "/tmp/tool/ui/index.html")
+        let folder = URL(fileURLWithPath: "/tmp/tool", isDirectory: true)
+        let web = ToolPanelHost.Shown.web(page: page, folder: folder)
+        let deploys = key("deploys")
+        suite.expect(ToolPanelHost.defersToIsland(deploys, shown: web, island: deploys),
+                     "a web page the island shows is a line in the tab, so the island keeps its one web view")
+        suite.expect(!ToolPanelHost.defersToIsland(deploys, shown: web, island: nil)
+                         && !ToolPanelHost.defersToIsland(deploys, shown: web, island: key("other")),
+                     "the tab draws the web page itself while the island does not show it")
+        suite.expect(!ToolPanelHost.defersToIsland(deploys, shown: .page(UITree(blocks: [])), island: deploys)
+                         && !ToolPanelHost.defersToIsland(deploys, shown: .waiting, island: deploys),
+                     "a page of blocks shows in both places at once")
+        let bench = Bench.open()
+        bench.host.openInMenuPanel(deploys)
+        suite.expect(!bench.host.defersToIsland(deploys),
+                     "the host asks the rule with what it shows: a page of blocks the island has open")
+    }
+
+    static func anUpdatedExtensionIsAskedAgain(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        addExtensions(to: bench)
+        let deploys = ToolID("com.acme.deploys")!
+        let before = MenuPanelExtensions.available(store: bench.store, language: .enUS).first
+        bench.store.setOn(deploys, false)
+        bench.store.setOn(deploys, true)
+        let after = MenuPanelExtensions.available(store: bench.store, language: .enUS).first { $0.key.tool == deploys }
+        suite.expect(before?.key == after?.key && before?.id != after?.id && before.map { $0.activation + 1 } == after?.activation,
+                     "an extension handed to the host again is another entry, so its card asks for its page anew")
+    }
+
+    static func whetherAnyExtensionHasAnIslandPageIsKnownOncePerChange(_ suite: TestSuite) {
+        let bench = ExternalToolStoreTests.Bench()
+        defer { bench.close() }
+        suite.expect(!bench.store.hasIslandPanels, "with no extension added, none has an island page")
+        addExtensions(to: bench)
+        suite.expect(bench.store.hasIslandPanels, "an extension with an island page added is known at once")
+        bench.store.setOn(ToolID("com.acme.deploys")!, false)
+        bench.store.setOn(ToolID("com.acme.board")!, false)
+        suite.expect(!bench.store.hasIslandPanels,
+                     "with both switched off, none has one: the answer is worked out again after each change")
     }
 }
