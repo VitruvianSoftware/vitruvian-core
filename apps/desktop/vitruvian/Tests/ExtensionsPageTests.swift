@@ -17,6 +17,105 @@ enum ExtensionsPageTests {
         catalog(suite)
         updateCount(suite)
         waysIn(suite)
+        installButtons(suite)
+        installsOutliveThePage(suite)
+        spokenButtons(suite)
+    }
+
+    /// Closures the installer hands back to the main thread, held until the
+    /// test lets them run: a download that is still under way.
+    final class Held: @unchecked Sendable {
+        // Written by the installer's hand-back and read by the test, both on the main thread.
+        nonisolated(unsafe) var work: [@Sendable @MainActor () -> Void] = []
+
+        func finish() {
+            let all = work
+            work = []
+            MainActor.assumeIsolated { for step in all { step() } }
+        }
+    }
+
+    /// Installs over a real installer and store, whose last step, back on
+    /// the main thread, waits for `held.finish()`.
+    static func installs(_ rig: CatalogueInstallerTests.Rig, _ held: Held)
+        -> (installer: CatalogueInstaller, installs: CatalogueInstalls) {
+        let bench = rig.bench
+        let installer = CatalogueInstaller(
+            parts: .init(fetcher: rig.fetcher, source: CatalogueFixtures.source, scratch: rig.scratch,
+                         work: { $0() }, toMain: { work in held.work.append(work) }),
+            store: { bench.store })
+        return (installer, CatalogueInstalls(installer: installer))
+    }
+
+    static func installButtons(_ suite: TestSuite) {
+        guard let deploys = ToolID("com.acme.deploys"), let other = ToolID("com.acme.other") else {
+            suite.expect(false, "two tool ids")
+            return
+        }
+        typealias Button = ExtensionsPageContent.InstallButton
+        func button(_ id: ToolID, fetching: ToolID? = nil, waiting: Bool = false, adding: Set<ToolID> = []) -> Button {
+            ExtensionsPageContent.installButton(for: id, fetching: fetching, waiting: waiting, adding: adding)
+        }
+        suite.expect(button(deploys) == .enabled
+                         && button(deploys, fetching: deploys) == .progress && button(other, fetching: deploys) == .disabled
+                         && button(deploys, adding: [deploys]) == .progress && button(other, adding: [deploys]) == .disabled
+                         && button(deploys, waiting: true) == .disabled,
+                     "while a tool downloads, its row's Update or Install is a spinner and every other row's button "
+                         + "is there and disabled, as while one is added or its result waits")
+    }
+
+    static func installsOutliveThePage(_ suite: TestSuite) {
+        let rig = CatalogueInstallerTests.Rig()
+        defer { rig.close() }
+        let held = Held()
+        let (installer, installs) = installs(rig, held)
+        let entry = rig.entry(TestZip.tool())
+        let started = installs.start(entry)
+        let during = (installs.fetching, installs.waiting, installs.isBusy)
+        let second = installs.start(rig.entry(TestZip.tool(version: "1.3.0"), version: "1.3.0"))
+        suite.expect(started && during.0 == entry.id && during.1 == nil && during.2 && !second
+                         && rig.fetcher.asked.count == 1,
+                     "an install from the catalog is under way in the shared installs, whatever page is open, and "
+                         + "a second press while it downloads fetches nothing")
+
+        // The page that asked is gone: nothing takes the result as it arrives.
+        held.finish()
+        guard case .ready(let offer)? = installs.waiting else {
+            suite.expect(false, "a download that finishes with no page open keeps its offer for the page")
+            return
+        }
+        let busy = installs.isBusy && !installs.start(entry)
+        let taken = installs.take()
+        suite.expect(installs.fetching == nil && offer.tool.manifest.id == entry.id && busy
+                         && taken == .ready(offer) && installs.take() == nil && !installs.isBusy
+                         && rig.bench.store.listed.isEmpty,
+                     "a download that finishes with no page open keeps its offer for the page, which shows it once "
+                         + "when opened again; nothing is installed until the person agrees")
+        installer.finished(with: offer)
+
+        let bad = rig.entry(TestZip.tool(), pin: ["sha256": String(repeating: "0", count: 64)])
+        installs.start(bad)
+        held.finish()
+        suite.expect(installs.waiting == .refused(.mismatch, entry: bad) && installs.take() == .refused(.mismatch, entry: bad)
+                         && !installs.isBusy,
+                     "a refused download waits for the page too, to be said once")
+    }
+
+    static func spokenButtons(_ suite: TestSuite) {
+        let rig = CatalogueWatchTests.Rig()
+        defer { rig.close() }
+        rig.install()
+        rig.serve([CatalogueFixtures.entry(["version": "1.3.0"]),
+                   CatalogueFixtures.entry(["id": "com.acme.other", "name": ["en": "Other"]])])
+        rig.watch.refresh()
+        let row = ExternalToolRow.all(store: rig.bench.store, language: .enUS, strings: english, watch: rig.watch).first
+        let plain = ExternalToolRow(rig.bench.store.listed[0], language: .enUS, strings: english)
+        let install = CatalogueScreensTests.rows(CatalogueScreensTests.content(rig)).last
+        suite.expect(row.map { $0.updateSpoken == "Update, " + $0.name } == true && plain.updateSpoken == nil
+                         && install?.actionSpoken == "Install, Other"
+                         && ExtensionsPageSupport.summary(installed: 3, strings: english).spoken
+                             == "3 extensions installed. Manage",
+                     "VoiceOver hears whose Update or Install a button is, and the Features line once, as its link")
     }
 
     static let english = FeatureStrings.externalTools(.enUS)
