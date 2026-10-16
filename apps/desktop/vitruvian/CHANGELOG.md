@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.57.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.56.0...vitruvian-v3.57.0) (2026-10-16)
+
+
+### Features
+
+* **desktop:** the Extensions page links to the Vitruvian SDK ([#3401](https://github.com/VitruvianSoftware/vitruvian-core/issues/3401)) ([cf4f095](https://github.com/VitruvianSoftware/vitruvian-core/commit/cf4f095021ffc0766ce925920540da3d953b6adb))
+
 ## [3.56.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.55.1...vitruvian-v3.56.0) (2026-10-16)
 
 
