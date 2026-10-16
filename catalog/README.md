@@ -1,7 +1,7 @@
 # The tool catalog
 
-`tools.json` is the list of tools Vitruvian offers under Settings, Features,
-Extensions & Tools, Browse Tools…, and on vitruviansoftware.dev/tools/catalog/.
+`tools.json` is the list of tools Vitruvian offers on its Extensions page in
+Settings, and on vitruviansoftware.dev/tools/catalog/.
 VitruvianSoftware curates it: a tool is listed, changed or taken off by a
 pull request that James merges.
 

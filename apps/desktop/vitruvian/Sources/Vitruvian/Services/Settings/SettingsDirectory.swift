@@ -90,7 +90,7 @@ package enum SettingsDirectory {
         // Monitor keeps its tool rows, such as Fan Control, beside it.
         let core = essentials.items.filter { item in
             switch item.id {
-            case .page(.general), .page(.features),
+            case .page(.general), .page(.features), .page(.extensions),
                  .setting(.panelConfiguration): return true
             default: return item.destination.page == .monitor
             }
@@ -117,7 +117,8 @@ package enum SettingsDirectory {
             utilities: rows(4).filter { !islandPages.contains($0.id) && $0.id != .page(.notchMascot) })
         let featured = [
             SettingsSidebarSection(id: 0, title: categories.essentials,
-                                   items: Array(core.prefix(3)) + island + Array(core.dropFirst(3))),
+                                   // General, Menu Bar, Features and Extensions, then the island.
+                                   items: Array(core.prefix(4)) + island + Array(core.dropFirst(4))),
             SettingsSidebarSection(id: 4, title: categories.utilities, items: byGroup.utilities),
             SettingsSidebarSection(id: 6, title: hub.groupSound, items: sound + byGroup.sound),
             SettingsSidebarSection(id: 7, title: hub.groupEnergyDisplay, items: energy),
@@ -193,6 +194,11 @@ package enum SettingsDirectory {
                                        featureKeywords: AppFeature.allCases.map {
                                         ($0, [$0.hubTitle(s, hub: FeatureStrings.hub(language))])
                                        }),
+                // The tools that run as their own programs, and the catalog.
+                SettingsDirectoryItem(page: .extensions, title: FeatureStrings.externalTools(language).pageTitle,
+                                       icon: ExternalToolManifest.defaultSymbol,
+                                       keywords: ExtensionsPageSupport.searchWords(
+                                        FeatureStrings.externalTools(language))),
                 SettingsDirectoryItem(page: .energy, title: s.tabEnergy, icon: "bolt.fill",
                                        featureKeywords: [
                                         (.keepAwake, [s.keepAwakeTitle, s.clamshellTitle,

@@ -18,6 +18,19 @@ enum ByHandRulesTests {
         commandLine(suite)
         answers(suite)
         keyTargets(suite)
+        extensionsPage(suite)
+    }
+
+    static func extensionsPage(_ suite: TestSuite) {
+        let title = ByHandRules.Words.extensionsPage
+        let add = ByHandRules.Words.addTool
+        let window = ["General", "Features", title, "Dynamic Island", title, add, "Installed", "Deploys"]
+        suite.expect(ByHandRules.pageStart(title, button: add, among: window) == 4
+                         && ByHandRules.pageStart(title, button: add, among: ["General", title, add]) == 1
+                         && ByHandRules.pageStart(title, button: add, among: ["General", add, title]) == 1
+                         && ByHandRules.pageStart(title, button: add, among: ["General", title, "Features"]) == nil,
+                     "the Extensions page starts at its title, never at the sidebar's row of the same name, and "
+                         + "is not there to read while its Add button is not")
     }
 
     static func answers(_ suite: TestSuite) {

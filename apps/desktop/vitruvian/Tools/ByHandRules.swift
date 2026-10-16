@@ -28,7 +28,18 @@ enum ByHandRules {
         return controls.lastIndex { $0.title == wanted || $0.description == wanted }
     }
 
-    /// The rows of the tools card that are one tool's. A row is labelled
+    /// Where the Extensions page starts among the controls of the Settings
+    /// window, each by its value or else its title: at the page's title, the
+    /// last control named `title` before its first `button`. The sidebar's
+    /// row has the same name and comes earlier, so it is never taken. At the
+    /// button when no title is before it; nil when the button is not there,
+    /// so the page is not showing.
+    static func pageStart(_ title: String, button: String, among labels: [String]) -> Int? {
+        guard let at = labels.firstIndex(of: button) else { return nil }
+        return labels[..<at].lastIndex(of: title) ?? at
+    }
+
+    /// The rows of the Extensions page that are one tool's. A row is labelled
     /// with the tool's name, then its badge, publisher and how it stands, joined
     /// by ". ", so the name is the whole label or everything before the
     /// first ". ". The caller presses a row only when exactly one is found.
@@ -144,9 +155,9 @@ enum ByHandRules {
         static let settingsWindow = "Vitruvian Settings"
         static let settingsMenuItem = "Settings…"
         static let quitMenuItem = "Quit Vitruvian"
-        static let featuresPage = "Features"
-        static let toolsCard = "Extensions & Tools"
-        static let addTool = "Add a Tool…"
+        /// The Settings page of the tools from outside, and its title.
+        static let extensionsPage = "Extensions"
+        static let addTool = "Add from Folder…"
         static let agreeToAdd = "Add Tool"
         static let remove = "Remove"
         static let removeKeepingData = "Remove, Keep What It Saved"
@@ -192,10 +203,11 @@ enum ByHandRules {
         the app the keyboard is on):
           open-settings                 Settings…, from the app's menu
           page TITLE                    the Settings page with that sidebar title
-          tools [--lines N]             the Features page, scrolled to its end,
-                                        and the "Extensions & Tools" card
+          tools [--lines N]             the Extensions page, from its title: Add
+                                        from Folder…, the Installed rows and
+                                        the catalog's
           add-tool FOLDER [--agree | --agree-with BUTTON]
-                                        Add a Tool…, pick FOLDER (its path is
+                                        Add from Folder…, pick FOLDER (its path is
                                         typed as it is, spaces and all), and
                                         leave the sheet open, saying where the
                                         keyboard is; with --agree press

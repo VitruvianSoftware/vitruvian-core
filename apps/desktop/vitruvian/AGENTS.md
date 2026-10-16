@@ -308,22 +308,30 @@ A tool can be a separate program the app starts and talks to
 (`docs/superpowers/specs/2026-10-10-vitruvian-external-tools-design.md`).
 All four stages of that work are built: the protocol, reading a tool's
 manifest, the runtime that starts a tool, talks to it and stops it, the
-screens, and what a tool's author works with. A person adds a tool in
-Settings, under Features, in the section "Extensions & Tools": they pick its
-folder and agree on one sheet. Every build has that section. Beside "Add a
-Tool…", "Browse Tools…" lists the Vitruvian catalog: a curated list, kept in
-`catalog/` at the repository's root, that the person installs a tool from
-through the same sheet. There is no other store of tools.
+screens, and what a tool's author works with. A person adds a tool on
+the Extensions page of Settings (`SettingsPage.extensions`, in Essentials
+right after Features): with "Add from Folder…" they pick its folder and
+agree on one sheet. Every build has that page. Under what is installed, the
+page lists the Vitruvian catalog's tools that are not installed
+(`CatalogueSheetContent.notInstalled`): a curated list, kept in `catalog/`
+at the repository's root, that the person installs a tool from through the
+same sheet. There is no other store of tools. The Features page keeps one
+line for them (`ExtensionsSummaryLine`): how many are added, and a link to
+the page. Every way in, that line, the sidebar, the Settings search and
+command bar, and an extension's island page in the Dynamic Island's
+settings, goes to `ExtensionsPageSupport.destination`. The sidebar's row
+counts the tools from the catalog that have a newer version listed
+(`ExtensionsPageContent.updates`).
 
-Each row of that section carries a pill, `ExternalToolRow.kind`: a package
+Each row of the Installed list carries a pill, `ExternalToolRow.kind`: a package
 whose manifest has any `panels` (island, Settings or window) is an
 Extension, one with none is a Tool. The manifest's fields and the protocol
 keep the word "tool" for both. A package that is held back has no manifest
-the app reads, so it is badged Tool until it is updated. A row on the
-catalog's sheet (`CatalogueRow.kindBadge`) carries the same pill when its
+the app reads, so it is badged Tool until it is updated. A row of the
+catalog (`CatalogueRow.kindBadge`) carries the same pill when its
 entry in `catalog/tools.json` lists `panels` (`[]` for Tool, non-empty for
 Extension), and none when an older entry leaves `panels` out.
-The section's words name every place an extension's page may be, never the
+The page's words name every place an extension's page may be, never the
 island alone, since some extensions only add a Settings part or a window.
 
 What a tool's author works with is all in `packages/vitruvian-sdk`: a Swift
@@ -617,7 +625,8 @@ of it but the protocol.
   most 32 KB (`ExternalToolDetail.shownLog`), as plain text that can be
   selected. It is read when the detail opens and does not follow a running
   tool.
-- The card redraws because it observes `ToolRegistry.shared`. The store
+- The Extensions page, its sidebar row and the Features page's line
+  redraw because they observe `ToolRegistry.shared`. The store
   bumps the registry's `revision` whenever a tool is added, removed,
   switched or stands differently. Nothing polls a tool.
 - A feature of the app's that becomes a tool may hand the tool what it
@@ -643,11 +652,17 @@ of it but the protocol.
     `ExternalToolStore.offer`. A refusal at any step deletes what it wrote.
     It never makes a `ToolConsent`: the agreement sheet does, as for a
     folder, and `only_the_agreement_sheet_consents` holds it.
+  - The Extensions page starts an install or update through
+    `CatalogueInstalls.shared`, not its own state: one at a time, and what
+    it comes to waits there until the page shows it, so leaving the page
+    mid-download loses nothing. While one is fetched its row draws a
+    spinner and every other Install or Update is disabled
+    (`ExtensionsPageContent.installButton`).
   - The download runs off the main thread; the store is touched only on it.
     Tests hand in a table for the network (`FakeCatalogueFetcher`) and run
     the steps in order on the main thread; the zip is unpacked by the real
     ditto, under the temporary folder.
-  - `CatalogueWatch` fetches the list when the sheet opens, and at launch and
+  - `CatalogueWatch` fetches the list each time the Extensions page opens, and at launch and
     once a day only while a tool from the catalog is installed, with the
     ETag of the list it kept. It keeps the last list that verified in
     `Catalog.json` in the app's support folder, verifies it again whenever
@@ -825,8 +840,11 @@ What doing the checks taught, each held in `Tools/ByHandRules.swift` and by
 - Press by exact name, and of several controls with that name the last: a
   sheet's controls come after its window's. A loose match for a button once
   turned an unrelated feature off. `press` takes no part of a name.
-- The Features page is lazy. The last card is not there to find until the
-  page is scrolled to its end, twice (`tools` does it).
+- The Extensions page starts at its title, which the sidebar's row shares:
+  the steps read from the last "Extensions" before "Add from Folder…"
+  (`ByHandRules.pageStart`). Until 2026-10-15 the tools were the last card
+  of the Features page, which is lazy: it had to be scrolled to its end,
+  twice, before the card was there to find.
 - In the command bar Return runs the top result, which is often a longer
   title that starts the same. `run-command` reads the results and moves to
   the row that is the command before Return, and runs nothing when the bar
@@ -844,7 +862,7 @@ What doing the checks taught, each held in `Tools/ByHandRules.swift` and by
   what a key acts on, a button, field, switch, pop-up or slider, and with a
   sheet open only what is in the last sheet (`ByHandRules.keyTargets`).
 - A step goes where it needs to be by itself: `tools`, `add-tool` and
-  `remove-tool` open Settings and the Features page and scroll to the card;
+  `remove-tool` open Settings on the Extensions page;
   `run-command` opens Settings on Command Bar, and leaves the bar closed.
 - `add-tool` types the folder's whole path into the picker as it is, so a
   space in it is a character. Without `--agree` it leaves the agreement
@@ -855,7 +873,9 @@ How far it is proven: against the app (3.42.0, macOS 27, 2026-10-12)
 `windows`, `open-settings`, `page` and `tools` worked. That run found four
 faults in `add-tool`, `run-command` and `focused`, mended since; nobody has
 run those three, `remove-tool`, `quit` or `launch` against the app after
-the mending. `select N`, from `dump`, is the way the first scripts selected
+the mending. On 2026-10-15 `tools`, `add-tool` and `remove-tool` moved from
+the Features page's card to the Extensions page, and nobody has run them
+against an app that has the page. `select N`, from `dump`, is the way the first scripts selected
 a page. It takes no screenshots: use `screencapture`.
 
 ## Porting from upstream

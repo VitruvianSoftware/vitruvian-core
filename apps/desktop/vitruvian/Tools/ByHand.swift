@@ -357,24 +357,20 @@ func showPage(_ title: String, in app: AXUIElement, step: String) {
     }
 }
 
-/// Opens the Features page and scrolls it to its end. The page is lazy:
-/// the last card, "Extensions & Tools", is not there to find until it is.
-func showToolsCard(_ app: AXUIElement, step: String) -> [Control] {
-    showPage(Words.featuresPage, in: app, step: step)
-    // The page fills in as it is scrolled, and more slowly when the Settings
-    // window has only just opened: one pass once missed a card that was there.
+/// Opens the Extensions page and gives its controls, from its title on.
+/// The page is not lazy, but it may take a moment to be drawn after the
+/// Settings window opens, so it is looked for a few times.
+func showExtensionsPage(_ app: AXUIElement, step: String) -> [Control] {
+    showPage(Words.extensionsPage, in: app, step: step)
     for _ in 0..<5 {
-        for _ in 0..<2 {
-            pause(0.8)
-            scrollToEnd(in: app, window: Words.settingsWindow)
-        }
         pause(0.8)
         let all = controls(of: app, window: Words.settingsWindow)
-        if let card = all.firstIndex(where: { $0.value == Words.toolsCard || $0.title == Words.toolsCard }) {
-            return Array(all[card...])
+        if let start = ByHandRules.pageStart(Words.extensionsPage, button: Words.addTool,
+                                             among: all.map { $0.value.isEmpty ? $0.title : $0.value }) {
+            return Array(all[start...])
         }
     }
-    stop(.notFound, "\(step): the Features page has no \"\(Words.toolsCard)\" card, even scrolled to its end five times.")
+    stop(.notFound, "\(step): the Extensions page has no \"\(Words.addTool)\" button, looked for five times.")
 }
 
 /// The first words of the sheet over the Settings window, or nil with none.
@@ -399,7 +395,7 @@ func addTool(folder: String, agreeWith button: String?, app: (process: NSRunning
     guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue else {
         stop(.usage, "add-tool: \(path) is not a folder. Nothing was pressed.")
     }
-    _ = showToolsCard(app.element, step: "add-tool")
+    _ = showExtensionsPage(app.element, step: "add-tool")
     mustPress(Words.addTool, in: app.element)
     expect("no folder picker", after: Words.addTool, in: "add-tool") { folderPickerIsOpen(app.element) }
     pause(0.5)
@@ -429,13 +425,13 @@ func addTool(folder: String, agreeWith button: String?, app: (process: NSRunning
 }
 
 func removeTool(_ name: String, deleteData: Bool, app: AXUIElement) {
-    let card = showToolsCard(app, step: "remove-tool").filter { $0.role == "AXButton" }
-    let rows = ByHandRules.toolRows(name, among: card.map { $0.description.isEmpty ? $0.title : $0.description })
+    let page = showExtensionsPage(app, step: "remove-tool").filter { $0.role == "AXButton" }
+    let rows = ByHandRules.toolRows(name, among: page.map { $0.description.isEmpty ? $0.title : $0.description })
     guard rows.count == 1 else {
-        stop(.notFound, "remove-tool: \(rows.count) rows of the card are the tool \"\(name)\"; one is needed. "
+        stop(.notFound, "remove-tool: \(rows.count) rows of the Extensions page are the tool \"\(name)\"; one is needed. "
             + "Nothing was pressed.")
     }
-    if case .refused(let error) = press(card[rows[0]]) {
+    if case .refused(let error) = press(page[rows[0]]) {
         stop(.notFound, "remove-tool: the app refused the press of the tool's row (error \(error)).")
     }
     say("pressed the row of \"\(name)\"")
@@ -625,8 +621,8 @@ case .page(let title):
     showPage(title, in: theApp().element, step: "page")
     say("page \"\(title)\": selected")
 case .tools(let lines):
-    let card = showToolsCard(theApp().element, step: "tools").filter { !$0.isSilent && !["AXImage", "AXToolbar"].contains($0.role) }
-    for control in card.prefix(lines) { say(String(control.line.prefix(200))) }
+    let page = showExtensionsPage(theApp().element, step: "tools").filter { !$0.isSilent && !["AXImage", "AXToolbar"].contains($0.role) }
+    for control in page.prefix(lines) { say(String(control.line.prefix(200))) }
 case .addTool(let folder, let button):
     addTool(folder: folder, agreeWith: button, app: theApp())
 case .removeTool(let name, let deleteData):

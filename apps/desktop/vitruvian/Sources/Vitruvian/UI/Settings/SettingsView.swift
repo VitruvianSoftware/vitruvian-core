@@ -57,6 +57,10 @@ package struct SettingsView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var router = SettingsRouter.shared
     @ObservedObject private var features = FeatureRuntime.shared
+    /// The Extensions row's count of updates: the catalog's list, and the
+    /// tools added, which the registry's revision follows.
+    @ObservedObject private var catalogue = CatalogueWatch.shared
+    @ObservedObject private var toolRegistry = ToolRegistry.shared
     @AppStorage(Preferences.superKeySource) private var superKeySourceRaw: String
     @State private var searchQuery = ""
     @State private var activeSearchIndex: Int?
@@ -315,6 +319,7 @@ package struct SettingsView: View {
         let items = directoryCache.items
         let selectedID = SettingsSidebarSupport.selection(for: router.destination, in: items,
                                                           preferredID: router.sidebarFeature.map { .feature($0) })
+        let extensionUpdates = ExtensionsPageContent.updates(store: .shared, watch: catalogue)
         ForEach(sections) { section in
             Section {
                 if !collapsedSectionIDs.contains(section.id) {
@@ -326,6 +331,9 @@ package struct SettingsView: View {
                                 .frame(width: 18)
                             Text(item.title)
                         }
+                        // How many added tools the catalog has a newer
+                        // version of; none is drawn for 0.
+                        .badge(item.id == .page(.extensions) ? extensionUpdates : 0)
                         .tag(item.id)
                         .id(item.id)
                         .help(item.title)
@@ -551,6 +559,7 @@ package struct SettingsView: View {
                 GeneralSettings()
             }
         case .features: FeatureHubSettings()
+        case .extensions: ExtensionsSettings()
         case .textSnippets: TextSnippetsSettings()
         case .notch: NotchSettings()
         case .notchMascot: NotchMascotSettings()
