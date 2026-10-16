@@ -92,7 +92,9 @@ def main():
                 f"Resources/Info.plist {key} says {plist.get(key)}, vitruvian-tool.json says {manifest_version}"
             )
 
-    config = json.loads(read(os.path.join(ANDROID_REMOTE, "release-please-config.json")))
+    config = json.loads(
+        read(os.path.join(ANDROID_REMOTE, "release-please-config.json"))
+    )
     package = next(iter(config["packages"].values()))
     extra = [
         entry["path"] if isinstance(entry, dict) else entry

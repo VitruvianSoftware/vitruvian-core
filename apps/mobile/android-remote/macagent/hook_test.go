@@ -346,4 +346,3 @@ func TestFormatHookCommandAndExtensionReplacement(t *testing.T) {
 		t.Errorf("expected single standalone hook after replacement:\n%s", b2)
 	}
 }
-

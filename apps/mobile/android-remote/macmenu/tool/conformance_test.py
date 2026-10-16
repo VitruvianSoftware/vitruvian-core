@@ -21,7 +21,7 @@
 
 """Verifies the built Vitruvian Remote extension folder and its JSON-RPC protocol end to end.
 
-    conformance_test.py <built vitruvian-tool.json> <conformance.py> <vitruvian-tool>
+conformance_test.py <built vitruvian-tool.json> <conformance.py> <vitruvian-tool>
 """
 
 import importlib.util
@@ -254,10 +254,16 @@ def end_to_end_active(conf, folder, scratch):
         app.act("settings", "kubeContext", "submit", "homelab-e2e")
         app.act("settings", "prometheusURL", "submit", "https://prom.example.com")
         app.act("settings", "prometheusTokenField", "submit", "prom_e2e_secret")
-        app.act("settings", "ghExtraRepos", "submit", "VitruvianSoftware/vitruvian-core")
+        app.act(
+            "settings", "ghExtraRepos", "submit", "VitruvianSoftware/vitruvian-core"
+        )
 
-        link.send({"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "remote"}})
-        link.send({"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "settings"}})
+        link.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "remote"}}
+        )
+        link.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "settings"}}
+        )
         said.append("active shutdown: " + run.shutdown())
         said.extend(app.pages)
     finally:
@@ -277,7 +283,9 @@ def end_to_end_active(conf, folder, scratch):
     }
     for key, value in expected.items():
         if written.get(key) != value:
-            raise E2EFailure(f"settings.json {key} is {written.get(key)!r}, expected {value!r}")
+            raise E2EFailure(
+                f"settings.json {key} is {written.get(key)!r}, expected {value!r}"
+            )
 
     for secret_name, secret_val in [
         ("ntfy-token", "tk_e2e_secret"),
@@ -291,9 +299,13 @@ def end_to_end_active(conf, folder, scratch):
     claude_settings = os.path.join(home, ".claude", "settings.json")
     with open(claude_settings, encoding="utf-8") as handle:
         if "permission-hook --config-dir" not in handle.read():
-            raise E2EFailure("~/.claude/settings.json did not receive --config-dir hook")
+            raise E2EFailure(
+                "~/.claude/settings.json did not receive --config-dir hook"
+            )
 
-    said.append("active persistence: settings.json, 0600 tokens, and ~/.claude/settings.json verified")
+    said.append(
+        "active persistence: settings.json, 0600 tokens, and ~/.claude/settings.json verified"
+    )
     return said
 
 
@@ -311,7 +323,9 @@ def end_to_end_coexistence(conf, folder, scratch):
         handle.write("standalone-token-xyz\n")
     with open(os.path.join(standalone_cfg, "paired"), "w", encoding="utf-8") as handle:
         handle.write("2026-10-15T12:00:00Z\n")
-    with open(os.path.join(standalone_cfg, "settings.json"), "w", encoding="utf-8") as handle:
+    with open(
+        os.path.join(standalone_cfg, "settings.json"), "w", encoding="utf-8"
+    ) as handle:
         json.dump({"ntfy_url": "https://ntfy.sh", "ntfy_topic": "copied-topic"}, handle)
 
     os.environ.update(
@@ -340,7 +354,9 @@ def end_to_end_coexistence(conf, folder, scratch):
         if says(active_island, "Choose One Vitruvian Remote"):
             raise E2EFailure("coexistence prompt remained after confirming extension")
 
-        link.send({"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "remote"}})
+        link.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "remote"}}
+        )
         said.append("coexistence shutdown: " + run.shutdown())
     finally:
         link.close()
@@ -349,7 +365,9 @@ def end_to_end_coexistence(conf, folder, scratch):
     with open(choice_path, encoding="utf-8") as handle:
         choice = json.load(handle)
     if choice.get("chosen") != "extension":
-        raise E2EFailure(f"remote_door.json chosen is {choice.get('chosen')!r}, expected 'extension'")
+        raise E2EFailure(
+            f"remote_door.json chosen is {choice.get('chosen')!r}, expected 'extension'"
+        )
     ext_meta = choice.get("extension") or {}
     if ext_meta.get("program") != program or ext_meta.get("data_folder") != data:
         raise E2EFailure(f"remote_door.json extension metadata mismatch: {ext_meta!r}")
@@ -357,9 +375,13 @@ def end_to_end_coexistence(conf, folder, scratch):
     copied_token_path = os.path.join(data, "config", "token")
     with open(copied_token_path, encoding="utf-8") as handle:
         if handle.read().strip() != "standalone-token-xyz":
-            raise E2EFailure("standalone bearer token was not copied to extension config/token")
+            raise E2EFailure(
+                "standalone bearer token was not copied to extension config/token"
+            )
 
-    said.append("coexistence handoff: remote_door.json and copied bearer token verified")
+    said.append(
+        "coexistence handoff: remote_door.json and copied bearer token verified"
+    )
     return said
 
 

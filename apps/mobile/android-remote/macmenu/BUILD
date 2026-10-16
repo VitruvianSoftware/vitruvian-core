@@ -123,7 +123,7 @@ genrule(
     srcs = [
         "tool/vitruvian-tool.json",
         ":remote-tool",
-        "//apps/mobile/android-remote/macagent:macagent",
+        "//apps/mobile/android-remote/macagent",
     ],
     outs = [
         "built/remote/vitruvian-tool.json",
@@ -221,7 +221,7 @@ sh_binary(
     srcs = ["install.sh"],
     data = [
         ":VitruvianRemote",
-        "//apps/mobile/android-remote/macagent:macagent",
+        "//apps/mobile/android-remote/macagent",
     ],
     tags = ["manual"],
 )
