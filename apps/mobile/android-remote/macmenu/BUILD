@@ -1,17 +1,37 @@
-# //apps/mobile/android-remote/macmenu: the Vitruvian Remote menu bar app.
+# Copyright (c) 2026 VitruvianSoftware
 #
-# A small SwiftUI MenuBarExtra (LSUIElement) that shows whether the Mac agent
-# (../macagent) is up and whether a phone is linked, and does the few things
-# that otherwise need a terminal: pair a phone, restart the agent, open its
-# log, unpair every phone. It is its own app on purpose, separate from
-# HomeSpeaker. It reads the agent's read-tier endpoints only and holds no
-# token; pairing and unpairing run the agent's own CLI.
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-# Swift has no Gazelle, so this file is hand-written. The layout follows
-# //apps/desktop/nexus-agent/macos: pure logic in RemoteMenuCore so the test
-# links it without the app's @main.
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
+# //apps/mobile/android-remote/macmenu: the Vitruvian Remote menu bar app and
+# the self-contained Vitruvian extension (dev.vitruvian.remote).
+#
+# Both doors share RemoteMenuCore, which supervises the bundled
+# vitruvian-remote-agent binary (../macagent), manages settings and pairing,
+# and detects when both the standalone app and the Vitruvian extension are
+# installed on the same Mac so only the chosen one runs the agent or registers
+# the Claude Code permission hook.
+#
+# Swift has no Gazelle, so this file is hand-written.
+
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
+load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
@@ -37,10 +57,126 @@ swift_library(
 # explicit label, where XCTest is available.
 swift_test(
     name = "RemoteMenuTests",
-    srcs = glob(["Tests/**/*.swift"]),
+    srcs = glob(
+        ["Tests/**/*.swift"],
+        exclude = ["Tests/RemoteToolTests/**"],
+    ),
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":RemoteMenuCore"],
+)
+
+# The Vitruvian Remote extension (dev.vitruvian.remote) for the Vitruvian
+# desktop app: island panel, 4-tab settings panel, 6 commands, supervised
+# vitruvian-remote-agent daemon, and standalone/extension coexistence.
+swift_library(
+    name = "RemoteToolCore",
+    srcs = glob(["Sources/RemoteToolCore/**/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "RemoteToolCore",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":RemoteMenuCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+swift_test(
+    name = "RemoteToolTests",
+    size = "small",
+    srcs = glob(["Tests/RemoteToolTests/**/*.swift"]),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":RemoteMenuCore",
+        ":RemoteToolCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+swift_binary(
+    name = "remote-tool",
+    srcs = glob(["Sources/RemoteTool/*.swift"]),
+    features = ["swift.enable_v6"],
+    module_name = "RemoteToolProgram",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":RemoteMenuCore",
+        ":RemoteToolCore",
+        "//packages/vitruvian-sdk:VitruvianToolKit",
+        "//packages/vitruvian-sdk:VitruvianToolProtocol",
+    ],
+)
+
+# The extension as a self-contained folder the Vitruvian app can install:
+# vitruvian-tool.json, bin/tool, and bin/vitruvian-remote-agent.
+#
+#   bazel build --config=macos-app //apps/mobile/android-remote/macmenu:tool-folder
+#
+# leaves bazel-bin/apps/mobile/android-remote/macmenu/built/remote/.
+genrule(
+    name = "tool-folder",
+    srcs = [
+        "tool/vitruvian-tool.json",
+        ":remote-tool",
+        "//apps/mobile/android-remote/macagent:macagent",
+    ],
+    outs = [
+        "built/remote/vitruvian-tool.json",
+        "built/remote/bin/tool",
+        "built/remote/bin/vitruvian-remote-agent",
+    ],
+    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/remote/vitruvian-tool.json && cp $(location :remote-tool) $(RULEDIR)/built/remote/bin/tool && cp $(location //apps/mobile/android-remote/macagent:macagent) $(RULEDIR)/built/remote/bin/vitruvian-remote-agent && chmod +x $(RULEDIR)/built/remote/bin/tool $(RULEDIR)/built/remote/bin/vitruvian-remote-agent",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# Validates the built folder with `vitruvian-tool validate`, runs the SDK
+# conformance suite, and verifies all panels, tabs, settings round-trips, QR
+# pairing, and standalone/extension coexistence over real JSON-RPC stdio in a
+# scratch HOME with a stand-in agent binary.
+py_test(
+    name = "tool_conformance_test",
+    size = "medium",
+    srcs = ["tool/conformance_test.py"],
+    args = [
+        "$(rootpath built/remote/vitruvian-tool.json)",
+        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
+        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    ],
+    data = [
+        "built/remote/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance/conformance.py",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    main = "tool/conformance_test.py",
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# Verifies that the tool's version matches Version.swift, Info.plist, and
+# android-remote's BUILD version, and that release-please-config.json updates
+# all of them.
+py_test(
+    name = "tool_version_test",
+    size = "small",
+    srcs = ["tool/version_test.py"],
+    data = [
+        "Resources/Info.plist",
+        "Sources/RemoteMenuCore/Version.swift",
+        "tool/vitruvian-tool.json",
+        "//apps/mobile/android-remote:BUILD",
+        "//apps/mobile/android-remote:release-please-config.json",
+    ],
+    main = "tool/version_test.py",
 )
 
 # The menu finds the agent by the paths install.sh writes; fail when they drift.
@@ -83,7 +219,10 @@ macos_application(
 sh_binary(
     name = "install",
     srcs = ["install.sh"],
-    data = [":VitruvianRemote"],
+    data = [
+        ":VitruvianRemote",
+        "//apps/mobile/android-remote/macagent:macagent",
+    ],
     tags = ["manual"],
 )
 
@@ -93,7 +232,10 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         ":RemoteMenuTests",
+        ":RemoteToolTests",
         ":paths_match_installer_test",
+        ":tool_conformance_test",
+        ":tool_version_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

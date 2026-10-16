@@ -42,29 +42,48 @@ struct MenuContent: View {
     @ObservedObject var model: RemoteModel
 
     var body: some View {
-        Text(model.snapshot.agentLine)
-        if let phone = model.snapshot.phoneLine() {
-            Text(phone)
-        }
-        if let tailnet = model.snapshot.tailnetLine {
-            Text(tailnet)
-        }
-        if let notify = model.snapshot.notificationsLine {
-            Text(notify)
-        }
-
-        Divider()
-
-        switch model.snapshot.state {
-        case .notInstalled:
-            Button("Copy Install Command") { model.copyInstallCommand() }
-        default:
-            Button("Pair with QR Code…") { model.pairWithQR() }
-            Button("Pair with a Code…") { model.pairPhone() }
-            Button("Restart Agent") { model.restartAgent() }
-            Button("Open Agent Log") { model.openLog() }
+        switch model.role {
+        case .quietChosen, .quietAsking:
+            Text("Vitruvian Extension in Use")
+            Text("The Vitruvian Remote extension is managing port 7411.")
             Divider()
-            Button("Unpair All Phones…") { model.unpairAll() }
+            Button("Use the Standalone App Instead…") { model.switchToStandaloneApp() }
+            Button("Open Vitruvian") { model.openVitruvianApp() }
+        case .activeAsking, .activeChosen, .activeAlone:
+            if model.role == .activeAsking {
+                Text("Both Standalone App & Extension Installed")
+                Button("Use the Vitruvian Extension Instead…") { model.switchToExtension() }
+                Button("Keep Using the Standalone App") { model.keepUsingStandaloneApp() }
+                Divider()
+            } else if model.role == .activeChosen {
+                Button("Use the Vitruvian Extension Instead…") { model.switchToExtension() }
+                Divider()
+            }
+
+            Text(model.snapshot.agentLine)
+            if let phone = model.snapshot.phoneLine() {
+                Text(phone)
+            }
+            if let tailnet = model.snapshot.tailnetLine {
+                Text(tailnet)
+            }
+            if let notify = model.snapshot.notificationsLine {
+                Text(notify)
+            }
+
+            Divider()
+
+            switch model.snapshot.state {
+            case .notInstalled:
+                Button("Copy Install Command") { model.copyInstallCommand() }
+            default:
+                Button("Pair with QR Code…") { model.pairWithQR() }
+                Button("Pair with a Code…") { model.pairPhone() }
+                Button("Restart Agent") { model.restartAgent() }
+                Button("Open Agent Log") { model.openLog() }
+                Divider()
+                Button("Unpair All Phones…") { model.unpairAll() }
+            }
         }
 
         Divider()
@@ -81,9 +100,11 @@ struct MenuContent: View {
 @MainActor
 final class RemoteModel: ObservableObject {
     @Published private(set) var snapshot = StatusSnapshot(state: .down)
+    @Published private(set) var role: RemoteRole = .activeAlone
     @Published private(set) var opensAtLogin = SMAppService.mainApp.status == .enabled
 
-    private let client = AgentClient()
+    private let profile = RemoteProfile.app()
+    private let client: AgentClient
     private let paths = AgentPaths()
     private let baseIcon: NSImage = {
         let img = NSImage(named: "MenuIcon") ?? NSImage(systemSymbolName: "antenna.radiowaves.left.and.right",
@@ -93,15 +114,14 @@ final class RemoteModel: ObservableObject {
     }()
 
     init() {
+        self.client = AgentClient(binaryURL: profile.agentBinaryURL)
         Task { await pollForever() }
     }
 
-    /// Full-strength glyph while the agent is healthy; faded when it is down
-    /// or stale, so a glance at the menu bar answers "is the phone link up?".
+    /// Full-strength glyph while the agent is healthy; faded when it is down,
+    /// stale, or quiet because the extension was chosen.
     var icon: NSImage {
-        // Faded too when only the phone's route is broken: that is the case
-        // that looked fine from the Mac and dead from the phone.
-        if snapshot.state.isHealthy, snapshot.tailnetReachable != false { return baseIcon }
+        if role.isActive, snapshot.state.isHealthy, snapshot.tailnetReachable != false { return baseIcon }
         let faded = NSImage(size: baseIcon.size, flipped: false) { rect in
             self.baseIcon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.35)
             return true
@@ -118,8 +138,88 @@ final class RemoteModel: ObservableObject {
     }
 
     func refresh() async {
-        snapshot = await client.snapshot()
+        let choice = RemoteChoiceFile.read(at: profile.choiceFileURL)
+        let extInstalled = RemoteCoexistence.isExtensionInstalled(choice: choice)
+        let currentRole = RemoteRole.resolve(
+            for: .app,
+            choice: choice,
+            appInstalled: true,
+            extensionInstalled: extInstalled
+        )
+        role = currentRole
+        if currentRole.isActive {
+            snapshot = await client.snapshot()
+        } else {
+            snapshot = StatusSnapshot(state: .down)
+        }
         opensAtLogin = SMAppService.mainApp.status == .enabled
+    }
+
+    // MARK: Coexistence Actions
+
+    func keepUsingStandaloneApp() {
+        _ = try? RemoteChoiceFile.choose(.app, at: profile.choiceFileURL)
+        Task { await refresh() }
+    }
+
+    func switchToStandaloneApp() {
+        NSApp.activate(ignoringOtherApps: true)
+        let choice = RemoteChoiceFile.read(at: profile.choiceFileURL)
+        let alert = NSAlert()
+        alert.messageText = "Use the Standalone Vitruvian Remote App?"
+        alert.informativeText = "This will switch port 7411 back to the standalone LaunchAgent and put the Vitruvian extension into quiet mode."
+        let copyCheckbox = NSButton(checkboxWithTitle: "Copy pairing, tokens, and settings from the Vitruvian extension", target: nil, action: nil)
+        copyCheckbox.state = .on
+        alert.accessoryView = copyCheckbox
+        alert.addButton(withTitle: "Use Standalone App")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        if copyCheckbox.state == .on,
+           let extProfile = RemoteCoexistence.extensionProfile(from: choice)
+        {
+            _ = try? RemoteDataCopy.copy(from: extProfile, to: profile)
+        }
+        _ = try? RemoteChoiceFile.choose(.app, at: profile.choiceFileURL)
+        let sup = AgentSupervisor(profile: profile)
+        let settings = RemoteSettingsStore(profile: profile).load()
+        _ = sup.restartAgent(settings: settings)
+        Task { await refresh() }
+    }
+
+    func switchToExtension() {
+        NSApp.activate(ignoringOtherApps: true)
+        let choice = RemoteChoiceFile.read(at: profile.choiceFileURL)
+        let alert = NSAlert()
+        alert.messageText = "Switch to the Vitruvian Remote Extension?"
+        alert.informativeText = "The Vitruvian extension will manage the agent on port 7411, and this standalone app will quit."
+        let copyCheckbox = NSButton(checkboxWithTitle: "Copy pairing, tokens, and settings into the extension", target: nil, action: nil)
+        copyCheckbox.state = .on
+        alert.accessoryView = copyCheckbox
+        alert.addButton(withTitle: "Switch & Quit Standalone App")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        if copyCheckbox.state == .on,
+           let extProfile = RemoteCoexistence.extensionProfile(from: choice)
+        {
+            _ = try? RemoteDataCopy.copy(from: profile, to: extProfile)
+        }
+        _ = try? RemoteChoiceFile.choose(.extension, at: profile.choiceFileURL)
+        try? SMAppService.mainApp.unregister()
+        let sup = AgentSupervisor(profile: profile)
+        sup.stopStandaloneAgent(disableLaunchAgentAtLogin: true)
+        NSApp.terminate(nil)
+    }
+
+    func openVitruvianApp() {
+        let candidates = [
+            URL(fileURLWithPath: "/Applications/Vitruvian.app"),
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Vitruvian.app"),
+        ]
+        if let appURL = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
 
     // MARK: Actions
@@ -141,7 +241,7 @@ final class RemoteModel: ObservableObject {
             return
         }
         Task {
-            let r = await Runner.run(paths.binary, ["pair", code])
+            let r = await Runner.run(profile.agentBinaryURL, ["pair", code])
             if r.succeeded {
                 showInfo("Pairing is open", "The phone showing \(code) will connect within a few seconds.")
             } else {
@@ -168,7 +268,7 @@ final class RemoteModel: ObservableObject {
                           "The agent isn't answering on this Mac's Tailscale address (\(address)). Choose Restart Agent, then try again.")
                 return
             }
-            let r = await Runner.run(paths.binary, ["pair", code])
+            let r = await Runner.run(profile.agentBinaryURL, ["pair", code])
             guard r.succeeded else {
                 showError("Couldn't open pairing", r.firstErrorLine ?? "The agent exited with code \(r.exitCode).")
                 return
@@ -209,7 +309,7 @@ final class RemoteModel: ObservableObject {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         Task {
             // stdout carries the new token: it is dropped here, never shown.
-            let r = await Runner.run(paths.binary, ["token", "--rotate"])
+            let r = await Runner.run(profile.agentBinaryURL, ["token", "--rotate"])
             if r.succeeded {
                 showInfo("All phones unpaired", "Pair a phone again whenever you're ready.")
             } else {

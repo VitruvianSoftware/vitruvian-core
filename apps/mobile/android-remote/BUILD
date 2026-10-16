@@ -40,6 +40,11 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//apps/mobile/android-remote:__subpackages__"])
 
+exports_files([
+    "BUILD",
+    "release-please-config.json",
+])
+
 # Everything but the manifest: state, shell, screens and overlays.
 #
 # Split out from the binary so tests and previews can depend on the UI

@@ -170,11 +170,13 @@ func runPermissionHook(args []string, stdin io.Reader, stdout io.Writer) {
 }
 
 // runInstallClaudeHook is the `install-claude-hook [--remove] [--settings
-// PATH]` subcommand: the manual path to what the phone's toggle does.
+// PATH] [--config-dir DIR]` subcommand: the manual path to what the phone's
+// toggle does.
 func runInstallClaudeHook(args []string) error {
 	fs := flag.NewFlagSet("install-claude-hook", flag.ExitOnError)
 	remove := fs.Bool("remove", false, "take the hook out instead of adding it")
 	settings := fs.String("settings", "", "Claude Code settings file (default ~/.claude/settings.json)")
+	configDir := fs.String("config-dir", "", "where the hook token lives (default ~/.config/vitruvian-remote-agent)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -182,7 +184,7 @@ func runInstallClaudeHook(args []string) error {
 	if *settings != "" {
 		path = expandHome(*settings)
 	}
-	cmd, err := hookCommandLine()
+	cmd, err := hookCommandLineForDir(*configDir)
 	if err != nil {
 		return err
 	}
@@ -207,13 +209,19 @@ func tildePath(p string) string {
 	return p
 }
 
-// hookCommandLine is the command written into settings.json: the ABSOLUTE
-// path of the running binary, symlinks resolved, then the verb. Absolute
-// because Claude Code is not promised to run the hook through a shell that
-// expands ~, and the running binary because the agent that installs the hook
-// is the one that must answer it (under launchd that is
-// ~/.local/bin/vitruvian-remote-agent, which install.sh put there).
+// hookCommandLine is the command written into settings.json for the default
+// config directory: the ABSOLUTE path of the running binary, symlinks
+// resolved, then the verb.
 func hookCommandLine() (string, error) {
+	return hookCommandLineForDir("")
+}
+
+// hookCommandLineForDir returns the command written into settings.json for a
+// given config directory. When configDir is empty or matches defaultConfigDir,
+// no --config-dir flag is appended so standalone installs stay byte-for-byte
+// identical. When a custom configDir (such as the Vitruvian extension's
+// ToolData folder) is used, `--config-dir <dir>` is appended and shell-quoted.
+func hookCommandLineForDir(configDir string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("cannot find this binary's path: %w", err)
@@ -221,7 +229,16 @@ func hookCommandLine() (string, error) {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	return shellQuote(exe) + " " + hookVerb, nil
+	return formatHookCommand(exe, configDir), nil
+}
+
+func formatHookCommand(exe, configDir string) string {
+	base := shellQuote(exe) + " " + hookVerb
+	cleaned := strings.TrimSpace(expandHome(configDir))
+	if cleaned == "" || filepath.Clean(cleaned) == filepath.Clean(defaultConfigDir()) {
+		return base
+	}
+	return base + " --config-dir " + shellQuote(filepath.Clean(cleaned))
 }
 
 // shellQuote single-quotes a path only when it needs it, so the common case
@@ -241,14 +258,15 @@ func shellQuote(s string) string {
 }
 
 // isOurHook reports whether a hook command is this agent's: exactly the
-// command we would write, or any command naming the binary and ending in the
-// verb.
+// command we would write, or any command naming the binary and running the
+// permission-hook subcommand (with or without --config-dir).
 func isOurHook(command, ours string) bool {
 	c := strings.TrimSpace(command)
 	if c == ours {
 		return true
 	}
-	return strings.Contains(c, hookBinaryName) && strings.HasSuffix(c, hookVerb)
+	return strings.Contains(c, hookBinaryName) &&
+		(strings.HasSuffix(c, hookVerb) || strings.Contains(c, " "+hookVerb+" "))
 }
 
 // claudeSettingsFile is settings.json read for editing.

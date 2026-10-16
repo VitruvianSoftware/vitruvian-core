@@ -297,12 +297,53 @@ func TestShellQuoteAndIsOurHook(t *testing.T) {
 		testHookCommand: true,
 		"~/.local/bin/vitruvian-remote-agent permission-hook":       true,
 		"'/Users/j/My Apps/vitruvian-remote-agent' permission-hook": true,
-		"vitruvian-remote-agent token":                              false,
-		"other-tool permission-hook":                                false,
-		"speaker-broadcast done":                                    false,
+		"'/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent' permission-hook --config-dir '/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.remote/config'": true,
+		"vitruvian-remote-agent token": false,
+		"other-tool permission-hook":   false,
+		"speaker-broadcast done":       false,
 	} {
 		if got := isOurHook(c, testHookCommand); got != want {
 			t.Errorf("isOurHook(%q) = %v", c, got)
 		}
 	}
 }
+
+func TestFormatHookCommandAndExtensionReplacement(t *testing.T) {
+	const standaloneExe = "/Users/j/.local/bin/vitruvian-remote-agent"
+	const extExe = "/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.remote/bin/vitruvian-remote-agent"
+	const extCfg = "/Users/j/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.remote/config"
+
+	if got := formatHookCommand(standaloneExe, ""); got != standaloneExe+" permission-hook" {
+		t.Errorf("empty configDir: got %s", got)
+	}
+	if got := formatHookCommand(standaloneExe, defaultConfigDir()); got != standaloneExe+" permission-hook" {
+		t.Errorf("defaultConfigDir: got %s", got)
+	}
+	extCmd := formatHookCommand(extExe, extCfg)
+	wantExtCmd := "'" + extExe + "' permission-hook --config-dir '" + extCfg + "'"
+	if extCmd != wantExtCmd {
+		t.Errorf("extCmd:\n got %s\nwant %s", extCmd, wantExtCmd)
+	}
+
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if _, err := installClaudeHook(path, false, standaloneExe+" permission-hook"); err != nil {
+		t.Fatal(err)
+	}
+	msg, err := installClaudeHook(path, false, extCmd)
+	if err != nil || !strings.HasPrefix(msg, "updated") {
+		t.Fatalf("switch standalone -> extension: %q %v", msg, err)
+	}
+	b, _ := os.ReadFile(path)
+	if strings.Count(string(b), "permission-hook") != 1 || !strings.Contains(string(b), extCmd) {
+		t.Errorf("expected single extension hook after replacement:\n%s", b)
+	}
+	msg, err = installClaudeHook(path, false, standaloneExe+" permission-hook")
+	if err != nil || !strings.HasPrefix(msg, "updated") {
+		t.Fatalf("switch extension -> standalone: %q %v", msg, err)
+	}
+	b2, _ := os.ReadFile(path)
+	if strings.Count(string(b2), "permission-hook") != 1 || strings.Contains(string(b2), "--config-dir") {
+		t.Errorf("expected single standalone hook after replacement:\n%s", b2)
+	}
+}
+

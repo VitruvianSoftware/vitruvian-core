@@ -36,6 +36,7 @@ fi
 DEST="${VITRUVIAN_REMOTE_DEST:-/Applications}"
 RUNFILES="${RUNFILES_DIR:-$0.runfiles}"
 ZIP="${RUNFILES}/_main/apps/mobile/android-remote/macmenu/VitruvianRemote.zip"
+AGENT="${RUNFILES}/_main/apps/mobile/android-remote/macagent/macagent_/macagent"
 if [ ! -f "$ZIP" ]; then
 	echo "install.sh: built app not found at ${ZIP} (run via: bazel run --config=macos-app //apps/mobile/android-remote/macmenu:install)" >&2
 	exit 1
@@ -44,6 +45,12 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 ditto -x -k "$ZIP" "$WORK"
+
+if [ -f "$AGENT" ]; then
+	cp "$AGENT" "${WORK}/VitruvianRemote.app/Contents/MacOS/vitruvian-remote-agent"
+	chmod +x "${WORK}/VitruvianRemote.app/Contents/MacOS/vitruvian-remote-agent"
+	codesign --force --sign - "${WORK}/VitruvianRemote.app" >/dev/null 2>&1 || true
+fi
 
 if pgrep -xq VitruvianRemote; then
 	osascript -e 'tell application id "com.vitruviansoftware.remote" to quit' >/dev/null 2>&1 || pkill -x VitruvianRemote || true

@@ -59,11 +59,29 @@ public struct PhoneLink: Decodable, Equatable, Sendable {
     public struct Device: Decodable, Equatable, Sendable {
         public var model: String?
         public var android: String?
+
+        public init(model: String? = nil, android: String? = nil) {
+            self.model = model
+            self.android = android
+        }
     }
 
     public var connected: Bool
     public var device: Device?
     public var since: String?
+    public var tools: [String]?
+
+    public init(
+        connected: Bool,
+        device: Device? = nil,
+        since: String? = nil,
+        tools: [String]? = nil
+    ) {
+        self.connected = connected
+        self.device = device
+        self.since = since
+        self.tools = tools
+    }
 }
 
 /// The agent as the menu sees it. `stale` is the agent answering while its

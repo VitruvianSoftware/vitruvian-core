@@ -18,6 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import Darwin
 import Foundation
 
@@ -67,5 +69,25 @@ public enum QRPairing {
             if isTailscaleIPv4(text) { return text }
         }
         return nil
+    }
+
+    /// Renders `text` into a crisp nearest-neighbour scaled QR code PNG.
+    public static func pngData(for text: String, scale: CGFloat = 8) -> Data? {
+        guard !text.isEmpty, scale >= 1 else { return nil }
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(text.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let context = CIContext()
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        return context.pngRepresentation(of: scaled, format: .RGBA8, colorSpace: colorSpace)
+    }
+
+    /// Renders `text` into a `data:image/png;base64,...` URI suitable for a
+    /// Protocol 2 `image` block.
+    public static func pngDataURL(for text: String, scale: CGFloat = 8) -> String? {
+        guard let data = pngData(for: text, scale: scale) else { return nil }
+        return "data:image/png;base64,\(data.base64EncodedString())"
     }
 }

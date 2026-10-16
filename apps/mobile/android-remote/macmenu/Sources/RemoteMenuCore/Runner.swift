@@ -64,4 +64,47 @@ public enum Runner {
             return RunResult(exitCode: p.terminationStatus, stdout: o, stderr: e)
         }.value
     }
+
+    /// Synchronous process runner for the single-threaded Vitruvian extension loop.
+    @Sendable
+    public static func runSync(_ executable: URL, _ arguments: [String]) -> CommandResult {
+        let p = Process()
+        p.executableURL = executable
+        p.arguments = arguments
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        do {
+            try p.run()
+        } catch {
+            return CommandResult(exitStatus: -1, output: error.localizedDescription)
+        }
+        let deadline = Date().addingTimeInterval(15)
+        while p.isRunning, Date() < deadline {
+            usleep(30_000)
+        }
+        if p.isRunning {
+            p.terminate()
+            return CommandResult(exitStatus: -1, output: "timed out after 15s")
+        }
+        let o = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let e = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let combined = [e.trimmingCharacters(in: .whitespacesAndNewlines), o.trimmingCharacters(in: .whitespacesAndNewlines)]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        return CommandResult(exitStatus: p.terminationStatus, output: combined)
+    }
+}
+
+/// Synchronous command result used by `AgentSupervisor` and `RemoteToolController`.
+public struct CommandResult: Sendable, Equatable {
+    public var exitStatus: Int32
+    public var output: String
+
+    public init(exitStatus: Int32, output: String) {
+        self.exitStatus = exitStatus
+        self.output = output
+    }
+
+    public var succeeded: Bool { exitStatus == 0 }
 }
