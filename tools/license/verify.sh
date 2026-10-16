@@ -96,7 +96,10 @@ done < <(git ls-files '*.go' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.swift' |
   grep -vE '^apps/desktop/vitruvian-tool-github/' |
   # Nexus Agent's vendored copy of Mermaid: another holder's MIT file, shipped
   # unmodified (apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md).
-  grep -vE '^apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/')
+  grep -vE '^apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/' |
+  # Courier is AGPL-3.0-or-later (apps/desktop/courier/LICENSE); its sources
+  # carry the SPDX AGPL header, not the MIT one used elsewhere in the repo.
+  grep -vE '^apps/desktop/courier/')
 
 if [ "${fail}" -ne 0 ]; then
   echo "license-verify: FAILED — first-party LICENSE files and source headers must be MIT + 'VitruvianSoftware'." >&2

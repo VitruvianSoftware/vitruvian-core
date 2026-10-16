@@ -128,6 +128,7 @@ When adding a new desktop app `apps/desktop/<app-name>`:
 
 1. **Governance & Metadata**:
    - Provide `LICENSE` (MIT `(c) 2026 VitruvianSoftware`), `README.md`, and `catalog-info.yaml`.
+   - **Exception: apps that embed copyleft code use a compatible licence instead of MIT.** `vitruvian` is GPL-3.0-or-later because it is an imported fork, and `courier` is AGPL-3.0-or-later because it embeds the AGPL mautrix bridges. Put that licence in `LICENSE` and give the sources an `SPDX-License-Identifier` header for it (never run `//tools/license:add`, which writes the MIT one). Such an app is exempt from the MIT-header content check in `tools/license/verify.sh`: add its directory to the exclusion list there, as `apps/desktop/vitruvian/` and `apps/desktop/courier/` already are. `//tools/license:check` still requires a header on every file.
    - Add a `release-please-config.json` and `.release-please-manifest.json`.
 2. **Packaging Script**:
    - Create `apps/desktop/<app-name>/scripts/publish.sh` (or `publish.sh`) that builds the universal binary/bundle and invokes `//tools/desktop-package:package-desktop`.

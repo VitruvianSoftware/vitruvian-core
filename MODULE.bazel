@@ -102,9 +102,34 @@ go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 # //:go.work and it is picked up here automatically.
 go_deps.from_file(go_work = "//:go.work")
 
+# go.mau.fi/whatsmeow (pulled in by mautrix-whatsapp for apps/desktop/courier):
+# its .proto files import each other by bare paths ("waSyncAction/...proto",
+# rooted at proto/), which gazelle cannot map to labels, so the generated
+# go_proto_library deps point at nonexistent packages. The generated
+# *.pb.go files are checked in, so skip proto generation and compile those.
+go_deps.gazelle_override(
+    directives = ["gazelle:proto disable"],
+    path = "go.mau.fi/whatsmeow",
+)
+
+# go.mau.fi/webp (cgo libwebp, used by whatsmeow for stickers): gazelle files
+# the vendored C sources/headers under embedsrcs, which the cgo action never
+# sees, so the build fails with "'webp.h' file not found". The patch adds a
+# hand-written BUILD.bazel that exposes them to cgo, and gazelle is told not
+# to generate one over it.
+go_deps.gazelle_override(
+    build_file_generation = "off",
+    path = "go.mau.fi/webp",
+)
+go_deps.module_override(
+    patch_strip = 1,
+    patches = ["//tools/go_deps:webp-cgo-headers.patch"],
+    path = "go.mau.fi/webp",
+)
+
 # All *direct* Go dependencies of the module have to be listed explicitly.
 # Run 'bazel mod tidy' to update this
-use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles", "com_github_charmbracelet_bubbletea", "com_github_charmbracelet_huh", "com_github_charmbracelet_lipgloss", "com_github_google_uuid", "com_github_hashicorp_yamux", "com_github_joho_godotenv", "com_github_magefile_mage", "com_github_mark3labs_mcp_go", "com_github_pelletier_go_toml_v2", "com_github_pulumi_pulumi_command_sdk", "com_github_pulumi_pulumi_gcp_sdk_v9", "com_github_pulumi_pulumi_random_sdk_v4", "com_github_pulumi_pulumi_sdk_v3", "com_github_spf13_cobra", "com_github_stretchr_testify", "in_gopkg_yaml_v3", "org_golang_x_crypto", "org_golang_x_sync")
+use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles", "com_github_charmbracelet_bubbletea", "com_github_charmbracelet_huh", "com_github_charmbracelet_lipgloss", "com_github_google_uuid", "com_github_hashicorp_yamux", "com_github_joho_godotenv", "com_github_magefile_mage", "com_github_mark3labs_mcp_go", "com_github_mdp_qrterminal_v3", "com_github_pelletier_go_toml_v2", "com_github_pulumi_pulumi_command_sdk", "com_github_pulumi_pulumi_gcp_sdk_v9", "com_github_pulumi_pulumi_random_sdk_v4", "com_github_pulumi_pulumi_sdk_v3", "com_github_rs_zerolog", "com_github_spf13_cobra", "com_github_stretchr_testify", "fi_mau_go_mautrix_whatsapp", "fi_mau_go_util", "in_gopkg_yaml_v3", "net_maunium_go_mautrix", "org_golang_x_crypto", "org_golang_x_sync")
 
 # Bazel 9: Ensure transitives don't depend on rules_nodejs prior to
 # https://github.com/bazel-contrib/rules_nodejs/commit/1fc6b6b763c4f79994edc9edab10399f7446d8be

@@ -1,0 +1,89 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// Package media stores attachment bytes by SHA-256 so the same file is kept once.
+package media
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+)
+
+var ErrMissing = errors.New("media file missing")
+
+// ErrInvalidHash means a name is not a 64-character lower-case SHA-256 hex string.
+var ErrInvalidHash = errors.New("invalid media hash")
+
+var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+type Store struct{ Dir string }
+
+// Path returns where a blob lives on disk. Anything that is not a real hash is
+// refused, so a hostile name can neither panic nor escape Dir.
+func (m *Store) Path(hash string) (string, error) {
+	if !hashRE.MatchString(hash) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidHash, hash)
+	}
+	return filepath.Join(m.Dir, hash[:2], hash), nil
+}
+
+func (m *Store) Put(data []byte) (string, error) {
+	return m.PutStream(func(w io.Writer) error { _, err := w.Write(data); return err })
+}
+
+// PutStream writes to a temp file while hashing, then renames into place.
+// The data is synced before the rename so a crash cannot leave an empty file
+// under its final hash name. On any failure it returns "" and leaves no temp file.
+func (m *Store) PutStream(write func(io.Writer) error) (string, error) {
+	if err := os.MkdirAll(m.Dir, 0o700); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(m.Dir, ".upload-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmp.Name())
+	hasher := sha256.New()
+	if err = write(io.MultiWriter(tmp, hasher)); err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if err = tmp.Sync(); err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if err = tmp.Close(); err != nil {
+		return "", err
+	}
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	final, err := m.Path(hash)
+	if err != nil {
+		return "", err
+	}
+	if err = os.MkdirAll(filepath.Dir(final), 0o700); err != nil {
+		return "", err
+	}
+	if err = os.Rename(tmp.Name(), final); err != nil {
+		return "", err
+	}
+	return hash, nil
+}
+
+func (m *Store) Read(hash string) ([]byte, error) {
+	p, err := m.Path(hash)
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: %s", ErrMissing, hash)
+	}
+	return b, err
+}
