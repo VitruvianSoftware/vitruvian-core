@@ -41,8 +41,11 @@ Then it plays the app itself, over the same JSON-RPC on stdin and stdout,
 with the conformance script's own link and checks (imported, not copied):
 the island and each of the five settings sections are opened, every page
 is held to the protocol's limits (`is_tree`: the most blocks, the most
-bytes, the choice rules), switches and fields are changed, and the
-settings file and the secrets file are read back from the data folder.
+bytes, the choice rules), switches, choices and fields are changed, and the
+settings file and the secrets file are read back from the data folder. The
+quiet hours are a choice of half hours for this app, which has `choice`;
+a time that is not HH:mm is typed, and refused, by an app from before 3.48,
+which has no `features` and so is given the typed field.
 Nothing is written until the tool has said, on its Files rows, that both
 files are in that folder. The island draws its controls because the
 extension is installed by definition; no HomeSpeaker program is run. Only
@@ -350,13 +353,17 @@ def end_to_end(conf, folder, data, env):
             app.section(name)
         said.append("settings: " + ", ".join(SECTIONS) + " each drawn")
 
-        # General: a switch and a field are saved; a bad time is said.
-        app.section("general")
+        # General: a switch, and the quiet hours picked from half hours.
+        general = app.section("general")
+        for block_id in ("quietStart", "quietEnd"):
+            drawn = block(general, block_id)
+            if drawn is None or drawn.get("type") != "choice":
+                raise E2EFailure(
+                    f"settings: {block_id} is not a choice for an app that has one: {drawn!r}"
+                )
         app.act("settings", "quiet", "toggle", True)
-        app.act("settings", "quietStart", "submit", "23:15")
-        bad = app.act("settings", "quietEnd", "submit", "soon")
-        if not says(bad, "HH:mm"):
-            raise E2EFailure("a quiet hour that is not HH:mm was not said on the page")
+        app.act("settings", "quietStart", "change", "23:00")
+        app.act("settings", "quietEnd", "change", "23:30")
         # Chat & Slack: a source on and a poll interval.
         app.section("monitor")
         app.act("settings", "slackEnabled", "toggle", True)
@@ -375,7 +382,7 @@ def end_to_end(conf, folder, data, env):
         if not says(saved, "OAuth client saved"):
             raise E2EFailure("Save did not say the OAuth client was saved")
         said.append(
-            "settings: quiet hours, Slack, poll interval and an OAuth client changed"
+            "settings: quiet hours picked, Slack, poll interval and an OAuth client changed"
         )
 
         # The island: the extension is HomeSpeaker, installed by definition,
@@ -397,12 +404,37 @@ def end_to_end(conf, folder, data, env):
     finally:
         link.close()
 
+    # An app from before 3.48 names no features: the quiet hours are the
+    # typed field, and a time that is not HH:mm is refused and said.
+    older = conf.Link([program], started_in)
+    try:
+        run = conf.Run(older, manifest, started_in, features=None)
+        said.append("an older app: " + run.handshake())
+        app = Driver(conf, run)
+        general = app.open("settings")
+        drawn = block(general, "quietEnd")
+        if drawn is None or drawn.get("type") != "field":
+            raise E2EFailure(
+                f"settings: quietEnd is not the typed field for an app without choice: {drawn!r}"
+            )
+        bad = app.act("settings", "quietEnd", "submit", "soon")
+        if not says(bad, "HH:mm"):
+            raise E2EFailure("a quiet hour that is not HH:mm was not said on the page")
+        older.send(
+            {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": "settings"}}
+        )
+        said.append("an older app: the typed quiet hour refused; " + run.shutdown())
+        said.extend(app.pages)
+    finally:
+        older.close()
+
     with open(settings, encoding="utf-8") as handle:
         written = json.load(handle)
     expected = {
         "enabled": False,
         "quiet_hours_enabled": True,
-        "quiet_hours_start": "23:15",
+        "quiet_hours_start": "23:00",
+        "quiet_hours_end": "23:30",
     }
     for key, value in expected.items():
         if written.get(key) != value:
