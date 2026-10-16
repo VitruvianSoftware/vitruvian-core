@@ -228,6 +228,38 @@ import Testing
         #expect(written["later"] != nil)
     }
 
+    @Test func aBlockKeyThisVersionCannotReadSurvivesAChangeToAnother() throws {
+        // `door` is a string here, so this version reads it as absent. Changing
+        // another key of the block must not throw the unreadable one away,
+        // as the top level does not.
+        let file = scratchFile()
+        try FileManager.default.createDirectory(at: file.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("""
+        {"version":1,"extension":{"program":"/p","data_folder":"/d","version":"1.19.0","door":"1","pid":42}}
+        """.utf8).write(to: file.url)
+        #expect(file.read()?.installedExtension?.door == nil, "not an Int: read as absent")
+
+        try file.update { $0.installedExtension?.version = "1.19.1" }
+
+        let block = try #require(object(at: file.url)["extension"] as? [String: Any])
+        #expect(block["version"] as? String == "1.19.1", "the changed key is written")
+        #expect(block["door"] as? String == "1", "a key it could not read is kept")
+        #expect(block["pid"] as? Int == 42)
+        #expect(block["program"] as? String == "/p")
+        #expect(block["data_folder"] as? String == "/d")
+
+        // A key the change sets is written even over one it could not read,
+        // and a key the change clears is removed.
+        try file.update {
+            $0.installedExtension?.door = 1
+            $0.installedExtension?.dataFolder = nil
+        }
+        let after = try #require(object(at: file.url)["extension"] as? [String: Any])
+        #expect(after["door"] as? Int == 1)
+        #expect(after["data_folder"] == nil)
+        #expect(after["pid"] as? Int == 42)
+    }
+
     @Test func aFileThatDoesNotReadIsNotReplaced() throws {
         let file = scratchFile()
         try FileManager.default.createDirectory(at: file.url.deletingLastPathComponent(), withIntermediateDirectories: true)

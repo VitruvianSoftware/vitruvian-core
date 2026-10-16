@@ -224,7 +224,8 @@ public struct DoorFile: Sendable {
     /// `onDisk`, with each of the record's keys that `change` changed set
     /// from `after` (removed when `after` has none). A key the change did
     /// not touch keeps what is on disk, even a value this version could not
-    /// read; a key that is not the record's is never touched.
+    /// read; a key that is not the record's is never touched. The
+    /// `extension` block follows the same rule, key by key.
     static func merge(_ after: [String: Any], changedFrom before: [String: Any], over onDisk: [String: Any]) -> [String: Any] {
         var out = onDisk
         if out["version"] == nil { out["version"] = after["version"] }
@@ -235,9 +236,15 @@ public struct DoorFile: Sendable {
             }
             if key == DoorRecord.CodingKeys.installedExtension.rawValue,
                let block = value as? [String: Any], let old = onDisk[key] as? [String: Any] {
-                // The block's own keys from the record; anything else in it stays.
-                var merged = old.filter { !extensionKeys.contains($0.key) }
-                for (k, v) in block { merged[k] = v }
+                // The same rule inside the block: a key the change touched is
+                // set from the record (removed when it has none); a key it did
+                // not touch, or one this version could not read, keeps what is
+                // on disk, as does anything that is not the block's.
+                let was = before[key] as? [String: Any] ?? [:]
+                var merged = old
+                for k in extensionKeys where !same(block[k], was[k]) {
+                    if let v = block[k] { merged[k] = v } else { merged.removeValue(forKey: k) }
+                }
                 out[key] = merged
             } else {
                 out[key] = value
