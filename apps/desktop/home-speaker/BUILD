@@ -122,8 +122,12 @@ genrule(
 # status, and a clean exit. Then end to end over the same JSON-RPC: the
 # island and all five settings sections drawn within the protocol's limits,
 # and changes read back from the settings and secrets files in the data
-# folder. Last, none of the app's files in the scratch home's .gemini. It
-# starts the real program (bin/tool, from :tool-folder below).
+# folder. Then none of the app's files in the scratch home's .gemini. Last,
+# in a second scratch home, the chat monitor started from settings with
+# Slack on and the extension chosen: the program must still answer seconds
+# later (1.19.0 crashed there), and `bin/tool --claude-stop-hook` must answer
+# `{}` and exit 0. It starts the real program (bin/tool, from :tool-folder
+# below).
 py_test(
     name = "tool_conformance_test",
     size = "medium",

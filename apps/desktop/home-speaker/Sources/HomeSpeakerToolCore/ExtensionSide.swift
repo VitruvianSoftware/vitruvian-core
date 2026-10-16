@@ -190,7 +190,10 @@ public enum ExtensionSide {
     }
 
     /// Runs `work` on the main actor, later: how the kit's thread reaches
-    /// the monitor, whose process keeps its main queue running.
+    /// the monitor. `assumeIsolated` holds because the tool's main thread
+    /// runs its run loop (`MainThreadLoop`), so main-queue blocks run on
+    /// the main thread; under `dispatchMain()` they ran on a worker thread
+    /// and this trapped (1.19.0).
     public static let onMain: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void = { work in
         DispatchQueue.main.async { MainActor.assumeIsolated { work() } }
     }

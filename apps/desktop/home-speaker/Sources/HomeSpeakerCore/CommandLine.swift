@@ -389,12 +389,13 @@ public enum HomeSpeakerCommandLine {
         exit(output.exitCode)
     }
 
-    /// Runs `body` off the main actor while the main queue is serviced, then
-    /// exits. A program's `@main` `main()`, or its top-level code, is
-    /// MainActor-isolated, so a plain `Task {}` there would inherit that
-    /// and deadlock against a blocking wait; the settings are MainActor-bound
-    /// too, so the main queue must keep running (`dispatchMain`) rather than
-    /// block on a semaphore.
+    /// Runs `body` off the main actor while the main thread services the
+    /// main queue, then exits. A program's `@main` `main()`, or its
+    /// top-level code, is MainActor-isolated, so a plain `Task {}` there
+    /// would inherit that and deadlock against a blocking wait; the settings
+    /// are MainActor-bound too, so the main thread must keep running its
+    /// run loop (`MainThreadLoop`) rather than block on a semaphore, or
+    /// leave the main queue to a worker thread as `dispatchMain()` does.
     static func runHeadless(
         timeout: TimeInterval,
         onTimeout: @escaping @Sendable () -> Void,
@@ -408,7 +409,7 @@ public enum HomeSpeakerCommandLine {
             onTimeout()
             exit(0)
         }
-        dispatchMain()
+        MainThreadLoop.run()
     }
 
     // MARK: - Each flag's outcome
