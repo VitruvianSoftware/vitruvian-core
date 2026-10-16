@@ -39,7 +39,12 @@ extension NotchPresentationRefreshContract {
 
         fixture.restingStatus = "Deploys: main is red"
         fixture.restingStatusChanges.send()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        // The island reads the change a turn of the main queue later; a
+        // busy runner can take longer than any fixed pause, so wait for it.
+        let heard = Date(timeIntervalSinceNow: 2)
+        while fixture.host?.activationTitle.hasSuffix("Deploys: main is red") != true, Date() < heard {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.005))
+        }
         suite.expect(fixture.host?.activationTitle.hasSuffix("Deploys: main is red") == true,
                      "the island hears a status change by itself and names its button again")
 
