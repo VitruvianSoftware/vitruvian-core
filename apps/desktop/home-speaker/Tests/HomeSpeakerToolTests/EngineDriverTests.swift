@@ -115,6 +115,17 @@ private final class StandInVolume: VolumeAndMuteControlling, @unchecked Sendable
     }
 }
 
+/// A speaker that notes in `events` when a job's work reaches it.
+private struct NotingVolume: VolumeAndMuteControlling {
+    let events: Calls<String>
+    func volume(of target: SpeakerDevice, structureId: String) async throws -> SpeakerVolume {
+        events.add("work")
+        return SpeakerVolume(percent: 40, muted: false, online: true)
+    }
+    func setVolume(_ percent: Int, on target: SpeakerDevice, structureId: String) async throws {}
+    func setMuted(_ muted: Bool, on target: SpeakerDevice, structureId: String) async throws {}
+}
+
 /// Two homes, one speaker each.
 private struct TwoHomes: HomeDiscovering {
     func listHomes() async throws -> [HomeStructure] {
@@ -388,6 +399,25 @@ final class EngineDriverTests: XCTestCase {
             XCTAssertEqual(given.all.count, 1, "\(example.job)")
             XCTAssertEqual(asked.all, example.seconds.map { [$0] } ?? [], "\(example.job)")
         }
+    }
+
+    func testTheClockIsSetBeforeTheWorkStarts() async throws {
+        // A job that answers at once must not be able to beat the clock
+        // being set up. The limit is slow to work out here, so work that
+        // started first would be seen to start first.
+        var rig = try rig()
+        let events = Calls<String>()
+        rig.parts.speaker = NotingVolume(events: events)
+        rig.parts.allowed = {
+            Thread.sleep(forTimeInterval: 0.1)
+            events.add("limit worked out")
+            return $0
+        }
+
+        let given = await answers(rig.driver, .volume)
+
+        XCTAssertEqual(given.all.count, 1)
+        XCTAssertEqual(events.all, ["limit worked out", "work"])
     }
 
     // MARK: --say

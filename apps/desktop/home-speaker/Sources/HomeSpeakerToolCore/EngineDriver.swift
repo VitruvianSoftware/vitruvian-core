@@ -140,13 +140,16 @@ public final class EngineDriver: SpeakerDriver, Sendable {
             let limit = await MainActor.run {
                 HomeSpeakerCommandLine.timeLimit(for: command, settings: { engine.config.config })
             }
+            // The clock starts before the work does, so work that answers at
+            // once cannot get ahead of it.
+            if let limit {
+                answer.give(limit.timedOut, after: parts.allowed(limit.seconds))
+            }
             let work = Task.detached {
                 let printed = await Self.output(of: job, engine: engine, door: door, history: history, parts: parts)
                 answer.give(printed)
             }
-            guard let limit else { return }
-            let seconds = parts.allowed(limit.seconds)
-            answer.give(limit.timedOut, after: seconds, stopping: work)
+            answer.stop(work)
         }
     }
 
@@ -246,6 +249,8 @@ private final class Answer: @unchecked Sendable {
     private let lock = NSLock()
     private var given = false
     private var timer: Task<Void, Never>?
+    private var work: Task<Void, Never>?
+    private var timedOut = false
     private let then: @Sendable (CLIOutput) -> Void
 
     init(_ then: @escaping @Sendable (CLIOutput) -> Void) {
@@ -269,8 +274,8 @@ private final class Answer: @unchecked Sendable {
     }
 
     /// After `seconds`, answers `timedOut` if nothing has answered, and asks
-    /// `work` to stop.
-    func give(_ timedOut: CLIOutput, after seconds: TimeInterval, stopping work: Task<Void, Never>) {
+    /// the work to stop (see `stop`).
+    func give(_ timedOut: CLIOutput, after seconds: TimeInterval) {
         lock.withLock {
             guard !given else { return }
             timer = Task.detached {
@@ -279,9 +284,27 @@ private final class Answer: @unchecked Sendable {
                 } catch {
                     return
                 }
-                if self.give(timedOut) { work.cancel() }
+                if self.give(timedOut) { self.stopTheWork() }
             }
         }
+    }
+
+    /// The work that answers, once it has been started after the clock.
+    /// Cancelled when time ran out first, even if that was before this call.
+    func stop(_ work: Task<Void, Never>) {
+        let cancelNow = lock.withLock { () -> Bool in
+            self.work = work
+            return timedOut
+        }
+        if cancelNow { work.cancel() }
+    }
+
+    private func stopTheWork() {
+        let work = lock.withLock { () -> Task<Void, Never>? in
+            timedOut = true
+            return self.work
+        }
+        work?.cancel()
     }
 }
 
