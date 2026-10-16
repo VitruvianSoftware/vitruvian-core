@@ -15,9 +15,6 @@
 /* The window's subtitle once the engine has been stopped. */
 "Stopped" = "Stopped";
 
-/* The placeholder in the main window once the engine is up. The inbox replaces it. */
-"Courier is running. Your chats will appear here." = "Courier is running. Your chats will appear here.";
-
 /* The main window while the engine starts or restarts. */
 "Starting Courier’s engine…" = "Starting Courier’s engine…";
 
@@ -32,3 +29,75 @@
 
 /* The main window when the engine is a different version from the app. */
 "This copy of Courier and its engine don’t match. Reinstall Courier to update it." = "This copy of Courier and its engine don’t match. Reinstall Courier to update it.";
+
+/* The menu of the inbox's keys, in the menu bar. */
+"Chat" = "Chat";
+
+/* Chat menu: opens the chat below the open one (⌘]). */
+"Next Chat" = "Next Chat";
+
+/* Chat menu: opens the chat above the open one (⌘[). */
+"Previous Chat" = "Previous Chat";
+
+/* Chat menu: opens the next chat that has unread messages (⌘U). */
+"Next Unread Chat" = "Next Unread Chat";
+
+/* Chat menu: marks the open chat read (⌘⇧U). Dimmed when it has no unread messages. */
+"Mark as Read" = "Mark as Read";
+
+/* Chat menu: mutes the open chat (⌘⇧M). */
+"Mute Chat" = "Mute Chat";
+
+/* Chat menu: unmutes the open chat when it is muted (⌘⇧M). */
+"Unmute Chat" = "Unmute Chat";
+
+/* The right-hand pane while no chat is open. */
+"Select a chat" = "Select a chat";
+
+/* The title of the window shown before any network is linked, and its button. */
+"Add a network" = "Add a network";
+
+/* Under the title of the window shown before any network is linked. */
+"Link WhatsApp, Signal, Telegram, Slack or Google Messages, and your chats appear here." = "Link WhatsApp, Signal, Telegram, Slack or Google Messages, and your chats appear here.";
+
+/* The inbox when the engine has no chats yet. */
+"No chats yet" = "No chats yet";
+
+/* A chat row's tooltip and accessibility label for the muted bell. */
+"Muted" = "Muted";
+
+/* A chat row's accessibility label for its unread count. The argument is the number. */
+"%lld unread" = "%lld unread";
+
+/* A chat row's preview when the newest message is the person's own. Keep the trailing space. */
+"You: " = "You: ";
+
+/* A chat row's preview label for a picture. */
+"Image" = "Image";
+
+/* A chat row's preview label for a video. */
+"Video" = "Video";
+
+/* A chat row's preview label for a voice message or other audio. */
+"Voice note" = "Voice note";
+
+/* A chat row's preview label for a file. */
+"File" = "File";
+
+/* A chat row's preview label for a sticker. */
+"Sticker" = "Sticker";
+
+/* Banner: the network ended the session. The argument is the network's name. */
+"You’re logged out of %@." = "You’re logged out of %@.";
+
+/* Banner: the network refused the saved sign-in. The argument is the network's name. */
+"%@ no longer accepts your sign-in." = "%@ no longer accepts your sign-in.";
+
+/* Banner: the engine could not start the network. The argument is the network's name; the engine's reason follows. */
+"%@ isn’t running." = "%@ isn’t running.";
+
+/* Banner button: signs in to the network again. */
+"Reconnect" = "Reconnect";
+
+/* Banner button: asks for what the network needs before it can start. */
+"Set up" = "Set up";

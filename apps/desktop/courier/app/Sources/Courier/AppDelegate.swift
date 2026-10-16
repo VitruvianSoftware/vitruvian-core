@@ -9,6 +9,7 @@ import CourierCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model: AppModel
+    let inbox: InboxModel
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launcher: FoundationProcessLauncher()
         )
         model = AppModel(supervisor: supervisor)
+        inbox = InboxModel(appModel: model)
         super.init()
     }
 

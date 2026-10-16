@@ -16,9 +16,13 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var accounts: [Account] = []
     /// The client of the engine that is up; nil while it is not.
     @Published public private(set) var client: EngineClient?
+    /// The chat the person has open. The inbox moves it, and the conversation and a clicked notification read it.
+    /// A reload never clears it: a chat that is not in the list for a moment is still the chat that is open.
+    @Published public var selectedRoomID: String?
 
     public let supervisor: EngineSupervisor
     private var hooks: [@MainActor (EngineClient) async -> Void] = []
+    private var changeHooks: [@MainActor (Change) -> Void] = []
     private var watcher: Task<Void, Never>?
     /// Reads and follows the connected engine: subscribes to its changes, reads everything, then re-reads as they
     /// say. A task of its own, so a slow read never holds up a state change.
@@ -32,6 +36,12 @@ public final class AppModel: ObservableObject {
     /// on resync.
     public func onConnect(_ hook: @escaping @MainActor (EngineClient) async -> Void) {
         hooks.append(hook)
+    }
+
+    /// Runs `hook` for each change the engine reports, except `resync`, which runs the `onConnect` hooks instead.
+    /// The hook runs on the main actor and must be quick: it should note what to read, not read it.
+    public func onChange(_ hook: @escaping @MainActor (Change) -> Void) {
+        changeHooks.append(hook)
     }
 
     public func start() {
@@ -77,10 +87,12 @@ public final class AppModel: ObservableObject {
         switch change {
         case .resync:
             await reload(client)
-        case .bridge:
+        case let .bridge(network):
             await reloadAccounts(client)
+            guard client === self.client else { return }
+            for hook in changeHooks { hook(.bridge(network: network)) }
         default:
-            break
+            for hook in changeHooks { hook(change) }
         }
     }
 
