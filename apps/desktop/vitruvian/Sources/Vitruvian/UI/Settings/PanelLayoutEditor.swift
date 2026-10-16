@@ -16,6 +16,9 @@ import VitruvianServices
 package struct PanelLayoutEditor: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
+    /// The Extensions tab shows by default once an extension has an island
+    /// page; the store bumps the registry when one is added or goes.
+    @ObservedObject private var tools = ToolRegistry.shared
     @AppStorage(Preferences.panelShowFanControl) private var showFanControl: Bool
     @AppStorage(Preferences.brightnessControlEnabled) private var brightnessEnabled: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -107,7 +110,7 @@ package struct PanelLayoutEditor: View {
 
     /// The tabs the panel would show right now, in order.
     private var visibleSections: [PanelSectionID] {
-        _ = visibilityChanges
+        _ = (visibilityChanges, tools.revision)
         return editableOrder.filter(PanelLayout.isVisibleInPanel)
     }
 
@@ -135,6 +138,7 @@ private extension PanelSectionID {
         case .controls: return text.sectionControls
         case .toggles: return text.sectionToggles
         case .wallpaper: return FeatureStrings.wallpaper(L10n.shared.language).panelDescription
+        case .extensions: return FeatureStrings.menuPanelExtensions(L10n.shared.language).sectionDescription
         }
     }
 }
