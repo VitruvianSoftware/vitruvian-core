@@ -12,12 +12,14 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `token <app-id> <key.pem> <inst-id>` | Mints a **1-hour** installation access token. |
 | `env <agent>` | **The one agents use.** Prints every export: token **and** git author identity. |
 | `login <agent>` | Token only. Not sufficient on its own — see below. |
+| `pr-create [--agent <agent>] [gh pr create args]` | **How agents open PRs.** Opens the PR as the agent app (default `wren`) with the `agent-fast-lane` label on at creation, so it skips the heavy PR tests; the merge queue still runs everything (#3418). Every other argument goes to `gh pr create` unchanged. The token is never printed; if it can't be minted, no PR is opened. |
 
 `permissions.tsv` records what each App is meant to be allowed to do, and
 `bazel run //tools/agent-app:permission-drift` checks GitHub against it (below).
 
 ```sh
 eval "$(bazel run //tools/agent-app -- env beacon)"   # what an agent runs
+bazel run //tools/agent-app -- pr-create --title "..." --body-file pr.md
 bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
 bazel test //tools/agent-app/...
 bazel run //tools/agent-app:permission-drift          # GitHub vs permissions.tsv

@@ -33,6 +33,8 @@
 #   bazel run //tools/agent-app -- token <app-id> <key.pem> <installation-id>
 #   bazel run //tools/agent-app -- env <agent>        # the one agents actually use
 #   bazel run //tools/agent-app -- login <agent>      # token only
+#   bazel run //tools/agent-app -- pr-create [--agent <agent>] [gh pr create args]
+#                                   # open a PR as the agent, in the fast lane
 #
 # See docs/guides/creating-an-agent-github-app.md for the SOP these implement,
 # and docs/guides/agent-github-identities.md for why per-agent Apps at all.
@@ -146,10 +148,21 @@ fi
 # not exist. BUILD_WORKSPACE_DIRECTORY is bazel's pointer back to the real tree;
 # same reason //tools/sync-env-secrets does it.
 if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
-  AGENT_KEY_DIR="${AGENT_KEY_DIR:-$BUILD_WORKSPACE_DIRECTORY/tools/sync-env-secrets/agent-keys}"
+  default_key_dir="$BUILD_WORKSPACE_DIRECTORY/tools/sync-env-secrets/agent-keys"
 else
-  AGENT_KEY_DIR="${AGENT_KEY_DIR:-$(dirname "${BASH_SOURCE[0]}")/../sync-env-secrets/agent-keys}"
+  default_key_dir="$(dirname "${BASH_SOURCE[0]}")/../sync-env-secrets/agent-keys"
 fi
+# A git worktree has no keys: they are gitignored and pulled into the main
+# checkout only. So when the default folder is missing, use the main
+# checkout's, found through git's shared directory. An AGENT_KEY_DIR the
+# caller set is always used as given.
+if [ -z "${AGENT_KEY_DIR:-}" ] && [ ! -d "$default_key_dir" ]; then
+  if common="$(git -C "$(dirname "$default_key_dir")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
+    [ -d "$(dirname "$common")/tools/sync-env-secrets/agent-keys" ]; then
+    default_key_dir="$(dirname "$common")/tools/sync-env-secrets/agent-keys"
+  fi
+fi
+AGENT_KEY_DIR="${AGENT_KEY_DIR:-$default_key_dir}"
 
 # cmd_login is the whole point of this tool for an agent: one argument, its own
 # name, and it gets a token for its OWN identity. The four-argument `token` form
@@ -203,6 +216,56 @@ cmd_env() {
   printf 'export GIT_COMMITTER_EMAIL=%s\n' "'${bot_id}+${slug}[bot]@users.noreply.github.com'"
 }
 
+# cmd_pr_create opens a pull request AS the agent app, in the fast lane:
+#
+#   bazel run //tools/agent-app -- pr-create --title "..." --body-file pr.md
+#   bazel run //tools/agent-app -- pr-create --agent beacon --title "..." ...
+#
+# Two things make a PR skip the heavy PR tests (#3418): it is opened by an
+# agent app, and it carries the agent-fast-lane label WHEN IT OPENS. A PR
+# opened with the machine owner's own gh login is neither, and a label added
+# later only counts from the next push. So this mints the agent's token, adds
+# the label (once: not again if the caller already passed it) and hands every
+# other argument to `gh pr create` unchanged. The merge queue still runs every
+# test before anything lands.
+#
+# The token goes to gh through its environment only: never printed, never in
+# argv. If it cannot be minted the PR is NOT opened, rather than opened as
+# whoever gh is logged in as, which would quietly skip the fast lane.
+FAST_LANE_LABEL="agent-fast-lane"
+
+cmd_pr_create() {
+  local agent="${AGENT_APP_AGENT:-wren}"
+  if [ "${1:-}" = --agent ]; then
+    [ -n "${2:-}" ] || die "usage: pr-create [--agent <agent>] [gh pr create args]"
+    agent="$2"
+    shift 2
+  fi
+
+  # Already labelled? --label X, --label=X, -l X, -lX; X may be a,b,c.
+  local arg prev="" labels has=0
+  for arg in "$@"; do
+    labels=""
+    case "$prev" in --label | -l) labels="$arg" ;; esac
+    case "$arg" in --label=*) labels="${arg#--label=}" ;; -l?*) labels="${arg#-l}" ;; esac
+    if [ -n "$labels" ] && [[ ",${labels// /}," == *",${FAST_LANE_LABEL},"* ]]; then
+      has=1
+    fi
+    prev="$arg"
+  done
+
+  local token
+  token="$(cmd_login "$agent")" && [ -n "$token" ] ||
+    die "could not mint a token for the $agent app; the PR was NOT opened"
+
+  local args=("$@")
+  [ "$has" = 1 ] || args+=(--label "$FAST_LANE_LABEL")
+  # bazel run starts in the runfiles tree; gh needs the caller's checkout to
+  # find the branch, and relative paths like --body-file are theirs.
+  cd "${BUILD_WORKING_DIRECTORY:-.}" || die "cannot enter ${BUILD_WORKING_DIRECTORY:-.}"
+  GH_TOKEN="$token" GITHUB_TOKEN="" exec "${GH_BIN:-gh}" pr create "${args[@]}"
+}
+
 main() {
   local cmd="${1:-}"
   [ -n "$cmd" ] || usage 1
@@ -214,6 +277,7 @@ main() {
     token) cmd_token "$@" ;;
     login) cmd_login "$@" ;;
     env) cmd_env "$@" ;;
+    pr-create) cmd_pr_create "$@" ;;
     -h | --help | help) usage 0 ;;
     *) die "unknown command: $cmd (try --help)" ;;
   esac
