@@ -1,0 +1,46 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "rpc",
+    srcs = [
+        "feed.go",
+        "methods.go",
+        "server.go",
+    ],
+    importpath = "github.com/VitruvianSoftware/courier/engine/internal/rpc",
+    visibility = ["//apps/desktop/courier/engine:__subpackages__"],
+    deps = [
+        "//apps/desktop/courier/engine/internal/actions",
+        "//apps/desktop/courier/engine/internal/engine",
+        "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/login",
+        "//apps/desktop/courier/engine/internal/media",
+        "//apps/desktop/courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
+        "@net_maunium_go_mautrix//id",
+    ],
+)
+
+go_test(
+    name = "rpc_test",
+    srcs = [
+        "conformance_test.go",
+        "server_test.go",
+    ],
+    # The protocol and its examples, which the conformance test holds the server to.
+    data = ["//apps/desktop/courier/protocol"],
+    embed = [":rpc"],
+    deps = [
+        "//apps/desktop/courier/engine/internal/actions",
+        "//apps/desktop/courier/engine/internal/engine",
+        "//apps/desktop/courier/engine/internal/fakenet",
+        "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/login",
+        "//apps/desktop/courier/engine/internal/media",
+        "//apps/desktop/courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
+        "@com_github_stretchr_testify//require",
+        "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//bridgev2/database",
+    ],
+)

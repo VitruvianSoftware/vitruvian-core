@@ -1,0 +1,15 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "message.discard",
+    "params": {
+      "event_id": "$1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "result": {}
+  }
+}

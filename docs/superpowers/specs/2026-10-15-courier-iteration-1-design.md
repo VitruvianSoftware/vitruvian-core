@@ -147,6 +147,13 @@ Reminders and scheduled sends are timers in the engine, so they fire with the wi
 
 ## 8. Before selling (recorded now, not built now)
 
+- **Built for strangers from the start (James, 2026-10-16):** even while James is the only user, setup, credentials and errors are designed for someone with no repo access. App-level credentials, such as Courier's own Telegram `api_id`/`api_hash`, are built in at packaging time from Bitwarden. Users are never asked for them, and they are never committed.
+- **Sold directly, not on the Mac App Store (decided 2026-10-16):** a Developer ID-signed, notarised app through the repo's desktop pipeline (`//tools/desktop-package`), held to App Store quality. Reasons, from what is publicly known (not a legal ruling):
+  - The App Store's terms are widely held to clash with GPL/AGPL code, which the bundled bridges and libsignal are; VLC was pulled over this in 2011.
+  - App Store guideline 5.2.2 requires permission from the third-party services an app uses, which these networks don't give to unofficial clients.
+  - The App Sandbox would constrain the bundled engine.
+
+  Beeper also ships outside the Mac App Store.
 - **Encryption at rest:** encrypt `courier.db` and the bridge databases with a Keychain-held key.
 - **Licensing:** the bundled bridges are AGPL-3.0. Selling is allowed, but buyers must be able to get the complete source. The repo is public under GPL-3.0, which is compatible.
 - **Branding:** no Beeper name, icons or assets anywhere. The interface copies behaviour, not artwork.

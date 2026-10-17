@@ -446,7 +446,7 @@ func TestLinkNetworkThatDidNotStart(t *testing.T) {
 	require.ErrorContains(t, err, "not running")
 }
 
-func TestStartNetworksCarriesOnPastAFailure(t *testing.T) {
+func TestStartCarriesOnPastAFailure(t *testing.T) {
 	ctx, dir := context.Background(), t.TempDir()
 	s, err := store.Open(filepath.Join(dir, "courier.db"))
 	require.NoError(t, err)
@@ -459,7 +459,7 @@ func TestStartNetworksCarriesOnPastAFailure(t *testing.T) {
 			return engine.Spec{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }}, nil
 		}},
 	}
-	eng, errs := startNetworks(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, nets, zerolog.Nop())
+	eng, errs := networks.Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, nets, zerolog.Nop())
 	defer eng.Stop()
 	require.Equal(t, []string{"fake"}, eng.Names(), "the network that could start runs")
 	require.Len(t, errs, 1)

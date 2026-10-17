@@ -1,0 +1,710 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package rpc
+
+// The conformance test holds the engine to apps/desktop/courier/protocol: protocol.json is the definition and
+// examples/*.json show each method and notification. Every example must fit the definition, and the engine,
+// running on the fake network, must answer each example's request with a response of the same shape: the same
+// keys and the same JSON types all the way down. Values are not compared (IDs, times and paths differ from run to
+// run), except the envelope's id and an error's code and message, which are fixed.
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
+)
+
+// protocolDir finds apps/desktop/courier/protocol: in the test's runfiles under Bazel, and by its place in the
+// source tree under plain go test (which runs in this package's directory).
+func protocolDir(t *testing.T) string {
+	t.Helper()
+	const rel = "apps/desktop/courier/protocol"
+	var tried []string
+	if srcdir := os.Getenv("TEST_SRCDIR"); srcdir != "" {
+		ws := os.Getenv("TEST_WORKSPACE")
+		if ws == "" {
+			ws = "_main"
+		}
+		tried = append(tried, filepath.Join(srcdir, ws, rel), filepath.Join(srcdir, rel))
+	}
+	tried = append(tried, filepath.Join("..", "..", "..", "protocol"))
+	for _, dir := range tried {
+		if _, err := os.Stat(filepath.Join(dir, "protocol.json")); err == nil {
+			return dir
+		}
+	}
+	t.Fatalf("protocol.json not found; tried %v", tried)
+	return ""
+}
+
+type fieldSpec struct {
+	Type   string   `json:"type"`
+	Values []string `json:"values"`
+}
+
+type typeSpec struct {
+	Fields map[string]fieldSpec `json:"fields"`
+}
+
+type methodSpec struct {
+	Params string `json:"params"`
+	Result string `json:"result"`
+	Errors []int  `json:"errors"`
+}
+
+type errorSpec struct {
+	Code    int    `json:"code"`
+	Name    string `json:"name"`
+	Message string `json:"message"`
+	Data    string `json:"data"`
+}
+
+type protocolSpec struct {
+	Protocol  int `json:"protocol"`
+	Transport struct {
+		MaxFrameBytes int `json:"max_frame_bytes"`
+	} `json:"transport"`
+	Types         map[string]typeSpec   `json:"types"`
+	Methods       map[string]methodSpec `json:"methods"`
+	Notifications map[string]struct {
+		Params string `json:"params"`
+	} `json:"notifications"`
+	Errors struct {
+		Codes []errorSpec `json:"codes"`
+	} `json:"errors"`
+}
+
+func (p *protocolSpec) errorByCode(code int) (errorSpec, bool) {
+	for _, e := range p.Errors.Codes {
+		if e.Code == code {
+			return e, true
+		}
+	}
+	return errorSpec{}, false
+}
+
+// anyMethodCodes are the codes any request can get, whatever its method lists.
+var anyMethodCodes = []int{-32700, -32600, -32601, -32602, -32603, -32002}
+
+type example struct {
+	name         string
+	Request      map[string]any `json:"request"`
+	Response     map[string]any `json:"response"`
+	Notification map[string]any `json:"notification"`
+}
+
+func loadProtocol(t *testing.T) (*protocolSpec, []example) {
+	t.Helper()
+	dir := protocolDir(t)
+	raw, err := os.ReadFile(filepath.Join(dir, "protocol.json"))
+	require.NoError(t, err)
+	var p protocolSpec
+	require.NoError(t, json.Unmarshal(raw, &p))
+	files, err := filepath.Glob(filepath.Join(dir, "examples", "*.json"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	sort.Strings(files)
+	var exs []example
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		require.NoError(t, err)
+		var ex example
+		require.NoError(t, json.Unmarshal(b, &ex), f)
+		ex.name = strings.TrimSuffix(filepath.Base(f), ".json")
+		require.True(t, (ex.Request != nil && ex.Response != nil) != (ex.Notification != nil),
+			"%s: an example is a request and its response, or one notification", f)
+		exs = append(exs, ex)
+	}
+	return &p, exs
+}
+
+// typeExpr is one parsed type from the protocol's type grammar.
+type typeExpr struct {
+	optional, nullable bool
+	list               bool
+	mapOf              bool
+	base               string // string, int, bool, object, or a type name
+}
+
+func parseType(s string) typeExpr {
+	var e typeExpr
+	if e.optional = strings.HasSuffix(s, "?"); e.optional {
+		s = strings.TrimSuffix(s, "?")
+	}
+	if e.nullable = strings.HasSuffix(s, "|null"); e.nullable {
+		s = strings.TrimSuffix(s, "|null")
+	}
+	if e.list = strings.HasSuffix(s, "[]"); e.list {
+		s = strings.TrimSuffix(s, "[]")
+	}
+	if inner, ok := strings.CutPrefix(s, "map<"); ok {
+		e.mapOf, s = true, strings.TrimSuffix(inner, ">")
+	}
+	e.base = s
+	return e
+}
+
+// check says whether v fits the type expression (optional is the caller's business: v is present here).
+func (p *protocolSpec) check(v any, typ string, values []string, path string) error {
+	e := parseType(typ)
+	if v == nil {
+		if e.nullable {
+			return nil
+		}
+		return fmt.Errorf("%s: null where %s is wanted", path, typ)
+	}
+	if e.list {
+		arr, ok := v.([]any)
+		if !ok {
+			return fmt.Errorf("%s: want a list of %s, got %T", path, e.base, v)
+		}
+		for i, el := range arr {
+			if err := p.check(el, e.base, values, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if e.mapOf {
+		obj, ok := v.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: want an object of %s, got %T", path, e.base, v)
+		}
+		for k, el := range obj {
+			if err := p.check(el, e.base, nil, path+"."+k); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	switch e.base {
+	case "string":
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("%s: want a string, got %T", path, v)
+		}
+		if values != nil && !slices.Contains(values, s) {
+			return fmt.Errorf("%s: %q is not one of %v", path, s, values)
+		}
+	case "int":
+		n, ok := v.(float64)
+		if !ok || n != float64(int64(n)) {
+			return fmt.Errorf("%s: want an int, got %v", path, v)
+		}
+	case "bool":
+		if _, ok := v.(bool); !ok {
+			return fmt.Errorf("%s: want a bool, got %T", path, v)
+		}
+	case "object":
+		if _, ok := v.(map[string]any); !ok {
+			return fmt.Errorf("%s: want an object, got %T", path, v)
+		}
+	default:
+		ts, ok := p.Types[e.base]
+		if !ok {
+			return fmt.Errorf("%s: unknown type %s", path, e.base)
+		}
+		obj, ok := v.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: want a %s object, got %T", path, e.base, v)
+		}
+		for k := range obj {
+			if _, ok := ts.Fields[k]; !ok {
+				return fmt.Errorf("%s: %s has no field %q", path, e.base, k)
+			}
+		}
+		for name, f := range ts.Fields {
+			fv, present := obj[name]
+			if !present {
+				if parseType(f.Type).optional {
+					continue
+				}
+				return fmt.Errorf("%s: %s needs %q", path, e.base, name)
+			}
+			if err := p.check(fv, f.Type, f.Values, path+"."+name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkExample holds one example to the definition.
+func (p *protocolSpec) checkExample(ex example) error {
+	if ex.Notification != nil {
+		n := ex.Notification
+		if n["jsonrpc"] != "2.0" {
+			return fmt.Errorf("jsonrpc must be 2.0")
+		}
+		if _, ok := n["id"]; ok {
+			return fmt.Errorf("a notification has no id")
+		}
+		method, _ := n["method"].(string)
+		spec, ok := p.Notifications[method]
+		if !ok {
+			return fmt.Errorf("no notification %q in protocol.json", method)
+		}
+		return p.check(n["params"], spec.Params, nil, method+".params")
+	}
+	req, resp := ex.Request, ex.Response
+	if req["jsonrpc"] != "2.0" || resp["jsonrpc"] != "2.0" {
+		return fmt.Errorf("jsonrpc must be 2.0")
+	}
+	if req["id"] == nil || req["id"] != resp["id"] {
+		return fmt.Errorf("the response must carry the request's id")
+	}
+	method, _ := req["method"].(string)
+	spec, known := p.Methods[method]
+	params, hasParams := req["params"]
+	if !hasParams {
+		params = map[string]any{}
+	}
+	if known {
+		if err := p.check(params, spec.Params, nil, method+".params"); err != nil {
+			return err
+		}
+	}
+	_, hasResult := resp["result"]
+	rawErr, hasError := resp["error"]
+	switch {
+	case hasResult == hasError:
+		return fmt.Errorf("a response has a result or an error, not both or neither")
+	case hasResult:
+		if !known {
+			return fmt.Errorf("a result for %q, which protocol.json does not define", method)
+		}
+		return p.check(resp["result"], spec.Result, nil, method+".result")
+	}
+	e, ok := rawErr.(map[string]any)
+	if !ok {
+		return fmt.Errorf("error must be an object")
+	}
+	for k := range e {
+		if k != "code" && k != "message" && k != "data" {
+			return fmt.Errorf("error has an unknown key %q", k)
+		}
+	}
+	code, _ := e["code"].(float64)
+	es, ok := p.errorByCode(int(code))
+	if !ok {
+		return fmt.Errorf("error code %v is not in protocol.json", e["code"])
+	}
+	if e["message"] != es.Message {
+		return fmt.Errorf("error %d's message is %q, not %q", es.Code, es.Message, e["message"])
+	}
+	allowed := append(slices.Clone(anyMethodCodes), spec.Errors...)
+	if method == "hello" {
+		allowed = append(allowed, -32001)
+	}
+	if !slices.Contains(allowed, es.Code) {
+		return fmt.Errorf("%s does not list error %d", method, es.Code)
+	}
+	data, hasData := e["data"]
+	switch {
+	case es.Data == "" && hasData:
+		return fmt.Errorf("error %d carries no data", es.Code)
+	case es.Data != "" && !hasData:
+		return fmt.Errorf("error %d needs data", es.Code)
+	case hasData:
+		return p.check(data, es.Data, nil, "error.data")
+	}
+	return nil
+}
+
+func TestEveryExampleFitsTheProtocol(t *testing.T) {
+	p, exs := loadProtocol(t)
+	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
+	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
+	for _, ex := range exs {
+		require.NoError(t, p.checkExample(ex), ex.name)
+	}
+
+	// Every method and notification has an example, and so does every kind of change.
+	seen := map[string]bool{}
+	kinds := map[string]bool{}
+	for _, ex := range exs {
+		if ex.Notification != nil {
+			seen[ex.Notification["method"].(string)] = true
+			kinds[ex.Notification["params"].(map[string]any)["kind"].(string)] = true
+			continue
+		}
+		if _, ok := ex.Response["result"]; ok {
+			seen[ex.Request["method"].(string)] = true
+		}
+	}
+	for m := range p.Methods {
+		require.True(t, seen[m], "method %s has no example of it succeeding", m)
+	}
+	for n := range p.Notifications {
+		require.True(t, seen[n], "notification %s has no example", n)
+	}
+	for _, k := range p.Types["Changed"].Fields["kind"].Values {
+		require.True(t, kinds[k], "changed kind %s has no example", k)
+	}
+	for _, name := range []string{"hello-protocol-mismatch", "message.send-not-linked"} {
+		require.True(t, slices.ContainsFunc(exs, func(ex example) bool { return ex.name == name }), "missing example %s", name)
+	}
+}
+
+func TestServerSpeaksExactlyTheProtocolsMethods(t *testing.T) {
+	p, _ := loadProtocol(t)
+	var defined, served []string
+	for m := range p.Methods {
+		defined = append(defined, m)
+	}
+	served = append(served, "hello") // answered by the connection itself
+	for m := range methods {
+		served = append(served, m)
+	}
+	require.ElementsMatch(t, defined, served)
+}
+
+func TestErrorTableMatchesTheProtocol(t *testing.T) {
+	p, _ := loadProtocol(t)
+	got := map[int]string{}
+	for code, msg := range errorMessages {
+		got[code] = msg
+	}
+	want := map[int]string{}
+	for _, e := range p.Errors.Codes {
+		want[e.Code] = e.Message
+	}
+	require.Equal(t, want, got)
+}
+
+// sameShape compares a live value to an example's: the same JSON types, the same keys in every object, and
+// lists alike element by element (or, when their lengths differ, every live element like the example's first).
+// A field whose type is object (an event's content) is only checked to be an object.
+func (p *protocolSpec) sameShape(want, got any, typ, path string) error {
+	e := parseType(typ)
+	if want == nil || got == nil {
+		if want == nil && got == nil {
+			return nil
+		}
+		return fmt.Errorf("%s: example has %v, engine sent %v", path, want, got)
+	}
+	switch w := want.(type) {
+	case []any:
+		g, ok := got.([]any)
+		if !ok {
+			return fmt.Errorf("%s: want a list, got %T", path, got)
+		}
+		if (len(w) == 0) != (len(g) == 0) {
+			return fmt.Errorf("%s: example has %d items, engine sent %d", path, len(w), len(g))
+		}
+		for i := range g {
+			wi := w[0]
+			if len(w) == len(g) {
+				wi = w[i]
+			}
+			if err := p.sameShape(wi, g[i], e.base, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]any:
+		g, ok := got.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: want an object, got %T", path, got)
+		}
+		if e.base == "object" && !e.list {
+			return nil
+		}
+		var wk, gk []string
+		for k := range w {
+			wk = append(wk, k)
+		}
+		for k := range g {
+			gk = append(gk, k)
+		}
+		sort.Strings(wk)
+		sort.Strings(gk)
+		if !slices.Equal(wk, gk) {
+			return fmt.Errorf("%s: example has keys %v, engine sent %v", path, wk, gk)
+		}
+		fields := p.Types[e.base].Fields
+		for k := range w {
+			ft := ""
+			if f, ok := fields[k]; ok {
+				ft = f.Type
+			} else if e.mapOf {
+				ft = e.base
+			}
+			if err := p.sameShape(w[k], g[k], ft, path+"."+k); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		if fmt.Sprintf("%T", want) != fmt.Sprintf("%T", got) {
+			return fmt.Errorf("%s: example has a %T, engine sent a %T (%v)", path, want, got, got)
+		}
+		return nil
+	}
+}
+
+// sameResponse compares the engine's response to the example's: the envelope exactly (id, error code and
+// message), the rest by shape.
+func (p *protocolSpec) sameResponse(method string, want, got map[string]any) error {
+	var wk, gk []string
+	for k := range want {
+		wk = append(wk, k)
+	}
+	for k := range got {
+		gk = append(gk, k)
+	}
+	sort.Strings(wk)
+	sort.Strings(gk)
+	if !slices.Equal(wk, gk) {
+		return fmt.Errorf("example's response has %v, engine sent %v", wk, gk)
+	}
+	if fmt.Sprint(want["id"]) != fmt.Sprint(got["id"]) {
+		return fmt.Errorf("id: want %v, got %v", want["id"], got["id"])
+	}
+	if we, ok := want["error"].(map[string]any); ok {
+		ge, _ := got["error"].(map[string]any)
+		if we["code"] != ge["code"] || we["message"] != ge["message"] {
+			return fmt.Errorf("error: want %v %q, got %v %q", we["code"], we["message"], ge["code"], ge["message"])
+		}
+		es, _ := p.errorByCode(int(we["code"].(float64)))
+		if (we["data"] == nil) != (ge["data"] == nil) {
+			return fmt.Errorf("error data: want %v, got %v", we["data"], ge["data"])
+		}
+		if we["data"] != nil {
+			return p.sameShape(we["data"], ge["data"], es.Data, "error.data")
+		}
+		return nil
+	}
+	return p.sameShape(want["result"], got["result"], p.Methods[method].Result, method+".result")
+}
+
+// rawCall sends one request line exactly as given and returns the decoded answer.
+func (c *client) rawCall(req map[string]any) map[string]any {
+	c.t.Helper()
+	b, err := json.Marshal(req)
+	require.NoError(c.t, err)
+	id, err := json.Marshal(req["id"])
+	require.NoError(c.t, err)
+	ch := make(chan message, 1)
+	c.mu.Lock()
+	c.wait[string(id)] = ch
+	c.mu.Unlock()
+	c.writeLine(b)
+	m := c.answer(ch)
+	var out map[string]any
+	require.NoError(c.t, json.Unmarshal(m.raw, &out))
+	return out
+}
+
+func TestEveryExampleRoundTrips(t *testing.T) {
+	p, exs := loadProtocol(t)
+	for _, ex := range exs {
+		t.Run(ex.name, func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			c := dial(t, w.path)
+			if ex.Notification != nil {
+				c.hello()
+				want := ex.Notification["params"].(map[string]any)
+				got := triggerNotification(t, w, c, ex.name)
+				var gotMap map[string]any
+				b, err := json.Marshal(got)
+				require.NoError(t, err)
+				require.NoError(t, json.Unmarshal(b, &gotMap))
+				require.Equal(t, want["kind"], gotMap["kind"])
+				require.NoError(t, p.check(gotMap, "Changed", nil, "changed.params"), "the live notification fits protocol.json")
+				require.NoError(t, p.sameShape(want, gotMap, "Changed", "changed.params"))
+				return
+			}
+			req := deepCopy(t, ex.Request)
+			params, _ := req["params"].(map[string]any)
+			prepare(t, w, ex.name, params)
+			req = deepCopy(t, req) // as it goes on the wire
+			method := req["method"].(string)
+			wantErr, _ := ex.Response["error"].(map[string]any)
+			code, _ := wantErr["code"].(float64)
+			if method != "hello" && code != -32002 {
+				c.hello()
+			}
+			got := c.rawCall(req)
+			require.NoError(t, p.checkExample(example{Request: req, Response: got}),
+				"the live response fits protocol.json (types, required fields, values): %v", got)
+			require.NoError(t, p.sameResponse(method, ex.Response, got), "engine sent %v", got)
+		})
+	}
+}
+
+func deepCopy(t *testing.T, v map[string]any) map[string]any {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(b, &out))
+	return out
+}
+
+// prepare sets up the world for one example and points its params at the world's own IDs, files and sign-ins
+// (the example's are made up). Every example is named here, so a new one has to say what it needs.
+func prepare(t *testing.T, w *world, name string, params map[string]any) {
+	t.Helper()
+	ctx := context.Background()
+	failed := func() string {
+		id := string(ids.RandomEventID())
+		_, err := w.s.InsertEvent(ctx, store.Event{
+			RoomID: w.room, EventID: id, Sender: string(ids.Me), Type: "m.room.message",
+			Content: json.RawMessage(`{"msgtype":"m.text","body":"did not go"}`), TS: time.Now(),
+			Status: "failed", StatusReason: "the network refused it",
+		})
+		require.NoError(t, err)
+		return id
+	}
+	script := func(steps ...*bridgev2.LoginStep) { w.sig.Script = &fakenet.ScriptedLogin{Steps: steps} }
+	startSignal := func() string {
+		step, err := w.d.Start(ctx, "signal", fakenet.ScriptFlow)
+		require.NoError(t, err)
+		return step.LoginID
+	}
+	switch name {
+	case "hello", "hello-protocol-mismatch", "hello-required", "inbox.list", "login.wait-unknown":
+	case "accounts.list":
+		require.NoError(t, w.s.SetBridgeState(ctx, "whatsapp",
+			json.RawMessage(`{"state_event":"CONNECTED","timestamp":1760600000,"ttl":3600,"remote_name":"Test Account"}`)))
+	case "method-not-found", "invalid-params", "room.events", "room.markRead", "room.setMuted":
+		params["room_id"] = w.room
+	case "room.events-older":
+		_, before, err := w.s.EventsBefore(ctx, w.room, nil, 2)
+		require.NoError(t, err)
+		require.NotNil(t, before)
+		params["room_id"] = w.room
+		params["before"] = map[string]any{"ts": before.TS.UnixMilli(), "seq": before.Seq}
+	case "message.send":
+		params["room_id"], params["reply_to"] = w.room, w.events[2]
+	case "message.send-not-linked":
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!unlinked:courier.local", Network: "signal", Name: "Not linked"}))
+		params["room_id"] = "!unlinked:courier.local"
+	case "message.sendFile":
+		path := filepath.Join(t.TempDir(), "example.png")
+		require.NoError(t, os.WriteFile(path, []byte("\x89PNG\r\n\x1a\nnot really a picture"), 0o600))
+		params["room_id"], params["path"] = w.room, path
+	case "message.react":
+		params["room_id"], params["event_id"] = w.room, w.events[2]
+	case "message.retry", "message.discard":
+		params["event_id"] = failed()
+	case "message.retry-not-failed":
+		params["event_id"] = w.events[0]
+	case "login.start":
+		script(qrStep(), completeStep())
+		params["flow"] = fakenet.ScriptFlow
+	case "login.start-cookies":
+		script(cookiesStep())
+		params["network"], params["flow"] = "signal", fakenet.ScriptFlow
+	case "login.start-user-input":
+		script(threeFieldStep())
+		params["network"], params["flow"] = "signal", fakenet.ScriptFlow
+	case "login.start-in-progress":
+		script(qrStep())
+		startSignal()
+		params["flow"] = fakenet.ScriptFlow
+	case "login.start-already-linked":
+		params["flow"] = fakenet.ScriptFlow
+	case "login.submit", "login.submit-bad-value":
+		script(threeFieldStep(), completeStep())
+		params["login_id"] = startSignal()
+	case "login.wait":
+		script(qrStep(), completeStep())
+		params["login_id"] = startSignal()
+	case "login.cancel":
+		script(qrStep())
+		params["login_id"] = startSignal()
+	default:
+		t.Fatalf("example %s has no setup in prepare: add one", name)
+	}
+}
+
+// triggerNotification makes the change one notification example shows and returns the engine's notification.
+func triggerNotification(t *testing.T, w *world, c *client, name string) changed {
+	t.Helper()
+	ctx := context.Background()
+	switch name {
+	case "changed-event":
+		id := string(ids.RandomEventID())
+		_, err := w.s.InsertEvent(ctx, store.Event{
+			RoomID: w.room, EventID: id, Sender: "@whatsapp_contact:courier.local",
+			Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"new"}`), TS: time.Now(), Status: "sent",
+		})
+		require.NoError(t, err)
+		return c.changed(func(ch changed) bool { return ch.Kind == "event" && ch.EventID == id })
+	case "changed-status":
+		require.NoError(t, w.s.SetStatus(ctx, w.events[0], "sent", ""))
+		return c.changed(func(ch changed) bool { return ch.Kind == "status" && ch.EventID == w.events[0] })
+	case "changed-read":
+		require.NoError(t, w.s.MarkReadLocal(ctx, w.room, w.events[2], time.Now()))
+		return c.changed(func(ch changed) bool { return ch.Kind == "read" && ch.RoomID == w.room })
+	case "changed-room":
+		require.NoError(t, w.s.SetMuted(ctx, w.room, true))
+		return c.changed(func(ch changed) bool { return ch.Kind == "room" && ch.RoomID == w.room })
+	case "changed-names":
+		n := "Someone"
+		require.NoError(t, w.s.SetProfile(ctx, "@whatsapp_someone:courier.local", &n, nil))
+		return c.changed(func(ch changed) bool { return ch.Kind == "room" && ch.RoomID == "" })
+	case "changed-bridge":
+		require.NoError(t, w.s.SetBridgeState(ctx, "conformance", json.RawMessage(`{"state_event":"CONNECTED"}`)))
+		return c.changed(func(ch changed) bool { return ch.Kind == "bridge" && ch.Network == "conformance" })
+	case "changed-resync":
+		conn, r := rawHello(t, w.path)
+		o := overflow(t, w.s, conn, r)
+		requireToldToResync(t, o)
+		var ch changed
+		require.NoError(t, json.Unmarshal(o.resyncs[len(o.resyncs)-1], &ch))
+		return ch
+	}
+	t.Fatalf("notification example %s has no trigger: add one", name)
+	return changed{}
+}
+
+func cookiesStep() *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeCookies, StepID: "fi.mau.slack.cookies", Instructions: "Sign in to your workspace.",
+		CookiesParams: &bridgev2.LoginCookiesParams{
+			URL: "https://example.slack.test/signin", UserAgent: "Example/1.0",
+			WaitForURLPattern: `^https://app\.slack\.test/client/`, ExtractJS: "(async () => ({}))()",
+			Fields: []bridgev2.LoginCookieField{
+				{ID: "d", Required: true, Pattern: "^xoxd-", Sources: []bridgev2.LoginCookieFieldSource{
+					{Type: bridgev2.LoginCookieTypeCookie, Name: "d", CookieDomain: ".slack.test"},
+				}},
+				{ID: "token", Required: true, Sources: []bridgev2.LoginCookieFieldSource{
+					{Type: bridgev2.LoginCookieTypeSpecial, Name: "token"},
+				}},
+			},
+		},
+	}
+}
+
+func threeFieldStep() *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeUserInput, StepID: "fi.mau.telegram.phone", Instructions: "Enter your details.",
+		UserInputParams: &bridgev2.LoginUserInputParams{Fields: []bridgev2.LoginInputDataField{
+			{Type: bridgev2.LoginInputFieldTypeUsername, ID: "username", Name: "Username", Description: "The name you sign in with"},
+			{Type: bridgev2.LoginInputFieldType2FACode, ID: "code", Name: "Code", Description: "The code the app shows", Pattern: "^[0-9]{6}$"},
+			{
+				Type: bridgev2.LoginInputFieldTypeSelect, ID: "server", Name: "Server", Description: "Which server to use",
+				Options: []string{"main", "test"}, DefaultValue: "main",
+			},
+		}},
+	}
+}

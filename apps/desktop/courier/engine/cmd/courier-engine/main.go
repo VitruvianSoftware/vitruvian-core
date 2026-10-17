@@ -1,0 +1,281 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// courier-engine is the helper the Courier app runs: it starts every network's bridge over one local store and
+// serves the app protocol on a Unix socket in the data directory.
+//
+// Standard output carries exactly one line, once the engine is serving:
+//
+//	{"ready":true,"socket":"/path/to/engine.sock","protocol":1}
+//
+// Standard error carries warnings and errors as JSON lines; nothing is written to a log file, because a bridge's
+// error can quote what was submitted. Exit codes: 0 stopped cleanly, 2 usage, 3 another engine holds the data
+// directory, 1 anything else.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"io/fs"
+	"net"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	"github.com/rs/zerolog"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/login"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/networks"
+	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
+	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
+)
+
+// version is the engine's version, sent in hello. A build stamps it with Bazel's x_defs ("main.version").
+var version = "dev"
+
+const usage = "usage: courier-engine --data DIR [--parent-fd N]"
+
+const (
+	exitUsage  = 2
+	exitLocked = 3
+	exitFailed = 1
+)
+
+// socketName is the socket's name inside the data directory.
+const socketName = "engine.sock"
+
+// maxSocketPath is the longest socket path that fits: macOS's sun_path is 104 bytes, one of them the NUL.
+const maxSocketPath = 103
+
+// serveStopWait bounds how long shutdown waits for requests in flight (a send waiting on a phone, say).
+const serveStopWait = 5 * time.Second
+
+type config struct {
+	data   string   // absolute
+	parent *os.File // the inherited descriptor to watch; nil: no watchdog
+}
+
+func main() {
+	os.Exit(realMain(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func realMain(argv []string, stdout, stderr io.Writer) int {
+	cfg, err := parseArgs(argv)
+	if err != nil {
+		if !errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(stderr, err)
+		}
+		fmt.Fprintln(stderr, usage)
+		return exitUsage
+	}
+	if err = run(cfg, stdout, stderr); err != nil {
+		fmt.Fprintln(stderr, "courier-engine:", err)
+		if errors.Is(err, datadir.ErrLocked) {
+			return exitLocked
+		}
+		return exitFailed
+	}
+	return 0
+}
+
+func parseArgs(argv []string) (config, error) {
+	fs := flag.NewFlagSet("courier-engine", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	data := fs.String("data", "", "data directory")
+	parentFD := fs.Int("parent-fd", -1, "inherited file descriptor; the engine exits when it reaches end of file")
+	if err := fs.Parse(argv); err != nil {
+		return config{}, err
+	}
+	if fs.NArg() > 0 {
+		return config{}, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	if *data == "" {
+		return config{}, errors.New("--data DIR is required")
+	}
+	abs, err := filepath.Abs(*data)
+	if err != nil {
+		return config{}, err
+	}
+	cfg := config{data: abs}
+	set := false
+	fs.Visit(func(f *flag.Flag) { set = set || f.Name == "parent-fd" })
+	if set {
+		if cfg.parent, err = openParentFD(*parentFD); err != nil {
+			return config{}, err
+		}
+	}
+	return cfg, nil
+}
+
+// openParentFD returns the inherited descriptor n, or an error if n is not one the engine may watch.
+func openParentFD(n int) (*os.File, error) {
+	if n < 0 {
+		return nil, fmt.Errorf("--parent-fd %d: not a file descriptor", n)
+	}
+	if n == 1 || n == 2 {
+		return nil, fmt.Errorf("--parent-fd %d: that is the engine's own output", n)
+	}
+	f := os.NewFile(uintptr(n), "parent")
+	if _, err := f.Stat(); err != nil {
+		return nil, fmt.Errorf("--parent-fd %d: not an open file descriptor", n)
+	}
+	syscall.CloseOnExec(n) // nothing the engine starts may keep the pipe open
+	return f, nil
+}
+
+type readyLine struct {
+	Ready    bool   `json:"ready"`
+	Socket   string `json:"socket"`
+	Protocol int    `json:"protocol"`
+}
+
+func run(cfg config, stdout, stderr io.Writer) error {
+	sock := filepath.Join(cfg.data, socketName)
+	if len(sock) > maxSocketPath {
+		return fmt.Errorf("the socket path %s is %d bytes, and a Unix socket path can be at most %d "+
+			"(macOS's sun_path is 104 bytes, the last for a terminating NUL): use a shorter --data directory",
+			sock, len(sock), maxSocketPath)
+	}
+
+	// From here a SIGTERM or SIGINT, or the app going away, ends the run cleanly, even mid-start-up.
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stopSignals()
+	ctx, cancel := context.WithCancel(sigCtx)
+	defer cancel()
+	if cfg.parent != nil {
+		go func() {
+			_, _ = io.Copy(io.Discard, cfg.parent) // returns at end of file or on error: the app is gone
+			cancel()
+		}()
+	}
+	go func() {
+		// After the first signal the default handler takes the next, so a second Ctrl-C ends a stuck shutdown.
+		<-ctx.Done()
+		stopSignals()
+	}()
+
+	if err := sqlite.PrivateDir(cfg.data); err != nil {
+		return err
+	}
+	unlock, err := datadir.Lock(cfg.data)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	// Only now, holding the lock, is the socket ours to remove: no other engine can be using it.
+	if err = removeStaleSocket(sock); err != nil {
+		return err
+	}
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", sock, err)
+	}
+	defer os.Remove(sock)
+	defer ln.Close()
+	if err = os.Chmod(sock, 0o600); err != nil {
+		return fmt.Errorf("secure %s: %w", sock, err)
+	}
+
+	log := zerolog.New(stderr).Level(zerolog.WarnLevel).With().Timestamp().Logger()
+	s, err := store.Open(filepath.Join(cfg.data, "courier.db"))
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	// Sends the last engine was still waiting on when it stopped: it never heard back, and the bridges forgot them.
+	// They become failed ("may have been sent") for the person to Retry or Delete; nothing is sent again unasked.
+	// This is safe only here, holding the data directory's lock, before any bridge or client is running.
+	if _, err = s.FailInterruptedSends(context.Background()); err != nil {
+		return fmt.Errorf("mark interrupted sends: %w", err)
+	}
+	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
+
+	// The bridges must outlive the signal that stops us: they are stopped below, after the server has drained.
+	all := networks.All()
+	eng, startErrs := networks.Start(context.Background(), cfg.data, s, m, all, log)
+	defer eng.Stop()
+	if ctx.Err() != nil {
+		return nil // told to stop while the networks were starting
+	}
+
+	infos := make([]rpc.NetworkInfo, 0, len(all))
+	for _, n := range all {
+		infos = append(infos, rpc.NetworkInfo{Name: n.Name, DisplayName: n.DisplayName, Flows: n.Flows})
+	}
+	deps := rpc.Deps{
+		Store:   s,
+		Engine:  eng,
+		Actions: actions.New(eng, s, m),
+		Login: login.NewDriver(eng, s, func(name string) ([]string, bool) {
+			n, ok := networks.Get(name)
+			return n.Flows, ok
+		}),
+		Media:      m,
+		Networks:   infos,
+		NotStarted: networks.NotStarted(startErrs),
+		Version:    version,
+		Log:        log,
+	}
+
+	served := make(chan struct{})
+	var serveErr error
+	go func() {
+		defer close(served)
+		serveErr = rpc.Serve(ctx, ln, deps)
+	}()
+	if err = json.NewEncoder(stdout).Encode(readyLine{Ready: true, Socket: sock, Protocol: rpc.Protocol}); err != nil {
+		cancel()
+		<-served
+		return fmt.Errorf("write the ready line: %w", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		if !waitBounded(served, serveStopWait) {
+			log.Warn().Dur("waited", serveStopWait).Msg("requests still in flight at shutdown; stopping anyway")
+		}
+	case <-served:
+		if serveErr != nil {
+			return fmt.Errorf("serve: %w", serveErr)
+		}
+	}
+	return nil
+}
+
+// removeStaleSocket removes what a crashed engine left at sock. Anything else at that path is not ours to delete.
+func removeStaleSocket(sock string) error {
+	fi, err := os.Lstat(sock)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("%s exists and is not a socket: remove it, or choose another --data directory", sock)
+	}
+	return os.Remove(sock)
+}
+
+// waitBounded reports whether done closed within d.
+func waitBounded(done <-chan struct{}, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-done:
+		return true
+	case <-t.C:
+		return false
+	}
+}

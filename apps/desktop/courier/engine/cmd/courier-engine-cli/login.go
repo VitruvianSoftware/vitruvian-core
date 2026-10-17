@@ -9,10 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -20,6 +18,8 @@ import (
 	"go.mau.fi/util/curl"
 	"golang.org/x/term"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/login"
 )
 
 // prompter asks the person at the keyboard for what a login step needs.
@@ -38,101 +38,86 @@ const maxInputTries = 3
 // useTheApp is the way out for a sign-in step this CLI can't do.
 const useTheApp = "use the Courier app for this sign-in (milestone 3)"
 
-// walkLogin walks a login to completion: it draws QR codes, shows emoji and codes, asks for typed input and
-// pasted cookies, and waits for the phone in between. On every path except a completed login it cancels the
-// process, so no half-open pairing is left behind. Secret values (passwords, tokens, cookies) are read with
-// Secret and are never written to out.
+// walkLogin walks an existing login process to completion with a login.Driver. See walkSteps.
 func walkLogin(ctx context.Context, proc bridgev2.LoginProcess, p prompter, out io.Writer) error {
-	completed := false
-	defer func() {
-		if !completed {
-			proc.Cancel()
-		}
-	}()
-	step, err := proc.Start(ctx)
+	// A person at a keyboard may take as long as they like: no idle timeout.
+	d := &login.Driver{IdleTimeout: -1}
+	step, err := d.StartProcess(ctx, "", proc)
+	return walkSteps(ctx, d, step, err, p, out)
+}
+
+// walkSteps is a terminal front end for a login.Driver: it draws QR codes, shows emoji and codes, asks for typed
+// input and pasted cookies, and waits for the phone in between. The driver cancels the login on every failure of
+// its own; the exits that are this front end's (a prompt that failed, a step it can't do) cancel it here, so on
+// every path except a completed login no half-open pairing is left behind. Secret values (passwords, tokens,
+// cookies) are read with Secret and are never written to out.
+//
+// step and err are the driver's answer to Start (or StartProcess).
+func walkSteps(ctx context.Context, d *login.Driver, step login.Step, err error, p prompter, out io.Writer) error {
+	loginID := step.LoginID
+	defer func() { d.Cancel(loginID) }() // nothing to do once the login is over
 	for err == nil {
-		if step == nil {
-			return errors.New("the login returned no next step")
-		}
+		loginID = step.LoginID
 		switch step.Type {
-		case bridgev2.LoginStepTypeComplete:
-			completed = true
+		case login.StepComplete:
 			return nil
-		case bridgev2.LoginStepTypeDisplayAndWait:
+		case login.StepDisplayAndWait:
 			showDisplay(out, step)
-			waiter, ok := proc.(bridgev2.LoginProcessDisplayAndWait)
-			if !ok {
-				return errors.New("this login can't wait for the phone, so it can't be finished from here")
-			}
-			step, err = waiter.Wait(ctx)
-		case bridgev2.LoginStepTypeUserInput:
-			submitter, ok := proc.(bridgev2.LoginProcessUserInput)
-			if !ok {
-				return errors.New("this login asks for typed input but can't take it")
-			}
+			step, err = d.Wait(ctx, loginID)
+		case login.StepUserInput:
 			var input map[string]string
 			if input, err = askFields(step, p, out); err != nil {
 				return err
 			}
-			step, err = submitter.SubmitUserInput(ctx, input)
-		case bridgev2.LoginStepTypeCookies:
-			submitter, ok := proc.(bridgev2.LoginProcessCookies)
-			if !ok {
-				return errors.New("this login asks for cookies but can't take them")
-			}
+			step, err = d.Submit(ctx, loginID, input)
+		case login.StepCookies:
 			var cookies map[string]string
 			if cookies, err = askCookies(step, p, out); err != nil {
 				return err
 			}
-			step, err = submitter.SubmitCookies(ctx, cookies)
-		case bridgev2.LoginStepTypeWebAuthn:
-			return fmt.Errorf("login step %q (id %q) needs a passkey, which this test CLI can't do — %s",
-				step.Type, step.StepID, useTheApp)
+			step, err = d.Submit(ctx, loginID, cookies)
+		case login.StepUnsupported:
+			return fmt.Errorf("%s — %s", step.Instructions, useTheApp)
 		default:
-			return fmt.Errorf("this test CLI can't do login step %q (id %q) — %s", step.Type, step.StepID, useTheApp)
+			return fmt.Errorf("this test CLI can't do login step type %q (id %q) — %s", step.Type, step.StepID, useTheApp)
 		}
 	}
 	return err
 }
 
 // showDisplay prints what a display_and_wait step wants shown.
-func showDisplay(out io.Writer, step *bridgev2.LoginStep) {
+func showDisplay(out io.Writer, step login.Step) {
 	if step.Instructions != "" {
 		fmt.Fprintln(out, step.Instructions)
 	}
-	d := step.DisplayAndWaitParams
+	d := step.Display
 	if d == nil {
+		fmt.Fprintln(out, "Waiting...")
 		return
 	}
-	switch d.Type {
-	case bridgev2.LoginDisplayTypeQR:
+	switch d.Kind {
+	case "qr":
 		if step.Instructions == "" {
 			fmt.Fprintln(out, "Scan this with the app on your phone:")
 		}
 		qrterminal.GenerateHalfBlock(d.Data, qrterminal.L, out)
-	case bridgev2.LoginDisplayTypeEmoji, bridgev2.LoginDisplayTypeCode:
+	default: // emoji, code
 		fmt.Fprintf(out, "\n        %s\n\nTap/enter this on your phone. Waiting for it...\n", d.Data)
-	default:
-		fmt.Fprintln(out, "Waiting...")
 	}
 }
 
-// secretField reports whether a typed field must be read without echo.
-func secretField(t bridgev2.LoginInputFieldType) bool {
-	return t == bridgev2.LoginInputFieldTypePassword || t == bridgev2.LoginInputFieldTypeToken
-}
-
-// askFields prompts for each field of a user_input step, in order.
-func askFields(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string]string, error) {
+// askFields prompts for each field of a user_input step, in order. What it returns is what was typed, not the
+// cleaned value: Submit cleans it again, and cleaning twice is not always the same as once.
+func askFields(step login.Step, p prompter, out io.Writer) (map[string]string, error) {
 	if step.Instructions != "" {
 		fmt.Fprintln(out, step.Instructions)
 	}
-	if step.UserInputParams == nil {
+	if len(step.Fields) == 0 {
 		return nil, fmt.Errorf("login step %q (id %q) lists no fields to ask for", step.Type, step.StepID)
 	}
 	input := map[string]string{}
-	for _, field := range step.UserInputParams.Fields {
-		secret := secretField(field.Type)
+	for _, field := range step.Fields {
+		secret := login.IsSecret(field.Type)
 		label := inputLabel(field)
 		var value string
 		for try := 1; ; try++ {
@@ -152,8 +137,9 @@ func askFields(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string]
 			} else {
 				raw = strings.TrimSpace(raw)
 			}
-			var verr error
-			if value, verr = checkInput(field, raw); verr == nil {
+			value = raw
+			_, verr := login.CheckField(field, raw)
+			if verr == nil {
 				break
 			}
 			if try == maxInputTries {
@@ -172,7 +158,7 @@ func askFields(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string]
 }
 
 // inputLabel is what a field is called when asked for: its name, then its description, then any fixed choices.
-func inputLabel(f bridgev2.LoginInputDataField) string {
+func inputLabel(f login.Field) string {
 	label := f.Name
 	if label == "" {
 		label = f.ID
@@ -180,29 +166,10 @@ func inputLabel(f bridgev2.LoginInputDataField) string {
 	if f.Description != "" {
 		label += " (" + f.Description + ")"
 	}
-	if f.Type == bridgev2.LoginInputFieldTypeSelect && len(f.Options) > 0 {
+	if f.Type == "select" && len(f.Options) > 0 {
 		label += " [" + strings.Join(f.Options, "/") + "]"
 	}
 	return label
-}
-
-// checkInput applies a field's rules to a typed value and returns the cleaned value to submit. The errors never
-// contain the value.
-func checkInput(f bridgev2.LoginInputDataField, value string) (string, error) {
-	if value == "" {
-		value = f.DefaultValue
-	}
-	if value == "" {
-		return "", errors.New("a value is needed")
-	}
-	if f.Type == bridgev2.LoginInputFieldTypeSelect && len(f.Options) > 0 && !slices.Contains(f.Options, value) {
-		return "", fmt.Errorf("choose one of: %s", strings.Join(f.Options, ", "))
-	}
-	// The same cleaning and checks the bridge's own login commands apply: phone numbers and emails are cleaned,
-	// and any other field is matched against its Pattern. A Pattern that doesn't compile fails every try, as it
-	// does in the bridge's commands.
-	f.FillDefaultValidate()
-	return f.Validate(value)
 }
 
 // maxCookieFile caps how much of a cookie file is read. A browser's "copy as cURL" is a few kilobytes.
@@ -213,13 +180,16 @@ const maxCookieFile = 1 << 20
 // enters each value by hand, without echo. A file is asked for rather than a paste because macOS cuts a typed or
 // pasted terminal line off at 1024 bytes (MAX_CANON), and a copied cURL command is longer than that.
 //
+// The values come back as the person gave them, still percent-encoded if that is how the browser showed them:
+// Submit decodes them (login.MaybeURLDecodeCookie), and decoding twice would corrupt a value.
+//
 // The bridge's own instructions ("Enter a JSON object ... or a cURL command") are not printed: they describe the
 // bridge's chat command, which takes the whole paste in one message, not this CLI.
 //
 // Missing required values cancel the login: without them this CLI has no other way in. Nothing read from the
 // file, and no value typed, is ever written to out or put in an error.
-func askCookies(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string]string, error) {
-	c := step.CookiesParams
+func askCookies(step login.Step, p prompter, out io.Writer) (map[string]string, error) {
+	c := step.Cookies
 	if c == nil {
 		return nil, fmt.Errorf("login step %q (id %q) lists no cookies to ask for", step.Type, step.StepID)
 	}
@@ -262,9 +232,8 @@ func askCookies(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string
 				}
 				break
 			}
-			v := maybeURLDecodeCookie(raw, f)
-			if cookieMatches(f, v) {
-				cookies[f.ID] = v
+			if _, verr := login.CheckCookie(f, raw); verr == nil {
+				cookies[f.ID] = raw
 				break
 			}
 			if try == maxInputTries {
@@ -278,10 +247,10 @@ func askCookies(step *bridgev2.LoginStep, p prompter, out io.Writer) (map[string
 }
 
 // sortCookieFields returns the fields required first, then by ID, so the prompts come in the same order every
-// run (gmessages builds its list from a Go map). The step's own slice is left alone: a connector may share it.
-func sortCookieFields(fields []bridgev2.LoginCookieField) []bridgev2.LoginCookieField {
+// run (gmessages builds its list from a Go map). The step's own slice is left alone.
+func sortCookieFields(fields []login.CookieField) []login.CookieField {
 	sorted := slices.Clone(fields)
-	slices.SortStableFunc(sorted, func(a, b bridgev2.LoginCookieField) int {
+	slices.SortStableFunc(sorted, func(a, b login.CookieField) int {
 		if a.Required != b.Required {
 			if a.Required {
 				return -1
@@ -314,7 +283,7 @@ func cleanPath(s string) string {
 // bridgev2's own cookie command does (bridgev2/commands/login.go, cookieLoginCommandState.submit): a cURL command
 // is parsed with go.mau.fi/util/curl and each field takes the first of its sources the request has; a JSON object
 // is keyed by field ID. Errors name files and field IDs, never anything read from the file.
-func cookiesFromFile(path string, fields []bridgev2.LoginCookieField) (map[string]string, error) {
+func cookiesFromFile(path string, fields []login.CookieField) (map[string]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("can't read the cookie file: %w", err)
@@ -332,7 +301,7 @@ func cookiesFromFile(path string, fields []bridgev2.LoginCookieField) (map[strin
 	if strings.HasPrefix(strings.TrimSpace(content), "curl") {
 		cookies, err = cookiesFromCURL(content, fields)
 	} else {
-		cookies, err = cookiesFromJSON(content, fields)
+		cookies, err = cookiesFromJSON(content)
 	}
 	if err != nil {
 		return nil, err
@@ -348,17 +317,20 @@ func cookiesFromFile(path string, fields []bridgev2.LoginCookieField) (map[strin
 			strings.Join(missing, ", "), useTheApp)
 	}
 	for _, f := range fields {
-		if v, ok := cookies[f.ID]; ok && !cookieMatches(f, v) {
-			return nil, fmt.Errorf("the value for %s in the file isn't in the form the network expects — copy it again", f.ID)
+		if v, ok := cookies[f.ID]; ok {
+			if _, verr := login.CheckCookie(f, v); verr != nil {
+				return nil, fmt.Errorf("the value for %s in the file isn't in the form the network expects — copy it again", f.ID)
+			}
 		}
 	}
 	return cookies, nil
 }
 
-// cookiesFromCURL takes each field's value from the first of its sources that a cURL command has: a cookie
-// (URL-decoded, as bridgev2 does), a request header or a request body field. Local storage and the bridge's
-// special sources are not in a request, so a required field that has only those needs a JSON file instead.
-func cookiesFromCURL(content string, fields []bridgev2.LoginCookieField) (map[string]string, error) {
+// cookiesFromCURL takes each field's value from the first of its sources that a cURL command has: a cookie, a
+// request header or a request body field. Local storage and the bridge's special sources are not in a request,
+// so a required field that has only those needs a JSON file instead. Values come back as the request has them
+// (a cookie is still percent-encoded): Submit decodes.
+func cookiesFromCURL(content string, fields []login.CookieField) (map[string]string, error) {
 	parsed, err := parseCURL(content)
 	if err != nil {
 		return nil, err
@@ -374,19 +346,13 @@ func cookiesFromCURL(content string, fields []bridgev2.LoginCookieField) (map[st
 		var supported bool
 		for _, src := range f.Sources {
 			switch src.Type {
-			case bridgev2.LoginCookieTypeCookie:
+			case login.SourceCookie:
 				supported = true
-				if v, ok := reqCookies[src.Name]; ok {
-					// Decoded here rather than for every cookie in the request, as bridgev2 does: a badly
-					// encoded cookie the login doesn't need shouldn't fail it.
-					if value, err = url.PathUnescape(v); err != nil {
-						return nil, fmt.Errorf("the cookie %s in the file isn't validly URL-encoded — copy the request again", src.Name)
-					}
-				}
-			case bridgev2.LoginCookieTypeRequestHeader:
+				value = reqCookies[src.Name]
+			case login.SourceRequestHeader:
 				supported = true
 				value = parsed.Header.Get(src.Name)
-			case bridgev2.LoginCookieTypeRequestBody:
+			case login.SourceRequestBody:
 				supported = true
 				switch {
 				case parsed.MultipartForm != nil:
@@ -440,70 +406,38 @@ func parseCURL(content string) (parsed *curl.Parsed, err error) {
 
 var errNotCURL = errors.New("the file starts with curl but couldn't be read as a cURL command — copy the request again with Copy as cURL")
 
-// cookiesFromJSON reads a JSON object of text values keyed by field ID, and URL-decodes the cookie fields, as
-// bridgev2 does.
-func cookiesFromJSON(content string, fields []bridgev2.LoginCookieField) (map[string]string, error) {
+// cookiesFromJSON reads a JSON object of text values keyed by field ID. An empty value is no value: a required
+// one is reported missing. Values are left as written: Submit decodes the cookie ones.
+func cookiesFromJSON(content string) (map[string]string, error) {
 	cookies := map[string]string{}
 	if err := json.Unmarshal([]byte(content), &cookies); err != nil {
 		// The JSON error can quote what it choked on, so it isn't passed on.
 		return nil, errors.New("the file is neither a cURL command (starting with curl) nor a JSON object of text values")
 	}
-	for _, f := range fields {
-		v, ok := cookies[f.ID]
-		switch {
-		case !ok:
-		case v == "":
-			delete(cookies, f.ID) // an empty value is no value: a required one is reported missing
-		default:
-			cookies[f.ID] = maybeURLDecodeCookie(v, f)
+	for id, v := range cookies {
+		if v == "" {
+			delete(cookies, id)
 		}
 	}
 	return cookies, nil
 }
 
-// maybeURLDecodeCookie URL-decodes a value copied from the browser's developer tools, which shows cookie values
-// percent-encoded, when the field is a cookie. The bridge's own cookie command does exactly this
-// (bridgev2/commands/login.go) and connectors expect the decoded form.
-func maybeURLDecodeCookie(val string, f bridgev2.LoginCookieField) string {
-	isCookie := slices.ContainsFunc(f.Sources, func(src bridgev2.LoginCookieFieldSource) bool {
-		return src.Type == bridgev2.LoginCookieTypeCookie
-	})
-	if !isCookie {
-		return val
-	}
-	decoded, err := url.PathUnescape(val)
-	if err != nil {
-		return val
-	}
-	return decoded
-}
-
-// cookieMatches checks a decoded value against the field's Pattern, if it has one. A pattern that doesn't
-// compile can't be checked here, so the value goes to the connector, which checks what it gets.
-func cookieMatches(f bridgev2.LoginCookieField, val string) bool {
-	if f.Pattern == "" {
-		return true
-	}
-	re, err := regexp.Compile(f.Pattern)
-	return err != nil || re.MatchString(val)
-}
-
 // sourceHints says where in the browser a value can be found.
-func sourceHints(sources []bridgev2.LoginCookieFieldSource) string {
+func sourceHints(sources []login.CookieSource) string {
 	hints := make([]string, 0, len(sources))
 	for _, s := range sources {
 		switch s.Type {
-		case bridgev2.LoginCookieTypeCookie:
+		case login.SourceCookie:
 			h := fmt.Sprintf("cookie %q", s.Name)
 			if s.CookieDomain != "" {
 				h += " on " + s.CookieDomain
 			}
 			hints = append(hints, h)
-		case bridgev2.LoginCookieTypeLocalStorage:
+		case login.SourceLocalStorage:
 			hints = append(hints, fmt.Sprintf("local storage key %q", s.Name))
-		case bridgev2.LoginCookieTypeRequestHeader:
+		case login.SourceRequestHeader:
 			hints = append(hints, fmt.Sprintf("request header %q", s.Name))
-		case bridgev2.LoginCookieTypeRequestBody:
+		case login.SourceRequestBody:
 			hints = append(hints, fmt.Sprintf("request body field %q", s.Name))
 		default:
 			hints = append(hints, fmt.Sprintf("%s %q", s.Type, s.Name))

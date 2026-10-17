@@ -1,0 +1,10 @@
+{
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "changed",
+    "params": {
+      "kind": "bridge",
+      "network": "whatsapp"
+    }
+  }
+}

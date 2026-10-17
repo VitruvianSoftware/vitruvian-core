@@ -161,7 +161,7 @@ func TestInsertEventPublishesEventChange(t *testing.T) {
 		Type: "m.room.message", Content: json.RawMessage(`{}`), TS: time.Unix(1, 0),
 	})
 	require.NoError(t, err)
-	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a", Seq: 1}, nextChange(t, ch))
 }
 
 func TestDuplicateInsertEventPublishesNothing(t *testing.T) {
@@ -175,7 +175,7 @@ func TestDuplicateInsertEventPublishesNothing(t *testing.T) {
 	}
 	_, err := s.InsertEvent(ctx, e)
 	require.NoError(t, err)
-	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "event", RoomID: "!r:courier.local", EventID: "$a", Seq: 1}, nextChange(t, ch))
 	ins, err := s.InsertEvent(ctx, e)
 	require.NoError(t, err)
 	require.False(t, ins)
@@ -197,7 +197,7 @@ func TestSetStatusPublishesStatusChange(t *testing.T) {
 	ch, cancel := s.Subscribe()
 	defer cancel()
 	require.NoError(t, s.SetStatus(ctx, "$a", "sent", ""))
-	require.Equal(t, Change{Kind: "status", RoomID: "!r:courier.local", EventID: "$a"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "status", RoomID: "!r:courier.local", EventID: "$a", Seq: 1}, nextChange(t, ch))
 }
 
 func TestUnreadSubscriberDoesNotBlockWriters(t *testing.T) {
@@ -225,6 +225,111 @@ func TestUnreadSubscriberDoesNotBlockWriters(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("writers blocked by an unread subscriber")
 	}
+}
+
+// A subscriber that falls behind loses changes, but it is told: the next change it can take comes after one
+// "resync", however many were dropped, and a subscriber that kept up never sees one.
+func TestDroppedChangesAreFollowedByOneResync(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	slow, cancelSlow := s.Subscribe()
+	defer cancelSlow()
+	fast, cancelFast := s.Subscribe()
+	defer cancelFast()
+	fastGot := make(chan []Change, 1)
+	go func() {
+		var got []Change
+		for c := range fast {
+			got = append(got, c)
+			if c.RoomID == "last" {
+				break
+			}
+		}
+		fastGot <- got
+	}()
+
+	const burst = SubscriberBuffer + 50 // more than the buffer holds, while slow reads nothing
+	for i := 0; i < burst; i++ {
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	for i := 0; i < SubscriberBuffer; i++ { // what fitted is delivered, in order, with no resync among it
+		c := nextChange(t, slow)
+		require.Equal(t, Change{Kind: "bridge", RoomID: fmt.Sprintf("n%d", i)}, c)
+	}
+	select {
+	case c := <-slow:
+		t.Fatalf("the dropped changes must not be delivered, got %+v", c)
+	default:
+	}
+
+	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "resync"}, nextChange(t, slow), "the first delivery after a drop is a resync")
+	require.Equal(t, Change{Kind: "bridge", RoomID: "after"}, nextChange(t, slow))
+
+	require.NoError(t, s.SetBridgeState(ctx, "last", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "bridge", RoomID: "last"}, nextChange(t, slow), "one resync, not one per drop")
+
+	got := <-fastGot
+	require.Len(t, got, burst+2, "a subscriber that keeps up loses nothing")
+	for _, c := range got {
+		require.NotEqual(t, "resync", c.Kind, "a subscriber that keeps up is never told to resync")
+	}
+}
+
+// A subscriber whose buffer has room for the change but not for the resync before it keeps dropping, so the
+// resync is never lost behind a change it should have come before.
+func TestResyncWaitsForRoomForBoth(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	for i := 0; i <= SubscriberBuffer; i++ { // one more than fits: dropped
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	<-ch // one slot free
+	require.NoError(t, s.SetBridgeState(ctx, "one-slot", json.RawMessage(`{}`)))
+	for i := 1; i < SubscriberBuffer; i++ {
+		require.Equal(t, fmt.Sprintf("n%d", i), nextChange(t, ch).RoomID)
+	}
+	require.NoError(t, s.SetBridgeState(ctx, "room-for-both", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "resync"}, nextChange(t, ch))
+	require.Equal(t, "room-for-both", nextChange(t, ch).RoomID)
+}
+
+// A feed that has caught up after a drop can ask, so it is told even if nothing ever changes again. It is told
+// once: asking clears the mark, so no resync comes in band after it.
+func TestFeedSaysItDroppedOnceItHasCaughtUp(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	f := s.Feed()
+	defer f.Close()
+	require.False(t, f.TakeDropped(), "nothing dropped yet")
+	for i := 0; i <= SubscriberBuffer; i++ { // one more than fits
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	require.False(t, f.TakeDropped(), "not while changes are still waiting to be read")
+	for i := 0; i < SubscriberBuffer; i++ {
+		require.Equal(t, fmt.Sprintf("n%d", i), nextChange(t, f.C).RoomID)
+	}
+	require.True(t, f.TakeDropped(), "caught up after a drop")
+	require.False(t, f.TakeDropped(), "said once")
+
+	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "bridge", RoomID: "after"}, nextChange(t, f.C), "no second resync in band")
+}
+
+// When the resync went in band first, there is nothing left to take.
+func TestInBandResyncClearsTheDrop(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	f := s.Feed()
+	defer f.Close()
+	for i := 0; i <= SubscriberBuffer; i++ {
+		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+	}
+	for i := 0; i < SubscriberBuffer; i++ {
+		nextChange(t, f.C)
+	}
+	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.Equal(t, Change{Kind: "resync"}, nextChange(t, f.C))
+	require.Equal(t, "after", nextChange(t, f.C).RoomID)
+	require.False(t, f.TakeDropped())
 }
 
 func TestProfileRoundTripAndPartialUpdate(t *testing.T) {

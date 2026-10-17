@@ -88,7 +88,15 @@ func (in *Intent) SendState(ctx context.Context, roomID id.RoomID, evtType event
 	return &mautrix.RespSendEvent{EventID: ids.RandomEventID()}, nil
 }
 
+// MarkRead is a read receipt bridged from the network. Only mine is kept: bridgev2 sends my reads from another
+// device through my own (double-puppet) intent, and they move my read marker to the message read. Anyone else's
+// receipt (a ghost's, or the bot's) says nothing about what I have read, so it is not stored in milestone 3.
+// ts is when the receipt was made; the store keeps the message's own time and uses ts only for a message it
+// does not have.
 func (in *Intent) MarkRead(ctx context.Context, roomID id.RoomID, eventID id.EventID, ts time.Time) error {
+	if in.mxid != ids.Me {
+		return nil
+	}
 	return in.c.store.SetRead(ctx, string(roomID), string(eventID), ts)
 }
 

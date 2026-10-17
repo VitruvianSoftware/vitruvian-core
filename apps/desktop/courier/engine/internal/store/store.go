@@ -33,16 +33,28 @@ type Event struct {
 	Content                       json.RawMessage
 	TS                            time.Time
 	Status, StatusReason          string
+	Seq                           int64 // arrival order in this store; breaks ties between equal timestamps
 }
 
-type Change struct{ Kind, RoomID, EventID string }
+// Change is one entry of the change feed. Seq is set on "event" and "status" changes: it is the event's seq.
+type Change struct {
+	Kind, RoomID, EventID string
+	Seq                   int64
+}
+
+// ChangeResync is the Kind of the change a subscriber is given after changes for it were dropped: it has missed
+// something, so it must re-read everything it shows. It carries no room or event.
+const ChangeResync = "resync"
 
 type Store struct {
 	db   *dbutil.Database
 	seq  int64
 	mu   sync.Mutex // guards seq and subs
-	subs map[chan Change]struct{}
+	subs map[chan Change]*subscriber
 }
+
+// subscriber is one change feed. dropped is set when a change could not be delivered to it; guarded by Store.mu.
+type subscriber struct{ dropped bool }
 
 func Open(path string) (*Store, error) {
 	db, err := sqlite.Open(path)
@@ -53,7 +65,11 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Store{db: db, subs: map[chan Change]struct{}{}}
+	if err = migrate(context.Background(), db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	s := &Store{db: db, subs: map[chan Change]*subscriber{}}
 	if err = db.QueryRow(context.Background(), "SELECT COALESCE(MAX(seq),0) FROM events").Scan(&s.seq); err != nil {
 		db.Close()
 		return nil, err
@@ -63,28 +79,77 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// publish hands c to every subscriber without ever waiting for one. A subscriber whose buffer is full loses c and
+// is marked; the next change that reaches it is preceded by one ChangeResync, however many it lost, so it never
+// goes stale without knowing. The resync and that change go in together: until the buffer has room for both, the
+// subscriber keeps dropping. Only publish sends on the channels, under s.mu, so len(ch) cannot grow under it.
 func (s *Store) publish(c Change) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for ch := range s.subs {
+	for ch, sub := range s.subs {
+		if sub.dropped {
+			if cap(ch)-len(ch) < 2 {
+				continue // still no room for the resync and the change after it
+			}
+			ch <- Change{Kind: ChangeResync}
+			sub.dropped = false
+		}
 		select {
 		case ch <- c:
-		default: // slow subscriber: drop; it re-reads state on its next query
+		default:
+			sub.dropped = true
 		}
 	}
 }
 
-// Subscribe returns a buffered change feed and a cancel function.
-func (s *Store) Subscribe() (<-chan Change, func()) {
-	ch := make(chan Change, 256)
+// SubscriberBuffer is how many changes a subscriber's feed holds before changes for it are dropped.
+const SubscriberBuffer = 256
+
+// Feed is one subscriber's change feed. C delivers the changes. A feed that falls more than SubscriberBuffer
+// changes behind loses changes; it learns that either in band (a ChangeResync before the next change it can take)
+// or by asking TakeDropped once it has caught up, whichever comes first. Each drop is reported once, one way.
+type Feed struct {
+	C  <-chan Change
+	s  *Store
+	ch chan Change
+}
+
+// Feed subscribes to the change feed. Close it when done.
+func (s *Store) Feed() *Feed {
+	ch := make(chan Change, SubscriberBuffer)
 	s.mu.Lock()
-	s.subs[ch] = struct{}{}
+	s.subs[ch] = &subscriber{}
 	s.mu.Unlock()
-	return ch, func() {
-		s.mu.Lock()
-		delete(s.subs, ch)
-		s.mu.Unlock()
+	return &Feed{C: ch, s: s, ch: ch}
+}
+
+// TakeDropped reports whether changes were dropped for this feed since it was last told, and clears that, but only
+// when nothing is waiting in C: a reader asks once it has read everything, and then re-reads all it shows. It is
+// false while changes are still queued, because the reader has not caught up yet.
+func (f *Feed) TakeDropped() bool {
+	f.s.mu.Lock()
+	defer f.s.mu.Unlock()
+	sub := f.s.subs[f.ch]
+	if sub == nil || !sub.dropped || len(f.ch) > 0 {
+		return false
 	}
+	sub.dropped = false
+	return true
+}
+
+// Close ends the subscription.
+func (f *Feed) Close() {
+	f.s.mu.Lock()
+	delete(f.s.subs, f.ch)
+	f.s.mu.Unlock()
+}
+
+// Subscribe returns a buffered change feed and a cancel function. A subscriber that falls more than
+// SubscriberBuffer changes behind loses changes, and is then given a ChangeResync before the next one it gets.
+// A reader that must hear about a drop even if nothing changes after it uses Feed and TakeDropped.
+func (s *Store) Subscribe() (<-chan Change, func()) {
+	f := s.Feed()
+	return f.C, f.Close
 }
 
 func b2i(b bool) int {
@@ -226,26 +291,99 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	s.seq++
 	seq := s.seq
 	s.mu.Unlock()
-	res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(event_id) DO NOTHING`,
-		e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq)
+	var inserted bool
+	// The event and the room's last_ts / last_event_id change together or not at all.
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(event_id) DO NOTHING`,
+			e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		inserted = n == 1
+		switch {
+		case !inserted:
+		case isMessageLike(e.Type, e.Content):
+			// Only a message newer than the current newest moves the room: a backfilled older one must not.
+			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
+				e.RoomID, e.TS.UnixMilli(), e.EventID)
+		case e.Type == "m.room.redaction" && e.Status != "failed":
+			err = s.redact(ctx, e.RoomID, e.Content)
+		}
+		return err
+	})
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	if n == 1 {
-		s.publish(Change{Kind: "event", RoomID: e.RoomID, EventID: e.EventID})
+	if inserted {
+		s.publish(Change{Kind: "event", RoomID: e.RoomID, EventID: e.EventID, Seq: seq})
 	}
-	return n == 1, nil
+	return inserted, nil
 }
 
-const eventCols = "room_id, event_id, sender, type, state_key, content, ts, status, status_reason"
+// redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message. If it was
+// the latest, the chat goes back to the newest message that is left (or to none), as DeleteEvent does. A
+// redaction of something we do not have, or with no target, changes nothing.
+func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessage) error {
+	var c struct {
+		Redacts string `json:"redacts"`
+	}
+	if json.Unmarshal(content, &c) != nil || c.Redacts == "" {
+		return nil
+	}
+	if _, err := s.db.Exec(ctx, "UPDATE events SET redacted=1 WHERE event_id=$1 AND room_id=$2", c.Redacts, roomID); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, c.Redacts)
+	return err
+}
+
+// FailInterruptedSends turns every message still pending from an earlier run into a failed one, with
+// ReasonMayHaveBeenSent. Run it once at engine start, before anything is served: a pending row then is one
+// whose send the last engine never heard back about, so it may or may not have gone. Nothing is sent again
+// unasked; the person can Retry or Delete it. It returns how many rows it changed, and publishes nothing (no
+// one is subscribed yet).
+func (s *Store) FailInterruptedSends(ctx context.Context) (int64, error) {
+	res, err := s.db.Exec(ctx, "UPDATE events SET status='failed', status_reason=$1 WHERE status='pending'", ReasonMayHaveBeenSent)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// ReasonMayHaveBeenSent is the status_reason of a message whose send was cut off by the engine stopping: the
+// network may have taken it. The app shows its own wording for it.
+const ReasonMayHaveBeenSent = "may have been sent"
+
+// isMessageLike reports whether an event can be a room's latest message: a message, sticker or encrypted
+// placeholder that is not an edit of an earlier message. (SQL twin: messageLikeTypes with notEditSQL.)
+func isMessageLike(typ string, content json.RawMessage) bool {
+	switch typ {
+	case "m.room.message", "m.sticker", "m.room.encrypted":
+		return !isEdit(content)
+	}
+	return false
+}
+
+// isEdit reports whether content replaces an earlier message (m.relates_to.rel_type = m.replace). Content that
+// is not JSON is not an edit. (SQL twin: notEditSQL.)
+func isEdit(content json.RawMessage) bool {
+	var c struct {
+		RelatesTo struct {
+			RelType string `json:"rel_type"`
+		} `json:"m.relates_to"`
+	}
+	return json.Unmarshal(content, &c) == nil && c.RelatesTo.RelType == "m.replace"
+}
+
+const eventCols = "room_id, event_id, sender, type, state_key, content, ts, status, status_reason, seq"
 
 func scanEvent(row dbutil.Scannable) (Event, error) {
 	var e Event
 	var c string
 	var ts int64
-	err := row.Scan(&e.RoomID, &e.EventID, &e.Sender, &e.Type, &e.StateKey, &c, &ts, &e.Status, &e.StatusReason)
+	err := row.Scan(&e.RoomID, &e.EventID, &e.Sender, &e.Type, &e.StateKey, &c, &ts, &e.Status, &e.StatusReason, &e.Seq)
 	e.Content, e.TS = json.RawMessage(c), time.UnixMilli(ts)
 	return e, err
 }
@@ -277,19 +415,45 @@ func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, 
 
 func (s *Store) SetStatus(ctx context.Context, eventID, status, reason string) error {
 	var roomID string
-	err := s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3 WHERE event_id=$1 RETURNING room_id", eventID, status, reason).Scan(&roomID)
+	var seq int64
+	err := s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3 WHERE event_id=$1 RETURNING room_id, seq", eventID, status, reason).Scan(&roomID, &seq)
 	if err == nil {
-		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID})
+		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID, Seq: seq})
 	}
 	return err
 }
 
-func (s *Store) SetRead(ctx context.Context, roomID, eventID string, ts time.Time) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO reads (room_id, event_id, ts) VALUES ($1,$2,$3)
-		ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, ts.UnixMilli())
-	if err == nil {
-		s.publish(Change{Kind: "read", RoomID: roomID, EventID: eventID})
+// DeleteEvent forgets one event. If it was the chat's latest message, the chat goes back to the newest message
+// that is left (or to none), so the inbox does not keep pointing at something that is gone. The change feed gets
+// a "status" change for it, which tells a client to re-read that chat. An unknown event is not an error.
+func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
+	var roomID string
+	var seq int64
+	found := false
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		err := s.db.QueryRow(ctx, "DELETE FROM events WHERE event_id=$1 RETURNING room_id, seq", eventID).Scan(&roomID, &seq)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		found = true
+		_, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, eventID)
+		return err
+	})
+	if err == nil && found {
+		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID, Seq: seq})
 	}
+	return err
+}
+
+// SetRead records that I read roomID up to eventID on another device, as the network reports it. It is only ever
+// my own read: other people's receipts are not stored. The marker keeps the target event's own (ts, seq), not
+// the time of the receipt, so a later receipt for an older message does not mark newer ones read; for an event
+// we do not have, receiptTS stands in. Like the local marker it only moves forward.
+func (s *Store) SetRead(ctx context.Context, roomID, eventID string, receiptTS time.Time) error {
+	_, err := s.advanceMarker(ctx, "reads", roomID, eventID, receiptTS)
 	return err
 }
 

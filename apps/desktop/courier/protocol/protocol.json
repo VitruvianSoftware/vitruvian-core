@@ -1,0 +1,657 @@
+{
+  "name": "Courier engine protocol",
+  "protocol": 1,
+  "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
+
+  "transport": {
+    "socket": "A Unix stream socket at <data dir>/engine.sock, mode 0600, in a 0700 directory. Nothing listens on TCP.",
+    "framing": "JSON-RPC 2.0. Each message is one UTF-8 JSON object on one line, ended by a single \\n. A line is at most max_frame_bytes bytes, not counting the \\n.",
+    "max_frame_bytes": 4194304,
+    "oversize": "A line longer than max_frame_bytes closes the connection. Nothing is answered.",
+    "requests": "Every request has \"jsonrpc\": \"2.0\", an \"id\" (a string or a number, echoed in the answer), a \"method\", and \"params\" (an object; it may be left out when the method takes none). A key in params that the method does not take is -32602, and data.reason names it (\"unknown parameter replyTo\"). A message with no id is a notification; the engine defines none from the client, so it is ignored and not answered. A batch (a JSON array) is -32600.",
+    "concurrency": "Requests are answered as they finish, not in the order sent: some (message.send, login.wait) wait for a network. Match answers to requests by id. Notifications can arrive between any two answers.",
+    "closing": "Closing the connection cancels everything it has in flight. A login.wait in flight is cancelled, and so is its sign-in."
+  },
+
+  "handshake": {
+    "doc": "The first request on a connection must be hello. Any other method before a successful hello is -32002. A hello with a different protocol number is -32001 with data {\"engine\": <the engine's protocol>}, and the app shows \"update needed\". Once a hello has succeeded, the connection receives changed notifications, the first of them after hello's answer. hello may be sent again: with the engine's protocol it answers the same; with another it is -32001; either way the connection stays as it was, greeted, with one feed."
+  },
+
+  "type_grammar": {
+    "string": "a JSON string",
+    "int": "a JSON number with no fraction",
+    "bool": "true or false",
+    "object": "any JSON object; its keys are not part of this protocol (an event's Matrix content)",
+    "map<T>": "a JSON object whose values are all T",
+    "T[]": "a JSON array of T",
+    "T|null": "the key is always there; the value is T or null",
+    "T?": "the key may be left out; when it is there the value is T",
+    "Name": "a type defined in types",
+    "values": "a field with values only ever holds one of them",
+    "times": "Every time (ts, last_ts) is Unix milliseconds.",
+    "paths": "Every *_path is an absolute path on this Mac, or \"\" when there is no such file."
+  },
+
+  "types": {
+    "Empty": {
+      "doc": "No params, or a result with nothing in it.",
+      "fields": {}
+    },
+    "HelloParams": {
+      "fields": {
+        "protocol": {
+          "type": "int",
+          "doc": "The protocol the app speaks. This file's protocol."
+        },
+        "client": {
+          "type": "string",
+          "doc": "<name>/<version>, for example Courier/0.3.0."
+        }
+      }
+    },
+    "HelloResult": {
+      "fields": {
+        "protocol": {
+          "type": "int",
+          "doc": "The protocol the engine speaks: the same as the app's."
+        },
+        "engine": { "type": "string", "doc": "The engine's version." },
+        "networks": {
+          "type": "string[]",
+          "doc": "The network names the engine knows, in display order: the order of accounts.list."
+        }
+      }
+    },
+    "Account": {
+      "doc": "One network the engine knows, linked or not.",
+      "fields": {
+        "network": {
+          "type": "string",
+          "doc": "The network's name: whatsapp, signal, telegram, slack, gmessages."
+        },
+        "display_name": {
+          "type": "string",
+          "doc": "The network's name for people: WhatsApp."
+        },
+        "flows": {
+          "type": "string[]",
+          "doc": "The sign-in flows it offers, preferred first. The value to pass to login.start."
+        },
+        "state": {
+          "type": "string",
+          "doc": "The bridge's state_event, NOT_STARTED when the engine could not start the network, or UNCONFIGURED when it is running and has said nothing yet.",
+          "values": [
+            "NOT_STARTED",
+            "UNCONFIGURED",
+            "STARTING",
+            "RUNNING",
+            "CONNECTING",
+            "BACKFILLING",
+            "CONNECTED",
+            "TRANSIENT_DISCONNECT",
+            "BAD_CREDENTIALS",
+            "UNKNOWN_ERROR",
+            "LOGGED_OUT",
+            "BRIDGE_UNREACHABLE"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "doc": "What went wrong, for people: the bridge's message, or its error code when it gave no message. \"\" when nothing is wrong."
+        },
+        "remote_name": {
+          "type": "string",
+          "doc": "What the network calls the linked account. \"\" when none is linked."
+        },
+        "not_started": {
+          "type": "string",
+          "doc": "Why the engine did not start the network (Telegram without its api_id and api_hash, say). \"\" unless state is NOT_STARTED."
+        }
+      }
+    },
+    "AccountsResult": {
+      "fields": {
+        "accounts": {
+          "type": "Account[]",
+          "doc": "One per network, in the order of hello's networks."
+        }
+      }
+    },
+    "InboxRow": {
+      "doc": "One chat in the inbox.",
+      "fields": {
+        "room_id": { "type": "string" },
+        "network": { "type": "string" },
+        "name": { "type": "string" },
+        "avatar_path": {
+          "type": "string",
+          "doc": "The chat's picture, or \"\"."
+        },
+        "is_direct": { "type": "bool", "doc": "A one-to-one chat." },
+        "last_ts": {
+          "type": "int",
+          "doc": "When its newest message was sent. 0 when it has none yet."
+        },
+        "preview": {
+          "type": "string",
+          "doc": "The newest message's text, at most 140 characters. \"\" when there is nothing readable."
+        },
+        "preview_kind": {
+          "type": "string",
+          "values": ["text", "image", "video", "audio", "file", "sticker", ""]
+        },
+        "preview_mine": {
+          "type": "bool",
+          "doc": "The newest message is mine."
+        },
+        "unread": {
+          "type": "int",
+          "doc": "Messages from others after the read marker."
+        },
+        "muted": { "type": "bool" }
+      }
+    },
+    "InboxResult": {
+      "fields": {
+        "rooms": {
+          "type": "InboxRow[]",
+          "doc": "Newest message first; chats with no message follow, newest first."
+        }
+      }
+    },
+    "Cursor": {
+      "doc": "A place in a chat's history: the oldest event of the page you have.",
+      "fields": {
+        "ts": { "type": "int" },
+        "seq": { "type": "int" }
+      }
+    },
+    "RoomParams": {
+      "fields": {
+        "room_id": { "type": "string" }
+      }
+    },
+    "RoomEventsParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "before": {
+          "type": "Cursor?",
+          "doc": "Leave out for the newest page; pass the last page's before for the one older than it."
+        },
+        "limit": { "type": "int?", "doc": "1 to 100. 50 when left out." }
+      }
+    },
+    "Event": {
+      "doc": "One event in a chat: a message, a reaction, an edit or a redaction.",
+      "fields": {
+        "event_id": { "type": "string" },
+        "room_id": { "type": "string" },
+        "sender": {
+          "type": "string",
+          "doc": "The sender's Matrix ID. @me:courier.local is me."
+        },
+        "sender_name": {
+          "type": "string",
+          "doc": "The sender's display name, or the localpart of their ID when they have none."
+        },
+        "sender_avatar_path": { "type": "string" },
+        "mine": { "type": "bool", "doc": "Sent by me." },
+        "type": {
+          "type": "string",
+          "doc": "The Matrix event type: m.room.message, m.reaction, m.sticker, m.room.redaction, m.room.encrypted."
+        },
+        "content": {
+          "type": "object",
+          "doc": "The Matrix event content, as the bridge wrote it."
+        },
+        "ts": { "type": "int" },
+        "seq": {
+          "type": "int",
+          "doc": "Arrival order in the engine. Breaks ties between equal ts."
+        },
+        "status": {
+          "type": "string",
+          "values": ["pending", "sent", "failed"],
+          "doc": "pending while the network has not answered, sent, or failed (message.retry or message.discard)."
+        },
+        "status_reason": {
+          "type": "string",
+          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it (the app words this itself)."
+        },
+        "media_path": {
+          "type": "string",
+          "doc": "The file the content's url names, when the engine has it, or \"\"."
+        }
+      }
+    },
+    "EventsPage": {
+      "fields": {
+        "events": { "type": "Event[]", "doc": "Newest first." },
+        "before": {
+          "type": "Cursor|null",
+          "doc": "Pass as before for the next, older page. null when there is no older event."
+        }
+      }
+    },
+    "SetMutedParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "muted": { "type": "bool" }
+      }
+    },
+    "SendParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "text": { "type": "string" },
+        "reply_to": {
+          "type": "string?",
+          "doc": "The event_id of the message this replies to."
+        }
+      }
+    },
+    "SendFileParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "path": {
+          "type": "string",
+          "doc": "An absolute path to a regular file of at most 90 MB."
+        },
+        "reply_to": { "type": "string?" }
+      }
+    },
+    "ReactParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "event_id": { "type": "string", "doc": "The message reacted to." },
+        "key": { "type": "string", "doc": "The emoji." }
+      }
+    },
+    "EventParams": {
+      "fields": {
+        "event_id": { "type": "string" }
+      }
+    },
+    "Sent": {
+      "doc": "The event that was stored for what was sent. Its status changes come as changed notifications.",
+      "fields": {
+        "event_id": { "type": "string" }
+      }
+    },
+    "LoginStartParams": {
+      "fields": {
+        "network": { "type": "string" },
+        "flow": {
+          "type": "string?",
+          "doc": "One of the account's flows. Left out or \"\" means its first."
+        }
+      }
+    },
+    "LoginSubmitParams": {
+      "fields": {
+        "login_id": { "type": "string" },
+        "values": {
+          "type": "map<string>",
+          "doc": "For user_input, by field id; for cookies, by cookie field id. A cookies step leaves out a value it could not find."
+        }
+      }
+    },
+    "LoginParams": {
+      "fields": {
+        "login_id": { "type": "string" }
+      }
+    },
+    "LoginStep": {
+      "doc": "What the sign-in shows next. Optional keys are left out when empty.",
+      "fields": {
+        "login_id": { "type": "string" },
+        "step_id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "values": [
+            "display_and_wait",
+            "user_input",
+            "cookies",
+            "complete",
+            "unsupported"
+          ],
+          "doc": "display_and_wait: show display, then login.wait. user_input: ask for fields, then login.submit. cookies: sign in on a web page, collect cookies, then login.submit. complete: linked; the sign-in is over. unsupported: a step Courier can't do; instructions say what to do instead, and the sign-in is over."
+        },
+        "instructions": { "type": "string?" },
+        "display": { "type": "LoginDisplay?" },
+        "fields": { "type": "LoginField[]?" },
+        "cookies": { "type": "LoginCookies?" },
+        "remote_name": {
+          "type": "string?",
+          "doc": "On complete: what the network calls the account."
+        }
+      }
+    },
+    "LoginDisplay": {
+      "fields": {
+        "kind": { "type": "string", "values": ["qr", "emoji", "code"] },
+        "data": {
+          "type": "string?",
+          "doc": "The QR code's contents, the emoji or the code."
+        },
+        "image_url": { "type": "string?" }
+      }
+    },
+    "LoginField": {
+      "fields": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "type": {
+          "type": "string",
+          "values": [
+            "username",
+            "password",
+            "phone_number",
+            "email",
+            "2fa_code",
+            "token",
+            "url",
+            "domain",
+            "select"
+          ],
+          "doc": "password and token are secret: hide them as typed, and send them exactly as typed."
+        },
+        "pattern": {
+          "type": "string?",
+          "doc": "A regular expression the value must match."
+        },
+        "options": { "type": "string[]?", "doc": "For select: the choices." },
+        "default_value": {
+          "type": "string?",
+          "doc": "What a blank answer means. The app may pre-fill it."
+        }
+      }
+    },
+    "LoginCookies": {
+      "fields": {
+        "url": { "type": "string", "doc": "The page to sign in on." },
+        "user_agent": { "type": "string?" },
+        "wait_for_url": {
+          "type": "string?",
+          "doc": "A pattern the page's address matches once the person has signed in."
+        },
+        "extract_js": {
+          "type": "string?",
+          "doc": "A script that resolves to some or all of the values (the special source)."
+        },
+        "fields": { "type": "LoginCookieField[]" }
+      }
+    },
+    "LoginCookieField": {
+      "fields": {
+        "id": { "type": "string" },
+        "required": { "type": "bool" },
+        "sources": { "type": "LoginCookieSource[]" },
+        "pattern": {
+          "type": "string?",
+          "doc": "A regular expression the URL-decoded value must match."
+        }
+      }
+    },
+    "LoginCookieSource": {
+      "fields": {
+        "type": {
+          "type": "string",
+          "values": [
+            "cookie",
+            "local_storage",
+            "request_header",
+            "request_body",
+            "special"
+          ]
+        },
+        "name": { "type": "string" },
+        "cookie_domain": { "type": "string?" }
+      }
+    },
+    "Changed": {
+      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
+      "fields": {
+        "kind": {
+          "type": "string",
+          "values": ["room", "event", "status", "read", "bridge", "resync"]
+        },
+        "room_id": {
+          "type": "string?",
+          "doc": "On room (usually), event, status and read."
+        },
+        "event_id": { "type": "string?", "doc": "On event, status and read." },
+        "network": { "type": "string?", "doc": "On bridge." }
+      }
+    },
+    "ProtocolMismatchData": {
+      "fields": {
+        "engine": { "type": "int", "doc": "The protocol the engine speaks." }
+      }
+    },
+    "InvalidParamsData": {
+      "fields": {
+        "reason": {
+          "type": "string",
+          "doc": "What is wrong, for people. It names the parameter (a key the method does not take, too), never its value."
+        }
+      }
+    }
+  },
+
+  "methods": {
+    "hello": {
+      "doc": "The handshake. It must come first.",
+      "params": "HelloParams",
+      "result": "HelloResult",
+      "errors": [-32001]
+    },
+    "accounts.list": {
+      "doc": "Every network the engine knows and the state of its account.",
+      "params": "Empty",
+      "result": "AccountsResult",
+      "errors": []
+    },
+    "inbox.list": {
+      "doc": "Every chat, in inbox order.",
+      "params": "Empty",
+      "result": "InboxResult",
+      "errors": []
+    },
+    "room.events": {
+      "doc": "One page of a chat's history, newest first.",
+      "params": "RoomEventsParams",
+      "result": "EventsPage",
+      "errors": [-32020]
+    },
+    "room.markRead": {
+      "doc": "Mark a chat read up to its newest message. The unread count clears at once; the network is told when it can be (best effort).",
+      "params": "RoomParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "room.setMuted": {
+      "doc": "Mute or unmute a chat on this device.",
+      "params": "SetMutedParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "message.send": {
+      "doc": "Send a text message. It answers once the network has taken it or refused it; the stored event's status says which.",
+      "params": "SendParams",
+      "result": "Sent",
+      "errors": [-32010, -32011, -32016, -32018, -32020]
+    },
+    "message.sendFile": {
+      "doc": "Send a file. Images, videos and audio are sent as such, by their contents.",
+      "params": "SendFileParams",
+      "result": "Sent",
+      "errors": [-32010, -32011, -32012, -32016, -32018, -32020]
+    },
+    "message.react": {
+      "doc": "React to a message. Reacting twice with one key sends it once and answers the first reaction's event_id.",
+      "params": "ReactParams",
+      "result": "Sent",
+      "errors": [-32010, -32016, -32018, -32020]
+    },
+    "message.retry": {
+      "doc": "Send a failed message again, as the same event. It goes back to pending.",
+      "params": "EventParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32019, -32020]
+    },
+    "message.discard": {
+      "doc": "Delete a failed message from this device.",
+      "params": "EventParams",
+      "result": "Empty",
+      "errors": [-32019, -32020]
+    },
+    "login.start": {
+      "doc": "Start signing in to a network. One sign-in per network at a time.",
+      "params": "LoginStartParams",
+      "result": "LoginStep",
+      "errors": [-32013, -32014, -32016, -32017]
+    },
+    "login.submit": {
+      "doc": "Send what a user_input or cookies step asked for. A value that is refused is -32014, and the sign-in stays open for another try.",
+      "params": "LoginSubmitParams",
+      "result": "LoginStep",
+      "errors": [-32014, -32015]
+    },
+    "login.wait": {
+      "doc": "Wait for the phone to do what a display_and_wait step asked. It can take minutes.",
+      "params": "LoginParams",
+      "result": "LoginStep",
+      "errors": [-32014, -32015]
+    },
+    "login.cancel": {
+      "doc": "End a sign-in. It is harmless for one that is already over.",
+      "params": "LoginParams",
+      "result": "Empty",
+      "errors": []
+    }
+  },
+
+  "notifications": {
+    "changed": {
+      "doc": "Sent by the engine after a successful hello, whenever something the app shows changes.",
+      "params": "Changed"
+    }
+  },
+
+  "errors": {
+    "doc": "Every error has a code and a fixed message; neither the message nor data ever contains a value that was sent. The JSON-RPC codes (-32700, -32600, -32601, -32602, -32603) and -32002 can come from any request, and -32001 from hello. A method lists the others it can give.",
+    "codes": [
+      {
+        "code": -32700,
+        "name": "parse_error",
+        "message": "parse error",
+        "when": "The line is not JSON. The id is null."
+      },
+      {
+        "code": -32600,
+        "name": "invalid_request",
+        "message": "invalid request",
+        "when": "Not a JSON-RPC 2.0 request object."
+      },
+      {
+        "code": -32601,
+        "name": "method_not_found",
+        "message": "method not found",
+        "when": "No such method."
+      },
+      {
+        "code": -32602,
+        "name": "invalid_params",
+        "message": "invalid params",
+        "when": "A parameter is missing, has the wrong type or is out of range. data says which.",
+        "data": "InvalidParamsData"
+      },
+      {
+        "code": -32603,
+        "name": "internal_error",
+        "message": "internal error",
+        "when": "Something failed inside the engine."
+      },
+      {
+        "code": -32001,
+        "name": "protocol_mismatch",
+        "message": "protocol mismatch",
+        "when": "hello's protocol is not the engine's.",
+        "data": "ProtocolMismatchData"
+      },
+      {
+        "code": -32002,
+        "name": "hello_required",
+        "message": "hello first",
+        "when": "A method other than hello before a successful hello."
+      },
+      {
+        "code": -32010,
+        "name": "not_linked",
+        "message": "this network isn't linked",
+        "when": "The chat's network has no account."
+      },
+      {
+        "code": -32011,
+        "name": "bridge_command",
+        "message": "the bridge would run this as a command",
+        "when": "The text, or the file's name, starts with the network's bridge command prefix (!whatsapp, say). Nothing was sent."
+      },
+      {
+        "code": -32012,
+        "name": "too_large",
+        "message": "the file is too large to send (the limit is 90 MB)",
+        "when": "message.sendFile with a file over 90 MB."
+      },
+      {
+        "code": -32013,
+        "name": "already_linked",
+        "message": "this network is already linked",
+        "when": "login.start on a network whose account works. Only an account that is LOGGED_OUT, BAD_CREDENTIALS or UNKNOWN_ERROR can be linked again."
+      },
+      {
+        "code": -32014,
+        "name": "bad_value",
+        "message": "that isn't accepted",
+        "when": "An unknown network or flow, a value the network won't take, or a call that does not fit the step (login.wait on a user_input step). The sign-in stays open."
+      },
+      {
+        "code": -32015,
+        "name": "unknown_login",
+        "message": "no sign-in in progress with that ID",
+        "when": "The sign-in finished, was cancelled, timed out or never existed."
+      },
+      {
+        "code": -32016,
+        "name": "not_running",
+        "message": "this network isn't running",
+        "when": "The network did not start (Telegram without its credentials, say)."
+      },
+      {
+        "code": -32017,
+        "name": "login_in_progress",
+        "message": "a sign-in is already in progress for this network",
+        "when": "login.start while another sign-in on that network is live. Cancel it first."
+      },
+      {
+        "code": -32018,
+        "name": "not_connected",
+        "message": "the network isn't connected yet",
+        "when": "The account is linked but did not connect in time. Nothing was sent."
+      },
+      {
+        "code": -32019,
+        "name": "not_failed",
+        "message": "only a failed message can be retried or discarded",
+        "when": "message.retry or message.discard on a message that is pending or sent."
+      },
+      {
+        "code": -32020,
+        "name": "not_found",
+        "message": "no such chat or message",
+        "when": "An unknown room_id, event_id or reply_to, or a message in another chat."
+      }
+    ]
+  }
+}

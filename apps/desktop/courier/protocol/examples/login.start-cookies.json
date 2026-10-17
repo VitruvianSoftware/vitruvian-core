@@ -1,0 +1,51 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "login.start",
+    "params": {
+      "network": "slack",
+      "flow": "cookies"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "result": {
+      "login_id": "8e1f4a7c2b9d6e3f0a5c8b1d4e7f2a9c",
+      "step_id": "fi.mau.slack.cookies",
+      "type": "cookies",
+      "instructions": "Sign in to your workspace.",
+      "cookies": {
+        "url": "https://example.slack.test/signin",
+        "user_agent": "Example/1.0",
+        "wait_for_url": "^https://app\\.slack\\.test/client/",
+        "extract_js": "(async () => ({}))()",
+        "fields": [
+          {
+            "id": "d",
+            "required": true,
+            "sources": [
+              {
+                "type": "cookie",
+                "name": "d",
+                "cookie_domain": ".slack.test"
+              }
+            ],
+            "pattern": "^xoxd-"
+          },
+          {
+            "id": "token",
+            "required": true,
+            "sources": [
+              {
+                "type": "special",
+                "name": "token"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

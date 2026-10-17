@@ -1,0 +1,22 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "login.submit",
+    "params": {
+      "login_id": "8e1f4a7c2b9d6e3f0a5c8b1d4e7f2a9c",
+      "values": {
+        "username": "example-user",
+        "code": "abc"
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "error": {
+      "code": -32014,
+      "message": "that isn't accepted"
+    }
+  }
+}

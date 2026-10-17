@@ -1,0 +1,19 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "login.start",
+    "params": {
+      "network": "signal",
+      "flow": "qr"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "error": {
+      "code": -32017,
+      "message": "a sign-in is already in progress for this network"
+    }
+  }
+}

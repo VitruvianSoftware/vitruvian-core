@@ -1,0 +1,506 @@
+/* Copyright 2026 VitruvianSoftware. SPDX-License-Identifier: AGPL-3.0-or-later. */
+
+/* The window's subtitle while the engine starts. */
+"Connecting…" = "Connecting…";
+
+/* The window's subtitle after the engine stopped unexpectedly, while it is started again. */
+"Reconnecting…" = "Reconnecting…";
+
+/* The window's subtitle when the engine speaks another protocol version than the app. */
+"Update needed" = "Update needed";
+
+/* The window's subtitle when the engine is up. */
+"Connected" = "Connected";
+
+/* The window's subtitle once the engine has been stopped. */
+"Stopped" = "Stopped";
+
+/* The main window while the engine starts or restarts. */
+"Starting Courier’s engine…" = "Starting Courier’s engine…";
+
+/* The main window once the engine has been stopped (while the app quits). */
+"Courier’s engine is stopped." = "Courier’s engine is stopped.";
+
+/* The main window when another engine holds the data folder (the engine exits 3). The argument is the engine's own message, which names the folder. The restarts go on. */
+"Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying." = "Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying.";
+
+/* The main window when the engine stopped before it was ready and said why on standard error (for example, a data folder path that is too long). The argument is the engine's own message. The restarts go on. */
+"Courier’s engine stopped while starting: %@. Courier keeps trying." = "Courier’s engine stopped while starting: %@. Courier keeps trying.";
+
+/* As above, when the engine said nothing the app could read. */
+"Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying." = "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying.";
+
+/* The main window when the engine is a different version from the app. */
+"This copy of Courier and its engine don’t match. Reinstall Courier to update it." = "This copy of Courier and its engine don’t match. Reinstall Courier to update it.";
+
+/* The menu of the inbox's keys, in the menu bar. */
+"Chat" = "Chat";
+
+/* Chat menu: opens the chat below the open one (⌘]). */
+"Next Chat" = "Next Chat";
+
+/* Chat menu: opens the chat above the open one (⌘[). */
+"Previous Chat" = "Previous Chat";
+
+/* Chat menu: opens the next chat that has unread messages (⌘U). */
+"Next Unread Chat" = "Next Unread Chat";
+
+/* Chat menu: marks the open chat read (⌘⇧U), dimmed when it has no unread messages. Also the button on a notification that marks that chat read. */
+"Mark as Read" = "Mark as Read";
+
+/* Chat menu: mutes the open chat (⌘⇧M). */
+"Mute Chat" = "Mute Chat";
+
+/* Chat menu: unmutes the open chat when it is muted (⌘⇧M). */
+"Unmute Chat" = "Unmute Chat";
+
+/* The right-hand pane while no chat is open. */
+"Select a chat" = "Select a chat";
+
+/* The title of the window shown before any network is linked, and its button. */
+"Add a network" = "Add a network";
+
+/* Under the title of the window shown before any network is linked. */
+"Link WhatsApp, Signal, Telegram, Slack or Google Messages, and your chats appear here." = "Link WhatsApp, Signal, Telegram, Slack or Google Messages, and your chats appear here.";
+
+/* The inbox when the engine has no chats yet. */
+"No chats yet" = "No chats yet";
+
+/* A chat row's tooltip and accessibility label for the muted bell. */
+"Muted" = "Muted";
+
+/* A chat row's accessibility label for its unread count. The argument is the number. */
+"%lld unread" = "%lld unread";
+
+/* A chat row's preview when the newest message is the person's own. Keep the trailing space. */
+"You: " = "You: ";
+
+/* A chat row's preview label for a picture. */
+"Image" = "Image";
+
+/* A chat row's preview label for a video. */
+"Video" = "Video";
+
+/* A chat row's preview label for a voice message or other audio. */
+"Voice note" = "Voice note";
+
+/* A chat row's preview label for a file. */
+"File" = "File";
+
+/* A chat row's preview label for a sticker. */
+"Sticker" = "Sticker";
+
+/* Banner: the network ended the session. The argument is the network's name. */
+"You’re logged out of %@." = "You’re logged out of %@.";
+
+/* Banner: the network refused the saved sign-in. The argument is the network's name. */
+"%@ no longer accepts your sign-in." = "%@ no longer accepts your sign-in.";
+
+/* Banner: the engine could not start the network. The argument is the network's name; the engine's reason follows. */
+"%@ isn’t running." = "%@ isn’t running.";
+
+/* Banner button: signs in to the network again. */
+"Reconnect" = "Reconnect";
+
+/* The date line in a chat for messages sent today. */
+"Today" = "Today";
+
+/* The date line in a chat for messages sent yesterday. */
+"Yesterday" = "Yesterday";
+
+/* The divider in a chat above the messages that have not been read. */
+"New" = "New";
+
+/* Spoken name of the divider above unread messages. */
+"New messages" = "New messages";
+
+/* What a deleted message says in a chat. Also the quote of a deleted message. */
+"This message was deleted" = "This message was deleted";
+
+/* What a message says when it could not be decrypted. */
+"Waiting for this message to be decrypted" = "Waiting for this message to be decrypted";
+
+/* Under a message whose text was changed after it was sent. */
+"Edited" = "Edited";
+
+/* The name of the person using Courier, in a quote and for screen readers. */
+"You" = "You";
+
+/* In a reply: the message it answers is older than what is loaded. */
+"Original message not loaded" = "Original message not loaded";
+
+/* Under a message of yours that the network has not taken yet. */
+"Sending…" = "Sending…";
+
+/* Under your newest message once the network has taken it. */
+"Sent" = "Sent";
+
+/* Under a message of yours that the network refused. */
+"Not sent" = "Not sent";
+
+/* Tooltip on Not sent when the network gave no reason. */
+"The network did not take this message." = "The network did not take this message.";
+
+/* Button under a message that was not sent: send it again. */
+"Retry" = "Retry";
+
+/* Button under a message that was not sent: remove it from this device. */
+"Delete" = "Delete";
+
+/* Button, menu item and tooltip: reply to this message. Also the button on a notification that types a reply. */
+"Reply" = "Reply";
+
+/* Menu in a message's context menu: add a reaction. */
+"React" = "React";
+
+/* Tooltip and spoken name of a quick reaction. The argument is the emoji. */
+"React with %@" = "React with %@";
+
+/* Menu item: copy a message's text. */
+"Copy" = "Copy";
+
+/* Spoken name of a reaction under a message: the emoji, then how many gave it. */
+"%@, %lld" = "%@, %lld";
+
+/* Spoken name of a reaction you gave: the emoji, then how many gave it. */
+"%@, %lld, including you" = "%@, %lld, including you";
+
+/* Spoken form of a deleted message. The argument is who sent it. */
+"%@: deleted message" = "%@: deleted message";
+
+/* Spoken form of a message that could not be decrypted. The argument is who sent it. */
+"%@: message waiting to be decrypted" = "%@: message waiting to be decrypted";
+
+/* Spoken form of an image. The arguments are who sent it and its caption. */
+"%@: image %@" = "%@: image %@";
+
+/* Spoken form of a sticker. The argument is who sent it. */
+"%@: sticker" = "%@: sticker";
+
+/* Spoken form of a video. The arguments are who sent it and its caption. */
+"%@: video %@" = "%@: video %@";
+
+/* Spoken form of a voice note. The argument is who sent it. */
+"%@: voice note" = "%@: voice note";
+
+/* Spoken form of a file. The arguments are who sent it, the file's name and its caption. */
+"%@: file %@ %@" = "%@: file %@ %@";
+
+/* In a chat, in place of a picture that could not be read. */
+"Image can’t be shown" = "Image can’t be shown";
+
+/* On a picture or file of a message whose file is not on this Mac yet. */
+"Not downloaded yet" = "Not downloaded yet";
+
+/* Tooltip on a file in a chat: opens it in the default app. */
+"Open" = "Open";
+
+/* Spoken hint on a file in a chat. */
+"Opens the file" = "Opens the file";
+
+/* Tooltip on the button that takes a file out of the message being written. */
+"Remove attachment" = "Remove attachment";
+
+/* Spoken name of the button that takes a file out of the message being written. The argument is the file's name. */
+"Remove %@" = "Remove %@";
+
+/* Tooltip on the paperclip in the composer. */
+"Attach files (⌘O)" = "Attach files (⌘O)";
+
+/* Spoken name of the paperclip in the composer. */
+"Attach files" = "Attach files";
+
+/* Message in the file picker. */
+"Choose files to send" = "Choose files to send";
+
+/* Button of the file picker. */
+"Attach" = "Attach";
+
+/* The composer's placeholder. */
+"Type a message…" = "Type a message…";
+
+/* Tooltip on the emoji button in the composer. */
+"Emoji & Symbols (⌃⌘Space)" = "Emoji & Symbols (⌃⌘Space)";
+
+/* Spoken name of the emoji button in the composer. */
+"Emoji and symbols" = "Emoji and symbols";
+
+/* Tooltip on the send button. */
+"Send (Return)" = "Send (Return)";
+
+/* Spoken name of the send button. Also the button that sends the reply typed in a notification. */
+"Send" = "Send";
+
+/* Closes a notice or banner. */
+"Dismiss" = "Dismiss";
+
+/* Above the composer: the message being replied to. The argument is who wrote it. */
+"Replying to %@" = "Replying to %@";
+
+/* Above the composer: the message being replied to is your own. */
+"Replying to yourself" = "Replying to yourself";
+
+/* Tooltip on the button that drops the reply. */
+"Clear quoted message (Esc)" = "Clear quoted message (Esc)";
+
+/* Spoken name of the button that drops the reply. */
+"Clear quoted message" = "Clear quoted message";
+
+/* Under the composer when a file would take the files to send past 90 MB. The argument is the file's name. */
+"Could not attach %@ — total size would exceed 90 MB." = "Could not attach %@ — total size would exceed 90 MB.";
+
+/* Under the composer when what was dropped is a folder or cannot be read. The argument is its name. */
+"Could not attach %@. Courier can send files, not folders." = "Could not attach %@. Courier can send files, not folders.";
+
+/* Under the composer after a send got no answer. */
+"Courier’s engine did not answer. The message may have been sent: check the chat before sending it again." = "Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.";
+
+/* Under the composer when a send was refused with no reason to give. */
+"The message could not be sent." = "The message could not be sent.";
+
+/* Under the composer when a send was refused. The argument is the engine's reason. */
+"The message could not be sent: %@" = "The message could not be sent: %@";
+
+/* The engine refused a file for its size. */
+"A file is over 90 MB." = "A file is over 90 MB.";
+
+/* A send could not be made because the engine is not up. */
+"Courier’s engine is not connected." = "Courier’s engine is not connected.";
+
+/* A reaction, retry or delete got no answer. */
+"Courier’s engine did not answer in time." = "Courier’s engine did not answer in time.";
+
+/* A reaction, retry or delete failed for no reason to give. */
+"Courier’s engine could not do that." = "Courier’s engine could not do that.";
+
+/* In a bar above the composer when the newest messages could not be read. */
+"Courier could not read the latest messages." = "Courier could not read the latest messages.";
+
+/* Button in that bar: read them again. */
+"Try again" = "Try again";
+
+/* In a chat with no messages. */
+"No messages yet" = "No messages yet";
+
+/* On the jump button: one message arrived while scrolled up. */
+"1 new message" = "1 new message";
+
+/* On the jump button: several messages arrived while scrolled up. */
+"%lld new messages" = "%lld new messages";
+
+/* Tooltip on the jump button. */
+"Jump to the newest message (⌘↓)" = "Jump to the newest message (⌘↓)";
+
+/* Spoken name of the jump button. */
+"Jump to the newest message" = "Jump to the newest message";
+
+/* Over a chat while files are dragged onto it. */
+"Drop files here to attach" = "Drop files here to attach";
+
+/* Name of the menu with the chat's keys. Also the placeholder in the reply typed in a notification. */
+"Message" = "Message";
+
+/* Menu item: pick files to send. */
+"Attach Files…" = "Attach Files…";
+
+/* Menu item: scroll the chat to its newest message. */
+"Jump to Newest Message" = "Jump to Newest Message";
+
+/* Under the composer when a file could not be read. The argument is its name. */
+"Could not read %@. It may have moved, or Courier may not be allowed to open it." = "Could not read %@. It may have moved, or Courier may not be allowed to open it.";
+
+/* Button at the top of a chat when older messages could not be read: try again. */
+"Load older messages" = "Load older messages";
+
+/* A send or reaction was refused: the chat's network has no account. */
+"This chat’s network isn’t linked." = "This chat’s network isn’t linked.";
+
+/* A send was refused: the text starts with the network's bridge command prefix. */
+"The network would take this as a command, so it was not sent." = "The network would take this as a command, so it was not sent.";
+
+/* A send or reaction was refused: the network did not start. */
+"This chat’s network isn’t running." = "This chat’s network isn’t running.";
+
+/* A send was refused: the network is not connected yet. */
+"The network isn’t connected yet." = "The network isn’t connected yet.";
+
+/* Retry or Delete was refused: the message had not failed. */
+"Only a message that was not sent can be sent again or deleted." = "Only a message that was not sent can be sent again or deleted.";
+
+/* An action was refused: the chat or message is gone. */
+"That chat or message is no longer there." = "That chat or message is no longer there.";
+
+/* Under the composer after a send went wrong: a file that was to be put back no longer fits with what was added since. The argument is its name. */
+"Could not put %@ back — total size would exceed 90 MB." = "Could not put %@ back — total size would exceed 90 MB.";
+
+/* As above, for several files. The arguments are how many, and their names. */
+"Could not put %lld files back — total size would exceed 90 MB: %@" = "Could not put %lld files back — total size would exceed 90 MB: %@";
+
+/* --- Adding a network --- */
+
+/* The File menu item that opens the Add a network sheet. */
+"Add a Network…" = "Add a Network…";
+
+/* A button that closes the Add a network sheet, cancelling any sign-in in progress. */
+"Cancel" = "Cancel";
+
+/* A button that goes on to the next step of a sign-in. */
+"Continue" = "Continue";
+
+/* A button that closes the Add a network sheet once the sign-in is over. */
+"Done" = "Done";
+
+/* The title of each step of a sign-in. The argument is the network's name, such as Slack. */
+"Link %@" = "Link %@";
+
+/* In the network picker: the button that starts signing in to a network with the app's preferred way. */
+"Link" = "Link";
+
+/* In the network picker: a menu of the other ways to sign in to a network. */
+"Other ways" = "Other ways";
+
+/* In the network picker, beside a network whose account works; and the end of a sign-in when the network gave no account name. */
+"Linked" = "Linked";
+
+/* The end of a sign-in that worked. The argument is what the network calls the account (a name, a phone number or an email address). */
+"Linked as %@" = "Linked as %@";
+
+/* The warning before linking Google Messages, which allows only one web session at a time (spec §5). No other app is named. */
+"Google Messages allows one web session at a time. Linking it here signs out any other place it’s open on the web, including other messaging apps." = "Google Messages allows one web session at a time. Linking it here signs out any other place it’s open on the web, including other messaging apps.";
+
+/* While the engine is working on a sign-in. The argument is the network's name. */
+"Waiting for %@…" = "Waiting for %@…";
+
+/* Under a QR code, emoji or code, while the app waits for the person to use it on their phone. */
+"Waiting for your phone…" = "Waiting for your phone…";
+
+/* Under a QR code to scan with the network's app. */
+"Scan this with your phone." = "Scan this with your phone.";
+
+/* Under an emoji the person taps in the network's app on their phone (Google Messages). */
+"Tap this on your phone." = "Tap this on your phone.";
+
+/* Under a code the person types into the network's app on their phone. */
+"Enter this on your phone." = "Enter this on your phone.";
+
+/* The accessibility label of a QR code. Also the name of a way to sign in. */
+"QR code" = "QR code";
+
+/* Shown instead of a QR code that CoreImage could not draw. */
+"Courier couldn’t draw this QR code." = "Courier couldn’t draw this QR code.";
+
+/* A ways-to-sign-in name: signing in with a phone number. */
+"Phone number" = "Phone number";
+
+/* A ways-to-sign-in name for Slack: signing in on Slack's web page in Courier's sign-in window. */
+"Sign in on the web" = "Sign in on the web";
+
+/* A ways-to-sign-in name for Slack: a code Slack emails. */
+"Sign in with an emailed code" = "Sign in with an emailed code";
+
+/* A ways-to-sign-in name for Slack: a Slack app's bot and app tokens. */
+"Slack app tokens" = "Slack app tokens";
+
+/* A ways-to-sign-in name for Google Messages: signing in with a Google account. */
+"Google account" = "Google account";
+
+/* A picker's placeholder in a sign-in step, before an option is chosen. */
+"Choose…" = "Choose…";
+
+/* Under a sign-in field whose value does not fit what the network expects. */
+"This doesn’t look right yet." = "This doesn’t look right yet.";
+
+/* The engine refused a value typed into a sign-in step. The step stays open for another try. */
+"That isn’t accepted. Check it and try again." = "That isn’t accepted. Check it and try again.";
+
+/* The sign-in timed out, was cancelled or was already over on the engine. */
+"The sign-in ended before it was finished. Try again." = "The sign-in ended before it was finished. Try again.";
+
+/* A sign-in for this network is already in progress (another window, or the command-line tool). The argument is the network's name. */
+"A sign-in for %@ is already open." = "A sign-in for %@ is already open.";
+
+/* The network's account already works, so the engine will not link it again. The argument is the network's name. */
+"%@ is already linked." = "%@ is already linked.";
+
+/* A sign-in failed for a reason the app has no better words for. The argument is the network's name. */
+"Courier couldn’t sign in to %@. Try again." = "Courier couldn’t sign in to %@. Try again.";
+
+/* The sign-in needs something Courier can't do yet (a value only a raw web request has, a passkey); it was cancelled. */
+"This sign-in needs a step Courier can’t do yet." = "This sign-in needs a step Courier can’t do yet.";
+
+/* The sheet while the sign-in window is open. The argument is the network's name. */
+"Sign in to %@ in the window that opened. Courier picks up the sign-in when you’re done." = "Sign in to %@ in the window that opened. Courier picks up the sign-in when you’re done.";
+
+/* The person closed the sign-in window before it was done; the sign-in was cancelled. The argument is the network's name. */
+"The sign-in window was closed, so signing in to %@ was cancelled." = "The sign-in window was closed, so signing in to %@ was cancelled.";
+
+/* The sign-in window's title. The argument is the network's name. */
+"Sign in to %@" = "Sign in to %@";
+
+/* In the sign-in window's bar. The argument is the network's name. */
+"Sign in to %@ here." = "Sign in to %@ here.";
+
+/* The sign-in window's button for when the page never says it is done by itself. */
+"I’ve signed in" = "I’ve signed in";
+
+/* The sign-in window's accessibility label for the page's address. The argument is the host name, such as slack.com. */
+"Page address: %@" = "Page address: %@";
+
+/* The sign-in window's address bar when the page is not an https page (no lock is shown). */
+"Not a secure page" = "Not a secure page";
+
+/* In the sign-in window, after I've signed in, when a value the network needs is not on the page yet. */
+"Courier hasn’t found everything it needs yet. Finish signing in, then try again." = "Courier hasn’t found everything it needs yet. Finish signing in, then try again.";
+
+/* --- Telegram set-up --- */
+
+/* The title of Telegram's set-up. */
+"Set up Telegram" = "Set up Telegram";
+
+/* Telegram's keys, the first step of linking Telegram in a build with no app ID of its own. api_id, api_hash and API development tools are Telegram's own names; keep them as they are. */
+"This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram." = "This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram.";
+
+/* The link to Telegram's site for app credentials. */
+"Open my.telegram.org" = "Open my.telegram.org";
+
+/* Under Telegram's api_id field when it is not a whole number from 1 to 2147483647. */
+"api_id is a whole number." = "api_id is a whole number.";
+
+/* Under Telegram's api_hash field when it is not 32 hexadecimal characters. */
+"api_hash is 32 letters and digits." = "api_hash is 32 letters and digits.";
+
+/* The button that saves Telegram's credentials and goes on to link Telegram. */
+"Save and continue" = "Save and continue";
+
+/* Telegram's credentials do not fit; nothing was saved. */
+"Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org." = "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org.";
+
+/* The Keychain refused Telegram's credentials. */
+"Courier couldn’t save these in your Keychain." = "Courier couldn’t save these in your Keychain.";
+
+/* Telegram did not start within a minute of Courier's engine restarting with the saved keys. */
+"Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again." = "Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again.";
+
+/* The menu-bar icon's spoken name, and the app's name. */
+"Courier" = "Courier";
+
+/* Menu-bar menu: tells there is nothing unread. */
+"No unread chats" = "No unread chats";
+
+/* Menu-bar menu: tells that one chat has unread messages. */
+"1 unread chat" = "1 unread chat";
+
+/* Menu-bar menu: tells how many chats have unread messages. The argument is a number, 2 or more. */
+"%lld unread chats" = "%lld unread chats";
+
+/* Menu-bar menu: brings the Courier window forward, opening it again if it was closed. */
+"Open Courier" = "Open Courier";
+
+/* Menu-bar menu: quits Courier. */
+"Quit Courier" = "Quit Courier";
+
+/* The body of a notification that says a reply typed in another notification could not be sent. The text is waiting in that chat's message box. */
+"Your reply wasn’t sent — it’s waiting in the chat." = "Your reply wasn’t sent — it’s waiting in the chat.";
+
+/* The body of a notification that says a reply typed in a notification may or may not have been sent, because the engine did not answer. The text is waiting in that chat's message box. */
+"Your reply may not have been sent — check the chat before sending again." = "Your reply may not have been sent — check the chat before sending again.";

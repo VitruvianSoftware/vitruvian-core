@@ -1,0 +1,20 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "login.wait",
+    "params": {
+      "login_id": "8e1f4a7c2b9d6e3f0a5c8b1d4e7f2a9c"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "result": {
+      "login_id": "8e1f4a7c2b9d6e3f0a5c8b1d4e7f2a9c",
+      "step_id": "fi.mau.signal.complete",
+      "type": "complete",
+      "remote_name": "Test Account"
+    }
+  }
+}
