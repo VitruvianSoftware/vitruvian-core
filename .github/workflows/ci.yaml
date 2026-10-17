@@ -110,6 +110,54 @@ jobs:
             echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/queued.out")"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Pull requests only, and only when the PR carries the `agent-fast-lane`
+  # label (#3418, Step 2b): may this PR skip the heavy test and build jobs?
+  # Yes only for a PR from a branch in this repository, opened by one of our
+  # agent apps (checked by bot user id), with the label; see
+  # tools/ci/agent-fast-lane.sh. The merge queue still runs everything on the
+  # exact code that lands, so main stays protected; the cost is measured as
+  # queue failures on #3418. The fast checks (license-check, lint-naming here,
+  # and the separate secret-scan, osv-scan, conformance, tidy and actionlint
+  # workflows) never read this.
+  #
+  # It checks out the PR's BASE commit, so the rule and the agent roster come
+  # from main and a PR cannot rewrite what lets it skip. Unlabelled PRs, the
+  # merge queue and pushes skip this job without taking a runner. If it fails,
+  # `skip` is empty and everything runs.
+  fast-lane:
+    name: agent-fast-lane
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.decide.outputs.verdict == 'fast' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: |
+            tools/ci
+            tools/agent-app
+      - name: May this PR skip the heavy jobs?
+        id: decide
+        continue-on-error: true
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          AGENTS_TSV: tools/agent-app/agents.tsv
+        run: |
+          bash tools/ci/agent-fast-lane.sh | tee "$RUNNER_TEMP/fast-lane.out"
+          {
+            echo "### Agent fast lane?"
+            echo ""
+            echo "- verdict: $(sed -n 's/^verdict=//p' "$RUNNER_TEMP/fast-lane.out")"
+            echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/fast-lane.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-test:
     # Release-bot PRs skip this job on the PR (#3268 follow-up). A release PR
     # only bumps versions and the changelog of code main already tested, and
@@ -118,9 +166,9 @@ jobs:
     # still satisfies the required check. Only the bot's own same-repo
     # release-please branches qualify; the merge_group and push lanes are
     # untouched.
-    needs: queued
+    needs: [queued, fast-lane]
     if: >-
-      ${{ !cancelled() && needs.queued.outputs.hit != 'true' &&
+      ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' &&
           !(github.event_name == 'pull_request' &&
             startsWith(github.head_ref, 'release-please--') &&
             github.event.pull_request.user.type == 'Bot' &&
@@ -343,8 +391,8 @@ jobs:
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
   detect-macos:
-    needs: queued
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
+    needs: [queued, fast-lane]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
@@ -426,9 +474,9 @@ jobs:
     # upstream: on a pull request `queued` is skipped, and an implicit
     # success() looks at every job up the chain, so it would skip this job
     # too, although detect-macos ran.
-    needs: [queued, detect-macos]
+    needs: [queued, fast-lane, detect-macos]
     if: >-
-      ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.detect-macos.result == 'success' && (
+      ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && needs.detect-macos.result == 'success' && (
       (github.event_name == 'push' && needs.detect-macos.outputs.relevant != 'false') ||
       (github.event_name == 'merge_group' && needs.detect-macos.outputs.macos != 'false') ||
       (github.event_name == 'pull_request' && needs.detect-macos.outputs.macos == 'true' &&
@@ -535,8 +583,8 @@ jobs:
     # failed/was cancelled. This keeps the macOS-runner claim off the majority of
     # PRs that touch no macOS path (#821) WITHOUT the skipped-required-check
     # ambiguity this repo avoids -- the required job itself always runs + reports.
-    needs: [queued, detect-macos, macos-build]
-    if: ${{ always() && needs.queued.outputs.hit != 'true' }}
+    needs: [queued, fast-lane, detect-macos, macos-build]
+    if: ${{ always() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -667,8 +715,8 @@ jobs:
     # uncomputable diff base yields relevant=true. The whole-graph floor is
     # unchanged -- periodic-full-sweep.yaml still runs `bazel build //...` +
     # `bazel test //...` nightly.
-    needs: queued
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
+    needs: [queued, fast-lane]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
@@ -777,8 +825,8 @@ jobs:
   # queue would wedge. Keep the two jobs identical apart from the module.
   go-lint-devx:
     name: go-lint (devx)
-    needs: [queued, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-devx == 'true') }}
+    needs: [queued, fast-lane, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-devx == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -803,8 +851,8 @@ jobs:
 
   go-lint-homelab:
     name: go-lint (homelab)
-    needs: [queued, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
+    needs: [queued, fast-lane, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -839,8 +887,8 @@ jobs:
     # the day it lands, and only modules that actually contain a _test.go are
     # run -- `go test ./...` in a module with no tests is a slow no-op. GOWORK
     # is off because these modules are deliberately not workspace members.
-    needs: [queued, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true') }}
+    needs: [queued, fast-lane, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -888,8 +936,8 @@ jobs:
     #
     # Skips at the job level when `changes` says there is no Go to race-test
     # (a skipped job still satisfies the required check; see `changes`).
-    needs: [queued, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-race == 'true') }}
+    needs: [queued, fast-lane, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-race == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
@@ -942,8 +990,8 @@ jobs:
     # Own job (not folded into go-test-infra) + generous timeout because it is
     # ~27 standalone modules each pulling the Pulumi SDK; runs only when the
     # example -- or a library it consumes -- actually changes (see `changes`).
-    needs: [queued, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.example-build == 'true') }}
+    needs: [queued, fast-lane, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.example-build == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 40
     env:
@@ -987,8 +1035,8 @@ jobs:
     # in-tree input is the template itself -- the envsubst vars are dummies and
     # butane comes from a container image -- so `changes` gates it on exactly
     # that file (plus this workflow).
-    needs: [queued, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.validate-butane == 'true') }}
+    needs: [queued, fast-lane, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.validate-butane == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
