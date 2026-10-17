@@ -865,6 +865,24 @@ class ScopeTest(unittest.TestCase):
     def test_inside_allowed_is_reported_inside(self):
         self.assertEqual(self.fx.run("git status").scope, "inside")
 
+    def test_unknown_location_is_enforced(self):
+        def run(command):
+            return g.evaluate(
+                command,
+                g.UNKNOWN_CWD,
+                home=self.fx.home,
+                git_state=lambda _d: g.GitState(primary=True),
+                cwd_known=False,
+            )
+
+        for command in ("go vet ./...", "git push", "cd /tmp && git commit -m x"):
+            d = run(command)
+            self.assertEqual((d.decision, d.scope), ("deny", "unknown"), command)
+        self.assertEqual(run("true; " * 25000).decision, "deny")
+        d = run("git status")
+        self.assertEqual((d.decision, d.scope), ("allow", "unknown"))
+        self.assertEqual(run("gh pr merge 1 -R someone/else").decision, "allow")
+
 
 class ModesTest(unittest.TestCase):
     def setUp(self):
@@ -1122,7 +1140,9 @@ class RedactionTest(unittest.TestCase):
             self.assertEqual(g.redact(text), text)
 
 
-class HookIOTest(unittest.TestCase):
+class HookHarness(unittest.TestCase):
+    """Runs main() on a payload with a private HOME and policy. No tests of its own."""
+
     def setUp(self):
         self.fx = Fixture()
         self.policy = os.path.join(self.fx.tmp, "policy.json")
@@ -1150,6 +1170,8 @@ class HookIOTest(unittest.TestCase):
         with open(g.log_path(self.fx.home)) as fh:
             return [json.loads(line) for line in fh]
 
+
+class HookIOTest(HookHarness):
     def test_deny_uses_the_pretooluse_protocol_and_logs(self):
         out = self.hook(
             {
@@ -1442,6 +1464,199 @@ class HookIOTest(unittest.TestCase):
         out = io.StringIO()
         self.assertEqual(g.main([], stdin=io.StringIO("not json"), stdout=out), 0)
         self.assertEqual(out.getvalue(), "")
+
+
+def agy_payload(command, cwd=None, workspace=None, tool="run_command", args=None):
+    """The PreToolUse payload agy 1.4.0 sends, captured live (paths faked).
+
+    No top-level cwd and no session_id: the directory is args.Cwd and the
+    session is conversationId. The hook itself runs in ~/.gemini/config.
+    """
+    a = {
+        "CommandLine": command,
+        "Cwd": cwd,
+        "WaitMsBeforeAsync": 5000,
+        "toolAction": "Running command",
+        "toolSummary": "Run a command",
+    }
+    if tool != "run_command":
+        a = {"toolAction": "Doing it", "toolSummary": "Do it"}
+    a.update(args or {})
+    if cwd is None:
+        a.pop("Cwd", None)
+    p = {
+        "toolCall": {"name": tool, "args": a},
+        "stepIdx": 3,
+        "conversationId": "0f6c1d2e-3a4b-4c5d-8e9f-a0b1c2d3e4f5",
+        "transcriptPath": "/fake/home/.gemini/antigravity-cli/brain/x/transcript.jsonl",
+        "artifactDirectoryPath": "/fake/home/.gemini/antigravity-cli/brain/x",
+        "modelName": "auto",
+    }
+    if workspace is not None:
+        p["workspacePaths"] = workspace
+    return p
+
+
+class AntigravityHookTest(HookHarness):
+    """agy's hook format end to end: decision JSON, location, the log."""
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        super().tearDown()
+
+    def setUp(self):
+        super().setUp()
+        # agy runs hooks in the folder holding hooks.json, outside any repo.
+        self._cwd = os.getcwd()
+        self.gemini_config = os.path.join(self.fx.home, ".gemini", "config")
+        os.makedirs(self.gemini_config)
+        os.chdir(self.gemini_config)
+
+    def test_real_payload_go_vet_is_denied(self):
+        out = self.hook(agy_payload("go vet ./...", self.fx.repo, [self.fx.repo]))
+        self.assertEqual(set(out), {"decision", "reason"})
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("bazel test", out["reason"])
+
+    def test_real_payload_git_status_prints_nothing(self):
+        self.assertIsNone(
+            self.hook(agy_payload("git status", self.fx.repo, [self.fx.repo]))
+        )
+        self.assertEqual(self.log()[-1]["decision"], "allow")
+
+    def test_log_names_the_directory_and_the_conversation(self):
+        self.hook(agy_payload("go vet ./...", self.fx.repo, [self.fx.repo]))
+        rec = self.log()[-1]
+        self.assertEqual(rec["agent"], "antigravity")
+        self.assertEqual(rec["tool"], "run_command")
+        self.assertEqual(rec["cwd"], self.fx.repo)
+        self.assertEqual(rec["session"], "0f6c1d2e-3a4b-4c5d-8e9f-a0b1c2d3e4f5")
+        self.assertEqual((rec["scope"], rec["decision"]), ("inside", "deny"))
+
+    def test_missing_cwd_falls_back_to_the_workspaces(self):
+        # Without the fallback the guard would judge ~/.gemini/config and allow.
+        out = self.hook(agy_payload("go vet ./...", None, [self.fx.repo, self.fx.out]))
+        self.assertEqual(out["decision"], "deny")
+        self.assertEqual(self.log()[-1]["cwd"], self.fx.repo)
+        # Any workspace inside vitruvian-core puts the call inside, not just the first.
+        out = self.hook(agy_payload("git push", None, ["/tmp", self.fx.repo]))
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("//tools/git:push", out["reason"])
+        self.assertEqual(self.log()[-1]["cwd"], self.fx.repo)
+        # No workspace inside: the first one decides.
+        self.assertIsNone(
+            self.hook(agy_payload("go vet ./...", None, [self.fx.out, "/tmp"]))
+        )
+        rec = self.log()[-1]
+        self.assertEqual((rec["scope"], rec["cwd"]), ("outside", self.fx.out))
+
+    def test_cwd_wins_over_workspace_paths(self):
+        self.assertIsNone(
+            self.hook(agy_payload("go vet ./...", self.fx.out, [self.fx.repo]))
+        )
+        out = self.hook(agy_payload("go vet ./...", self.fx.repo, [self.fx.out]))
+        self.assertEqual(out["decision"], "deny")
+
+    def test_no_location_at_all_is_enforced(self):
+        for workspace in (None, [], [""]):
+            out = self.hook(agy_payload("go vet ./...", None, workspace))
+            self.assertEqual(out["decision"], "deny", workspace)
+            rec = self.log()[-1]
+            self.assertEqual((rec["scope"], rec["cwd"]), ("unknown", ""), workspace)
+        # Read-only commands still pass, and a gh call naming another repo is
+        # still out of scope.
+        self.assertIsNone(self.hook(agy_payload("git status", None)))
+        self.assertIsNone(self.hook(agy_payload("gh pr merge 1 -R someone/else", None)))
+
+    def test_a_relative_cwd_is_unknown_not_the_hooks_folder(self):
+        out = self.hook(agy_payload("go vet ./...", "some/dir"))
+        self.assertEqual(out["decision"], "deny")
+        self.assertEqual(self.log()[-1]["scope"], "unknown")
+
+    def test_other_command_tools(self):
+        cases = (
+            ("shell_exec", {"Command": "go test ./..."}),
+            ("shell_exec", {"command": "go test ./..."}),
+            ("send_command_input", {"Input": "go test ./...", "CommandId": "c1"}),
+            (
+                "manage_task",
+                {"Action": "send_input", "TaskId": "t1", "Input": "go test ./..."},
+            ),
+        )
+        for tool, args in cases:
+            out = self.hook(
+                agy_payload(None, None, [self.fx.repo], tool=tool, args=args)
+            )
+            self.assertEqual(out["decision"], "deny", (tool, args))
+            self.assertEqual(self.log()[-1]["category"], "go", tool)
+            self.assertIsNone(
+                self.hook(agy_payload(None, None, [self.fx.out], tool=tool, args=args)),
+                tool,
+            )
+        before = len(self.log())
+        self.assertIsNone(
+            self.hook(
+                agy_payload(
+                    None,
+                    None,
+                    [self.fx.repo],
+                    tool="manage_task",
+                    args={"Action": "kill", "TaskId": "t1"},
+                )
+            )
+        )
+        self.assertEqual(len(self.log()), before)
+
+    def test_git_commit_tool_is_a_commit(self):
+        args = {"CommitMessage": "fix things"}
+        out = self.hook(
+            agy_payload(None, None, [self.fx.repo], tool="git_commit", args=args)
+        )
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("//tools/git:commit", out["reason"])
+        rec = self.log()[-1]
+        self.assertEqual((rec["category"], rec["tool"]), ("git-commit", "git_commit"))
+        self.assertIn("fix things", rec["command"])
+        self.assertIsNone(
+            self.hook(
+                agy_payload(None, None, [self.fx.out], tool="git_commit", args=args)
+            )
+        )
+        out = self.hook(agy_payload(None, None, None, tool="git_commit", args=args))
+        self.assertEqual(out["decision"], "deny")
+        self.assertEqual(self.log()[-1]["scope"], "unknown")
+
+    def test_file_tools_cannot_touch_the_guard(self):
+        guard = os.path.join(self.fx.home, ".local/share/agent-guard/policy.json")
+        mine = os.path.join(self.fx.repo, "src", "main.go")
+        for tool, field in (
+            ("write_to_file", "TargetFile"),
+            ("replace_file_content", "TargetFile"),
+            ("multi_replace_file_content", "TargetFile"),
+            ("notebook_edit", "NotebookPath"),
+        ):
+            out = self.hook(
+                agy_payload(None, None, [self.fx.repo], tool=tool, args={field: guard})
+            )
+            self.assertEqual(out["decision"], "deny", tool)
+            self.assertEqual(self.log()[-1]["category"], "guard-config", tool)
+            self.assertIsNone(
+                self.hook(
+                    agy_payload(
+                        None, None, [self.fx.repo], tool=tool, args={field: mine}
+                    )
+                ),
+                tool,
+            )
+
+    def test_warn_mode_prints_nothing(self):
+        with open(self.policy) as fh:
+            p = json.load(fh)
+        p["categories"]["go"]["mode"] = "warn"
+        with open(self.policy, "w") as fh:
+            json.dump(p, fh)
+        self.assertIsNone(self.hook(agy_payload("go vet ./...", self.fx.repo)))
+        self.assertEqual(self.log()[-1]["decision"], "warn")
 
 
 class ParserTest(unittest.TestCase):

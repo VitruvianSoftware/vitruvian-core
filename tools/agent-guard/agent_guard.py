@@ -21,7 +21,7 @@
 
 """agent-guard: stop AI agents running repo and dev operations outside Bazel.
 
-A Claude Code PreToolUse hook (and, unverified, an Antigravity one). It reads
+A PreToolUse hook for Claude Code and for Antigravity (agy). It reads
 the tool call on stdin, works out every program the command would run, and
 refuses the ones that, inside vitruvian-core, must go through a Bazel target:
 `git commit` -> `bazel run //tools/git:commit`, `go test` -> `bazel test`, and
@@ -2894,19 +2894,27 @@ def evaluate(
     modes: Optional[Dict[str, str]] = None,
     home: Optional[str] = None,
     git_state: Optional[Callable[[str], GitState]] = None,
+    cwd_known: bool = True,
 ) -> Decision:
-    """Decide on one shell command. The first refused invocation wins."""
+    """Decide on one shell command. The first refused invocation wins.
+
+    cwd_known=False means the caller could not tell where the command runs (an
+    Antigravity call with neither Cwd nor workspacePaths). Then every command
+    counts as inside vitruvian-core: a missing location must never mean allowed.
+    """
     modes = modes or {c: "enforce" for c in CATEGORIES}
     home = home or os.path.expanduser("~")
     ctx = Context(home, git_state or probe_git_state)
-    any_inside = repo_root_of(cwd) is not None
+    # With no known location, a root that counts as inside but names no checkout.
+    unknown = None if cwd_known else ""
+    any_inside = (repo_root_of(cwd) is not None) or not cwd_known
     warned: Optional[Decision] = None
     try:
         invs = invocations(command, cwd, home)
     except TooComplex:
         mode = modes.get("oversize", "enforce")
         if not any_inside or mode == "off":
-            return Decision("allow", None, "", "inside" if any_inside else "outside")
+            return Decision("allow", None, "", _scope_name(any_inside, cwd_known))
         msg = (
             "Blocked by agent-guard: this command runs more than %d commands, too many to check "
             "within the hook's time limit. Split it into smaller commands. %s"
@@ -2916,7 +2924,7 @@ def evaluate(
             "deny" if mode == "enforce" else "warn",
             "oversize",
             msg,
-            "inside",
+            _scope_name(True, cwd_known),
             "oversized command",
         )
     if any(inv.hides_marker for inv in invs) and any(
@@ -2960,6 +2968,10 @@ def evaluate(
                     if is_vitruvian_core_slug(target)
                     else None
                 )
+            elif root is None:
+                root = unknown
+        elif root is None:
+            root = unknown
         if root is not None:
             any_inside = True
         if verdict is None:
@@ -2970,7 +2982,7 @@ def evaluate(
         if mode == "off":
             continue
         msg = verdict.message(root or repo_root_of(cwd))
-        scope = "inside" if root is not None else "outside"
+        scope = _scope_name(root is not None, cwd_known)
         if mode == "warn":
             if warned is None:
                 warned = Decision("warn", verdict.category, msg, scope, verdict.op)
@@ -2978,17 +2990,34 @@ def evaluate(
         return Decision("deny", verdict.category, msg, scope, verdict.op)
     if warned is not None:
         return warned
-    return Decision("allow", None, "", "inside" if any_inside else "outside")
+    return Decision("allow", None, "", _scope_name(any_inside, cwd_known))
 
 
-# Tools whose input carries a shell command, and the field that holds it.
-COMMAND_FIELDS = {
-    "Bash": "command",
-    "Monitor": "command",
-    "mcp__terminal__run_in_terminal": "command",
-    "mcp__plugin_desktop-commander_desktop-commander__start_process": "command",
-    "mcp__plugin_desktop-commander_desktop-commander__interact_with_process": "input",
-    "run_command": "CommandLine",  # Antigravity
+def _scope_name(inside: bool, cwd_known: bool = True) -> str:
+    """The log's scope: inside, outside, or unknown (no location given, so enforced)."""
+    if not cwd_known:
+        return "unknown"
+    return "inside" if inside else "outside"
+
+
+# Tools whose input carries a shell command, and the fields that may hold it
+# (the first one present wins).
+COMMAND_FIELDS: Dict[str, Tuple[str, ...]] = {
+    "Bash": ("command",),
+    "Monitor": ("command",),
+    "mcp__terminal__run_in_terminal": ("command",),
+    "mcp__plugin_desktop-commander_desktop-commander__start_process": ("command",),
+    "mcp__plugin_desktop-commander_desktop-commander__interact_with_process": (
+        "input",
+    ),
+    # Antigravity (agy 1.4.0). run_command's CommandLine and Cwd were captured
+    # live. shell_exec and send_command_input exist in the agy binary (step types
+    # SHELL_EXEC, with a `command` field, and SEND_COMMAND_INPUT, with `input`),
+    # but no agy session has been seen offering them, so their argument names
+    # are assumed: every likely spelling is read.
+    "run_command": ("CommandLine",),
+    "shell_exec": ("Command", "command", "CommandLine"),
+    "send_command_input": ("Input", "input"),
 }
 # Tools that write files, and the fields naming the files. Checked only to keep
 # agents out of the installed guard's own folders.
@@ -3003,37 +3032,108 @@ FILE_TOOLS = {
     DC + "move_file": ("source", "destination"),
     DC + "create_directory": ("path",),
     DC + "write_pdf": ("path", "outputPath"),
+    # Antigravity. write_to_file and replace_file_content were captured live;
+    # multi_replace_file_content and notebook_edit are from agy's own tool
+    # declarations (the same TargetFile field; NotebookPath).
+    "write_to_file": ("TargetFile",),
+    "replace_file_content": ("TargetFile",),
+    "multi_replace_file_content": ("TargetFile",),
+    "notebook_edit": ("NotebookPath",),
 }
+# Antigravity's manage_task (verified in agy's declarations): Action
+# "send_input" delivers Input to a running command, which is a command.
+AGY_MANAGE_TASK = "manage_task"
+# Antigravity's git_commit step (CortexStepGitCommit in the binary; never seen
+# offered to the model, so its arguments are unknown). Any call is a commit.
+AGY_GIT_COMMIT = "git_commit"
 K8S_MCP_RE = re.compile(r"^mcp__(kubernetes|Kubernetes_MCP_Server)__(.+)$")
+
+# Where a command runs when the hook payload does not say. Never a real
+# directory: evaluate() is told the location is unknown and enforces.
+UNKNOWN_CWD = "/nonexistent/agent-guard-unknown-cwd"
 
 
 def _as_dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _first_text(tin: Dict[str, Any], fields: Sequence[str]) -> str:
+    for f in fields:
+        v = tin.get(f)
+        if v:
+            return str(v)
+    return ""
+
+
+def tool_call(payload: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
+    """(is Antigravity, tool name, tool arguments) from either hook format."""
+    if "toolCall" in payload:
+        call = _as_dict(payload.get("toolCall"))
+        tool = str(call.get("name") or call.get("toolName") or "")
+        return True, tool, _as_dict(call.get("args") or call.get("arguments"))
+    return (
+        False,
+        str(payload.get("tool_name") or ""),
+        _as_dict(payload.get("tool_input")),
+    )
+
+
+def resolve_cwd(payload: Dict[str, Any], home: str) -> Tuple[str, bool]:
+    """(directory the tool call runs in, whether the payload said so).
+
+    Claude Code runs the hook in the agent's own directory and sends `cwd`.
+    Antigravity runs it in the folder holding hooks.json (~/.gemini/config),
+    sends no top-level cwd, and puts the directory in args.Cwd; the hook's own
+    directory is therefore never a fallback for it. Without Cwd the workspace
+    paths stand in: the first one inside vitruvian-core if any is, else the
+    first one. Without those, the location is unknown.
+    """
+    antigravity, tool, tin = tool_call(payload)
+    if antigravity:
+        raw = str(tin.get("Cwd") or tin.get("cwd") or "")
+        if not raw:
+            paths = payload.get("workspacePaths")
+            spaces = [
+                expand_path(p, "", home)
+                for p in (paths if isinstance(paths, list) else [])
+                if isinstance(p, str) and p
+            ]
+            spaces = [p for p in spaces if os.path.isabs(p)]
+            raw = next(
+                (p for p in spaces if repo_root_of(p) is not None),
+                spaces[0] if spaces else "",
+            )
+        path = expand_path(raw, "", home) if raw else ""
+        if not os.path.isabs(path):
+            # Missing, or relative to a directory nobody named: unknown.
+            return UNKNOWN_CWD, False
+        return path, True
+    if tool == "mcp__terminal__run_in_terminal":
+        raw = str(tin.get("cwd") or payload.get("cwd") or os.getcwd())
+    else:
+        raw = str(payload.get("cwd") or os.getcwd())
+    return expand_path(raw, os.getcwd(), home), True
+
+
 def evaluate_tool(
     payload: Dict[str, Any], modes: Dict[str, str], home: str, git_state=None
 ) -> Tuple[Decision, str, str]:
     """Decide on a hook payload. Returns (decision, tool name, command text for the log)."""
-    antigravity = "toolCall" in payload
-    if antigravity:
-        call = _as_dict(payload.get("toolCall"))
-        tool = str(call.get("name") or call.get("toolName") or "")
-        tin = _as_dict(call.get("args") or call.get("arguments"))
-        cwd = str(tin.get("Cwd") or tin.get("cwd") or payload.get("cwd") or os.getcwd())
-    else:
-        tool = str(payload.get("tool_name") or "")
-        tin = _as_dict(payload.get("tool_input"))
-        cwd = (
-            str(tin.get("cwd") or payload.get("cwd") or os.getcwd())
-            if tool == "mcp__terminal__run_in_terminal"
-            else str(payload.get("cwd") or os.getcwd())
-        )
-    cwd = expand_path(cwd, os.getcwd(), home)
+    _antigravity, tool, tin = tool_call(payload)
+    cwd, cwd_known = resolve_cwd(payload, home)
 
-    if tool in COMMAND_FIELDS:
-        text = str(tin.get(COMMAND_FIELDS[tool]) or "")
-        return evaluate(text, cwd, modes, home, git_state), tool, text
+    fields = COMMAND_FIELDS.get(tool)
+    if tool == AGY_MANAGE_TASK:
+        fields = ("Input", "input") if str(tin.get("Action")) == "send_input" else None
+        if fields is None:
+            return Decision("allow", None, "", _scope_name(False, cwd_known)), tool, ""
+    if fields is not None:
+        text = _first_text(tin, fields)
+        return (
+            evaluate(text, cwd, modes, home, git_state, cwd_known=cwd_known),
+            tool,
+            text,
+        )
 
     if tool in FILE_TOOLS:
         paths = [str(tin.get(f) or "") for f in FILE_TOOLS[tool]]
@@ -3056,6 +3156,22 @@ def evaluate_tool(
             )
             return d, tool, path
         return Decision("allow", None, "", "outside"), tool, ""
+
+    if tool == AGY_GIT_COMMIT:
+        in_scope = repo_root_of(cwd) is not None or not cwd_known
+        v = V("git-commit", "git commit (Antigravity git_commit tool)", T_COMMIT)
+        d = _apply_mode(v, modes, in_scope, repo_root_of(cwd))
+        if not cwd_known:
+            d.scope = "unknown"
+        text = "git_commit " + json.dumps(
+            {
+                k: val
+                for k, val in tin.items()
+                if k not in ("toolAction", "toolSummary")
+            },
+            sort_keys=True,
+        )
+        return d, tool, text
 
     in_scope = repo_root_of(cwd) is not None
     if tool == "mcp__ccd_pr__set_auto_merge":
@@ -3197,24 +3313,36 @@ def main(argv: Optional[List[str]] = None, stdin=None, stdout=None) -> int:
     except Exception as exc:  # never crash the agent loop on a guard bug
         decision, tool, text = (
             Decision("allow", None, "", "unknown"),
-            str(payload.get("tool_name") or ""),
+            tool_call(payload)[1],
             "",
         )
         write_log(home, {"ts": _now(), "event": "error", "error": repr(exc)[:500]})
     if text or decision.decision != "allow":
+        if antigravity:
+            # agy sends no cwd or session_id: log the directory the guard
+            # judged by ("" if none was given) and the conversation id.
+            try:
+                where, known = resolve_cwd(payload, home)
+            except Exception:  # the decision is made; the log must not fail it
+                where, known = "", False
+            cwd_text = where if known else ""
+            session = payload.get("conversationId")
+        else:
+            cwd_text = str(payload.get("cwd") or "")
+            session = payload.get("session_id")
         write_log(
             home,
             {
                 "ts": _now(),
                 "agent": "antigravity" if antigravity else "claude-code",
                 "tool": tool,
-                "cwd": str(payload.get("cwd") or ""),
+                "cwd": cwd_text,
                 "scope": decision.scope,
                 "category": decision.category,
                 "op": decision.op,
                 "decision": decision.decision,
                 "command": redact_for_log(text),
-                "session": str(payload.get("session_id") or "")[:64],
+                "session": str(session or "")[:64],
             },
         )
     out = render(decision, antigravity)
