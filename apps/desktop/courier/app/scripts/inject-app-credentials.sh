@@ -30,7 +30,7 @@
 #   - The identity is COURIER_SIGN_IDENTITY if it is set ("-" forces an ad hoc signature), else the first
 #     "Developer ID Application" identity in the keychain, else ad hoc (CI has none).
 #   - With an identity, both pieces get `--options runtime --timestamp` (the hardened runtime and Apple's
-#     timestamp, which notarization needs). A timestamp can fail on a bad network, so each is tried three times.
+#     timestamp, which notarization needs). Every signature also gets --strip-disallowed-xattrs. A timestamp can fail on a bad network, so each is tried three times.
 #     Ad hoc gets neither.
 #   - Extra codesign flags can be passed in COURIER_SIGN_FLAGS (split on spaces, added to both signatures).
 # What it used is printed ("Signed with Developer ID (team ...)" or "Signed ad hoc"); never anything secret.
@@ -225,7 +225,8 @@ fi
 # hash, so two certificates of the same name cannot be confused), else ad hoc.
 identity="${COURIER_SIGN_IDENTITY:-}"
 if [ -z "$identity" ]; then
-	identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Developer ID Application/ { print $2; exit }' || true)"
+	# One hash, even when the same certificate is listed twice (it is, when it is in two keychains).
+	identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Developer ID Application/ && !seen[$2]++ { print $2; exit }' || true)"
 	identity="${identity:--}"
 fi
 # Extra flags from the environment, split on spaces. (`${flags[@]+...}`: an empty array is an unset variable to
@@ -234,9 +235,11 @@ extra_flags=()
 if [ -n "${COURIER_SIGN_FLAGS:-}" ]; then
 	read -r -a extra_flags <<<"$COURIER_SIGN_FLAGS"
 fi
-id_flags=()
+# --strip-disallowed-xattrs: an attribute that cannot go in a seal (a download's quarantine, Finder info) is dropped
+# rather than failing the signing or, later, notarization.
+id_flags=(--strip-disallowed-xattrs)
 if [ "$identity" != "-" ]; then
-	id_flags=(--options runtime --timestamp)
+	id_flags+=(--options runtime --timestamp)
 fi
 
 # codesign, with the arguments given. A timestamp comes from Apple's server and can fail on a bad network, so a

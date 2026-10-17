@@ -366,6 +366,11 @@ case "$application" in
 *"|--entitlements|"*"/Resources/Courier.entitlements|"*) ok "the app is signed with Resources/Courier.entitlements" ;;
 *) fail "the app is not signed with Resources/Courier.entitlements: $application" ;;
 esac
+if has "$engine" --strip-disallowed-xattrs && has "$application" --strip-disallowed-xattrs; then
+	ok "both Developer ID signatures pass --strip-disallowed-xattrs"
+else
+	fail "a Developer ID signature lacks --strip-disallowed-xattrs"
+fi
 if grep -q -- '--deep' <(grep -v -- '--verify' "$fake_log"); then fail "--deep was used to sign"; else ok "no signing uses --deep"; fi
 grep -q -- '--verify|--deep|--strict' "$fake_log" && ok "the result is checked with --verify --deep --strict" || fail "the result was not verified"
 grep -q 'Signed .* with Developer ID (team TEAM123456)' "$work/fake-devid.out" && ok "it says it used a Developer ID, and the team" || fail "it did not say it used a Developer ID: $(cat "$work/fake-devid.out")"
@@ -378,6 +383,11 @@ engine="$(engine_line "$fake_log")"
 application="$(app_line "$fake_log")"
 [ "$(signing_lines "$fake_log" | head -1)" = "$engine" ] && [ "$(signing_lines "$fake_log" | tail -1)" = "$application" ] &&
 	ok "ad hoc also signs the engine, then the app" || fail "ad hoc did not sign the engine then the app: $(cat "$fake_log")"
+if has "$engine" --strip-disallowed-xattrs && has "$application" --strip-disallowed-xattrs; then
+	ok "ad hoc strips disallowed attributes too"
+else
+	fail "ad hoc lacks --strip-disallowed-xattrs"
+fi
 case "$engine$application" in *"--options"* | *"--timestamp"*) fail "an ad hoc signing asked for the runtime or a timestamp" ;; *) ok "ad hoc asks for neither the hardened runtime nor a timestamp" ;; esac
 case "|$engine|$application|" in *"|--sign|-|"*"|--sign|-|"*) ok "both are signed with the ad hoc identity" ;; *) fail "not both ad hoc: $engine / $application" ;; esac
 case "|$engine|" in *"|--identifier|com.vitruviansoftware.courier.engine|"*) ok "the engine has its identifier ad hoc too" ;; *) fail "no identifier ad hoc" ;; esac
@@ -392,6 +402,29 @@ case "$(signing_lines "$fake_log" | tr '\n' ' ')" in
 *) fail "COURIER_SIGN_IDENTITY=- gave an unexpected signing: $(cat "$fake_log")" ;;
 esac
 
+# 11c2. The same certificate listed twice (it is in two keychains): one hash, used for both signatures.
+dup_bin="$work/bin-devid-twice"
+mkdir -p "$dup_bin"
+cat >"$dup_bin/security" <<'FAKE'
+#!/bin/sh
+cat <<'OUT'
+  1) 2222222222222222222222222222222222222222 "Developer ID Application: Test Person (TEAM123456)"
+  2) 2222222222222222222222222222222222222222 "Developer ID Application: Test Person (TEAM123456)"
+     2 valid identities found
+OUT
+FAKE
+chmod 755 "$dup_bin/security"
+fake_devid_saved="$fake_devid"
+fake_devid="$dup_bin"
+fake_run dup devid
+fake_devid="$fake_devid_saved"
+if [ "$fake_status" -eq 0 ] && has "$(engine_line "$fake_log")" "$devid_hash" && has "$(app_line "$fake_log")" "$devid_hash" &&
+	[ "$(signing_lines "$fake_log" | grep -c -- "$devid_hash")" -eq 2 ]; then
+	ok "a certificate listed twice gives one hash, used for both signatures"
+else
+	fail "a duplicated certificate was not handled: $(cat "$fake_log")"
+fi
+
 # 11d. COURIER_SIGN_IDENTITY names another identity: that one, with the runtime and a timestamp.
 COURIER_SIGN_IDENTITY="Some Identity" fake_run named devid
 if has "$(engine_line "$fake_log")" "Some Identity" && has "$(engine_line "$fake_log")" runtime && has "$(app_line "$fake_log")" "Some Identity"; then
@@ -401,8 +434,8 @@ else
 fi
 
 # 11e. COURIER_SIGN_FLAGS reach both signatures.
-COURIER_SIGN_FLAGS="--strip-disallowed-xattrs" fake_run flags devid
-n="$(signing_lines "$fake_log" | grep -c -- '--strip-disallowed-xattrs' || true)"
+COURIER_SIGN_FLAGS="--prefix=com.example." fake_run flags devid
+n="$(signing_lines "$fake_log" | grep -c -- '--prefix=com.example.' || true)"
 [ "$n" -eq 2 ] && ok "COURIER_SIGN_FLAGS go to both signatures" || fail "COURIER_SIGN_FLAGS reached $n of 2 signatures"
 
 # 11f. A timestamp that fails once is tried again; one that never works fails the run.

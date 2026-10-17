@@ -40,8 +40,11 @@ The injector signs the app after it writes the plist, and it signs it the way th
 - **Which identity.** `COURIER_SIGN_IDENTITY` if it is set (`-` forces an ad hoc signature). Otherwise the first "Developer ID Application" identity in the login keychain. Otherwise ad hoc, which is what CI has. The script prints which one it used ("Signed ... with Developer ID (team ...)" or "Signed ... ad hoc"), and nothing secret.
 - **Inside out.** The engine (`Contents/Helpers/courier-engine`, identifier `com.vitruviansoftware.courier.engine`) is signed first, then the app with `Resources/Courier.entitlements`. No `--deep` is used to sign (`codesign --verify --deep --strict` still checks the result). Extended attributes are stripped first.
 - **Hardened runtime and timestamp.** With an identity, both signatures carry `--options runtime --timestamp`, which notarization needs. The timestamp comes from Apple's server, so a failed signing is tried up to three times. Ad hoc gets neither.
+- **Attributes.** Both signatures also pass `--strip-disallowed-xattrs`, so an attribute that cannot be sealed (a download's quarantine flag, say) is dropped instead of failing the signing or, later, notarization.
 - **Extra flags.** `COURIER_SIGN_FLAGS` adds flags to both signatures, split on spaces.
 - **Entitlements.** `Resources/Courier.entitlements` is an empty property list, so the app has the hardened runtime and nothing more. Courier is not sandboxed (it ships directly, not through the Mac App Store), and its engine, a Go program with Signal's Rust library linked in, runs under the hardened runtime without any exception. If one is ever needed, the entitlement goes in that file and one line here: what it is and why. None so far.
+
+**First install after ad hoc builds.** Keychain items saved by earlier ad hoc builds had an access rule tied to that build's binary. The first Developer ID-signed Courier may ask once for permission to read them; click Always Allow. From then on, rebuilds carry the same team signature and do not ask.
 
 Not done here: notarization, and the DMG. Those are milestone 6's, through the desktop pipeline (`--options runtime --timestamp` and the nested signing above are what it will build on).
 
