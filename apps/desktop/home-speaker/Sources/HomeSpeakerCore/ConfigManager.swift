@@ -219,6 +219,40 @@ public class ConfigManager: ObservableObject {
         }
     }
 
+    /// Switches one chat source here, saves, and brings `chatMonitor`
+    /// along as an edit on disk would: on from all off starts it, the last
+    /// one off stops it, any other change restarts it. A change this
+    /// process saves is not seen by the file watcher (`lastWritten`), so
+    /// without this the menu bar's switches would leave the monitor as it
+    /// was. False, with nothing changed, when the value was already so or
+    /// the file would not take it.
+    @discardableResult
+    public func setChatSource(_ source: WritableKeyPath<ChatMonitorConfig, Bool>, _ isOn: Bool) -> Bool {
+        let before = config.effectiveChatMonitor
+        guard before[keyPath: source] != isOn else { return false }
+        config.effectiveChatMonitor[keyPath: source] = isOn
+        guard saveConfig() else {
+            config.effectiveChatMonitor = before
+            return false
+        }
+        reconcileChatMonitor(from: before, to: config.effectiveChatMonitor)
+        return true
+    }
+
+    /// Switches one coding agent's announcements and saves. False, with
+    /// nothing changed, when it was already so or the file would not take it.
+    @discardableResult
+    public func setAnnounces(_ agent: CodingAgent, _ isOn: Bool) -> Bool {
+        let before = config
+        guard before.announces(agent) != isOn else { return false }
+        config.setAnnounces(agent, isOn)
+        guard saveConfig() else {
+            config = before
+            return false
+        }
+        return true
+    }
+
     public func toggleEnabled() {
         config.enabled.toggle()
         saveConfig()

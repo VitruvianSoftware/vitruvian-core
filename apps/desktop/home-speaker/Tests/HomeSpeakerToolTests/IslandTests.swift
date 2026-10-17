@@ -782,4 +782,160 @@ final class IslandTests: XCTestCase {
         guard let page = link.rendered.last?.tree else { return XCTFail("not drawn") }
         XCTAssertTrue(texts(page).contains { $0.hasPrefix("dinner · Say · Kitchen") }, "the redraw shows it")
     }
+
+    // MARK: - What may speak: each agent and each chat app
+
+    func testTheIslandHasASwitchForEachAgentAndChatAppUnderBroadcasting() {
+        var status = ready()
+        let page = Pages.island(status)
+        let order = ids(page)
+        let sources = [Pages.Block.claudeCodeEnabled, Pages.Block.antigravityEnabled,
+                       Pages.Block.slackEnabled, Pages.Block.googleChatEnabled, Pages.Block.beeperEnabled]
+        XCTAssertEqual(order.filter(sources.contains), sources, "agents first, then the chat apps, in that order")
+        guard let broadcasting = order.firstIndex(of: Pages.Block.broadcasting),
+              let quiet = order.firstIndex(of: Pages.Block.quiet),
+              let first = order.firstIndex(of: Pages.Block.claudeCodeEnabled) else { return XCTFail("missing") }
+        XCTAssertLessThan(broadcasting, quiet)
+        XCTAssertLessThan(quiet, first, "the master switch and quiet hours stay on top")
+        XCTAssertEqual(toggle(page, Pages.Block.claudeCodeEnabled)?.title.text(for: "en"), "Claude Code")
+        XCTAssertEqual(toggle(page, Pages.Block.antigravityEnabled)?.title.text(for: "en"), "Antigravity")
+        XCTAssertEqual(toggle(page, Pages.Block.slackEnabled)?.title.text(for: "en"), "Slack")
+        XCTAssertEqual(toggle(page, Pages.Block.googleChatEnabled)?.title.text(for: "en"), "Google Chat")
+        XCTAssertEqual(toggle(page, Pages.Block.beeperEnabled)?.title.text(for: "en"), "Beeper")
+        XCTAssertTrue(texts(page).contains("Coding agents"))
+        XCTAssertTrue(texts(page).contains("Chat apps"))
+        // Agents speak unless switched off; chat is read only once switched on.
+        XCTAssertEqual(toggle(page, Pages.Block.claudeCodeEnabled)?.value, true)
+        XCTAssertEqual(toggle(page, Pages.Block.antigravityEnabled)?.value, true)
+        XCTAssertEqual(toggle(page, Pages.Block.slackEnabled)?.value, false)
+        XCTAssertEqual(toggle(page, Pages.Block.googleChatEnabled)?.value, false)
+        XCTAssertEqual(toggle(page, Pages.Block.beeperEnabled)?.value, false)
+        XCTAssertFalse(texts(page).contains(Pages.sourcesSilent))
+
+        status.config.setAnnounces(.antigravity, false)
+        status.config.effectiveChatMonitor.googleChatEnabled = true
+        status.config.enabled = false
+        let changed = Pages.island(status)
+        XCTAssertEqual(toggle(changed, Pages.Block.antigravityEnabled)?.value, false)
+        XCTAssertEqual(toggle(changed, Pages.Block.googleChatEnabled)?.value, true)
+        XCTAssertTrue(texts(changed).contains(Pages.sourcesSilent), "Broadcasting off: said, not hidden")
+        XCTAssertNotNil(toggle(changed, Pages.Block.claudeCodeEnabled), "still there to set for later")
+    }
+
+    func testTheAgentSwitchesSaveTheFile() {
+        let tool = tool()
+        _ = tool.islandPage()
+        var page = page(tool.islandEvent(PanelEvent(block: Pages.Block.claudeCodeEnabled, kind: .toggle, value: .bool(false))))
+        XCTAssertEqual(store.config?.announces(.claudeCode), false)
+        XCTAssertEqual(store.config?.announces(.antigravity), true, "only the one switched")
+        XCTAssertEqual(page.flatMap { toggle($0, Pages.Block.claudeCodeEnabled) }?.value, false, "the redraw shows it")
+        page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.antigravityEnabled, kind: .toggle, value: .bool(false))))
+        XCTAssertEqual(store.config?.announces(.antigravity), false)
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.claudeCodeEnabled, kind: .toggle, value: .bool(true)))
+        XCTAssertEqual(store.config?.announces(.claudeCode), true)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.claudeCodeEnabled, kind: .tap)), .keep, "no value, no change")
+        XCTAssertTrue(driver.jobs.allSatisfy { $0 == .volume }, "a switch runs nothing on the speaker")
+    }
+
+    func testTheChatSwitchesSaveTheFileAndWarnWhatCannotRun() {
+        let tool = tool()
+        XCTAssertFalse(texts(tool.islandPage()).contains(Pages.fixChatInSettings))
+        // Saved, as Settings saves it: the engine follows the file and
+        // starts its monitor (ChatMonitorReconciliation).
+        let slack = page(tool.islandEvent(PanelEvent(block: Pages.Block.slackEnabled, kind: .toggle, value: .bool(true))))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.slackEnabled, true)
+        guard let slack else { return XCTFail("not redrawn") }
+        XCTAssertEqual(toggle(slack, Pages.Block.slackEnabled)?.value, true)
+        XCTAssertTrue(texts(slack).contains("\(ChatMonitorError.slackTokenMissing.localizedDescription) · "),
+                      "on without a token: warned at once")
+        XCTAssertTrue(texts(slack).contains(Pages.fixChatInSettings))
+
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.googleChatEnabled, kind: .toggle, value: .bool(true)))
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.beeperEnabled, kind: .toggle, value: .bool(true)))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.googleChatEnabled, true)
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperEnabled, true)
+
+        for block in [Pages.Block.slackEnabled, Pages.Block.googleChatEnabled, Pages.Block.beeperEnabled] {
+            _ = tool.islandEvent(PanelEvent(block: block, kind: .toggle, value: .bool(false)))
+        }
+        XCTAssertEqual(store.config?.effectiveChatMonitor.anySourceEnabled, false)
+        XCTAssertFalse(texts(tool.islandPage()).contains(Pages.fixChatInSettings), "every source off: nothing to warn about")
+    }
+
+    func testASwitchOverAFileThatDoesNotReadSavesNothing() {
+        store.corrupt = "not JSON"
+        let tool = tool()
+        _ = tool.islandPage()
+        let page = page(tool.islandEvent(PanelEvent(block: Pages.Block.beeperEnabled, kind: .toggle, value: .bool(true))))
+        XCTAssertEqual(store.corrupt, "not JSON", "the file is left as it is")
+        XCTAssertTrue(page.map(texts)?.contains { $0.hasPrefix("Refusing to save") } == true, "and the island says why")
+    }
+
+    // MARK: - Recent Broadcasts: a tap speaks it again
+
+    func testEachRecentBroadcastIsATappableRowByItsId() {
+        var status = ready()
+        let items = (0..<4).map { BroadcastLogItem(text: "message \($0)", targetName: "Kitchen", source: "Say") }
+        status.recentBroadcasts = items
+        let page = Pages.island(status)
+        let rows = ids(page).filter { $0.hasPrefix(Pages.Block.replayPrefix) }
+        XCTAssertEqual(rows, items.prefix(Pages.maxRecentBroadcasts).map { Pages.Block.replayBroadcast($0.id) })
+        XCTAssertEqual(rows.compactMap(Pages.Block.replayBroadcastId), items.prefix(3).map(\.id))
+        XCTAssertTrue(texts(page).contains(Pages.replayHint))
+        guard case .row(let row)? = page.blocks.first(where: { $0.id == rows.first })?.content else { return XCTFail("no row") }
+        XCTAssertEqual(row.trailing?.text(for: "en"), Pages.replayMark)
+        XCTAssertNil(Pages.Block.replayBroadcastId("replay.not-a-uuid"))
+        XCTAssertNil(Pages.Block.replayBroadcastId(Pages.Block.say))
+
+        status.installed = false
+        let without = Pages.island(status)
+        XCTAssertTrue(ids(without).filter { $0.hasPrefix(Pages.Block.replayPrefix) }.isEmpty, "nothing could speak it: no tap")
+        XCTAssertFalse(texts(without).contains(Pages.replayHint))
+    }
+
+    func testTappingARecentBroadcastReplaysItWithoutListingItAgain() throws {
+        let history = BroadcastHistory(fileURL: historyURL)
+        try history.append(BroadcastLogItem(text: "the build is green", targetName: "Kitchen", source: "Claude Code"))
+        try history.append(BroadcastLogItem(text: "dinner is ready", targetName: "Kitchen", source: "Say"))
+        let tool = tool()
+        _ = tool.islandPage()
+        driver.answer(.volume, .volume(Volume(speaker: "Kitchen", percent: 30)))
+        let older = try XCTUnwrap(history.load().last)
+        XCTAssertEqual(older.text, "the build is green")
+
+        let busy = page(tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(older.id), kind: .tap)))
+        XCTAssertEqual(driver.jobs.last, .replay("the build is green"), "the row tapped, not the newest")
+        XCTAssertTrue(busy.map(texts)?.contains("Speaking it again…") == true)
+        driver.answer(.replay("the build is green"), .spoke("sent to Kitchen"))
+        XCTAssertEqual(history.load().map(\.text), ["dinner is ready", "the build is green"], "listed once, where it was")
+        XCTAssertEqual(link.messages.last, "Sent to Kitchen")
+    }
+
+    func testAReplayFollowsSaysRules() throws {
+        let history = BroadcastHistory(fileURL: historyURL)
+        try history.append(BroadcastLogItem(text: "hello", targetName: "Kitchen", source: "Say"))
+        let id = try XCTUnwrap(history.load().first?.id)
+        let tool = tool()
+        _ = tool.islandPage()
+        driver.answer(.volume, .volume(Volume(speaker: "Kitchen", percent: 30)))
+
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(id), kind: .change)), .keep, "a tap only")
+        store.config?.enabled = false
+        var page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(id), kind: .tap)))
+        XCTAssertTrue(page.map(texts)?.contains("Broadcasting is switched off") == true, "the master switch holds")
+        XCTAssertFalse(driver.jobs.contains(.replay("hello")))
+
+        store.config?.enabled = true
+        page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(UUID()), kind: .tap)))
+        XCTAssertTrue(page.map(texts)?.contains(Pages.replayGone) == true, "gone from the history since it was drawn")
+        XCTAssertFalse(driver.jobs.contains { $0.spokenText != nil })
+
+        // Quiet hours do not hold back what the person asked for.
+        store.config?.quietHoursEnabled = true
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(id), kind: .tap))
+        XCTAssertEqual(driver.jobs.last, .replay("hello"))
+        // One at a time, as Say.
+        page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(id), kind: .tap)))
+        XCTAssertTrue(page.map(texts)?.contains("HomeSpeaker is busy: Speaking it again…") == true)
+    }
 }

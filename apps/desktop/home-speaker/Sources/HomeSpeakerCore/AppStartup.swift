@@ -102,6 +102,9 @@ public enum AppStartup {
     ///   chosen and installed, or the app is in the Trash, so a stale hook
     ///   entry never says a reply twice;
     /// - `--say` says why, accurately (`asideNote`);
+    /// - an agent's `--say` follows the extension's switches while the
+    ///   extension is in use (`inUseSettings`): `speaker-broadcast` runs
+    ///   this program whichever HomeSpeaker the person picked;
     /// - `--sign-out` never revokes a login the extension shares.
     public static func commandLineParts(
         check: DoorCheck = DoorCheck(appInstalled: { false }),
@@ -114,7 +117,19 @@ public enum AppStartup {
             standsAside: { plan(check: check, bundlePath: bundlePath()).role.isQuiet },
             asideNote: { asideNote(record: check.file.read(), fileExists: check.fileExists, bundlePath: bundlePath()) },
             otherSecrets: { otherSecrets(check: check) },
-            postSignedOut: postSignedOut)
+            postSignedOut: postSignedOut,
+            inUseSettings: { inUseSettings(check: check) })
+    }
+
+    /// The extension's settings while it is the HomeSpeaker in use (chosen
+    /// and installed); nil otherwise, or when its file does not read. Read
+    /// afresh, never written.
+    public static func inUseSettings(check: DoorCheck) -> SpeakerConfig? {
+        let record = check.file.read()
+        guard role(record: record, fileExists: check.fileExists).isQuiet,
+              let profile = extensionProfile(record: record),
+              case .loaded(let settings) = SpeakerConfigFile(url: profile.settingsURL).read() else { return nil }
+        return settings
     }
 
     /// What `--say` notes when the app is in the Trash and the extension is

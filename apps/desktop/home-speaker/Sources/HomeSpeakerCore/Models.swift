@@ -137,6 +137,11 @@ public struct SpeakerConfig: Codable, Equatable {
     public var speakLocal: Bool?
     /// `AVSpeechSynthesisVoice` identifier used on this Mac.
     public var localVoice: String?
+    /// Speak what each coding agent sends, under the master switch
+    /// (`enabled`). Optional so a config written before these keys existed
+    /// still speaks for both, as it did: read through `announces(_:)`.
+    public var announceClaudeCode: Bool?
+    public var announceAntigravity: Bool?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case enabled
@@ -156,6 +161,8 @@ public struct SpeakerConfig: Codable, Equatable {
         case speakHome = "speak_home"
         case speakLocal = "speak_local"
         case localVoice = "local_voice"
+        case announceClaudeCode = "announce_claude_code"
+        case announceAntigravity = "announce_antigravity"
     }
 
     /// The Mac voice when `local_voice` is absent: a natural Siri voice.
@@ -240,6 +247,22 @@ public struct SpeakerConfig: Codable, Equatable {
             return v.isEmpty ? Self.defaultLocalVoice : v
         }
         set { localVoice = newValue }
+    }
+
+    /// Whether `agent`'s announcements are spoken, the master switch
+    /// aside: on unless switched off.
+    public func announces(_ agent: CodingAgent) -> Bool {
+        switch agent {
+        case .claudeCode: return announceClaudeCode ?? true
+        case .antigravity: return announceAntigravity ?? true
+        }
+    }
+
+    public mutating func setAnnounces(_ agent: CodingAgent, _ isOn: Bool) {
+        switch agent {
+        case .claudeCode: announceClaudeCode = isOn
+        case .antigravity: announceAntigravity = isOn
+        }
     }
 
     /// Where announcements go, for the menu bar: "Lake Office + This Mac";

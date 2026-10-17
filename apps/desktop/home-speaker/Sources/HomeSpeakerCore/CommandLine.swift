@@ -138,6 +138,12 @@ public enum HomeSpeakerCommandLine {
         public var otherSecrets: @Sendable () -> Secrets?
         /// Tells a running HomeSpeaker its login was removed.
         public var postSignedOut: @Sendable (_ chatOnly: Bool, Notification.Name) -> Void
+        /// The settings of the HomeSpeaker in use when that is the other
+        /// one; nil when it is this one, or they do not read. An agent's
+        /// `--say` is let through by these: the `speaker-broadcast` command
+        /// always runs the app's program, while the switches the person
+        /// turns are the side in use's.
+        public var inUseSettings: @Sendable () -> SpeakerConfig?
 
         public init(
             openBrowser: @escaping @Sendable (URL) -> Void,
@@ -147,7 +153,8 @@ public enum HomeSpeakerCommandLine {
             otherSecrets: @escaping @Sendable () -> Secrets? = { nil },
             postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
                 SignOutNotice.post(chatOnly: $0, name: $1)
-            }
+            },
+            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil }
         ) {
             self.openBrowser = openBrowser
             self.loginItem = loginItem
@@ -155,6 +162,7 @@ public enum HomeSpeakerCommandLine {
             self.asideNote = asideNote
             self.otherSecrets = otherSecrets
             self.postSignedOut = postSignedOut
+            self.inUseSettings = inUseSettings
         }
 
         /// Why `--login-item` does nothing for the extension.
@@ -171,10 +179,12 @@ public enum HomeSpeakerCommandLine {
             otherSecrets: @escaping @Sendable () -> Secrets? = { nil },
             postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
                 SignOutNotice.post(chatOnly: $0, name: $1)
-            }
+            },
+            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil }
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .control(SystemLoginItem()), standsAside: standsAside,
-                  asideNote: asideNote, otherSecrets: otherSecrets, postSignedOut: postSignedOut)
+                  asideNote: asideNote, otherSecrets: otherSecrets, postSignedOut: postSignedOut,
+                  inUseSettings: inUseSettings)
         }
 
         /// The extension's: no login item of its own. `otherSecrets` is the
@@ -184,10 +194,11 @@ public enum HomeSpeakerCommandLine {
             otherSecrets: @escaping @Sendable () -> Secrets? = { nil },
             postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
                 SignOutNotice.post(chatOnly: $0, name: $1)
-            }
+            },
+            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil }
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .none(reason: extensionHasNoLoginItem), standsAside: standsAside,
-                  otherSecrets: otherSecrets, postSignedOut: postSignedOut)
+                  otherSecrets: otherSecrets, postSignedOut: postSignedOut, inUseSettings: inUseSettings)
         }
     }
 
@@ -207,7 +218,7 @@ public enum HomeSpeakerCommandLine {
     /// arguments it does not recognize, prints a usage error and exits 2.
     @MainActor
     public static func run(_ arguments: [String], engine: HomeSpeakerEngine, parts: Parts) -> Never {
-        perform(action(for: arguments, engine: engine, parts: parts))
+        perform(action(for: arguments, engine: engine, parts: parts, environment: ProcessInfo.processInfo.environment))
     }
 
     /// What `arguments` do on `engine`, without printing or exiting: the
@@ -219,10 +230,14 @@ public enum HomeSpeakerCommandLine {
     /// inside their run, and a bad `--set-volume` never. Every other command
     /// reads no setting, so it never writes the default settings file and
     /// never prints a settings problem ahead of its own lines.
+    ///
+    /// `environment` is the process's, for whose shell `--say` runs in
+    /// (`BroadcastSource`); a test's is empty, so it speaks as a person.
     @MainActor
     public static func action(
         for arguments: [String], engine: HomeSpeakerEngine, parts: Parts,
-        standardInput: () -> Data = { FileHandle.standardInput.readDataToEndOfFile() }
+        standardInput: () -> Data = { FileHandle.standardInput.readDataToEndOfFile() },
+        environment: [String: String] = [:]
     ) -> Action {
         guard let command = parse(arguments) else {
             return .now(usageError(UsageError("no HomeSpeaker command in: \(arguments.joined(separator: " "))")))
@@ -294,12 +309,20 @@ public enum HomeSpeakerCommandLine {
             return .now(chatMonitor(action, profile: profile) { ChatMonitorControlNotice.post($0, name: $1) })
         case .say(let text):
             // Deliberate, like Quick Announce: it overrides quiet hours but
-            // still honours the master switch.
+            // still honours the master switch. An agent's also needs its
+            // own switch on, in the settings of the HomeSpeaker in use.
+            let source: BroadcastSource
+            switch BroadcastSource.resolve(arguments: arguments, environment: environment) {
+            case .success(let resolved): source = resolved
+            case .failure(let usage): return .now(usageError(usage))
+            }
+            let inUseSettings = parts.inUseSettings
             return headless {
                 let settings = await MainActor.run { engine.config.config }
                 return await say(
                     text, config: settings, announcer: announcer, history: history,
-                    standsAside: standsAside(), door: profile.door, note: asideNote())
+                    standsAside: standsAside(), door: profile.door, note: asideNote(),
+                    source: source, inUse: source.agent == nil ? nil : inUseSettings())
             }
         case .volume(.invalidLevel):
             return .now(volumeFailure(badLevelReason))
@@ -417,12 +440,23 @@ public enum HomeSpeakerCommandLine {
     /// `--say <text>`: speaks, whichever HomeSpeaker is chosen, because
     /// someone asked. When the other one (`door`'s other) is in use, says
     /// so on standard error.
+    ///
+    /// For a coding agent's `source`, the master switch and that agent's
+    /// own switch are read from `inUse` (the other HomeSpeaker's settings,
+    /// while it is the one in use), else from `config`; either off says so
+    /// and speaks nothing (`agentRefusal`). `records` false speaks without
+    /// adding to the history: a replay of what is already in it.
     public static func say(
         _ text: String, config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory,
-        standsAside: Bool, door: HomeSpeakerProfile.Door, note: String? = nil, at date: Date = Date()
+        standsAside: Bool, door: HomeSpeakerProfile.Door, note: String? = nil,
+        source: BroadcastSource = .user, inUse: SpeakerConfig? = nil, records: Bool = true, at date: Date = Date()
     ) async -> CLIOutput {
+        if let agent = source.agent, let refusal = agentRefusal(agent, config: inUse ?? config) {
+            return refusal
+        }
         var out = await announcement(
-            text, force: true, source: "Say", config: config, announcer: announcer, history: history, at: date)
+            text, force: true, source: source.historyLabel, records: records, config: config, announcer: announcer,
+            history: history, at: date)
         if standsAside {
             let other = door == .app ? "extension" : "app"
             out.stderr.insert(note ?? "note: the HomeSpeaker \(other) is the one in use", at: 0)
@@ -438,6 +472,8 @@ public enum HomeSpeakerCommandLine {
         standsAside: Bool, at date: Date = Date()
     ) async -> CLIOutput {
         guard !standsAside else { return CLIOutput() }
+        // Switched off since the hook handed it over: nothing is said.
+        if let refusal = agentRefusal(.claudeCode, config: config) { return refusal }
         return await announcement(
             text, force: false, source: "Claude Code", config: config, announcer: announcer, history: history, at: date)
     }
@@ -448,7 +484,7 @@ public enum HomeSpeakerCommandLine {
     /// (quiet hours, no outputs); 1 when it failed. What was heard goes into
     /// `history` under `source`, so the menu bar's Recent Broadcasts shows it.
     static func announcement(
-        _ text: String, force: Bool, source: String, config: SpeakerConfig,
+        _ text: String, force: Bool, source: String, records: Bool = true, config: SpeakerConfig,
         announcer: Announcer, history: BroadcastHistory, at date: Date
     ) async -> CLIOutput {
         guard config.enabled else { return CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1) }
@@ -471,7 +507,7 @@ public enum HomeSpeakerCommandLine {
             // Heard here with the home speaker failed is one line that says
             // both, so the tool, which shows this output, says it.
             out.stdout += outcome.spokenLines(homeName: config.defaultDevice?.name ?? "the home speakers")
-            if outcome.anySpoke {
+            if outcome.anySpoke, records {
                 let heardOn = outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers")
                 do {
                     try history.append(BroadcastLogItem(text: text, targetName: heardOn, source: source))
@@ -483,6 +519,23 @@ public enum HomeSpeakerCommandLine {
             if !outcome.anySpoke { out.exitCode = 1 }
         }
         return out
+    }
+
+    /// Why an announcement `agent` sent is not spoken, by `config`; nil when
+    /// it may be. Broadcasting off is the failure it always was (exit 1);
+    /// the agent's own switch off is the person's choice, so it exits 0, as
+    /// quiet hours do, and the agent is not told it failed.
+    public static func agentRefusal(_ agent: CodingAgent, config: SpeakerConfig) -> CLIOutput? {
+        guard config.enabled else { return CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1) }
+        guard config.announces(agent) else {
+            return CLIOutput(stderr: [agentSwitchedOff(agent)])
+        }
+        return nil
+    }
+
+    /// What an agent's announcement says while its switch is off.
+    public static func agentSwitchedOff(_ agent: CodingAgent) -> String {
+        "\(agent.displayName) announcements are switched off in HomeSpeaker. Nothing spoken."
     }
 
     /// How long `--say` or `--announce` may take: 20 s covered a home
@@ -619,6 +672,10 @@ public enum HomeSpeakerCommandLine {
         usage: HomeSpeaker [flag]
           (no flag)            run the menu bar app
           --say <text>         announce text on the default speaker and/or this Mac
+          --source <name> --say <text>
+                               the same, for claude-code or antigravity: spoken only
+                               while that agent's switch is on (default: the agent
+                               whose shell runs it, else a person)
           --volume             the default speaker's volume, as JSON
           --set-volume <0-100> set it; --mute / --unmute likewise
           --sign-in [--chat]   sign in for Home (or Google Chat)
