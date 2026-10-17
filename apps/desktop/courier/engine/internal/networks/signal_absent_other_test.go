@@ -21,3 +21,6 @@ func TestSignalIsAbsentOffDarwin(t *testing.T) {
 	_, ok := Get("signal")
 	require.False(t, ok)
 }
+
+// platformClients has no row to add off macOS: Signal isn't built here.
+func platformClients() map[string]platformClient { return nil }

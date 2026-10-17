@@ -324,6 +324,10 @@ func (a *Actions) React(ctx context.Context, roomID, targetEventID, key string) 
 // network once. The receipt is best effort: the bridge drops it if the network is not logged in yet or takes no
 // receipts, and reading is no reason to wait for a login.
 //
+// Reading a chat also clears its "marked unread" and ends a reminder that has fired (one still to come is left
+// alone), both here first. A chat that was marked unread is then marked read on a network that takes unread
+// marks, the same best-effort way as SetMarkedUnread.
+//
 // The receipt is handled in line by the chat's bridge, so MarkRead can wait behind a send that is still in
 // flight in the same chat. Callers run each request on its own goroutine.
 func (a *Actions) MarkRead(ctx context.Context, roomID string) error {
@@ -337,9 +341,19 @@ func (a *Actions) MarkRead(ctx context.Context, roomID string) error {
 			return err
 		}
 	}
+	wasMarked, err := a.s.SetMarkedUnread(ctx, []string{roomID}, false)
+	if err != nil {
+		return err
+	}
+	if err = a.s.ClearFiredReminder(ctx, roomID); err != nil {
+		return err
+	}
 	h, err := a.eng.HostForRoom(ctx, roomID)
 	if err != nil {
 		return err
+	}
+	if len(wasMarked) > 0 {
+		a.tell(ctx, h, roomID, syncUnread, event.AccountDataMarkedUnread, &event.MarkedUnreadEventContent{Unread: false})
 	}
 	if !moved {
 		return nil // no message, or already read up to it

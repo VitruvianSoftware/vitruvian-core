@@ -1,0 +1,221 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package actions
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/host"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
+)
+
+// ErrNotSupported means the chat's network has no way to take the change, so nothing was changed.
+var ErrNotSupported = errors.New("this network can't do that")
+
+// The chat changes a network can take, in the order Syncs lists them.
+const (
+	syncPin    = "pin"
+	syncMute   = "mute"
+	syncUnread = "unread"
+	syncAccept = "accept_request"
+)
+
+// SyncsOf lists the chat changes a network client takes, out of "pin", "mute", "unread" and "accept_request", in
+// that order: the bridgev2 interfaces it implements. Never nil.
+func SyncsOf(c bridgev2.NetworkAPI) []string {
+	out := []string{}
+	if _, ok := c.(bridgev2.TagHandlingNetworkAPI); ok {
+		out = append(out, syncPin)
+	}
+	if _, ok := c.(bridgev2.MuteHandlingNetworkAPI); ok {
+		out = append(out, syncMute)
+	}
+	if _, ok := c.(bridgev2.MarkedUnreadHandlingNetworkAPI); ok {
+		out = append(out, syncUnread)
+	}
+	if _, ok := c.(bridgev2.MessageRequestAcceptingNetworkAPI); ok {
+		out = append(out, syncAccept)
+	}
+	return out
+}
+
+func takes(c bridgev2.NetworkAPI, change string) bool {
+	for _, s := range SyncsOf(c) {
+		if s == change {
+			return true
+		}
+	}
+	return false
+}
+
+// myLogins are the local user's logins on h's network that have a client.
+func myLogins(h *host.Host) []*bridgev2.UserLogin {
+	var out []*bridgev2.UserLogin
+	for _, l := range h.Bridge.GetAllCachedUserLogins() {
+		if l.UserMXID == ids.Me && l.Client != nil {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// Syncs lists which of the chat changes Courier makes reach this network, out of "pin", "mute", "unread" and
+// "accept_request", in that order. It follows the network's login client: a network that isn't running or isn't
+// linked has none to ask, and lists nothing. Never nil.
+func (a *Actions) Syncs(network string) []string {
+	h, ok := a.eng.Host(network)
+	if !ok {
+		return []string{}
+	}
+	out := []string{}
+	for _, change := range []string{syncPin, syncMute, syncUnread, syncAccept} {
+		for _, l := range myLogins(h) {
+			if takes(l.Client, change) {
+				out = append(out, change)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// hostOf is the running host of a chat's network, or nil when that network isn't running: then a change to the
+// chat stays in Courier. An unknown chat is store.ErrNotFound.
+func (a *Actions) hostOf(ctx context.Context, roomID string) (*host.Host, error) {
+	room, ok, err := a.s.GetRoom(ctx, roomID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, store.ErrNotFound
+	}
+	h, _ := a.eng.Host(room.Network)
+	return h, nil
+}
+
+// supported reports whether h's network takes change: some login's client implements its interface.
+func supported(h *host.Host, change string) bool {
+	if h == nil {
+		return false
+	}
+	for _, l := range myLogins(h) {
+		if takes(l.Client, change) {
+			return true
+		}
+	}
+	return false
+}
+
+// tell hands a chat change to the chat's network, if the network takes that change. It runs after the change is
+// stored, and the stored change is the truth: telling is best effort. A network that is offline or refuses is
+// logged at warn, under the bridge's own network name and nothing else (no chat, name or text), and the change
+// stays as it is here. Nothing retries it; the network catches up when the chat is next changed.
+//
+// It is skipped while no login of the network is connected, rather than waiting: bridgev2 would hold each change
+// for up to SendReconnectWait, and a change to many chats at once would wait that long for every one of them.
+func (a *Actions) tell(ctx context.Context, h *host.Host, roomID, change string, typ event.Type, parsed any) {
+	if !supported(h, change) {
+		return // a network that doesn't take it: the change is Courier's own
+	}
+	log := h.Bridge.Log.With().Str("change", change).Logger()
+	connected := false
+	for _, l := range myLogins(h) {
+		if takes(l.Client, change) && l.Client.IsLoggedIn() {
+			connected = true
+			break
+		}
+	}
+	if !connected {
+		log.Warn().Msg("not connected, so the network wasn't told of a chat change; it stays changed here")
+		return
+	}
+	res := h.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		Type: typ, RoomID: id.RoomID(roomID), Sender: ids.Me, ID: ids.RandomEventID(),
+		Timestamp: time.Now().UnixMilli(), Content: event.Content{Parsed: parsed},
+	})
+	if !res.Success || res.Ignored {
+		log.Warn().Msg("the network didn't take a chat change; it stays changed here")
+	}
+}
+
+// SetPinned pins or unpins a chat in Courier, then tells its network if it takes pins (the m.favourite tag).
+func (a *Actions) SetPinned(ctx context.Context, roomID string, pinned bool) error {
+	h, err := a.hostOf(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if err = a.s.SetPinned(ctx, roomID, pinned); err != nil {
+		return err
+	}
+	tags := event.Tags{}
+	if pinned {
+		tags[event.RoomTagFavourite] = event.TagMetadata{}
+	}
+	a.tell(ctx, h, roomID, syncPin, event.AccountDataRoomTags, &event.TagEventContent{Tags: tags})
+	return nil
+}
+
+// SetMuted mutes or unmutes a chat in Courier, then tells its network if it takes mutes. A mute is for ever.
+func (a *Actions) SetMuted(ctx context.Context, roomID string, muted bool) error {
+	h, err := a.hostOf(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if err = a.s.SetMuted(ctx, roomID, muted); err != nil {
+		return err
+	}
+	var until int64 // 0: not muted
+	if muted {
+		until = -1 // for ever
+	}
+	a.tell(ctx, h, roomID, syncMute, event.AccountDataBeeperMute, &event.BeeperMuteEventContent{MutedUntil: until})
+	return nil
+}
+
+// SetMarkedUnread marks chats unread (or clears the mark) in Courier, and returns the ones that changed. Each of
+// those is then told to its network if it takes unread marks. An unknown chat is store.ErrNotFound and changes
+// none of them.
+func (a *Actions) SetMarkedUnread(ctx context.Context, roomIDs []string, unread bool) ([]string, error) {
+	changed, err := a.s.SetMarkedUnread(ctx, roomIDs, unread)
+	if err != nil {
+		return nil, err
+	}
+	for _, roomID := range changed {
+		a.tellUnread(ctx, roomID, unread)
+	}
+	return changed, nil
+}
+
+func (a *Actions) tellUnread(ctx context.Context, roomID string, unread bool) {
+	h, err := a.hostOf(ctx, roomID)
+	if err != nil || h == nil {
+		return // the mark is stored; a chat gone since, or on a network not running, has nobody to tell
+	}
+	a.tell(ctx, h, roomID, syncUnread, event.AccountDataMarkedUnread, &event.MarkedUnreadEventContent{Unread: unread})
+}
+
+// AcceptRequest accepts a message request (someone new writing first). On a network that can't take an accept it
+// is ErrNotSupported and nothing changes. Otherwise the chat stops being a request in Courier first, then the
+// network is told.
+func (a *Actions) AcceptRequest(ctx context.Context, roomID string) error {
+	h, err := a.hostOf(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if !supported(h, syncAccept) {
+		return ErrNotSupported
+	}
+	if err = a.s.SetRequest(ctx, roomID, false); err != nil {
+		return err
+	}
+	a.tell(ctx, h, roomID, syncAccept, event.BeeperAcceptMessageRequest, &event.BeeperAcceptMessageRequestEventContent{})
+	return nil
+}

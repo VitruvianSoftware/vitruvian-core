@@ -100,14 +100,48 @@ func (in *Intent) MarkRead(ctx context.Context, roomID id.RoomID, eventID id.Eve
 	return in.c.store.SetRead(ctx, string(roomID), string(eventID), ts)
 }
 
-// Unread flags, typing, tags and mutes are user-interface state owned by the app in milestone 3; the engine accepts them.
-func (in *Intent) MarkUnread(context.Context, id.RoomID, bool) error { return nil }
+// MarkUnread, TagRoom and MuteRoom are my chat list on the network: bridgev2 calls them on my own
+// (double-puppet) intent, so a ghost's or the bot's say nothing about it and are dropped. With the bridge config
+// host.Start sets (tag_only_on_create, mute_only_on_create, only_bridge_tags), tags and mutes come only when a
+// chat first arrives, so a later change on the phone never fights one made in Courier.
+func (in *Intent) MarkUnread(ctx context.Context, roomID id.RoomID, unread bool) error {
+	if in.mxid != ids.Me {
+		return nil
+	}
+	_, err := in.c.store.SetMarkedUnread(ctx, []string{string(roomID)}, unread)
+	return err
+}
 
-func (in *Intent) MarkTyping(context.Context, id.RoomID, bridgev2.TypingType, time.Duration) error {
+// TagRoom takes in a network's tag: m.favourite is a pin, m.lowpriority the network's archive. The store ignores
+// every other tag.
+func (in *Intent) TagRoom(ctx context.Context, roomID id.RoomID, tag event.RoomTag, isTagged bool) error {
+	if in.mxid != ids.Me {
+		return nil
+	}
+	return in.c.store.ApplyNetworkTag(ctx, string(roomID), string(tag), isTagged)
+}
+
+// MuteRoom takes in a network's mute: muted while until is in the future.
+func (in *Intent) MuteRoom(ctx context.Context, roomID id.RoomID, until time.Time) error {
+	if in.mxid != ids.Me {
+		return nil
+	}
+	return in.c.store.ApplyNetworkMute(ctx, string(roomID), until)
+}
+
+// MarkTyping is a contact typing, for timeout from now; a timeout of 0 is them stopping. Only a ghost (someone on
+// the network) counts: my own typing on another device, or the bot's, is nobody typing to me.
+func (in *Intent) MarkTyping(_ context.Context, roomID id.RoomID, _ bridgev2.TypingType, timeout time.Duration) error {
+	if _, isGhost := ids.ParseGhostMXID(in.c.network, in.mxid); !isGhost {
+		return nil
+	}
+	var until time.Time // zero: stopped
+	if timeout > 0 {
+		until = time.Now().Add(timeout)
+	}
+	in.c.store.SetTyping(string(roomID), string(in.mxid), until)
 	return nil
 }
-func (in *Intent) TagRoom(context.Context, id.RoomID, event.RoomTag, bool) error { return nil }
-func (in *Intent) MuteRoom(context.Context, id.RoomID, time.Time) error          { return nil }
 
 func (in *Intent) DownloadMedia(_ context.Context, uri id.ContentURIString, _ *event.EncryptedFileInfo) ([]byte, error) {
 	hash, ok := ids.ParseContentURI(uri)

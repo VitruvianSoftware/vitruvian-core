@@ -42,17 +42,23 @@ type world struct {
 // only loginDelay after Connect, the way a real network does once the server's success message arrives.
 func startWorld(t *testing.T, name string, linked bool, loginDelay ...time.Duration) world {
 	t.Helper()
+	n := fakenet.New()
+	if len(loginDelay) > 0 {
+		n.LoginDelay = loginDelay[0]
+	}
+	return startWorldOn(t, name, n, linked, zerolog.Nop())
+}
+
+// startWorldOn is startWorld over a fake network the test made, with the engine logging to log.
+func startWorldOn(t *testing.T, name string, n *fakenet.Network, linked bool, log zerolog.Logger) world {
+	t.Helper()
 	ctx, dir := context.Background(), t.TempDir()
 	s, err := store.Open(filepath.Join(dir, "courier.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	m := &media.Store{Dir: filepath.Join(dir, "media")}
-	n := fakenet.New()
-	if len(loginDelay) > 0 {
-		n.LoginDelay = loginDelay[0]
-	}
 	eng, errs := engine.Start(ctx, dir, s, m,
-		[]engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, zerolog.Nop())
+		[]engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, log)
 	require.Empty(t, errs)
 	t.Cleanup(eng.Stop)
 	w := world{eng: eng, s: s, m: m, n: n, a: New(eng, s, m)}

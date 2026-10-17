@@ -20,6 +20,7 @@ import (
 	whatsapp "go.mau.fi/mautrix-whatsapp/pkg/connector"
 	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
@@ -41,7 +42,7 @@ func All() []Network {
 		{
 			Name: "whatsapp", DisplayName: "WhatsApp",
 			Flows: []string{"qr"},
-			Spec:  simpleSpec("whatsapp", func() bridgev2.NetworkConnector { return &whatsapp.WhatsAppConnector{} }),
+			Spec:  whatsappSpec,
 		},
 		{
 			Name: "telegram", DisplayName: "Telegram",
@@ -117,6 +118,24 @@ func simpleSpec(name string, newConnector func() bridgev2.NetworkConnector) func
 			Connector: func() (bridgev2.NetworkConnector, error) { return newConnector(), nil },
 		}, nil
 	}
+}
+
+// whatsappSpec is WhatsApp's example config with one change: a chat archived on the phone is tagged
+// m.lowpriority, which the store takes in as archived. The example leaves archive_tag empty, so archived chats
+// would arrive in the inbox.
+func whatsappSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:      "whatsapp",
+		Connector: func() (bridgev2.NetworkConnector, error) { return &whatsapp.WhatsAppConnector{}, nil },
+		Configure: func(data any) error {
+			cfg, ok := data.(*whatsapp.Config)
+			if !ok {
+				return fmt.Errorf("unexpected WhatsApp config type %T", data)
+			}
+			cfg.ArchiveTag = event.RoomTagLowPriority
+			return nil
+		},
+	}, nil
 }
 
 const (

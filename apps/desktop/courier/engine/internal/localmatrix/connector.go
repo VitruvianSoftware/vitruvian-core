@@ -6,7 +6,9 @@ package localmatrix
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -102,7 +104,12 @@ func (c *Connector) SendMessageStatus(ctx context.Context, ms *bridgev2.MessageS
 			Msg("ignoring unknown message status")
 		return
 	}
-	if err := c.store.SetStatus(ctx, string(info.SourceEventID), st, statusReason(ms)); err != nil {
+	err := c.store.SetStatus(ctx, string(info.SourceEventID), st, statusReason(ms))
+	if errors.Is(err, sql.ErrNoRows) {
+		// Not a stored message: a chat change such as accepting a message request also gets a status.
+		return
+	}
+	if err != nil {
 		c.log.Warn().Err(err).Str("event_id", string(info.SourceEventID)).Msg("failed to store message status")
 	}
 }
@@ -190,10 +197,14 @@ func (c *Connector) GenerateReactionEventID(roomID id.RoomID, target *database.M
 
 func (c *Connector) ServerName() string { return ids.ServerName }
 
-// applyRoomState mirrors name/topic/avatar/member state into the rooms and members tables the app reads.
+// applyRoomState mirrors name/topic/avatar/member state into the rooms and members tables the app reads, and the
+// bridge info's message-request flag into the room's request flag.
 func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, raw json.RawMessage) error {
 	if evtType == event.StateMember {
 		return c.store.SetMember(ctx, string(roomID), stateKey, raw)
+	}
+	if evtType == event.StateBridge || evtType == event.StateHalfShotBridge {
+		return c.applyBridgeInfo(ctx, roomID, raw)
 	}
 	if evtType != event.StateRoomName && evtType != event.StateTopic && evtType != event.StateRoomAvatar {
 		return nil
@@ -222,4 +233,23 @@ func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtTyp
 		room.AvatarURI = string(fields.URL)
 	}
 	return c.store.UpsertRoom(ctx, room)
+}
+
+// applyBridgeInfo reads whether the chat is a message request (someone new writing first) from the bridge info
+// bridgev2 keeps on each room. The key is left out when it is false, so its absence means "not a request": that
+// is how an accepted request reads afterwards.
+func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw json.RawMessage) error {
+	var info struct {
+		Channel struct {
+			MessageRequest bool `json:"com.beeper.message_request"`
+		} `json:"channel"`
+	}
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return fmt.Errorf("invalid bridge info: %w", err)
+	}
+	err := c.store.SetRequest(ctx, string(roomID), info.Channel.MessageRequest)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil // no such room (any more): nothing to flag
+	}
+	return err
 }

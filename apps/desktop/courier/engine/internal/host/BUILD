@@ -18,6 +18,7 @@ go_library(
         "@net_maunium_go_mautrix//bridgev2/bridgeconfig",
         "@net_maunium_go_mautrix//bridgev2/commands",
         "@net_maunium_go_mautrix//bridgev2/networkid",
+        "@net_maunium_go_mautrix//event",
     ],
 )
 
@@ -34,5 +35,6 @@ go_test(
         "@com_github_stretchr_testify//require",
         "@fi_mau_go_util//configupgrade",
         "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//event",
     ],
 )

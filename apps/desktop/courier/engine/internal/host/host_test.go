@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
@@ -175,6 +176,8 @@ func TestStartBridgeConfigMatchesExampleDefaults(t *testing.T) {
 	require.Equal(t, 10, c.UnknownErrorMaxAutoReconnects)
 	require.True(t, c.TagOnlyOnCreate)
 	require.True(t, c.MuteOnlyOnCreate)
+	require.Equal(t, []event.RoomTag{"m.favourite", "m.lowpriority"}, c.OnlyBridgeTags,
+		"without these no network pin or archive is ever taken in")
 	// Deliberate departures from the example config:
 	require.Empty(t, c.BridgeStatusNotices, "there is no admin-command room to post notices into")
 	require.Zero(t, c.PortalEventBuffer, "events are handled synchronously so statuses are acknowledged in order")

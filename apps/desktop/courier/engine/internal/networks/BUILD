@@ -11,19 +11,26 @@ go_test(
     ],
     embed = [":networks"],
     deps = [
+        "//apps/desktop/courier/engine/internal/actions",
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
+        "@fi_mau_go_mautrix_gmessages//pkg/connector",
+        "@fi_mau_go_mautrix_slack//pkg/connector",
         "@fi_mau_go_mautrix_telegram//pkg/connector",
         "@fi_mau_go_mautrix_whatsapp//pkg/connector",
         "@in_gopkg_yaml_v3//:yaml_v3",
+        "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//event",
     ] + select({
         "@rules_go//go/platform:darwin": [
+            "@fi_mau_go_mautrix_signal//pkg/connector",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
         "@rules_go//go/platform:ios": [
+            "@fi_mau_go_mautrix_signal//pkg/connector",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
         "//conditions:default": [],
@@ -50,6 +57,7 @@ go_library(
         "@fi_mau_go_mautrix_whatsapp//pkg/connector",
         "@in_gopkg_yaml_v3//:yaml_v3",
         "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//event",
     ] + select({
         "@rules_go//go/platform:darwin": [
             "@fi_mau_go_mautrix_signal//pkg/connector",

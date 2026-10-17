@@ -4,13 +4,26 @@
 package networks
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	gmessages "go.mau.fi/mautrix-gmessages/pkg/connector"
+	slack "go.mau.fi/mautrix-slack/pkg/connector"
 	telegram "go.mau.fi/mautrix-telegram/pkg/connector"
+	whatsapp "go.mau.fi/mautrix-whatsapp/pkg/connector"
 	"gopkg.in/yaml.v3"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/host"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
 func fmtConfig(t *testing.T, data any) string {
@@ -157,4 +170,90 @@ func TestNotStartedKeepsTheReasonAndDropsDuplicateKeys(t *testing.T) {
 	})
 	require.Equal(t, map[string]string{"telegram": "Telegram needs its own app credentials"}, got)
 	require.Empty(t, NotStarted(nil))
+}
+
+// WhatsApp tags a chat archived on the phone with its archive_tag, which the example config leaves empty. Courier
+// sets it to m.lowpriority, the tag the store reads as archived, so such a chat arrives archived.
+func TestWhatsAppArchivedChatsArriveArchived(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	wa, ok := Get("whatsapp")
+	require.True(t, ok)
+	spec, err := wa.Spec()
+	require.NoError(t, err)
+	require.NotNil(t, spec.Configure, "WhatsApp needs its archive tag set")
+	nc, err := spec.Connector()
+	require.NoError(t, err)
+	h, err := host.Start(ctx, dir, spec.Name, s, &media.Store{Dir: filepath.Join(dir, "media")}, nc, zerolog.Nop(),
+		host.WithConfigure(spec.Configure))
+	require.NoError(t, err)
+	defer h.Stop()
+
+	cfg := nc.(*whatsapp.WhatsAppConnector).Config
+	require.Equal(t, event.RoomTagLowPriority, cfg.ArchiveTag)
+	require.Equal(t, event.RoomTagFavourite, cfg.PinnedTag, "pins keep the example's tag")
+	require.Contains(t, h.Bridge.Config.OnlyBridgeTags, cfg.ArchiveTag, "the bridge takes the tag in")
+	require.Equal(t, "{{or .BusinessName .PushName .Phone .RedactedPhone \"Unknown user\"}} (WA)", cfg.DisplaynameTemplate,
+		"every other setting keeps the example's value")
+}
+
+// The "sent" rows of the plan's per-network table, checked against the client types of the pinned bridges. A
+// bridge bump that adds or drops one of these handlers fails here, so the table (and what Courier tells people
+// reaches each network) is looked at again.
+func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
+	want := map[string][]string{
+		"whatsapp":  {"pin", "mute", "unread"},
+		"telegram":  {"pin", "mute"},
+		"gmessages": {},
+		"slack":     {},
+	}
+	clients := map[string]bridgev2.NetworkAPI{
+		"whatsapp":  (*whatsapp.WhatsAppClient)(nil),
+		"telegram":  (*telegram.TelegramClient)(nil),
+		"gmessages": (*gmessages.GMClient)(nil),
+		"slack":     (*slack.SlackClient)(nil),
+	}
+	for name, c := range platformClients() {
+		clients[name], want[name] = c.client, c.syncs
+	}
+	var registered []string
+	for _, n := range All() {
+		registered = append(registered, n.Name)
+	}
+	require.ElementsMatch(t, registered, keys(clients), "every registered network has a row")
+	for name, c := range clients {
+		require.Equal(t, want[name], actions.SyncsOf(c), name)
+		// The same, asked of the bridgev2 interfaces directly.
+		_, pin := c.(bridgev2.TagHandlingNetworkAPI)
+		_, mute := c.(bridgev2.MuteHandlingNetworkAPI)
+		_, unread := c.(bridgev2.MarkedUnreadHandlingNetworkAPI)
+		_, accept := c.(bridgev2.MessageRequestAcceptingNetworkAPI)
+		require.Equal(t, want[name], pick(pin, "pin", mute, "mute", unread, "unread", accept, "accept_request"), name)
+	}
+}
+
+type platformClient struct {
+	client bridgev2.NetworkAPI
+	syncs  []string
+}
+
+func keys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// pick lists the names whose flag is set, in order: pick(true, "a", false, "b") is ["a"].
+func pick(pairs ...any) []string {
+	out := []string{}
+	for i := 0; i < len(pairs); i += 2 {
+		if pairs[i].(bool) {
+			out = append(out, pairs[i+1].(string))
+		}
+	}
+	return out
 }

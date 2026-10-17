@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	signal "go.mau.fi/mautrix-signal/pkg/connector"
 )
 
 // On macOS Signal is the last network, after the portable four.
@@ -23,4 +24,9 @@ func TestSignalIsRegisteredLastOnDarwin(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "Signal", signal.DisplayName)
 	require.Equal(t, []string{"qr"}, signal.Flows)
+}
+
+// platformClients adds Signal's row of the sync table: it takes message-request accepts and nothing else.
+func platformClients() map[string]platformClient {
+	return map[string]platformClient{"signal": {client: (*signal.SignalClient)(nil), syncs: []string{"accept_request"}}}
 }
