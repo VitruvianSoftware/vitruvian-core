@@ -23,6 +23,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -887,5 +888,124 @@ func TestReleasePRsPlanNoUnitsOnThePR(t *testing.T) {
 	head := planJob[i : i+400]
 	if !strings.Contains(head, `if [ "$RELEASE_SKIP" = "true" ]; then`) || !strings.Contains(head, `echo "units=[]"`) {
 		t.Errorf("plan step must emit an empty unit list first on a release-bot PR:\n%s", head)
+	}
+}
+
+// stepScript returns the `run: |` body of the plan-job step with this name,
+// dedented, so a test can run the exact script GitHub would.
+func stepScript(t *testing.T, rendered, name string) string {
+	t.Helper()
+	i := strings.Index(rendered, "      - name: "+name+"\n")
+	if i < 0 {
+		t.Fatalf("step %q not found", name)
+	}
+	rest := rendered[i:]
+	j := strings.Index(rest, "        run: |\n")
+	if j < 0 {
+		t.Fatalf("step %q has no run block", name)
+	}
+	var body strings.Builder
+	for _, line := range strings.Split(rest[j+len("        run: |\n"):], "\n") {
+		if line != "" && !strings.HasPrefix(line, "          ") {
+			break
+		}
+		body.WriteString(strings.TrimPrefix(line, "          ") + "\n")
+	}
+	return body.String()
+}
+
+// A push to main plans no units when the merge queue already passed this
+// workflow on the exact code that landed (#3418), and plans as before on any
+// other answer. The lookup must be push-to-main only and must never fail the
+// plan; every step that only feeds the planner stands down on a hit; and the
+// rdeps-map job, which later PRs plan from, must not depend on it.
+func TestPushTheQueueAlreadyPassedPlansNoUnits(t *testing.T) {
+	units := []Unit{
+		{Schema: SchemaVersion, Name: "alpha", Package: "a", TestTargets: []string{"//a:t"}, Tier: "L1", Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10},
+		{Schema: SchemaVersion, Name: "beta", Package: "b", TestTargets: []string{"//b:t"}, Tier: "L1", Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10},
+	}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+	planJob := got[strings.Index(got, "  plan:"):strings.Index(got, "  unit-alpha:")]
+
+	i := strings.Index(planJob, "        id: queued\n")
+	if i < 0 {
+		t.Fatal("plan job has no merge-queue lookup step")
+	}
+	step := planJob[i : i+400]
+	for _, want := range []string{
+		"if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+		"continue-on-error: true",
+		"WORKFLOW_PATH: .github/workflows/presubmit.yaml",
+		"PUSH_BEFORE: ${{ github.event.before }}",
+		"FORCED_PUSH: ${{ github.event.forced }}",
+	} {
+		if !strings.Contains(step, want) {
+			t.Errorf("lookup step is missing %q:\n%s", want, step)
+		}
+	}
+	if !strings.Contains(planJob[i:], "bash tools/ci/queue-fast-pass.sh queued") {
+		t.Error("lookup step must ask queue-fast-pass.sh queued")
+	}
+	if q, r := strings.Index(planJob, "id: queued"), strings.Index(planJob, "id: release"); q < r {
+		t.Error("lookup must come after the release check and before the planner steps")
+	}
+
+	for _, id := range []string{"id: fastpass", "id: mapref", "id: mapkeys"} {
+		i := strings.Index(planJob, id)
+		if i < 0 || !strings.Contains(planJob[i:i+200], "steps.queued.outputs.verdict != 'hit'") {
+			t.Errorf("step %q must stand down when the queue already passed this code", id)
+		}
+	}
+	for _, name := range []string{"Free up runner disk space", "Set up Bazel", "Set up Go", "Restore the dependency map for the diff base"} {
+		i := strings.Index(planJob, "- name: "+name)
+		if i < 0 || !strings.Contains(planJob[i:i+200], "steps.queued.outputs.verdict != 'hit'") {
+			t.Errorf("step %q must stand down when the queue already passed this code", name)
+		}
+	}
+
+	rdeps := got[strings.Index(got, "  rdeps-map:"):strings.Index(got, "  gate:")]
+	if strings.Contains(rdeps, "queued") || !strings.Contains(rdeps, "if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}") {
+		t.Errorf("rdeps-map must keep running on every push to main:\n%s", rdeps[:200])
+	}
+
+	// Run the real plan step. A miss takes the push path with no diff base,
+	// the fail-open branch that needs no planner, so it must answer "every
+	// unit". A hit must answer "no units" before any of that.
+	script := stepScript(t, planJob, "Work out which units this change affects")
+	for _, tc := range []struct {
+		verdict, want string
+	}{
+		{"hit", "units=[]"},
+		{"miss", `units=["alpha","beta"]`},
+		{"", `units=["alpha","beta"]`},
+	} {
+		dir := t.TempDir()
+		out, summary := dir+"/out", dir+"/summary"
+		cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", script)
+		cmd.Dir = dir
+		cmd.Env = []string{
+			"PATH=" + os.Getenv("PATH"),
+			"GITHUB_OUTPUT=" + out, "GITHUB_STEP_SUMMARY=" + summary,
+			"EVENT_NAME=push", "PR_BASE_SHA=", "MQ_BASE_SHA=", "PUSH_BEFORE=",
+			"RELEASE_SKIP=false", "QUEUED=" + tc.verdict, "QUEUED_RUN=4242",
+			`ALL_UNITS=["alpha","beta"]`, "RUNNER_TEMP=" + dir,
+		}
+		log, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("verdict %q: plan step failed: %v\n%s", tc.verdict, err, log)
+		}
+		written, _ := os.ReadFile(out)
+		if !strings.Contains("\n"+string(written), "\n"+tc.want+"\n") {
+			t.Errorf("verdict %q: want %s in GITHUB_OUTPUT, got:\n%s\nlog:\n%s", tc.verdict, tc.want, written, log)
+		}
+		if tc.verdict == "hit" {
+			s, _ := os.ReadFile(summary)
+			if !strings.Contains(string(s), "4242") {
+				t.Errorf("a skipped plan must name the queue run it trusted; summary:\n%s", s)
+			}
+		}
 	}
 }

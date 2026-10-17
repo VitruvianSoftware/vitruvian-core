@@ -61,9 +61,27 @@ jobs:
           RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.type == 'Bot' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: echo "skip=$RELEASE_PR" | tee -a "$GITHUB_OUTPUT"
 
+      - name: Did the merge queue already pass this exact code?
+        id: queued
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_PATH: .github/workflows/presubmit.yaml
+          PUSH_BEFORE: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+        run: |
+          bash tools/ci/queue-fast-pass.sh queued | tee "$RUNNER_TEMP/queued.out"
+          {
+            echo "### Already passed in the merge queue?"
+            echo ""
+            echo "- verdict: $(sed -n 's/^verdict=//p' "$RUNNER_TEMP/queued.out")"
+            echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/queued.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Has this exact code already passed? (log only)
         id: fastpass
-        if: steps.release.outputs.skip != 'true'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,15 +101,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Free up runner disk space
-        if: steps.release.outputs.skip != 'true'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Bazel
-        if: steps.release.outputs.skip != 'true'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
         uses: ./.github/actions/setup-bazel
 
       - name: Set up Go
-        if: steps.release.outputs.skip != 'true'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -99,7 +117,7 @@ jobs:
 
       - name: Fetch the dependency map kept under a git ref
         id: mapref
-        if: steps.release.outputs.skip != 'true'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
         continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
@@ -108,7 +126,7 @@ jobs:
 
       - name: List recent ancestors of the diff base
         id: mapkeys
-        if: steps.release.outputs.skip != 'true'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
@@ -123,7 +141,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Restore the dependency map for the diff base
-        if: steps.release.outputs.skip != 'true' && steps.mapref.outputs.commit == ''
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.mapref.outputs.commit == ''
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -139,6 +157,8 @@ jobs:
           MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           RELEASE_SKIP: ${{ steps.release.outputs.skip }}
+          QUEUED: ${{ steps.queued.outputs.verdict }}
+          QUEUED_RUN: ${{ steps.queued.outputs.run }}
           ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
           set +e -u -o pipefail
@@ -147,6 +167,13 @@ jobs:
             echo "units=[]" >> "$GITHUB_OUTPUT"
             echo "degraded=false" >> "$GITHUB_OUTPUT"
             printf '### Affected units\n\nRelease-bot PR: none on the pull request. The merge queue tests the exact commit that lands.\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$QUEUED" = "hit" ]; then
+            echo "The merge queue already passed this exact code in run $QUEUED_RUN; no units run again on main."
+            echo "units=[]" >> "$GITHUB_OUTPUT"
+            echo "degraded=false" >> "$GITHUB_OUTPUT"
+            printf '### Affected units\n\nNone on main: merge queue run %s already passed this exact code.\n' "$QUEUED_RUN" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           case "$EVENT_NAME" in
