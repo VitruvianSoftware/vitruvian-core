@@ -1396,3 +1396,12 @@
 "Undo (⌘Z)" = "Undo (⌘Z)";
 /* VoiceOver: one of the 24 label icons, by its place in the grid. */
 "Icon %lld" = "Icon %lld";
+
+/* Question before an archive-all button archives one chat. */
+"Archive 1 chat?" = "Archive 1 chat?";
+
+/* Question before an archive-all button archives this many chats. */
+"Archive %lld chats?" = "Archive %lld chats?";
+
+/* Question before an archive-all when the chats that match couldn't be counted. */
+"Archive these chats? Pinned chats stay where they are. You can undo this." = "Archive these chats? Pinned chats stay where they are. You can undo this.";

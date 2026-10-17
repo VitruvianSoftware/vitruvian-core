@@ -115,6 +115,17 @@ final class InboxViewSupportTests: XCTestCase {
         XCTAssertEqual(h.inbox.selection, ["!e"], "nothing open: ⇧K takes the last chat")
     }
 
+    func testPlainEActsOnThePointedChatOnlyWithNothingOpen() async throws {
+        let h = try await start()
+        XCTAssertEqual(h.inbox.plainKeyTargets(pointedAt: "!c"), ["!c"], "no chat open: the chat pointed at")
+        XCTAssertEqual(h.inbox.plainKeyTargets(pointedAt: nil), [], "nothing pointed at: nothing")
+        h.inbox.select("!a")
+        XCTAssertEqual(h.inbox.plainKeyTargets(pointedAt: "!c"), [], "a chat is open: E is a letter")
+        h.inbox.beginSelecting()
+        h.inbox.toggleSelected("!d")
+        XCTAssertEqual(h.inbox.plainKeyTargets(pointedAt: "!e"), ["!a", "!d"], "selecting: the selection")
+    }
+
     func testControlNumberOpensTheNthChat() async throws {
         let h = try await start()
         h.inbox.selectChat(number: 3)
@@ -371,6 +382,10 @@ final class SpacesAndRulesViewSupportTests: XCTestCase {
         try await labels.setSweep(for: "account:whatsapp", chatType: .all, days: 3, enabled: true)
         XCTAssertEqual(h.server.receivedParams("autoArchive.set").last?["rule_id"] as? Int, 0, "a new rule")
         XCTAssertEqual(LabelsModel.sweepAges, [3, 7, 14, 28, 90, 365])
+        XCTAssertEqual(LabelsModel.nearestSweepAge(30), 28)
+        XCTAssertEqual(LabelsModel.nearestSweepAge(5), 3, "a tie takes the shorter")
+        XCTAssertEqual(LabelsModel.nearestSweepAge(1000), 365)
+        XCTAssertEqual(LabelsModel.nearestSweepAge(90), 90)
         XCTAssertEqual(LabelsModel.generalDelays, [0, 1, 5, 10, 30, 60, 240, 1440, 10080])
     }
 }

@@ -426,6 +426,14 @@ public final class InboxModel: ObservableObject {
         cursor = id
     }
 
+    /// What plain E acts on: the chats selected while selecting; else, with no chat open, the chat the pointer or
+    /// keyboard is on (`pointedAt`); else nothing (with a chat open, E is a letter, not a key).
+    public func plainKeyTargets(pointedAt pointed: String?) -> [String] {
+        if isSelecting { return targets }
+        guard selectedRoomID == nil, let pointed else { return [] }
+        return [pointed]
+    }
+
     /// ⌃1–⌃9: opens the nth chat of the list. Past the last one, nothing happens.
     public func selectChat(number n: Int) {
         guard n >= 1, n <= rows.count else { return }

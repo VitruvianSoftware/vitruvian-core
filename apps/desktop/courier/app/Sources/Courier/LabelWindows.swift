@@ -74,6 +74,8 @@ struct LabelEditorWindow: View {
         }
         .padding(20)
         .frame(width: 400)
+        // The auto-archive section's Undo shows here, where its button is.
+        .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
         .navigationTitle(isNew ? String(localized: "New Label") : String(localized: "Edit Label"))
         .onAppear(perform: fill)
         .onChange(of: existing?.labelID) { _, _ in fill() }
@@ -307,6 +309,16 @@ struct AutoArchiveSection: View {
     @State private var count: Int?
     @State private var counted = false
     @State private var problem: String?
+    /// The controls as they were last filled in from the rule: only a change from these is the person's, and saved.
+    @State private var filled: Choice?
+
+    private struct Choice: Equatable {
+        let enabled: Bool
+        let readOnly: Bool
+        let days: Int
+    }
+
+    private var choice: Choice { Choice(enabled: enabled, readOnly: readOnly, days: days) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -324,7 +336,7 @@ struct AutoArchiveSection: View {
             if counted {
                 SweepCount(count: count, rule: true) {
                     Task {
-                        _ = await inbox.archiveAll(readOnly: readOnly, olderThanDays: days, space: spaceID)
+                        await Confirm.sweep(inbox, readOnly: readOnly, olderThanDays: days, space: spaceID)
                         await recount()
                     }
                 }
@@ -343,22 +355,22 @@ struct AutoArchiveSection: View {
         .task(id: "\(readOnly)|\(days)") { await recount() }
     }
 
-    /// The controls start as the rule is (with none, off, all chats, four weeks).
+    /// The controls start as the rule is (with none, off, all chats, four weeks). An age the picker doesn't offer
+    /// shows as the nearest one it does, and the rule is left as it is until the person changes something.
     private func fill() {
-        guard let rule = labels.rules(for: spaceID) else { return }
-        enabled = rule.enabled
-        readOnly = rule.chatType == .read
-        let ruleDays = Int(rule.durationMS / 86_400_000)
-        days = LabelsModel.sweepAges.contains(ruleDays) ? ruleDays : 28
+        if let rule = labels.rules(for: spaceID) {
+            enabled = rule.enabled
+            readOnly = rule.chatType == .read
+            days = LabelsModel.nearestSweepAge(Int(rule.durationMS / 86_400_000))
+        }
+        filled = choice
     }
 
-    /// A change is saved at once, unless it only repeats the rule as it is (filling the controls in from it).
+    /// A change the person made is saved at once. Showing the section never writes: filling the controls in from
+    /// the rule is no change.
     private func save() {
-        let rule = labels.rules(for: spaceID)
-        let same = rule.map {
-            $0.enabled == enabled && ($0.chatType == .read) == readOnly && $0.durationMS == Int64(days) * 86_400_000
-        }
-        guard same != true, rule != nil || enabled, labels.canAutoArchive else { return }
+        guard choice != filled, labels.rules(for: spaceID) != nil || enabled, labels.canAutoArchive else { return }
+        filled = choice
         problem = nil
         Task {
             do {
@@ -388,6 +400,8 @@ struct AutoArchiveWindow: View {
         }
         .padding(20)
         .frame(width: 440)
+        .frame(minHeight: 180, alignment: .top)
+        .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
         .navigationTitle(spaces.spaces.first { $0.spaceID == spaceID }?.title ?? String(localized: "Auto-archive"))
     }
 }

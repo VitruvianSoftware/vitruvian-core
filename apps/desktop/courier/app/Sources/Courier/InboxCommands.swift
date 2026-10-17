@@ -88,7 +88,7 @@ struct InboxCommands: Commands {
             Task { await inbox.archive(!all(\.archived)) }
         }
         .keyboardShortcut("e", modifiers: .command)
-        .disabled(rows.isEmpty || (!all(\.archived) && all(\.pinned)))
+        .disabled(inbox.targets.isEmpty || (!all(\.archived) && all(\.pinned)))
         Button(inbox.toggleReadMarksRead ? String(localized: "Mark as Read") : String(localized: "Mark as Unread")) {
             Task { await inbox.toggleRead() }
         }
@@ -125,7 +125,7 @@ struct InboxCommands: Commands {
         let commands = CommandSet.inbox(inbox, spaces)
         let byID = Dictionary(commands.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         Button(String(localized: "Archive All Read Chats…")) {
-            Task { await Confirm.archiveAllRead(inbox, command: byID["Archive all read chats"]) }
+            Task { await Confirm.archiveAllRead(inbox) }
         }
         .keyboardShortcut("e", modifiers: [.command, .shift])
         .disabled(!(byID["Archive all read chats"]?.isEnabled() ?? false))

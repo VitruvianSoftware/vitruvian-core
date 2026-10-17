@@ -167,22 +167,35 @@ enum Confirm {
         command.run()
     }
 
-    /// ⌘⇧E: "Archive N read chats?", with the count from a dry run of the same sweep. With none to archive it
-    /// beeps; when the count can't be had it asks the command's own question.
-    static func archiveAllRead(_ inbox: InboxModel, command: CourierCommand?) async {
+    /// ⌘⇧E: "Archive N read chats?" for the space shown, counted as below.
+    static func archiveAllRead(_ inbox: InboxModel) async {
         guard inbox.canArchiveAll else { return }
-        switch await inbox.archiveAllCount(readOnly: true) {
+        await sweep(inbox, readOnly: true)
+    }
+
+    /// An archive-all: counts it with a dry run of the same sweep, asks "Archive N chats?" ("Archive N read
+    /// chats?"), and archives only on OK, with Undo in the toast. With none to archive it beeps; when the count
+    /// can't be had it asks without one. `space` nil is the space shown.
+    static func sweep(_ inbox: InboxModel, readOnly: Bool, olderThanDays days: Int = 0, space: String? = nil) async {
+        let question: String
+        var detail: String? = String(localized: "Pinned chats stay where they are. You can undo this.")
+        switch await inbox.archiveAllCount(readOnly: readOnly, olderThanDays: days, space: space) {
         case 0?:
             NSSound.beep()
+            return
         case let count?:
-            let question = count == 1 ? String(localized: "Archive 1 read chat?")
-                : String(localized: "Archive \(count) read chats?")
-            guard ask(question, detail: String(localized: "Pinned chats stay where they are. You can undo this."),
-                      action: String(localized: "Archive")) else { return }
-            _ = await inbox.archiveAllRead()
+            switch (readOnly, count) {
+            case (true, 1): question = String(localized: "Archive 1 read chat?")
+            case (true, _): question = String(localized: "Archive \(count) read chats?")
+            case (false, 1): question = String(localized: "Archive 1 chat?")
+            case (false, _): question = String(localized: "Archive \(count) chats?")
+            }
         case nil:
-            if let command { run(command) }
+            question = String(localized: "Archive these chats? Pinned chats stay where they are. You can undo this.")
+            detail = nil
         }
+        guard ask(question, detail: detail, action: String(localized: "Archive")) else { return }
+        _ = await inbox.archiveAll(readOnly: readOnly, olderThanDays: days, space: space)
     }
 }
 

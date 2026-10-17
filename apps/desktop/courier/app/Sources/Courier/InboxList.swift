@@ -178,16 +178,17 @@ struct InboxList: View {
         inbox.isSelecting && inbox.selection.contains(id) ? nil : [id]
     }
 
-    /// Keys on the list: E archives (with no chat open), x selects the chat pointed at, ⇧J and ⇧K extend the
+    /// Keys on the list: E archives (the selection, or with no chat open the chat pointed at), x selects the chat pointed at, ⇧J and ⇧K extend the
     /// selection, ⌘A selects every chat.
     private func key(_ press: KeyPress) -> KeyPress.Result {
         let modifiers = press.modifiers.subtracting([.capsLock, .numericPad])
         switch (press.characters.lowercased(), modifiers) {
-        case ("e", []) where inbox.selectedRoomID == nil || inbox.isSelecting:
-            let rows = inbox.targetRows()
-            guard !rows.isEmpty else { return .ignored }
-            let unarchive = rows.allSatisfy(\.archived)
-            Task { await inbox.archive(!unarchive) }
+        case ("e", []):
+            // Selecting: the selection. No chat open: the chat the pointer is on (Ruling 32).
+            let ids = inbox.plainKeyTargets(pointedAt: hovered)
+            guard !ids.isEmpty else { return .ignored }
+            let unarchive = inbox.targetRows(ids).allSatisfy(\.archived)
+            Task { await inbox.archive(!unarchive, ids: ids) }
             return .handled
         case ("x", []):
             guard let hovered else { return .ignored }

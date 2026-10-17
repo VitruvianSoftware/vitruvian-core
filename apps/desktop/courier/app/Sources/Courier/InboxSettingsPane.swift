@@ -43,6 +43,8 @@ struct InboxSettingsPane: View {
         }
         .formStyle(.grouped)
         .frame(minHeight: 560)
+        // The archive-all tool's Undo shows here, where its button is.
+        .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
     }
 
     // MARK: Chat list
@@ -108,7 +110,7 @@ struct InboxSettingsPane: View {
                 if counted {
                     SweepCount(count: sweepCount, rule: false) {
                         Task {
-                            _ = await inbox.archiveAll(readOnly: sweepReadOnly, olderThanDays: sweepDays, space: "inbox")
+                            await Confirm.sweep(inbox, readOnly: sweepReadOnly, olderThanDays: sweepDays, space: "inbox")
                             await recount()
                         }
                     }

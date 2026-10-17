@@ -115,6 +115,12 @@ public final class LabelsModel: ObservableObject {
 
     /// The ages an "older than" rule and the archive-all tool take, in days: 3 days to a year.
     public static let sweepAges = [3, 7, 14, 28, 90, 365]
+    /// The age offered that is closest to `days` (the shorter one on a tie): how a rule stored with another age
+    /// is shown, without changing it.
+    public static func nearestSweepAge(_ days: Int) -> Int {
+        sweepAges.min { abs($0 - days) < abs($1 - days) } ?? 28
+    }
+
     /// The delays the General auto-archive rule (after I reply, after I read) takes, in minutes: none to a week.
     public static let generalDelays = [0, 1, 5, 10, 30, 60, 240, 1440, 10080]
 

@@ -94,7 +94,10 @@ struct SpaceBar: View {
                 openWindow(id: WindowID.autoArchive, value: space.spaceID)
             }
             Divider()
-            Button(String(localized: "Edit Spaces…")) { spaces.isEditing = true }
+            Button(String(localized: "Edit Spaces…")) {
+                spaces.isEditing = true
+                openWindow(id: WindowID.editSpaces)
+            }
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
             if let banner = inbox.banners.first(where: { $0.network == space.network && $0.action == .reconnect }) {
                 Button(String(localized: "Reconnect")) { inbox.perform(banner) }
@@ -113,7 +116,10 @@ struct SpaceBar: View {
                 Task { await LabelDeletion.confirmAndDelete(space.labelID, labels: labels) }
             }
         default:
-            Button(String(localized: "Edit Spaces…")) { spaces.isEditing = true }
+            Button(String(localized: "Edit Spaces…")) {
+                spaces.isEditing = true
+                openWindow(id: WindowID.editSpaces)
+            }
             Button(inbox.preferences.showSpaceBar ? String(localized: "Hide Space Bar")
                 : String(localized: "Show Space Bar")) {
                 inbox.preferences.showSpaceBar.toggle()
