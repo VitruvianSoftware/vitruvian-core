@@ -7,14 +7,20 @@
 #     the store folder, and the environment wins;
 #   - it signs the app again, so the app passes `codesign --verify --deep --strict` with the plist in it;
 #   - it refuses values that don't fit, writes nothing, and never prints a value (not even under `bash -x`);
-#   - with no values it says so and exits 1, or with --allow-missing skips the plist and still signs.
+#   - with no values it says so and exits 1, or with --allow-missing skips the plist and still signs;
+#   - it signs inside out (the engine, then the app) with the hardened runtime and a timestamp when there is an
+#     identity, and with neither ad hoc; a fake codesign on the PATH records how it was called.
 # Every value here is made up.
 #
-# Usage: inject_app_credentials_test.sh <inject-app-credentials.sh>
+# Usage: inject_app_credentials_test.sh <inject-app-credentials.sh> [<Courier.entitlements>]
 set -euo pipefail
 
-injector="${1:?Usage: inject_app_credentials_test.sh <inject-app-credentials.sh>}"
+injector="${1:?Usage: inject_app_credentials_test.sh <inject-app-credentials.sh> [<Courier.entitlements>]}"
 case "$injector" in /*) ;; *) injector="$PWD/$injector" ;; esac
+real_entitlements="${2:-}"
+if [ -n "$real_entitlements" ]; then
+	case "$real_entitlements" in /*) ;; *) real_entitlements="$PWD/$real_entitlements" ;; esac
+fi
 work="${TEST_TMPDIR:-$(mktemp -d)}/inject"
 rm -rf "$work"
 mkdir -p "$work"
@@ -22,6 +28,17 @@ mkdir -p "$work"
 # Nothing from the machine running the test may reach the script.
 unset COURIER_TELEGRAM_API_ID COURIER_TELEGRAM_API_HASH COURIER_SIGN_IDENTITY COURIER_SIGN_FLAGS \
 	BUILD_WORKSPACE_DIRECTORY COURIER_SECRETS_DIR
+
+# This Mac may have a Developer ID in its keychain; the real-codesign cases below want the ad hoc path, so a
+# `security` that finds no identity is first on the PATH. (The fake-codesign cases at the end swap in their own.)
+no_identity_bin="$work/bin-no-identity"
+mkdir -p "$no_identity_bin"
+cat >"$no_identity_bin/security" <<'FAKE'
+#!/bin/sh
+echo "     0 valid identities found"
+FAKE
+chmod 755 "$no_identity_bin/security"
+export PATH="$no_identity_bin:$PATH"
 
 failed=0
 fail() {
@@ -35,14 +52,13 @@ good_hash=0123456789abcdef0123456789abcdef
 other_id=7070707
 other_hash=fedcba9876543210fedcba9876543210
 
-# A fresh, signed stand-in app: a real executable, and a helper like the engine, so codesign has something to seal.
+# A fresh, signed stand-in app: a real executable, and a stand-in engine, so codesign has something to seal.
 new_app() {
 	local app="$work/apps/$1/Courier.app"
 	rm -rf "$work/apps/$1"
 	mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Helpers"
 	cp /usr/bin/true "$app/Contents/MacOS/Dummy"
-	printf '#!/bin/sh\nexit 0\n' >"$app/Contents/Helpers/dummy-helper"
-	chmod 755 "$app/Contents/Helpers/dummy-helper"
+	cp /usr/bin/true "$app/Contents/Helpers/courier-engine"
 	cat >"$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -70,15 +86,23 @@ leaks() {
 	return 1
 }
 
+# An entitlements file of the test's own, for runs where the injector is not beside Resources/.
+ents="$work/Courier.entitlements"
+cat >"$ents" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict></dict></plist>
+PLIST
+
 empty_store="$work/empty-store"
 mkdir -p "$empty_store"
 
 # --- 1. From the environment: a valid plist, a valid signature, nothing printed.
 app="$(new_app env)"
-# The helper changes after the app was signed (as the engine does when Bazel builds it): the app no longer
-# verifies, and only signing the whole bundle again, nested helper included, puts that right.
-printf '# changed\n' >>"$app/Contents/Helpers/dummy-helper"
-if verifies "$app"; then fail "the stand-in app still verifies after its helper changed"; fi
+# The engine changes after the app was signed (as the engine does when Bazel builds it): the app no longer
+# verifies, and only signing the whole bundle again, nested engine included, puts that right.
+cp /usr/bin/false "$app/Contents/Helpers/courier-engine"
+if verifies "$app"; then fail "the stand-in app still verifies after its engine changed"; fi
 out="$work/env.out"
 if COURIER_SECRETS_DIR="$empty_store" COURIER_TELEGRAM_API_ID="$good_id" COURIER_TELEGRAM_API_HASH="$good_hash" \
 	"$injector" "$app" >"$out" 2>&1; then
@@ -97,10 +121,10 @@ fi
 [ "$(plutil -extract api_id raw -o - "$plist" 2>/dev/null)" = "$good_id" ] && ok "api_id is the one given" || fail "api_id differs"
 [ "$(plutil -extract api_hash raw -o - "$plist" 2>/dev/null)" = "$good_hash" ] && ok "api_hash is the one given" || fail "api_hash differs"
 if verifies "$app"; then ok "the app passes codesign --verify --deep --strict"; else fail "the app does not verify after injection"; fi
-if codesign --verify --strict "$app/Contents/Helpers/dummy-helper" >/dev/null 2>&1; then
-	ok "the helper was signed again with the app"
+if codesign --verify --strict "$app/Contents/Helpers/courier-engine" >/dev/null 2>&1; then
+	ok "the engine was signed again with the app"
 else
-	fail "the nested helper was not signed again"
+	fail "the engine was not signed again"
 fi
 if leaks "$out" "$good_id" "$good_hash"; then fail "the script printed a value: $(cat "$out")"; else ok "nothing printed a value"; fi
 ls "$app/Contents/Resources" | grep -q '^\.TelegramApp\.' && fail "a staging file was left behind" || ok "no staging file left behind"
@@ -232,7 +256,7 @@ printf '%s' "$other_id" >"$main/tools/sync-env-secrets/secrets/courier-release/C
 printf '%s' "$other_hash" >"$main/tools/sync-env-secrets/secrets/courier-release/COURIER_TELEGRAM_API_HASH"
 cp "$injector" "$work/runfiles/inject-app-credentials.sh"
 app="$(new_app worktree)"
-if BUILD_WORKSPACE_DIRECTORY="$work/worktree" "$work/runfiles/inject-app-credentials.sh" "$app" >"$work/worktree.out" 2>&1 &&
+if BUILD_WORKSPACE_DIRECTORY="$work/worktree" "$work/runfiles/inject-app-credentials.sh" --entitlements "$ents" "$app" >"$work/worktree.out" 2>&1 &&
 	[ "$(plutil -extract api_id raw -o - "$app/Contents/Resources/TelegramApp.plist")" = "$other_id" ] && verifies "$app"; then
 	ok "finds the main checkout's store from a worktree, outside any repository"
 else
@@ -243,7 +267,7 @@ if leaks "$work/worktree.out" "$other_id" "$other_hash"; then fail "the worktree
 rm -f "$main/tools/sync-env-secrets/secrets/courier-release/"*
 app="$(new_app worktree-empty)"
 set +e
-BUILD_WORKSPACE_DIRECTORY="$work/worktree" "$work/runfiles/inject-app-credentials.sh" "$app" >/dev/null 2>&1
+BUILD_WORKSPACE_DIRECTORY="$work/worktree" "$work/runfiles/inject-app-credentials.sh" --entitlements "$ents" "$app" >/dev/null 2>&1
 status=$?
 set -e
 [ "$status" -eq 1 ] && ok "an empty main checkout store is exit 1" || fail "an empty store gave exit $status"
@@ -255,5 +279,159 @@ set +e
 "$injector" "$work/not-an-app" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "a folder that is not an app is a usage error" || fail "a missing app was not a usage error"
 set -e
+
+# --- 11. How it signs, seen through a fake codesign that records every call. (The real codesign is used
+# above; here only the arguments matter.)
+fake_cs="$work/bin-fake-codesign"
+fake_devid="$work/bin-devid"
+mkdir -p "$fake_cs" "$fake_devid"
+cat >"$fake_cs/codesign" <<'FAKE'
+#!/bin/bash
+# Records its arguments, one call a line, joined with "|". FAKE_FAIL_FIRST=N makes the first N signings fail.
+printf '%s\n' "$(IFS='|'; echo "$*")" >>"$FAKE_CODESIGN_LOG"
+for arg in "$@"; do
+	case "$arg" in
+	--verify) exit 0 ;;
+	-dv)
+		echo "Authority=${FAKE_AUTHORITY:-Developer ID Application: Test Person (TEAM123456)}" >&2
+		echo "TeamIdentifier=${FAKE_TEAM:-TEAM123456}" >&2
+		exit 0
+		;;
+	esac
+done
+count_file="$FAKE_CODESIGN_LOG.count"
+n=$(($(cat "$count_file" 2>/dev/null || echo 0) + 1))
+echo "$n" >"$count_file"
+if [ "$n" -le "${FAKE_FAIL_FIRST:-0}" ]; then exit 1; fi
+exit 0
+FAKE
+cat >"$fake_devid/security" <<'FAKE'
+#!/bin/sh
+cat <<'OUT'
+  1) 1111111111111111111111111111111111111111 "Apple Development: Someone (AAAAAAAAAA)"
+  2) 2222222222222222222222222222222222222222 "Developer ID Application: Test Person (TEAM123456)"
+  3) 3333333333333333333333333333333333333333 "Developer ID Application: Other Person (TEAM999999)"
+     3 valid identities found
+OUT
+FAKE
+chmod 755 "$fake_cs/codesign" "$fake_devid/security"
+devid_hash=2222222222222222222222222222222222222222
+
+# Runs the injector on a fresh stand-in app with the fake codesign. $1 names the run; "devid" puts a Developer ID
+# in the fake keychain, anything else none. More arguments go to the injector. The log is $work/fake-$1.log and
+# the output $work/fake-$1.out; the status is in $fake_status.
+fake_run() {
+	local name="$1" keychain="$2" bin
+	shift 2
+	if [ "$keychain" = "devid" ]; then bin="$fake_devid"; else bin="$no_identity_bin"; fi
+	fake_app="$(new_app "fake-$name")"
+	fake_log="$work/fake-$name.log"
+	: >"$fake_log"
+	rm -f "$fake_log.count"
+	set +e
+	PATH="$fake_cs:$bin:$PATH" FAKE_CODESIGN_LOG="$fake_log" COURIER_SECRETS_DIR="$empty_store" \
+		"$injector" --allow-missing "$@" "$fake_app" >"$work/fake-$name.out" 2>&1
+	fake_status=$?
+	set -e
+}
+# Whether the logged call $1 (arguments joined with "|") has the argument $2.
+has() {
+	case "|$1|" in *"|$2|"*) return 0 ;; esac
+	return 1
+}
+# The lines of the log that sign something.
+signing_lines() { grep -- '--sign' "$1" || true; }
+engine_line() { signing_lines "$1" | grep -- '/Contents/Helpers/courier-engine$' | head -1; }
+app_line() { signing_lines "$1" | grep -- "Courier.app\$" | head -1; }
+
+# 11a. A Developer ID is found in the keychain and used, by its hash.
+fake_run devid devid
+[ "$fake_status" -eq 0 ] && ok "signing with a Developer ID exits 0" || fail "signing with a Developer ID exited $fake_status: $(cat "$work/fake-devid.out")"
+engine="$(engine_line "$fake_log")"
+application="$(app_line "$fake_log")"
+[ -n "$engine" ] && [ -n "$application" ] && ok "the engine and the app were each signed once" || fail "the engine or the app was not signed: $(cat "$fake_log")"
+first_signing="$(signing_lines "$fake_log" | head -1)"
+[ "$first_signing" = "$engine" ] && ok "the engine is signed before the app" || fail "the first signing was not the engine's: $first_signing"
+[ "$(signing_lines "$fake_log" | tail -1)" = "$application" ] && ok "the app is signed last" || fail "the app was not signed last"
+for line in "$engine" "$application"; do
+	if ! (has "$line" --force && has "$line" --options && has "$line" runtime && has "$line" --timestamp && has "$line" "$devid_hash"); then
+		fail "a Developer ID signing lacks --force, --options runtime, --timestamp or the identity: $line"
+	fi
+done
+ok "both are signed with --force --options runtime --timestamp and the first Developer ID"
+case "|$engine|" in *"|--identifier|com.vitruviansoftware.courier.engine|"*) ok "the engine has its own identifier" ;; *) fail "the engine has no identifier: $engine" ;; esac
+case "|$application|" in *"|--identifier|"*) fail "the app was given an identifier: $application" ;; *) ok "the app keeps its bundle identifier" ;; esac
+case "|$engine|" in *"|--entitlements|"*) fail "the engine was given entitlements: $engine" ;; *) ok "the engine has no entitlements of its own" ;; esac
+case "$application" in
+*"|--entitlements|"*"/Resources/Courier.entitlements|"*) ok "the app is signed with Resources/Courier.entitlements" ;;
+*) fail "the app is not signed with Resources/Courier.entitlements: $application" ;;
+esac
+if grep -q -- '--deep' <(grep -v -- '--verify' "$fake_log"); then fail "--deep was used to sign"; else ok "no signing uses --deep"; fi
+grep -q -- '--verify|--deep|--strict' "$fake_log" && ok "the result is checked with --verify --deep --strict" || fail "the result was not verified"
+grep -q 'Signed .* with Developer ID (team TEAM123456)' "$work/fake-devid.out" && ok "it says it used a Developer ID, and the team" || fail "it did not say it used a Developer ID: $(cat "$work/fake-devid.out")"
+if grep -q "$devid_hash" "$work/fake-devid.out"; then fail "it printed the identity hash"; else ok "it did not print the identity hash"; fi
+
+# 11b. With no identity in the keychain: ad hoc, still inside out, no runtime and no timestamp.
+fake_run adhoc none
+[ "$fake_status" -eq 0 ] && ok "signing ad hoc exits 0" || fail "signing ad hoc exited $fake_status"
+engine="$(engine_line "$fake_log")"
+application="$(app_line "$fake_log")"
+[ "$(signing_lines "$fake_log" | head -1)" = "$engine" ] && [ "$(signing_lines "$fake_log" | tail -1)" = "$application" ] &&
+	ok "ad hoc also signs the engine, then the app" || fail "ad hoc did not sign the engine then the app: $(cat "$fake_log")"
+case "$engine$application" in *"--options"* | *"--timestamp"*) fail "an ad hoc signing asked for the runtime or a timestamp" ;; *) ok "ad hoc asks for neither the hardened runtime nor a timestamp" ;; esac
+case "|$engine|$application|" in *"|--sign|-|"*"|--sign|-|"*) ok "both are signed with the ad hoc identity" ;; *) fail "not both ad hoc: $engine / $application" ;; esac
+case "|$engine|" in *"|--identifier|com.vitruviansoftware.courier.engine|"*) ok "the engine has its identifier ad hoc too" ;; *) fail "no identifier ad hoc" ;; esac
+case "$application" in *"|--entitlements|"*) ok "the app has its entitlements ad hoc too" ;; *) fail "no entitlements ad hoc" ;; esac
+grep -q 'Signed .* ad hoc' "$work/fake-adhoc.out" && ok "it says it signed ad hoc" || fail "it did not say ad hoc: $(cat "$work/fake-adhoc.out")"
+
+# 11c. COURIER_SIGN_IDENTITY="-" forces ad hoc, even with a Developer ID installed.
+COURIER_SIGN_IDENTITY="-" fake_run forced devid
+case "$(signing_lines "$fake_log" | tr '\n' ' ')" in
+*"--options"* | *"--timestamp"* | *"$devid_hash"*) fail "COURIER_SIGN_IDENTITY=- did not force ad hoc: $(cat "$fake_log")" ;;
+*"--sign|-|"*) ok "COURIER_SIGN_IDENTITY=- forces ad hoc" ;;
+*) fail "COURIER_SIGN_IDENTITY=- gave an unexpected signing: $(cat "$fake_log")" ;;
+esac
+
+# 11d. COURIER_SIGN_IDENTITY names another identity: that one, with the runtime and a timestamp.
+COURIER_SIGN_IDENTITY="Some Identity" fake_run named devid
+if has "$(engine_line "$fake_log")" "Some Identity" && has "$(engine_line "$fake_log")" runtime && has "$(app_line "$fake_log")" "Some Identity"; then
+	ok "COURIER_SIGN_IDENTITY picks the identity"
+else
+	fail "COURIER_SIGN_IDENTITY was not used: $(cat "$fake_log")"
+fi
+
+# 11e. COURIER_SIGN_FLAGS reach both signatures.
+COURIER_SIGN_FLAGS="--strip-disallowed-xattrs" fake_run flags devid
+n="$(signing_lines "$fake_log" | grep -c -- '--strip-disallowed-xattrs' || true)"
+[ "$n" -eq 2 ] && ok "COURIER_SIGN_FLAGS go to both signatures" || fail "COURIER_SIGN_FLAGS reached $n of 2 signatures"
+
+# 11f. A timestamp that fails once is tried again; one that never works fails the run.
+FAKE_FAIL_FIRST=1 fake_run retry devid
+n="$(signing_lines "$fake_log" | wc -l | tr -d ' ')"
+if [ "$fake_status" -eq 0 ] && [ "$n" -eq 3 ]; then ok "a failed signing is tried again"; else fail "a failed signing was not retried ($fake_status, $n signings)"; fi
+FAKE_FAIL_FIRST=99 fake_run giveup devid
+n="$(signing_lines "$fake_log" | wc -l | tr -d ' ')"
+if [ "$fake_status" -eq 1 ] && [ "$n" -eq 3 ]; then ok "three failures give up with exit 1"; else fail "three failures gave exit $fake_status after $n signings"; fi
+FAKE_FAIL_FIRST=1 fake_run noretry none
+if [ "$fake_status" -eq 1 ]; then ok "an ad hoc failure is not retried (there is no timestamp to blame)"; else fail "an ad hoc failure was retried or ignored"; fi
+
+# 11g. --entitlements names another file.
+other_ents="$work/Other.entitlements"
+cp "$ents" "$other_ents"
+fake_run ents devid --entitlements "$other_ents"
+case "$(app_line "$fake_log")" in *"|--entitlements|$other_ents|"*) ok "--entitlements picks the file" ;; *) fail "--entitlements was ignored" ;; esac
+set +e
+"$injector" --entitlements "$work/no-such.entitlements" "$(new_app no-ents)" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok "a missing entitlements file is a usage error" || fail "a missing entitlements file was not a usage error"
+set -e
+
+# 11h. The real entitlements file (when given) is well formed, hardened runtime only: no entitlement keys, and the
+# injector finds it by itself.
+if [ -n "$real_entitlements" ]; then
+	plutil -lint "$real_entitlements" >/dev/null 2>&1 && ok "Courier.entitlements is a well-formed property list" || fail "Courier.entitlements is malformed"
+	[ "$(plutil -convert json -o - "$real_entitlements" 2>/dev/null)" = "{}" ] && ok "Courier.entitlements grants nothing" || fail "Courier.entitlements grants something: update README.md's list"
+	fake_run default devid
+	case "$(app_line "$fake_log")" in *"/Resources/Courier.entitlements|"*) ok "the injector finds Resources/Courier.entitlements beside its scripts folder" ;; *) fail "the default entitlements file was not used" ;; esac
+fi
 
 exit "$failed"

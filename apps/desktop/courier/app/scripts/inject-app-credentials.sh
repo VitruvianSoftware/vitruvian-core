@@ -11,7 +11,7 @@
 # This is done outside Bazel on purpose. A Bazel action's output can land in the remote cache, and the app ID must
 # not. So Bazel builds an app with no keys in it, and this script adds them afterwards, on the Mac that packages.
 #
-# Usage: inject-app-credentials.sh [--allow-missing] <path/to/Courier.app>
+# Usage: inject-app-credentials.sh [--allow-missing] [--entitlements FILE] <path/to/Courier.app>
 #
 # Where the values come from:
 #   1. the environment: COURIER_TELEGRAM_API_ID and COURIER_TELEGRAM_API_HASH (both, or neither);
@@ -23,12 +23,18 @@
 # They are checked as the app and the engine check them: api_id a whole number from 1 to 2147483647, api_hash 32
 # hexadecimal characters. The values are never printed, in an error or by `bash -x`.
 #
-# Signing: ad hoc (`codesign --force --deep --sign -`), or with the identity in COURIER_SIGN_IDENTITY. Extra
-# codesign flags can be passed in COURIER_SIGN_FLAGS (split on spaces, added before the app's path).
-#
-# This is NOT yet a release signing. A Developer ID build that can be notarized needs `--options runtime
-# --timestamp` and each nested piece (the Contents/Helpers engine, then the app) signed inside out with its own
-# entitlements, not `--deep`; that is milestone 6's. COURIER_SIGN_FLAGS lets the flags through until then.
+# Signing, inside out, as the Vitruvian desktop app does it: the engine in Contents/Helpers first (with its own
+# identifier, com.vitruviansoftware.courier.engine), then the app, with the entitlements in
+# Resources/Courier.entitlements (--entitlements FILE names another file). No --deep. Extended attributes are
+# stripped first, so nothing a download or a build left on a file spoils the seal.
+#   - The identity is COURIER_SIGN_IDENTITY if it is set ("-" forces an ad hoc signature), else the first
+#     "Developer ID Application" identity in the keychain, else ad hoc (CI has none).
+#   - With an identity, both pieces get `--options runtime --timestamp` (the hardened runtime and Apple's
+#     timestamp, which notarization needs). A timestamp can fail on a bad network, so each is tried three times.
+#     Ad hoc gets neither.
+#   - Extra codesign flags can be passed in COURIER_SIGN_FLAGS (split on spaces, added to both signatures).
+# What it used is printed ("Signed with Developer ID (team ...)" or "Signed ad hoc"); never anything secret.
+# This is not a release: notarization and the DMG are milestone 6's.
 #
 # With no values the script says so, writes nothing and exits 1. --allow-missing skips the plist instead, so the
 # app falls back to asking for keys, and still signs the app again. Exit 2 is for a mistake in how it was run or in
@@ -40,9 +46,18 @@ set -euo pipefail
 
 allow_missing=0
 app=""
+entitlements="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../Resources/Courier.entitlements"
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 	--allow-missing) allow_missing=1 ;;
+	--entitlements)
+		if [ "$#" -lt 2 ]; then
+			echo "inject-app-credentials: --entitlements needs a file" >&2
+			exit 2
+		fi
+		entitlements="$2"
+		shift
+		;;
 	-h | --help)
 		sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2
 		exit 2
@@ -62,7 +77,7 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 if [ -z "$app" ]; then
-	echo "Usage: inject-app-credentials.sh [--allow-missing] <path/to/Courier.app>" >&2
+	echo "Usage: inject-app-credentials.sh [--allow-missing] [--entitlements FILE] <path/to/Courier.app>" >&2
 	exit 2
 fi
 if [ ! -d "$app/Contents" ]; then
@@ -70,6 +85,16 @@ if [ ! -d "$app/Contents" ]; then
 	exit 2
 fi
 app="$(cd "$app" && pwd)"
+if [ ! -f "$entitlements" ]; then
+	echo "inject-app-credentials: no entitlements file at $entitlements" >&2
+	exit 2
+fi
+engine="$app/Contents/Helpers/courier-engine"
+if [ ! -f "$engine" ]; then
+	echo "inject-app-credentials: $app has no Contents/Helpers/courier-engine to sign" >&2
+	exit 2
+fi
+engine_id="com.vitruviansoftware.courier.engine"
 
 store_relative="tools/sync-env-secrets/secrets/courier-release"
 id_name="COURIER_TELEGRAM_API_ID"
@@ -195,14 +220,54 @@ else
 fi
 
 # The plist is part of the app's seal, so the app is signed again whether or not one was written.
-identity="${COURIER_SIGN_IDENTITY:--}"
+#
+# The identity: COURIER_SIGN_IDENTITY, else the first Developer ID Application one in the keychain (by its
+# hash, so two certificates of the same name cannot be confused), else ad hoc.
+identity="${COURIER_SIGN_IDENTITY:-}"
+if [ -z "$identity" ]; then
+	identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Developer ID Application/ { print $2; exit }' || true)"
+	identity="${identity:--}"
+fi
 # Extra flags from the environment, split on spaces. (`${flags[@]+...}`: an empty array is an unset variable to
 # bash 3.2's `set -u`.)
-sign_flags=()
+extra_flags=()
 if [ -n "${COURIER_SIGN_FLAGS:-}" ]; then
-	read -r -a sign_flags <<<"$COURIER_SIGN_FLAGS"
+	read -r -a extra_flags <<<"$COURIER_SIGN_FLAGS"
 fi
-codesign --force --deep --sign "$identity" ${sign_flags[@]+"${sign_flags[@]}"} "$app" >/dev/null || {
+id_flags=()
+if [ "$identity" != "-" ]; then
+	id_flags=(--options runtime --timestamp)
+fi
+
+# codesign, with the arguments given. A timestamp comes from Apple's server and can fail on a bad network, so a
+# signature that asks for one is tried up to three times, as the Vitruvian build does.
+sign_one() {
+	local attempt
+	for attempt in 1 2 3; do
+		if codesign "$@" >/dev/null; then
+			return 0
+		fi
+		if [ "$identity" = "-" ] || [ "$attempt" -eq 3 ]; then
+			return 1
+		fi
+		echo "  Signing failed; trying again ($((attempt + 1))/3)" >&2
+		sleep "$attempt"
+	done
+}
+
+# Anything a download or a build left on a file (quarantine, Finder info) would fail the seal; Bazel's outputs
+# are read-only, which would fail the write.
+chmod -R u+w "$app"
+# (macOS xattr has no -r: find walks the bundle.)
+find "$app" -exec xattr -c {} + 2>/dev/null || true
+
+sign_one --force "${id_flags[@]+"${id_flags[@]}"}" --identifier "$engine_id" ${extra_flags[@]+"${extra_flags[@]}"} \
+	--sign "$identity" "$engine" || {
+	echo "inject-app-credentials: codesign could not sign the engine in $app." >&2
+	exit 1
+}
+sign_one --force "${id_flags[@]+"${id_flags[@]}"}" --entitlements "$entitlements" ${extra_flags[@]+"${extra_flags[@]}"} \
+	--sign "$identity" "$app" || {
 	echo "inject-app-credentials: codesign could not sign $app." >&2
 	exit 1
 }
@@ -210,8 +275,14 @@ codesign --verify --deep --strict "$app" || {
 	echo "inject-app-credentials: $app does not pass codesign --verify after signing." >&2
 	exit 1
 }
+
+# Say which kind of signature it got, from what codesign reports about the result.
+details="$(codesign -dv --verbose=2 "$app" 2>&1 || true)"
+team="$(printf '%s\n' "$details" | sed -n 's/^TeamIdentifier=//p' | head -1)"
 if [ "$identity" = "-" ]; then
-	echo "Signed $app (ad hoc)."
+	echo "Signed $app ad hoc."
+elif printf '%s\n' "$details" | grep -q '^Authority=Developer ID Application'; then
+	echo "Signed $app with Developer ID (team ${team:-unknown})."
 else
-	echo "Signed $app."
+	echo "Signed $app with a certificate that is not a Developer ID (team ${team:--})."
 fi

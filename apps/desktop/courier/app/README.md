@@ -29,11 +29,21 @@ bazel run //tools/sync-env-secrets:set -- courier-release COURIER_TELEGRAM_API_H
 
 Or create the two files by hand and run `bazel run //tools/sync-env-secrets:bw-push`. On another Mac, `bazel run //tools/sync-env-secrets:bw-pull` brings them down.
 
-**How they get into the app.** Not through Bazel: a Bazel output can land in the remote cache, and the ID must not. Bazel builds an app with no ID in it. `scripts/inject-app-credentials.sh <path/to/Courier.app>` then writes `Contents/Resources/TelegramApp.plist` (`api_id` an integer, `api_hash` a string) into the built app and signs the app again. It takes the values from `COURIER_TELEGRAM_API_ID` and `COURIER_TELEGRAM_API_HASH` in the environment if both are set, else from the store files above (`COURIER_SECRETS_DIR` names another folder). It checks them as the engine does and never prints them. With none, it says so and exits 1, unless `--allow-missing` is given: then it leaves the plist out and still signs the app. The signature is ad hoc, or the identity in `COURIER_SIGN_IDENTITY`.
+**How they get into the app.** Not through Bazel: a Bazel output can land in the remote cache, and the ID must not. Bazel builds an app with no ID in it. `scripts/inject-app-credentials.sh <path/to/Courier.app>` then writes `Contents/Resources/TelegramApp.plist` (`api_id` an integer, `api_hash` a string) into the built app and signs the app again. It takes the values from `COURIER_TELEGRAM_API_ID` and `COURIER_TELEGRAM_API_HASH` in the environment if both are set, else from the store files above (`COURIER_SECRETS_DIR` names another folder). It checks them as the engine does and never prints them. With none, it says so and exits 1, unless `--allow-missing` is given: then it leaves the plist out and still signs the app.
 
 Keeping the ID out of Bazel is about the build pipeline (no remote-cache entry holding it), not about hiding it from users: the `api_hash` of an app that ships is not a secret, and anyone can read it out of the app.
 
-This is not yet a release signing. `COURIER_SIGN_FLAGS` passes extra flags to `codesign`, but a Developer ID build that can be notarized needs `--options runtime --timestamp` and each nested piece (the engine in `Contents/Helpers`, then the app) signed inside out with its own entitlements, not `--deep`. That is milestone 6's.
+### Signing
+
+The injector signs the app after it writes the plist, and it signs it the way the Vitruvian desktop app is signed. The point in practice: a Courier installed on this Mac has the same signature every time it is rebuilt, so macOS treats each new build as the same app. Keychain items (the saved sign-ins) and the privacy approvals you gave it carry over, and Gatekeeper sees a real developer's name instead of an unsigned app.
+
+- **Which identity.** `COURIER_SIGN_IDENTITY` if it is set (`-` forces an ad hoc signature). Otherwise the first "Developer ID Application" identity in the login keychain. Otherwise ad hoc, which is what CI has. The script prints which one it used ("Signed ... with Developer ID (team ...)" or "Signed ... ad hoc"), and nothing secret.
+- **Inside out.** The engine (`Contents/Helpers/courier-engine`, identifier `com.vitruviansoftware.courier.engine`) is signed first, then the app with `Resources/Courier.entitlements`. No `--deep` is used to sign (`codesign --verify --deep --strict` still checks the result). Extended attributes are stripped first.
+- **Hardened runtime and timestamp.** With an identity, both signatures carry `--options runtime --timestamp`, which notarization needs. The timestamp comes from Apple's server, so a failed signing is tried up to three times. Ad hoc gets neither.
+- **Extra flags.** `COURIER_SIGN_FLAGS` adds flags to both signatures, split on spaces.
+- **Entitlements.** `Resources/Courier.entitlements` is an empty property list, so the app has the hardened runtime and nothing more. Courier is not sandboxed (it ships directly, not through the Mac App Store), and its engine, a Go program with Signal's Rust library linked in, runs under the hardened runtime without any exception. If one is ever needed, the entitlement goes in that file and one line here: what it is and why. None so far.
+
+Not done here: notarization, and the DMG. Those are milestone 6's, through the desktop pipeline (`--options runtime --timestamp` and the nested signing above are what it will build on).
 
 ```sh
 bazel run --config=macos-app //apps/desktop/courier/app:install               # into /Applications
