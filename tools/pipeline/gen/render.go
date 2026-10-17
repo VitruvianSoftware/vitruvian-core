@@ -117,8 +117,9 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// output, malformed output -- emits the full unit list, so a broken planner
 	// costs compute rather than test coverage.
 	// The condition on every step that only feeds the planner: skipped for a
-	// release-bot PR, and for a push the merge queue already passed.
-	const planNeeded = "steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'"
+	// release-bot PR, for a push the merge queue already passed, and for an
+	// agent PR in the fast lane.
+	const planNeeded = "steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'"
 
 	b.WriteString("  plan:\n")
 	b.WriteString("    name: plan/affected-units\n")
@@ -188,6 +189,41 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// pull request it only reports the tree hash, which the gate uses to
 	// name its "passed" marker. continue-on-error: a broken lookup must
 	// never cost a plan.
+	// An agent PR in the fast lane plans NO units on the pull request (#3418,
+	// Step 2b): a PR from a branch in this repository, opened by one of our
+	// agent apps (by bot user id), with the agent-fast-lane label. The merge
+	// queue still plans and runs every unit on the exact code that lands. The
+	// fast checks are other workflows and never see this. The script and the
+	// agent roster are read from the BASE commit, so a PR cannot rewrite the
+	// rule that lets it skip; on a base that has no script yet, nothing is
+	// decided and every unit runs. An unlabelled PR skips the step, so it
+	// costs nothing there. Skipping the fast-pass step with the planner keeps
+	// the gate from recording "this exact code passed" for a run that tested
+	// nothing.
+	b.WriteString("      - name: Is this an agent PR in the fast lane?\n")
+	b.WriteString("        id: fastlane\n")
+	b.WriteString("        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')\n")
+	b.WriteString("        continue-on-error: true\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          EVENT_NAME: ${{ github.event_name }}\n")
+	b.WriteString("          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}\n")
+	b.WriteString("          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}\n")
+	b.WriteString("          PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}\n")
+	b.WriteString("          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}\n")
+	b.WriteString("          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}\n")
+	b.WriteString("        run: |\n")
+	b.WriteString("          if ! git show \"$PR_BASE_SHA:tools/ci/agent-fast-lane.sh\" > \"$RUNNER_TEMP/agent-fast-lane.sh\" ||\n")
+	b.WriteString("             ! git show \"$PR_BASE_SHA:tools/agent-app/agents.tsv\" > \"$RUNNER_TEMP/agents.tsv\"; then\n")
+	b.WriteString("            echo \"::notice::The base commit has no fast-lane rule yet; every unit runs.\"\n")
+	b.WriteString("            exit 0\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          AGENTS_TSV=\"$RUNNER_TEMP/agents.tsv\" bash \"$RUNNER_TEMP/agent-fast-lane.sh\" | tee \"$RUNNER_TEMP/fast-lane.out\"\n")
+	b.WriteString("          {\n")
+	b.WriteString("            echo \"### Agent fast lane?\"\n")
+	b.WriteString("            echo \"\"\n")
+	b.WriteString("            echo \"- verdict: $(sed -n 's/^verdict=//p' \"$RUNNER_TEMP/fast-lane.out\")\"\n")
+	b.WriteString("            echo \"- why: $(sed -n 's/^reason=//p' \"$RUNNER_TEMP/fast-lane.out\")\"\n")
+	b.WriteString("          } >> \"$GITHUB_STEP_SUMMARY\"\n\n")
 	b.WriteString("      - name: Has this exact code already passed? (log only)\n")
 	b.WriteString("        id: fastpass\n")
 	b.WriteString("        if: " + planNeeded + "\n")
@@ -282,6 +318,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("          RELEASE_SKIP: ${{ steps.release.outputs.skip }}\n")
 	b.WriteString("          QUEUED: ${{ steps.queued.outputs.verdict }}\n")
 	b.WriteString("          QUEUED_RUN: ${{ steps.queued.outputs.run }}\n")
+	b.WriteString("          FAST_LANE: ${{ steps.fastlane.outputs.verdict }}\n")
 	fmt.Fprintf(&b, "          ALL_UNITS: '%s'\n", allNamesJSON)
 	b.WriteString("        run: |\n")
 	// `set +e` is load-bearing and easy to lose. GitHub runs `run:` steps as
@@ -296,6 +333,13 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("            echo \"units=[]\" >> \"$GITHUB_OUTPUT\"\n")
 	b.WriteString("            echo \"degraded=false\" >> \"$GITHUB_OUTPUT\"\n")
 	b.WriteString("            printf '### Affected units\\n\\nRelease-bot PR: none on the pull request. The merge queue tests the exact commit that lands.\\n' >> \"$GITHUB_STEP_SUMMARY\"\n")
+	b.WriteString("            exit 0\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          if [ \"$FAST_LANE\" = \"fast\" ]; then\n")
+	b.WriteString("            echo \"Agent PR in the fast lane: no units run here; the merge queue runs them on the commit that lands.\"\n")
+	b.WriteString("            echo \"units=[]\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("            echo \"degraded=false\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("            printf '### Affected units\\n\\nAgent PR in the fast lane: none on the pull request. The merge queue tests the exact commit that lands.\\n' >> \"$GITHUB_STEP_SUMMARY\"\n")
 	b.WriteString("            exit 0\n")
 	b.WriteString("          fi\n")
 	b.WriteString("          if [ \"$QUEUED\" = \"hit\" ]; then\n")

@@ -990,7 +990,7 @@ func TestPushTheQueueAlreadyPassedPlansNoUnits(t *testing.T) {
 			"PATH=" + os.Getenv("PATH"),
 			"GITHUB_OUTPUT=" + out, "GITHUB_STEP_SUMMARY=" + summary,
 			"EVENT_NAME=push", "PR_BASE_SHA=", "MQ_BASE_SHA=", "PUSH_BEFORE=",
-			"RELEASE_SKIP=false", "QUEUED=" + tc.verdict, "QUEUED_RUN=4242",
+			"RELEASE_SKIP=false", "QUEUED=" + tc.verdict, "QUEUED_RUN=4242", "FAST_LANE=",
 			`ALL_UNITS=["alpha","beta"]`, "RUNNER_TEMP=" + dir,
 		}
 		log, err := cmd.CombinedOutput()
@@ -1006,6 +1006,83 @@ func TestPushTheQueueAlreadyPassedPlansNoUnits(t *testing.T) {
 			if !strings.Contains(string(s), "4242") {
 				t.Errorf("a skipped plan must name the queue run it trusted; summary:\n%s", s)
 			}
+		}
+	}
+}
+
+// An agent PR in the fast lane plans no units on the pull request (#3418,
+// Step 2b); everything else plans as before. The decision must be made only
+// on a labelled pull_request, with the script and agent roster read from the
+// BASE commit, and it must never fail the plan. The fast-pass tree stands
+// down with the planner, so no "this code passed" record is written for a run
+// that tested nothing.
+func TestAgentFastLanePlansNoUnitsOnThePR(t *testing.T) {
+	units := []Unit{
+		{Schema: SchemaVersion, Name: "alpha", Package: "a", TestTargets: []string{"//a:t"}, Tier: "L1", Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10},
+		{Schema: SchemaVersion, Name: "beta", Package: "b", TestTargets: []string{"//b:t"}, Tier: "L1", Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10},
+	}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+	planJob := got[strings.Index(got, "  plan:"):strings.Index(got, "  unit-alpha:")]
+
+	i := strings.Index(planJob, "        id: fastlane\n")
+	if i < 0 {
+		t.Fatal("plan job has no fast-lane step")
+	}
+	step := planJob[i : strings.Index(planJob[i:], "      - name:")+i]
+	for _, want := range []string{
+		"if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')",
+		"continue-on-error: true",
+		"PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}",
+		"PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}",
+		`git show "$PR_BASE_SHA:tools/ci/agent-fast-lane.sh"`,
+		`git show "$PR_BASE_SHA:tools/agent-app/agents.tsv"`,
+	} {
+		if !strings.Contains(step, want) {
+			t.Errorf("fast-lane step is missing %q:\n%s", want, step)
+		}
+	}
+	if strings.Contains(step, "bash tools/ci/agent-fast-lane.sh") {
+		t.Error("fast-lane step must run the base commit's script, not the PR's")
+	}
+
+	for _, id := range []string{"id: fastpass", "id: mapref", "id: mapkeys"} {
+		i := strings.Index(planJob, id)
+		if i < 0 || !strings.Contains(planJob[i:i+260], "steps.fastlane.outputs.verdict != 'fast'") {
+			t.Errorf("step %q must stand down for a fast-lane PR", id)
+		}
+	}
+
+	script := stepScript(t, planJob, "Work out which units this change affects")
+	all := `units=["alpha","beta"]`
+	for _, tc := range []struct {
+		name, event, verdict, want string
+	}{
+		{"agent PR in the fast lane", "pull_request", "fast", "units=[]"},
+		{"PR the rule said no to", "pull_request", "full", all},
+		{"PR without the label (step skipped)", "pull_request", "", all},
+		{"merge queue (step never runs)", "merge_group", "", all},
+	} {
+		dir := t.TempDir()
+		out := dir + "/out"
+		cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", script)
+		cmd.Dir = dir
+		cmd.Env = []string{
+			"PATH=" + os.Getenv("PATH"),
+			"GITHUB_OUTPUT=" + out, "GITHUB_STEP_SUMMARY=" + dir + "/summary",
+			"EVENT_NAME=" + tc.event, "PR_BASE_SHA=", "MQ_BASE_SHA=", "PUSH_BEFORE=",
+			"RELEASE_SKIP=false", "QUEUED=", "QUEUED_RUN=", "FAST_LANE=" + tc.verdict,
+			`ALL_UNITS=["alpha","beta"]`, "RUNNER_TEMP=" + dir,
+		}
+		log, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: plan step failed: %v\n%s", tc.name, err, log)
+		}
+		written, _ := os.ReadFile(out)
+		if !strings.Contains("\n"+string(written), "\n"+tc.want+"\n") {
+			t.Errorf("%s: want %s in GITHUB_OUTPUT, got:\n%s\nlog:\n%s", tc.name, tc.want, written, log)
 		}
 	}
 }

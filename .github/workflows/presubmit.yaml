@@ -79,9 +79,34 @@ jobs:
             echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/queued.out")"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Is this an agent PR in the fast lane?
+        id: fastlane
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')
+        continue-on-error: true
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          if ! git show "$PR_BASE_SHA:tools/ci/agent-fast-lane.sh" > "$RUNNER_TEMP/agent-fast-lane.sh" ||
+             ! git show "$PR_BASE_SHA:tools/agent-app/agents.tsv" > "$RUNNER_TEMP/agents.tsv"; then
+            echo "::notice::The base commit has no fast-lane rule yet; every unit runs."
+            exit 0
+          fi
+          AGENTS_TSV="$RUNNER_TEMP/agents.tsv" bash "$RUNNER_TEMP/agent-fast-lane.sh" | tee "$RUNNER_TEMP/fast-lane.out"
+          {
+            echo "### Agent fast lane?"
+            echo ""
+            echo "- verdict: $(sed -n 's/^verdict=//p' "$RUNNER_TEMP/fast-lane.out")"
+            echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/fast-lane.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Has this exact code already passed? (log only)
         id: fastpass
-        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -101,15 +126,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Free up runner disk space
-        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
         uses: ./.github/actions/free-disk-space
 
       - name: Set up Bazel
-        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
         uses: ./.github/actions/setup-bazel
 
       - name: Set up Go
-        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -117,7 +142,7 @@ jobs:
 
       - name: Fetch the dependency map kept under a git ref
         id: mapref
-        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
         continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
@@ -126,7 +151,7 @@ jobs:
 
       - name: List recent ancestors of the diff base
         id: mapkeys
-        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
@@ -141,7 +166,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Restore the dependency map for the diff base
-        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.mapref.outputs.commit == ''
+        if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast' && steps.mapref.outputs.commit == ''
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -159,6 +184,7 @@ jobs:
           RELEASE_SKIP: ${{ steps.release.outputs.skip }}
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
+          FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
           ALL_UNITS: '["antigravity-gh-watch","backstage-backend","courier-app-macos","courier-engine-macos","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","peripherals","pulumi-repo-config","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-desktop-macos","vitruvian-sdk","vitruvian-tool-github"]'
         run: |
           set +e -u -o pipefail
@@ -167,6 +193,13 @@ jobs:
             echo "units=[]" >> "$GITHUB_OUTPUT"
             echo "degraded=false" >> "$GITHUB_OUTPUT"
             printf '### Affected units\n\nRelease-bot PR: none on the pull request. The merge queue tests the exact commit that lands.\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$FAST_LANE" = "fast" ]; then
+            echo "Agent PR in the fast lane: no units run here; the merge queue runs them on the commit that lands."
+            echo "units=[]" >> "$GITHUB_OUTPUT"
+            echo "degraded=false" >> "$GITHUB_OUTPUT"
+            printf '### Affected units\n\nAgent PR in the fast lane: none on the pull request. The merge queue tests the exact commit that lands.\n' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [ "$QUEUED" = "hit" ]; then
