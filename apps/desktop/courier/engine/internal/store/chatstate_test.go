@@ -133,8 +133,10 @@ func TestOnlyANewMessageFromOthersUnarchives(t *testing.T) {
 	expectStaysArchived("an edit", "$ed", ghost, "m.room.message",
 		`{"msgtype":"m.text","body":"* old","m.relates_to":{"rel_type":"m.replace","event_id":"$old"}}`, after)
 
-	// A new message from someone else brings it back, and cancels the pending auto-archive.
-	mkMsg(t, s, "!r", "$new", ghost, "m.room.message", text("are you there?"), after)
+	// A new message from someone else brings it back, and cancels the pending auto-archive. (It is a millisecond
+	// after my message: one in the same millisecond as the newest isn't newer, so it wouldn't cancel; see
+	// TestBackfillDoesNotCancelAutoArchive.)
+	mkMsg(t, s, "!r", "$new", ghost, "m.room.message", text("are you there?"), after.Add(time.Millisecond))
 	require.Equal(t, Change{Kind: "event", RoomID: "!r", EventID: "$new", Seq: inboxSeq(t, s, "$new")}, nextChange(t, ch))
 	require.Equal(t, Change{Kind: "room", RoomID: "!r"}, nextChange(t, ch))
 	require.False(t, inboxByID(t, s)["!r"].Archived)

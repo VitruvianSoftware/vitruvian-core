@@ -32,12 +32,14 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
+	"github.com/VitruvianSoftware/courier/engine/internal/timers"
 )
 
 // version is the engine's version, sent in hello. A build stamps it with Bazel's x_defs ("main.version").
@@ -199,6 +201,20 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	if _, err = s.FailInterruptedSends(context.Background()); err != nil {
 		return fmt.Errorf("mark interrupted sends: %w", err)
 	}
+
+	// Reminders and auto-archive. The loop stops with the engine's context, and is waited for before the store
+	// closes (defers run in reverse): it must never touch a closed store.
+	tm := timers.New(s, entitlement.Always{}, timers.RealClock{}, log)
+	timersCtx, stopTimers := context.WithCancel(ctx)
+	timersDone := make(chan struct{})
+	go func() {
+		defer close(timersDone)
+		tm.Run(timersCtx)
+	}()
+	defer func() {
+		stopTimers()
+		<-timersDone
+	}()
 	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
 
 	// The bridges must outlive the signal that stops us: they are stopped below, after the server has drained.

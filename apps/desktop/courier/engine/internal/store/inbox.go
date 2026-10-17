@@ -277,7 +277,8 @@ func (s *Store) AdvanceReadLocal(ctx context.Context, roomID, eventID string, ts
 // advanceMarker moves table's read marker for roomID (reads or local_reads) to eventID, if that is later than
 // where it is. The marker keeps the event's own time, so its (ts, seq) is exactly that event's. An event we do
 // not have is kept at fallbackTS and compares on ts alone. It reports whether the marker moved, and publishes a
-// "read" change when it did.
+// "read" change when it did. A marker that moves is a read: with an enabled after_read rule it schedules the
+// chat's archive (scheduleArchive), in the same transaction.
 func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time) (bool, error) {
 	moved := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
@@ -297,10 +298,13 @@ func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		_, err = s.db.Exec(ctx, `INSERT INTO `+table+` (room_id, event_id, ts) VALUES ($1,$2,$3)
-			ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, newTS)
-		moved = err == nil
-		return err
+		if _, err = s.db.Exec(ctx, `INSERT INTO `+table+` (room_id, event_id, ts) VALUES ($1,$2,$3)
+			ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, newTS); err != nil {
+			return err
+		}
+		moved = true
+		// I read the chat: with an enabled after_read rule it is archived that long from now.
+		return s.scheduleArchive(ctx, roomID, trigAfterRead, s.now().UnixMilli())
 	})
 	if err == nil && moved {
 		s.publish(Change{Kind: "read", RoomID: roomID, EventID: eventID})

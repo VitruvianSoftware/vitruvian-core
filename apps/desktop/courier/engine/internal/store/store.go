@@ -319,11 +319,23 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 		switch {
 		case !inserted:
 		case isMessageLike(e.Type, e.Content):
+			var prevLastTS int64
+			if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT last_ts FROM rooms WHERE room_id=$1), 0)", e.RoomID).Scan(&prevLastTS); err != nil {
+				return err
+			}
 			// Only a message newer than the current newest moves the room: a backfilled older one must not.
 			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
 				e.RoomID, e.TS.UnixMilli(), e.EventID)
-			if err == nil && e.Sender != string(ids.Me) {
-				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS)
+			// Newer than every message the chat had: a new message, not a backfilled one (nor one from the same
+			// millisecond as the newest).
+			newest := e.TS.UnixMilli() > prevLastTS
+			switch {
+			case err != nil:
+			case e.Sender != string(ids.Me):
+				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
+			case newest:
+				// My reply: with an enabled after_reply rule the chat is archived that long after it.
+				err = s.scheduleArchive(ctx, e.RoomID, trigAfterReply, e.TS.UnixMilli())
 			}
 		case e.Type == "m.room.redaction" && e.Status != "failed":
 			err = s.redact(ctx, e.RoomID, e.Content)
@@ -350,22 +362,24 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 // Inferred: only a message from someone else brings an archived chat back (InsertEvent never calls this for mine),
 // and only one sent after the chat was archived, so a backfilled older message leaves it where it is.
 //
-// The same message cancels a pending auto-archive (archive_due).
-func (s *Store) newMessageFromOthers(ctx context.Context, roomID string, ts time.Time) (bool, error) {
+// newest says the message is newer than every message the chat had before it (strictly: one in the same
+// millisecond as the newest doesn't count). Only such a message, the other person writing back, cancels a pending
+// auto-archive (archive_due); a backfilled older one leaves it pending.
+func (s *Store) newMessageFromOthers(ctx context.Context, roomID string, ts time.Time, newest bool) (bool, error) {
+	if newest {
+		if _, err := s.db.Exec(ctx, "DELETE FROM archive_due WHERE room_id=$1", roomID); err != nil {
+			return false, err
+		}
+	}
 	var archivedAt int64
 	if err := s.db.QueryRow(ctx, "SELECT COALESCE((SELECT archived_at FROM room_prefs WHERE room_id=$1), 0)", roomID).Scan(&archivedAt); err != nil {
 		return false, err
 	}
-	if ts.UnixMilli() <= archivedAt {
-		return false, nil // older than the archive: a backfill, not a new message
+	if archivedAt == 0 || ts.UnixMilli() <= archivedAt {
+		return false, nil // not archived, or older than the archive: a backfill, not a new message
 	}
-	if archivedAt > 0 {
-		if _, err := s.db.Exec(ctx, "UPDATE room_prefs SET archived_at=0 WHERE room_id=$1", roomID); err != nil {
-			return false, err
-		}
-	}
-	_, err := s.db.Exec(ctx, "DELETE FROM archive_due WHERE room_id=$1", roomID)
-	return archivedAt > 0 && err == nil, err
+	_, err := s.db.Exec(ctx, "UPDATE room_prefs SET archived_at=0 WHERE room_id=$1", roomID)
+	return err == nil, err
 }
 
 // redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message. If it was
