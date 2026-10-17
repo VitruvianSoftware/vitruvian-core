@@ -9,7 +9,8 @@
 # It builds nothing itself beyond what `bazel run` builds for it (Courier.zip, as a dependency). It
 #   1. unpacks the zip into a temporary folder,
 #   2. adds the Telegram app ID and signs the app again (inject-app-credentials.sh, with --allow-missing: a Mac
-#      with no keys in the store still gets an app, which asks for them),
+#      with no keys in the store still gets an app, which asks for them). The signing is with the Developer ID
+#      in the keychain when there is one, ad hoc when not (COURIER_SIGN_IDENTITY overrides; see README.md),
 #   3. quits the Courier that is installed at the destination if it is running, and waits for its engine to stop,
 #   4. replaces DIR/Courier.app (DIR is /Applications unless --dest says otherwise),
 #   5. checks the installed app with `codesign --verify --deep --strict`.
