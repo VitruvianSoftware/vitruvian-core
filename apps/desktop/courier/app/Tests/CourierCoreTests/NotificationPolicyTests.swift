@@ -5,7 +5,7 @@ import XCTest
 
 @testable import CourierCore
 
-/// When a message notifies, what the notification says, and what the Dock badge counts. All plain values.
+/// When a message notifies, what the notification says, and how the Dock badge reads. All plain values.
 final class NotificationPolicyTests: XCTestCase {
     private let connectedAt: Int64 = 1_000_000
     private let now: Int64 = 1_030_000
@@ -159,29 +159,6 @@ final class NotificationPolicyTests: XCTestCase {
     }
 
     // MARK: - The Dock badge
-
-    func testBadgeCountsUnreadChatsNotMessages() {
-        let rows = [row("!a", unread: 7), row("!b", unread: 1), row("!c", unread: 0), row("!d", unread: 40, muted: true)]
-        XCTAssertEqual(NotificationPolicy.badgeCount(rows: rows), 2, "two chats, however many messages; muted ones not counted")
-        XCTAssertEqual(NotificationPolicy.badgeCount(rows: []), 0)
-    }
-
-    func testBadgeCountsMarkedUnreadAndSkipsLowPriorityHiddenRequests() {
-        let rows = [
-            row("!read"),
-            row("!unread", unread: 3),
-            row("!marked", markedUnread: true),
-            row("!both", unread: 2, markedUnread: true),
-            row("!muted", unread: 9, muted: true),
-            row("!mutedMarked", muted: true, markedUnread: true),
-            row("!acct", unread: 4, mutedBy: .account),
-            row("!label", markedUnread: true, mutedBy: .label),
-            row("!low", unread: 5, lowPriority: true),
-            row("!hidden", hidden: true, markedUnread: true),
-            row("!request", unread: 1, request: true),
-        ]
-        XCTAssertEqual(NotificationPolicy.badgeCount(rows: rows), 3, "unread, marked and both: one chat each")
-    }
 
     func testBadgeIsEmptyAtZero() {
         XCTAssertNil(NotificationPolicy.badgeLabel(count: 0))

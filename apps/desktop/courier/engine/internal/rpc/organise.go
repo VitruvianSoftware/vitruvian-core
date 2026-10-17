@@ -415,6 +415,8 @@ type spaceJSON struct {
 	ShowInInbox string `json:"show_in_inbox"`
 	Chats       int    `json:"chats"`
 	UnreadChats int    `json:"unread_chats"`
+	// AttentionChats is the Dock badge: the inbox's unread chats that nothing mutes. 0 for every other space.
+	AttentionChats int `json:"attention_chats"`
 }
 
 func spacesList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -436,7 +438,7 @@ func spacesList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 		out = append(out, spaceJSON{
 			SpaceID: s.ID, Kind: s.Kind, Title: s.Title, Network: s.Network, LabelID: s.LabelID, Color: s.Color,
 			Icon: s.Icon, Hidden: s.Hidden, Muted: s.Muted, ShowInInbox: s.ShowInInbox, Chats: s.Chats,
-			UnreadChats: s.UnreadChats,
+			UnreadChats: s.UnreadChats, AttentionChats: s.AttentionChats,
 		})
 	}
 	return map[string]any{"spaces": out}, nil

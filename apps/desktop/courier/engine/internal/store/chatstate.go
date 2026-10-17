@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 	"unicode/utf8"
@@ -117,8 +118,17 @@ func distinct(ids []string) []string {
 // changes none of them. It returns the chats that changed, in the order given, and publishes a "room" change for
 // each.
 func (s *Store) changePrefs(ctx context.Context, roomIDs []string, change func(ctx context.Context, p *prefs) (bool, error)) ([]string, error) {
+	return s.changePrefsThen(ctx, roomIDs, change, nil)
+}
+
+// changePrefsThen is changePrefs that also runs then, when it isn't nil, on the chats that changed, in the same
+// transaction.
+func (s *Store) changePrefsThen(ctx context.Context, roomIDs []string, change func(ctx context.Context, p *prefs) (bool, error),
+	then func(ctx context.Context, changed []string) error,
+) ([]string, error) {
 	var changed []string
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		changed = nil
 		for _, id := range distinct(roomIDs) {
 			p, err := s.readPrefs(ctx, id)
 			if err != nil {
@@ -135,6 +145,9 @@ func (s *Store) changePrefs(ctx context.Context, roomIDs []string, change func(c
 				return err
 			}
 			changed = append(changed, id)
+		}
+		if then != nil && len(changed) > 0 {
+			return then(ctx, changed)
 		}
 		return nil
 	})
@@ -186,10 +199,21 @@ func (s *Store) SetPinned(ctx context.Context, roomID string, pinned bool) error
 }
 
 // SetArchived archives or unarchives chats, and returns the ones that changed. A pinned chat is never archived:
-// it is left out of changed, and when every chat named is pinned the answer is ErrPinned.
+// it is left out of changed, and when every chat named is pinned the answer is ErrPinned. Unarchiving drops the
+// chats' pending auto-archives.
 func (s *Store) SetArchived(ctx context.Context, roomIDs []string, archived bool) (changed []string, err error) {
 	asked, pinned := 0, 0
-	changed, err = s.changePrefs(ctx, roomIDs, func(_ context.Context, p *prefs) (bool, error) {
+	// Ruling 38a: a chat unarchived by hand stays where it was put. An auto-archive scheduled before (after my
+	// reply or read) is dropped with the unarchive, so it doesn't archive the chat again when it comes due.
+	var dropPending func(ctx context.Context, changed []string) error
+	if !archived {
+		dropPending = func(ctx context.Context, changed []string) error {
+			list, _ := json.Marshal(changed)
+			_, err := s.db.Exec(ctx, "DELETE FROM archive_due WHERE room_id IN (SELECT value FROM json_each($1))", string(list))
+			return err
+		}
+	}
+	changed, err = s.changePrefsThen(ctx, roomIDs, func(_ context.Context, p *prefs) (bool, error) {
 		asked++
 		switch {
 		case !archived:
@@ -206,7 +230,7 @@ func (s *Store) SetArchived(ctx context.Context, roomIDs []string, archived bool
 			p.archivedAt = s.now().UnixMilli()
 		}
 		return true, nil
-	})
+	}, dropPending)
 	if err == nil && asked > 0 && pinned == asked {
 		return nil, ErrPinned
 	}

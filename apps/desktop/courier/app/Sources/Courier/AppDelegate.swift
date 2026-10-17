@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         signInWindows = SignInWindowPresenter(login: login)
-        dockBadge = DockBadge(inbox: inbox)
+        dockBadge = DockBadge(spaces: spaces)
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },

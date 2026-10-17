@@ -7,19 +7,19 @@ import CourierCore
 import SwiftUI
 
 /// The menu-bar icon: an SF Symbol, drawn as a template by the system (it takes the menu bar's colour). It fills in
-/// when there are unread chats.
+/// when the inbox has unread chats that nothing mutes, the Dock badge's count.
 struct MenuBarIcon: View {
-    @ObservedObject var inbox: InboxModel
+    @ObservedObject var spaces: SpacesModel
 
     var body: some View {
-        Image(systemName: inbox.unreadChatCount > 0 ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
+        Image(systemName: spaces.badgeCount > 0 ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
             .accessibilityLabel(String(localized: "Courier"))
     }
 }
 
-/// The menu-bar icon's menu: how many chats are unread, Open Courier, and Quit Courier.
+/// The menu-bar icon's menu: how many chats are unread (the Dock badge's count), Open Courier, and Quit Courier.
 struct MenuBarMenu: View {
-    @ObservedObject var inbox: InboxModel
+    @ObservedObject var spaces: SpacesModel
     let openCourier: () -> Void
 
     var body: some View {
@@ -31,7 +31,7 @@ struct MenuBarMenu: View {
     }
 
     private var unreadLine: String {
-        switch inbox.unreadChatCount {
+        switch spaces.badgeCount {
         case 0: String(localized: "No unread chats")
         case 1: String(localized: "1 unread chat")
         case let count: String(localized: "\(count) unread chats")
@@ -68,15 +68,15 @@ struct OpenWindowRegistrar: View {
     }
 }
 
-/// Keeps the Dock icon's badge at the number of unread or marked-unread chats that are not muted, low priority,
-/// hidden or requests; none at zero.
+/// Keeps the Dock icon's badge at the engine's count of the inbox's unread or marked-unread chats that nothing
+/// mutes (SpacesModel.badgeCount); none at zero. It follows the inbox space, whatever space or filter is shown.
 @MainActor
 final class DockBadge {
     private var subscription: AnyCancellable?
 
-    init(inbox: InboxModel) {
-        subscription = inbox.$rows.sink { rows in
-            NSApp.dockTile.badgeLabel = NotificationPolicy.badgeLabel(count: NotificationPolicy.badgeCount(rows: rows))
+    init(spaces: SpacesModel) {
+        subscription = spaces.badgeCountPublisher.sink { count in
+            NSApp.dockTile.badgeLabel = NotificationPolicy.badgeLabel(count: count)
         }
     }
 }

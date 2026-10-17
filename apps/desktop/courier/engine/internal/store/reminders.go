@@ -147,9 +147,9 @@ var repliedSinceSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AN
 // fired. Each goes in its own transaction:
 //   - "if_no_reply", and I sent a message in the chat since setting it: the reminder is deleted, and nothing else
 //     happens (the row loses its badge: "room");
-//   - otherwise the reminder fires: fired_at is now, the chat is marked unread and back from the archive, a pending
-//     auto-archive of it is dropped (it would hide what the reminder just brought back), and "room" then
-//     "reminder" are published.
+//   - otherwise the reminder fires: fired_at is now, the chat is marked unread and back from the archive and Low
+//     priority (a hidden chat stays hidden), a pending auto-archive of it is dropped (it would hide what the
+//     reminder just brought back), and "room" then "reminder" are published.
 //
 // fired_at is written in the same transaction as everything else, so a reminder fires exactly once however often
 // this runs and however the engine stops: one that came due while Courier was quit fires on the first call after
@@ -231,7 +231,9 @@ func (s *Store) fireReminder(ctx context.Context, roomID string, now int64) (rem
 		if err != nil {
 			return err
 		}
-		p.markedUnread, p.archivedAt = true, 0
+		// Ruling 38b: the chat comes back to the inbox, as the help text promises: out of the archive and out of
+		// Low priority, marked unread. A hidden chat stays hidden; hiding it is the stronger choice.
+		p.markedUnread, p.archivedAt, p.lowPriority = true, 0, false
 		if err = s.writePrefs(ctx, roomID, p); err != nil {
 			return err
 		}

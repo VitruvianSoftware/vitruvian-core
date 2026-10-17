@@ -269,9 +269,12 @@ final class InboxViewSupportTests: XCTestCase {
         XCTAssertEqual(SyncReach.of(.mute, networks: ["slack"], accounts: accounts), .none, "an unlisted network")
         XCTAssertEqual(SyncReach.of(.mute, networks: [], accounts: accounts), .none)
 
-        XCTAssertEqual(SyncHelp.pin(true, reach: .all), "Also pinned on your phone")
+        XCTAssertEqual(SyncHelp.pin(true, reach: .all), "Also pinned on your phone when it’s connected")
         XCTAssertEqual(SyncHelp.pin(true, reach: .none), "Pinned on this Mac only")
-        XCTAssertEqual(SyncHelp.mute(true, reach: .all), "Also muted on your phone")
+        XCTAssertEqual(SyncHelp.mute(true, reach: .all), "Also muted on your phone when it’s connected")
+        XCTAssertEqual(SyncHelp.pin(false, reach: .some),
+                       "Also unpinned on your phone where its network takes pins, when it’s connected",
+                       "an offline account isn't sent the change later, so the help says when it goes")
         XCTAssertEqual(SyncHelp.mute(false, reach: .none), "Unmuted on this Mac only")
         XCTAssertEqual(SyncHelp.markUnread, "On this Mac only", "no network is ever sent an unread mark")
     }

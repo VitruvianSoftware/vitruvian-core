@@ -178,9 +178,6 @@ public final class InboxModel: ObservableObject {
         return rows.first { $0.roomID == id }
     }
 
-    /// How many chats have unread messages and are not muted: the Dock badge and the menu bar's line.
-    public var unreadChatCount: Int { NotificationPolicy.badgeCount(rows: rows) }
-
     public func select(_ roomID: String?) {
         appModel.selectedRoomID = roomID
     }
@@ -297,15 +294,15 @@ public final class InboxModel: ObservableObject {
         select(rows[target].roomID)
     }
 
-    /// The next chat with unread messages after the open one, and after the last, the first. Nothing moves when no
-    /// other chat is unread.
+    /// The next unread chat after the open one (unread messages, or marked unread, which a fired reminder also
+    /// does: `InboxRow.isUnread`), and after the last, the first. Nothing moves when no other chat is unread.
     public func selectNextUnread() {
         guard !rows.isEmpty else { return }
         let start = selectedIndex ?? -1
         for step in 1 ... rows.count {
             let index = (start + step) % rows.count
             guard index != start else { continue }
-            if rows[index].unread > 0 {
+            if rows[index].isUnread {
                 select(rows[index].roomID)
                 return
             }

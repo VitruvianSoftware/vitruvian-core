@@ -21,7 +21,8 @@
           "muted": false,
           "show_in_inbox": "",
           "chats": 1,
-          "unread_chats": 1
+          "unread_chats": 1,
+          "attention_chats": 1
         },
         {
           "space_id": "account:whatsapp",
@@ -35,7 +36,8 @@
           "muted": false,
           "show_in_inbox": "all",
           "chats": 1,
-          "unread_chats": 1
+          "unread_chats": 1,
+          "attention_chats": 0
         },
         {
           "space_id": "label:1",
@@ -49,7 +51,8 @@
           "muted": false,
           "show_in_inbox": "dms",
           "chats": 0,
-          "unread_chats": 0
+          "unread_chats": 0,
+          "attention_chats": 0
         }
       ]
     }

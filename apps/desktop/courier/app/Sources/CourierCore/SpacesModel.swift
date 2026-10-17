@@ -26,6 +26,20 @@ public final class SpacesModel: ObservableObject {
     /// The spaces on the bar, in its order. ⌘1–⌘9 count these.
     public var visible: [Space] { spaces.filter { !$0.hidden } }
 
+    /// The Dock badge and the menu bar's count: the inbox's unread chats that nothing mutes, as the engine counts
+    /// them (its inbox entry's attention_chats). It follows the inbox space, never the space or filters shown, and
+    /// is 0 before the bar is read.
+    public var badgeCount: Int { Self.badgeCount(of: spaces) }
+
+    /// badgeCount each time it changes, starting with the current one.
+    public var badgeCountPublisher: AnyPublisher<Int, Never> {
+        $spaces.map(Self.badgeCount(of:)).removeDuplicates().eraseToAnyPublisher()
+    }
+
+    private static func badgeCount(of spaces: [Space]) -> Int {
+        spaces.first { $0.spaceID == "inbox" }?.attentionChats ?? 0
+    }
+
     private let appModel: AppModel
     private let inbox: InboxModel
     private let window: TimeInterval

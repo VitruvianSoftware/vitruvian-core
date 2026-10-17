@@ -164,8 +164,12 @@ public final class NotificationCoordinator {
     /// One notification for a reminder that came due, whatever the chat's state: muted, low priority and hidden
     /// chats too, but not the chat the person is looking at. The engine says it once per reminder, and so does this.
     private func announceReminder(roomID: String) async {
-        // Not while the person is reading that chat: the row keeps its Reminder badge.
-        if isLooking(), appModel.selectedRoomID == roomID { return }
+        // Ruling 37: the person is reading that chat, so the reminder has done its job. No notification; the chat is
+        // marked read, as reading it would, which ends the fired reminder and its unread mark.
+        if isLooking(), appModel.selectedRoomID == roomID {
+            await markRead(roomID: roomID)
+            return
+        }
         var chat = row(roomID)
         if chat == nil, let client = appModel.client {
             chat = await lookUp(roomID, with: client)

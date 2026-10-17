@@ -23,6 +23,10 @@ type Space struct {
 	Hidden, Muted            bool
 	ShowInInbox              string // all | dms | none; "" for builtin
 	Chats, UnreadChats       int
+
+	// AttentionChats is, for the inbox space only, how many of its unread chats nothing mutes (not the chat
+	// itself, its account or a label): the Dock badge and the menu bar's count. 0 for every other space.
+	AttentionChats int
 }
 
 const (
@@ -106,39 +110,45 @@ func builtinCountRule(id string) string {
 //   - requests, low_priority, archive: that place;
 //   - account:<n>: network n, place inbox, whatever Show in Inbox says;
 //   - label:<id>: has that label, place inbox.
+//
+// The inbox's row also counts its unread chats that nothing mutes (mutedChatSQL): the Dock badge (Ruling 36). It
+// is the same rule as the inbox's pages with one more condition, so the badge never depends on the space or
+// filters the app is showing. Every other row says 0.
+// Inferred (inventory 01 §18): a low-priority, hidden or archived chat is out of the inbox, and a request is not
+// yet a conversation, so none of them asks for attention.
 var spaceCountsSQL = `WITH c AS MATERIALIZED (
   SELECT r.room_id, r.network, ` + pageFacts.place + ` AS place, ` + pageFacts.shown + ` AS shown,
-    ` + unreadChatSQL + ` AS unread,
+    ` + unreadChatSQL + ` AS unread, ` + mutedChatSQL + ` AS muted,
     EXISTS (SELECT 1 FROM reminders m WHERE m.room_id = r.room_id) AS reminded
   FROM rooms r
   LEFT JOIN room_prefs p ON p.room_id = r.room_id
   LEFT JOIN account_prefs ap ON ap.network = r.network
   ` + readMarkerJoins + `
 )
-SELECT 'inbox', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("inbox") + `
-UNION ALL SELECT 'reminders', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("reminders") + `
-UNION ALL SELECT 'requests', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("requests") + `
-UNION ALL SELECT 'low_priority', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("low_priority") + `
-UNION ALL SELECT 'archive', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("archive") + `
-UNION ALL SELECT 'account:' || c.network, COUNT(*), SUM(c.unread) FROM c WHERE ` + scopedPlaceRule(countFacts) + ` GROUP BY c.network
-UNION ALL SELECT 'label:' || rl.label_id, COUNT(*), SUM(c.unread) FROM c JOIN room_labels rl ON rl.room_id = c.room_id
+SELECT 'inbox', COUNT(*), COALESCE(SUM(c.unread), 0), COALESCE(SUM(c.unread AND NOT c.muted), 0) FROM c WHERE ` + builtinCountRule("inbox") + `
+UNION ALL SELECT 'reminders', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("reminders") + `
+UNION ALL SELECT 'requests', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("requests") + `
+UNION ALL SELECT 'low_priority', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("low_priority") + `
+UNION ALL SELECT 'archive', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("archive") + `
+UNION ALL SELECT 'account:' || c.network, COUNT(*), SUM(c.unread), 0 FROM c WHERE ` + scopedPlaceRule(countFacts) + ` GROUP BY c.network
+UNION ALL SELECT 'label:' || rl.label_id, COUNT(*), SUM(c.unread), 0 FROM c JOIN room_labels rl ON rl.room_id = c.room_id
   WHERE ` + scopedPlaceRule(countFacts) + ` GROUP BY rl.label_id`
 
-// spaceCounts returns [chats, unread chats] by space ID. A space with no chats is missing.
-func (s *Store) spaceCounts(ctx context.Context) (map[string][2]int, error) {
+// spaceCounts returns [chats, unread chats, attention chats] by space ID. A space with no chats is missing.
+func (s *Store) spaceCounts(ctx context.Context) (map[string][3]int, error) {
 	rows, err := s.db.Query(ctx, spaceCountsSQL, myID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string][2]int{}
+	out := map[string][3]int{}
 	for rows.Next() {
 		var id string
-		var chats, unread int
-		if err := rows.Scan(&id, &chats, &unread); err != nil {
+		var chats, unread, attention int
+		if err := rows.Scan(&id, &chats, &unread, &attention); err != nil {
 			return nil, err
 		}
-		out[id] = [2]int{chats, unread}
+		out[id] = [3]int{chats, unread, attention}
 	}
 	return out, rows.Err()
 }
@@ -183,7 +193,7 @@ func (s *Store) Spaces(ctx context.Context, networks []string) ([]Space, error) 
 	}
 	for i := range all {
 		c := counts[all[i].ID]
-		all[i].Chats, all[i].UnreadChats = c[0], c[1]
+		all[i].Chats, all[i].UnreadChats, all[i].AttentionChats = c[0], c[1], c[2]
 	}
 
 	byID := make(map[string]int, len(all))

@@ -235,29 +235,30 @@ public enum SyncReach: Equatable, Sendable {
     }
 }
 
-/// The help text on Pin, Mute and Mark as Unread: what reaches the phone (spec §8).
+/// The help text on Pin, Mute and Mark as Unread: what reaches the phone (spec §8). A pin or a mute is sent only
+/// while the account is connected: one made offline stays on this Mac until it is next changed, so the words say so.
 public enum SyncHelp {
     /// Pin (`on`) or Unpin.
     public static func pin(_ on: Bool, reach: SyncReach) -> String {
         switch (on, reach) {
-        case (true, .all): String(localized: "Also pinned on your phone")
+        case (true, .all): String(localized: "Also pinned on your phone when it’s connected")
         case (true, .none): String(localized: "Pinned on this Mac only")
-        case (true, .some): String(localized: "Also pinned on your phone, where its network takes pins")
-        case (false, .all): String(localized: "Also unpinned on your phone")
+        case (true, .some): String(localized: "Also pinned on your phone where its network takes pins, when it’s connected")
+        case (false, .all): String(localized: "Also unpinned on your phone when it’s connected")
         case (false, .none): String(localized: "Unpinned on this Mac only")
-        case (false, .some): String(localized: "Also unpinned on your phone, where its network takes pins")
+        case (false, .some): String(localized: "Also unpinned on your phone where its network takes pins, when it’s connected")
         }
     }
 
     /// Mute (`on`) or Unmute.
     public static func mute(_ on: Bool, reach: SyncReach) -> String {
         switch (on, reach) {
-        case (true, .all): String(localized: "Also muted on your phone")
+        case (true, .all): String(localized: "Also muted on your phone when it’s connected")
         case (true, .none): String(localized: "Muted on this Mac only")
-        case (true, .some): String(localized: "Also muted on your phone, where its network takes mutes")
-        case (false, .all): String(localized: "Also unmuted on your phone")
+        case (true, .some): String(localized: "Also muted on your phone where its network takes mutes, when it’s connected")
+        case (false, .all): String(localized: "Also unmuted on your phone when it’s connected")
         case (false, .none): String(localized: "Unmuted on this Mac only")
-        case (false, .some): String(localized: "Also unmuted on your phone, where its network takes mutes")
+        case (false, .some): String(localized: "Also unmuted on your phone where its network takes mutes, when it’s connected")
         }
     }
 

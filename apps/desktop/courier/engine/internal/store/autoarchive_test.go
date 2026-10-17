@@ -439,3 +439,30 @@ func TestReminderFiringDropsAPendingAutoArchive(t *testing.T) {
 	require.Equal(t, []string{"!r"}, fired)
 	require.True(t, dueAt(t, s, "!r").IsZero(), "the chat the reminder brought back isn't archived again behind my back")
 }
+
+// Ruling 38a: a chat I archive and then unarchive by hand is where I put it. The archive my reply scheduled
+// before that is dropped by the unarchive, so it doesn't archive the chat again behind my back when it comes due.
+func TestUnarchivingByHandDropsAPendingAutoArchive(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	t0 := time.UnixMilli(1_000_000_000)
+	clock := clockAt(s, t0)
+	mkRule(t, s, "all", "after_reply", "all", time.Hour)
+	chatAt(t, s, "!r", "whatsapp", t0.Add(-time.Hour))
+	chatAt(t, s, "!other", "whatsapp", t0.Add(-time.Hour))
+	mkMsg(t, s, "!r", "$me", me, "m.room.message", text("ok"), t0)
+	mkMsg(t, s, "!other", "$me2", me, "m.room.message", text("ok"), t0)
+	require.Equal(t, t0.Add(time.Hour), dueAt(t, s, "!r"), "my reply scheduled the archive")
+
+	_, err := s.SetArchived(ctx, []string{"!r"}, true)
+	require.NoError(t, err)
+	_, err = s.SetArchived(ctx, []string{"!r"}, false)
+	require.NoError(t, err)
+	require.True(t, dueAt(t, s, "!r").IsZero(), "unarchiving by hand drops the pending archive")
+	require.Equal(t, t0.Add(time.Hour), dueAt(t, s, "!other"), "another chat's pending archive is left alone")
+
+	clock.set(t0.Add(2 * time.Hour))
+	archived, err := s.ArchiveDue(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"!other"}, archived)
+	require.False(t, rowOf(t, s, "!r").Archived, "still in the inbox, where I put it")
+}

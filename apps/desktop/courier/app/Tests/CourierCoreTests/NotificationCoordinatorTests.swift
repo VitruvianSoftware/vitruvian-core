@@ -319,6 +319,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    /// Ruling 37: a reminder for the chat the person is reading is silent, and the chat is marked read, which ends
+    /// the reminder and its unread mark as opening the chat would have.
     func testAReminderForTheChatYouAreReadingIsSilent() async throws {
         let h = try await start()
         h.window.rows["!b"] = inboxRow("!b", name: "Chat B")
@@ -328,12 +330,16 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "reminder", "room_id": "!b"])
         try await waitUntil { h.delivery.delivered.count == 1 }
         XCTAssertEqual(h.delivery.delivered[0].roomID, "!b", "another chat's reminder still comes")
+        try await waitUntil { !h.server.receivedParams("room.markRead").isEmpty }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!a"],
+                       "the chat being read is marked read; the other one isn't")
 
         // Open but not looked at (the window is not key, the screen is locked): it does come.
         h.window.isKey = false
         h.server.notify(["kind": "reminder", "room_id": "!a"])
         try await waitUntil { h.delivery.delivered.count == 2 }
         XCTAssertEqual(h.delivery.delivered[1].roomID, "!a")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").count, 1, "not looked at: notified, not marked read")
         await finish(h)
     }
 

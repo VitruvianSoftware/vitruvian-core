@@ -118,6 +118,22 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// A chat marked unread, or one whose reminder fired (the engine marks it unread), is unread to ⌘U as it is to
+    /// the list's bold name and the Unread filter.
+    func testNextUnreadStopsAtChatsMarkedUnread() async throws {
+        let h = try await start(rooms: [
+            room("!a", ts: 500), room("!marked", ts: 400, markedUnread: true), room("!c", ts: 300),
+            room("!unread", ts: 200, unread: 2), room("!e", ts: 100),
+        ], autoRelease: true)
+        h.inbox.selectNextUnread()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!marked")
+        h.inbox.selectNextUnread()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!unread")
+        h.inbox.selectNextUnread()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!marked", "after the last, back to the first")
+        await stop(h)
+    }
+
     // MARK: - Pages
 
     func testFirstPageThenLoadMore() async throws {

@@ -212,6 +212,44 @@ final class SpacesModelTests: XCTestCase {
         ]), "\"\" and unknown values are never sent")
     }
 
+    // MARK: - The Dock badge
+
+    /// Ruling 36: the Dock badge and the menu bar count the engine's attention_chats on the inbox entry, so showing
+    /// another space, a filter, or a page that doesn't hold every chat never changes them.
+    func testTheBadgeFollowsTheInboxSpaceNotTheSpaceShown() async throws {
+        var bar = SpacesModelTests.bar
+        bar[0] = spaceJSON("inbox", chats: 300, unread: 9, attention: 5)
+        // The page shown has two unread chats: counting it would say 2, not the engine's 5.
+        let (h, spaces, _) = try await start(bar: bar, rooms: [room("!a", ts: 2, unread: 1), room("!b", ts: 1, unread: 3)])
+        var badges: [Int] = []
+        let watching = spaces.badgeCountPublisher.sink { badges.append($0) }
+        defer { watching.cancel() }
+        XCTAssertEqual(spaces.badgeCount, 5)
+        XCTAssertEqual(badges, [5])
+
+        // Archive, then a filter: the rows change, the badge doesn't.
+        h.script.rooms = []
+        spaces.select("archive")
+        try await waitUntil { h.server.receivedParams("inbox.list").last?["space"] as? String == "archive" }
+        try await waitUntil { h.inbox.rows.isEmpty }
+        h.inbox.query.filters = [.unread]
+        try await waitUntil { h.server.receivedParams("inbox.list").last?["filters"] as? [String] == ["unread"] }
+        XCTAssertEqual(spaces.badgeCount, 5)
+        XCTAssertEqual(NotificationPolicy.badgeLabel(count: spaces.badgeCount), "5")
+
+        // The engine's count moves (a chat was read): the badge does.
+        bar[0] = spaceJSON("inbox", chats: 300, unread: 8, attention: 4)
+        h.script.spaces = bar
+        h.server.notify(["kind": "read", "room_id": "!x"])
+        try await waitUntil { spaces.badgeCount == 4 }
+        XCTAssertEqual(badges, [5, 4], "one badge per change of the engine's count, none for switching spaces")
+
+        // No inbox entry (not read yet): no badge.
+        h.script.spaces = Array(bar.dropFirst())
+        h.server.notify(["kind": "spaces"])
+        try await waitUntil { spaces.badgeCount == 0 }
+    }
+
     func testEditingSpacesIsAFlagTheViewsBindTo() async throws {
         let (_, spaces, _) = try await start()
         XCTAssertFalse(spaces.isEditing)
@@ -223,10 +261,10 @@ final class SpacesModelTests: XCTestCase {
 /// A Space as the engine writes it.
 func spaceJSON(_ id: String, kind: String = "builtin", title: String = "", network: String = "", labelID: Int = 0,
                color: Int = 0, icon: String = "", hidden: Bool = false, muted: Bool = false, showInInbox: String = "",
-               chats: Int = 0, unread: Int = 0) -> [String: Any] {
+               chats: Int = 0, unread: Int = 0, attention: Int = 0) -> [String: Any] {
     [
         "space_id": id, "kind": kind, "title": title, "network": network, "label_id": labelID, "color": color,
         "icon": icon, "hidden": hidden, "muted": muted, "show_in_inbox": showInInbox, "chats": chats,
-        "unread_chats": unread,
+        "unread_chats": unread, "attention_chats": attention,
     ]
 }

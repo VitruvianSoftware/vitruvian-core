@@ -921,29 +921,29 @@
 /* Empty Drafts. */
 "A chat shows up here when you start a message and don’t send it." = "A chat shows up here when you start a message and don’t send it.";
 
-/* Help on Mute: every chat's network takes mutes (Account.syncs). */
-"Also muted on your phone" = "Also muted on your phone";
+/* Help on Mute: every chat's network takes mutes (Account.syncs). A change made while the account is offline isn't sent later. */
+"Also muted on your phone when it’s connected" = "Also muted on your phone when it’s connected";
 
 /* Help on Mute: some of the chats' networks take mutes. */
-"Also muted on your phone, where its network takes mutes" = "Also muted on your phone, where its network takes mutes";
+"Also muted on your phone where its network takes mutes, when it’s connected" = "Also muted on your phone where its network takes mutes, when it’s connected";
 
-/* Help on Pin: every chat's network takes pins (Account.syncs). */
-"Also pinned on your phone" = "Also pinned on your phone";
+/* Help on Pin: every chat's network takes pins (Account.syncs). A change made while the account is offline isn't sent later. */
+"Also pinned on your phone when it’s connected" = "Also pinned on your phone when it’s connected";
 
 /* Help on Pin: some of the chats' networks take pins. */
-"Also pinned on your phone, where its network takes pins" = "Also pinned on your phone, where its network takes pins";
+"Also pinned on your phone where its network takes pins, when it’s connected" = "Also pinned on your phone where its network takes pins, when it’s connected";
 
 /* Help on Unmute: every chat's network takes mutes. */
-"Also unmuted on your phone" = "Also unmuted on your phone";
+"Also unmuted on your phone when it’s connected" = "Also unmuted on your phone when it’s connected";
 
 /* Help on Unmute: some of the chats' networks take mutes. */
-"Also unmuted on your phone, where its network takes mutes" = "Also unmuted on your phone, where its network takes mutes";
+"Also unmuted on your phone where its network takes mutes, when it’s connected" = "Also unmuted on your phone where its network takes mutes, when it’s connected";
 
 /* Help on Unpin: every chat's network takes pins. */
-"Also unpinned on your phone" = "Also unpinned on your phone";
+"Also unpinned on your phone when it’s connected" = "Also unpinned on your phone when it’s connected";
 
 /* Help on Unpin: some of the chats' networks take pins. */
-"Also unpinned on your phone, where its network takes pins" = "Also unpinned on your phone, where its network takes pins";
+"Also unpinned on your phone where its network takes pins, when it’s connected" = "Also unpinned on your phone where its network takes pins, when it’s connected";
 
 /* Empty Archive. */
 "Archive a chat to clear it from your inbox. It comes back when someone writes." = "Archive a chat to clear it from your inbox. It comes back when someone writes.";

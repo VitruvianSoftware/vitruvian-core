@@ -56,9 +56,9 @@ struct CourierApp: App {
 
         // The menu-bar icon. Closing the window leaves Courier running (spec §2), and this is how to get it back.
         MenuBarExtra {
-            MenuBarMenu(inbox: delegate.inbox, openCourier: delegate.windowOpener.show)
+            MenuBarMenu(spaces: delegate.spaces, openCourier: delegate.windowOpener.show)
         } label: {
-            MenuBarIcon(inbox: delegate.inbox)
+            MenuBarIcon(spaces: delegate.spaces)
         }
     }
 }

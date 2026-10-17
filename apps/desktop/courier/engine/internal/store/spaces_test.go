@@ -219,3 +219,73 @@ func TestSpaceCountsReadEachRoomOnceAndNeverScanEvents(t *testing.T) {
 	require.Contains(t, plan, "MATERIALIZE c")
 	require.Contains(t, strings.Join(plan, "\n"), "SEARCH u USING INDEX events_room_ts")
 }
+
+// Ruling 36: the Dock badge is the inbox space's unread chats that nothing mutes. The engine counts it, so it
+// doesn't change with the space or filters the app shows. Archived, low-priority, hidden and request chats are
+// out of the inbox place; a chat its account doesn't show in the inbox is out of the inbox space; a chat muted by
+// itself, its account or a label doesn't ask for attention.
+func TestAttentionChatsCountTheInboxsUnmutedUnreadChats(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	chat(t, s, "!dm", "whatsapp", true, 10)      // unread: counts
+	chat(t, s, "!marked", "telegram", false, 11) // read, then marked unread: counts
+	require.NoError(t, s.MarkReadLocal(ctx, "!marked", "$!marked", time.Unix(11, 0)))
+	_, err := s.SetMarkedUnread(ctx, []string{"!marked"}, true)
+	require.NoError(t, err)
+	chat(t, s, "!read", "whatsapp", false, 12)
+	require.NoError(t, s.MarkReadLocal(ctx, "!read", "$!read", time.Unix(12, 0)))
+	for _, id := range []string{"!arch", "!low", "!hid", "!req", "!self", "!lbl"} {
+		chat(t, s, id, "whatsapp", false, 13)
+	}
+	chat(t, s, "!acct", "signal", true, 14)
+	chat(t, s, "!noshow", "slack", true, 15)
+	_, err = s.SetArchived(ctx, []string{"!arch"}, true)
+	require.NoError(t, err)
+	_, err = s.SetLowPriority(ctx, []string{"!low"}, true)
+	require.NoError(t, err)
+	_, err = s.SetHidden(ctx, []string{"!hid"}, true)
+	require.NoError(t, err)
+	require.NoError(t, s.SetRequest(ctx, "!req", true))
+	require.NoError(t, s.SetMuted(ctx, "!self", true))
+	require.NoError(t, s.UpdateSpace(ctx, "account:signal", ptr(true), nil))
+	quiet := mkLabel(t, s, "Quiet")
+	require.NoError(t, s.UpdateSpace(ctx, labelSpaceID(quiet.ID), ptr(true), nil))
+	_, err = s.SetLabel(ctx, []string{"!lbl"}, quiet.ID, true)
+	require.NoError(t, err)
+	require.NoError(t, s.UpdateSpace(ctx, "account:slack", nil, ptr("none")))
+
+	nets := []string{"whatsapp", "telegram", "signal", "slack"}
+	// What the inbox space's pages hold under the same rules: its unread chats, less the muted ones.
+	fromPages := func() []string {
+		t.Helper()
+		var out []string
+		q := InboxQuery{Space: "inbox", Filters: []string{"unread"}, Limit: 2}
+		for {
+			rows, next, err := s.InboxPage(ctx, q)
+			require.NoError(t, err)
+			for _, r := range rows {
+				if !r.Muted && r.MutedBy == "" {
+					out = append(out, r.ID)
+				}
+			}
+			if next == "" {
+				return out
+			}
+			q.After = next
+		}
+	}
+	require.ElementsMatch(t, []string{"!dm", "!marked"}, fromPages())
+	spaces := spacesByID(t, s, nets...)
+	require.Equal(t, 2, spaces["inbox"].AttentionChats)
+	require.Equal(t, 5, spaces["inbox"].UnreadChats, "the inbox's own unread count still has the three muted ones")
+	for id, sp := range spaces {
+		if id != "inbox" {
+			require.Zero(t, sp.AttentionChats, "only the inbox entry carries it: %s", id)
+		}
+	}
+
+	// Unmuting the account brings its chat in; marking a chat read takes it out.
+	require.NoError(t, s.UpdateSpace(ctx, "account:signal", ptr(false), nil))
+	require.NoError(t, s.MarkReadLocal(ctx, "!dm", "$!dm", time.Unix(10, 0)))
+	require.ElementsMatch(t, []string{"!marked", "!acct"}, fromPages())
+	require.Equal(t, 2, spacesByID(t, s, nets...)["inbox"].AttentionChats)
+}

@@ -188,16 +188,8 @@ public enum NotificationPolicy {
 
     // MARK: - The Dock badge
 
-    /// How many chats have unread messages, or are marked unread, and are not muted (by themselves, their account
-    /// or a label), low priority, hidden or a request. Chats, not messages: three messages in one chat are one.
-    ///
-    /// Inferred (inventory 01 §18): a low-priority or hidden chat is out of the inbox, and a request is not yet a
-    /// conversation, so none of them asks for attention.
-    public static func badgeCount(rows: [InboxRow]) -> Int {
-        rows.filter { $0.isUnread && !isMuted($0) && !$0.lowPriority && !$0.hidden && !$0.request }.count
-    }
-
-    /// The Dock tile's text; nil at zero, which clears it.
+    /// The Dock tile's text for a count of chats (SpacesModel.badgeCount, which the engine counts: the inbox's
+    /// unread chats that nothing mutes; chats, not messages); nil at zero, which clears it.
     public static func badgeLabel(count: Int) -> String? {
         count > 0 ? String(count) : nil
     }

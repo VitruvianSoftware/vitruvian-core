@@ -242,3 +242,29 @@ func TestSettingAReminderAgainResetsAFiredOne(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, t0.Add(time.Hour), next)
 }
+
+// Ruling 38b: a reminder brings the chat all the way back to the inbox, as its help text says: out of the archive
+// and out of Low priority. A hidden chat stays hidden: hiding it was a stronger choice than a reminder undoes.
+func TestAFiredReminderBringsALowPriorityChatBackButNotAHiddenOne(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	t0 := time.UnixMilli(1_000_000_000)
+	clock := clockAt(s, t0)
+	chat(t, s, "!low", "whatsapp", true, 10)
+	chat(t, s, "!hid", "whatsapp", true, 11)
+	_, err := s.SetLowPriority(ctx, []string{"!low"}, true)
+	require.NoError(t, err)
+	_, err = s.SetHidden(ctx, []string{"!hid"}, true)
+	require.NoError(t, err)
+	require.NoError(t, s.SetReminder(ctx, []string{"!low", "!hid"}, t0.Add(time.Minute), "always"))
+
+	clock.set(t0.Add(time.Minute))
+	fired, err := s.FireDueReminders(ctx)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"!low", "!hid"}, fired)
+	low := rowOf(t, s, "!low")
+	require.False(t, low.LowPriority, "back from Low priority")
+	require.True(t, low.MarkedUnread)
+	require.Contains(t, allPages(t, s, InboxQuery{Space: "inbox"}), "!low", "in the inbox again")
+	require.True(t, rowOf(t, s, "!hid").Hidden, "a hidden chat stays hidden")
+	require.NotContains(t, allPages(t, s, InboxQuery{Space: "inbox"}), "!hid")
+}

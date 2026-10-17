@@ -322,7 +322,14 @@
           "type": "int",
           "doc": "How many chats inbox.list lists for this space."
         },
-        "unread_chats": { "type": "int", "doc": "How many of them are unread." }
+        "unread_chats": {
+          "type": "int",
+          "doc": "How many of them are unread."
+        },
+        "attention_chats": {
+          "type": "int",
+          "doc": "For inbox: how many of its unread chats (unread, or marked unread) nothing mutes, neither the chat itself, its account nor a label. It is the Dock badge and the menu bar's count, so it doesn't change with the space or filters the app shows. 0 for every other space."
+        }
       }
     },
     "SpacesResult": {
@@ -825,7 +832,7 @@
       "errors": []
     },
     "inbox.list": {
-      "doc": "One page of chats: a space, narrowed by filters, in a sort; or the chats room_ids names. Pages go by cursor, not by position, so in every sort a chat that doesn't move while you page is listed exactly once. A chat that moves between pages (a new message under oldest; a pin, an unpin or a reminder change under any sort) can be listed twice: keep the first and drop a later copy by room_id. An unknown space, filter or sort, a cursor of another query, or room_ids with space, filters or sort is -32602.",
+      "doc": "One page of chats: a space, narrowed by filters, in a sort; or the chats room_ids names. Pages go by cursor, not by position, so in every sort a chat that doesn't move while you page is listed exactly once. A chat that moves between pages (a new message under oldest; a pin, an unpin or a reminder change under any sort) can be listed twice: keep the first and drop a later copy by room_id. A space_id that isn't one of the forms spaces.list gives, an unknown filter or sort, a cursor of another query, or room_ids with space, filters or sort is -32602. A well-formed space that doesn't exist (label:999, or an account with no chats) is not an error: it lists no chats.",
       "params": "InboxListParams",
       "result": "InboxResult",
       "errors": []

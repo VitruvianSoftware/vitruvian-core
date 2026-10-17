@@ -347,6 +347,15 @@ var archiveDueSQL = `SELECT d.room_id, (ru.enabled = 1 AND COALESCE(p.pinned_at,
 // chat archived changes ("room").
 func (s *Store) ArchiveDue(ctx context.Context) ([]string, error) {
 	now := s.now().UnixMilli()
+	// The timer loop calls this every time it wakes, and nearly always nothing is due. A read says so without
+	// taking the write lock, so an idle tick never waits on, or holds up, a writer.
+	var anyDue bool
+	if err := s.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM archive_due WHERE due_at <= $1)", now).Scan(&anyDue); err != nil {
+		return nil, err
+	}
+	if !anyDue {
+		return nil, nil
+	}
 	var archived []string
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		archived = nil

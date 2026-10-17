@@ -553,12 +553,15 @@ public struct Space: ProtocolType, Equatable, Identifiable {
     public var showInInbox: ShowInInbox
     public var chats: Int
     public var unreadChats: Int
+    /// For the inbox: its unread chats that nothing mutes, the Dock badge. 0 for every other space.
+    public var attentionChats: Int
 
     public var id: String { spaceID }
 
     public init(spaceID: String, kind: SpaceKind, title: String = "", network: String = "", labelID: Int64 = 0,
                 color: Int = 0, icon: String = "", hidden: Bool = false, muted: Bool = false,
-                showInInbox: ShowInInbox = .notApplicable, chats: Int = 0, unreadChats: Int = 0) {
+                showInInbox: ShowInInbox = .notApplicable, chats: Int = 0, unreadChats: Int = 0,
+                attentionChats: Int = 0) {
         self.spaceID = spaceID
         self.kind = kind
         self.title = title
@@ -571,6 +574,7 @@ public struct Space: ProtocolType, Equatable, Identifiable {
         self.showInInbox = showInInbox
         self.chats = chats
         self.unreadChats = unreadChats
+        self.attentionChats = attentionChats
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -586,6 +590,7 @@ public struct Space: ProtocolType, Equatable, Identifiable {
         case showInInbox = "show_in_inbox"
         case chats
         case unreadChats = "unread_chats"
+        case attentionChats = "attention_chats"
     }
 }
 

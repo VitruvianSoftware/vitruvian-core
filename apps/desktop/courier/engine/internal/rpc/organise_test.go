@@ -566,6 +566,7 @@ func TestSpacesAndLabelsOverTheSocket(t *testing.T) {
 		ShowInInbox string `json:"show_in_inbox"`
 		Chats       int    `json:"chats"`
 		UnreadChats int    `json:"unread_chats"`
+		Attention   int    `json:"attention_chats"`
 	}
 	spaces := func() map[string]space {
 		var r struct {
@@ -587,6 +588,7 @@ func TestSpacesAndLabelsOverTheSocket(t *testing.T) {
 	}, got[labelSpace])
 	require.Equal(t, "WhatsApp", got["account:whatsapp"].Title, "the network's display name (Ruling 5)")
 	require.Equal(t, 1, got["inbox"].Chats)
+	require.Equal(t, 1, got["inbox"].Attention, "the unread chat isn't muted: it is the Dock badge")
 	require.NotContains(t, got, "account:signal", "signal has no account, so no space")
 
 	// An account mute says who muted the chat, by the network's display name.
@@ -595,6 +597,7 @@ func TestSpacesAndLabelsOverTheSocket(t *testing.T) {
 	require.Equal(t, "account", r.MutedBy)
 	require.Equal(t, "WhatsApp", r.MutedByName)
 	require.True(t, spaces()["account:whatsapp"].Muted)
+	require.Zero(t, spaces()["inbox"].Attention, "a muted account's chat doesn't badge")
 	c.fails(CodeBadValue, "spaces.update", map[string]any{"space_id": "inbox", "muted": true})
 	c.fails(CodeBadValue, "spaces.update", map[string]any{"space_id": "account:whatsapp", "show_in_inbox": "some"})
 	c.fails(CodeNotFound, "spaces.update", map[string]any{"space_id": fmt.Sprintf("label:%d", created.LabelID+100), "muted": true})
