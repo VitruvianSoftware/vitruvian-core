@@ -262,6 +262,11 @@ class WiringTest(unittest.TestCase):
                 '/bin/sh "$CLAUDE_PROJECT_DIR/tools/agent-guard/hook.sh"',
             )
 
+    def test_disable_all_hooks_is_pinned_false(self):
+        # Project settings outrank user settings, so this keeps a user-level
+        # `"disableAllHooks": true` from switching the guard off in the repo.
+        self.assertIs(self.load(".claude/settings.json")["disableAllHooks"], False)
+
     def test_block_queue_bypass_is_kept(self):
         entries = self.load(".claude/settings.json")["hooks"]["PreToolUse"]
         self.assertIn("block-queue-bypass.sh", json.dumps(entries))
@@ -342,6 +347,8 @@ class WiringTest(unittest.TestCase):
                     matcher="Bash"
                 ),
                 "all hooks removed": lambda d: d.pop("hooks"),
+                "disableAllHooks dropped": lambda d: d.pop("disableAllHooks"),
+                "disableAllHooks true": lambda d: d.update(disableAllHooks=True),
             }
             for name, change in claude_mutations.items():
                 fresh()

@@ -19,29 +19,42 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""agent-guard runs from the repo: check its wiring, or remove the old per-user install.
+"""agent-guard: the per-user backstop, and checking the repo's own wiring.
 
-  bazel run //tools/agent-guard:install -- --check      # are the repo hooks wired, and does the launcher work?
-  bazel run //tools/agent-guard:install -- --uninstall  # remove the retired per-user copy and its hook entries
-  bazel run //tools/agent-guard:install -- --uninstall --dry-run
+  bazel run //tools/agent-guard:install                   # install or update the backstop
+  bazel run //tools/agent-guard:install -- --dry-run      # show exactly what would change
+  bazel run //tools/agent-guard:install -- --check        # repo wiring, backstop, and the launcher answering
+  bazel run //tools/agent-guard:install -- --uninstall    # remove the backstop (and any old copy)
 
-There is nothing to install any more. The repo itself wires the hook up:
-.claude/settings.json for Claude Code and .agents/hooks.json for Antigravity
-(agy), both running tools/agent-guard/hook.sh, which runs the guard as it is on
-origin/main. Every checkout and worktree is guarded the moment it exists.
+The repo wires the hook up itself: .claude/settings.json for Claude Code and
+.agents/hooks.json for Antigravity (agy) run tools/agent-guard/hook.sh, which
+runs the guard as it is on origin/main. But project hooks load only in a
+session STARTED inside vitruvian-core: a session started in ~, in another repo
+or in Cowork that then works here would be unguarded (checked live for agy).
 
-A plain run (no flags) says so and changes nothing. It is kept, not removed,
-because this target is how the old per-user install comes out: `--uninstall`
-deletes ~/.local/share/agent-guard and takes agent-guard's entries out of
-~/.claude/settings.json and ~/.gemini/config/hooks.json, keeping every other
-hook and backing each file up first. Until then both copies run, and that is
-harmless: they read the same rules, and either one's refusal wins.
+So this installs a thin per-user BACKSTOP: the same entries in
+~/.claude/settings.json and ~/.gemini/config/hooks.json, running the MAIN
+checkout's tools/agent-guard/hook.sh by absolute path (found from the checkout
+you run this from, even a worktree). Nothing is copied. Because hook.sh loads
+the guard from origin/main, guard changes arrive with a pull or fetch; there is
+no reinstall. Only moving or deleting the main checkout needs one, and until
+then every agent's commands are refused (the backstop fails closed), so run
+this again or `--uninstall` from your own terminal.
+
+In a session started inside the repo both the backstop and the project hook
+run. That is harmless: they run the same guard from the same origin/main and
+give the same answer; Claude Code runs them in parallel, agy one after the other.
+
+Installing also migrates the old per-user install: its entries, which point at
+~/.local/share/agent-guard, are replaced, and that copy is deleted once the new
+entries pass a self-test. If the self-test fails, both files are put back.
+Every other hook is kept; each file is backed up beside itself before a write.
 
 `--check` reads the two repo files and fails if agent-guard's entries are
-missing or differ from what this file expects, then runs the real launcher on
-sample tool calls in Claude Code's and agy's real payload shapes, from the
-folder each one runs it in: `git status` must be allowed, `git stash` (Claude
-Code) and `go vet` (agy) refused. It says which copy of the guard answered.
+missing or differ from what this file expects, checks the backstop points at a
+working hook.sh, then runs the launchers on sample tool calls in Claude Code's
+and agy's real payload shapes, from the folder each runs them in: `git status`
+must be allowed, `git stash` (Claude Code) and `go vet` (agy) refused.
 """
 
 from __future__ import annotations
@@ -52,6 +65,7 @@ import difflib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -108,8 +122,8 @@ HOOK_TIMEOUT = 10
 AGENT_MARKERS = ("CLAUDECODE", "ANTIGRAVITY_AGENT", "GEMINI_CLI")
 
 
-def claude_entries() -> List[Dict[str, Any]]:
-    """agent-guard's two PreToolUse entries in .claude/settings.json.
+def claude_entries(command: str = CLAUDE_COMMAND) -> List[Dict[str, Any]]:
+    """agent-guard's two PreToolUse entries (.claude/settings.json, or the backstop's).
 
     Command tools get onFailure "block", so a hook that cannot run refuses the
     call instead of letting it through. File tools are checked only to protect
@@ -122,7 +136,7 @@ def claude_entries() -> List[Dict[str, Any]]:
             "hooks": [
                 {
                     "type": "command",
-                    "command": CLAUDE_COMMAND,
+                    "command": command,
                     "timeout": HOOK_TIMEOUT,
                     "onFailure": "block",
                 }
@@ -130,9 +144,7 @@ def claude_entries() -> List[Dict[str, Any]]:
         },
         {
             "matcher": FILE_MATCHER,
-            "hooks": [
-                {"type": "command", "command": CLAUDE_COMMAND, "timeout": HOOK_TIMEOUT}
-            ],
+            "hooks": [{"type": "command", "command": command, "timeout": HOOK_TIMEOUT}],
         },
     ]
 
@@ -156,7 +168,7 @@ def agy_entry(command: str = AGY_COMMAND) -> Dict[str, Any]:
     }
 
 
-# --- The retired per-user install --------------------------------------------
+# --- The per-user backstop ---------------------------------------------------
 def install_dir(home: str) -> str:
     return os.path.join(home, agent_guard.INSTALL_DIR_REL)
 
@@ -319,26 +331,260 @@ def _diff(old: str, new: str, name: str) -> str:
     )
 
 
-def per_user_leftovers(home: str) -> List[str]:
-    """What is left of the per-user install: its copy, and its hook entries."""
-    found = []
-    if os.path.isdir(install_dir(home)):
-        found.append(install_dir(home))
-    for path, strip in (
-        (settings_path(home), strip_ours),
-        (gemini_hooks_path(home), strip_ours_gemini),
-    ):
+def main_checkout(workspace: str) -> str:
+    """The main (primary) checkout of the repo `workspace` belongs to, even from a worktree."""
+    try:
+        common = (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    workspace,
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-common-dir",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=30,
+            )
+            .stdout.decode()
+            .strip()
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise SystemExit(
+            "agent-guard: %s is not a git checkout (%s)" % (workspace, exc)
+        )
+    if os.path.basename(common) != ".git":
+        raise SystemExit(
+            "agent-guard: %s has no main checkout (git dir %s)" % (workspace, common)
+        )
+    main = os.path.dirname(common)
+    if not os.path.isfile(os.path.join(main, LAUNCHER_REL)):
+        raise SystemExit(
+            "agent-guard: the main checkout %s has no %s yet; pull main there first"
+            % (main, LAUNCHER_REL)
+        )
+    return main
+
+
+def backstop_command(main: str) -> str:
+    return "/bin/sh %s" % shlex.quote(os.path.join(main, LAUNCHER_REL))
+
+
+def with_ours(settings: Dict[str, Any], command: str) -> Dict[str, Any]:
+    """settings with the backstop's two entries in place of any agent-guard entry."""
+    out = strip_ours(settings)
+    out.setdefault("hooks", {}).setdefault("PreToolUse", []).extend(
+        claude_entries(command)
+    )
+    return out
+
+
+def gemini_with_ours(hooks: Dict[str, Any], command: str) -> Dict[str, Any]:
+    """hooks.json with the backstop's named hook, kept where it already was."""
+    stripped = strip_ours_gemini(hooks)
+    out: Dict[str, Any] = {}
+    for name in hooks:
+        if name == AGY_HOOK_NAME:
+            out[name] = agy_entry(command)
+        elif name in stripped:
+            out[name] = stripped[name]
+    out.setdefault(AGY_HOOK_NAME, agy_entry(command))
+    return out
+
+
+def backstop_commands(home: str) -> Tuple[List[str], List[str]]:
+    """The agent-guard commands in the two user files: (Claude Code's, agy's)."""
+    found: Tuple[List[str], List[str]] = ([], [])
+    for i, path in enumerate((settings_path(home), gemini_hooks_path(home))):
         try:
             data, _ = read_settings(path)
         except SystemExit:
             continue
-        if strip(data) != data:
-            found.append(path)
+        for h in _handlers(data):
+            if _is_ours(h) and h.get("command") not in found[i]:
+                found[i].append(str(h.get("command")))
     return found
 
 
+def _handlers(data: Any):
+    """Every hook handler in a settings or hooks.json object, grouped or flat."""
+    if isinstance(data, dict):
+        if "command" in data and "type" in data:
+            yield data
+        for v in data.values():
+            yield from _handlers(v)
+    elif isinstance(data, list):
+        for v in data:
+            yield from _handlers(v)
+
+
+def install(home: str, workspace: str, now: str, dry_run: bool) -> int:
+    """Write (or update) the backstop; migrate and delete the old per-user copy."""
+    main = main_checkout(workspace)
+    command = backstop_command(main)
+    sp, gp = settings_path(home), gemini_hooks_path(home)
+    settings, old_text = read_settings(sp)
+    new_text = dump(with_ours(settings, command), old_text)
+    agy = os.path.isdir(os.path.join(home, ".gemini"))
+    g_old = g_new = ""
+    if agy:
+        gemini, g_old = read_settings(gp)
+        g_new = dump(gemini_with_ours(gemini, command), g_old)
+    idir = install_dir(home)
+    changes = [(sp, old_text, new_text)] + ([(gp, g_old, g_new)] if agy else [])
+    changes = [c for c in changes if c[1] != c[2]]
+    if dry_run:
+        print("backstop command: %s" % command)
+        for path, old, new in changes:
+            print(_diff(old, new, path))
+        if not agy:
+            print("Antigravity: ~/.gemini not found, so its hooks are left alone")
+        if os.path.isdir(idir):
+            print("would remove the old per-user copy %s" % idir)
+        if not changes and not os.path.isdir(idir):
+            print("the backstop is already installed and up to date")
+        return 0
+    if not changes and not os.path.isdir(idir):
+        print("the backstop is already installed and up to date (%s)" % command)
+        return 0
+    backups = []
+    for path, old, new in changes:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.exists(path):
+            backups.append(backup(path, now))
+        write_atomic(path, new)
+    problems = self_test_command(command, home, agy)
+    if problems:
+        for path, old, _new in changes:
+            if old:
+                write_atomic(path, old)
+            elif os.path.exists(path):
+                os.remove(path)
+        for p in problems:
+            sys.stderr.write("PROBLEM: %s\n" % p)
+        sys.stderr.write(
+            "agent-guard: the backstop failed its self-test; both files were put back as "
+            "they were and nothing was removed.\n"
+        )
+        return 4
+    for path, _old, _new in changes:
+        print("backstop written to %s" % path)
+    if backups:
+        print("backups: %s" % ", ".join(backups))
+    if os.path.isdir(idir):
+        shutil.rmtree(idir)
+        print("removed the old per-user copy %s (the log is kept)" % idir)
+    print(
+        "backstop runs %s, which loads the guard from origin/main:"
+        % os.path.join(main, LAUNCHER_REL)
+    )
+    print("guard updates arrive with a pull; reinstall only if you move %s." % main)
+    return 0
+
+
+def self_test_command(command: str, home: str, agy: bool) -> List[str]:
+    """Run a backstop command on sample calls, from folders outside any checkout."""
+    problems = []
+    scratch = tempfile.mkdtemp(prefix="agent-guard-check-")
+    hook_dir = tempfile.mkdtemp(prefix="agent-guard-check-hookdir-")
+    try:
+        with open(os.path.join(scratch, "MODULE.bazel"), "w") as fh:
+            fh.write('module(name = "vitruvian_core")\n')
+        env = dict(os.environ, HOME=home)
+        env.pop("AGENT_GUARD_POLICY", None)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        cases = [
+            ("claude-code", "git status", "allow"),
+            ("claude-code", "git stash", "deny"),
+        ]
+        if agy:
+            cases += [
+                ("antigravity", "git status", "allow"),
+                ("antigravity", "go vet ./...", "deny"),
+            ]
+        for agent, sample, want in cases:
+            payload = (
+                agy_payload(sample, scratch)
+                if agent == "antigravity"
+                else claude_payload(sample, scratch)
+            )
+            got, _out, err = run_hook(command, payload, hook_dir, env)
+            if got != want:
+                problems.append(
+                    "the backstop (%s) said %s to `%s` (%s format), expected %s%s"
+                    % (
+                        command,
+                        got or "nothing (it failed)",
+                        sample,
+                        agent,
+                        want,
+                        ": " + err if err else "",
+                    )
+                )
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+        shutil.rmtree(hook_dir, ignore_errors=True)
+    return problems
+
+
+def check_backstop(home: str) -> List[str]:
+    """Problems with the per-user backstop (empty: fine)."""
+    problems = []
+    claude_cmds, agy_cmds = backstop_commands(home)
+    agy = os.path.isdir(os.path.join(home, ".gemini"))
+    fix = "run `bazel run //tools/agent-guard:install` from your own terminal"
+    if os.path.isdir(install_dir(home)) or any(
+        agent_guard.INSTALL_DIR_REL in c for c in claude_cmds + agy_cmds
+    ):
+        problems.append(
+            "the old per-user copy (%s) is still installed: %s to migrate"
+            % (install_dir(home), fix)
+        )
+        return problems
+    if not claude_cmds or (agy and not agy_cmds):
+        problems.append(
+            "no per-user backstop in %s: sessions started outside vitruvian-core are unguarded; %s"
+            % (settings_path(home) if not claude_cmds else gemini_hooks_path(home), fix)
+        )
+        return problems
+    for cmd in set(claude_cmds + agy_cmds):
+        parts = shlex.split(cmd)
+        launcher = parts[-1] if parts else ""
+        if not os.path.isfile(launcher):
+            problems.append(
+                "the backstop runs %s, which is gone (did the main checkout move?): %s again"
+                % (launcher, fix)
+            )
+    try:
+        settings, _ = read_settings(settings_path(home))
+        if [
+            e
+            for e in settings.get("hooks", {}).get("PreToolUse", [])
+            if any(_is_ours(h) for h in e.get("hooks", []))
+        ] != claude_entries(claude_cmds[0]):
+            problems.append(
+                "the backstop's entries in %s differ from install.py's: %s"
+                % (settings_path(home), fix)
+            )
+        if agy:
+            hooks, _ = read_settings(gemini_hooks_path(home))
+            if hooks.get(AGY_HOOK_NAME) != agy_entry(agy_cmds[0]):
+                problems.append(
+                    "the backstop's hook in %s differs from install.py's: %s"
+                    % (gemini_hooks_path(home), fix)
+                )
+    except (SystemExit, AttributeError) as exc:
+        problems.append(str(exc))
+    if not problems:
+        problems += self_test_command(claude_cmds[0], home, agy)
+    return problems
+
+
 def uninstall(home: str, now: str, dry_run: bool) -> int:
-    """Remove the per-user copy and only agent-guard's entries from both user hook files."""
+    """Remove the backstop (or the old copy) and only agent-guard's entries from both user files."""
     sp = settings_path(home)
     settings, old_text = read_settings(sp)
     new = strip_ours(settings)
@@ -403,7 +649,10 @@ def uninstall(home: str, now: str, dry_run: bool) -> int:
         )
     else:
         print("no per-user copy at %s" % idir)
-    print("agent-guard keeps running from the repo's own hook files.")
+    print(
+        "the backstop is gone: sessions started inside vitruvian-core are still guarded by its own "
+        "hook files, sessions started anywhere else are not."
+    )
     return 0
 
 
@@ -417,6 +666,10 @@ def check_wiring(workspace: str) -> List[str]:
     except SystemExit as exc:
         settings = {}
         problems.append(str(exc))
+    if settings.get("disableAllHooks") is not False:
+        # Project settings outrank user settings, so this keeps a user-level
+        # `disableAllHooks: true` from switching the guard off here.
+        problems.append('%s: "disableAllHooks": false is missing' % path)
     hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
     entries = (
         hooks.get("PreToolUse") if isinstance(hooks.get("PreToolUse"), list) else []
@@ -569,27 +822,21 @@ def self_test(workspace: str, home: str) -> Tuple[List[str], List[str]]:
 
 def check(workspace: str, home: str) -> int:
     problems = check_wiring(workspace)
+    sources: List[str] = []
     if not problems:
         more, sources = self_test(workspace, home)
         problems += more
-    leftovers = per_user_leftovers(home)
+    problems += check_backstop(home)
     if problems:
         for p in problems:
             print("PROBLEM: " + p)
         return 1
     print(
-        "agent-guard is wired into %s and %s, and the launcher allows `git status` and "
-        "refuses `git stash` (Claude Code's payload) and `go vet` (agy's payload, run from .agents/)."
-        % (CLAUDE_SETTINGS_REL, AGY_HOOKS_REL)
+        "agent-guard is wired into %s and %s, and the per-user backstop runs %s. Both allow "
+        "`git status` and refuse `git stash` (Claude Code's payload) and `go vet` (agy's)."
+        % (CLAUDE_SETTINGS_REL, AGY_HOOKS_REL, backstop_commands(home)[0][0])
     )
     print("guard that answered: %s" % (", ".join(sources) or "unknown"))
-    if leftovers:
-        print(
-            "NOTE: the retired per-user install is still here (%s). It runs as well, which is "
-            "harmless (the same rules, so the same answers), but remove it with "
-            "`bazel run //tools/agent-guard:install -- --uninstall` from your own terminal."
-            % ", ".join(leftovers)
-        )
     return 0
 
 
@@ -601,17 +848,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument(
         "--check",
         action="store_true",
-        help="exit 1 unless the repo hooks are wired and the launcher works",
+        help="exit 1 unless the repo hooks and the backstop are wired and answer",
     )
     ap.add_argument(
         "--uninstall",
         action="store_true",
-        help="remove the retired per-user copy and its entries in ~/.claude and ~/.gemini (the log is kept)",
+        help="remove the backstop (and any old per-user copy) from ~/.claude and ~/.gemini (the log is kept)",
     )
     ap.add_argument(
         "--dry-run",
         action="store_true",
-        help="with --uninstall: print what would change",
+        help="print what would change, write nothing",
     )
     ap.add_argument("--mode", action="append", default=[], help=argparse.SUPPRESS)
     ap.add_argument("--home", default=None, help=argparse.SUPPRESS)
@@ -633,31 +880,24 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             return 2
         return check(workspace, home)
-    if args.uninstall:
-        marker = agent_marker(dict(os.environ))
-        if marker and not args.dry_run:
-            sys.stderr.write(
-                "agent-guard: refusing to uninstall inside an agent session (%s is set).\n"
-                "Removing the per-user copy is James's job, from his own terminal. "
-                "--dry-run and --check are allowed.\n" % marker
-            )
-            return 2
-        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        return uninstall(home, now, args.dry_run)
-    print(
-        "agent-guard runs from the repo now: %s (Claude Code) and %s (Antigravity) run %s,\n"
-        "which runs the guard as it is on origin/main. There is nothing to install."
-        % (CLAUDE_SETTINGS_REL, AGY_HOOKS_REL, LAUNCHER_REL)
-    )
-    leftovers = per_user_leftovers(home)
-    if leftovers:
-        print(
-            "The retired per-user install is still here (%s); remove it with\n"
-            "  bazel run //tools/agent-guard:install -- --uninstall"
-            % ", ".join(leftovers)
+    marker = agent_marker(dict(os.environ))
+    if marker and not args.dry_run:
+        sys.stderr.write(
+            "agent-guard: refusing to %s inside an agent session (%s is set).\n"
+            "Installing or removing the backstop is James's job, from his own terminal. "
+            "--dry-run and --check are allowed.\n"
+            % ("uninstall" if args.uninstall else "install", marker)
         )
-    print("Check the wiring with: bazel run //tools/agent-guard:install -- --check")
-    return 0
+        return 2
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if args.uninstall:
+        return uninstall(home, now, args.dry_run)
+    if not workspace:
+        sys.stderr.write(
+            "agent-guard: run this through `bazel run` (no checkout given)\n"
+        )
+        return 2
+    return install(home, workspace, now, args.dry_run)
 
 
 if __name__ == "__main__":

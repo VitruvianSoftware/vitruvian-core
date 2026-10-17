@@ -273,9 +273,30 @@ cmd_commit() {
   if [ "${all}" = 1 ]; then
     git add -A
   elif [ ${#paths[@]} -gt 0 ]; then
-    git -C "${WD}" add -- "${paths[@]}" ||
-      refuse "could not stage ${paths[*]} (see git's message above)" \
-        "check the paths, relative to ${WD}: git status --short"
+    # A file git already tracks is staged with -f: git otherwise stages it but
+    # exits 1 when it sits in an ignored folder (.claude/settings.json under
+    # .claude/). Only exact tracked files, matched literally (no globs): a
+    # folder or a new file still goes through the ignore rules, so nothing
+    # ignored is added by accident.
+    local tracked=() rest=() p
+    for p in "${paths[@]}"; do
+      if [ ! -d "${WD}/${p}" ] &&
+        git --literal-pathspecs -C "${WD}" ls-files --error-unmatch -- "${p}" >/dev/null 2>&1; then
+        tracked+=("${p}")
+      else
+        rest+=("${p}")
+      fi
+    done
+    if [ ${#tracked[@]} -gt 0 ]; then
+      git --literal-pathspecs -C "${WD}" add -f -- "${tracked[@]}" ||
+        refuse "could not stage ${tracked[*]} (see git's message above)" \
+          "check the paths, relative to ${WD}: git status --short"
+    fi
+    if [ ${#rest[@]} -gt 0 ]; then
+      git -C "${WD}" add -- "${rest[@]}" ||
+        refuse "could not stage ${rest[*]} (see git's message above)" \
+          "check the paths, relative to ${WD}: git status --short"
+    fi
   fi
 
   if [ "${merging}" = 1 ]; then

@@ -29,15 +29,19 @@ flowchart LR
   M -- off --> OK
 ```
 
-## How it is wired: from the repo, nothing to install
+## How it is wired: from the repo, plus a thin per-user backstop
 
-Every checkout and worktree is guarded the moment it exists. The repo carries
-the hook itself:
+Every checkout and worktree is guarded the moment it exists: the repo carries
+the hook itself. Project hooks only load in a session STARTED inside
+vitruvian-core, though, so a one-time per-user backstop covers sessions started
+anywhere else (below).
 
 ```mermaid
 flowchart LR
   CC["Claude Code<br/>.claude/settings.json"] --> H["tools/agent-guard/hook.sh<br/>(this checkout)"]
   AG["Antigravity<br/>.agents/hooks.json"] --> H
+  U["backstop<br/>~/.claude/settings.json<br/>~/.gemini/config/hooks.json"] --> HM["tools/agent-guard/hook.sh<br/>(the main checkout)"]
+  HM --> Q
   H --> Q{"origin/main has the guard?"}
   Q -- yes --> M["run origin/main's agent_guard.py + policy.json<br/>(cached by blob id)"]
   Q -- "no, or git fails" --> L["run this checkout's copy<br/>(logged as working-copy)"]
@@ -56,6 +60,12 @@ flowchart LR
     Commander's `write_file`, `edit_block`, `move_file`, `create_directory`,
     `write_pdf`) with **no** `onFailure`. They are checked only to protect the
     guard's own files, so a broken hook never stops code edits.
+
+  `"disableAllHooks": false` is set there too. Project settings outrank user
+  settings, so a user-level `true` cannot switch the guard off in the repo
+  (Hooks reference, "Disable or remove hooks": a `"disableAllHooks": false`
+  "in a project's `.claude/settings.json` overrides a `true` in your user
+  settings").
 
   The repo's `.claude/block-queue-bypass.sh` hook stays beside them. Both run,
   and either one's refusal wins. Project hooks need the folder trusted in an
@@ -97,19 +107,28 @@ agent is). Then:
 **Speed.** About 48 ms a call on this Mac with a warm cache (median of 30,
 Homebrew python 3.15): ~4 ms for `sh`, ~12 ms for the `git rev-parse`, ~14 ms
 for python to start, the rest the guard. The first call after main changes
-also writes the cache: ~110 ms. The per-user install was ~30 ms because it had
-no git step. If those 12 ms ever matter, the launcher could key its cache on
+also writes the cache: ~110 ms. The old copied install was ~30 ms because it
+had no git step. If those 12 ms ever matter, the launcher could key its cache on
 the `origin/main` commit read straight from `.git` (no process) and call git
 only when that commit changes.
 
 **The guard's own files are protected** (category `guard-config`): agents may
 not write, move or delete `.claude/settings.json`, `.claude/settings.local.json`
-(it could switch hooks off), `.agents/hooks.json` or `tools/agent-guard/hook.sh`
-in any vitruvian-core checkout, through the file tools or the obvious shell
+(it could switch hooks off), the hook scripts `.claude/*.sh` (session-start,
+block-queue-bypass, kube-setup, tailscale-up: they run from the project
+settings), `.agents/hooks.json` or `tools/agent-guard/hook.sh` in any
+vitruvian-core checkout, through the file tools or the obvious shell
 writes (`>`, `tee`, `cp` onto them, `mv`, `rm`, `sed -i`, `perl -i`,
 `python -c` that writes, `chmod`). Those take effect before review, so
 changing them is James's call. Reading them, `git diff`, and running the
 launcher by hand are fine. The rest of `tools/agent-guard/` is ordinary code.
+
+**Fetches that could move origin/main are refused** (category `git-other`),
+because origin/main is what hook.sh runs: a `src:dst` refspec
+(`git fetch https://github.com/someone/fork +main:refs/remotes/origin/main`,
+`git fetch origin main:main`), `--refmap`, or a `-c remote.*`/`-c url.*`
+override, on `git fetch` or `git pull`. `git fetch`, `git fetch origin` and
+`git fetch -q origin main` stay allowed.
 
 **Checking it.**
 
@@ -117,39 +136,59 @@ launcher by hand are fine. The rest of `tools/agent-guard/` is ordinary code.
 bazel run //tools/agent-guard:install -- --check
 ```
 
-It fails if agent-guard's entries in either file are missing or differ from
-`install.py`'s `claude_entries()`/`agy_entry()`, then runs the real launcher
-on sample tool calls in Claude Code's and agy's real payload shapes, from the
-folder each runs it in: `git status` must be allowed, `git stash` (Claude
-Code) and `go vet` (agy) refused. It says which copy of the guard answered,
-and points out a leftover per-user install.
+It fails if agent-guard's entries in either repo file are missing or differ
+from `install.py`'s `claude_entries()`/`agy_entry()`, if
+`"disableAllHooks": false` is missing, or if the backstop is missing, still
+the old copy, or points at a `hook.sh` that is gone. Then it runs the repo
+launcher and the backstop on sample tool calls in Claude Code's and agy's real
+payload shapes, from the folder each runs them in: `git status` must be
+allowed, `git stash` (Claude Code) and `go vet` (agy) refused. It says which
+copy of the guard answered.
 
-### The retired per-user install
+### The per-user backstop
 
-agent-guard used to be installed per user: a copy in
-`~/.local/share/agent-guard`, two entries in `~/.claude/settings.json` and one
-in `~/.gemini/config/hooks.json`. That is gone. A plain
-`bazel run //tools/agent-guard:install` now says so and changes nothing; the
-target is kept because it is how the old copy comes out, from **your own
-terminal** (agents may only `--dry-run` or `--check`):
+Claude Code loads `.claude/settings.json` only for a session started inside
+the checkout, and agy loads `.agents/hooks.json` only when started there
+(checked live on 2026-10-17: agy started in another folder ran a command in a
+worktree of this branch, and only the per-user hook logged it). A session
+started in `~`, another repo or Cowork that then works here would be
+unguarded. So, once, from **your own terminal** (agents may only `--dry-run`
+or `--check`):
 
 ```sh
-bazel run //tools/agent-guard:install -- --uninstall --dry-run   # see exactly what it removes
-bazel run //tools/agent-guard:install -- --uninstall
+bazel run //tools/agent-guard:install -- --dry-run   # see the exact change to both user files
+bazel run //tools/agent-guard:install
 ```
 
-It removes `~/.local/share/agent-guard` and only agent-guard's entries from
-both user files (every other hook is kept, each file is backed up beside
-itself first, a broken `hooks.json` does not stop the Claude Code side). The
-log stays.
+It merges the same two Claude Code entries into `~/.claude/settings.json`, and
+the same `agent-guard` hook into `~/.gemini/config/hooks.json` if `~/.gemini`
+exists, with the command `/bin/sh <main checkout>/tools/agent-guard/hook.sh`.
+The main checkout is found from wherever you run it, even a worktree, and
+stored as an absolute path. Nothing is copied:
 
-**Until then both copies run, and that is harmless.** They read the same
-rules, so they give the same answer; when they differ (the repo's copy also
-protects the hook files), Claude Code takes the refusal, so the result is
-never weaker than either alone. Claude Code runs the two in parallel. agy
-seemed to run them one after the other: their log lines were about 40 ms
-apart, and on a refusal only one of them logged. The log gets two lines for each allowed call: the repo hook's carry a
-`source` field once this change is on main, the old copy's never do.
+- **Guard changes need no reinstall.** The backstop runs the main checkout's
+  `hook.sh`, which loads the guard from `origin/main`, so changes arrive with
+  a pull or fetch.
+- **Moving or deleting the main checkout needs a reinstall**, as does
+  checking out a branch there that predates `hook.sh`. Until then the
+  backstop cannot start, and because it fails closed, every agent command is
+  refused in every session. `--check` says so; reinstall, or `--uninstall`.
+- **It migrates the old install.** Entries that point at the old copy in
+  `~/.local/share/agent-guard` are replaced, and that copy is deleted, once the
+  new entries pass a self-test (`git status` allowed, `git stash` and `go vet`
+  refused, in both payload shapes, from a folder outside any checkout). If the
+  self-test fails, both files are put back and nothing is deleted.
+- Every other hook is kept, each file is backed up beside itself before a
+  write, and running it twice changes nothing. `--uninstall` removes only
+  agent-guard's entries (and any old copy); the log stays.
+
+**Running twice is harmless.** In a session started inside the repo both the
+project hook and the backstop run (their commands differ, so Claude Code does
+not merge them). They run the same guard from the same `origin/main`, so they
+give the same answer, and a refusal from either wins. Claude Code runs them
+in parallel. agy seemed to run them one after the other: their log lines were
+about 40 ms apart, and on a refusal only one of them logged. The log gets two
+lines for each allowed call.
 
 ### Antigravity details
 
@@ -210,8 +249,9 @@ fallback and its working-copy fallback make this unlikely. Run
 (hooks do not run there) to see why. To switch the guard off while you fix it,
 from your own terminal: remove the two agent-guard entries from
 `.claude/settings.json` and the `"agent-guard"` key from `.agents/hooks.json`
-in the affected checkout (or set `"enabled": false` there), and land the fix
-through a PR.
+in the affected checkout (or set `"enabled": false` there), run
+`bazel run //tools/agent-guard:install -- --uninstall` for the backstop, and
+land the fix through a PR.
 
 ## What is blocked, and what to use
 
@@ -228,7 +268,7 @@ another branch; until one lands, the refusal says so and points to James.
 | `git-branch` | `git checkout -b`/`<branch>`, `git switch`, `git branch <new>`/`-m`, `gh pr checkout` | `bazel run //tools/worktree -- <branch> [base]` |
 | | `git branch -d/-D` | `bazel run //tools/worktree -- --remove <branch> --delete-branch` or `--prune` |
 | `git-worktree` | `git worktree add/remove/prune/lock/unlock`, `rm -r` of a worktree | `bazel run //tools/worktree` with `--detach <ref>`, `--remove`, `--prune`, `--lock`/`--unlock` |
-| `git-other` | any other git verb that writes: `config` writes, `remote add`, `clean` (except `-n`), `gc`, `clone`, ... | no target: tell James |
+| `git-other` | any other git verb that writes: `config` writes, `remote add`, `clean` (except `-n`), `gc`, `clone`, ...; a `git fetch`/`pull` that names where it writes (`src:dst` refspec, `--refmap`, `-c remote.*`/`url.*`) | no target: tell James |
 | `gh-pr` | `gh pr create` | `bazel run //tools/agent-app -- pr-create` (PR #3427) |
 | | `gh pr merge` (with or without `--auto`), the auto-merge MCP tool | `bazel run //tools/agent-app -- pr-enqueue <pr>` |
 | | `gh pr edit/comment/ready/close/review` | `pr-edit`, `pr-comment`, `pr-ready` are planned in agent-app: tell James |
@@ -250,7 +290,7 @@ another branch; until one lands, the refusal says so and points to James.
 | | `edit/exec/rollout restart/scale/label/...` | no target: tell James |
 | `helm` | `install/upgrade/uninstall/rollback` | `bazel run //tools/gitops:helm`, or change git |
 | `bazel-cache` | `rm -r` of `~/.cache/bazel`, `~/Library/Caches/bazel` or `_bazel_*`; `find -delete` there; `bazel clean --expunge`; `--output_user_root`/`--output_base` | `bazel run //tools/bazel-cache:gc` |
-| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); editing or removing the guard's log and cache (`~/.local/state/agent-guard`) or the retired per-user copy; running `//tools/agent-guard:install` (`bazel run`, `bazel-bin/.../install` or `install.py`) without `--dry-run`/`--check`; hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal |
+| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); editing or removing the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy; running `//tools/agent-guard:install` (`bazel run`, `bazel-bin/.../install` or `install.py`) without `--dry-run`/`--check`; hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal |
 | `oversize` | a command with more than 20,000 simple commands in it (the hook must answer inside its 10 s timeout, and command tools fail closed) | split it into smaller commands |
 
 **Always allowed:** read-only git (`status log diff show fetch rev-parse
@@ -318,7 +358,7 @@ command (redacted, cut to 1,000 characters) and the session. For Antigravity
 the directory is the one the guard judged by (empty if agy gave none, with
 scope `unknown`) and the session is agy's `conversationId`. `source` says which
 copy of the guard decided: `origin/main:<blob id>`, or `working-copy (why)`
-when the launcher fell back (lines from the retired per-user install have no
+when the launcher fell back (lines from the old copied install have no
 `source`). File edits are logged only when refused. The directory is 0700
 and the file 0600. Secrets are replaced by `[REDACTED]`: values after
 `--password`/`--token`/`--secret`, attached `-pPASSWORD` (not `git log -p 5`),
@@ -368,12 +408,15 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
 - **`origin/main` is only as fresh as the last fetch**, so a merged guard
   change reaches a checkout when it next fetches.
 - **Shell writes to the hook files are matched by name**, like everything
-  else here: `git checkout <other-branch> -- .claude/settings.json` or a
-  script that writes them is not seen.
-- **Agents' user-level hook files** (`~/.claude/settings.json`,
-  `~/.gemini/config/hooks.json`) are not protected; with the repo wiring the
-  guard no longer lives there. A user-level `disableAllHooks` would still
-  switch it off.
+  else here. A patch can still reach them: `git apply`, `patch -p1` or
+  `git checkout <ref> -- .claude/settings.json`, as can a script that writes
+  them. `tools/cloud-bootstrap/cloud-bootstrap.sh`, which
+  `.claude/session-start.sh` runs, is not protected either.
+- **The backstop's user files** (`~/.claude/settings.json`,
+  `~/.gemini/config/hooks.json`) are not protected, so an agent could remove
+  the backstop there; `--check` shows it. In the repo, `"disableAllHooks":
+  false` outranks a user-level `true`, but a nested `claude -p --settings
+  '{"disableAllHooks": true}'` started by an agent would run unguarded.
 - **Agent detection is by environment marker** (`CLAUDECODE`,
   `ANTIGRAVITY_AGENT`, `ANTIGRAVITY_*`, `GEMINI_CLI`). `ANTIGRAVITY_AGENT=1` is
   in the agy binary; the Gemini CLI marker is the `GEMINI_CLI` name its
@@ -402,7 +445,10 @@ origin/main's guard wins over a broken local edit, a merged change takes
 effect, the cache, each working-copy fallback, the python fallback, agy's
 `.agents/` working folder; it also reads the real `.claude/settings.json` and
 `.agents/hooks.json` and fails if agent-guard is unwired from either.
-`install_test` covers removing the per-user install from a temporary HOME
-(both files, shared groups, the desktop app's JSON style, a broken
-`hooks.json`, refusal inside an agent session), the plain run that changes
-nothing, and `--check` passing and failing.
+`install_test` runs against a temporary HOME: the backstop's two entries and
+agy hook pointing at the main checkout (also from a worktree), migrating and
+deleting the old copy, idempotence, dry run, rollback when the self-test
+fails, `--uninstall` (both files, shared groups, the desktop app's JSON style,
+a broken `hooks.json`), refusal inside an agent session, and `--check`
+passing and failing (no backstop, the old copy, a moved main checkout, an
+unwired repo file, a broken launcher, a category switched off).

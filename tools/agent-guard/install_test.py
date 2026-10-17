@@ -18,9 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Tests for install.py: removing the retired per-user install cleanly from a
-temporary HOME, the plain run that changes nothing, and --check against a
-throwaway checkout wired like the real one."""
+"""Tests for install.py against a temporary HOME: the per-user backstop (which
+runs the main checkout's hook.sh) and its migration from the old copied
+install, --uninstall, and --check against a throwaway checkout wired like the
+real one."""
 
 import contextlib
 import glob
@@ -198,7 +199,7 @@ class UninstallTest(Base):
         self.assertFalse(os.path.exists(self.idir))
         self.assertEqual(len(glob.glob(self.settings + ".agent-guard-*.bak")), 1)
         self.assertEqual(len(glob.glob(self.gemini + ".agent-guard-*.bak")), 1)
-        self.assertIn("from the repo", out)
+        self.assertIn("sessions started anywhere else are not", out)
 
     def test_twice_changes_nothing_more(self):
         old_install(self.home)
@@ -291,21 +292,130 @@ class UninstallTest(Base):
         self.assertTrue(os.path.isdir(self.idir))
 
 
-class PlainRunTest(Base):
-    def test_changes_nothing_and_says_where_the_guard_is(self):
+class InstallTest(Base):
+    """The thin backstop: user entries that run the MAIN checkout's hook.sh."""
+
+    def setUp(self):
+        super().setUp()
+        self.co = testlib.Checkout()
+        self.command = install.backstop_command(self.co.root)
+
+    def tearDown(self):
+        self.co.close()
+        super().tearDown()
+
+    def ours(self):
+        s = self.load(self.settings)
+        return [
+            e
+            for e in s.get("hooks", {}).get("PreToolUse", [])
+            if any(install._is_ours(h) for h in e.get("hooks", []))
+        ]
+
+    def test_writes_both_entries_pointing_at_the_main_checkout(self):
+        rc, out = self.run_main(workspace=self.co.root)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.ours(), install.claude_entries(self.command))
+        self.assertIn(
+            os.path.join(self.co.root, "tools/agent-guard/hook.sh"), self.command
+        )
+        self.assertEqual(
+            self.load(self.gemini)["agent-guard"], install.agy_entry(self.command)
+        )
+        # Everything else is kept.
+        s = self.load(self.settings)
+        for k, v in EXISTING.items():
+            if k != "hooks":
+                self.assertEqual(s[k], v)
+        for event, entries in EXISTING["hooks"].items():
+            self.assertEqual(s["hooks"][event], entries)
+        self.assertEqual(
+            self.load(self.gemini)["response-contract"],
+            EXISTING_GEMINI["response-contract"],
+        )
+        self.assertIn("reinstall only if you move", out)
+
+    def test_migrates_the_old_copy(self):
+        old_install(self.home)
+        rc, out = self.run_main(workspace=self.co.root)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.ours(), install.claude_entries(self.command))
+        self.assertNotIn(".local/share/agent-guard", self.text(self.settings))
+        self.assertNotIn(".local/share/agent-guard", self.text(self.gemini))
+        self.assertFalse(os.path.exists(self.idir))
+        self.assertEqual(len(glob.glob(self.settings + ".agent-guard-*.bak")), 1)
+        self.assertIn("removed the old per-user copy", out)
+
+    def test_from_a_worktree_it_still_points_at_the_main_checkout(self):
+        wt = os.path.join(self.co.tmp, "wt")
+        testlib.git(self.co.root, "worktree", "add", "-q", "--detach", wt)
+        rc, out = self.run_main(workspace=wt)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.ours(), install.claude_entries(self.command))
+
+    def test_idempotent(self):
+        self.run_main(workspace=self.co.root)
+        before = (self.text(self.settings), self.text(self.gemini))
+        rc, out = self.run_main(workspace=self.co.root)
+        self.assertEqual(rc, 0)
+        self.assertIn("already installed", out)
+        self.assertEqual((self.text(self.settings), self.text(self.gemini)), before)
+        self.assertEqual(len(glob.glob(self.settings + ".agent-guard-*.bak")), 1)
+
+    def test_dry_run_writes_nothing(self):
         old_install(self.home)
         before = (self.text(self.settings), self.text(self.gemini))
-        rc, out = self.run_main()
+        rc, out = self.run_main("--dry-run", workspace=self.co.root)
         self.assertEqual(rc, 0)
-        self.assertIn("runs from the repo", out)
-        self.assertIn("--uninstall", out)  # the leftover copy is pointed out
+        self.assertIn("+++", out)
+        self.assertIn("would remove the old per-user copy", out)
         self.assertEqual((self.text(self.settings), self.text(self.gemini)), before)
         self.assertTrue(os.path.isdir(self.idir))
 
-    def test_without_leftovers(self):
-        rc, out = self.run_main()
-        self.assertEqual(rc, 0)
-        self.assertNotIn("--uninstall", out)
+    def test_a_failing_self_test_puts_everything_back(self):
+        old_install(self.home)
+        self.co.write(
+            "tools/agent-guard/hook.sh", testlib.launcher_text(["/nonexistent/python3"])
+        )
+        before = (self.text(self.settings), self.text(self.gemini))
+        rc, out = self.run_main(workspace=self.co.root)
+        self.assertEqual(rc, 4, out)
+        self.assertIn("no working python3", out)
+        self.assertEqual((self.text(self.settings), self.text(self.gemini)), before)
+        self.assertTrue(os.path.isdir(self.idir))
+
+    def test_antigravity_absent_is_left_alone(self):
+        shutil.rmtree(os.path.join(self.home, ".gemini"))
+        rc, out = self.run_main(workspace=self.co.root)
+        self.assertEqual(rc, 0, out)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".gemini")))
+        self.assertEqual(self.ours(), install.claude_entries(self.command))
+
+    def test_a_main_checkout_without_the_launcher_is_refused(self):
+        os.remove(os.path.join(self.co.root, "tools/agent-guard/hook.sh"))
+        with self.assertRaises(SystemExit) as cm:
+            self.run_main(workspace=self.co.root)
+        self.assertIn("pull main there first", str(cm.exception))
+
+    def test_refused_inside_an_agent_session_except_dry_run(self):
+        os.environ["CLAUDECODE"] = "1"
+        try:
+            rc, out = self.run_main(workspace=self.co.root)
+            self.assertEqual(rc, 2)
+            self.assertIn("CLAUDECODE", out)
+            rc, _ = self.run_main("--dry-run", workspace=self.co.root)
+            self.assertEqual(rc, 0)
+        finally:
+            del os.environ["CLAUDECODE"]
+        self.assertEqual(self.ours(), [])
+
+    def test_uninstall_removes_the_backstop(self):
+        self.run_main(workspace=self.co.root)
+        rc, out = self.run_main("--uninstall")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load(self.settings), EXISTING)
+        self.assertEqual(self.load(self.gemini), EXISTING_GEMINI)
+        self.assertIn("sessions started anywhere else are not", out)
 
     def test_mode_is_gone(self):
         rc, out = self.run_main("--mode", "git-push=warn")
@@ -317,22 +427,41 @@ class CheckTest(Base):
     def setUp(self):
         super().setUp()
         self.co = testlib.Checkout()
+        rc, out = self.run_main(workspace=self.co.root)
+        assert rc == 0, out
 
     def tearDown(self):
         self.co.close()
         super().tearDown()
 
-    def test_passes_on_a_checkout_wired_like_the_repo(self):
+    def test_passes_with_the_repo_wired_and_the_backstop_installed(self):
         rc, out = self.run_main("--check", workspace=self.co.root)
         self.assertEqual(rc, 0, out)
         self.assertIn("origin/main:", out)
-        self.assertNotIn("NOTE", out)
+        self.assertIn("backstop runs", out)
 
-    def test_points_out_the_leftover_per_user_copy(self):
+    def test_fails_without_the_backstop(self):
+        self.run_main("--uninstall")
+        rc, out = self.run_main("--check", workspace=self.co.root)
+        self.assertEqual(rc, 1)
+        self.assertIn("unguarded", out)
+
+    def test_fails_while_the_old_copy_is_installed(self):
+        self.run_main("--uninstall")
         old_install(self.home)
         rc, out = self.run_main("--check", workspace=self.co.root)
-        self.assertEqual(rc, 0, out)
-        self.assertIn("NOTE: the retired per-user install", out)
+        self.assertEqual(rc, 1)
+        self.assertIn("to migrate", out)
+
+    def test_fails_when_the_main_checkout_moved(self):
+        other = testlib.Checkout()
+        try:
+            self.run_main(workspace=other.root)  # the backstop now points at `other`
+        finally:
+            other.close()  # ...which is then deleted
+        rc, out = self.run_main("--check", workspace=self.co.root)
+        self.assertEqual(rc, 1)
+        self.assertIn("did the main checkout move?", out)
 
     def test_says_when_the_working_copy_answered(self):
         testlib.git(self.co.root, "update-ref", "-d", "refs/remotes/origin/main")

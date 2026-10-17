@@ -171,7 +171,8 @@ every checkout and worktree is guarded with nothing to install: `.claude/setting
 `origin/main`**. You may change `agent_guard.py` and `policy.json` like any code (your edit takes
 effect once merged); you may not change those two hook files or `hook.sh`, which take effect
 before review: that is James's call. `bazel run //tools/agent-guard:install -- --check` shows
-whether the wiring works.
+whether the wiring works. Sessions started outside the repo are covered by a one-time per-user
+backstop that runs the main checkout's `hook.sh` (`bazel run //tools/agent-guard:install`, James's step).
 
 ## Finishing work: PR, checks, land, clean up
 Run every change to completion — an unmerged branch is unfinished work, not a deliverable.

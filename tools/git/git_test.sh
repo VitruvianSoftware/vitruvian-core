@@ -239,6 +239,28 @@ else
 fi
 git -C "$wt" rm -q --cached leak.txt; rm -f "$wt/leak.txt"
 
+# C7b. A tracked file in an ignored folder (.claude/settings.json under
+# .claude/) commits by name; a new file there is still refused.
+printf '.hidden/\n' >"$wt/.gitignore"
+mkdir -p "$wt/.hidden"; echo one >"$wt/.hidden/settings.json"
+git -C "$wt" add .gitignore && git -C "$wt" add -f .hidden/settings.json && git -C "$wt" commit -q -m "chore(a): hidden settings"
+echo two >"$wt/.hidden/settings.json"
+out="$(run "$wt" commit -m "fix(a): change hidden settings" .hidden/settings.json 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && [ "$(git -C "$wt" show --name-only --format= HEAD)" = .hidden/settings.json ]; then
+    pass "a tracked file in an ignored folder commits by name"
+else
+    fail "a tracked file in an ignored folder commits by name -- output: $out"
+fi
+before="$(head_of "$wt")"
+echo new >"$wt/.hidden/new.json"
+out="$(run "$wt" commit -m "feat(a): add hidden file" .hidden/new.json 2>&1)"; rc=$?
+if [ $rc -eq 1 ] && [ "$(head_of "$wt")" = "$before" ] && [ -z "$(git -C "$wt" diff --cached --name-only)" ]; then
+    pass "a new file in an ignored folder is still refused"
+else
+    fail "a new file in an ignored folder is still refused -- output: $out"
+fi
+rm -f "$wt/.hidden/new.json"
+
 # C8. --fixup: a fixup! commit for a commit on this branch; never one on main.
 target="$(git -C "$wt" log --format=%H --grep='^feat(a): add a$' -1)"
 echo a2 >>"$wt/a.txt"

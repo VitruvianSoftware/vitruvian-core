@@ -21,10 +21,11 @@
 """agent-guard: a Claude Code and Antigravity hook that keeps agents' repo and dev operations on Bazel targets.
 
 It runs from the repo: .claude/settings.json and .agents/hooks.json call
-hook.sh, which runs the guard as it is on origin/main. Nothing to install.
+hook.sh, which runs the guard as it is on origin/main. A thin per-user
+backstop covers sessions started outside the repo.
 
-  bazel run //tools/agent-guard:install -- --check       # wiring and launcher OK?
-  bazel run //tools/agent-guard:install -- --uninstall   # remove the retired per-user copy
+  bazel run //tools/agent-guard:install                  # install the backstop (once)
+  bazel run //tools/agent-guard:install -- --check       # wiring, backstop and launcher OK?
 
 See README.md.
 """
@@ -53,9 +54,8 @@ py_binary(
     main = "agent_guard.py",
 )
 
-# --check (are the repo hooks wired, does the launcher answer both payload
-# shapes?) and --uninstall (remove the retired per-user copy). A plain run
-# installs nothing.
+# Installs the per-user backstop (entries running the main checkout's hook.sh),
+# migrating the old copied install; --check, --dry-run, --uninstall.
 py_binary(
     name = "install",
     srcs = [
@@ -121,8 +121,8 @@ py_test(
     deps = [":testlib"],
 )
 
-# The retired per-user install's removal against a temporary HOME, the plain
-# run that changes nothing, and --check against a throwaway checkout.
+# The backstop against a temporary HOME (install, migration, rollback,
+# uninstall) and --check against a throwaway checkout.
 py_test(
     name = "install_test",
     size = "small",

@@ -42,6 +42,7 @@ See README.md beside this file for the rules, the limits and the log.
 from __future__ import annotations
 
 import datetime
+import fnmatch
 import json
 import os
 import re
@@ -56,23 +57,24 @@ MODES = ("enforce", "warn", "off")
 # The Bazel module name that marks a vitruvian-core checkout or worktree.
 MODULE_NAME_RE = re.compile(r'module\(\s*name\s*=\s*"vitruvian_core"')
 
-# Where the old per-user installer put the guard, and where the guard logs and
-# hook.sh caches origin/main's copy. Agents may not write to either (category
-# guard-config). The installed copy is retired, but it stays protected while
-# anyone still has it: `bazel run //tools/agent-guard:install -- --uninstall`
-# removes it.
+# Where the old per-user installer copied the guard, and where the guard logs
+# and hook.sh caches origin/main's copy. Agents may not write to either
+# (category guard-config). The old copy stays protected while anyone still has
+# it: `bazel run //tools/agent-guard:install` migrates it to the backstop and
+# deletes it.
 INSTALL_DIR_REL = ".local/share/agent-guard"
 STATE_DIR_REL = ".local/state/agent-guard"
 
-# Files in a checkout that wire the hook up, or could switch it off, and that
-# take effect the moment they change, before anyone reviews them. Agents may
-# not write, move or delete them (category guard-config); changing them is
-# James's call. The guard's own source and policy are NOT here: hook.sh runs
-# them from origin/main, so an agent's edit to them governs nothing until it is
-# merged.
+# Files in a checkout that wire the hook up, could switch it off, or run as
+# hooks themselves, and that take effect the moment they change, before anyone
+# reviews them. Agents may not write, move or delete them (category
+# guard-config); changing them is James's call. The guard's own source and
+# policy are NOT here: hook.sh runs them from origin/main, so an agent's edit to
+# them governs nothing until it is merged. `*` matches within one folder.
 PROTECTED_REPO_FILES = (
     ".claude/settings.json",
     ".claude/settings.local.json",
+    ".claude/*.sh",
     ".agents/hooks.json",
     "tools/agent-guard/hook.sh",
 )
@@ -1401,10 +1403,62 @@ def _positionals(args: Sequence[str], with_arg: Sequence[str] = ()) -> List[str]
     return out
 
 
+# git fetch options that take a separate value.
+_FETCH_WITH_ARG = (
+    "--depth",
+    "--deepen",
+    "--shallow-since",
+    "--shallow-exclude",
+    "--negotiation-tip",
+    "--refmap",
+    "--upload-pack",
+    "-j",
+    "--jobs",
+    "-o",
+    "--server-option",
+    "--recurse-submodules-default",
+    "--submodule-prefix",
+    "--filter",
+    "-s",
+    "--strategy",
+    "-X",
+    "--strategy-option",
+)
+
+
+def _fetch_into_named_ref(verb: str, vargs: List[str], config: List[str]) -> str:
+    """What makes this fetch (or pull) write a ref it names, or "" if nothing does.
+
+    hook.sh runs the guard from origin/main, so a fetch that can point
+    refs/remotes/origin/main (or a branch) at other code must not slip through
+    as a read: an explicit `src:dst` refspec, `--refmap`, or a config override
+    of a remote or of URL rewriting. The remote's own refspec only ever writes
+    its own refs/remotes/<name>/, so plain fetches stay allowed.
+    """
+    for c in config:
+        key = c.split("=", 1)[0].lower()
+        if key.startswith("remote.") or key.startswith("url."):
+            return "-c %s" % key
+    for i, a in enumerate(vargs):
+        if a == "--refmap" and i + 1 < len(vargs) and vargs[i + 1]:
+            return "--refmap"
+        if a.startswith("--refmap=") and a.split("=", 1)[1]:
+            return "--refmap"
+    if _has(vargs, "--multiple", "--all"):
+        return ""  # every argument is a remote or group, none is a refspec
+    pos = _positionals(vargs, _FETCH_WITH_ARG)
+    for spec in pos[1:]:
+        dst = spec.lstrip("+").split(":", 1)
+        if len(dst) == 2 and dst[1]:
+            return spec
+    return ""
+
+
 def classify_git(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str]:
     """Returns (verdict, effective cwd)."""
     args = inv.argv[1:]
     cwd = inv.cwd
+    config: List[str] = []  # -c / --config-env settings, for fetch and pull
     i = 0
     while i < len(args):
         a = args[i]
@@ -1416,6 +1470,8 @@ def classify_git(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str]
             if "=" in a
             else (args[i + 1] if i + 1 < len(args) else "")
         )
+        if name in ("-c", "--config-env"):
+            config.append(val)
         if name in ("-C",):
             cwd = expand_path(val, cwd, ctx.home)
         elif name == "--work-tree":
@@ -1438,6 +1494,18 @@ def classify_git(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str]
         or vargs == ["-h"]
     ):
         return None, cwd
+    if verb in ("fetch", "pull"):
+        hijack = _fetch_into_named_ref(verb, vargs, config)
+        if hijack:
+            return V(
+                "git-other",
+                "git %s %s" % (verb, hijack),
+                None,
+                "A fetch that names where it writes (a `src:dst` refspec, `--refmap`, or a "
+                "`-c remote.*`/`url.*` override) can move origin/main, and agent-guard's hook "
+                "runs the guard from origin/main. `git fetch`, `git fetch origin` and "
+                "`git fetch origin main` are fine.",
+            ), cwd
     if verb in GIT_READ_ONLY:
         return None, cwd
 
@@ -2668,9 +2736,17 @@ def protected_repo_file(path: str, folders: bool = True) -> Optional[str]:
         return None
     rel = os.path.relpath(p, root).replace(os.sep, "/")
     for f in PROTECTED_REPO_FILES:
-        if rel == f or (folders and f.startswith(rel + "/")):
+        if _protected_match(rel, f) or (folders and f.startswith(rel + "/")):
             return f
     return None
+
+
+def _protected_match(rel: str, pattern: str) -> bool:
+    if "*" not in pattern:
+        return rel == pattern
+    folder, _, name = pattern.rpartition("/")
+    rfolder, _, rname = rel.rpartition("/")
+    return rfolder == folder and fnmatch.fnmatchcase(rname, name)
 
 
 def _mentions_guard(word: str, cwd: str, home: str) -> bool:
