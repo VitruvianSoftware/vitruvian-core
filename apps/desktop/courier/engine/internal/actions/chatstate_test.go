@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -128,14 +129,12 @@ func TestPinWhileOfflineIsLocalAndDoesNotWait(t *testing.T) {
 
 	start := time.Now()
 	require.NoError(t, w.a.SetPinned(ctx, room, true))
-	changed, err := w.a.SetMarkedUnread(ctx, []string{room}, true)
-	require.NoError(t, err)
-	require.Equal(t, []string{room}, changed)
+	require.NoError(t, w.a.SetMuted(ctx, room, true))
 	require.Less(t, time.Since(start), 2*time.Second, "nothing waits for the network to come back")
 	require.False(t, w.row(t, room).PinnedAt.IsZero())
-	require.True(t, w.row(t, room).MarkedUnread)
+	require.True(t, w.row(t, room).Muted)
 	none(t, w.n.Tags, "a pin while offline")
-	none(t, w.n.Unreads, "an unread mark while offline")
+	none(t, w.n.Mutes, "a mute while offline")
 	warns := 0
 	for _, l := range logs.lines() {
 		if strings.Contains(l, `"change":`) {
@@ -164,7 +163,10 @@ func TestMuteReachesTheNetwork(t *testing.T) {
 	none(t, w.n.Mutes, "a mute of an unknown chat")
 }
 
-func TestMarkUnreadReachesTheNetworkAndMarkReadClearsIt(t *testing.T) {
+// An unread mark stays on this Mac: nothing is queued to the network, even one whose client takes marks (the fake
+// one does, as WhatsApp's does), because WhatsApp's bridge inverts the flag (see SyncsOf). Reading the chat
+// clears the mark and a fired reminder, here only.
+func TestMarkUnreadStaysOnThisMacAndMarkReadClearsIt(t *testing.T) {
 	ctx := context.Background()
 	w := startWorld(t, "fake", true)
 	room, _ := w.chat(t, "chat1", "m1")
@@ -173,20 +175,25 @@ func TestMarkUnreadReachesTheNetworkAndMarkReadClearsIt(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{room}, changed)
 	require.True(t, w.row(t, room).MarkedUnread)
-	require.Equal(t, fakenet.UnreadChange{PortalID: "chat1", Unread: true}, recv(t, w.n.Unreads, "the unread mark"))
+	none(t, w.n.Unreads, "an unread mark")
 
 	changed, err = w.a.SetMarkedUnread(ctx, []string{room}, true)
 	require.NoError(t, err)
 	require.Empty(t, changed)
-	none(t, w.n.Unreads, "a mark the chat already had")
 
 	require.NoError(t, w.a.MarkRead(ctx, room))
 	require.False(t, w.row(t, room).MarkedUnread, "reading the chat clears the mark")
-	require.Equal(t, fakenet.UnreadChange{PortalID: "chat1", Unread: false}, recv(t, w.n.Unreads, "the cleared mark"))
 	recv(t, w.n.Receipts, "the read receipt")
+	none(t, w.n.Unreads, "the cleared mark")
 
-	require.NoError(t, w.a.MarkRead(ctx, room))
-	none(t, w.n.Unreads, "clearing a mark the chat no longer has")
+	changed, err = w.a.SetMarkedUnread(ctx, []string{room}, true)
+	require.NoError(t, err)
+	require.Equal(t, []string{room}, changed)
+	changed, err = w.a.SetMarkedUnread(ctx, []string{room}, false)
+	require.NoError(t, err)
+	require.Equal(t, []string{room}, changed)
+	require.False(t, w.row(t, room).MarkedUnread)
+	none(t, w.n.Unreads, "an explicit clear of the mark")
 
 	t.Run("a fired reminder marks unread here only, and reading clears it", func(t *testing.T) {
 		now := time.Now()
@@ -198,13 +205,12 @@ func TestMarkUnreadReachesTheNetworkAndMarkReadClearsIt(t *testing.T) {
 		require.Equal(t, []string{room}, fired)
 		require.True(t, w.row(t, room).MarkedUnread)
 		require.NotNil(t, w.row(t, room).Reminder)
-		none(t, w.n.Unreads, "a reminder's unread mark")
 
 		require.NoError(t, w.a.MarkRead(ctx, room))
 		row := w.row(t, room)
 		require.False(t, row.MarkedUnread)
 		require.Nil(t, row.Reminder, "reading the chat is what the fired reminder was waiting for")
-		require.Equal(t, fakenet.UnreadChange{PortalID: "chat1", Unread: false}, recv(t, w.n.Unreads, "the cleared mark"))
+		none(t, w.n.Unreads, "a reminder's mark, set or cleared")
 	})
 	t.Run("a reminder still to come is left alone", func(t *testing.T) {
 		require.NoError(t, w.s.SetReminder(ctx, []string{room}, time.Now().Add(time.Hour), "always"))
@@ -215,7 +221,6 @@ func TestMarkUnreadReachesTheNetworkAndMarkReadClearsIt(t *testing.T) {
 		_, err := w.a.SetMarkedUnread(ctx, []string{room, "!nope:courier.local"}, true)
 		require.ErrorIs(t, err, store.ErrNotFound)
 		require.False(t, w.row(t, room).MarkedUnread)
-		none(t, w.n.Unreads, "a mark that was refused")
 	})
 }
 
@@ -242,6 +247,16 @@ func TestAcceptRequestOnlyWhereSupported(t *testing.T) {
 		require.NoError(t, w.a.AcceptRequest(ctx, room))
 		require.False(t, w.row(t, room).Request, "accepted here all the same")
 		none(t, w.n.Accepts, "a refused accept")
+
+		// The bridge never heard of the accept, so the next time it resends the chat's bridge info (on any change
+		// of name, avatar, ...) that still says "message request". That must not undo the accept made here.
+		h, ok := w.eng.Host("fake")
+		require.True(t, ok)
+		_, err := h.Bridge.Bot.SendState(ctx, id.RoomID(room), event.StateBridge, "fake://chat1",
+			&event.Content{Parsed: &event.BridgeEventContent{Channel: event.BridgeInfoSection{ID: "chat1", MessageRequest: true}}},
+			time.Now())
+		require.NoError(t, err)
+		require.False(t, w.row(t, room).Request, "a resent request flag doesn't undo an accept")
 	})
 	t.Run("not supported", func(t *testing.T) {
 		w := startWorldOn(t, "fake", fakenet.NewPlain(), true, zerolog.Nop())
@@ -260,7 +275,8 @@ func TestAcceptRequestOnlyWhereSupported(t *testing.T) {
 }
 
 func TestSyncsFollowTheClient(t *testing.T) {
-	require.Equal(t, []string{"pin", "mute", "unread", "accept_request"}, startWorld(t, "fake", true).a.Syncs("fake"))
+	require.Equal(t, []string{"pin", "mute", "accept_request"}, startWorld(t, "fake", true).a.Syncs("fake"),
+		"never unread, though the fake client takes it: unread marks stay on this Mac")
 	require.Empty(t, startWorldOn(t, "fake", fakenet.NewPlain(), true, zerolog.Nop()).a.Syncs("fake"))
 	unlinked := startWorld(t, "fake", false)
 	require.Empty(t, unlinked.a.Syncs("fake"), "no login, no client to ask")

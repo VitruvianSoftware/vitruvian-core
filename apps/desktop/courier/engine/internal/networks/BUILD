@@ -9,6 +9,8 @@ go_test(
         "signal_link_test.go",
         "signal_registered_darwin_test.go",
     ],
+    # The engine's go.mod, read by TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks.
+    data = ["//apps/desktop/courier/engine:go.mod"],
     embed = [":networks"],
     deps = [
         "//apps/desktop/courier/engine/internal/actions",

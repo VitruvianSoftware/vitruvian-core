@@ -3,6 +3,12 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # gazelle:prefix github.com/VitruvianSoftware/courier/engine
 package(default_visibility = ["//apps/desktop/courier:__subpackages__"])
 
+# The networks test reads the bridge versions this go.mod pins (TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks).
+exports_files(
+    ["go.mod"],
+    visibility = ["//apps/desktop/courier/engine/internal/networks:__pkg__"],
+)
+
 # The engine's tests on macOS. Signal links Signal's Rust library
 # (//apps/desktop/courier/libsignal:signal_ffi), which builds only on macOS, so only a
 # Mac runs the Signal registration and the link test

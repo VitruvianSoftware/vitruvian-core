@@ -24,12 +24,19 @@ var ErrNotSupported = errors.New("this network can't do that")
 const (
 	syncPin    = "pin"
 	syncMute   = "mute"
-	syncUnread = "unread"
 	syncAccept = "accept_request"
 )
 
-// SyncsOf lists the chat changes a network client takes, out of "pin", "mute", "unread" and "accept_request", in
+// SyncsOf lists the chat changes Courier sends to a network client, out of "pin", "mute" and "accept_request", in
 // that order: the bridgev2 interfaces it implements. Never nil.
+//
+// "unread" (MarkedUnreadHandlingNetworkAPI, m.marked_unread) is never listed and never sent, whatever the client
+// implements: an unread mark stays on this Mac. The only bridge that takes one, WhatsApp, inverts it:
+// mautrix-whatsapp's HandleMarkedUnread (pkg/connector/handlematrix.go:667 at v0.2609.0, :696 at v0.2610.0, both
+// checked) passes Content.Unread as whatsmeow's BuildMarkChatAsRead(target, read, ...), so "mark unread" would
+// mark the chat read on the phone and reading it would mark it unread. Courier doesn't invert it itself: that
+// would break silently the day the bridge is fixed. TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks
+// (networks) fails when the bridge is bumped, so the handler is looked at again before this is re-enabled.
 func SyncsOf(c bridgev2.NetworkAPI) []string {
 	out := []string{}
 	if _, ok := c.(bridgev2.TagHandlingNetworkAPI); ok {
@@ -37,9 +44,6 @@ func SyncsOf(c bridgev2.NetworkAPI) []string {
 	}
 	if _, ok := c.(bridgev2.MuteHandlingNetworkAPI); ok {
 		out = append(out, syncMute)
-	}
-	if _, ok := c.(bridgev2.MarkedUnreadHandlingNetworkAPI); ok {
-		out = append(out, syncUnread)
 	}
 	if _, ok := c.(bridgev2.MessageRequestAcceptingNetworkAPI); ok {
 		out = append(out, syncAccept)
@@ -67,16 +71,16 @@ func myLogins(h *host.Host) []*bridgev2.UserLogin {
 	return out
 }
 
-// Syncs lists which of the chat changes Courier makes reach this network, out of "pin", "mute", "unread" and
-// "accept_request", in that order. It follows the network's login client: a network that isn't running or isn't
-// linked has none to ask, and lists nothing. Never nil.
+// Syncs lists which of the chat changes Courier makes reach this network, out of "pin", "mute" and
+// "accept_request", in that order (an unread mark never does: see SyncsOf). It follows the network's login
+// client: a network that isn't running or isn't linked has none to ask, and lists nothing. Never nil.
 func (a *Actions) Syncs(network string) []string {
 	h, ok := a.eng.Host(network)
 	if !ok {
 		return []string{}
 	}
 	out := []string{}
-	for _, change := range []string{syncPin, syncMute, syncUnread, syncAccept} {
+	for _, change := range []string{syncPin, syncMute, syncAccept} {
 		for _, l := range myLogins(h) {
 			if takes(l.Client, change) {
 				out = append(out, change)
@@ -180,26 +184,14 @@ func (a *Actions) SetMuted(ctx context.Context, roomID string, muted bool) error
 	return nil
 }
 
-// SetMarkedUnread marks chats unread (or clears the mark) in Courier, and returns the ones that changed. Each of
-// those is then told to its network if it takes unread marks. An unknown chat is store.ErrNotFound and changes
-// none of them.
+// SetMarkedUnread marks chats unread (or clears the mark) in Courier, and returns the ones that changed. An
+// unknown chat is store.ErrNotFound and changes none of them.
+//
+// The mark is Courier's own: no m.marked_unread is queued to any network. WhatsApp's bridge, the only one that
+// takes it, inverts the flag (mautrix-whatsapp pkg/connector/handlematrix.go:667, v0.2609.0; :696, v0.2610.0); the
+// full reason is on SyncsOf.
 func (a *Actions) SetMarkedUnread(ctx context.Context, roomIDs []string, unread bool) ([]string, error) {
-	changed, err := a.s.SetMarkedUnread(ctx, roomIDs, unread)
-	if err != nil {
-		return nil, err
-	}
-	for _, roomID := range changed {
-		a.tellUnread(ctx, roomID, unread)
-	}
-	return changed, nil
-}
-
-func (a *Actions) tellUnread(ctx context.Context, roomID string, unread bool) {
-	h, err := a.hostOf(ctx, roomID)
-	if err != nil || h == nil {
-		return // the mark is stored; a chat gone since, or on a network not running, has nobody to tell
-	}
-	a.tell(ctx, h, roomID, syncUnread, event.AccountDataMarkedUnread, &event.MarkedUnreadEventContent{Unread: unread})
+	return a.s.SetMarkedUnread(ctx, roomIDs, unread)
 }
 
 // AcceptRequest accepts a message request (someone new writing first). On a network that can't take an accept it

@@ -697,16 +697,64 @@ func TestMessageRequestFromBridgeInfo(t *testing.T) {
 	friend := b.arrive(t, "friend")
 	require.False(t, rowOf(t, b.c, friend).Request)
 
-	// Both of the bridge info state events carry it, and a later one with the key gone means accepted.
 	ctx := context.Background()
 	bot := b.c.BotIntent()
 	info := func(request bool) *event.Content {
-		return &event.Content{Parsed: &event.BridgeEventContent{Channel: event.BridgeInfoSection{ID: "friend", MessageRequest: request}}}
+		return &event.Content{Parsed: &event.BridgeEventContent{Channel: event.BridgeInfoSection{ID: "x", MessageRequest: request}}}
 	}
-	_, err := bot.SendState(ctx, friend, event.StateHalfShotBridge, "fake://friend", info(true), time.Now())
+	// bridgev2 resends the bridge info whenever the chat's info changes. "Request" in a resend is not taken in:
+	// after an accept here that the network refused or never heard of, the resend still says "request".
+	for _, typ := range []event.Type{event.StateBridge, event.StateHalfShotBridge} {
+		_, err := bot.SendState(ctx, friend, typ, "fake://friend", info(true), time.Now())
+		require.NoError(t, err)
+		require.False(t, rowOf(t, b.c, friend).Request, "%s resent with the flag doesn't make a chat a request", typ.Type)
+	}
+	require.NoError(t, b.c.store.SetRequest(ctx, string(stranger), false), "accepted here (the network refused it)")
+	_, err := bot.SendState(ctx, stranger, event.StateBridge, "fake://stranger", info(true), time.Now())
 	require.NoError(t, err)
-	require.True(t, rowOf(t, b.c, friend).Request)
-	_, err = bot.SendState(ctx, friend, event.StateBridge, "fake://friend", info(false), time.Now())
+	require.False(t, rowOf(t, b.c, stranger).Request, "a resent request flag doesn't undo an accept")
+
+	// "Not a request" is taken in at any time: that is how an accept the network took reads afterwards, from either
+	// of the two state events.
+	other := b.arrive(t, "other")
+	require.NoError(t, b.c.store.SetRequest(ctx, string(other), true), "fixture: a request")
+	_, err = bot.SendState(ctx, other, event.StateHalfShotBridge, "fake://other", info(false), time.Now())
 	require.NoError(t, err)
-	require.False(t, rowOf(t, b.c, friend).Request)
+	require.False(t, rowOf(t, b.c, other).Request)
+	require.NoError(t, b.c.store.SetRequest(ctx, string(other), true))
+	_, err = bot.SendState(ctx, other, event.StateBridge, "fake://other", info(false), time.Now())
+	require.NoError(t, err)
+	require.False(t, rowOf(t, b.c, other).Request)
+
+	// A chat made fresh with the flag in its initial state is a request, whichever event carries it.
+	sk := "fake://new"
+	newRoom, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{InitialState: []*event.Event{
+		{Type: event.StateHalfShotBridge, StateKey: &sk, Content: *info(true)},
+	}})
+	require.NoError(t, err)
+	require.True(t, rowOf(t, b.c, newRoom).Request)
+}
+
+// A resend that says nothing new writes nothing: no "room" change reaches the app.
+func TestUnchangedBridgeInfoPublishesNothing(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	bot := c.BotIntent()
+	roomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	changes, cancel := c.store.Subscribe()
+	defer cancel()
+	for _, request := range []bool{false, true} {
+		_, err = bot.SendState(ctx, roomID, event.StateBridge, "k",
+			&event.Content{Parsed: &event.BridgeEventContent{Channel: event.BridgeInfoSection{ID: "x", MessageRequest: request}}}, time.Now())
+		require.NoError(t, err)
+	}
+	deadline := time.After(100 * time.Millisecond)
+	for {
+		select {
+		case ch := <-changes:
+			require.NotEqual(t, "room", ch.Kind, "an unchanged request flag published %+v", ch)
+		case <-deadline:
+			return
+		}
+	}
 }

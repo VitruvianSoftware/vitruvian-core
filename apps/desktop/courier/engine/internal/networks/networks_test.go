@@ -6,7 +6,9 @@ package networks
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -199,44 +201,58 @@ func TestWhatsAppArchivedChatsArriveArchived(t *testing.T) {
 		"every other setting keeps the example's value")
 }
 
-// The "sent" rows of the plan's per-network table, checked against the client types of the pinned bridges. A
-// bridge bump that adds or drops one of these handlers fails here, so the table (and what Courier tells people
-// reaches each network) is looked at again.
+// The "sent" rows of the plan's per-network table (what Courier sends each network), and the bridgev2 interfaces
+// each pinned bridge's client implements, which is what they rest on. A bridge bump that adds or drops one of
+// these handlers fails here, so the table (and what Courier tells people reaches each network) is looked at again.
+//
+// The two differ in one place: WhatsApp's client takes unread marks, but its bridge inverts them, so Courier never
+// sends one (actions.SyncsOf; TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks).
 func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
-	want := map[string][]string{
-		"whatsapp":  {"pin", "mute", "unread"},
-		"telegram":  {"pin", "mute"},
-		"gmessages": {},
-		"slack":     {},
-	}
-	clients := map[string]bridgev2.NetworkAPI{
-		"whatsapp":  (*whatsapp.WhatsAppClient)(nil),
-		"telegram":  (*telegram.TelegramClient)(nil),
-		"gmessages": (*gmessages.GMClient)(nil),
-		"slack":     (*slack.SlackClient)(nil),
+	rows := map[string]platformClient{
+		"whatsapp":  {client: (*whatsapp.WhatsAppClient)(nil), sent: []string{"pin", "mute"}, implements: []string{"pin", "mute", "unread"}},
+		"telegram":  {client: (*telegram.TelegramClient)(nil), sent: []string{"pin", "mute"}, implements: []string{"pin", "mute"}},
+		"gmessages": {client: (*gmessages.GMClient)(nil), sent: []string{}, implements: []string{}},
+		"slack":     {client: (*slack.SlackClient)(nil), sent: []string{}, implements: []string{}},
 	}
 	for name, c := range platformClients() {
-		clients[name], want[name] = c.client, c.syncs
+		rows[name] = c
 	}
 	var registered []string
 	for _, n := range All() {
 		registered = append(registered, n.Name)
 	}
-	require.ElementsMatch(t, registered, keys(clients), "every registered network has a row")
-	for name, c := range clients {
-		require.Equal(t, want[name], actions.SyncsOf(c), name)
-		// The same, asked of the bridgev2 interfaces directly.
-		_, pin := c.(bridgev2.TagHandlingNetworkAPI)
-		_, mute := c.(bridgev2.MuteHandlingNetworkAPI)
-		_, unread := c.(bridgev2.MarkedUnreadHandlingNetworkAPI)
-		_, accept := c.(bridgev2.MessageRequestAcceptingNetworkAPI)
-		require.Equal(t, want[name], pick(pin, "pin", mute, "mute", unread, "unread", accept, "accept_request"), name)
+	require.ElementsMatch(t, registered, keys(rows), "every registered network has a row")
+	for name, r := range rows {
+		require.Equal(t, r.sent, actions.SyncsOf(r.client), "what Courier sends %s", name)
+		_, pin := r.client.(bridgev2.TagHandlingNetworkAPI)
+		_, mute := r.client.(bridgev2.MuteHandlingNetworkAPI)
+		_, unread := r.client.(bridgev2.MarkedUnreadHandlingNetworkAPI)
+		_, accept := r.client.(bridgev2.MessageRequestAcceptingNetworkAPI)
+		require.Equal(t, r.implements, pick(pin, "pin", mute, "mute", unread, "unread", accept, "accept_request"),
+			"what %s's bridge implements", name)
 	}
 }
 
+// WhatsApp's bridge inverts unread marks at the version Courier pins: HandleMarkedUnread passes Content.Unread as
+// whatsmeow's BuildMarkChatAsRead(target, read, ...) (pkg/connector/handlematrix.go:667 at v0.2609.0; still so at
+// :696 in v0.2610.0). So Courier sends it none (actions.SyncsOf). This fails when the pin moves, to make whoever
+// bumps it read that handler again before letting unread marks reach WhatsApp.
+func TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks(t *testing.T) {
+	// The engine's go.mod, a data dependency of this test, is what pins the bridge.
+	raw, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^\s*go\.mau\.fi/mautrix-whatsapp\s+(\S+)`).FindStringSubmatch(string(raw))
+	require.NotNil(t, m, "go.mod no longer requires mautrix-whatsapp")
+	require.Equal(t, "v0.2609.0", m[1],
+		"mautrix-whatsapp moved off v0.2609.0. Re-check HandleMarkedUnread in its pkg/connector/handlematrix.go: if it "+
+			"no longer passes Content.Unread as BuildMarkChatAsRead's \"read\" argument, unread marks can go to WhatsApp "+
+			"again (actions.SyncsOf and the plan's sync table). Then update this version.")
+}
+
 type platformClient struct {
-	client bridgev2.NetworkAPI
-	syncs  []string
+	client     bridgev2.NetworkAPI
+	sent       []string // what Courier sends the network (actions.SyncsOf)
+	implements []string // the chat-change interfaces the bridge's client implements
 }
 
 func keys[V any](m map[string]V) []string {

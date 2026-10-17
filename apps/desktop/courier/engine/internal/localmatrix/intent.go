@@ -75,6 +75,11 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 }
 
 func (in *Intent) SendState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, content *event.Content, _ time.Time) (*mautrix.RespSendEvent, error) {
+	return in.sendState(ctx, roomID, evtType, stateKey, content, false)
+}
+
+// sendState is SendState; created says the state is the initial state of a room CreateRoom has just made.
+func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, content *event.Content, created bool) (*mautrix.RespSendEvent, error) {
 	raw, err := json.Marshal(content)
 	if err != nil {
 		return nil, err
@@ -82,7 +87,7 @@ func (in *Intent) SendState(ctx context.Context, roomID id.RoomID, evtType event
 	if err = in.c.store.SetState(ctx, string(roomID), evtType.Type, stateKey, raw); err != nil {
 		return nil, err
 	}
-	if err = in.c.applyRoomState(ctx, roomID, evtType, stateKey, raw); err != nil {
+	if err = in.c.applyRoomState(ctx, roomID, evtType, stateKey, raw, created); err != nil {
 		return nil, err
 	}
 	return &mautrix.RespSendEvent{EventID: ids.RandomEventID()}, nil
@@ -260,9 +265,10 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 	}
 	room := store.Room{ID: string(roomID), Network: in.c.network, Name: req.Name, Topic: req.Topic, IsDirect: req.IsDirect}
 	// Re-creating a room that already exists must not lose its avatar or creation time.
-	if old, ok, err := in.c.store.GetRoom(ctx, room.ID); err != nil {
+	old, existed, err := in.c.store.GetRoom(ctx, room.ID)
+	if err != nil {
 		return "", err
-	} else if ok {
+	} else if existed {
 		room.AvatarURI, room.CreatedAt = old.AvatarURI, old.CreatedAt
 	}
 	if err := in.c.store.UpsertRoom(ctx, room); err != nil {
@@ -275,7 +281,7 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 		}
 	}
 	if req.PowerLevelOverride != nil {
-		if _, err := in.SendState(ctx, roomID, event.StatePowerLevels, "", &event.Content{Parsed: req.PowerLevelOverride}, time.Now()); err != nil {
+		if _, err := in.sendState(ctx, roomID, event.StatePowerLevels, "", &event.Content{Parsed: req.PowerLevelOverride}, !existed); err != nil {
 			return "", err
 		}
 	}
@@ -284,7 +290,7 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 		if st.StateKey != nil {
 			sk = *st.StateKey
 		}
-		if _, err := in.SendState(ctx, roomID, st.Type, sk, &st.Content, time.Now()); err != nil {
+		if _, err := in.sendState(ctx, roomID, st.Type, sk, &st.Content, !existed); err != nil {
 			return "", err
 		}
 	}

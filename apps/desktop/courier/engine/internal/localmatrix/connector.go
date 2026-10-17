@@ -198,13 +198,14 @@ func (c *Connector) GenerateReactionEventID(roomID id.RoomID, target *database.M
 func (c *Connector) ServerName() string { return ids.ServerName }
 
 // applyRoomState mirrors name/topic/avatar/member state into the rooms and members tables the app reads, and the
-// bridge info's message-request flag into the room's request flag.
-func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, raw json.RawMessage) error {
+// bridge info's message-request flag into the room's request flag. created says the state is the initial state of
+// a room that has just been made.
+func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, raw json.RawMessage, created bool) error {
 	if evtType == event.StateMember {
 		return c.store.SetMember(ctx, string(roomID), stateKey, raw)
 	}
 	if evtType == event.StateBridge || evtType == event.StateHalfShotBridge {
-		return c.applyBridgeInfo(ctx, roomID, raw)
+		return c.applyBridgeInfo(ctx, roomID, raw, created)
 	}
 	if evtType != event.StateRoomName && evtType != event.StateTopic && evtType != event.StateRoomAvatar {
 		return nil
@@ -238,7 +239,12 @@ func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtTyp
 // applyBridgeInfo reads whether the chat is a message request (someone new writing first) from the bridge info
 // bridgev2 keeps on each room. The key is left out when it is false, so its absence means "not a request": that
 // is how an accepted request reads afterwards.
-func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw json.RawMessage) error {
+//
+// "Not a request" is taken in at any time, "a request" only in the initial state of a chat just created.
+// bridgev2 resends the bridge info on any change to the chat's info (a name, an avatar: portal.go:5196-5229 of
+// mautrix v0.31.0), and after an accept made here that the network refused or never heard of (offline), that
+// resend still says "request": taking it would undo the accept, and a local change is never undone.
+func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw json.RawMessage, created bool) error {
 	var info struct {
 		Channel struct {
 			MessageRequest bool `json:"com.beeper.message_request"`
@@ -247,6 +253,10 @@ func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw j
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return fmt.Errorf("invalid bridge info: %w", err)
 	}
+	if info.Channel.MessageRequest && !created {
+		return nil
+	}
+	// SetRequest writes and publishes only when the flag changes, so a resend that says nothing new is no churn.
 	err := c.store.SetRequest(ctx, string(roomID), info.Channel.MessageRequest)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil // no such room (any more): nothing to flag

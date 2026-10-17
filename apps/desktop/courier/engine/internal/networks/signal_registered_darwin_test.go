@@ -28,5 +28,7 @@ func TestSignalIsRegisteredLastOnDarwin(t *testing.T) {
 
 // platformClients adds Signal's row of the sync table: it takes message-request accepts and nothing else.
 func platformClients() map[string]platformClient {
-	return map[string]platformClient{"signal": {client: (*signal.SignalClient)(nil), syncs: []string{"accept_request"}}}
+	return map[string]platformClient{"signal": {
+		client: (*signal.SignalClient)(nil), sent: []string{"accept_request"}, implements: []string{"accept_request"},
+	}}
 }
