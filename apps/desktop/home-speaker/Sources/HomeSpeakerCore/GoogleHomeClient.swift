@@ -206,6 +206,14 @@ public actor GoogleHomeClient {
             if let boost { await VolumeRestoreRequest.schedule(boost, after: 0, profile: profile) }
             throw error
         }
+        // The hold was counted from before the sign-in token, the volume
+        // change and this call, which can take seconds; the speaker starts
+        // only now. Hold the full time again from here, as the volume
+        // restore below is counted, so the media does not come back mid-speech.
+        if pausing {
+            let hold = AnnouncementTiming.seconds(for: spoken, extra: config?.effectivePauseMediaExtraSeconds ?? 1)
+            await MediaPauseRequest.extend(seconds: hold, profile: profile)
+        }
         if let boost {
             await VolumeRestoreRequest.schedule(
                 boost, after: AnnouncementTiming.seconds(for: spoken, extra: 1.5), profile: profile)

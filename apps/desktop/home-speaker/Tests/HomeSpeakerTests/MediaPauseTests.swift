@@ -35,7 +35,7 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
 
     func run(_ source: String) async -> Result<String, ScriptFailure> {
         lock.withLock { _ran.append(source) }
-        if source.contains("{active tab of w}") { return activeTabs }
+        if source.contains("{active tab of w}") || source.contains("{current tab of w}") { return activeTabs }
         if source.contains("URL of tabs of w") { return mediaSiteTabs }
         if source.contains("(tabs of w)") { return allTabs }
         if source.contains("tell application \"Spotify\"") && source.contains("pause") { return spotify }
@@ -237,5 +237,458 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         #expect(MediaScripts.pauseJS.contains("location.hostname||'this page'"),
                 "a file:// page has no hostname; answering \"\" would mean never resumed")
         #expect(MediaScripts.resumeJS.contains("p.catch"), "a refused play() must not surface as an error")
+    }
+}
+
+// MARK: - Regressions: media paused but never resumed, or never paused
+
+/// Answers the front-tab pass with each of `answers` in turn, after
+/// `delay`, the way a busy browser keeps osascript waiting; records every
+/// script, and whether the task running each resume had been cancelled.
+final class SlowTabs: ScriptRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [String]
+    private let delay: Duration
+    private var _ran: [String] = []
+    private var _resumeCancelled: [Bool] = []
+    var ran: [String] { lock.withLock { _ran } }
+    var resumeCancelled: [Bool] { lock.withLock { _resumeCancelled } }
+    var resumes: [String] { ran.filter(Self.isResume) }
+    var frontTabPasses: Int { ran.filter { $0.contains("{active tab of w}") }.count }
+
+    init(_ answers: [String], delay: Duration = .zero) {
+        self.answers = answers
+        self.delay = delay
+    }
+
+    static func isResume(_ s: String) -> Bool { s.contains("data-hs-paused") && s.contains("tab id") }
+
+    func run(_ source: String) async -> Result<String, ScriptFailure> {
+        lock.withLock { _ran.append(source) }
+        if source.contains("{active tab of w}") {
+            if delay > .zero { try? await Task.sleep(for: delay) }
+            return .success(lock.withLock { answers.isEmpty ? "" : answers.removeFirst() })
+        }
+        if Self.isResume(source) {
+            lock.withLock { _resumeCancelled.append(Task.isCancelled) }
+            // A cancelled task's sleep ends at once: osascript's real wait
+            // stands in here.
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return .success("")
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct MediaPauseRaceTests {
+    func make(_ runner: ScriptRunner) -> MediaPauseCoordinator {
+        MediaPauseCoordinator(controller: MediaController(runner: runner),
+                              audio: { ["com.google.Chrome.helper"] }, safariRunning: { false })
+    }
+
+    /// Two announcements a moment apart: the second used to start its own
+    /// pause while the first's osascript still ran, and whichever finished
+    /// last replaced what was held -- the other tab was never resumed.
+    @Test func overlappingPausesNeverLoseWhatTheFirstPaused() async {
+        let runner = SlowTabs(["1:2:www.youtube.com,", "3:4:music.example,"], delay: .milliseconds(300))
+        let c = make(runner)
+        async let first: Void = c.pause(for: 30)
+        async let second: Void = c.pause(for: 30)
+        _ = await (first, second)
+        #expect(c.isHolding)
+        #expect(runner.frontTabPasses == 1, "the second announcement extends the hold; it does not pause again")
+        await c.resumeNow()
+        #expect(runner.resumes.contains { $0.contains("tab id 2 of window id 1") }, "the first pause's tab is resumed")
+        #expect(!c.isHolding)
+    }
+
+    /// The broadcast failed while the pause was still running: the resume
+    /// used to find nothing held yet, and the pause then held the media
+    /// for the whole hold.
+    @Test func aResumeDuringAPauseResumesWhatThatPausePaused() async throws {
+        let runner = SlowTabs(["1:2:www.youtube.com,"], delay: .milliseconds(300))
+        let c = make(runner)
+        let pausing = Task { await c.pause(for: 60) }
+        try await Task.sleep(for: .milliseconds(50))
+        await c.resumeNow()
+        await pausing.value
+        #expect(!c.isHolding, "left paused for the full minute")
+        #expect(runner.resumes.contains { $0.contains("tab id 2 of window id 1") })
+    }
+
+    /// The timer's own resume cancelled the task it ran in.
+    @Test func theHoldRunningOutResumesWithoutCancellingItself() async throws {
+        let runner = SlowTabs(["1:2:www.youtube.com,"])
+        let c = make(runner)
+        await c.pause(for: 0.2)
+        #expect(c.isHolding)
+        for _ in 0..<40 where c.isHolding || runner.resumes.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(!c.isHolding)
+        #expect(runner.resumeCancelled == [false], "the resume ran in a cancelled task")
+    }
+
+    /// An extend arriving while the pause is still running is not dropped.
+    @Test func anExtendDuringAPauseExtendsWhatItHolds() async throws {
+        let runner = SlowTabs(["1:2:www.youtube.com,"], delay: .milliseconds(200))
+        let c = make(runner)
+        let pausing = Task { await c.pause(for: 0.3) }
+        try await Task.sleep(for: .milliseconds(50))
+        c.extend(for: 1.5)
+        await pausing.value
+        try await Task.sleep(for: .milliseconds(700))
+        #expect(c.isHolding, "the extend was dropped and the hold ran out early")
+        await c.resumeNow()
+    }
+
+    @Test func waitUntilReleasedReturnsWhenTheHoldEnds() async {
+        let runner = SlowTabs(["1:2:www.youtube.com,"])
+        let c = make(runner)
+        await c.waitUntilReleased()   // nothing held: at once
+        await c.pause(for: 0.2)
+        let started = Date()
+        await c.waitUntilReleased()
+        #expect(!c.isHolding)
+        #expect(Date().timeIntervalSince(started) >= 0.1)
+        #expect(runner.resumes.count == 1)
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct MediaPauseBrowserSearchTests {
+    func make(_ runner: ScriptRunner, audio: Set<String> = ["com.google.Chrome.helper"]) -> MediaPauseCoordinator {
+        MediaPauseCoordinator(controller: MediaController(runner: runner), audio: { audio }, safariRunning: { true })
+    }
+
+    @Test func thePageScriptPausesOnlyWhatIsAudible() {
+        #expect(MediaScripts.pauseJS.contains("!m.paused&&!m.ended&&!m.muted&&m.volume>0"),
+                "a muted autoplay preview in the front tab must not count as what was playing")
+        #expect(MediaScripts.resumeJS.contains("try{const p=m.play()"), "one element's throw must not stop the rest resuming")
+    }
+
+    /// The front tab and a background media tab both playing: both paused,
+    /// both resumed. The search used to stop at the front tab.
+    @Test func aFrontTabDoesNotHideABackgroundMediaTab() async {
+        let runner = FakeRunner()
+        runner.activeTabs = .success("1:2:docs.example,")
+        runner.mediaSiteTabs = .success("1:9:www.youtube.com,")
+        let c = make(runner)
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused Google Chrome (docs.example, www.youtube.com).")
+        #expect(!runner.ran.contains { $0.contains("(tabs of w)") }, "something was found: no every-tab walk")
+        await c.resumeNow()
+        let resume = runner.ran.last ?? ""
+        #expect(resume.contains("tab id 2 of window id 1") && resume.contains("tab id 9 of window id 1"))
+    }
+
+    /// One tab's error (a chrome:// page in front) used to read as Chrome
+    /// refusing, and stopped the search for the tab that was playing.
+    @Test func oneTabsErrorDoesNotStopTheSearch() async {
+        let runner = FakeRunner()
+        runner.activeTabs = .success("ERR:Can't get the JavaScript result.")
+        runner.mediaSiteTabs = .success("2:5:www.youtube.com,")
+        let c = make(runner)
+        await c.pause(for: 30)
+        #expect(c.isHolding)
+        #expect(c.lastReport == "Paused Google Chrome (www.youtube.com).")
+        #expect(!c.lastPauseHadProblems)
+        await c.resumeNow()
+    }
+
+    @Test func aTabThatAnswersMissingValueIsNotAPause() {
+        for script in [MediaScripts.chromiumPause("Google Chrome", pass: .activeTabs), MediaScripts.safariPause(pass: .allTabs)] {
+            #expect(script.contains("if r is not missing value then"),
+                    "a sleeping tab's `missing value` read as paused and ended the search")
+        }
+        #expect(MediaScripts.chromiumPause("Google Chrome", pass: .mediaSiteTabs).contains("if u is not missing value then"))
+    }
+
+    /// Arc's window and tab ids are UUIDs: unquoted, the resume script did
+    /// not compile, so Arc never resumed.
+    @Test func arcsTextIdsAreQuotedAndResumed() async {
+        let w = "8F3A1B2C-0D4E-4F5A-9B6C-7D8E9F0A1B2C", t = "1A2B3C4D-AAAA-BBBB-CCCC-DDDDEEEEFFFF"
+        let runner = FakeRunner()
+        runner.activeTabs = .success("\(w):\(t):www.youtube.com,")
+        let c = make(runner, audio: ["company.thebrowser.Browser.helper"])
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused Arc (www.youtube.com).")
+        await c.resumeNow()
+        let resume = runner.ran.last ?? ""
+        #expect(resume.contains("tell application \"Arc\""))
+        #expect(resume.contains("tab id \"\(t)\" of window id \"\(w)\""))
+    }
+
+    @Test func aResumeFindsATabDraggedToAnotherWindow() {
+        let script = MediaScripts.chromiumResume("Google Chrome", handles: ["7:42"])
+        #expect(script.contains("execute (tab id 42 of window id 7)"))
+        #expect(script.contains("repeat with w in windows") && script.contains("execute (tab id 42 of w)"),
+                "no look in the other windows when the tab moved")
+    }
+
+    @Test func anOddHandleNeverBecomesScript() {
+        #expect(MediaScripts.idLiteral("42") == "42")
+        #expect(MediaScripts.idLiteral("ab-12_C") == "\"ab-12_C\"")
+        #expect(MediaScripts.idLiteral("1\" & (do shell script \"x\") & \"") == nil)
+        #expect(MediaScripts.idLiteral("") == nil)
+        let script = MediaScripts.chromiumResume("Google Chrome", handles: ["1:2\" & do shell script \"say hi"])
+        #expect(!script.contains("do shell script"))
+    }
+
+    /// Safari used to look only at the front tab of each window.
+    @Test func safariFindsABackgroundTabAndResumesIt() async {
+        let runner = FakeRunner()
+        runner.activeTabs = .success("")
+        runner.mediaSiteTabs = .success("")
+        runner.allTabs = .success("12:3:www.example.org,")
+        let c = make(runner, audio: ["com.apple.WebKit.GPU"])
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused Safari (www.example.org).")
+        #expect(runner.ran.contains { $0.contains("tell application \"Safari\"") && $0.contains("(tabs of w)") })
+        await c.resumeNow()
+        #expect(runner.ran.last?.contains("in tab 3 of window id 12") == true)
+    }
+
+    @Test func safariPassesLookPastTheFrontTab() {
+        #expect(MediaScripts.safariPause(pass: .activeTabs).contains("{current tab of w}"))
+        #expect(MediaScripts.safariPause(pass: .mediaSiteTabs).contains("set urls to URL of tabs of w"))
+        #expect(MediaScripts.safariPause(pass: .allTabs).contains("repeat with t in (tabs of w)"))
+        #expect(MediaScripts.safariPause(pass: .allTabs).contains("(index of t)"), "a Safari tab is window id and index")
+    }
+
+    /// The person switched tabs during the announcement: the resume tries
+    /// the paused tab, then every tab of that window, then every window.
+    @Test func safariResumesEvenAfterTheFrontTabChanged() {
+        let script = MediaScripts.safariResume(handles: ["12:3"])
+        #expect(script.contains("do JavaScript"))
+        #expect(script.contains("in tab 3 of window id 12"))
+        #expect(script.contains("set ts to tabs of window id 12"), "no sweep of the window when the tab moved")
+        #expect(script.contains("repeat with w in windows"), "no sweep of every window when the window closed")
+        #expect(!script.contains("current tab"), "resuming whatever tab is in front now resumes the wrong one")
+        #expect(MediaScripts.resumeJS.contains("[data-hs-paused]"), "only what we paused is played")
+    }
+}
+
+// MARK: - Who holds the pause
+
+private func scratch() throws -> URL {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-route-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+private func testProfile(_ root: URL) -> HomeSpeakerProfile {
+    .extension(dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
+               messagePrefix: "test.\(UUID().uuidString).homespeaker")
+}
+
+private func extensionChosen(dataFolder: URL) -> DoorRecord {
+    DoorRecord(chosen: .extension, installedExtension: .init(
+        program: "/Applications/Vitruvian.app/Tools/dev.vitruvian.homespeaker/bin/tool",
+        dataFolder: dataFolder.path, version: "1.22.0", door: DoorRecord.ExtensionEntry.runsAlone))
+}
+
+@MainActor
+@Suite(.serialized) struct MediaPauseRoutingTests {
+    /// `speaker-broadcast` runs the app's `--say`. With the extension
+    /// chosen, the app is quiet: its pause must go to the extension.
+    @Test func theAppsSayGoesToTheExtensionWhileItIsChosen() throws {
+        let home = try scratch()
+        let app = HomeSpeakerProfile.app(home: home)
+        let data = home.appendingPathComponent("ToolData/dev.vitruvian.homespeaker")
+        let chosen = RequestRoute.candidates(for: app, record: extensionChosen(dataFolder: data), fileExists: { _ in true })
+        #expect(chosen.map(\.door) == [.extension], "the quiet app does not listen")
+        #expect(chosen.first?.messagePrefix == HomeSpeakerProfile.extensionMessagePrefix)
+        #expect(chosen.first?.settingsURL == data.appendingPathComponent("settings.json"))
+
+        var undecided = extensionChosen(dataFolder: data)
+        undecided.chosen = nil
+        #expect(RequestRoute.candidates(for: app, record: undecided, fileExists: { _ in true }).map(\.door) == [.app, .extension])
+        #expect(RequestRoute.candidates(for: app, record: nil, fileExists: { _ in true }).map(\.door) == [.app])
+        // The extension removed: the app runs and listens again.
+        #expect(RequestRoute.candidates(for: app, record: extensionChosen(dataFolder: data), fileExists: { _ in false })
+            .map(\.door) == [.app, .extension])
+    }
+
+    @Test func theExtensionsSayGoesToTheAppWhileItIsChosen() throws {
+        let ext = HomeSpeakerProfile.extension(dataFolder: try scratch(), toolFolder: nil)
+        #expect(RequestRoute.candidates(for: ext, record: DoorRecord(chosen: .app), fileExists: { _ in true }).map(\.door) == [.app, .extension])
+        #expect(RequestRoute.candidates(for: ext, record: DoorRecord(chosen: .extension), fileExists: { _ in true }).map(\.door) == [.extension])
+    }
+
+    @Test func aTestsOwnNamesNeverReachARealHomeSpeaker() throws {
+        let mine = testProfile(try scratch())
+        #expect(RequestRoute.candidates(for: mine, record: DoorRecord(chosen: .app), fileExists: { _ in true }) == [mine])
+    }
+
+    @Test func aRequestGoesToTheFirstOneAlive() throws {
+        let me = testProfile(try scratch()), other = testProfile(try scratch())
+        let route = RequestRoute(candidates: { _ in [me, other] }, alive: { $0 == other })
+        guard case .post(let to) = MediaPauseRequest.destination(for: me, route: route) else {
+            Issue.record("posted nowhere"); return
+        }
+        #expect(to == other, "posted under the names of a HomeSpeaker nobody runs")
+    }
+
+    /// Nobody alive (neither the app nor Vitruvian running): `--say` pauses
+    /// itself and waits out the hold, so the media is resumed before exit.
+    @Test func withNobodyAliveThisProcessHoldsAndWaits() async throws {
+        let me = testProfile(try scratch())
+        let nobody = RequestRoute(candidates: { [$0] }, alive: { _ in false })
+        let runner = SlowTabs(["1:2:www.youtube.com,"])
+        let own = MediaPauseCoordinator(controller: MediaController(runner: runner),
+                                        audio: { ["com.google.Chrome.helper"] }, safariRunning: { false })
+        await MediaPauseRequest.pause(seconds: 0.3, profile: me, route: nobody, makeOwn: { own })
+        #expect(own.isHolding, "nobody paused the media")
+        await MediaPauseRequest.extend(seconds: 0.4, profile: me, route: nobody)
+        await MediaPauseRequest.waitForOwnHold(profile: me)
+        #expect(!own.isHolding)
+        #expect(runner.resumes.count == 1, "exited with the media still paused")
+    }
+
+    @Test func aFailedBroadcastResumesWhereThePauseWent() async throws {
+        let me = testProfile(try scratch())
+        let nobody = RequestRoute(candidates: { [$0] }, alive: { _ in false })
+        let runner = SlowTabs(["1:2:www.youtube.com,"], delay: .milliseconds(200))
+        let own = MediaPauseCoordinator(controller: MediaController(runner: runner),
+                                        audio: { ["com.google.Chrome.helper"] }, safariRunning: { false })
+        await MediaPauseRequest.pause(seconds: 60, profile: me, route: nobody, makeOwn: { own })
+        await MediaPauseRequest.resumeNow(profile: me, route: nobody)
+        #expect(!own.isHolding)
+        await MediaPauseRequest.waitForOwnHold(profile: me)
+    }
+
+    @Test func aVolumeRestoreCountsOnTheOneInUse() async throws {
+        let me = testProfile(try scratch()), other = testProfile(try scratch())
+        let inUse = RequestRoute(candidates: { _ in [other] }, alive: { $0 == other })
+        #expect(await VolumeRestoreRequest.canRestore(profile: me, route: inUse),
+                "the extension in use puts the speaker back for the app's --say")
+        let nobody = RequestRoute(candidates: { _ in [other] }, alive: { _ in false })
+        #expect(await VolumeRestoreRequest.canRestore(profile: me, route: nobody) == false,
+                "never raise a speaker nothing will lower again")
+    }
+}
+
+// MARK: - The hold is counted from when the speaker starts
+
+/// Google Home's MCP endpoint, answering after `delay` seconds.
+private final class SlowGoogle: URLProtocol {
+    nonisolated(unsafe) static var delay: Double = 0
+    static var session: URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SlowGoogle.self]
+        return URLSession(configuration: configuration)
+    }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+    override func startLoading() {
+        let url = request.url!
+        DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data("{}".utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct BroadcastHoldTests {
+    /// The network took 2 s before the speaker started; the 3 s hold,
+    /// counted from before it, ran out a second into the speech.
+    @Test func theHoldIsExtendedOnceTheBroadcastIsAccepted() async throws {
+        let root = try scratch()
+        let profile = testProfile(root)
+        let runner = SlowTabs(["1:2:www.youtube.com,"])
+        let coordinator = MediaPauseCoordinator(controller: MediaController(runner: runner),
+                                                audio: { ["com.google.Chrome.helper"] }, safariRunning: { false })
+        let token = MediaPauseRequest.listen(with: coordinator, profile: profile)
+        defer { DistributedNotificationCenter.default().removeObserver(token) }
+
+        let id = UUID().uuidString
+        let store = SecretStore(fileURL: profile.secretsURL)
+        try store.save(Secrets(google: GoogleCredentials(
+            clientId: "made-up.apps.googleusercontent.test", clientSecret: "made-up-\(id)", // gitleaks:allow (made-up test token)
+            accessToken: "ya29.made-up-\(id)", refreshToken: "1//made-up-\(id)", // gitleaks:allow (made-up test token)
+            expiry: Date().addingTimeInterval(3600), scopes: [GoogleAuth.homeScope])))
+        let client = GoogleHomeClient(auth: GoogleAuth(store: store, session: SlowGoogle.session),
+                                      session: SlowGoogle.session, messages: profile)
+        var config = SpeakerConfig(enabled: true, defaultTarget: "lake", structureId: "structure@s",
+                                   targets: ["lake": SpeakerDevice(id: "d1", type: "SPEAKER", name: "Lake")])
+        config.pauseMedia = true
+        config.pauseMediaExtraSeconds = 0
+        SlowGoogle.delay = 2
+        let started = Date()
+        let sent = try await client.broadcast(
+            text: "hi", target: config.defaultDevice!, structureId: config.structureId, config: config)
+        #expect(sent)
+        #expect(Date().timeIntervalSince(started) >= 1.9)
+        // 3 s from the pause would end at ~3 s; from the broadcast, ~5 s.
+        try await Task.sleep(until: .now + .seconds(max(0, 4 - Date().timeIntervalSince(started))), clock: .continuous)
+        #expect(coordinator.isHolding, "the media came back while the speaker was still talking")
+        await coordinator.resumeNow()
+    }
+}
+
+@Suite struct AnnounceTimeoutTests {
+    @Test func aLoneSayHasTimeToWaitOutTheHold() {
+        var config = SpeakerConfig()
+        config.pauseMedia = false
+        let without = HomeSpeakerCommandLine.announceTimeout("hello there", config: config)
+        config.pauseMedia = true
+        config.pauseMediaExtraSeconds = 1
+        let with = HomeSpeakerCommandLine.announceTimeout("hello there", config: config)
+        #expect(abs((with - without) - AnnouncementTiming.seconds(for: "hello there", extra: 1)) < 0.001)
+    }
+}
+
+// MARK: - The announcer and `--say`
+
+private final class MediaLog: MediaPausing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _events: [String] = []
+    var events: [String] { lock.withLock { _events } }
+    private func add(_ e: String) { lock.withLock { _events.append(e) } }
+    func pause(seconds: Double) async { add("pause") }
+    func extend(seconds: Double) async { add("extend(\(seconds))") }
+    func resumeNow() async { add("resume") }
+    func waitUntilReleased() async { add("wait") }
+}
+
+private struct AcceptingHome: HomeBroadcasting {
+    func broadcast(text: String, target: SpeakerDevice, structureId: String,
+                   config: SpeakerConfig?, force: Bool, at date: Date) async throws -> Bool { true }
+}
+
+private struct QuietMac: LocalSpeaking {
+    func speak(_ text: String, voiceID: String) async throws {}
+}
+
+@Suite struct AnnouncerHoldTests {
+    private func config() -> SpeakerConfig {
+        var c = SpeakerConfig(enabled: true, defaultTarget: "lake", structureId: "structure@s",
+                              targets: ["lake": SpeakerDevice(id: "d1", type: "SPEAKER", name: "Lake")])
+        c.speakHome = true
+        c.speakLocal = true
+        c.pauseMedia = true
+        c.pauseMediaExtraSeconds = 1
+        return c
+    }
+
+    @Test func bothOutputsHoldTheHomeTimeFromWhenGoogleAccepts() async {
+        let media = MediaLog()
+        _ = await Announcer(home: AcceptingHome(), local: QuietMac(), media: media)
+            .announce("hello there", config: config(), force: true)
+        let homeHold = AnnouncementTiming.seconds(for: "hello there", extra: 1)
+        #expect(media.events.contains("extend(\(homeHold))"), "the home estimate ran from before the network calls")
+    }
+
+    @Test func sayWaitsForAHoldItHoldsItself() async throws {
+        let media = MediaLog()
+        let history = BroadcastHistory(fileURL: try scratch().appendingPathComponent("history.json"))
+        _ = await HomeSpeakerCommandLine.say(
+            "hello there", config: config(), announcer: Announcer(home: AcceptingHome(), local: QuietMac(), media: media),
+            history: history, standsAside: false, door: .app)
+        #expect(media.events.first == "pause")
+        #expect(media.events.last == "wait", "--say exits without waiting for media it paused itself")
     }
 }
