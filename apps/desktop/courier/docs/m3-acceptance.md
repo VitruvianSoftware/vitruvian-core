@@ -13,12 +13,19 @@ Milestone 3 is the first usable app: inbox, reading, replying, files, adding a n
 
 One rule for the day: do not open the same chat in the other chat app while testing Courier. It would send a read receipt. Courier's own read receipts are real.
 
+## Before you start
+
+- Set up Telegram first. Get an api_id and api_hash from my.telegram.org, then press Set up on Courier's Telegram banner and enter them. Telegram does not start without them.
+- Link all five networks again, from the app (Add a Network). The links made with the command-line tool in Milestone 1 are separate and are not used here.
+- On your phones, unlink the old Courier Milestone 1 devices (WhatsApp and Signal: Settings, Linked devices). Leaving them linked can bring every message in twice.
+- Linking Google Messages here signs out any other web session of Google Messages, in any browser.
+
 ## Before the list: four things the plan was most worried about
 
 These are not inventory rows. They are what the milestone was built to get right, so look at them first.
 
 - [ ] First start does not shout. After linking a network, the first sync pulls in recent history. You should get no burst of notifications for old messages.
-- [ ] A message that was pending when the engine restarted is still there afterwards, once, as sent or as failed. It is never lost or doubled.
+- [ ] A message that was pending when the engine restarted is still there afterwards, once. If the engine stopped before the network answered, it says "May have been sent", with Retry and Delete; Courier never sends it again by itself. It is never lost or doubled.
 - [ ] Closing the sign-in window half way (Slack or Google Messages) leaves nothing half-linked. Courier says calmly what happened, and you can start again.
 - [ ] A big inbox and a long chat stay quick: opening the app and scrolling back through a long chat do not freeze it.
 
@@ -40,7 +47,7 @@ These are not inventory rows. They are what the milestone was built to get right
 
 - [ ] `setting:notifications` Message notifications: A new message in a chat that is not muted raises a macOS notification: chat name as the title, the text (or a type label) as the body. Clicking it opens that chat. There is no switch for it yet; it is always on.
 - [ ] `setting:notifications` Group message notifications: A message in a group chat notifies too, and who wrote it is shown under the chat name. No separate switch yet.
-- [ ] `setting:notifications` Notify when app is in focus: With Courier in front, a message in a chat other than the open one still notifies. The chat you are looking at does not. No switch yet.
+- [ ] `setting:notifications` Notify when app is in focus: With Courier in front, a message in a chat other than the open one still notifies. The chat you are looking at does not. "Looking" means the window is in front, the screen is unlocked and awake, and you touched the Mac in the last three minutes: lock the screen or walk away and the open chat notifies too, and stays unread until you are back. No switch yet.
 - [ ] `setting:notifications` Sound: The notification plays the default system sound. Choosing a sound is Milestone 4.
 
 Also part of this, not an inventory row of its own: the Dock icon's badge counts unread chats that are not muted and clears at zero, and the menu-bar icon fills in while anything is unread. The notification itself has Mark as Read and a Reply box.
