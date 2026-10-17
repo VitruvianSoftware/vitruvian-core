@@ -107,6 +107,9 @@ public final class InboxModel: ObservableObject {
         return rows.first { $0.roomID == id }
     }
 
+    /// How many chats have unread messages and are not muted: the Dock badge and the menu bar's line.
+    public var unreadChatCount: Int { NotificationPolicy.badgeCount(rows: rows) }
+
     public func select(_ roomID: String?) {
         appModel.selectedRoomID = roomID
     }

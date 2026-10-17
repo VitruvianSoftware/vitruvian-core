@@ -19,17 +19,23 @@ public final class AppModel: ObservableObject {
     /// The chat the person has open. The inbox moves it, and the conversation and a clicked notification read it.
     /// A reload never clears it: a chat that is not in the list for a moment is still the chat that is open.
     @Published public var selectedRoomID: String?
+    /// When the engine that is up was greeted (the app connected to it); nil while none is. A message that is
+    /// older than this came from the engine's history, not from the world just now.
+    public private(set) var connectedAt: Date?
 
     public let supervisor: EngineSupervisor
     private var hooks: [@MainActor (EngineClient) async -> Void] = []
     private var changeHooks: [@MainActor (Change) -> Void] = []
+    private let clock: @Sendable () -> Date
     private var watcher: Task<Void, Never>?
     /// Reads and follows the connected engine: subscribes to its changes, reads everything, then re-reads as they
     /// say. A task of its own, so a slow read never holds up a state change.
     private var connection: Task<Void, Never>?
 
-    public init(supervisor: EngineSupervisor) {
+    /// - Parameter clock: the time `connectedAt` takes; tests give one they move.
+    public init(supervisor: EngineSupervisor, clock: @escaping @Sendable () -> Date = { Date() }) {
         self.supervisor = supervisor
+        self.clock = clock
     }
 
     /// Runs `hook` with the new client every time the app must read everything again: after each connect, and
@@ -68,8 +74,10 @@ public final class AppModel: ObservableObject {
         connection = nil
         guard state == .connected, let client = supervisor.client else {
             self.client = nil
+            connectedAt = nil
             return
         }
+        if self.client !== client { connectedAt = clock() }
         self.client = client
         connection = Task { [weak self] in
             // Subscribe before reading, so nothing that changes in between is missed.

@@ -12,7 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let inbox: InboxModel
     let conversation: ConversationModel
     let login: LoginFlowModel
+    let windowOpener = MainWindowOpener()
     private var signInWindows: SignInWindowPresenter?
+    private var notifications: NotificationCoordinator?
+    private let notifier = Notifier()
+    private var dockBadge: DockBadge?
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
@@ -42,6 +46,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         signInWindows = SignInWindowPresenter(login: login)
+        dockBadge = DockBadge(inbox: inbox)
+        let coordinator = NotificationCoordinator(
+            appModel: model, delivery: notifier,
+            row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
+            windowIsKey: { [conversation] in conversation.isWindowKey },
+            showWindow: { [windowOpener] in windowOpener.show() })
+        notifier.coordinator = coordinator
+        notifications = coordinator
+        coordinator.start()
         model.start()
     }
 

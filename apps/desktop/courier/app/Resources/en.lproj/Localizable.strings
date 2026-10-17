@@ -45,7 +45,7 @@
 /* Chat menu: opens the next chat that has unread messages (⌘U). */
 "Next Unread Chat" = "Next Unread Chat";
 
-/* Chat menu: marks the open chat read (⌘⇧U). Dimmed when it has no unread messages. */
+/* Chat menu: marks the open chat read (⌘⇧U), dimmed when it has no unread messages. Also the button on a notification that marks that chat read. */
 "Mark as Read" = "Mark as Read";
 
 /* Chat menu: mutes the open chat (⌘⇧M). */
@@ -150,7 +150,7 @@
 /* Button under a message that was not sent: remove it from this device. */
 "Delete" = "Delete";
 
-/* Button, menu item and tooltip: reply to this message. */
+/* Button, menu item and tooltip: reply to this message. Also the button on a notification that types a reply. */
 "Reply" = "Reply";
 
 /* Menu in a message's context menu: add a reaction. */
@@ -231,7 +231,7 @@
 /* Tooltip on the send button. */
 "Send (Return)" = "Send (Return)";
 
-/* Spoken name of the send button. */
+/* Spoken name of the send button. Also the button that sends the reply typed in a notification. */
 "Send" = "Send";
 
 /* Closes a notice or banner. */
@@ -300,7 +300,7 @@
 /* Over a chat while files are dragged onto it. */
 "Drop files here to attach" = "Drop files here to attach";
 
-/* Name of the menu with the chat's keys. */
+/* Name of the menu with the chat's keys. Also the placeholder in the reply typed in a notification. */
 "Message" = "Message";
 
 /* Menu item: pick files to send. */
@@ -483,3 +483,21 @@
 
 /* Telegram's credentials were saved and the engine is restarting with them. */
 "Saved. Courier is restarting its engine to start Telegram. Then add Telegram from Add a network." = "Saved. Courier is restarting its engine to start Telegram. Then add Telegram from Add a network.";
+
+/* The menu-bar icon's spoken name, and the app's name. */
+"Courier" = "Courier";
+
+/* Menu-bar menu: tells there is nothing unread. */
+"No unread chats" = "No unread chats";
+
+/* Menu-bar menu: tells that one chat has unread messages. */
+"1 unread chat" = "1 unread chat";
+
+/* Menu-bar menu: tells how many chats have unread messages. The argument is a number, 2 or more. */
+"%lld unread chats" = "%lld unread chats";
+
+/* Menu-bar menu: brings the Courier window forward, opening it again if it was closed. */
+"Open Courier" = "Open Courier";
+
+/* Menu-bar menu: quits Courier. */
+"Quit Courier" = "Quit Courier";

@@ -10,6 +10,19 @@ public enum PreviewLabel: Equatable, Sendable {
     case image, video, voiceNote, file, sticker
 }
 
+extension PreviewLabel {
+    /// The label as people read it: in a chat row's preview, and in a notification for a message with no text.
+    public var title: String {
+        switch self {
+        case .image: String(localized: "Image")
+        case .video: String(localized: "Video")
+        case .voiceNote: String(localized: "Voice note")
+        case .file: String(localized: "File")
+        case .sticker: String(localized: "Sticker")
+        }
+    }
+}
+
 extension InboxRow {
     /// The label before the preview text; nil for text, and for a kind this app does not know (an engine newer
     /// than the app), which is shown as the text it has.

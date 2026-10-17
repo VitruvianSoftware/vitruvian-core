@@ -192,6 +192,13 @@ public enum Timeline {
         !event.mine && event.status != .failed && isMessageLike(event) && !isEdit(event)
     }
 
+    /// What a message event says as a line: its kind and its text (the caption, for a file). For a notification,
+    /// which has the event and nothing around it.
+    public static func summary(of event: Event) -> (kind: MessageKind, text: String) {
+        let shown = describe(event, edit: nil)
+        return (shown.kind, shown.body)
+    }
+
     // MARK: - Messages
 
     private static func messages(events: [Event], me: String) -> [TimelineMessage] {

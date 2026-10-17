@@ -73,18 +73,6 @@ struct InboxRowView: View {
     }
 }
 
-extension PreviewLabel {
-    var title: String {
-        switch self {
-        case .image: String(localized: "Image")
-        case .video: String(localized: "Video")
-        case .voiceNote: String(localized: "Voice note")
-        case .file: String(localized: "File")
-        case .sticker: String(localized: "Sticker")
-        }
-    }
-}
-
 /// A network's mark: an SF Symbol in the network's tint, named by its tooltip and accessibility label.
 struct NetworkBadge: View {
     let network: String
