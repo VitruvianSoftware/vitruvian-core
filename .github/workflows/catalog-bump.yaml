@@ -22,20 +22,39 @@
 # that lists it: one per tool and version, on catalog/bump-<id>-<version>.
 # catalog/sources.json says which releases update which entry.
 #
-# Why each hour and not on the release: no release event can tell this
-# repository that a tool's zip is ready.
-#   - The GitHub tool's zip is attached in another repository,
-#     VitruvianSoftware/vitruvian-tool-github, by that repository's own
-#     release.yml with its own token. Nothing there reaches this repository.
-#   - HomeSpeaker's release is created by release-please with an App token, so
-#     `release: published` would fire, but before the zip exists: the zip is
-#     uploaded afterwards by home-speaker-release.yaml's publish-package job
-#     (1.20.0: published 08:45:31, zip attached 08:50:08).
-# Comparing each source's newest release with the catalog works for every
-# tool, however its release is made, and a missed hour is caught the next.
+# When it runs:
+#   - As soon as a tool's release workflow in this repository finishes
+#     (workflow_run below). Each of those workflows ends by checking that the
+#     tool's zip is on the release, so the zip is there when this starts.
+#   - Each hour, as a backup: GitHub drops scheduled runs when it is busy
+#     (on 2026-10-16 it started one of five), and a missed release is caught
+#     on the next hour that does run.
+#   - By hand, from the Actions page.
+#
+# Every run that is not a by-hand run with an id and a tag does the same thing:
+# compare the newest release of every row of catalog/sources.json with its
+# entry. Nothing is taken from the run that woke it. That is why a release
+# needs no id or tag here, and why GitHub dropping a waiting run (see the
+# concurrency block) loses nothing.
+#
+# Why not other ways to hear of a release:
+#   - `release: published` fires too early. release-please publishes the
+#     release, and the zip is uploaded minutes later by the release
+#     workflow's publishing job (HomeSpeaker 1.20.0: published 08:45:31,
+#     zip attached 08:50:08).
+#   - Uploading the zip makes no event that starts a workflow: it is uploaded
+#     with GITHUB_TOKEN, and GitHub starts no workflow for what that token
+#     does, apart from workflow_dispatch and repository_dispatch
+#     (https://docs.github.com/en/actions/concepts/security/github_token).
+#     workflow_run is not caused by the token: GitHub sends it when a run ends
+#     (https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#workflow_run).
+#   - The GitHub tool is released from another repository,
+#     VitruvianSoftware/vitruvian-tool-github, by its own release.yml. A run
+#     there cannot wake a workflow here without a token for this repository,
+#     and none is kept there. Only the hourly run picks its releases up.
 #
 # Cost: the plan job asks GitHub a few questions and ends in seconds when the
-# catalog is current, which is nearly every hour. Only a release that is ahead
+# catalog is current, which is nearly every run. Only a release that is ahead
 # runs the bump job (Bazel). An open pull request for that version is left
 # alone, unless it no longer merges, when it is rebuilt from main.
 #
@@ -53,6 +72,30 @@
 name: catalog-bump
 
 on:
+  # The release workflows of the tools released from this repository, by
+  # their `name:`. This list is the releaseWorkflow column of
+  # catalog/sources.json: //catalog:release_trigger_test fails when the two
+  # differ, or when a tool released from this repository has none.
+  #
+  # Not only the runs that made a release: each of these workflows also runs
+  # on pushes that only update its release pull request, and it is not known
+  # here which run made one. Those runs find the catalog current in seconds.
+  # Failed runs are not filtered out either. A skipped run would still take
+  # its place in the concurrency group below, and could push out a waiting
+  # run that had work to do.
+  #
+  # main only: a release is only ever made from main. A run started this way
+  # has this repository's secrets, so it reads nothing from the run that woke
+  # it: no artifact, no output, no branch. It checks out main, as every run
+  # does.
+  workflow_run:
+    workflows:
+      - home-speaker-release
+      - android-remote-release
+    types: [completed]
+    branches: [main]
+  # The backup, for releases the trigger above missed and for the GitHub
+  # tool, which is released from another repository.
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -69,7 +112,17 @@ on:
 permissions:
   contents: read
 
-# One run at a time: two runs would race on the same branch.
+# One run at a time, whatever started it: two runs would race on the same
+# branch and could open the same pull request twice. The group is one fixed
+# name for that reason; do not key it by event.
+#
+# cancel-in-progress: false keeps the running run. It does not keep a waiting
+# one: GitHub allows one waiting run per group, and cancels it when another
+# arrives. That is safe here because the run that stays waiting starts after
+# the running one ends, and checks every tool afresh. Only a by-hand run for
+# one id and tag can be lost that way; run it again. (`queue: max` would keep
+# them all, but actionlint 1.7.12, the newest, rejects the key and the
+# actionlint check is required.)
 concurrency:
   group: catalog-bump
   cancel-in-progress: false
@@ -138,7 +191,7 @@ jobs:
       # The result's status decides, not the exit status: Bazel and argparse
       # also exit 2 for a usage error. not-ready (no zip yet) and not-listed
       # are a notice; refused is recorded below; no result at all (an API
-      # blip, a crash) fails the job, and the next hour tries again.
+      # blip, a crash) fails the job, and the next run tries again.
       - name: Update ${{ matrix.id }} from ${{ matrix.tag }}
         id: bump
         env:
@@ -157,7 +210,7 @@ jobs:
             bumped | current | refused) ;;
             not-ready | not-listed) status=skipped ;;
             unavailable)
-              echo "::error::$(jq -r .message "$result"): GitHub did not hand it over. Not a refusal; the next hour tries again."
+              echo "::error::$(jq -r .message "$result"): GitHub did not hand it over. Not a refusal; the next run tries again."
               exit 1
               ;;
             *)
@@ -168,8 +221,8 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
       # One issue per refused version. While it is open the plan skips that
-      # version, so a refusal is one red run, not one an hour. Closing the
-      # issue lets the next hour try again.
+      # version, so a refusal is one red run, not a red run every time.
+      # Closing the issue lets the next run try again.
       - name: Record the refusal
         if: steps.bump.outputs.status == 'refused'
         env:

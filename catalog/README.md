@@ -93,7 +93,7 @@ the change once that pull request merges and the site is deployed.
 
 ## A new release of a listed tool
 
-Nobody needs to write this pull request by hand. Each hour the workflow
+Nobody needs to write this pull request by hand. The workflow
 **catalog-bump** compares the newest release of each tool in
 `sources.json` with its entry. When the release is newer, and has its zip, it
 runs
@@ -102,8 +102,24 @@ runs
 bazel run //catalog:bump -- --id dev.vitruvian.homespeaker --tag home-speaker-v1.20.0
 ```
 
-and opens a pull request on `catalog/bump-<id>-<version>`. The command
-refuses, and writes nothing, unless:
+and opens a pull request on `catalog/bump-<id>-<version>`.
+
+**When it runs.** For a tool released from this repository (HomeSpeaker,
+Vitruvian Remote), as soon as the tool's release workflow finishes: that
+workflow's last step checks the zip is on the release, so the zip is there
+when the update starts. It also runs each
+hour, as a backup, since GitHub drops scheduled runs when it is busy. The
+GitHub tool is released from its own repository, which cannot start a
+workflow here, so only the hourly run picks up its releases.
+
+Every run checks every tool, whatever started it (a run by hand for one
+release is the exception), so a run that GitHub drops loses nothing the next
+one does not do. `sources.json`'s `releaseWorkflow`
+names each tool's release workflow, and catalog-bump's `workflow_run` list
+must be that column: `//catalog:release_trigger_test` fails when they differ,
+or when a tool released from this repository has none.
+
+The command refuses, and writes nothing, unless:
 
 - the zip and its `.sha256` were uploaded by the account `sources.json`
   names for the tool (the release workflow's);
@@ -156,20 +172,21 @@ them, even when it no longer merges; it says so once, in a comment.
 
 **A refusal is recorded once.** The run that refuses a release fails and
 opens the issue `catalog-bump refused <id> <version>` with the reasons. While
-that issue is open the hourly run skips the version; close it to try again.
+that issue is open every run skips the version; close it to try again.
 Only a finding about the release itself is a refusal. When GitHub does not
 answer, or a file cannot be downloaded, the run stays red, opens no issue,
-and tries again the next hour.
+and tries again on the next run.
 
 `sources.json` says, for each tool, the repository its release is in, the
-tag's prefix, the zip's name, its uploader, and whether its program is
-universal. An entry kept by hand is named under `manual` with the reason;
+tag's prefix, the zip's name, its uploader, whether its program is
+universal, and, for a tool released from this repository, the workflow that
+releases it. An entry kept by hand is named under `manual` with the reason;
 `//catalog:bump_test` fails for an entry in neither.
 
 Run it by hand, for one release, from the workflow's page (**Run workflow**,
 with the id and the tag) or with the command above. One run goes at a time;
-GitHub drops a run that waits behind another when a third arrives, so if the
-hourly run starts while yours waits, run yours again.
+GitHub drops a run that waits behind another when a third arrives, so if
+another run starts while yours waits, run yours again.
 
 ## The signature
 
