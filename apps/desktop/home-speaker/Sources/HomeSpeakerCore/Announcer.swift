@@ -118,6 +118,14 @@ public protocol MediaPausing: Sendable {
     func pause(seconds: Double) async
     func extend(seconds: Double) async
     func resumeNow() async
+    /// Returns once a pause this process holds itself is over; at once
+    /// when the long-lived process holds it, or nothing is held. A
+    /// short-lived `--say` waits on it before it exits.
+    func waitUntilReleased() async
+}
+
+extension MediaPausing {
+    public func waitUntilReleased() async {}
 }
 
 /// The real pause: the long-lived process's coordinator (the menu bar
@@ -131,6 +139,7 @@ public struct SharedMediaPause: MediaPausing {
     public func pause(seconds: Double) async { await MediaPauseRequest.pause(seconds: seconds, profile: messages) }
     public func extend(seconds: Double) async { await MediaPauseRequest.extend(seconds: seconds, profile: messages) }
     public func resumeNow() async { await MediaPauseRequest.resumeNow(profile: messages) }
+    public func waitUntilReleased() async { await MediaPauseRequest.waitForOwnHold(profile: messages) }
 }
 
 // MARK: - The announcer
@@ -192,9 +201,17 @@ public struct Announcer: Sendable {
             return c
         }()
 
-        // 6. Both at once; neither can stop the other.
-        async let homeStatus: OutputStatus = wantHome
-            ? sendHome(text, config: homeConfig, force: force, at: date) : .off
+        // 6. Both at once; neither can stop the other. Once Google has
+        // accepted the broadcast the speaker starts: hold its full time
+        // from then, not from before the network calls.
+        let homeHold = AnnouncementTiming.seconds(for: spoken, extra: extra)
+        let media = self.media
+        async let homeStatus: OutputStatus = {
+            guard wantHome else { return .off }
+            let status = await sendHome(text, config: homeConfig, force: force, at: date)
+            if pausing, status.didSpeak { await media.extend(seconds: homeHold) }
+            return status
+        }()
         async let localStatus: OutputStatus = speakHere(spoken, voiceID: config.effectiveLocalVoice)
         let (h, l) = await (homeStatus, localStatus)
 

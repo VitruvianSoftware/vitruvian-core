@@ -342,27 +342,38 @@ public enum VolumeRestoreRequest {
     }
 
     /// Whether anything will be alive to put the volume back. The Stop hook
-    /// and --say exit seconds after announcing; with nothing of `profile`'s
-    /// alive, raising the volume would leave it raised. This process, when
-    /// it listens; otherwise the profile's owner: the running app for the
-    /// app, the live lock for the extension.
+    /// and --say exit seconds after announcing; with nothing alive, raising
+    /// the volume would leave it raised. This process, when it listens;
+    /// otherwise the long-lived process of the HomeSpeaker in use
+    /// (`RequestRoute`): the running app for the app, the live lock for the
+    /// extension -- the extension's while it is the one chosen, even for
+    /// the app's `--say`.
     public static func canRestore(
         profile: HomeSpeakerProfile = .current,
-        runningApps: () -> [HomeSpeakerProfile.RunningApp] = HomeSpeakerProfile.runningApps
+        runningApps: @escaping @Sendable () -> [HomeSpeakerProfile.RunningApp] = HomeSpeakerProfile.runningApps,
+        route: RequestRoute? = nil
     ) async -> Bool {
         if await MainActor.run(body: { inProcess(for: profile) != nil }) { return true }
-        return profile.ownerRunning(runningApps: runningApps)
+        return (route ?? .live(runningApps: runningApps)).listener(for: profile) != nil
     }
 
+    /// Hands `boost` to whoever puts it back: this process's coordinator,
+    /// else the long-lived process `route` finds alive, under its names.
     public static func schedule(
-        _ boost: VolumeBoost, after seconds: Double, profile: HomeSpeakerProfile = .current
+        _ boost: VolumeBoost, after seconds: Double, profile: HomeSpeakerProfile = .current,
+        route: RequestRoute = .live()
     ) async {
         if let c = await MainActor.run(body: { inProcess(for: profile) }) {
             await c.schedule(boost, after: seconds)
             return
         }
+        let listener = route.listener(for: profile) ?? profile
+        if let c = await MainActor.run(body: { inProcess(for: listener) }) {
+            await c.schedule(boost, after: seconds)
+            return
+        }
         DistributedNotificationCenter.default().postNotificationName(
-            notificationName(for: profile), object: nil, userInfo: encode(boost, after: seconds),
+            notificationName(for: listener), object: nil, userInfo: encode(boost, after: seconds),
             deliverImmediately: true)
     }
 

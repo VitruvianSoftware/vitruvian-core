@@ -40,9 +40,12 @@ import Foundation
 // it is still paused when the announcement ends, so a video the user restarted
 // by hand is left alone.
 //
-// The pausing lives in the menu bar app, the one process that outlives an
-// announcement. The Claude Code Stop hook and `--say` are short-lived and hand
-// the request over with a distributed notification.
+// The pausing lives in the long-lived process (the menu bar app, or the
+// extension's), which outlives an announcement. The Claude Code Stop hook and
+// `--say` are short-lived and hand the request over with a distributed
+// notification, to whichever HomeSpeaker is in use (`RequestRoute`). With
+// none alive, the short-lived process pauses itself and waits out the hold
+// before it exits.
 
 // MARK: - What is making sound
 
@@ -147,6 +150,14 @@ public struct PausedMedia: Equatable, Sendable {
     /// Settings line can say what was paused -- one Test per service shows
     /// whether that service's player behaves.
     public var sites: [String] = []
+
+    /// This and `other` (the same player) together, each handle and site once.
+    func merging(_ other: PausedMedia) -> PausedMedia {
+        var out = self
+        for h in other.handles where !out.handles.contains(h) { out.handles.append(h) }
+        for s in other.sites where !out.sites.contains(s) { out.sites.append(s) }
+        return out
+    }
 }
 
 /// The result of trying to pause one player.
@@ -170,18 +181,24 @@ enum MediaScripts {
             + "if(e.tagName==='IFRAME'){try{walk(e.contentDocument)}catch(_){}}})};walk(document);return \(result)})()"
     }
 
-    /// Marks and pauses every playing media element and returns the site's
-    /// host, or "" when nothing was playing. The mark is what makes resume
-    /// exact: only elements WE paused are touched.
+    /// Marks and pauses every AUDIBLE playing media element and returns the
+    /// site's host, or "" when nothing audible was playing. The mark is what
+    /// makes resume exact: only elements WE paused are touched.
+    ///
+    /// Muted or zero-volume elements are skipped: GitHub, X, Reddit and
+    /// YouTube's own previews loop silent autoplay videos in the tab in
+    /// front. Pausing one answered "paused", and that answer stopped the
+    /// search before the background tab that was actually making the sound.
     static let pauseJS = deepWalk(
-        "r.querySelectorAll('video,audio').forEach(m=>{if(!m.paused&&!m.ended){m.dataset.hsPaused='1';m.pause();n++}})",
+        "r.querySelectorAll('video,audio').forEach(m=>{if(!m.paused&&!m.ended&&!m.muted&&m.volume>0){m.dataset.hsPaused='1';m.pause();n++}})",
         // Never "" after pausing: a file:// page has no hostname, and an
         // empty answer would mean "nothing paused" -- so never resumed.
         result: "n?(location.hostname||'this page'):''")
     /// Resumes elements we marked that are still paused, clearing the mark.
-    /// play() is a promise that rejects when the page forbids it; swallowed.
+    /// play() is a promise that rejects when the page forbids it; swallowed,
+    /// and a throw from one element never stops the others resuming.
     static let resumeJS = deepWalk(
-        "r.querySelectorAll('[data-hs-paused]').forEach(m=>{delete m.dataset.hsPaused;if(m.paused){const p=m.play();if(p&&p.catch)p.catch(()=>{});n++}})",
+        "r.querySelectorAll('[data-hs-paused]').forEach(m=>{delete m.dataset.hsPaused;if(m.paused){try{const p=m.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}n++}})",
         result: "n")
 
     /// Sites checked before walking every tab: a video in a background tab
@@ -193,47 +210,71 @@ enum MediaScripts {
         "vimeo.com", "disneyplus.com", "hulu.com", "max.com", "tv.apple.com", "spotify.com", "soundcloud.com",
     ]
 
-    enum ChromiumPass: Equatable { case activeTabs, mediaSiteTabs, allTabs }
+    /// Which tabs one browser pass looks in.
+    enum TabPass: Equatable, CaseIterable { case activeTabs, mediaSiteTabs, allTabs }
+    typealias ChromiumPass = TabPass
 
     static func escaped(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    /// Chromium, in up to three passes: the active tab of every window (a
-    /// video is almost always the tab being watched), then tabs on known
-    /// media sites (URLs are read in one Apple Event per window), then every
-    /// tab -- which on a 200-tab browser takes seconds and so runs last.
-    /// Output: "w:t:host," per paused tab, or "ERR:<message>".
-    static func chromiumPause(_ app: String, pass: ChromiumPass) -> String {
-        let js = escaped(pauseJS)
-        let attempt = """
-                try
-                  set r to execute t javascript "\(js)"
-                  if r is not "" then set out to out & (id of w) & ":" & (id of t) & ":" & r & ","
-                on error msg
-                  if firstErr is "" then set firstErr to msg
-                end try
-        """
-        let body: String
+    /// An object id as AppleScript: bare when it is a number (Chrome, Brave,
+    /// Edge, Vivaldi, Safari), quoted when it is text (Arc's window and tab
+    /// ids are UUIDs, and a bare UUID is a syntax error that stopped the
+    /// whole resume script compiling -- so Arc never resumed). Nil for
+    /// anything else, so an odd answer can never become script.
+    static func idLiteral<S: StringProtocol>(_ id: S) -> String? {
+        guard !id.isEmpty, id.count <= 128,
+              id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") })
+        else { return nil }
+        return id.allSatisfy(\.isNumber) ? String(id) : "\"\(id)\""
+    }
+
+    /// The loop body one pass runs per window, for `tabRef` tabs. `attempt`
+    /// is what runs on each tab `t` of window `w`.
+    private static func passBody(_ pass: TabPass, current: String, attempt: String) -> String {
         switch pass {
         case .activeTabs:
-            body = "repeat with t in {active tab of w}\n\(attempt)\nend repeat"
+            return "repeat with t in {\(current) of w}\n\(attempt)\nend repeat"
         case .allTabs:
-            body = "repeat with t in (tabs of w)\n\(attempt)\nend repeat"
+            return "repeat with t in (tabs of w)\n\(attempt)\nend repeat"
         case .mediaSiteTabs:
             let match = mediaSites.map { "u contains \"\($0)\"" }.joined(separator: " or ")
-            body = """
+            // A blank tab's URL is `missing value`, which `contains` refuses.
+            return """
             set urls to URL of tabs of w
             repeat with i from 1 to count of urls
               set u to item i of urls
-              if \(match) then
-                set t to tab i of w
+              if u is not missing value then
+                if \(match) then
+                  set t to tab i of w
             \(attempt)
+                end if
               end if
             end repeat
             """
         }
-        return """
+    }
+
+    /// One tab's try: run `call` (which sets `r`), and record `handle` and
+    /// the host when it paused something. A discarded or chrome:// tab
+    /// answers `missing value`, which is not a pause -- counted as one, it
+    /// ended the search with nothing actually paused.
+    private static func attempt(call: String, handle: String) -> String {
+        """
+                try
+                  set r to \(call)
+                  if r is not missing value then
+                    if r is not "" then set out to out & \(handle) & ":" & r & ","
+                  end if
+                on error msg
+                  if firstErr is "" then set firstErr to msg
+                end try
+        """
+    }
+
+    private static func pauseScript(app: String, body: String) -> String {
+        """
         set out to ""
         set firstErr to ""
         tell application "\(app)"
@@ -246,34 +287,105 @@ enum MediaScripts {
         """
     }
 
+    /// Chromium, in up to three passes: the active tab of every window (a
+    /// video is almost always the tab being watched), then tabs on known
+    /// media sites (URLs are read in one Apple Event per window), then every
+    /// tab -- which on a 200-tab browser takes seconds and so runs last.
+    /// Output: "w:t:host," per paused tab, or "ERR:<message>".
+    static func chromiumPause(_ app: String, pass: TabPass) -> String {
+        let call = "execute t javascript \"\(escaped(pauseJS))\""
+        return pauseScript(app: app, body: passBody(
+            pass, current: "active tab", attempt: attempt(call: call, handle: "(id of w) & \":\" & (id of t)")))
+    }
+
+    /// Resumes each paused tab by its ids. When the tab is not where it was
+    /// (dragged to another window during the announcement) or resumed
+    /// nothing, the tab id is looked for in every window: only elements we
+    /// marked are ever played, so trying a wrong tab does nothing.
     static func chromiumResume(_ app: String, handles: [String]) -> String {
+        let js = escaped(resumeJS)
         let lines = handles.compactMap { h -> String? in
-            let parts = h.split(separator: ":")
-            guard parts.count == 2 else { return nil }
-            return "try\n execute (tab id \(parts[1]) of window id \(parts[0])) javascript \"\(escaped(resumeJS))\"\nend try"
+            let parts = h.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 2, let window = idLiteral(parts[0]), let tab = idLiteral(parts[1]) else { return nil }
+            return """
+            set done to false
+            try
+              set r to execute (tab id \(tab) of window id \(window)) javascript "\(js)"
+              if r is not missing value then
+                if (r as integer) > 0 then set done to true
+              end if
+            end try
+            if not done then
+              repeat with w in windows
+                try
+                  execute (tab id \(tab) of w) javascript "\(js)"
+                  exit repeat
+                end try
+              end repeat
+            end if
+            """
         }
         return "tell application \"\(app)\"\n\(lines.joined(separator: "\n"))\nend tell"
     }
 
-    static let safariPause = """
-    set out to ""
-    set firstErr to ""
-    tell application "Safari"
-      repeat with w in windows
-        try
-          set r to do JavaScript "\(escaped(pauseJS))" in current tab of w
-          if r is not "" then set out to out & (id of w) & ":" & r & ","
-        on error msg
-          if firstErr is "" then set firstErr to msg
-        end try
-      end repeat
-    end tell
-    if out is "" and firstErr is not "" then return "ERR:" & firstErr
-    return out
-    """
+    /// Safari, in the same three passes as Chromium. Safari tabs have no
+    /// id, so a tab is "windowID:index". Output: "w:i:host," per paused tab.
+    static func safariPause(pass: TabPass) -> String {
+        let call = "do JavaScript \"\(escaped(pauseJS))\" in t"
+        return pauseScript(app: "Safari", body: passBody(
+            pass, current: "current tab", attempt: attempt(call: call, handle: "(id of w) & \":\" & (index of t)")))
+    }
 
+    /// The front tabs only, as before; kept for callers that want one pass.
+    static var safariPause: String { safariPause(pass: .activeTabs) }
+
+    /// Resumes each paused Safari tab by window and index. If that resumed
+    /// nothing -- the person switched or reordered tabs, closed the window,
+    /// or the index moved -- every tab of that window is tried, and every
+    /// window when the window is gone. Only marked elements play, so the
+    /// sweep never starts anything we did not pause.
     static func safariResume(handles: [String]) -> String {
-        let lines = handles.map { "try\n do JavaScript \"\(escaped(resumeJS))\" in current tab of window id \($0)\nend try" }
+        let js = escaped(resumeJS)
+        let sweepAll = """
+              set ts to {}
+              repeat with w in windows
+                set ts to ts & (tabs of w)
+              end repeat
+        """
+        let lines = handles.map { h -> String in
+            let parts = h.split(separator: ":", omittingEmptySubsequences: false)
+            let window = parts.first.flatMap { $0.allSatisfy(\.isNumber) && !$0.isEmpty ? String($0) : nil }
+            let index = parts.count == 2 && !parts[1].isEmpty && parts[1].allSatisfy(\.isNumber) ? String(parts[1]) : nil
+            guard let window else {
+                return "\(sweepAll)\nrepeat with t in ts\n  try\n    do JavaScript \"\(js)\" in t\n  end try\nend repeat"
+            }
+            let exact = index.map { i in
+                """
+                try
+                  set r to do JavaScript "\(js)" in tab \(i) of window id \(window)
+                  if r is not missing value then
+                    if (r as integer) > 0 then set done to true
+                  end if
+                end try
+                """
+            } ?? ""
+            return """
+            set done to false
+            \(exact)
+            if not done then
+              try
+                set ts to tabs of window id \(window)
+              on error
+            \(sweepAll)
+              end try
+              repeat with t in ts
+                try
+                  do JavaScript "\(js)" in t
+                end try
+              end repeat
+            end if
+            """
+        }
         return "tell application \"Safari\"\n\(lines.joined(separator: "\n"))\nend tell"
     }
 
@@ -364,16 +476,9 @@ public struct MediaController: Sendable {
     public func pause(_ player: MediaPlayer) async -> PauseOutcome {
         switch player {
         case .chrome, .brave, .edge, .arc, .vivaldi:
-            // Only a clean miss is worth walking every tab. A refusal ("turned
-            // off") is browser-wide, so walking 200 tabs would only collect
-            // 200 refusals.
-            for pass in [MediaScripts.ChromiumPass.activeTabs, .mediaSiteTabs, .allTabs] {
-                let result = browserOutcome(player, await runner.run(MediaScripts.chromiumPause(player.rawValue, pass: pass)))
-                guard case .nothingPlaying = result else { return result }
-            }
-            return .nothingPlaying
+            return await pauseBrowser(player) { MediaScripts.chromiumPause(player.rawValue, pass: $0) }
         case .safari:
-            return browserOutcome(player, await runner.run(MediaScripts.safariPause))
+            return await pauseBrowser(player) { MediaScripts.safariPause(pass: $0) }
         case .music, .spotify:
             switch await runner.run(MediaScripts.singlePlayerPause(player.rawValue)) {
             case .success(let s): return s.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
@@ -383,6 +488,35 @@ public struct MediaController: Sendable {
         case .quickTime:
             return outcome(player, await runner.run(MediaScripts.quickTimePause), separator: "\n")
         }
+    }
+
+    /// A browser, in passes. The front tabs AND the media-site tabs are both
+    /// always looked at: the tab in front playing something must not hide a
+    /// background YouTube tab that is playing too. Only when neither found
+    /// anything is every tab walked.
+    ///
+    /// A browser-wide refusal ("JavaScript through AppleScript is turned
+    /// off", not authorised) stops at once: walking 200 tabs would only
+    /// collect 200 refusals. Any other error belongs to one tab (a
+    /// chrome:// page, a crashed renderer) and must not stop the search for
+    /// the tab that is playing.
+    private func pauseBrowser(_ player: MediaPlayer, script: (MediaScripts.TabPass) -> String) async -> PauseOutcome {
+        var found: PausedMedia?
+        var problem: String?
+        for pass in MediaScripts.TabPass.allCases {
+            if pass == .allTabs, found != nil { break }
+            switch browserOutcome(player, await runner.run(script(pass))) {
+            case .paused(let m):
+                found = found.map { $0.merging(m) } ?? m
+            case .nothingPlaying:
+                continue
+            case .blocked(let why):
+                if MediaPauseCoordinator.isBrowserWide(why) { return found.map(PauseOutcome.paused) ?? .blocked(why) }
+                if problem == nil { problem = why }
+            }
+        }
+        if let found { return .paused(found) }
+        return problem.map(PauseOutcome.blocked) ?? .nothingPlaying
     }
 
     public func resume(_ media: PausedMedia) async {
@@ -448,10 +582,17 @@ public enum AnnouncementTiming {
     }
 }
 
-// MARK: - The coordinator (menu bar app only)
+// MARK: - The coordinator (the long-lived process, or a lone `--say`)
 
 /// Holds media paused across overlapping announcements: a burst of Slack
 /// messages pauses once, keeps extending, and resumes once after the last.
+///
+/// Every pause, extend and resume runs one after another, in the order they
+/// were asked for. Pausing takes `osascript` up to seconds, and while it ran
+/// a second request used to slip in: a second pause saw nothing held and
+/// paused again, overwriting (and so never resuming) what the first paused;
+/// a resume found nothing held yet, and the pause landing after it left the
+/// media paused for the whole hold.
 @MainActor
 public final class MediaPauseCoordinator: ObservableObject {
     public static let shared = MediaPauseCoordinator()
@@ -470,6 +611,10 @@ public final class MediaPauseCoordinator: ObservableObject {
     private var held: [PausedMedia] = []
     private var resumeAt: Date?
     private var resumeTask: Task<Void, Never>?
+    /// The last request queued: each new one waits for it.
+    private var tail: Task<Void, Never>?
+    /// Waiting for the hold to end (`waitUntilReleased`).
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(
         controller: MediaController = MediaController(),
@@ -483,8 +628,50 @@ public final class MediaPauseCoordinator: ObservableObject {
         self.safariRunning = safariRunning
     }
 
+    /// Queues `op` behind every request already asked for.
+    @discardableResult
+    private func enqueue(_ op: @escaping @MainActor (MediaPauseCoordinator) async -> Void) -> Task<Void, Never> {
+        let previous = tail
+        let task = Task { @MainActor in
+            await previous?.value
+            await op(self)
+        }
+        tail = task
+        return task
+    }
+
     /// Pauses what is playing for `seconds`, or extends an existing hold.
     public func pause(for seconds: Double) async {
+        await enqueue { await $0.performPause(seconds) }.value
+    }
+
+    /// Keeps what is already paused paused for at least `seconds` more.
+    /// Unlike `pause(for:)` it never pauses anything new: when this Mac
+    /// finishes speaking after the hold ran out, whatever the user started
+    /// since must be left alone. Queued behind a pause still under way, so
+    /// it extends what that pause holds rather than being dropped.
+    public func extend(for seconds: Double) {
+        enqueue { $0.performExtend(seconds) }
+    }
+
+    /// Resumes now: the announcement failed, or the app is quitting. A
+    /// pause still under way finishes first, and what it paused is resumed.
+    public func resumeNow() async {
+        resumeTask?.cancel()
+        resumeTask = nil
+        await enqueue { await $0.performResume() }.value
+    }
+
+    /// Returns once nothing is held: at once when nothing is, otherwise
+    /// when the hold runs out or is resumed. A lone `--say` waits on this,
+    /// so it does not exit with the media it paused still paused.
+    public func waitUntilReleased() async {
+        await tail?.value
+        guard isHolding else { return }
+        await withCheckedContinuation { releaseWaiters.append($0) }
+    }
+
+    private func performPause(_ seconds: Double) async {
         if let current = resumeAt {
             resumeAt = max(current, Date().addingTimeInterval(seconds))
             schedule()
@@ -515,7 +702,8 @@ public final class MediaPauseCoordinator: ObservableObject {
             }
         }
         if !paused.isEmpty {
-            held = paused
+            // Added to, never replaced: what is held is what gets resumed.
+            for m in paused { hold(m) }
             // Counted from when the pause landed: in the app the announcement
             // is sent only after this returns, so that is when speech starts.
             resumeAt = Date().addingTimeInterval(seconds)
@@ -526,25 +714,40 @@ public final class MediaPauseCoordinator: ObservableObject {
         lastReport = Self.report(paused: paused, problems: problems)
     }
 
-    /// Keeps what is already paused paused for at least `seconds` more.
-    /// Unlike `pause(for:)` it never pauses anything new: when this Mac
-    /// finishes speaking after the hold ran out, whatever the user started
-    /// since must be left alone.
-    public func extend(for seconds: Double) {
+    private func hold(_ m: PausedMedia) {
+        if let i = held.firstIndex(where: { $0.player == m.player }) {
+            held[i] = held[i].merging(m)
+        } else {
+            held.append(m)
+        }
+    }
+
+    private func performExtend(_ seconds: Double) {
         guard let current = resumeAt else { return }
         resumeAt = max(current, Date().addingTimeInterval(seconds))
         schedule()
     }
 
-    /// Resumes now: the announcement failed, or the app is quitting.
-    public func resumeNow() async {
-        resumeTask?.cancel()
-        resumeTask = nil
+    private func performResume() async {
         let toResume = held
         held = []
         resumeAt = nil
         isHolding = false
         for m in toResume { await controller.resume(m) }
+        let waiters = releaseWaiters
+        releaseWaiters = []
+        for w in waiters { w.resume() }
+    }
+
+    /// The timer's resume: only if the hold really is over by the time it
+    /// runs (an extend queued ahead of it may have moved the end).
+    private func performExpiry() async {
+        guard let at = resumeAt else { return }
+        if at.timeIntervalSinceNow > 0.05 {
+            schedule()
+            return
+        }
+        await performResume()
     }
 
     private func schedule() {
@@ -553,9 +756,18 @@ public final class MediaPauseCoordinator: ObservableObject {
         resumeTask = Task { [weak self] in
             let wait = max(at.timeIntervalSinceNow, 0)
             try? await Task.sleep(for: .milliseconds(Int(wait * 1000)))
-            guard !Task.isCancelled else { return }
-            await self?.resumeNow()
+            guard !Task.isCancelled, let self else { return }
+            // This task is the timer: forget it before resuming, so nothing
+            // on the way cancels the task doing the resuming.
+            self.resumeTask = nil
+            await self.enqueue { await $0.performExpiry() }.value
         }
+    }
+
+    /// A refusal that holds for every tab of the browser, as opposed to one
+    /// tab's own error.
+    nonisolated static func isBrowserWide(_ why: String) -> Bool {
+        explain(why) != why
     }
 
     /// Chrome's refusal is long and mentions a menu path; say only that.
@@ -598,42 +810,107 @@ public enum MediaPauseRequest {
     /// to that process as a distributed notification instead.
     @MainActor private static var coordinators: [String: MediaPauseCoordinator] = [:]
 
+    /// Where one announcement's pause went, so its extend and resume go to
+    /// the same place even if who is alive changes meanwhile.
+    enum Destination {
+        /// A coordinator in this process: the long-lived one's, or a lone
+        /// `--say`'s own when no long-lived process is alive.
+        case coordinator(MediaPauseCoordinator)
+        /// The long-lived process of this profile, over a notification.
+        case post(HomeSpeakerProfile)
+    }
+
+    @MainActor private static var destinations: [String: Destination] = [:]
+    /// A short-lived process's own coordinator, per profile, made when no
+    /// long-lived process was alive to hold the pause.
+    @MainActor private static var ownHolds: [String: MediaPauseCoordinator] = [:]
+
     /// The coordinator this process holds for `profile`, if it listens.
     @MainActor public static func inProcess(for profile: HomeSpeakerProfile) -> MediaPauseCoordinator? {
         coordinators[profile.messagePrefix]
     }
 
-    /// Pause media for `seconds`. A no-op when nothing is listening: the
-    /// feature lives in the long-lived process (the menu bar app, a login
-    /// item, or the extension's).
-    public static func pause(seconds: Double, profile: HomeSpeakerProfile = .current) async {
-        if let coordinator = await MainActor.run(body: { inProcess(for: profile) }) {
-            await coordinator.pause(for: seconds)
-        } else {
-            post(["action": "pause", "seconds": seconds], profile: profile)
+    /// Where a pause for `profile` goes now: this process's coordinator when
+    /// it listens; else the long-lived process `route` finds alive (the
+    /// HomeSpeaker in use, which may be the other one); else, with nobody
+    /// alive, a coordinator of this process's own, which the caller then
+    /// waits on (`waitForOwnHold`) so the media is resumed before it exits.
+    @MainActor static func destination(
+        for profile: HomeSpeakerProfile, route: RequestRoute,
+        makeOwn: @MainActor () -> MediaPauseCoordinator = { MediaPauseCoordinator() }
+    ) -> Destination {
+        if let c = coordinators[profile.messagePrefix] { return .coordinator(c) }
+        if let listener = route.listener(for: profile) {
+            if let c = coordinators[listener.messagePrefix] { return .coordinator(c) }
+            return .post(listener)
+        }
+        if let own = ownHolds[profile.messagePrefix] { return .coordinator(own) }
+        let own = makeOwn()
+        ownHolds[profile.messagePrefix] = own
+        return .coordinator(own)
+    }
+
+    /// Pause media for `seconds`, through whichever process can hold it.
+    public static func pause(
+        seconds: Double, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live(),
+        makeOwn: @escaping @MainActor () -> MediaPauseCoordinator = { MediaPauseCoordinator() }
+    ) async {
+        let destination = await MainActor.run { () -> Destination in
+            let d = destination(for: profile, route: route, makeOwn: makeOwn)
+            destinations[profile.messagePrefix] = d
+            return d
+        }
+        switch destination {
+        case .coordinator(let c):
+            await c.pause(for: seconds)
+        case .post(let listener):
+            post(["action": "pause", "seconds": seconds], to: listener)
             // Give the app a moment to pause before the chime starts.
             try? await Task.sleep(for: .milliseconds(400))
         }
     }
 
     /// Keep media paused `seconds` longer, if anything is paused.
-    public static func extend(seconds: Double, profile: HomeSpeakerProfile = .current) async {
-        if let coordinator = await MainActor.run(body: { inProcess(for: profile) }) {
-            await coordinator.extend(for: seconds)
-        } else {
-            post(["action": "extend", "seconds": seconds], profile: profile)
+    public static func extend(
+        seconds: Double, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()
+    ) async {
+        switch await sentTo(profile, route: route) {
+        case .coordinator(let c): await c.extend(for: seconds)
+        case .post(let listener): post(["action": "extend", "seconds": seconds], to: listener)
+        case nil: break
         }
     }
 
-    public static func resumeNow(profile: HomeSpeakerProfile = .current) async {
-        if let coordinator = await MainActor.run(body: { inProcess(for: profile) }) {
-            await coordinator.resumeNow()
-        } else {
-            post(["action": "resume"], profile: profile)
+    public static func resumeNow(profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()) async {
+        switch await sentTo(profile, route: route) {
+        case .coordinator(let c): await c.resumeNow()
+        case .post(let listener): post(["action": "resume"], to: listener)
+        case nil: break
         }
     }
 
-    private static func post(_ info: [String: Any], profile: HomeSpeakerProfile) {
+    /// Waits until a pause this process holds itself for `profile` is
+    /// over; at once when it holds none. A lone `--say` or `--announce`
+    /// calls it before exiting.
+    public static func waitForOwnHold(profile: HomeSpeakerProfile = .current) async {
+        guard let own = await MainActor.run(body: { ownHolds[profile.messagePrefix] }) else { return }
+        await own.waitUntilReleased()
+    }
+
+    /// Where `profile`'s last pause went; with none, where one would go now
+    /// -- never a new coordinator of this process's own, which would hold
+    /// nothing.
+    private static func sentTo(_ profile: HomeSpeakerProfile, route: RequestRoute) async -> Destination? {
+        await MainActor.run { () -> Destination? in
+            if let d = destinations[profile.messagePrefix] { return d }
+            if let c = coordinators[profile.messagePrefix] { return .coordinator(c) }
+            guard let listener = route.listener(for: profile) else { return nil }
+            if let c = coordinators[listener.messagePrefix] { return .coordinator(c) }
+            return .post(listener)
+        }
+    }
+
+    private static func post(_ info: [String: Any], to profile: HomeSpeakerProfile) {
         DistributedNotificationCenter.default().postNotificationName(
             notificationName(for: profile), object: nil, userInfo: info, deliverImmediately: true)
     }
@@ -648,7 +925,7 @@ public enum MediaPauseRequest {
             forName: notificationName(for: profile), object: nil, queue: .main
         ) { note in
             let action = note.userInfo?["action"] as? String
-            let seconds = (note.userInfo?["seconds"] as? Double) ?? 0
+            let seconds = (note.userInfo?["seconds"] as? NSNumber)?.doubleValue ?? 0
             Task { @MainActor in
                 if action == "resume" { await coordinator.resumeNow() }
                 else if action == "extend" { coordinator.extend(for: min(seconds, 120)) }

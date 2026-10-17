@@ -493,6 +493,9 @@ public enum HomeSpeakerCommandLine {
             return CLIOutput(stderr: ["no default speaker; open HomeSpeaker and pick one"], exitCode: 1)
         }
         let outcome = await announcer.announce(text, config: config, force: force, at: date)
+        // With no long-lived HomeSpeaker alive, this process paused the
+        // media itself: stay until it is resumed, never exit holding it.
+        await announcer.media.waitUntilReleased()
         var out = CLIOutput()
         switch outcome {
         case .disabled:
@@ -542,8 +545,15 @@ public enum HomeSpeakerCommandLine {
     /// broadcast; this Mac speaking adds its own time.
     static func announceTimeout(_ text: String, config: SpeakerConfig) -> TimeInterval {
         var timeout: TimeInterval = 20
+        let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
         if config.effectiveSpeakLocal {
-            timeout += LocalSpeaker.timeLimit(for: GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength))
+            timeout += LocalSpeaker.timeLimit(for: spoken)
+        }
+        // With nobody else alive to hold paused media, this process waits
+        // out the hold itself (`MediaPausing.waitUntilReleased`): it must
+        // never be cut off while the media is still paused.
+        if config.effectivePauseMedia {
+            timeout += AnnouncementTiming.seconds(for: spoken, extra: config.effectivePauseMediaExtraSeconds)
         }
         return timeout
     }

@@ -112,13 +112,20 @@ is resumed; a video you restart by hand in the meantime is left alone.
 - **macOS asks once per app** ("HomeSpeaker wants to control Google Chrome").
   The *Test* button next to the setting pauses whatever is playing for three
   seconds, so you can answer those prompts before a real announcement.
+- **Only sound counts.** A muted or silent video (the autoplay previews on
+  GitHub, X, Reddit or YouTube's home page) is never paused; HomeSpeaker
+  looks past it, in the tab in front and in background tabs, for what is
+  actually playing.
 - **Resume time is an estimate.** Google reports when it accepted an
   announcement, not when the speaker stopped talking, so HomeSpeaker allows
-  for the chime and the speech and adds the *Resume N s after* margin. Raise
-  it if media comes back before the speaker is done.
+  for the chime and the speech, counted from the moment Google accepts it,
+  and adds the *Resume N s after* margin. Raise it if media comes back before
+  the speaker is done.
 - Works for every announcement — Claude Code replies, Slack and Google Chat
-  messages, Quick Announce and `HomeSpeaker --say` — while the menu bar app is
-  running.
+  messages, Quick Announce and `HomeSpeaker --say` (so `speaker-broadcast`).
+  `--say` hands the pause to whichever HomeSpeaker is in use, the app or the
+  Vitruvian extension; with neither running, it pauses and resumes the media
+  itself and returns once the media is back.
 
 ---
 
