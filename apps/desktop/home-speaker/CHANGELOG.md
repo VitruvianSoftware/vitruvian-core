@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.23.0...home-speaker-v1.24.0) (2026-10-17)
+
+
+### Features
+
+* **home-speaker:** per-agent and per-chat-app switches on the island, tap to replay ([#3444](https://github.com/VitruvianSoftware/vitruvian-core/issues/3444)) ([d50160a](https://github.com/VitruvianSoftware/vitruvian-core/commit/d50160a4c6fce5f4f5db39c1518e292df276db45))
+
+## [1.23.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.22.0...home-speaker-v1.23.0) (2026-10-17)
+
+
+### Features
+
+* **vitruvian:** keep Dynamic Island Tools grid to tools without an island panel ([#3434](https://github.com/VitruvianSoftware/vitruvian-core/issues/3434)) ([573d91b](https://github.com/VitruvianSoftware/vitruvian-core/commit/573d91b968509913b99b24c132749d92b52b7aad))
+
 ## [1.22.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.21.0...home-speaker-v1.22.0) (2026-10-16)
 
 

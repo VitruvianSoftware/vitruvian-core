@@ -219,7 +219,7 @@ public enum ClaudeStopHook {
               let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
 
         let config = await MainActor.run { makeConfig().config }
-        guard config.enabled else { return }
+        guard config.enabled, config.announces(.claudeCode) else { return }
         let local = config.effectiveSpeakLocal
         let homeReady = config.effectiveSpeakHome && config.defaultDevice != nil && !config.structureId.isEmpty
         guard local || homeReady else { return }

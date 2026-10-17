@@ -59,6 +59,11 @@ type homeSpeaker struct {
 	binary string
 	// run executes the binary. runToolWithin in production.
 	run func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error)
+	// say executes the binary for --say. Nil falls back to run; production
+	// sets runAsPersonWithin, which hides the coding-agent markers in the
+	// agent's own environment so a sentence typed on the phone is never
+	// taken for a Claude Code or Antigravity reply (see personEnv).
+	say func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error)
 	// running answers "is the menu bar app up". `pgrep -x HomeSpeaker` in
 	// production; the hook and --say work without it, but the phone should
 	// know the difference between "off" and "not even open".
@@ -75,6 +80,7 @@ func newHomeSpeaker() *homeSpeaker {
 		secretsPath: filepath.Join(home, "Library", "Application Support", "HomeSpeaker", "secrets.json"),
 		binary:      homeSpeakerBinary,
 		run:         runToolWithin,
+		say:         runAsPersonWithin,
 		running: func(ctx context.Context) bool {
 			return exec.CommandContext(ctx, "pgrep", "-x", "HomeSpeaker").Run() == nil
 		},
@@ -122,7 +128,30 @@ type homeSpeakerState struct {
 	QuietHours     homeSpeakerQuiet    `json:"quiet_hours"`
 	Targets        []homeSpeakerTarget `json:"targets"`
 	Last           *homeSpeakerLast    `json:"last,omitempty"`
+
+	// Sources (HomeSpeaker 1.23+, apps/desktop/home-speaker BroadcastSource):
+	// which senders are spoken, each under the master switch (Enabled).
+	// Pointers so the field is always present from this agent and absent from
+	// an older one -- the phone then hides the switches instead of guessing,
+	// the same rule as speak_home / speak_local.
+	//
+	// AnnounceClaudeCode / AnnounceAntigravity are top-level keys and default
+	// to true when absent: a config written before they existed still speaks
+	// for both agents, as it did. The chat apps live under chat_monitor and
+	// default to false: nothing is read until someone turns it on.
+	AnnounceClaudeCode  *bool `json:"announce_claude_code"`
+	AnnounceAntigravity *bool `json:"announce_antigravity"`
+	SlackEnabled        *bool `json:"slack_enabled"`
+	GoogleChatEnabled   *bool `json:"google_chat_enabled"`
+	BeeperEnabled       *bool `json:"beeper_enabled"`
+	// Recent is the newest few broadcasts, newest first, so the phone can
+	// list and replay them. Last stays for phones that predate it; it is
+	// always Recent[0] when both are present.
+	Recent []homeSpeakerLast `json:"recent"`
 }
+
+// recentBroadcasts is how many history entries GET /v1/homespeaker returns.
+const recentBroadcasts = 5
 
 type homeSpeakerQuiet struct {
 	Enabled bool   `json:"enabled"`
@@ -251,8 +280,29 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 			return a.Name < b.Name
 		})
 	}
-	st.Last = h.lastBroadcast()
+	st.AnnounceClaudeCode = boolOr(cfg, "announce_claude_code", true)
+	st.AnnounceAntigravity = boolOr(cfg, "announce_antigravity", true)
+	monitor, _ := cfg["chat_monitor"].(map[string]any)
+	st.SlackEnabled = boolOr(monitor, "slack_enabled", false)
+	st.GoogleChatEnabled = boolOr(monitor, "google_chat_enabled", false)
+	st.BeeperEnabled = boolOr(monitor, "beeper_enabled", false)
+	// Never null on the wire: [] says "no history", where a missing or null
+	// field would read as an agent that predates it.
+	st.Recent = append([]homeSpeakerLast{}, h.recentBroadcasts(recentBroadcasts)...)
+	if len(st.Recent) > 0 {
+		st.Last = &st.Recent[0]
+	}
 	return st
+}
+
+// boolOr is m[key] when it is a bool, else def -- always as a pointer, so the
+// JSON field is present. A nil map (no chat_monitor yet) reads as defaults.
+func boolOr(m map[string]any, key string, def bool) *bool {
+	v := def
+	if b, ok := m[key].(bool); ok {
+		v = b
+	}
+	return &v
 }
 
 // defaultLocalVoice is HomeSpeaker's voice for this Mac when local_voice is
@@ -351,7 +401,10 @@ func (h *homeSpeaker) signedIn() bool {
 // file uses that default.
 var swiftReferenceEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 
-func (h *homeSpeaker) lastBroadcast() *homeSpeakerLast {
+// recentBroadcasts is up to n history entries, newest first (the app
+// inserts at the front). An unreadable or missing file is no history, not an
+// error: the phone shows "nothing spoken yet".
+func (h *homeSpeaker) recentBroadcasts(n int) []homeSpeakerLast {
 	data, err := os.ReadFile(h.historyPath)
 	if err != nil {
 		return nil
@@ -365,14 +418,19 @@ func (h *homeSpeaker) lastBroadcast() *homeSpeakerLast {
 	if json.Unmarshal(data, &items) != nil || len(items) == 0 {
 		return nil
 	}
-	// The app inserts newest first.
-	it := items[0]
-	return &homeSpeakerLast{
-		Text:   it.Text,
-		Target: it.TargetName,
-		Source: it.Source,
-		At:     swiftReferenceEpoch.Add(time.Duration(it.Timestamp * float64(time.Second))),
+	if len(items) > n {
+		items = items[:n]
 	}
+	out := make([]homeSpeakerLast, 0, len(items))
+	for _, it := range items {
+		out = append(out, homeSpeakerLast{
+			Text:   it.Text,
+			Target: it.TargetName,
+			Source: it.Source,
+			At:     swiftReferenceEpoch.Add(time.Duration(it.Timestamp * float64(time.Second))),
+		})
+	}
+	return out
 }
 
 // homeSpeakerUpdate is POST /v1/homespeaker. Every field is a pointer so an
@@ -391,6 +449,14 @@ type homeSpeakerUpdate struct {
 	// the Mac, so it is chosen there.
 	SpeakHome  *bool `json:"speak_home"`
 	SpeakLocal *bool `json:"speak_local"`
+	// The sources (HomeSpeaker 1.23+). The two coding agents are top-level
+	// keys; the chat apps are written inside chat_monitor, keeping every
+	// other key there (poll interval, Beeper's URL and token, ...).
+	AnnounceClaudeCode  *bool `json:"announce_claude_code"`
+	AnnounceAntigravity *bool `json:"announce_antigravity"`
+	SlackEnabled        *bool `json:"slack_enabled"`
+	GoogleChatEnabled   *bool `json:"google_chat_enabled"`
+	BeeperEnabled       *bool `json:"beeper_enabled"`
 }
 
 // pauseMediaExtraMax is the app's own ceiling (Settings' stepper, 0-10 s).
@@ -400,7 +466,9 @@ func (u homeSpeakerUpdate) empty() bool {
 	return u.Enabled == nil && u.DefaultTarget == nil && u.SpeechLength == nil &&
 		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil &&
 		u.AnnounceVolumeEnabled == nil && u.AnnounceVolume == nil &&
-		u.SpeakHome == nil && u.SpeakLocal == nil
+		u.SpeakHome == nil && u.SpeakLocal == nil &&
+		u.AnnounceClaudeCode == nil && u.AnnounceAntigravity == nil &&
+		u.SlackEnabled == nil && u.GoogleChatEnabled == nil && u.BeeperEnabled == nil
 }
 
 // apply validates against the file as it is now and rewrites it. It returns
@@ -472,6 +540,41 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		cfg["speak_local"] = *u.SpeakLocal
 		changed = append(changed, fmt.Sprintf("speak_local=%v", *u.SpeakLocal))
 	}
+	for _, f := range []struct {
+		key string
+		v   *bool
+	}{
+		{"announce_claude_code", u.AnnounceClaudeCode},
+		{"announce_antigravity", u.AnnounceAntigravity},
+	} {
+		if f.v != nil {
+			cfg[f.key] = *f.v
+			changed = append(changed, fmt.Sprintf("%s=%v", f.key, *f.v))
+		}
+	}
+	monitorFields := []struct {
+		key string
+		v   *bool
+	}{
+		{"slack_enabled", u.SlackEnabled},
+		{"google_chat_enabled", u.GoogleChatEnabled},
+		{"beeper_enabled", u.BeeperEnabled},
+	}
+	for _, f := range monitorFields {
+		if f.v == nil {
+			continue
+		}
+		// The same map, edited in place: every key the app keeps there
+		// survives. A chat_monitor that is missing or not an object starts
+		// fresh rather than failing the whole change.
+		monitor, ok := cfg["chat_monitor"].(map[string]any)
+		if !ok {
+			monitor = map[string]any{}
+			cfg["chat_monitor"] = monitor
+		}
+		monitor[f.key] = *f.v
+		changed = append(changed, fmt.Sprintf("chat_monitor.%s=%v", f.key, *f.v))
+	}
 	if err := h.writeConfig(cfg); err != nil {
 		return "", err
 	}
@@ -502,7 +605,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home or speak_local")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, announce_claude_code, announce_antigravity, slack_enabled, google_chat_enabled or beeper_enabled")
 		return
 	}
 	changed, err := srv.speaker.apply(body)
@@ -544,13 +647,61 @@ func (srv *server) homeSpeakerSay(w http.ResponseWriter, r *http.Request) {
 	logAct("homespeaker", "say "+text)
 	// --say is deliberate speech: it overrides quiet hours but still honours
 	// the master switch, and exits 1 with a reason on stderr when refused.
-	stdout, stderr, err := srv.speaker.run(r.Context(), 30*time.Second, srv.speaker.binary, "--say", text)
+	// The phone's Say box and its Replay both come here; HomeSpeaker lists
+	// the line in its history again either way (its CLI has no flag that
+	// leaves history alone).
+	//
+	// Run as a person, not as whichever coding agent's shell started this
+	// agent: HomeSpeaker 1.23+ infers the sender from CLAUDECODE /
+	// ANTIGRAVITY_AGENT, and would then hold a replay to that agent's
+	// switch. Hiding the markers works on every HomeSpeaker version, where
+	// `--source user` would be refused by one older than 1.23.
+	run := srv.speaker.say
+	if run == nil {
+		run = srv.speaker.run
+	}
+	stdout, stderr, err := run(r.Context(), 30*time.Second, srv.speaker.binary, "--say", text)
 	out := strings.TrimSpace(strings.TrimSpace(stdout) + "\n" + strings.TrimSpace(stderr))
 	if err != nil {
 		writeJSON(w, map[string]any{"ok": false, "output": strings.TrimSpace(out + "\n" + err.Error())})
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "output": out})
+}
+
+// agentMarkers are the environment variables HomeSpeaker reads to decide
+// that a coding agent, not a person, is speaking (BroadcastSource.inferred).
+var agentMarkers = []string{"CLAUDECODE", "ANTIGRAVITY_AGENT", "AI_AGENT"}
+
+// personEnv is env without the agent markers.
+func personEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		keep := true
+		for _, m := range agentMarkers {
+			if name == m {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+// runAsPersonWithin is runToolWithin with personEnv applied.
+func runAsPersonWithin(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = personEnv(os.Environ())
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
 }
 
 // --- v1.5: the speaker's volume ------------------------------------------

@@ -217,11 +217,16 @@ public enum Pages {
     public static let moreSettings = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
     /// The button that opens them, for an app that can.
     public static let moreSettingsButton = "More settings…"
+    /// The island's button that speaks what is on the clipboard.
+    public static let sayClipboardButton = "Speak clipboard"
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
 
     public enum Block {
         public static let say = "say"
+        /// The island's button that speaks the clipboard, as the
+        /// `sayClipboard` command does.
+        public static let sayClipboard = "sayClipboard"
         public static let broadcasting = "broadcasting"
         public static let quiet = "quiet"
         /// The island's Mute switch: on mutes, off unmutes.
@@ -256,6 +261,10 @@ public enum Pages {
         public static let clearBeeperToken = "clearBeeperToken"
         public static let beeperAnnounce = "beeperAnnounce"
         public static let googleChatEnabled = "googleChatEnabled"
+        /// Each coding agent's own switch, under Broadcasting: on the
+        /// island and in Settings › AI Agents.
+        public static let claudeCodeEnabled = "claudeCodeEnabled"
+        public static let antigravityEnabled = "antigravityEnabled"
         public static let chatSource = "chatSource"
         public static let grantChat = "grantChat"
         public static let disconnectChat = "disconnectChat"
@@ -281,6 +290,32 @@ public enum Pages {
         public static let setupDiscoverHomePrefix = "setup.discoverHome."
         public static let outputHome = "output.home"
         public static let outputLocal = "output.local"
+        /// A Recent Broadcasts row: a tap speaks it again.
+        public static let replayPrefix = "replay."
+
+        /// The switch for `agent`'s announcements.
+        public static func agentEnabled(_ agent: CodingAgent) -> String {
+            switch agent {
+            case .claudeCode: return claudeCodeEnabled
+            case .antigravity: return antigravityEnabled
+            }
+        }
+
+        /// The agent a switch's id names; nil for any other id.
+        public static func agentEnabledAgent(_ id: String) -> CodingAgent? {
+            CodingAgent.allCases.first { agentEnabled($0) == id }
+        }
+
+        /// The row of the broadcast `id` in the history. By its id, not its
+        /// place: an announcement added between drawing and the tap moves
+        /// every row down one, and would replay the wrong one.
+        public static func replayBroadcast(_ id: UUID) -> String { "\(replayPrefix)\(id.uuidString)" }
+
+        /// The broadcast a row's id names; nil for any other id.
+        public static func replayBroadcastId(_ id: String) -> UUID? {
+            guard id.hasPrefix(replayPrefix) else { return nil }
+            return UUID(uuidString: String(id.dropFirst(replayPrefix.count)))
+        }
 
         /// The button that finds the speakers of the home at `index` in
         /// the homes listed.
@@ -342,6 +377,9 @@ public enum Pages {
             // when it would.
             if !status.needsSetup || status.config.effectiveSpeakLocal {
                 field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
+                // The `sayClipboard` command, here because the island's
+                // Tools grid leaves an extension's commands to its own page.
+                button(Block.sayClipboard, UIText.plain(sayClipboardButton))
             }
             if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
             if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }
@@ -357,6 +395,8 @@ public enum Pages {
                 speakerBlocks(status)
             }
             outputBlocks(status)
+            divider()
+            sourceBlocks(status)
             divider()
             recentBroadcastBlocks(status)
             moreSettingsBlocks(status)
@@ -497,6 +537,31 @@ public enum Pages {
         }.blocks
     }
 
+    /// What may speak, under Broadcasting: each coding agent and each chat
+    /// app has its own switch, grouped under a caption as "Speak on" is.
+    /// With Broadcasting off none of them speaks, and the island says so
+    /// rather than greying them out: they can still be set for later.
+    static func sourceBlocks(_ status: Status) -> [UIBlock] {
+        let config = status.config
+        let chat = config.effectiveChatMonitor
+        return UITree {
+            text("Coding agents", style: .caption)
+            for agent in CodingAgent.allCases {
+                toggle(Block.agentEnabled(agent), UIText.plain(agent.displayName), isOn: config.announces(agent))
+            }
+            text("Chat apps", style: .caption)
+            toggle(Block.slackEnabled, "Slack", isOn: chat.slackEnabled)
+            toggle(Block.googleChatEnabled, "Google Chat", isOn: chat.googleChatEnabled)
+            toggle(Block.beeperEnabled, "Beeper", isOn: chat.beeperEnabled)
+            if !config.enabled {
+                text(UIText.plain(sourcesSilent), style: .caption)
+            }
+        }.blocks
+    }
+
+    /// Under the sources while Broadcasting is off.
+    public static let sourcesSilent = "Broadcasting is off, so none of these speak."
+
     /// Why the chat monitor, switched on, reads nothing: each problem, then
     /// where to fix it. Empty while every source is off. The extension is
     /// what reads chat, so there is no app to say is not running.
@@ -532,19 +597,30 @@ public enum Pages {
     }
 
     /// The newest of the shared history, as the menu bar's Recent
-    /// Broadcasts lists it.
+    /// Broadcasts lists it. A tap on a row speaks it again (`Job.replay`),
+    /// once HomeSpeaker can: installed, and not quiet for the other one.
     static func recentBroadcastBlocks(_ status: Status) -> [UIBlock] {
-        UITree {
+        let replays = status.installed
+        return UITree {
             heading("Recent Broadcasts")
             if status.recentBroadcasts.isEmpty {
                 text(UIText.plain(noRecentBroadcasts), style: .secondary)
             } else {
                 for item in status.recentBroadcasts.prefix(maxRecentBroadcasts) {
-                    row(nil, UIText.plain(item.text), subtitle: UIText.plain(broadcastLine(item)), icon: "text.bubble")
+                    row(replays ? Block.replayBroadcast(item.id) : nil, UIText.plain(item.text),
+                        subtitle: UIText.plain(broadcastLine(item)), icon: "text.bubble",
+                        trailing: replays ? UIText.plain(replayMark) : nil)
                 }
+                if replays { text(UIText.plain(replayHint), style: .caption) }
             }
         }.blocks
     }
+
+    /// The trailing mark on a row that replays.
+    public static let replayMark = "↻"
+    public static let replayHint = "Tap one to hear it again."
+    /// A tap on a row whose broadcast has since left the history.
+    public static let replayGone = "That announcement is no longer in the history"
 
     /// "Say · Kitchen + This Mac · 14 Oct 2026 at 9:41": who, where, when.
     public static func broadcastLine(_ item: BroadcastLogItem) -> String {
@@ -556,6 +632,7 @@ public enum Pages {
     public static func busyLine(_ job: Job) -> String {
         switch job {
         case .say: return "Speaking…"
+        case .replay: return "Speaking it again…"
         case .volume: return "Reading the volume…"
         case .setVolume(let level): return "Setting the volume to \(level) %…"
         case .mute: return "Muting…"
@@ -880,6 +957,10 @@ public enum Pages {
         return "Currently reading via \(name)"
     }
 
+    /// Under the agents' switches in Settings.
+    public static let agentSwitchesHelp =
+        "Each agent's announcements, under Enable Voice Broadcasting. Off, the hook or instruction stays as it is and nothing is spoken."
+
     /// What a hook says when it is there but HomeSpeaker, which it runs, is not.
     public static let hookWithoutHomeSpeaker = "Points at HomeSpeaker, which isn't installed — it can't speak"
 
@@ -889,6 +970,12 @@ public enum Pages {
     /// a hook does, since a hook runs it.
     static func agents(_ status: Status) -> [UIBlock] {
         UITree {
+            heading("Announcements")
+            for agent in CodingAgent.allCases {
+                toggle(Block.agentEnabled(agent), UIText.plain("Announce \(agent.displayName) replies"),
+                       isOn: status.config.announces(agent))
+            }
+            text(UIText.plain(agentSwitchesHelp), style: .caption)
             for agent in status.agents.statuses {
                 agentBlocks(agent, status)
             }

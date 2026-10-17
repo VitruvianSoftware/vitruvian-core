@@ -125,7 +125,8 @@ sh_test(
 # It builds nothing but its data (Courier.zip). The app ID never passes through a Bazel action,
 # whose outputs can land in the remote cache: scripts/inject-app-credentials.sh adds it to the
 # unpacked app afterwards, on this Mac, from the environment or the gitignored secret store
-# (tools/sync-env-secrets), and signs the app again. See README.md.
+# (tools/sync-env-secrets), and signs the app again: the engine, then the app, with the Developer ID
+# if one is installed (and the hardened runtime) and Resources/Courier.entitlements. See README.md.
 sh_binary(
     name = "install",
     srcs = ["scripts/install.sh"],
@@ -134,6 +135,7 @@ sh_binary(
         "$(rootpaths :Courier)",
     ],
     data = [
+        "Resources/Courier.entitlements",
         "scripts/inject-app-credentials.sh",
         ":Courier",
     ],
@@ -143,14 +145,21 @@ sh_binary(
 
 # The injector against a tiny stand-in app: it writes a valid TelegramApp.plist, signs the app so
 # it passes codesign --verify, refuses bad values without printing them, and honours
-# --allow-missing. macOS-only (plutil, codesign) and `manual`: the courier-app-macos unit below
+# --allow-missing. A fake codesign proves how it signs (the engine before the app, the identifier,
+# the hardened runtime and timestamp only with an identity, the entitlements). macOS-only (plutil, codesign) and `manual`: the courier-app-macos unit below
 # runs it by label.
 sh_test(
     name = "inject_app_credentials_test",
     size = "small",
     srcs = ["scripts/inject_app_credentials_test.sh"],
-    args = ["$(rootpath scripts/inject-app-credentials.sh)"],
-    data = ["scripts/inject-app-credentials.sh"],
+    args = [
+        "$(rootpath scripts/inject-app-credentials.sh)",
+        "$(rootpath Resources/Courier.entitlements)",
+    ],
+    data = [
+        "Resources/Courier.entitlements",
+        "scripts/inject-app-credentials.sh",
+    ],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )

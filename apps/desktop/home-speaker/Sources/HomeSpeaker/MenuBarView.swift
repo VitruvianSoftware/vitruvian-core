@@ -157,6 +157,8 @@ public struct MenuBarView: View {
                 quickAnnounce
             }
 
+            Divider()
+            sourceSwitches
             if let problem = monitorService.lastError {
                 monitorProblem(problem)
             }
@@ -278,6 +280,53 @@ public struct MenuBarView: View {
             .accessibilityLabel(text)
     }
 
+    /// What may speak, under Broadcasting: each coding agent and each chat
+    /// app, one click away, as the extension's island has them. A chat
+    /// switch starts, stops or restarts the monitor to match.
+    private var sourceSwitches: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Coding agents")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                ForEach(CodingAgent.allCases, id: \.self) { agent in
+                    Toggle(agent.displayName, isOn: Binding(
+                        get: { configManager.config.announces(agent) },
+                        set: { configManager.setAnnounces(agent, $0) }
+                    ))
+                    .accessibilityHint("Speaks what \(agent.displayName) sends")
+                }
+            }
+            .toggleStyle(.checkbox)
+            .padding(.bottom, 4)
+
+            Text("Chat apps")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                chatSwitch("Slack", \.slackEnabled)
+                chatSwitch("Google Chat", \.googleChatEnabled)
+                chatSwitch("Beeper", \.beeperEnabled)
+            }
+            .toggleStyle(.checkbox)
+
+            if !configManager.config.enabled {
+                Text("Broadcasting is off, so none of these speak.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chatSwitch(_ title: String, _ source: WritableKeyPath<ChatMonitorConfig, Bool>) -> some View {
+        Toggle(title, isOn: Binding(
+            get: { configManager.config.effectiveChatMonitor[keyPath: source] },
+            set: { configManager.setChatSource(source, $0) }
+        ))
+        .accessibilityHint("Announces new \(title) messages")
+    }
+
     private var quickAnnounce: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Quick Announcement")
@@ -340,25 +389,33 @@ public struct MenuBarView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(configManager.recentBroadcasts.prefix(5)) { item in
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack {
-                                    Text(item.source)
-                                        .font(.caption2)
-                                        .bold()
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text(item.timestamp, style: .time)
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
+                            Button { replay(item) } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text(item.source)
+                                            .font(.caption2)
+                                            .bold()
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        Text(item.timestamp, style: .time)
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Text(item.text)
+                                        .font(.caption)
+                                        .lineLimit(2)
                                 }
-                                Text(item.text)
-                                    .font(.caption)
-                                    .lineLimit(2)
+                                .padding(6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(nsColor: .controlBackgroundColor))
+                                .cornerRadius(4)
+                                .contentShape(Rectangle())
                             }
-                            .padding(6)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                            .cornerRadius(4)
+                            .buttonStyle(.plain)
+                            .disabled(viewModel.isBroadcasting)
+                            .help("Click to hear it again")
                             .accessibilityElement(children: .combine)
+                            .accessibilityHint("Speaks this announcement again")
                         }
                     }
                 }
@@ -454,7 +511,21 @@ public struct MenuBarView: View {
 
     private func speakText() {
         let msg = viewModel.quickText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !msg.isEmpty, !viewModel.isBroadcasting else { return }
+        guard !msg.isEmpty else { return }
+        announce(msg, logAs: "Quick Announce") { viewModel.quickText = "" }
+    }
+
+    /// A Recent Broadcasts row, clicked: spoken again as Quick Announce
+    /// speaks (the master switch holds, quiet hours do not), and not added
+    /// to the history a second time.
+    private func replay(_ item: BroadcastLogItem) {
+        announce(item.text, logAs: nil) {}
+    }
+
+    /// Speaks `msg` as the person asked. When heard, adds it to the history
+    /// under `logAs` (nil adds nothing) and runs `heard`.
+    private func announce(_ msg: String, logAs source: String?, heard: @escaping () -> Void) {
+        guard !viewModel.isBroadcasting else { return }
 
         viewModel.isBroadcasting = true
         viewModel.setFeedback("Broadcasting...", autoClearAfter: nil)
@@ -482,12 +553,14 @@ public struct MenuBarView: View {
                 viewModel.setFeedback("Nothing to say after cleaning up the text.", isError: true)
             case .announced:
                 if outcome.anySpoke {
-                    configManager.addLogItem(BroadcastLogItem(
-                        text: msg,
-                        targetName: outcome.spokenLabel(homeName: homeName),
-                        source: "Quick Announce"
-                    ))
-                    viewModel.quickText = ""
+                    if let source {
+                        configManager.addLogItem(BroadcastLogItem(
+                            text: msg,
+                            targetName: outcome.spokenLabel(homeName: homeName),
+                            source: source
+                        ))
+                    }
+                    heard()
                 }
                 let failures = outcome.failureMessages
                 if failures.isEmpty {

@@ -226,6 +226,10 @@ HomeSpeaker \(HomeSpeakerVersion.current) — speaks your coding agent's replies
 usage: HomeSpeaker [flag]
   (no flag)            run the menu bar app
   --say <text>         announce text on the default speaker and/or this Mac
+  --source <name> --say <text>
+                       the same, for claude-code or antigravity: spoken only
+                       while that agent's switch is on (default: the agent
+                       whose shell runs it, else a person)
   --volume             the default speaker's volume, as JSON
   --set-volume <0-100> set it; --mute / --unmute likewise
   --sign-in [--chat]   sign in for Home (or Google Chat)
@@ -772,5 +776,157 @@ private let unreadableSettings = "{ not json"
             #expect(timeout == limit, "\(arguments)")
             #expect(onTimeout == output, "\(arguments)")
         }
+    }
+}
+
+// MARK: - Who asked: BroadcastSource and each agent's switch
+
+@Suite struct BroadcastSourceTests {
+    @Test func aGivenSourceWinsOverTheShell() {
+        let claudeShell = ["CLAUDECODE": "1", "AI_AGENT": "claude-code"]
+        #expect(BroadcastSource.resolve(arguments: ["--source", "antigravity", "--say", "hi"], environment: claudeShell)
+                == .success(.antigravity))
+        #expect(BroadcastSource.resolve(arguments: ["--source", "user", "--say", "hi"], environment: claudeShell)
+                == .success(.user), "a person can say it is them from an agent's shell")
+        #expect(BroadcastSource.resolve(arguments: ["--source", "Claude", "--say", "hi"], environment: [:]) == .success(.claudeCode))
+        #expect(BroadcastSource.resolve(arguments: ["--source", "agy", "--say", "hi"], environment: [:]) == .success(.antigravity))
+    }
+
+    @Test func aSourceInTheTextIsText() {
+        // Everything after --say is what is spoken, flags and all.
+        #expect(BroadcastSource.resolve(arguments: ["--say", "use", "--source", "antigravity"], environment: [:]) == .success(.user))
+        #expect(HomeSpeakerCommandLine.parse(["--source", "antigravity", "--say", "use", "--source", "x"])
+                == .say("use --source x"))
+    }
+
+    @Test func aBadSourceIsTheCallersMistake() {
+        guard case .failure(let missing) = BroadcastSource.resolve(arguments: ["--source"], environment: [:]),
+              case .failure(let unknown) = BroadcastSource.resolve(arguments: ["--source", "cursor", "--say", "x"], environment: [:])
+        else {
+            Issue.record("a bad --source resolved")
+            return
+        }
+        #expect(missing.message.contains("needs a name"))
+        #expect(unknown.message.contains("unknown --source cursor"))
+        #expect(unknown.message.contains("user, claude-code, antigravity"))
+    }
+
+    @Test func theShellSaysWhichAgentRunsIt() {
+        #expect(BroadcastSource.inferred(from: [:]) == .user)
+        #expect(BroadcastSource.inferred(from: ["CLAUDECODE": "1"]) == .claudeCode)
+        #expect(BroadcastSource.inferred(from: ["ANTIGRAVITY_AGENT": "1"]) == .antigravity)
+        #expect(BroadcastSource.inferred(from: ["CLAUDECODE": "0"]) == .user, "only 1 counts")
+        // Both inherited: the innermost agent set AI_AGENT last.
+        let both = ["CLAUDECODE": "1", "ANTIGRAVITY_AGENT": "1"]
+        #expect(BroadcastSource.inferred(from: both.merging(["AI_AGENT": "antigravity"]) { $1 }) == .antigravity)
+        #expect(BroadcastSource.inferred(from: both.merging(["AI_AGENT": "claude-code_2"]) { $1 }) == .claudeCode)
+        #expect(BroadcastSource.inferred(from: both) == .claudeCode, "no AI_AGENT: Claude Code, which sets CLAUDECODE")
+    }
+
+    @Test func theHistoryNamesWhoAsked() {
+        #expect(BroadcastSource.user.historyLabel == "Say")
+        #expect(BroadcastSource.claudeCode.historyLabel == "Claude Code")
+        #expect(BroadcastSource.antigravity.historyLabel == "Antigravity")
+        #expect(BroadcastSource.user.agent == nil)
+    }
+
+    @Test func aConfigWithoutTheKeysSpeaksForBoth() throws {
+        let old = try JSONDecoder().decode(SpeakerConfig.self, from: Data(#"{"enabled": true, "default_target": "", "structure_id": "", "targets": {}}"#.utf8))
+        #expect(old.announces(.claudeCode) && old.announces(.antigravity), "as before the switches existed")
+        var config = old
+        config.setAnnounces(.antigravity, false)
+        let json = try #require(String(data: JSONEncoder().encode(config), encoding: .utf8))
+        #expect(json.contains(#""announce_antigravity":false"#))
+        #expect(!json.contains("announce_claude_code"), "a switch never turned is not written")
+        let read = try JSONDecoder().decode(SpeakerConfig.self, from: Data(json.utf8))
+        #expect(read.announces(.claudeCode))
+        #expect(!read.announces(.antigravity))
+        let explicit = try JSONDecoder().decode(
+            SpeakerConfig.self, from: Data(#"{"enabled": true, "default_target": "", "structure_id": "", "targets": {}, "announce_claude_code": false}"#.utf8))
+        #expect(!explicit.announces(.claudeCode))
+        #expect(explicit.announces(.antigravity))
+    }
+
+    private func speaking() -> SpeakerConfig {
+        var config = SpeakerConfig(enabled: true, defaultTarget: "", structureId: "")
+        config.effectiveSpeakHome = false
+        config.effectiveSpeakLocal = true
+        return config
+    }
+
+    @Test @MainActor func anAgentsSayNeedsItsSwitch() async throws {
+        let rig = try Rig()
+        var config = speaking()
+        config.setAnnounces(.antigravity, false)
+        let off = await HomeSpeakerCommandLine.say(
+            "done", config: config, announcer: rig.announcer, history: rig.history,
+            standsAside: false, door: rig.profile.door, source: .antigravity)
+        #expect(off == CLIOutput(stderr: [HomeSpeakerCommandLine.agentSwitchedOff(.antigravity)]),
+                "the person's choice: exit 0, so the agent is not told it failed")
+        #expect(off.stderr == ["Antigravity announcements are switched off in HomeSpeaker. Nothing spoken."])
+        #expect(rig.local.calls.all.isEmpty)
+        #expect(rig.history.load().isEmpty)
+
+        // The other agent, and a person, still speak.
+        let claude = await HomeSpeakerCommandLine.say(
+            "built", config: config, announcer: rig.announcer, history: rig.history,
+            standsAside: false, door: rig.profile.door, source: .claudeCode)
+        #expect(claude.exitCode == 0)
+        let person = await HomeSpeakerCommandLine.say(
+            "dinner", config: config, announcer: rig.announcer, history: rig.history,
+            standsAside: false, door: rig.profile.door)
+        #expect(person.exitCode == 0)
+        #expect(rig.local.calls.all == ["built", "dinner"])
+        #expect(rig.history.load().map(\.source) == ["Say", "Claude Code"], "newest first, each under who asked")
+    }
+
+    @Test @MainActor func theSideInUseHoldsTheSwitches() async throws {
+        let rig = try Rig()
+        let mine = speaking()
+        var inUse = speaking()
+        inUse.setAnnounces(.claudeCode, false)
+        let refused = await HomeSpeakerCommandLine.say(
+            "x", config: mine, announcer: rig.announcer, history: rig.history,
+            standsAside: true, door: rig.profile.door, source: .claudeCode, inUse: inUse)
+        #expect(refused.stderr == [HomeSpeakerCommandLine.agentSwitchedOff(.claudeCode)])
+        #expect(rig.local.calls.all.isEmpty)
+        inUse.enabled = false
+        let masterOff = await HomeSpeakerCommandLine.say(
+            "x", config: mine, announcer: rig.announcer, history: rig.history,
+            standsAside: true, door: rig.profile.door, source: .antigravity, inUse: inUse)
+        #expect(masterOff == CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1))
+    }
+
+    @Test @MainActor func aReplaySpeaksWithoutListingItAgain() async throws {
+        let rig = try Rig()
+        let out = await HomeSpeakerCommandLine.say(
+            "again", config: speaking(), announcer: rig.announcer, history: rig.history,
+            standsAside: false, door: rig.profile.door, records: false)
+        #expect(out.exitCode == 0)
+        #expect(rig.local.calls.all == ["again"])
+        #expect(rig.history.load().isEmpty)
+    }
+
+    @Test @MainActor func theStopHooksAnnouncementFollowsClaudeCodesSwitch() async throws {
+        let rig = try Rig()
+        var config = speaking()
+        config.setAnnounces(.claudeCode, false)
+        let off = await HomeSpeakerCommandLine.announce(
+            "reply", config: config, announcer: rig.announcer, history: rig.history, standsAside: false)
+        #expect(off.stderr == [HomeSpeakerCommandLine.agentSwitchedOff(.claudeCode)])
+        #expect(off.exitCode == 0)
+        #expect(rig.local.calls.all.isEmpty)
+        config.setAnnounces(.claudeCode, true)
+        config.setAnnounces(.antigravity, false)
+        let on = await HomeSpeakerCommandLine.announce(
+            "reply", config: config, announcer: rig.announcer, history: rig.history, standsAside: false)
+        #expect(on.exitCode == 0)
+        #expect(rig.local.calls.all == ["reply"], "Antigravity's switch is not Claude Code's")
+    }
+
+    @Test func sourceIsNotAnAppCommand() {
+        // `--source` first is a --say line, never "must be the first argument".
+        #expect(AppCommandParser.parse(["--source", "claude-code", "--say", "hi"]) == nil)
+        #expect(HomeSpeakerCommandLine.recognizes(["--source", "claude-code", "--say", "hi"]))
     }
 }

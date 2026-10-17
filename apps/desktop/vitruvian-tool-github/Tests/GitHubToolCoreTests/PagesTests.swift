@@ -53,8 +53,8 @@ final class PagesTests: XCTestCase {
 
     func testTheIslandPageListsRepositoriesThenPullRequestsThenButtons() {
         let page = Pages.island(summary: summary(red: true, pulls: 2, failedRun: true), auth: .signedIn(login: "me"))
-        XCTAssertEqual(page.kinds, ["row", "heading", "list", "button", "button", "button"])
-        XCTAssertEqual(page.ids, ["repo.acme.web", "pulls", "refresh", "openRepo", "rerun"])
+        XCTAssertEqual(page.kinds, ["row", "heading", "list", "button", "button", "button", "button"])
+        XCTAssertEqual(page.ids, ["repo.acme.web", "pulls", "openPulls", "refresh", "openRepo", "rerun"])
         XCTAssertEqual(page.english(0), "acme/web")
         guard case .row(let row) = page.blocks[0].content else { return XCTFail() }
         XCTAssertEqual(row.subtitle?.text(for: "en"), "1 passed, 1 failed, 0 running")
@@ -67,8 +67,9 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(list.rows[0].trailing?.text(for: "en"), "Approved")
         XCTAssertEqual(list.rows[1].trailing?.text(for: "en"), "Draft", "a draft says so before its review")
         XCTAssertEqual(list.rows[0].icon, "circle.dashed", "a pull request with no checks is grey")
-        XCTAssertEqual(page.english(4), "Open in GitHub")
-        guard case .button(let rerun) = page.blocks[5].content else { return XCTFail() }
+        XCTAssertEqual(page.english(3), "Open my pull requests", "under the pull requests, as the openPulls command")
+        XCTAssertEqual(page.english(5), "Open in GitHub")
+        guard case .button(let rerun) = page.blocks[6].content else { return XCTFail() }
         XCTAssertEqual(rerun.style, .destructive)
         XCTAssertEqual(Pages.pull(ofRow: "pr.acme.web.2")?.number, 2)
         XCTAssertEqual(Pages.pull(ofRow: "pr.acme.web.2")?.repo, Self.repo)
@@ -211,11 +212,11 @@ final class PagesTests: XCTestCase {
 
     func testTheIslandPageWithoutPullRequestsOrFailures() {
         let page = Pages.island(summary: summary(), auth: .signedIn(login: "me"))
-        XCTAssertEqual(page.kinds, ["row", "heading", "text", "button", "button"])
+        XCTAssertEqual(page.kinds, ["row", "heading", "text", "button", "button", "button"])
         XCTAssertEqual(page.english(2), "No pull requests need you.")
-        XCTAssertEqual(page.ids, ["repo.acme.web", "refresh", "openRepo"], "no re-run button without a failed run")
+        XCTAssertEqual(page.ids, ["repo.acme.web", "openPulls", "refresh", "openRepo"], "no re-run button without a failed run")
         let green = Pages.island(summary: summary(red: true), auth: .signedIn(login: "me"))
-        XCTAssertEqual(green.ids, ["repo.acme.web", "refresh", "openRepo"],
+        XCTAssertEqual(green.ids, ["repo.acme.web", "openPulls", "refresh", "openRepo"],
                        "a failed check run, not a workflow run, cannot be re-run")
     }
 

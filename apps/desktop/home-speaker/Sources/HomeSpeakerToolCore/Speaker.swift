@@ -25,6 +25,10 @@ import HomeSpeakerCore
 /// One thing the tool asks HomeSpeaker's program to do, as its flags do.
 public enum Job: Equatable, Sendable {
     case say(String)
+    /// Speaks again what Recent Broadcasts lists, as `say` does (the master
+    /// switch holds, quiet hours do not), without adding it to the history
+    /// a second time.
+    case replay(String)
     case volume
     case setVolume(Int)
     case mute
@@ -39,8 +43,16 @@ public enum Job: Equatable, Sendable {
     /// job, so a slow sign-in never holds up a mute.
     public var isSetup: Bool {
         switch self {
-        case .say, .volume, .setVolume, .mute, .unmute: return false
+        case .say, .replay, .volume, .setVolume, .mute, .unmute: return false
         case .app, .signIn: return true
+        }
+    }
+
+    /// The text a `say` or `replay` speaks; nil for every other job.
+    public var spokenText: String? {
+        switch self {
+        case .say(let text), .replay(let text): return text
+        default: return nil
         }
     }
 }
@@ -157,7 +169,10 @@ public final class ProcessDriver: SpeakerDriver {
 
     public static func arguments(for job: Job) -> [String] {
         switch job {
-        case .say(let text): return ["--say", text]
+        // The program has no flag that leaves the history alone, so a
+        // replay run this way is listed again. The tool runs its jobs on
+        // its own engine (`EngineDriver`), which does not.
+        case .say(let text), .replay(let text): return ["--say", text]
         case .volume: return ["--volume"]
         case .setVolume(let level): return ["--set-volume", String(min(100, max(0, level)))]
         case .mute: return ["--mute"]
@@ -204,7 +219,7 @@ public final class ProcessDriver: SpeakerDriver {
         let said = output.trimmingCharacters(in: .whitespacesAndNewlines)
         let complained = error.trimmingCharacters(in: .whitespacesAndNewlines)
         switch job {
-        case .say:
+        case .say, .replay:
             // `--say` exits 0 when something was heard, or nothing was
             // meant to be (quiet hours, no outputs); what it printed says.
             if status == 0 {

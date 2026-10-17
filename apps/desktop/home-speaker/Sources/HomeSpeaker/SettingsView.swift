@@ -155,6 +155,16 @@ public struct SettingsView: View {
         )
     }
 
+    /// A chat source's switch: saved, and the monitor brought along
+    /// (`ConfigManager.setChatSource`), so switching one on from all off
+    /// starts it, as the menu bar's switch does.
+    private func sourceBinding(_ source: WritableKeyPath<ChatMonitorConfig, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { configManager.config.effectiveChatMonitor[keyPath: source] },
+            set: { configManager.setChatSource(source, $0) }
+        )
+    }
+
     private func status(_ text: String, isError: Bool = false) {
         viewModel.statusMessage = (isError ? "Error: " : "") + text
     }
@@ -563,7 +573,7 @@ public struct SettingsView: View {
             }
 
             Section("Slack") {
-                Toggle("Announce Slack messages", isOn: monitorBinding(\.slackEnabled))
+                Toggle("Announce Slack messages", isOn: sourceBinding(\.slackEnabled))
                     .accessibilityHint("Announces new Slack messages aloud")
                 SecureField("User token (xoxp-…)", text: $viewModel.slackToken)
                     .onSubmit { saveSlackToken() }
@@ -580,7 +590,7 @@ public struct SettingsView: View {
             }
 
             Section {
-                Toggle("Announce Google Chat messages", isOn: monitorBinding(\.googleChatEnabled))
+                Toggle("Announce Google Chat messages", isOn: sourceBinding(\.googleChatEnabled))
                     .accessibilityHint("Announces new Google Chat messages aloud")
                 Picker("Read Google Chat via", selection: monitorBinding(\.googleChatSource)) {
                     Text("Automatic").tag(ChatMonitorConfig.GoogleChatSource.auto)
@@ -624,7 +634,7 @@ public struct SettingsView: View {
             }
 
             Section {
-                Toggle("Announce Beeper messages", isOn: monitorBinding(\.beeperEnabled))
+                Toggle("Announce Beeper messages", isOn: sourceBinding(\.beeperEnabled))
                     .accessibilityHint("Announces new messages from Beeper Desktop aloud")
                 Picker("Announce", selection: monitorBinding(\.beeperAnnounce)) {
                     ForEach(ChatMonitorConfig.BeeperAnnounce.allCases, id: \.self) { mode in
@@ -671,6 +681,21 @@ public struct SettingsView: View {
 
     private var agentsTab: some View {
         Form {
+            // Each agent's own switch, under Enable Voice Broadcasting: the
+            // menu bar and the extension have the same pair.
+            Section {
+                ForEach(CodingAgent.allCases, id: \.self) { agent in
+                    Toggle("Announce \(agent.displayName) replies", isOn: Binding(
+                        get: { configManager.config.announces(agent) },
+                        set: { configManager.setAnnounces(agent, $0) }
+                    ))
+                }
+            } header: {
+                Text("Announcements")
+            } footer: {
+                Text("Off, the hook or instruction stays as it is and nothing is spoken.")
+            }
+
             ForEach(viewModel.agents, id: \.agent) { st in
                 Section {
                     switch st.section {

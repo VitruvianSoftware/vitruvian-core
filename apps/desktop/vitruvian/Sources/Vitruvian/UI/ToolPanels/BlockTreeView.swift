@@ -223,14 +223,24 @@ package struct BlockTreeView: View {
                 .disabled(!enabled)
                 .modifier(Focused(focus: focus, id: id))
         case .toggle(let id, let title, let isOn, let enabled):
-            Toggle(isOn: Binding(get: { isOn }, set: { act(id, .toggle, .bool($0)) })) {
+            // Laid out as a choice is: the title leading, the switch at the
+            // trailing edge, so a page's switches and menus line up. A long
+            // title wraps before it reaches the switch. The switch carries
+            // the title as its name; the drawn title is not read twice.
+            HStack(spacing: 10) {
                 Text(verbatim: title).font(metrics.body).lineLimit(BlockTreeContent.toggleLines)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+                Spacer(minLength: 8)
+                Toggle(title, isOn: Binding(get: { isOn }, set: { act(id, .toggle, .bool($0)) }))
+                    .labelsHidden()
+                    .controlNamed(title)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .disabled(!enabled)
+                    .modifier(Focused(focus: focus, id: id))
             }
-            .controlNamed(title)
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .disabled(!enabled)
-            .modifier(Focused(focus: focus, id: id))
         case .field(let id, let title, let value, let placeholder, let kind):
             BlockField(id: id, title: title, value: value, placeholder: placeholder, kind: kind,
                        metrics: metrics, focus: focus, act: act)

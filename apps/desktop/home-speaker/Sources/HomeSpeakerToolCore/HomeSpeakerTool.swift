@@ -450,6 +450,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.say?:
                 guard let text = event.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return .keep }
                 try say(text)
+            case Pages.Block.sayClipboard?:
+                guard event.kind == .tap else { return .keep }
+                try run(command: Command.sayClipboard)
             case Pages.Block.broadcasting?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
@@ -495,6 +498,28 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 reload()
                 config.effectiveSpeakLocal = isOn
                 try save()
+            case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
+                guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return .keep }
+                reload()
+                config.setAnnounces(agent, isOn)
+                try save()
+            case Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.beeperEnabled?:
+                // Saved, as Settings saves it: the engine follows the file
+                // and starts, stops or restarts its monitor to match
+                // (`ChatMonitorReconciliation`). The redraw reads the
+                // monitor again, so a source that cannot run is warned
+                // about at the top.
+                guard let isOn = event.isOn else { return .keep }
+                reload()
+                switch event.block {
+                case Pages.Block.slackEnabled?: config.effectiveChatMonitor.slackEnabled = isOn
+                case Pages.Block.googleChatEnabled?: config.effectiveChatMonitor.googleChatEnabled = isOn
+                default: config.effectiveChatMonitor.beeperEnabled = isOn
+                }
+                try save()
+            case let id? where Pages.Block.replayBroadcastId(id) != nil:
+                guard event.kind == .tap, let wanted = Pages.Block.replayBroadcastId(id) else { return .keep }
+                try replay(wanted)
             default:
                 return .keep
             }
@@ -629,7 +654,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
                  Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?,
-                 Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?:
+                 Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
+                 Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
                 // A value out of range throws, and is said under the
                 // section instead of being dropped or quietly clamped.
                 guard try change(event, picked: picked) else { return .keep }
@@ -798,6 +824,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.beeperAnnounce?:
             guard let picked, let mode = ChatMonitorConfig.BeeperAnnounce(rawValue: picked) else { return false }
             config.effectiveChatMonitor.beeperAnnounce = mode
+        case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
+            guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return false }
+            config.setAnnounces(agent, isOn)
         case Pages.Block.muteOwnMessages?:
             guard let isOn = event.isOn else { return false }
             config.effectiveChatMonitor.muteOwnMessages = isOn
@@ -940,8 +969,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             ? Pages.Chat(ownerRunning: parts.ownerRunning(),
                          monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read()).runtimeError
             : nil
-        let speaking: Bool
-        if case .say? = busy { speaking = true } else { speaking = false }
+        let speaking = busy?.spokenText != nil
         return StatusInputs(
             role: role ?? parts.role(),
             monitorProblem: monitorProblem,
@@ -1567,6 +1595,17 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         try run(.say(text))
     }
 
+    /// Speaks again the history's broadcast `id`, as Say speaks what is
+    /// typed: the master switch holds, quiet hours do not. HomeSpeaker
+    /// leaves the history as it is (`Job.replay`), so it is listed once.
+    private func replay(_ id: UUID) throws {
+        guard let item = BroadcastHistory(fileURL: parts.historyURL).load().first(where: { $0.id == id }) else {
+            throw CommandRefused(Pages.replayGone)
+        }
+        try check(.replay(item.text))
+        try run(.replay(item.text))
+    }
+
     private func speakerJob(_ job: Job) throws {
         try check(job)
         try run(job)
@@ -1578,7 +1617,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         try refuseWhileQuiet()
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         reload()
-        if case .say = job {
+        if job.spokenText != nil {
             guard config.defaultDevice != nil || config.effectiveSpeakLocal else { throw CommandRefused(Self.notSetUp) }
             guard config.enabled else { throw CommandRefused("broadcasting is switched off") }
         } else {
@@ -1708,7 +1747,7 @@ extension Job {
     var controlsSpeaker: Bool {
         switch self {
         case .volume, .setVolume, .mute, .unmute: return true
-        case .say, .app, .signIn: return false
+        case .say, .replay, .app, .signIn: return false
         }
     }
 }

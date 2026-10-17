@@ -17,6 +17,7 @@ enum ExternalToolHostTests {
         quitting(suite)
         quittingRealPrograms(suite)
         listing(suite)
+        toolsGrid(suite)
     }
 
     /// Something the host can hold that only records what it was asked.
@@ -341,5 +342,64 @@ enum ExternalToolHostTests {
             refused = error as? ToolRegistry.RegistrationError == .duplicateTool(id)
         }
         suite.expect(refused, "a tool cannot be listed twice")
+    }
+
+    /// The island's Tools grid holds the app's own tools and outside tools
+    /// with no island page; an outside tool with one keeps its actions on
+    /// that page, and on every other surface it asks for.
+    static func toolsGrid(_ suite: TestSuite) {
+        let bench = Bench()
+        let registry = ToolRegistry(isAvailable: { _ in true })
+        BuiltinTools.install(into: registry)
+        let builtinTiles = registry.commands(on: .quickPanel).map(\.id)
+        let everywhere = #"[{"id": "go", "title": {"en": "Go"}, "surfaces": ["quickPanel", "commandBar", "radial"]}]"#
+        func outside(_ id: String, panels: String?) -> ExternalToolManifest? {
+            let drawn = panels.map { #", "protocol": "2", "contributes": {"commands": \#(everywhere), "panels": \#($0)}"# }
+            return ExternalToolManifestTests.tool(#"{"id": "\#(id)""# + (drawn ?? #", "contributes": {"commands": \#(everywhere)}"#) + "}")
+        }
+        let paged = outside("com.acme.paged", panels: #"[{"id": "p", "title": {"en": "P"}, "placement": "island"}]"#)
+        let windowed = outside("com.acme.windowed", panels: #"[{"id": "w", "title": {"en": "W"}, "placement": "window"}]"#)
+        let headless = outside("com.acme.headless", panels: nil)
+        guard let paged, let windowed, let headless else {
+            return suite.expect(false, "the three outside tools' manifests are read")
+        }
+        do {
+            for tool in [paged, windowed, headless] { try registry.register(tool, host: { bench.host }) }
+        } catch {
+            return suite.expect(false, "the three outside tools are listed, got \(error)")
+        }
+        func go(_ tool: ExternalToolManifest) -> CommandID { CommandID(tool: tool.manifest.id, name: "go")! }
+        let grid = registry.extraCommands(on: .quickPanel).map(\.id)
+        suite.expect(registry.hasIslandPage(paged.manifest.id) && !registry.hasIslandPage(windowed.manifest.id)
+                         && !registry.hasIslandPage(headless.manifest.id),
+                     "only a manifest with an island panel gives a tool an island page")
+        suite.expect(!grid.contains(go(paged)),
+                     "an outside tool with an island page has no tile in the Tools grid, though it asks for one")
+        suite.expect(grid == [go(windowed), go(headless)],
+                     "an outside tool with no island page keeps its tile, a window or Settings panel or none")
+        suite.expect(registry.extraCommands(on: .commandBar).map(\.id) == [go(paged), go(windowed), go(headless)]
+                         && registry.extraCommands(on: .radial).map(\.id) == [go(paged), go(windowed), go(headless)],
+                     "the command bar and the wheel still offer every outside tool's command")
+        suite.expect(registry.commands(on: .quickPanel).filter { $0.id.tool.isBundledForm }.map(\.id) == builtinTiles
+                         && !builtinTiles.isEmpty
+                         && !builtinTiles.contains { registry.hasIslandPage($0.tool) },
+                     "the app's own tiles are untouched")
+        do {
+            try registry.setHasIslandPage(for: builtinTiles[0].tool)
+        } catch {
+            suite.expect(false, "a registered built-in tool can be named, got \(error)")
+        }
+        suite.expect(!registry.hasIslandPage(builtinTiles[0].tool), "and none of the app's own tools is ever noted as one")
+
+        registry.unregister(paged.manifest.id)
+        let plain = ExternalToolManifestTests.tool(#"{"id": "com.acme.paged", "contributes": {"commands": \#(everywhere)}}"#)
+        do {
+            if let plain { try registry.register(plain, host: { bench.host }) }
+        } catch {
+            suite.expect(false, "the tool lists again once removed, got \(error)")
+        }
+        suite.expect(plain != nil && !registry.hasIslandPage(paged.manifest.id)
+                         && registry.extraCommands(on: .quickPanel).map(\.id).contains(go(paged)),
+                     "removing a tool forgets its island page: updated to have none, its tile is back")
     }
 }

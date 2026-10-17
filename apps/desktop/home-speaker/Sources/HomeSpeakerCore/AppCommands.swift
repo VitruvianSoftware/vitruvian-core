@@ -78,7 +78,7 @@ public enum AppCommandParser {
     public static func parse(_ arguments: [String]) -> Result<AppCommand, UsageError>? {
         guard let first = arguments.first else { return nil }
         guard commandFlags.contains(first) else {
-            if first == "--say" || first == ClaudeStopHook.announceArgument { return nil }
+            if first == "--say" || first == BroadcastSource.flag || first == ClaudeStopHook.announceArgument { return nil }
             if let misplaced = arguments.first(where: commandFlags.contains) {
                 return .failure(UsageError("\(misplaced) must be the first argument"))
             }

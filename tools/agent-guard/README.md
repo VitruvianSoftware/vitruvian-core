@@ -3,8 +3,9 @@
 AI agents working in vitruvian-core must run repo and dev operations through
 Bazel targets: `bazel run //tools/git:commit`, not `git commit`; `bazel test`,
 not `go test`. Instructions alone did not hold, so agent-guard enforces it. It
-is a Claude Code hook that reads each command an agent is about to run and
-refuses the ones that have a Bazel route, naming the target to use instead.
+is a hook for Claude Code and Antigravity (agy) that reads each command an
+agent is about to run and refuses the ones that have a Bazel route, naming the
+target to use instead.
 
 It is a **guardrail, not a security boundary**. It reads command text, so it
 stops habits; a determined workaround (a script that calls git inside it) gets
@@ -17,7 +18,7 @@ so and tells the agent to stop and tell James.
 ```mermaid
 flowchart LR
   A[Agent command] --> P[Split into every program it runs]
-  P --> S{Inside a vitruvian-core checkout?}
+  P --> S{"Inside a vitruvian-core checkout, or location unknown?"}
   S -- no --> OK[Allow, log]
   S -- yes --> C{Read-only, Bazel, or not governed?}
   C -- yes --> OK
@@ -40,7 +41,7 @@ session (`CLAUDECODE`, `ANTIGRAVITY_AGENT`, any other `ANTIGRAVITY_*`, or
 `GEMINI_CLI` set) it only runs `--dry-run` and `--check`.
 
 ```sh
-bazel run //tools/agent-guard:install -- --dry-run   # see the exact change to ~/.claude/settings.json
+bazel run //tools/agent-guard:install -- --dry-run   # see the exact change to both hook files
 bazel run //tools/agent-guard:install                # install or update
 bazel run //tools/agent-guard:install -- --check     # current and working? exit 1 if not
 bazel run //tools/agent-guard:install -- --mode git-push=warn   # one category; `all=warn` for every one
@@ -70,10 +71,16 @@ What it does:
   Every other hook is kept, and the file keeps its formatting. It is backed up
   to `settings.json.agent-guard-<time>.bak` before each write. Running the
   installer twice changes nothing.
+- **Merges one named hook, `agent-guard`, into `~/.gemini/config/hooks.json`**
+  for Antigravity, if `~/.gemini` exists (details below). Other named hooks,
+  such as `response-contract`, are kept; the file is backed up the same way.
 - **Tests itself, and rolls back on failure.** After writing, it runs the
-  installed hook on two sample calls: `git status` must be allowed and
-  `git stash` refused. If either fails, the settings file and the previous
-  copy are put back and it says why. `--check` runs the same test.
+  installed hook on four sample calls, with every category enforced: in Claude
+  Code's format `git status` must be allowed and `git stash` refused; in agy's
+  real payload shape, run from a folder outside any checkout as agy does,
+  `git status` must be allowed and `go vet` refused. If any fails, both hook
+  files and the previous copy are put back and it says why. `--check` runs the
+  same test and also checks the agy entry.
 - The repo's own `.claude/block-queue-bypass.sh` hook stays. Both run, and
   either one's refusal wins.
 
@@ -99,23 +106,72 @@ never writes its own cache), so whichever runs starts fast: about 30 ms a call
 on Homebrew's, 80-100 ms through Apple's shim. Pass `--python /abs/path/python3`
 to choose the first. `--check` runs the self-test through the same script.
 
-**Antigravity** is not wired yet. Its hook format is in the design but untested
-live, so the installer prints the snippet for `~/.gemini/config/hooks.json`
-instead of writing it. The guard already reads and answers that format.
+**Antigravity (agy).** Verified live against agy 1.4.0 on 2026-10-16: with
+the entry below, agy refused `go vet ./...` and showed the agent the guard's
+reason, let `git status` run, and the log recorded `"agent": "antigravity"`.
+What the installer writes, and why:
+
+```json
+"agent-guard": {
+  "enabled": true,
+  "PreToolUse": [
+    {"matcher": "run_command|shell_exec|send_command_input|manage_task|git_commit|write_to_file|replace_file_content|multi_replace_file_content|notebook_edit",
+     "hooks": [{"type": "command", "command": "/bin/sh ~/.local/share/agent-guard/hook.sh", "timeout": 10}]}
+  ]
+}
+```
+
+- **Grouped shape only.** agy loads a flat `PreToolUse` entry (`type` and
+  `command` beside `matcher`) but silently ignores it.
+- **One regex matcher** against the tool name; plain `|` alternation was
+  checked live. Which names are confirmed:
+  - seen live in a hook payload: `run_command` (`CommandLine`, `Cwd`),
+    `write_to_file` and `replace_file_content` (`TargetFile`);
+  - in agy's own tool declarations, not yet seen in a hook payload:
+    `multi_replace_file_content` (`TargetFile`), `notebook_edit`
+    (`NotebookPath`), `manage_task` (`Action: "send_input"` with `Input`
+    sends input to a running command);
+  - in the agy binary only, never seen offered to the model, so their argument
+    names are guesses: `shell_exec` (read like `run_command`; the guard tries
+    `Command`, `command`, `CommandLine`), `send_command_input` (`Input` or
+    `input`) and `git_commit` (refused as a commit whatever its arguments).
+- **Where a command runs.** agy runs hooks in the folder holding `hooks.json`
+  (`~/.gemini/config`), not the agent's, and sends no top-level `cwd`. The
+  guard uses `args.Cwd`; without it, a `workspacePaths` entry inside
+  vitruvian-core if any is, else the first one; without either, the location
+  is unknown and the command is judged as if it were
+  inside vitruvian-core. A missing location never means allowed.
+- **Replies.** Allow prints nothing; deny prints
+  `{"decision":"deny","reason":"..."}`. Warn mode prints nothing (agy has no
+  "allow with a note" reply), so a warning reaches only the log.
+- **A broken hook fails closed** (tested live on 2026-10-17 with agy 1.4.0).
+  agy refused the `run_command` call when the hook exited 1, printed
+  half-finished JSON, hung past its timeout, or could not start its
+  interpreter (exit 126), and reported a failed JSON hook to the agent. A
+  working hook let the same command run. See "If the hook breaks".
 
 ## If the hook breaks
 
 A broken hook refuses every command an agent runs (by design: it fails
-closed). File edits keep working. To recover, from **your own terminal** (hooks
-do not run there):
+closed). In Claude Code, file edits keep working. Antigravity fails closed too
+(tested live with agy 1.4.0: a hook that exits 1, prints half-finished JSON,
+hangs past its timeout or has no interpreter makes agy refuse `run_command`,
+reporting that a JSON hook failed), so a broken agent-guard also stops agy's
+command runs. agy has one matcher for commands and file writes, so its file
+edits are probably refused as well; only `run_command` was tested. `hook.sh`
+trying several Pythons in turn is what makes a broken hook unlikely. To
+recover, from **your own terminal** (hooks do not run there):
 
 ```sh
 bazel run //tools/agent-guard:install -- --uninstall
 ```
 
-Or delete the one entry by hand: in `~/.claude/settings.json`, under
+It removes only agent-guard's entries from both hook files. A broken
+`~/.gemini/config/hooks.json` does not stop it removing the Claude Code hook.
+Or delete the entries by hand: in `~/.claude/settings.json`, under
 `hooks.PreToolUse`, remove the entries whose `command` ends in
-`.local/share/agent-guard/hook.sh`. Backups of the file before each install are
+`.local/share/agent-guard/hook.sh`; in `~/.gemini/config/hooks.json`, remove
+the `"agent-guard"` key. Backups of the file before each install are
 beside it as `settings.json.agent-guard-<time>.bak`. Then find out why with
 `bazel run //tools/agent-guard:install -- --check`, fix it, and reinstall.
 
@@ -203,6 +259,8 @@ categories apply everywhere, because what they protect is not in the checkout:
 scoped by that repository instead: vitruvian-core is in scope wherever the
 command runs, and any other repository is out of scope even from inside this
 checkout. `{owner}/{repo}` placeholders mean the current directory's repo.
+For Antigravity the directory is `args.Cwd`, then a `workspacePaths` entry
+inside vitruvian-core (or the first one if none is); with neither, the command is treated as inside (see Install).
 
 ## Modes
 
@@ -216,9 +274,11 @@ set before.
 ## The log
 
 Every command an agent runs through a covered tool is one JSON line in
-`~/.local/state/agent-guard/log.jsonl`: time, agent, tool, directory, scope,
-category, operation, decision and the command (redacted, cut to 1,000
-characters). File edits are logged only when refused. The directory is 0700
+`~/.local/state/agent-guard/log.jsonl`: time, agent (`claude-code` or
+`antigravity`), tool, directory, scope, category, operation, decision, the
+command (redacted, cut to 1,000 characters) and the session. For Antigravity
+the directory is the one the guard judged by (empty if agy gave none, with
+scope `unknown`) and the session is agy's `conversationId`. File edits are logged only when refused. The directory is 0700
 and the file 0600. Secrets are replaced by `[REDACTED]`: values after
 `--password`/`--token`/`--secret`, attached `-pPASSWORD` (not `git log -p 5`),
 `curl -u user:pass`, `gh secret set ... --body`, `NAME_TOKEN=`/`*_KEY=`/
@@ -254,18 +314,22 @@ jq -c 'select(.decision=="warn")' ~/.local/state/agent-guard/log.jsonl
   `oversize` rather than checked.
 - **It cannot see inside `bazel run`.** That is by design: targets run git
   freely. A target that misbehaves has to be fixed in the target.
-- **Only the tools in its matcher.** A new MCP server that runs commands or
-  changes the repo is a gap until it is added to the matcher in `install.py`.
-- **Edits to `~/.claude/settings.json` are not blocked**, so an agent could in
-  principle remove the hook that way; `--check` shows it.
+- **Only the tools in its matchers.** A new MCP server or agy tool that runs
+  commands or changes the repo is a gap until it is added to the matchers in
+  `install.py` and to the tool tables in `agent_guard.py`.
+- **Edits to `~/.claude/settings.json` or `~/.gemini/config/hooks.json` are
+  not blocked**, so an agent could in principle remove the hook that way;
+  `--check` shows it.
 - **Agent detection is by environment marker** (`CLAUDECODE`,
   `ANTIGRAVITY_AGENT`, `ANTIGRAVITY_*`, `GEMINI_CLI`). `ANTIGRAVITY_AGENT=1` is
   in the agy binary; the Gemini CLI marker is the `GEMINI_CLI` name its
   wrapper uses. Neither was seen live in an agent shell.
 - **`git checkout <name>`** is treated as a file restore when `<name>` exists
   as a path, and as a branch switch otherwise.
-- **Antigravity** is unguarded until its hook is added by hand and tested, and
-  the older Gemini CLI has no usable hook.
+- **Antigravity** is guarded through the hook above, verified live for
+  `run_command`, and a broken hook fails closed there. Not verified: the real
+  argument names of `shell_exec`, `send_command_input` and
+  `git_commit`. The older Gemini CLI has no usable hook.
 - Each refusal costs the agent a turn; expect some friction at first.
 
 ## Tests
@@ -276,8 +340,10 @@ bazel test //tools/agent-guard/...
 
 `agent_guard_test` replays a table of 400+ real commands (from a week of agent
 logs) against expected decisions, plus redaction, scope, modes, the hook's
-input and output, a real git merge conflict, and timing on 100 KB, 1 MB and
-5 MB inputs. `install_test` runs the
-installer against a temporary HOME: merge, the two entries, idempotence, dry
-run, uninstall, modes, the self-test and rollback, the interpreter fallback,
-the targets-first refusal and refusal inside an agent session.
+input and output in both formats (including agy's captured payload shape,
+the missing-`Cwd` fallback and the log fields), a real git merge conflict, and
+timing on 100 KB, 1 MB and 5 MB inputs. `install_test` runs the installer
+against a temporary HOME: merge, the two Claude Code entries and the agy entry,
+idempotence, dry run, uninstall, modes, the self-test and rollback, the
+interpreter fallback, the targets-first refusal and refusal inside an agent
+session.
