@@ -138,6 +138,16 @@ Reminders and scheduled sends are timers in the engine, so they fire with the wi
 | 5 | **Local API and MCP** | Claude works against Courier with only its address changed |
 | 6 | **Cutover and release** | Google Messages moved, Beeper logged out, a release through the desktop pipeline (`//tools/desktop-package`) |
 
+**Milestone 4, in seven parts** (ordered by daily-use impact and what each needs first). Each part gets its own plan, and the acceptance checklist is ticked per part, one section each in `apps/desktop/courier/docs/m4-acceptance.md`.
+
+1. **4.1 Organise the inbox:** space bar, Edit Spaces, labels, per-account Show in Inbox; pin, archive, low priority, hide, mark unread; filters and sorts; multi-select, hover and double-click actions, message requests, typing and mention markers on rows; reminders; auto-archive rules.
+2. **4.2 Search:** the FTS5 index (§4), search across chats, messages and people, and ⌘K with filters and sections. Milestone 5's MCP reuses it.
+3. **4.3 Message actions and composer:** edit, delete, unsend, forward, undo send, send later, polls, mentions, quick replies, formatting, threads, bookmarks, edit history, disappearing timers.
+4. **4.4 Engine reliability:** sends queue while a network is down (§5), chats show as each bridge becomes ready, delivered and seen statuses, typing both ways, a second account per network.
+5. **4.5 People and media:** Chat Info, groups, merged chats, new chat, group and Blasts (⌘N), the calendar pane, the media viewer, inline voice and video, hover cards, Contacts.
+6. **4.6 Settings, notifications and the Bridges pane:** the Settings window (⌘,), notification options, the Bridges pane with Restart bridge, Report a Problem (a local bundle), login item, Touch ID lock, Dock and menu-bar menus.
+7. **4.7 Appearance, command bar and stubs:** themes, colours, wallpapers, app icons (our own art), font size; the ⌘J command bar over a registry every part adds to; the five provider stubs and the remaining "not available yet" screens.
+
 **Tests:**
 - **Engine:** Go tests for the local store, plus a **fake network** that behaves like a bridge. Sending, receiving, failures and reconnects run in CI with no real accounts.
 - **App ↔ engine:** one shared protocol definition, with a conformance test on both sides (pattern: HomeSpeaker's JSON-RPC conformance test).
