@@ -127,15 +127,40 @@ your checkout. Previews are always fine; applies are not.
 - macOS app (nexus-agent): `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`.
 
 ## Repo and dev operations go through Bazel targets
-Agents do not run git writes, `gh` writes, or toolchains directly here. Use the target:
-`bazel run //tools/git:{commit,push,sync}` instead of `git commit`/`push`/`rebase`,
-`bazel run //tools/worktree` instead of `git worktree`, `git checkout -b` or `git switch`,
-`bazel test //...` instead of `go test`, `swift test`, `pnpm test` or `cargo test`,
-`bazel run //tools/format` and `aspect lint` instead of running linters, and
-`bazel run //tools/agent-app -- pr-create` instead of `gh pr create`. Read-only commands
-(`git status/log/diff`, `gh pr view`, `kubectl get`) stay fine.
-Where this guide still names a raw command (`gh pr create`, `gh pr merge --auto` below),
-use the target if it exists; if it does not, stop and tell James which one is missing.
+**Use these targets for every git write.** Raw git writes (`git commit`, `git push`,
+`git rebase`, `git worktree add/remove`, `git stash`, …) are blocked by agent-guard
+in agent sessions once it is installed (below); reads (`git status`, `log`, `diff`, `show`, `fetch`) stay allowed.
+Each target does the write plus the checks that belong with it, and every refusal
+prints the command to use instead. If no target fits, stop and say which one is missing.
+
+| To | Run |
+|---|---|
+| Start work on a branch | `bazel run //tools/worktree -- <branch>`, then work inside it |
+| Look at a commit without a branch | `bazel run //tools/worktree -- --detach <ref> <name>` |
+| Keep a worktree safe from pruners | `bazel run //tools/worktree -- --lock [reason]` (and `--unlock`) |
+| Commit | `bazel run //tools/git:commit -- --agent <you> -m "fix(scope): …" <paths>` (or `--all`; `--fixup <sha>`) |
+| Push | `bazel run //tools/git:push` (`--agent <you>`; `--force-with-lease` after a rebase) |
+| Catch up with main | `bazel run //tools/git:sync` (`--autosquash [--keep-base]`; `--merge` for a pushed branch; `--abort`) |
+| Finish a merge | `bazel run //tools/git:commit -- <fixed files>` |
+| Scan for secrets | `bazel run //tools/secret-scan` (`--staged`, `--range a..b`) |
+| Lint workflows | `bazel run //tools/ci:actionlint` |
+| Remove a worktree | `bazel run //tools/worktree -- --remove <branch\|name> [--delete-branch]` |
+
+Pass `--agent <you>` to commit and push: it makes your agent's bot the author,
+committer and pusher (via `//tools/agent-app`), so nothing lands as James.
+Commit refuses on `main` and in the main checkout, and secret-scans what it records.
+Push never writes `main` and never plain-forces. Sync never stashes: the stash is
+shared by every worktree. See [`tools/git/README.md`](tools/git/README.md).
+Pull requests are not here: open one with `bazel run //tools/agent-app -- pr-create`
+(below). The other PR commands (edit, comment, enqueue) are coming separately as
+more `//tools/agent-app` `pr-*` commands; until then, use `gh pr …` as below.
+
+The same goes for toolchains and `gh` writes: `bazel test //...` instead of `go test`,
+`swift test`, `pnpm test` or `cargo test`; `bazel run //tools/format` and `aspect lint`
+instead of running linters; `bazel run //tools/agent-app -- pr-create` instead of
+`gh pr create`. Read-only commands (`git status/log/diff`, `gh pr view`, `kubectl get`)
+stay fine. Where this guide still names a raw command, use the target if it exists; if it
+does not, stop and tell James which one is missing.
 
 In Claude Code this is enforced by **agent-guard**, a hook that refuses the raw command and
 names the target ([tools/agent-guard](tools/agent-guard/README.md)). It reads command text,
@@ -163,7 +188,7 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
    and turned `main` red. Claude Code sessions are stopped by `.claude/block-queue-bypass.sh`;
    every other agent is bound by this rule. A direct merge also raises an alert.
 4. **Clean up & verify post-merge health.** After `watch-pr` confirms the squash commit has landed
-   and the post-merge pipeline is green, delete the branch/worktree and return to the latest `main`.
+   and the post-merge pipeline is green, remove the worktree and branch (`bazel run //tools/worktree -- --remove <branch> --delete-branch`).
    **Verify it landed first**, and note that `git merge-base --is-ancestor <branch-sha>
    origin/main` is always false here — `main` is squash-only, so your branch's SHAs are
    never ancestors of it. Check by PR number instead (`git log --grep "(#N)" origin/main`,

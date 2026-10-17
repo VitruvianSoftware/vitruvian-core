@@ -79,3 +79,14 @@ alias(
     actual = "//tools/adb-connect",
     visibility = ["//visibility:public"],
 )
+
+# The lockfile behind @multitool. //tools/secret-scan and //tools/ci:actionlint
+# tests read it to keep its gitleaks and actionlint pins level with the ones CI
+# downloads.
+exports_files(
+    ["tools.lock.json"],
+    visibility = [
+        "//tools/ci:__pkg__",
+        "//tools/secret-scan:__pkg__",
+    ],
+)

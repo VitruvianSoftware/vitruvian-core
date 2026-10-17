@@ -14,6 +14,7 @@ mindmap
     Dev loop & SDLC
       //:doctor
       //tools/worktree
+      //tools/git:commit·push·sync
       //tools/agent-guard:install
       //tools/agent-app
       //tools/watch-pr
@@ -46,7 +47,10 @@ mindmap
 |---|---|
 | `//:doctor` | Verifies your core toolchain (bazel, git required; node/pnpm/go/gh/gcloud/docker/direnv advisory) |
 | `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/tabula:doctor`, `//apps/cli/devx:doctor`, …) |
-| `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --list`, `-- --remove <branch> [--delete-branch]`, `-- --prune [--execute]` (removes only clean, landed, unlocked worktrees; dry run by default). Branch work in the primary checkout is blocked — this is the sanctioned path |
+| `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --detach <ref> <name>` (scratch tree, no branch), `-- --list`, `-- --remove <branch\|name> [--delete-branch]` (also removes its Bazel caches), `-- --lock [reason]` / `-- --unlock`, `-- --prune [--execute]` (removes only clean, landed, unlocked worktrees, and scratch trees unused for a day; dry run by default). Branch work in the primary checkout is blocked — this is the sanctioned path |
+| `//tools/git:commit -- -m <msg> <paths>` | Stages and commits, after a secret scan of what is staged. Refuses on `main`, in the main checkout, with nothing staged, or a non-Conventional message. `--agent <name>` (author and committer = that agent's bot), `--all`, `-F <file>`, `--fixup <sha>`; with no paths during a merge, concludes it (refusing leftover conflict markers) |
+| `//tools/git:push` | Pushes the current branch to `origin` under its own name and sets its upstream, after scanning the unpushed commits. Never `main`, never plain `--force`. `--force-with-lease`, `--agent <name>` (pushes as that agent's App via `//tools/agent-app -- env`), `--dry-run` |
+| `//tools/git:sync` | Fetches and rebases the current branch onto `origin/main`; undoes the rebase on a conflict and lists the files. `--autosquash` (with `--keep-base` to fold fixups in without moving onto new main), `--merge` (leaves a conflicted merge for `//tools/git:commit` to finish; a branch with merge commits is only ever merged, never rebased), `--abort`. Never stashes |
 | `//tools/agent-app -- env <agent>` | Mints scoped GitHub App credentials (`GH_TOKEN`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`) for automated agents and bots (`atlas`, `quill`, etc.) |
 | `//tools/watch-pr -- <pr#\|branch\|sha>` | Autonomous PR watchdog: monitors CI checks, extracts failed logs, tracks merge queue, and verifies post-merge pipeline on `main` |
 | `//tools/landed -- <pr#\|branch\|sha>` | Resolves whether a PR or branch has landed on `origin/main` by inspecting the squashed commit (`main` is squash-only). `-- --branch <name>` is the stricter delete gate: is every commit on that LOCAL branch on `origin/main` |
@@ -67,6 +71,8 @@ mindmap
 |---|---|
 | `//tools/license:check` / `:verify` / `:add` | License headers: presence, MIT+holder content, auto-fix |
 | `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, visibility firewall, nightly-sweep pairing |
+| `//tools/secret-scan` | `secret-scan`: CI's gitleaks version and `.gitleaks.toml` over this branch's commits (`--staged`, `--range a..b`, `--unpushed`). Names file and line, never the secret |
+| `//tools/ci:actionlint` | `actionlint`: the pinned actionlint with shellcheck over `.github/workflows`, then the commit-SHA pin check |
 | `//tools/techdocs:check` | Verifies that all 15 TechDocs sites compile cleanly with `mkdocs-techdocs-core` |
 
 | `//tools/lint-naming` | Monorepo naming convention audit (`--check`, `--root <path>`). Validates file casing, test suffixes, and rule boundaries across all languages |
