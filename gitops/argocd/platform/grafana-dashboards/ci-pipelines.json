@@ -25,6 +25,345 @@
       }
     },
     {
+      "id": 13,
+      "type": "row",
+      "title": "Experiment #3418: test each change once",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "panels": [
+        {
+          "id": 14,
+          "type": "text",
+          "title": "About the experiment",
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "**What this is.** An experiment to test each change once instead of three times: [issue #3418](https://github.com/VitruvianSoftware/vitruvian-core/issues/3418). The merge queue stays the real gate. These charts cover only the `CI` and `Presubmit` workflows, the two the experiment changes.\n\n**Step 1 went live 2026-10-17 01:43 UTC** (#3419): main no longer re-tests code the merge queue already passed. From then on, expect *After merge (main)* time to drop. Its run count stays about the same, because a skipped re-test still counts as a (short, green) run.\n\n**Stop rule:** merge-queue failure rate above 5% for a week (the red line).\n\n**Not on this dashboard:** fast-lane PRs (#3423) compared with other PRs. The CI metrics don't carry PR labels, so that comparison is only in the issue's daily comments.\n\nEach point covers the day before it (failure rate: the week before it), so a change shows up gradually over that day or week."
+          }
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "CI run time per stage (previous 24h)",
+          "description": "Total minutes CI and Presubmit runs took in the 24 hours before each point, by stage: PR run, merge queue, after merge. Wall-clock time from run start to end, not billed runner minutes. Step 1 (2026-10-17 01:43 UTC) should lower the after-merge line.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "interval": "30m",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 11
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "m",
+              "min": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "branch"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "PR run"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "blue"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "merge_queue"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Merge queue"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "main"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "After merge (main)"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "orange"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {},
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (ci_trigger) (max_over_time(cicd_duration_seconds_sum{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\"}[1d]) - (cicd_duration_seconds_sum{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\"} offset 1d or max_over_time(cicd_duration_seconds_sum{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\"}[1d]) * 0)) / 60",
+              "legendFormat": "{{ci_trigger}}",
+              "range": true,
+              "instant": false,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "CI runs per stage (previous 24h)",
+          "description": "How many CI and Presubmit runs finished in the 24 hours before each point, by stage. A skipped after-merge re-test still counts as a run.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "interval": "30m",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 11
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "branch"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "PR run"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "blue"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "merge_queue"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Merge queue"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "main"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "After merge (main)"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "orange"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {},
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (ci_trigger) (max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\"}[1d]) - (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\"} offset 1d or max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\"}[1d]) * 0))",
+              "legendFormat": "{{ci_trigger}}",
+              "range": true,
+              "instant": false,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "Failure rate per stage (previous 7 days)",
+          "description": "Share of finished CI and Presubmit runs that failed in the 7 days before each point (failed / (succeeded + failed); skipped and cancelled runs are left out). The merge-queue line is the stop-rule signal: above the red 5% line for a week means revert the step that caused it.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "interval": "30m",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 11
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "custom": {
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "transparent",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.05
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "branch"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "PR run"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "blue"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "merge_queue"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Merge queue"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "main"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "After merge (main)"
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "orange"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {},
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "(sum by (ci_trigger) (max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=\"STATUS_CODE_ERROR\"}[7d]) - (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=\"STATUS_CODE_ERROR\"} offset 7d or max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=\"STATUS_CODE_ERROR\"}[7d]) * 0)) or sum by (ci_trigger) (max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=~\"STATUS_CODE_OK|STATUS_CODE_ERROR\"}[7d]) - (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=~\"STATUS_CODE_OK|STATUS_CODE_ERROR\"} offset 7d or max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=~\"STATUS_CODE_OK|STATUS_CODE_ERROR\"}[7d]) * 0)) * 0) / clamp_min(sum by (ci_trigger) (max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=~\"STATUS_CODE_OK|STATUS_CODE_ERROR\"}[7d]) - (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=~\"STATUS_CODE_OK|STATUS_CODE_ERROR\"} offset 7d or max_over_time(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"CI|Presubmit\", status_code=~\"STATUS_CODE_OK|STATUS_CODE_ERROR\"}[7d]) * 0)), 1)",
+              "legendFormat": "{{ci_trigger}}",
+              "range": true,
+              "instant": false,
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": 2,
       "type": "row",
       "title": "Speed",
@@ -33,7 +372,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 3
+        "y": 4
       },
       "panels": []
     },
@@ -50,7 +389,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 5
       },
       "fieldConfig": {
         "defaults": {
@@ -99,7 +438,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 5
       },
       "fieldConfig": {
         "defaults": {
@@ -148,7 +487,7 @@
         "h": 9,
         "w": 8,
         "x": 0,
-        "y": 12
+        "y": 13
       },
       "fieldConfig": {
         "defaults": {
@@ -192,7 +531,7 @@
         "h": 9,
         "w": 8,
         "x": 8,
-        "y": 12
+        "y": 13
       },
       "fieldConfig": {
         "defaults": {
@@ -236,7 +575,7 @@
         "h": 9,
         "w": 8,
         "x": 16,
-        "y": 12
+        "y": 13
       },
       "fieldConfig": {
         "defaults": {
@@ -276,7 +615,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 22
       },
       "panels": []
     },
@@ -293,7 +632,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 22
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -330,7 +669,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 22
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -375,7 +714,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 22
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -419,7 +758,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 31
       },
       "options": {},
       "fieldConfig": {

@@ -30,16 +30,27 @@ def find() -> Path:
     raise FileNotFoundError("ci-pipelines.json")
 
 
+def all_panels(d: dict) -> list:
+    """Top-level panels plus those nested in collapsed rows, which Grafana
+    stores inside the row instead of in the top-level list."""
+    out = []
+    for p in d["panels"]:
+        out.append(p)
+        out.extend(p.get("panels", []))
+    return out
+
+
 def main() -> int:
     d = json.loads(find().read_text())
+    panels = all_panels(d)
     failures = []
-    for p in d["panels"]:
+    for p in panels:
         for t in p.get("targets", []):
             if "expr" in t and EXCLUDE not in t["expr"]:
                 failures.append(
                     f"smoke runs not excluded: panel {p.get('title')!r} ({t['refId']})"
                 )
-    for p in d["panels"]:
+    for p in panels:
         for t in p.get("targets", []):
             e = t.get("expr", "")
             # rate()/increase() drop a series' first observation, and every
@@ -77,12 +88,24 @@ def main() -> int:
             # Failure rate: failed / (succeeded + failed). Skipped/cancelled
             # runs must not dilute it.
             if (
-                p.get("title") == "Failure rate by workflow"
+                p.get("title", "").startswith("Failure rate")
                 and "STATUS_CODE_OK|STATUS_CODE_ERROR" not in e
             ):
                 failures.append(
                     "failure rate denominator includes skipped/cancelled runs"
                 )
+    # Experiment #3418's stop rule: merge-queue failure rate above 5% for a
+    # week. The failure-rate panel in its row must draw that line.
+    for p in panels:
+        if p.get("title", "").startswith("Failure rate per stage"):
+            steps = (
+                p.get("fieldConfig", {})
+                .get("defaults", {})
+                .get("thresholds", {})
+                .get("steps", [])
+            )
+            if not any(s.get("value") == 0.05 for s in steps):
+                failures.append("experiment failure rate has no 5% stop-rule line")
     for v in d["templating"]["list"]:
         q = v.get("query")
         q = q.get("query", "") if isinstance(q, dict) else (q or "")
