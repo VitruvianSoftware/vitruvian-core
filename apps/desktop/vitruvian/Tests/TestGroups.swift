@@ -195,6 +195,7 @@ enum TestGroups {
                 ExternalToolSettingsTests.run(suite)
                 ToolPanelHostTests.run(suite)
                 ToolPanelScreensTests.run(suite)
+                BlockTreeLayoutTests.run(suite)
                 MenuPanelExtensionsTests.run(suite)
                 ToolWebPanelTests.run(suite)
                 CatalogueListTests.run(suite)
