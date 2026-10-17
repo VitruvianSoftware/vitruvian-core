@@ -1052,7 +1052,10 @@ class RedactionTest(unittest.TestCase):
             ("gh secret set FOO -b 'two words'", "two words"),
             ('gh secret set FOO --body="quoted value" -R x/y', "quoted value"),
             ("curl -H 'X-Api-Key: k3yvalue' https://x", "k3yvalue"),
-            ("curl -H 'X-Auth-Token: t0kenvalue' https://x", "t0kenvalue"),  # gitleaks:allow
+            (
+                "curl -H 'X-Auth-Token: t0kenvalue' https://x",  # gitleaks:allow
+                "t0kenvalue",
+            ),
             ("curl -H 'PRIVATE-TOKEN: glvalue123' https://x", "glvalue123"),
             (
                 "curl 'https://x?key=AIzaSyA1234567890abcdefghijklmnopqrstuv'",  # gitleaks:allow
@@ -1083,7 +1086,10 @@ class RedactionTest(unittest.TestCase):
                 "curl -H 'Authorization: Bearer sekrit-value-123' https://x",  # gitleaks:allow
                 "sekrit-value-123",
             ),
-            ('curl -H "Authorization: token abcdefgh12345" x', "abcdefgh12345"),  # gitleaks:allow
+            (
+                'curl -H "Authorization: token abcdefgh12345" x',  # gitleaks:allow
+                "abcdefgh12345",
+            ),
             ("git clone https://user:pa55word@github.com/x/y", "pa55word"),
             (
                 "echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
