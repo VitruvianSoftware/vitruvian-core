@@ -78,31 +78,44 @@ func shownInInboxSQL(r, ap string) string {
   WHERE sl.room_id = ` + r + `.room_id AND NOT ` + showAllowsSQL(`sll.show_in_inbox`, r+`.is_direct`) + `))`
 }
 
+// countFacts are the chat facts of spaceCountsSQL's materialized c.
+var countFacts = chatFacts{place: "c.place", shown: "c.shown", reminded: "c.reminded"}
+
+// builtinCountRule is the place rule of built-in space id over c (placeRule), for spaceCountsSQL.
+func builtinCountRule(id string) string {
+	rule, ok := placeRule(countFacts, id)
+	if !ok {
+		panic("no place rule for space " + id)
+	}
+	return rule
+}
+
 // spaceCountsSQL counts each space's chats and unread chats in one statement ($1 is my user ID). Every room is
-// read once (the materialized c); unread is an EXISTS on events_room_ts from the read marker on, so it stops at
-// the first unread message. The space rules are those of InboxPage (Task 2):
+// read once (the materialized c); unread is unreadChatSQL, an EXISTS on events_room_ts from the read marker on, so
+// it stops at the first unread message. Each space's rule is InboxPage's own (placeRule, scopedPlaceRule), so a
+// space's count is the number of chats its pages list:
 //   - inbox: place inbox, and the account and every label allow it (Show in Inbox);
 //   - reminders: has a reminder (set or fired), any place but hidden;
 //   - requests, low_priority, archive: that place;
 //   - account:<n>: network n, place inbox, whatever Show in Inbox says;
 //   - label:<id>: has that label, place inbox.
 var spaceCountsSQL = `WITH c AS MATERIALIZED (
-  SELECT r.room_id, r.network, ` + placeSQL("r", "p") + ` AS place, ` + shownInInboxSQL("r", "ap") + ` AS shown,
-    (COALESCE(p.marked_unread, 0) = 1 OR EXISTS (SELECT 1 FROM events u WHERE ` + unreadSQL + `)) AS unread,
+  SELECT r.room_id, r.network, ` + pageFacts.place + ` AS place, ` + pageFacts.shown + ` AS shown,
+    ` + unreadChatSQL + ` AS unread,
     EXISTS (SELECT 1 FROM reminders m WHERE m.room_id = r.room_id) AS reminded
   FROM rooms r
   LEFT JOIN room_prefs p ON p.room_id = r.room_id
   LEFT JOIN account_prefs ap ON ap.network = r.network
   ` + readMarkerJoins + `
 )
-SELECT 'inbox', COUNT(*), COALESCE(SUM(unread), 0) FROM c WHERE place = 'inbox' AND shown
-UNION ALL SELECT 'reminders', COUNT(*), COALESCE(SUM(unread), 0) FROM c WHERE reminded AND place <> 'hidden'
-UNION ALL SELECT 'requests', COUNT(*), COALESCE(SUM(unread), 0) FROM c WHERE place = 'requests'
-UNION ALL SELECT 'low_priority', COUNT(*), COALESCE(SUM(unread), 0) FROM c WHERE place = 'low_priority'
-UNION ALL SELECT 'archive', COUNT(*), COALESCE(SUM(unread), 0) FROM c WHERE place = 'archive'
-UNION ALL SELECT 'account:' || network, COUNT(*), SUM(unread) FROM c WHERE place = 'inbox' GROUP BY network
+SELECT 'inbox', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("inbox") + `
+UNION ALL SELECT 'reminders', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("reminders") + `
+UNION ALL SELECT 'requests', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("requests") + `
+UNION ALL SELECT 'low_priority', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("low_priority") + `
+UNION ALL SELECT 'archive', COUNT(*), COALESCE(SUM(c.unread), 0) FROM c WHERE ` + builtinCountRule("archive") + `
+UNION ALL SELECT 'account:' || c.network, COUNT(*), SUM(c.unread) FROM c WHERE ` + scopedPlaceRule(countFacts) + ` GROUP BY c.network
 UNION ALL SELECT 'label:' || rl.label_id, COUNT(*), SUM(c.unread) FROM c JOIN room_labels rl ON rl.room_id = c.room_id
-  WHERE c.place = 'inbox' GROUP BY rl.label_id`
+  WHERE ` + scopedPlaceRule(countFacts) + ` GROUP BY rl.label_id`
 
 // spaceCounts returns [chats, unread chats] by space ID. A space with no chats is missing.
 func (s *Store) spaceCounts(ctx context.Context) (map[string][2]int, error) {

@@ -77,13 +77,8 @@ const mutedLabelSQL = `COALESCE((SELECT ml.title FROM room_labels mrl JOIN label
 // mutedBySQL is what else mutes room r: 'account' (its account_prefs ap), 'label' (a muted label), or the empty string.
 const mutedBySQL = `(CASE WHEN COALESCE(ap.muted, 0) = 1 THEN 'account' WHEN ` + mutedLabelSQL + ` <> '' THEN 'label' ELSE '' END)`
 
-// inboxSQL is the whole inbox in one statement. $1 is my user ID. Every part is an index lookup:
-//   - rooms come out of rooms_last_ts already in display order (no sort);
-//   - the preview event is a primary-key lookup on rooms.last_event_id;
-//   - the unread and unread-mention counts are range scans of events_room_ts (room_id, ts, seq) from the read
-//     marker onward (unreadSQL), so they only touch messages that are actually newer than the marker;
-//   - prefs, account prefs, the reminder, labels and muted labels are primary-key lookups.
-var inboxSQL = `SELECT r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at,
+// inboxColsSQL is the columns of an inbox row (scanInboxRow), for a room r with inboxJoinsSQL.
+var inboxColsSQL = `r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at,
   r.last_ts,
   COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''),
   COALESCE(p.muted, 0),
@@ -93,13 +88,24 @@ var inboxSQL = `SELECT r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is
   COALESCE(p.pinned_at, 0), COALESCE(p.archived_at, 0), COALESCE(p.low_priority, 0), COALESCE(p.hidden, 0),
   COALESCE(p.marked_unread, 0), r.request, COALESCE(p.draft, ''),
   COALESCE((SELECT group_concat(rl.label_id) FROM room_labels rl WHERE rl.room_id = r.room_id), ''),
-  rm.room_id IS NOT NULL, COALESCE(rm.condition, ''), COALESCE(rm.due_at, 0), COALESCE(rm.set_at, 0), COALESCE(rm.fired_at, 0)
-FROM rooms r
-LEFT JOIN events ev ON ev.event_id = r.last_event_id
+  rm.room_id IS NOT NULL, COALESCE(rm.condition, ''), COALESCE(rm.due_at, 0), COALESCE(rm.set_at, 0), COALESCE(rm.fired_at, 0)`
+
+// inboxJoinsSQL brings in what inboxColsSQL reads beside the room r.
+var inboxJoinsSQL = `LEFT JOIN events ev ON ev.event_id = r.last_event_id
 LEFT JOIN room_prefs p ON p.room_id = r.room_id
 LEFT JOIN account_prefs ap ON ap.network = r.network
 LEFT JOIN reminders rm ON rm.room_id = r.room_id
-` + readMarkerJoins + `
+` + readMarkerJoins
+
+// inboxSQL is the whole inbox in one statement. $1 is my user ID. Every part is an index lookup:
+//   - rooms come out of rooms_last_ts already in display order (no sort);
+//   - the preview event is a primary-key lookup on rooms.last_event_id;
+//   - the unread and unread-mention counts are range scans of events_room_ts (room_id, ts, seq) from the read
+//     marker onward (unreadSQL), so they only touch messages that are actually newer than the marker;
+//   - prefs, account prefs, the reminder, labels and muted labels are primary-key lookups.
+var inboxSQL = `SELECT ` + inboxColsSQL + `
+FROM rooms r
+` + inboxJoinsSQL + `
 ORDER BY r.last_ts DESC, r.created_at DESC`
 
 // Inbox lists every room, newest message first; rooms without a message follow, newest created first.

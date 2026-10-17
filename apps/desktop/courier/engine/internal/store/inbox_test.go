@@ -409,7 +409,8 @@ func TestNewerDatabaseIsRefused(t *testing.T) {
 	require.ErrorContains(t, err, "newer")
 }
 
-// seedBig fills s with rooms inbox rooms (perRoom messages each) plus one room, "!long", with longN messages.
+// seedBig fills s with rooms inbox rooms (perRoom messages each) plus one room, "!long", with longN messages
+// (none when longN is 0).
 // It writes the rows directly, in one transaction, so the test stays quick; last_ts comes from the migration's
 // own backfill statement.
 func seedBig(t *testing.T, s *Store, rooms, perRoom, longN int) {
@@ -437,6 +438,10 @@ func seedBig(t *testing.T, s *Store, rooms, perRoom, longN int) {
 					return err
 				}
 			}
+		}
+		if longN == 0 {
+			_, err := s.db.Exec(ctx, backfillLastEventSQL)
+			return err
 		}
 		if _, err := s.db.Exec(ctx, "INSERT INTO rooms (room_id, network, name, created_at) VALUES ('!long','whatsapp','long',0)"); err != nil {
 			return err
