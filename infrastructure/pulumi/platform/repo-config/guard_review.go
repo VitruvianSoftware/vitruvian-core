@@ -39,8 +39,8 @@ import (
 // parameter that requires approval from a TEAM for pull requests that change
 // files matching given patterns. Pull requests that change none of them are
 // untouched. It is a second ruleset rather than a field on the merge-queue one
-// so that its bypass list can be narrower (no copybara-sync App) and so the
-// whole requirement lives in this one file.
+// so the whole requirement lives in this one file. Its bypass list IS the
+// merge-queue ruleset's (see guardReviewBypassActors).
 //
 // Why not a required status check (a workflow that looks for James's
 // approval): a pull_request, pull_request_review or merge_group run uses the
@@ -95,19 +95,19 @@ var guardReviewPaths = []string{
 	// guard-review-paths:end
 }
 
-// guardReviewBypassActors is who may merge a protected-path pull request
-// without the approval: repository admins only (RepositoryRole 5), and only
-// through a pull request. That is James's break-glass for his own pull
-// requests, which he cannot approve. Bypass applies to a direct merge, never
-// to auto-merge into the merge queue, so it is no path for agents' Apps.
+// guardReviewBypassActors is exactly the merge-queue ruleset's bypass list,
+// read from the same function so the two cannot drift apart: repository
+// admins and the copybara-sync App, both "always".
+//
+// It has to match. This ruleset carries a pull_request rule, which makes
+// every change to main go through a pull request; a narrower list here would
+// newly block the direct pushes the merge-queue ruleset allows them, a change
+// for work that has nothing to do with agent-guard. The cost: an admin
+// (James's break-glass) or the copybara-sync App merging directly also skips
+// James's approval, the same as it skips the queue. A bypass never applies to
+// auto-merge into the merge queue, so agents' own Apps get no path through it.
 func guardReviewBypassActors() github.RepositoryRulesetBypassActorArray {
-	return github.RepositoryRulesetBypassActorArray{
-		&github.RepositoryRulesetBypassActorArgs{
-			ActorId:    pulumi.Int(5),
-			ActorType:  pulumi.String("RepositoryRole"),
-			BypassMode: pulumi.String("pull_request"),
-		},
-	}
+	return mergeQueueBypassActors()
 }
 
 // guardReviewPullRequestRule is the rule: one approval from the team on any

@@ -249,8 +249,12 @@ How it works and what it does not do:
   sometimes run `gh` as ipv1337; approving a pull request that way defeats the
   point, so never do it.
 - **James cannot approve his own pull request.** One opened as ipv1337 needs
-  his admin bypass (a direct merge, his break-glass), not an approval. Repository
-  admins are the only bypass, and the copybara-sync App is not one.
+  his admin bypass (a direct merge, his break-glass), not an approval.
+- **The break-glass bypasses this review too, the same as it bypasses the
+  queue.** The ruleset's bypass list is the merge-queue ruleset's, read from
+  the same code: repository admins and the copybara-sync App, both "always".
+  A direct merge by either skips James's approval. Auto-merge never uses a
+  bypass, so an agent's `pr-enqueue` always waits for the approval.
 - **Not the whole delivery chain.** The rest of repo-config (`internal/`,
   `go.mod`) and the shared CI it runs on are not covered, to keep that work
   autonomous; they run with the same admin token and could in principle undo

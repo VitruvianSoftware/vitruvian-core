@@ -177,19 +177,49 @@ func TestGuardReviewRuleShape(t *testing.T) {
 	}
 }
 
-// Only repository admins may bypass, only through a pull request. In
-// particular not the copybara-sync App, which bypasses the merge queue.
-func TestGuardReviewBypassIsAdminOnly(t *testing.T) {
-	actors := guardReviewBypassActors()
-	if len(actors) != 1 {
-		t.Fatalf("bypass actors = %d, want 1 (repository admins)", len(actors))
+// The review's bypass list must equal the merge-queue ruleset's: a narrower
+// one would block direct pushes the queue's ruleset allows (this ruleset's
+// pull_request rule applies to every change to main), a wider one would let
+// someone skip James's approval who cannot skip the queue.
+func TestGuardReviewBypassMatchesMergeQueue(t *testing.T) {
+	type actor struct {
+		id         int
+		typ, mode string
 	}
-	a, ok := actors[0].(*github.RepositoryRulesetBypassActorArgs)
-	if !ok {
-		t.Fatalf("bypass actor is %T", actors[0])
+	flatten := func(name string, arr github.RepositoryRulesetBypassActorArray) []actor {
+		var out []actor
+		for _, a := range arr {
+			args, ok := a.(*github.RepositoryRulesetBypassActorArgs)
+			if !ok {
+				t.Fatalf("%s: bypass actor is %T", name, a)
+			}
+			id, ok1 := args.ActorId.(pulumi.Int)
+			typ, ok2 := args.ActorType.(pulumi.String)
+			mode, ok3 := args.BypassMode.(pulumi.String)
+			if !ok1 || !ok2 || !ok3 {
+				t.Fatalf("%s: bypass actor fields are not literals: %#v", name, args)
+			}
+			out = append(out, actor{int(id), string(typ), string(mode)})
+		}
+		return out
 	}
-	if a.ActorId != pulumi.Int(5) || a.ActorType != pulumi.String("RepositoryRole") || a.BypassMode != pulumi.String("pull_request") {
-		t.Errorf("bypass actor = {%v %v %v}, want {5 RepositoryRole pull_request}", a.ActorId, a.ActorType, a.BypassMode)
+
+	got := flatten("agent-guard-review", guardReviewBypassActors())
+	want := flatten("merge-queue", mergeQueueBypassActors())
+	if len(got) != len(want) {
+		t.Fatalf("agent-guard-review bypass = %v, merge-queue bypass = %v; they must be equal", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("agent-guard-review bypass = %v, merge-queue bypass = %v; they must be equal", got, want)
+		}
+	}
+	// And what that list is today: admins and copybara-sync, both "always".
+	pinned := []actor{{5, "RepositoryRole", "always"}, {copybaraSyncAppID, "Integration", "always"}}
+	for i := range pinned {
+		if i >= len(got) || got[i] != pinned[i] {
+			t.Fatalf("bypass actors = %v, want %v", got, pinned)
+		}
 	}
 }
 
