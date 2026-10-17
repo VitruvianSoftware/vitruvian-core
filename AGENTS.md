@@ -1,10 +1,11 @@
 # Agent guide — vitruvian-core
 
 > **This file is the single, vendor-neutral agent guide for this repo.** It follows the
-> [AGENTS.md](https://agents.md) convention, which Claude Code, Antigravity/Gemini, Copilot,
-> Cursor, opencode and others all read. There is deliberately **no `CLAUDE.md`,
-> `.cursorrules` or `copilot-instructions.md` at the root** — one file, so guidance cannot
-> drift per tool.
+> [AGENTS.md](https://agents.md) convention, which Antigravity/Gemini, Copilot, Cursor,
+> opencode and others read. Claude Code reads `CLAUDE.md` instead, so the root `CLAUDE.md`
+> is a single `@AGENTS.md` import and nothing else (#3418). There is deliberately **no other
+> per-tool file** (`.cursorrules`, `copilot-instructions.md`) — one guide, so it cannot drift
+> per tool. Never add guidance to `CLAUDE.md`; it goes here.
 >
 > Keep it that way when editing:
 > - **Write for any agent.** Don't assume a specific tool's commands, file layout or
