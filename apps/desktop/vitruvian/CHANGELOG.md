@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.59.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.59.0...vitruvian-v3.59.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **vitruvian:** open extension panel when MenuPanelExtensionCard is expanded ([#3421](https://github.com/VitruvianSoftware/vitruvian-core/issues/3421)) ([d5ab355](https://github.com/VitruvianSoftware/vitruvian-core/commit/d5ab35560b0760d800b0e0abad771d9db6e7e885))
+
 ## [3.59.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.58.0...vitruvian-v3.59.0) (2026-10-17)
 
 
