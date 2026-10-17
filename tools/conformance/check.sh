@@ -434,6 +434,7 @@ ROWS_PROMGRAPH=""
 ROWS_PROMALERT=""
 ROWS_TECHDOCS=""
 ROWS_PROJKIND=""
+ROWS_GUARDREVIEW=""
 
 
 emit() {
@@ -477,6 +478,7 @@ emit() {
     promalert)    ROWS_PROMALERT="${ROWS_PROMALERT}${_row}" ;;
     techdocs)     ROWS_TECHDOCS="${ROWS_TECHDOCS}${_row}" ;;
     projkind)     ROWS_PROJKIND="${ROWS_PROJKIND}${_row}" ;;
+    guardreview)  ROWS_GUARDREVIEW="${ROWS_GUARDREVIEW}${_row}" ;;
 
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
@@ -3905,6 +3907,104 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: the paths that need James's approval still name real files.
+#
+# repo-config's agent-guard-review ruleset (guard_review.go) makes a pull
+# request that changes agent-guard's rules wait for James's approval. It names
+# those files by pattern. When a file moves and the pattern does not, GitHub
+# just stops asking: nothing fails, the protection is simply gone. So:
+#   - every pattern between the guard-review-paths markers must match at least
+#     one file (a local-only file git ignores, like .claude/settings.local.json,
+#     may be absent: a pull request could still add it);
+#   - tools/agent-guard/README.md must list every pattern, so the docs agents
+#     read say what actually needs James.
+# A root without guard_review.go has nothing to check and reports nothing.
+# ---------------------------------------------------------------------------
+check_guard_review_paths() {
+  _src="infrastructure/pulumi/platform/repo-config/guard_review.go"
+  [ -f "$ROOT/$_src" ] || return 0
+  results="$(ROOT="$ROOT" SRC="$_src" python3 - <<'PY'
+import os, re, subprocess
+
+root = os.environ["ROOT"]
+src = open(os.path.join(root, os.environ["SRC"]), encoding="utf-8").read()
+m = re.search(r"guard-review-paths:begin(.*?)guard-review-paths:end", src, re.S)
+patterns = []
+if m:
+    for line in m.group(1).splitlines():
+        line = line.strip()
+        if line.startswith("//"):
+            continue
+        patterns += re.findall(r'"([^"]+)"', line)
+print(f"TOTAL\t{len(patterns)}")
+if not patterns:
+    print("FAIL\t(none)\tno patterns found between the guard-review-paths markers")
+
+def to_regex(p):
+    out = ["^"]
+    i = 0
+    while i < len(p):
+        if p.startswith("**", i):
+            out.append(".*"); i += 2; continue
+        c = p[i]
+        out.append("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c))
+        i += 1
+    return re.compile("".join(out) + "$")
+
+skip = {".git", "node_modules", ".cache", "dist", "build-output", ".pio"}
+files = []
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith("bazel-")]
+    for f in filenames:
+        files.append(os.path.relpath(os.path.join(dirpath, f), root).replace(os.sep, "/"))
+
+def ignored(p):
+    try:
+        return subprocess.run(["git", "-C", root, "check-ignore", "-q", p],
+                              capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+readme_path = os.path.join(root, "tools/agent-guard/README.md")
+readme = open(readme_path, encoding="utf-8").read() if os.path.exists(readme_path) else ""
+for p in patterns:
+    rx = to_regex(p)
+    if not any(rx.match(f) for f in files) and not ignored(p):
+        print(f"FAIL\t{p}\tmatches no file")
+    if f"`{p}`" not in readme:
+        print(f"DOC\t{p}\tnot listed in tools/agent-guard/README.md")
+PY
+)"
+
+  local total_seen=0 has_failures=0
+  while IFS="$(printf '\t')" read -r status pat note; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      TOTAL) total_seen="$pat" ;;
+      FAIL)
+        emit "guardreview" "$GLYPH_FAIL" "$C_RED" "$_src" "$pat" "matches a file" \
+          "$note: changes there would no longer need James's approval" \
+          "point the pattern at where the file lives now (a change to guard_review.go itself needs James)"
+        has_failures=1; OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+      DOC)
+        emit "guardreview" "$GLYPH_FAIL" "$C_RED" "tools/agent-guard/README.md" "$pat" "listed" \
+          "$note" "add \`$pat\` to the README's \"Who may do what\" list"
+        has_failures=1; OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  if [ "$has_failures" -eq 0 ]; then
+    emit "guardreview" "$GLYPH_OK" "$C_GREEN" "$_src" "${total_seen} pattern(s)" "matches a file" \
+      "every path that needs James's approval still names a file, and the README lists it" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # CHECK: secret-scan allowlist paths are live.
 #
 # .gitleaks.toml exempts a few files that look like secrets but are safe by
@@ -4356,6 +4456,7 @@ check_checkout_credentials
 check_dependabot_action_coverage
 check_action_sha_pins
 check_gitleaks_allowlist_paths
+check_guard_review_paths
 check_oci_base_registry
 check_backstage_prometheus_graphs
 check_backstage_prometheus_alerts
@@ -4392,6 +4493,7 @@ print_group "Checkout credentials firewall (#1040: persist-credentials: false on
 print_group "Dependabot actions coverage (#814: exported mirror workflows in dependabot.yml)" "$ROWS_DEPENDABOT_ACTIONS"
 print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)" "$ROWS_ACTION_PINS"
 print_group "Secret-scan allowlist (every .gitleaks.toml path exemption still matches a file)" "$ROWS_GITLEAKS"
+print_group "agent-guard review paths (every path that needs James's approval still names a file)" "$ROWS_GUARDREVIEW"
 print_group "Container base images (no oci.pull from Docker Hub, which rate-limits shared runners)" "$ROWS_OCIBASE"
 print_group "Backstage Prometheus graphs (every prometheus.io/rule names a recording rule)" "$ROWS_PROMGRAPH"
 print_group "Backstage Prometheus alerts (each component lists only its own namespace's alerts)" "$ROWS_PROMALERT"

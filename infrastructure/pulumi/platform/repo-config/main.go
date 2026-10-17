@@ -452,6 +452,13 @@ func main() {
 			}
 		}
 
+		// Changes to agent-guard's rules need James's approval: a second
+		// ruleset on main, independent of the merge-queue knobs above and of
+		// any config, so no config value can switch it off. See guard_review.go.
+		if err := agentGuardReview(ctx, repo); err != nil {
+			return err
+		}
+
 		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
 			return err
 		}
