@@ -368,6 +368,19 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(shown[3].statusLine, .failed(reason: "the network refused it"))
     }
 
+    /// The engine fails what was still pending when it stopped with this exact reason; the line says it may have
+    /// gone, in the composer's words, rather than "Not sent".
+    func testASendCutOffByTheEngineStoppingMayHaveBeenSent() {
+        let cutOff = Event(eventID: "$d", roomID: "!room", sender: me, senderName: "me", mine: true,
+                           type: "m.room.message", content: json(#"{"msgtype":"m.text","body":"x"}"#),
+                           ts: at(14, 10, 3), seq: 0, status: .failed, statusReason: "may have been sent")
+        XCTAssertEqual(messages(build([cutOff]))[0].statusLine, .mayHaveBeenSent)
+        XCTAssertEqual(StatusLine.mayHaveBeenSentReason, "may have been sent", "the engine's constant, exactly")
+        XCTAssertTrue(StatusLine.mayHaveBeenSentText.contains("may have been sent"))
+        XCTAssertEqual(StatusLine.of(status: .failed, reason: "May have been sent"), .failed(reason: "May have been sent"),
+                       "only the exact text")
+    }
+
     // MARK: - Day labels
 
     func testDayLabels() {

@@ -19,6 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notifications: NotificationCoordinator?
     private let notifier = Notifier()
     private var dockBadge: DockBadge?
+    /// Held for as long as Courier runs: without it, App Nap slows a Courier whose window is closed or hidden, and
+    /// the engine's messages, and so notifications, come late. It still lets the Mac sleep when idle.
+    private var appNapActivity: NSObjectProtocol?
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
@@ -47,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        appNapActivity = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "Courier receives messages and shows notifications while its window is closed")
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         signInWindows = SignInWindowPresenter(login: login)

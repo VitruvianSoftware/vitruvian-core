@@ -4,7 +4,8 @@
 import CourierCore
 import SwiftUI
 
-/// A banner for an account that needs the person: logged out, refused, or not started, with the button that fixes it.
+/// A banner for an account that needs the person: logged out, refused, stuck on an error, or not started, with the
+/// button that fixes it.
 struct AccountBannerView: View {
     let banner: AccountBanner
     let act: () -> Void
@@ -37,6 +38,7 @@ struct AccountBannerView: View {
         switch banner.reason {
         case .loggedOut: String(localized: "You’re logged out of \(banner.displayName).")
         case .badCredentials: String(localized: "\(banner.displayName) no longer accepts your sign-in.")
+        case .unknownError: String(localized: "\(banner.displayName) stopped working.")
         case .notStarted: String(localized: "\(banner.displayName) isn’t running.")
         }
     }

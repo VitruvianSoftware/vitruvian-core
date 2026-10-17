@@ -40,6 +40,40 @@ public enum SignInPage {
         return Address(text: "https://\(host.lowercased())\(port)", isSecure: true)
     }
 
+    /// The bar follows the page that is shown: an address counts once WebKit commits it (the new page starts
+    /// replacing the old) or finishes loading it, never while it is only being asked for. Until then the bar keeps
+    /// the page that is on screen, so a slow or refused request can't put its host over the old page's form.
+    /// (Within a page, the address can only change within its own site, which the bar shows the same.)
+    public struct Bar: Equatable, Sendable {
+        public private(set) var address = SignInPage.address(of: nil)
+
+        public init() {}
+
+        /// WebKit committed, or finished loading, the page at `url`.
+        public mutating func shown(_ url: URL?) {
+            address = SignInPage.address(of: url)
+        }
+    }
+
+    /// How the sign-in window's web view says what it is.
+    public enum UserAgent: Equatable, Sendable {
+        /// The step's own user agent, given whole.
+        case custom(String)
+        /// WebKit's own, with this application name added to the end (WKWebViewConfiguration's
+        /// applicationNameForUserAgent).
+        case applicationName(String)
+    }
+
+    /// Added to WebKit's user agent when the step gives none, so it reads as Safari's. Some sign-in pages (Google's,
+    /// for Google Messages) refuse a browser they don't recognise, and a bare WKWebView names no browser.
+    public static let safariApplicationName = "Version/26.0 Safari/605.1.15"
+
+    /// The user agent for a step that asks for `given`: that one if there is one, else WebKit's as Safari's.
+    public static func userAgent(_ given: String?) -> UserAgent {
+        if let given, !given.isEmpty { return .custom(given) }
+        return .applicationName(safariApplicationName)
+    }
+
     /// Whether the page at `url` is on the step's own site: its host or a subdomain of it, over https. Local
     /// storage is read, and the step's script run, only there.
     public static func isOnStepSite(_ url: URL?, step: URL) -> Bool {

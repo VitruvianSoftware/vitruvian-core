@@ -46,8 +46,10 @@ final class SignInWindowPresenter {
 /// What the window's bar shows.
 @MainActor
 final class SignInWindowState: ObservableObject {
-    /// Worked out from the page's address as it is now, every time it changes: never a host from before.
-    @Published var address = SignInPage.address(of: nil)
+    /// The page that is shown (SignInPage.Bar): it moves when a page is committed or loaded, never to a page that
+    /// is only being asked for, and never keeps a host from before.
+    @Published var bar = SignInPage.Bar()
+    var address: SignInPage.Address { bar.address }
     @Published var notice: String?
 }
 
@@ -87,7 +89,6 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
     /// The script's current run, by number; nil when none is running or the last one ran past its time.
     private var extractRun: Int?
     private var extractRuns = 0
-    private var urlObservation: NSKeyValueObservation?
     private var extracted: [String: String] = [:]
     /// Local storage values seen, kept across pages (the page that has them may navigate on).
     private var storage: [String: String] = [:]
@@ -103,8 +104,10 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
         self.closedEarly = closedEarly
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        let userAgent = SignInPage.userAgent(params.userAgent)
+        if case let .applicationName(name) = userAgent { configuration.applicationNameForUserAgent = name }
         webView = WKWebView(frame: .zero, configuration: configuration)
-        if let agent = params.userAgent, !agent.isEmpty { webView.customUserAgent = agent }
+        if case let .custom(agent) = userAgent { webView.customUserAgent = agent }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 760),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -117,10 +120,6 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
         let content = SignInWindowContent(state: state, webView: webView, networkName: networkName,
                                           signedIn: { [weak self] in self?.signedInPressed() })
         window.contentView = NSHostingView(rootView: content)
-        // Every change of address, a redirect or a page's own history change included.
-        urlObservation = webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
-            MainActor.assumeIsolated { self?.state.address = SignInPage.address(of: webView.url) }
-        }
     }
 
     func show() {
@@ -161,7 +160,6 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
             .map { BrowserCookie(name: $0.name, domain: $0.domain, value: $0.value) }
         await readLocalStorage()
         guard !finished else { return }
-        state.address = SignInPage.address(of: webView.url)
         let collected = CookieCollector.collect(params, cookies: cookies, localStorage: storage, extracted: extracted)
         lastCollected = collected
         if CookieCollector.isReady(params, url: webView.url?.absoluteString, collected: collected)
@@ -246,7 +244,6 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
     func windowWillClose(_ notification: Notification) {
         timer?.invalidate()
         timer = nil
-        urlObservation = nil
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -265,11 +262,11 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        state.address = SignInPage.address(of: webView.url)
+        state.bar.shown(webView.url)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        state.address = SignInPage.address(of: webView.url)
+        state.bar.shown(webView.url)
         runExtract()
         Task { await check(manual: false) }
     }

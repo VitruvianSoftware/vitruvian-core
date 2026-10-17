@@ -113,7 +113,7 @@ struct ComposerView: View {
         case let .cannotRead(name):
             String(localized: "Could not read \(name). It may have moved, or Courier may not be allowed to open it.")
         case .noAnswer:
-            String(localized: "Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.")
+            StatusLine.mayHaveBeenSentText
         case let .sendFailed(reason):
             reason.isEmpty ? String(localized: "The message could not be sent.")
                 : String(localized: "The message could not be sent: \(reason)")

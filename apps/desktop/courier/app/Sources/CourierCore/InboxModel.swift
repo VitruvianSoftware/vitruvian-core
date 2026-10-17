@@ -11,6 +11,8 @@ public struct AccountBanner: Equatable, Identifiable, Sendable {
         case loggedOut
         /// The network refused the saved sign-in.
         case badCredentials
+        /// The bridge hit an error it could not get past; `detail` is its message.
+        case unknownError
         /// The engine could not start the network; `detail` says why.
         case notStarted
     }
@@ -129,6 +131,9 @@ public final class InboxModel: ObservableObject {
                               detail: account.error, action: .reconnect)
             case .badCredentials:
                 AccountBanner(network: account.network, displayName: account.displayName, reason: .badCredentials,
+                              detail: account.error, action: .reconnect)
+            case .unknownError:
+                AccountBanner(network: account.network, displayName: account.displayName, reason: .unknownError,
                               detail: account.error, action: .reconnect)
             case .notStarted:
                 AccountBanner(network: account.network, displayName: account.displayName, reason: .notStarted,
@@ -303,9 +308,12 @@ public final class InboxModel: ObservableObject {
         return true
     }
 
-    /// Newest first; chats with the same time in the id's order, so the list does not shuffle.
+    /// Newest first. Chats with the same time (chats with no message yet among them) keep the engine's order,
+    /// which is newest created first, so the list neither shuffles nor jumps to the rooms' ids' order.
     static func sorted(_ rooms: [InboxRow]) -> [InboxRow] {
-        rooms.sorted { ($0.lastTS, $1.roomID) > ($1.lastTS, $0.roomID) }
+        rooms.enumerated()
+            .sorted { ($0.element.lastTS, $1.offset) > ($1.element.lastTS, $0.offset) }
+            .map(\.element)
     }
 }
 

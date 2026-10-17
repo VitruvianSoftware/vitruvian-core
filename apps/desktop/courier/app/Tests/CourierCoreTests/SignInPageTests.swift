@@ -55,4 +55,24 @@ final class SignInPageTests: XCTestCase {
         }
         XCTAssertFalse(SignInPage.isOnStepSite(nil, step: step))
     }
+
+    /// The bar is told only of pages WebKit shows (committed or loaded); a page that is only asked for, or never
+    /// comes, leaves it on the page that is on screen.
+    func testBarShowsOnlyThePageThatIsShown() {
+        var bar = SignInPage.Bar()
+        XCTAssertEqual(bar.address, SignInPage.Address(text: SignInPage.notSecureText, isSecure: false),
+                       "nothing shown yet")
+        bar.shown(url("https://slack.com/signin"))
+        XCTAssertEqual(bar.address, SignInPage.Address(text: "https://slack.com", isSecure: true))
+        bar.shown(url("https://app.slack.com/client"))
+        XCTAssertEqual(bar.address.text, "https://app.slack.com")
+        bar.shown(nil)
+        XCTAssertFalse(bar.address.isSecure, "a page with no address is not shown as secure")
+    }
+
+    func testUserAgentIsTheStepsOrSafarisStyle() {
+        XCTAssertEqual(SignInPage.userAgent("Mozilla/5.0 (Test) TestAgent/1"), .custom("Mozilla/5.0 (Test) TestAgent/1"))
+        XCTAssertEqual(SignInPage.userAgent(""), .applicationName("Version/26.0 Safari/605.1.15"))
+        XCTAssertEqual(SignInPage.userAgent(nil), .applicationName("Version/26.0 Safari/605.1.15"))
+    }
 }

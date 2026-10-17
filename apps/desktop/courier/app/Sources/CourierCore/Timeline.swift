@@ -73,6 +73,28 @@ public enum StatusLine: Equatable, Sendable {
     case sent
     /// The network did not take it. `reason` is the engine's own words and may be empty.
     case failed(reason: String)
+    /// Courier's engine stopped while this was being sent, so it may or may not have gone. Retry and Delete are
+    /// offered as for a failed one; nothing is sent again unasked.
+    case mayHaveBeenSent
+
+    /// The engine's status_reason for a send it was cut off from (the engine stopped while it was pending).
+    public static let mayHaveBeenSentReason = "may have been sent"
+
+    /// What the line says, in short, for a message that may have been sent.
+    public static var mayHaveBeenSentLabel: String { String(localized: "May have been sent") }
+    /// The same, in full: the composer's words for a send the engine did not answer.
+    public static var mayHaveBeenSentText: String {
+        String(localized: "Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.")
+    }
+
+    /// The line for a message of mine with `status` and `reason`, as the engine has it.
+    static func of(status: EventStatus, reason: String) -> StatusLine {
+        switch status {
+        case .pending: .sending
+        case .failed: reason == mayHaveBeenSentReason ? .mayHaveBeenSent : .failed(reason: reason)
+        default: .sent
+        }
+    }
 }
 
 public struct TimelineMessage: Equatable, Identifiable, Sendable {
@@ -373,11 +395,7 @@ public enum Timeline {
 
     private static func statusLine(of event: Event, me: String) -> StatusLine? {
         guard event.mine || event.sender == me else { return nil }
-        switch event.status {
-        case .pending: return .sending
-        case .failed: return .failed(reason: event.statusReason)
-        default: return .sent
-        }
+        return StatusLine.of(status: event.status, reason: event.statusReason)
     }
 }
 

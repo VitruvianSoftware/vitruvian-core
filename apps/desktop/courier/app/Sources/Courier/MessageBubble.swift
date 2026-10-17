@@ -124,7 +124,10 @@ struct MessageRowView: View {
     }
 
     private var isFailed: Bool {
-        if case .failed = message.statusLine { true } else { false }
+        switch message.statusLine {
+        case .failed, .mayHaveBeenSent: true
+        default: false
+        }
     }
 
     // MARK: Parts
@@ -274,6 +277,17 @@ struct MessageRowView: View {
                 Label(String(localized: "Not sent"), systemImage: "exclamationmark.circle.fill")
                     .foregroundStyle(.red)
                     .help(reason.isEmpty ? String(localized: "The network did not take this message.") : reason)
+                Button(String(localized: "Retry")) { actions.retry(message.id) }
+                Button(String(localized: "Delete")) { actions.discard(message.id) }
+            }
+            .font(.caption)
+            .buttonStyle(.link)
+            .padding(.horizontal, 4)
+        case .mayHaveBeenSent:
+            HStack(spacing: 8) {
+                Label(StatusLine.mayHaveBeenSentLabel, systemImage: "questionmark.circle.fill")
+                    .foregroundStyle(.orange)
+                    .help(StatusLine.mayHaveBeenSentText)
                 Button(String(localized: "Retry")) { actions.retry(message.id) }
                 Button(String(localized: "Delete")) { actions.discard(message.id) }
             }

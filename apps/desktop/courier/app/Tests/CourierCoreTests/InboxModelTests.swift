@@ -87,7 +87,23 @@ final class InboxModelTests: XCTestCase {
 
     func testRowsWithTheSameTimeKeepAStableOrder() async throws {
         let h = try await start(rooms: [room("!b", ts: 100), room("!a", ts: 100), room("!c", ts: 100)])
-        XCTAssertEqual(h.inbox.rows.map(\.roomID), ["!a", "!b", "!c"])
+        XCTAssertEqual(h.inbox.rows.map(\.roomID), ["!b", "!a", "!c"], "a tie keeps the engine's order, not the ids'")
+        await stop(h)
+    }
+
+    /// Chats with no message yet all have time 0. The engine lists them newest created first; re-sorting them by
+    /// id would put a chat made a minute ago anywhere among them.
+    func testChatsWithNoMessagesKeepTheEnginesOrder() async throws {
+        let h = try await start(rooms: [
+            room("!x", ts: 50), room("!z-newest", ts: 0), room("!a-older", ts: 0), room("!m-oldest", ts: 0),
+        ], autoRelease: true)
+        XCTAssertEqual(h.inbox.rows.map(\.roomID), ["!x", "!z-newest", "!a-older", "!m-oldest"])
+
+        // A refresh in which the engine lists them in another order shows that order.
+        h.script.rooms = [room("!x", ts: 50), room("!m-oldest", ts: 0), room("!z-newest", ts: 0)]
+        h.server.notify(["kind": "room"])
+        try await waitUntil { h.inbox.rows.count == 3 }
+        XCTAssertEqual(h.inbox.rows.map(\.roomID), ["!x", "!m-oldest", "!z-newest"])
         await stop(h)
     }
 
@@ -326,9 +342,9 @@ final class InboxModelTests: XCTestCase {
             account("signal", "BAD_CREDENTIALS"),
             account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
             account("slack", "NOT_STARTED", notStarted: "The Slack bridge could not start."),
-            account("gmessages", "CONNECTED"),
+            account("gmessages", "UNKNOWN_ERROR", error: "The phone did not answer"),
         ])
-        XCTAssertEqual(h.inbox.banners.map(\.network), ["whatsapp", "signal", "telegram", "slack"])
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["whatsapp", "signal", "telegram", "slack", "gmessages"])
 
         let whatsapp = h.inbox.banners[0]
         XCTAssertEqual(whatsapp.reason, .loggedOut)
@@ -345,13 +361,18 @@ final class InboxModelTests: XCTestCase {
         XCTAssertEqual(h.inbox.banners[3].detail, "The Slack bridge could not start.")
         XCTAssertNil(h.inbox.banners[3].action)
 
+        // An error the bridge could not get past: its message, and Reconnect.
+        XCTAssertEqual(h.inbox.banners[4].reason, .unknownError)
+        XCTAssertEqual(h.inbox.banners[4].detail, "The phone did not answer")
+        XCTAssertEqual(h.inbox.banners[4].action, .reconnect)
+
         // The buttons go to the closures Task 9 fills in.
         var reconnected: [String] = []
         var setUp: [String] = []
         h.inbox.onReconnect = { reconnected.append($0) }
         h.inbox.onSetUp = { setUp.append($0) }
         for banner in h.inbox.banners { h.inbox.perform(banner) }
-        XCTAssertEqual(reconnected, ["whatsapp", "signal"])
+        XCTAssertEqual(reconnected, ["whatsapp", "signal", "gmessages"])
         XCTAssertEqual(setUp, ["telegram"])
 
         // Logging in again clears the banner.
