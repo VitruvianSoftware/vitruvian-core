@@ -447,7 +447,7 @@ final class InboxModelTests: XCTestCase {
                                 autoRelease: true)
         let sleeps = SleepControl()
         let composer = ComposerModel(sender: EngineMessageSender(appModel: h.app), sleep: { await sleeps.sleep($0) })
-        composer.savedDraft = { [inbox = h.inbox] id in inbox.rows.first { $0.roomID == id }?.draft ?? "" }
+        composer.savedDraft = { [inbox = h.inbox] id in inbox.rows.first { $0.roomID == id }?.draft }
 
         composer.open("!a")
         composer.text = "Hel"
@@ -480,6 +480,60 @@ final class InboxModelTests: XCTestCase {
         XCTAssertEqual(composer.text, "Hello there")
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(h.count("room.setDraft"), 2, "opening a chat saves nothing it didn't change")
+        await stop(h)
+    }
+
+    /// A chat opened from outside the rows loaded (a notification, from another space or past the pages read):
+    /// its draft is looked up by id and shown, and nothing typed before it arrives saves over it.
+    func testAChatOpenedFromOutsideTheListKeepsItsSavedDraft() async throws {
+        let h = try await start(rooms: [room("!a", ts: 300)], autoRelease: true)
+        h.script.archivedRooms = [
+            room("!far", ts: 100, archived: true, draft: "engine words"),
+            room("!far2", ts: 90, archived: true, draft: "kept"),
+            room("!far3", ts: 80, archived: true, draft: "never seen"),
+        ]
+        let sleeps = SleepControl()
+        let composer = ComposerModel(sender: EngineMessageSender(appModel: h.app), sleep: { await sleeps.sleep($0) })
+        composer.savedDraft = { [inbox = h.inbox] id in inbox.rows.first { $0.roomID == id }?.draft }
+        composer.lookUpDraft = { [inbox = h.inbox] id in await inbox.lookUpDraft(id) }
+
+        // The lookup is slow. The person types before it answers: nothing is saved, not even once a second goes by.
+        h.script.holdInbox = true
+        composer.open("!far")
+        XCTAssertEqual(composer.text, "")
+        try await waitUntil { h.server.receivedParams("inbox.list").contains { $0["room_ids"] as? [String] == ["!far"] } }
+        composer.text = "x"
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let waiting = await sleeps.waiting
+        XCTAssertEqual(waiting, 0, "no save is even scheduled while the engine's draft is unknown")
+        XCTAssertEqual(h.count("room.setDraft"), 0)
+
+        // The answer comes: the engine's draft is shown, with what was typed after it, and only then saved.
+        h.script.holdInbox = false
+        h.server.releaseHeld(with: page([room("!far", ts: 100, archived: true, draft: "engine words")]))
+        try await waitUntil { composer.text == "engine words\n\nx" }
+        try await waitUntil { await sleeps.waiting == 1 }
+        await sleeps.releaseAll()
+        try await waitUntil { h.count("room.setDraft") == 1 }
+        XCTAssertEqual(dicts(h.server.receivedParams("room.setDraft")),
+                       dicts([["room_id": "!far", "text": "engine words\n\nx"]]), "the engine's words are never lost")
+
+        // Untouched, a looked-up draft is just shown, and not saved back.
+        composer.open("!far2")
+        try await waitUntil { composer.text == "kept" }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.count("room.setDraft"), 1, "leaving !far had nothing new to save, and !far2's is not sent back")
+
+        // A lookup that fails leaves the draft unknown: typing and leaving the chat save nothing over it.
+        h.script.fail("inbox.list", code: -32603)
+        composer.open("!far3")
+        try await waitUntil { h.server.receivedParams("inbox.list").contains { $0["room_ids"] as? [String] == ["!far3"] } }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        composer.text = "y"
+        composer.open("!a")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let calls = h.server.receivedParams("room.setDraft")
+        XCTAssertFalse(calls.contains { $0["room_id"] as? String == "!far3" }, "the unseen draft is not overwritten")
         await stop(h)
     }
 

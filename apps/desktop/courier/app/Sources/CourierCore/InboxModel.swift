@@ -267,6 +267,16 @@ public final class InboxModel: ObservableObject {
         onAddNetwork()
     }
 
+    /// A chat's draft as the engine keeps it, wherever the chat is: its row when loaded, else looked up by id.
+    /// Nil when the engine doesn't answer or doesn't have the chat: the draft is unknown, not empty.
+    public func lookUpDraft(_ roomID: String) async -> String? {
+        if let row = rows.first(where: { $0.roomID == roomID }) { return row.draft }
+        guard let client = appModel.client else { return nil }
+        let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
+        guard client === appModel.client else { return nil }
+        return result?.rooms.first { $0.roomID == roomID }?.draft
+    }
+
     // MARK: - Moving through the list
 
     public func selectNext() { move(by: 1) }

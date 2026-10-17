@@ -82,16 +82,19 @@ public final class ConversationModel: ObservableObject {
     ///     goes above that many of the newest messages from others).
     ///   - attention: whether the person is looking; nil makes one that only follows `setWindowKey`.
     ///   - savedDraft: a chat's draft as the engine keeps it (its inbox row's), for a chat opened with no text in
-    ///     the composer's memory.
+    ///     the composer's memory; nil when the inbox hasn't loaded the chat.
+    ///   - lookUpDraft: the draft of a chat `savedDraft` doesn't know, looked up; nil when that fails.
     public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
                 attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent,
-                savedDraft: @escaping @MainActor (String) -> String = { _ in "" }) {
+                savedDraft: @escaping @MainActor (String) -> String? = { _ in "" },
+                lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil }) {
         self.appModel = appModel
         self.unreadCount = unreadCount
         self.attention = attention ?? Attention(source: StaticPresence(), pollInterval: nil)
         self.calendar = calendar
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel))
         composer.savedDraft = savedDraft
+        composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
         composer.onSubmit = { [weak self] in self?.jumpToBottom() }
         subscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in

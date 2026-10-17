@@ -39,11 +39,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let attention = Attention(source: SystemPresence())
         self.attention = attention
         // The "New" divider goes above as many messages as the inbox counted unread when the chat was opened.
-        // A chat opened with no text in the composer's memory takes the draft the engine keeps (its row's).
+        // A chat opened with no text in the composer's memory takes the draft the engine keeps: its row's, or for a
+        // chat the inbox hasn't loaded (a notification opened it from another space, say), one looked up by id.
         conversation = ConversationModel(appModel: model, unreadCount: { id in
             inbox.rows.first { $0.roomID == id }?.unread ?? 0
         }, attention: attention, savedDraft: { id in
-            inbox.rows.first { $0.roomID == id }?.draft ?? ""
+            inbox.rows.first { $0.roomID == id }?.draft
+        }, lookUpDraft: { id in
+            await inbox.lookUpDraft(id)
         })
         let login = LoginFlowModel(appModel: model)
         self.login = login

@@ -75,8 +75,9 @@ extension MessageSending {
 /// the person has typed in.
 ///
 /// The open chat's text is also kept by the engine (`room.setDraft`), a second after typing stops and at once on
-/// switching chats, so it is there after a restart. A chat opened with no text in memory takes the engine's draft
-/// (`savedDraft`, the inbox row's).
+/// switching chats, so it is there after a restart. A chat opened with no text in memory takes the engine's draft:
+/// its inbox row's (`savedDraft`), or for a chat the inbox hasn't loaded, one looked up (`lookUpDraft`). Until the
+/// engine's draft is known, nothing is saved for that chat, so no keystroke can overwrite a draft nobody has seen.
 ///
 /// Sending clears the composer at once and sends in the background, a chat at a time and in order, so two messages
 /// typed quickly arrive in that order. The text goes first, then the files, one `message.sendFile` each; a reply
@@ -105,8 +106,12 @@ public final class ComposerModel: ObservableObject {
     public var onSettled: @MainActor () -> Void = {}
     /// Called when something is submitted, before it is sent.
     public var onSubmit: @MainActor () -> Void = {}
-    /// The draft the engine keeps for a chat (its inbox row's `draft`), for a chat opened with none in memory.
-    public var savedDraft: @MainActor (_ roomID: String) -> String = { _ in "" }
+    /// The draft the engine keeps for a chat, for a chat opened with none in memory: its inbox row's `draft`. Nil
+    /// when the inbox hasn't loaded the chat (another space, a filter, further down), so it isn't known here.
+    public var savedDraft: @MainActor (_ roomID: String) -> String? = { _ in "" }
+    /// Looks up the draft of a chat `savedDraft` doesn't know (`inbox.list {room_ids: [id]}`). Nil when that fails:
+    /// the draft stays unknown, and nothing is saved for the chat.
+    public var lookUpDraft: @MainActor (_ roomID: String) async -> String? = { _ in nil }
 
     private struct Draft {
         var text = ""
@@ -156,6 +161,8 @@ public final class ComposerModel: ObservableObject {
     private var draftSaves: [String: Task<Void, Never>] = [:]
     /// The text is being set by opening a chat, not by typing.
     private var openingChat = false
+    /// Chats whose draft the engine has but this composer doesn't know yet: nothing is saved for them.
+    private var unknownDrafts: Set<String> = []
 
     /// - Parameters:
     ///   - draftDelay: how long after the last keystroke the draft is saved, in seconds.
@@ -198,7 +205,7 @@ public final class ComposerModel: ObservableObject {
     public func open(_ room: String?) {
         guard room != roomID else { return }
         if let roomID {
-            if text != (savedTexts[roomID] ?? "") { saveDraft(text, in: roomID) }
+            if !unknownDrafts.contains(roomID), text != (savedTexts[roomID] ?? "") { saveDraft(text, in: roomID) }
             drafts[roomID] = currentDraft.isEmpty ? nil : currentDraft
         }
         draftToken += 1 // a wait for the chat left behind saves nothing
@@ -207,9 +214,19 @@ public final class ComposerModel: ObservableObject {
         openingChat = true
         defer { openingChat = false }
         if let room, draft.text.isEmpty {
-            let kept = savedTexts[room] ?? savedDraft(room)
-            savedTexts[room] = kept
-            text = kept
+            if let kept = savedTexts[room] ?? savedDraft(room) {
+                savedTexts[room] = kept
+                text = kept
+            } else {
+                // Not in the rows loaded: look it up, and save nothing for it until the answer says what it is.
+                text = ""
+                unknownDrafts.insert(room)
+                Task { [weak self] in
+                    guard let self else { return }
+                    let kept = await self.lookUpDraft(room)
+                    self.learnDraft(kept, of: room)
+                }
+            }
         } else {
             text = draft.text
         }
@@ -221,9 +238,31 @@ public final class ComposerModel: ObservableObject {
 
     private var currentDraft: Draft { Draft(text: text, attachments: attachments, reply: replyTarget) }
 
+    /// The engine's draft of a chat, looked up. Nil (the lookup failed) leaves it unknown: it is looked up again
+    /// the next time the chat opens. What the person typed meanwhile is kept after the engine's draft, so neither
+    /// is lost, and from now on it saves as usual.
+    private func learnDraft(_ kept: String?, of room: String) {
+        guard let kept, unknownDrafts.remove(room) != nil else { return }
+        savedTexts[room] = kept
+        if room == roomID {
+            if text.isEmpty {
+                openingChat = true
+                text = kept
+                openingChat = false
+            } else if !kept.isEmpty {
+                text = kept + "\n\n" + text
+            } else {
+                textChanged()
+            }
+        } else if var draft = drafts[room], !draft.text.isEmpty, !kept.isEmpty {
+            draft.text = kept + "\n\n" + draft.text
+            drafts[room] = draft
+        }
+    }
+
     /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.
     private func textChanged() {
-        guard !openingChat, let room = roomID else { return }
+        guard !openingChat, let room = roomID, !unknownDrafts.contains(room) else { return }
         draftToken += 1
         guard text != (savedTexts[room] ?? "") else { return } // back to what the engine has: nothing to save
         let token = draftToken
