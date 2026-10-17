@@ -154,9 +154,11 @@ public final class InboxModel: ObservableObject {
                               detail: account.error, action: .reconnect)
             case .notStarted:
                 // Telegram without an app ID is not a fault: Add a network asks for the keys when it is picked.
-                // And while the engine restarts to start it with keys just saved, the old list still says "not
-                // started": that is no banner either, until the new engine has been read.
-                account.network == "telegram" && (appModel.engineState != .connected || !telegramHasKeys)
+                // Nor is the "not started" of a list that is not the connected engine's word: the engine is not up,
+                // or it is up and has not yet answered accounts.list, so the list is still the previous engine's (as
+                // when the engine restarts to start Telegram with keys just saved).
+                account.network == "telegram"
+                    && (appModel.engineState != .connected || appModel.accountsReadAt == nil || !telegramHasKeys)
                     ? nil
                     : AccountBanner(network: account.network, displayName: account.displayName,
                                     reason: .notStarted, detail: account.notStarted, action: nil)

@@ -106,20 +106,52 @@ if [ -n "$(running_pids)" ]; then
 fi
 
 # ditto keeps the signature and every attribute. The old app is moved aside, not deleted, until the new one is in
-# place and passes codesign --verify; any failure puts it back.
+# place and passes codesign --verify; any failure, or an interrupt, puts it back.
 staging="$dest/.Courier.app.new"
 aside="$dest/.Courier.app.old"
-rm -rf "$staging" "$aside"
 trap 'rm -rf "$scratch" "$staging"' EXIT
+rm -rf "$staging"
+
+# A run that was interrupted (a power cut, a kill -9) can leave the old app aside. If the installed app is missing,
+# that folder may hold the only copy: put it back before anything else. If both are there, the installed one is
+# the new app of that run, which may not have been checked: keep whichever passes codesign --verify.
+if [ -e "$aside" ]; then
+	if [ ! -e "$installed" ]; then
+		mv "$aside" "$installed"
+		echo "Note: an earlier install was interrupted; the Courier it had set aside is back in $dest."
+	elif codesign --verify --deep --strict "$installed" >/dev/null 2>&1; then
+		rm -rf "$aside"
+	else
+		rm -rf "$installed"
+		mv "$aside" "$installed"
+		echo "Note: an earlier install was interrupted; the Courier it had set aside is back in $dest."
+	fi
+fi
+
 ditto "$app" "$staging"
-if [ -e "$installed" ]; then mv "$installed" "$aside"; fi
+
+# From here the destination changes. What to undo is read from what is on disk, so an interrupt at any moment is
+# handled: the old app, if there was one, goes back; on a first install the half-installed app is removed.
+had_old=0
+if [ -e "$installed" ]; then had_old=1; fi
 restore() {
-	rm -rf "$installed"
-	if [ -e "$aside" ]; then mv "$aside" "$installed"; fi
-	echo "install: $1 The previous Courier, if there was one, is back in place." >&2
+	trap '' INT TERM HUP
+	if [ "$had_old" -eq 1 ]; then
+		if [ -e "$aside" ]; then
+			rm -rf "$installed"
+			mv "$aside" "$installed"
+		fi
+		echo "install: $1 The previous Courier is back in place." >&2
+	else
+		rm -rf "$installed"
+		echo "install: $1 Nothing was installed." >&2
+	fi
 	exit 1
 }
+trap 'restore "Interrupted."' INT TERM HUP
+if [ "$had_old" -eq 1 ]; then mv "$installed" "$aside"; fi
 mv "$staging" "$installed" || restore "Could not move the new app into place."
 codesign --verify --deep --strict "$installed" || restore "The new app does not pass codesign --verify."
 rm -rf "$aside"
+trap - INT TERM HUP
 echo "Installed $installed."

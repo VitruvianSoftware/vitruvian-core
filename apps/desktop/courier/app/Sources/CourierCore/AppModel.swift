@@ -22,6 +22,10 @@ public final class AppModel: ObservableObject {
     /// When the engine that is up was greeted (the app connected to it); nil while none is. A message that is
     /// older than this came from the engine's history, not from the world just now.
     public private(set) var connectedAt: Date?
+    /// When `accounts` was last read from the engine that is up; nil from the moment an engine is connected until
+    /// its first answer, and while none is. Until then `accounts` is the previous engine's list, if any, and what
+    /// it says about the accounts is not the new engine's word.
+    @Published public private(set) var accountsReadAt: Date?
 
     public let supervisor: EngineSupervisor
     private var hooks: [@MainActor (EngineClient) async -> Void] = []
@@ -75,9 +79,13 @@ public final class AppModel: ObservableObject {
         guard state == .connected, let client = supervisor.client else {
             self.client = nil
             connectedAt = nil
+            accountsReadAt = nil
             return
         }
-        if self.client !== client { connectedAt = clock() }
+        if self.client !== client {
+            connectedAt = clock()
+            accountsReadAt = nil
+        }
         self.client = client
         connection = Task { [weak self] in
             // Subscribe before reading, so nothing that changes in between is missed.
@@ -121,5 +129,6 @@ public final class AppModel: ObservableObject {
         guard let result: AccountsResult = try? await client.call("accounts.list", Empty()),
               client === self.client else { return }
         accounts = result.accounts
+        accountsReadAt = clock()
     }
 }
