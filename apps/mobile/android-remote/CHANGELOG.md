@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.6...android-remote-v0.1.7) (2026-10-17)
+
+
+### Features
+
+* **android-remote:** HomeSpeaker per-source switches and tap to replay ([#3449](https://github.com/VitruvianSoftware/vitruvian-core/issues/3449)) ([c987304](https://github.com/VitruvianSoftware/vitruvian-core/commit/c987304a6ff54d13c3f9e812496822c50e538baa))
+
 ## [0.1.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.5...android-remote-v0.1.6) (2026-10-17)
 
 
