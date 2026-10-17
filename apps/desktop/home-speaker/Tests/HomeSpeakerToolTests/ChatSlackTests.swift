@@ -180,8 +180,8 @@ final class ChatSlackTests: XCTestCase {
                        ["Background Monitoring", "Slack", "Google Chat", "Beeper", "Options"])
         // Defaults: every source off, Automatic, no tokens, no Chat access,
         // no gws.
-        XCTAssertEqual(ids(tree), ["section", "slackEnabled", "slackToken", "googleChatEnabled", "chatSource", "grantChat",
-                                   "beeperEnabled", "beeperAnnounce", "beeperToken", "muteOwnMessages", "pollInterval"])
+        XCTAssertEqual(ids(tree), ["section", "slackEnabled", "slackToken", "saveSlackToken", "googleChatEnabled", "chatSource", "grantChat",
+                                   "beeperEnabled", "beeperAnnounce", "beeperToken", "saveBeeperToken", "muteOwnMessages", "pollInterval"])
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.title.text(for: "en"), "Announce Slack messages")
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.value, false)
         XCTAssertEqual(toggle(tree, Pages.Block.googleChatEnabled)?.title.text(for: "en"), "Announce Google Chat messages")
@@ -342,6 +342,63 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(chat.saved, [])
         XCTAssertEqual(chat.cleared, 0)
         XCTAssertEqual(posted, 0)
+    }
+
+    /// As HomeSpeaker's own Settings has: paste, then Save Token. The
+    /// paste is held (no redraw, which would wipe the field) until then.
+    func testSaveTokenSavesWhatWasPasted() throws {
+        let tool = opened()
+        var tree = tool.settingsPage()
+        XCTAssertEqual(button(tree, Pages.Block.saveSlackToken)?.title.text(for: "en"), "Save Token")
+        XCTAssertEqual(button(tree, Pages.Block.saveBeeperToken)?.title.text(for: "en"), "Save Token")
+        let slackAt = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.slackToken))
+        XCTAssertEqual(ids(tree)[slackAt + 1], Pages.Block.saveSlackToken, "right under its field")
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.slackToken, kind: .change, value: .string(" xoxp-pasted "))), .keep)
+        XCTAssertEqual(chat.saved, [])
+        tree = event(tool, Pages.Block.saveSlackToken, .tap)
+        XCTAssertEqual(chat.saved, ["xoxp-pasted"])
+        XCTAssertEqual(posted, 1)
+        XCTAssertEqual(tool.setupNotice, "Slack token saved")
+        XCTAssertEqual(tool.draftSlackToken, "")
+        XCTAssertTrue(texts(tree).contains("Slack token saved · "))
+
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.beeperToken, kind: .change, value: .string("beeper-pasted"))), .keep)
+        tree = event(tool, Pages.Block.saveBeeperToken, .tap)
+        XCTAssertEqual(chat.beeperSaved, ["beeper-pasted"])
+        XCTAssertEqual(tool.setupNotice, "Beeper token saved")
+        XCTAssertTrue(texts(tree).contains("Beeper token saved · "))
+    }
+
+    func testAnEmptySaveTokenNeverClears() {
+        chat.token = "xoxp-old"
+        chat.beeperToken = "old"
+        let tool = opened()
+        event(tool, Pages.Block.saveSlackToken, .tap)
+        XCTAssertEqual(tool.setupNotice, "Paste the Slack token first")
+        event(tool, Pages.Block.saveBeeperToken, .tap)
+        XCTAssertEqual(tool.setupNotice, "Paste the Beeper token first")
+        XCTAssertEqual(chat.cleared, 0)
+        XCTAssertEqual(chat.beeperCleared, 0)
+        XCTAssertEqual(posted, 0)
+    }
+
+    func testADraftDoesNotOutliveClosingSettings() {
+        let tool = opened()
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.slackToken, kind: .change, value: .string("xoxp-half")))
+        tool.panelClosed(HomeSpeakerTool.settingsPanel)
+        _ = tool.settingsPage()
+        XCTAssertEqual(tool.draftSlackToken, "")
+    }
+
+    func testSavingInSettingsRedrawsAnOpenIsland() {
+        setMonitor { $0.slackEnabled = true }
+        let tool = opened()
+        _ = tool.islandPage()
+        link.rendered = []
+        event(tool, Pages.Block.slackToken, .submit, .string("xoxp-1"))
+        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.islandPanel])
+        XCTAssertFalse(link.rendered.last?.tree.blocks.contains { $0.id == Pages.Block.slackToken } ?? true,
+                       "the island's token field goes")
     }
 
     func testAFailedSaveIsSaidAndTheAppIsNotTold() {

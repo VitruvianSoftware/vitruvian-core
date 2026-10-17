@@ -690,15 +690,15 @@ final class IslandTests: XCTestCase {
         let page = Pages.island(status)
         XCTAssertTrue(texts(page).contains("\(ChatMonitorError.slackTokenMissing.localizedDescription) · "))
         XCTAssertFalse(texts(page).contains { $0.contains("isn't running") })
-        XCTAssertTrue(texts(page).contains("Fix it in Settings > Chat & Slack"))
-        guard let warning = texts(page).firstIndex(of: "Fix it in Settings > Chat & Slack"),
+        XCTAssertTrue(texts(page).contains(Pages.fixChatInSettings))
+        guard let warning = texts(page).firstIndex(of: Pages.fixChatInSettings),
               let say = page.blocks.firstIndex(where: { $0.id == Pages.Block.say }) else { return XCTFail("missing") }
         XCTAssertLessThan(warning, say, "warned above the controls")
 
         // Running, with its token: nothing to say.
         status.chat = Pages.Chat(hasSlackToken: true, ownerRunning: true)
         XCTAssertEqual(Pages.chatWarnings(status), [])
-        XCTAssertFalse(texts(Pages.island(status)).contains("Fix it in Settings > Chat & Slack"))
+        XCTAssertFalse(texts(Pages.island(status)).contains(Pages.fixChatInSettings))
         // Not running, with nothing wrong: nothing to warn about either.
         status.chat.ownerRunning = false
         XCTAssertEqual(Pages.chatWarnings(status), [])
@@ -860,6 +860,150 @@ final class IslandTests: XCTestCase {
         }
         XCTAssertEqual(store.config?.effectiveChatMonitor.anySourceEnabled, false)
         XCTAssertFalse(texts(tool.islandPage()).contains(Pages.fixChatInSettings), "every source off: nothing to warn about")
+    }
+
+    private func field(_ tree: UITree, _ id: String) -> FieldBlock? {
+        guard case .field(let field)? = tree.blocks.first(where: { $0.id == id })?.content else { return nil }
+        return field
+    }
+
+    /// Turning Beeper or Slack on with no token puts the field to paste it
+    /// right under its switch, with Save Token; once saved, both go.
+    func testASourceOnWithNoTokenOffersItsFieldUnderItsSwitch() throws {
+        let tool = tool()
+        var page = tool.islandPage()
+        XCTAssertNil(field(page, Pages.Block.beeperToken), "off: no field")
+        XCTAssertNil(field(page, Pages.Block.slackToken))
+        page = try XCTUnwrap(self.page(tool.islandEvent(PanelEvent(block: Pages.Block.beeperEnabled, kind: .toggle, value: .bool(true)))))
+        let beeper = try XCTUnwrap(field(page, Pages.Block.beeperToken))
+        XCTAssertEqual(beeper.kind, .secret)
+        XCTAssertEqual(beeper.value, "")
+        XCTAssertEqual(beeper.title?.text(for: "en"), "Access token")
+        XCTAssertEqual(beeper.placeholder?.text(for: "en"), "Paste Beeper token and press Return")
+        let order = ids(page)
+        let toggleAt = try XCTUnwrap(order.firstIndex(of: Pages.Block.beeperEnabled))
+        XCTAssertEqual(order[toggleAt + 1], Pages.Block.beeperToken, "directly under the switch")
+        XCTAssertEqual(order[toggleAt + 2], Pages.Block.saveBeeperToken)
+        XCTAssertEqual(button(page, Pages.Block.saveBeeperToken)?.title.text(for: "en"), "Save Token")
+        XCTAssertNil(field(page, Pages.Block.slackToken), "only the source that is on")
+
+        page = try XCTUnwrap(self.page(tool.islandEvent(PanelEvent(block: Pages.Block.slackEnabled, kind: .toggle, value: .bool(true)))))
+        let slack = try XCTUnwrap(field(page, Pages.Block.slackToken))
+        XCTAssertEqual(slack.title?.text(for: "en"), "User token (xoxp-…)")
+        XCTAssertEqual(slack.placeholder?.text(for: "en"), "Paste Slack token and press Return")
+        let slackAt = try XCTUnwrap(ids(page).firstIndex(of: Pages.Block.slackEnabled))
+        XCTAssertEqual(ids(page)[slackAt + 1], Pages.Block.slackToken)
+
+        // With its token saved, the source has no field.
+        chat.token = "xoxp-1"
+        page = tool.islandPage()
+        XCTAssertNil(field(page, Pages.Block.slackToken))
+        XCTAssertNotNil(field(page, Pages.Block.beeperToken))
+    }
+
+    func testReturnOnTheIslandSavesTheTokenAndTheWarningGoes() throws {
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        let tool = tool()
+        XCTAssertTrue(texts(tool.islandPage()).contains("\(ChatMonitorError.beeperTokenMissing.localizedDescription) · "))
+        let secret = "fake-island-beeper-token" // gitleaks:allow (made-up test token)
+        let page = try XCTUnwrap(self.page(tool.islandEvent(PanelEvent(block: Pages.Block.beeperToken, kind: .submit,
+                                                                         value: .string("  \(secret) ")))))
+        XCTAssertEqual(chat.beeperSaved, [secret])
+        XCTAssertEqual(tool.notice, "Beeper token saved")
+        XCTAssertTrue(texts(page).contains("Beeper token saved"))
+        XCTAssertFalse(texts(page).contains { $0.hasPrefix(ChatMonitorError.beeperTokenMissing.localizedDescription) },
+                       "the warning goes at once")
+        XCTAssertNil(field(page, Pages.Block.beeperToken), "and so does the field")
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(page), as: UTF8.self).contains(secret))
+        XCTAssertEqual(store.saves, 0, "the token never goes in the settings file")
+    }
+
+    /// A paste is held, not saved: each keystroke of a typed token would
+    /// otherwise be saved, and the redraw wipe the field. Save Token saves.
+    func testAPasteIsHeldUntilSaveTokenOnTheIsland() throws {
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        let tool = tool()
+        _ = tool.islandPage()
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.slackToken, kind: .change, value: .string("xoxp-pasted"))), .keep)
+        XCTAssertEqual(chat.saved, [], "a change saves nothing")
+        let page = try XCTUnwrap(self.page(tool.islandEvent(PanelEvent(block: Pages.Block.saveSlackToken, kind: .tap))))
+        XCTAssertEqual(chat.saved, ["xoxp-pasted"])
+        XCTAssertEqual(tool.notice, "Slack token saved")
+        XCTAssertEqual(tool.draftSlackToken, "", "the draft goes once saved")
+        XCTAssertNil(field(page, Pages.Block.slackToken))
+        XCTAssertFalse(texts(page).contains { $0.hasPrefix(ChatMonitorError.slackTokenMissing.localizedDescription) })
+    }
+
+    func testAnEmptySaveOnTheIslandClearsNothing() throws {
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.saveSlackToken, kind: .tap))
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.slackToken, kind: .submit, value: .string("   ")))
+        XCTAssertEqual(chat.saved, [])
+        XCTAssertEqual(chat.cleared, 0)
+        XCTAssertEqual(tool.notice, "Paste the Slack token first")
+    }
+
+    func testSavingOnTheIslandRedrawsAnOpenSettingsPanel() {
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        let tool = tool()
+        _ = tool.settingsPage()
+        _ = tool.islandPage()
+        link.rendered = []
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.beeperToken, kind: .submit, value: .string("tok")))
+        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
+    }
+
+    /// The warning's way to the fix: a button that opens HomeSpeaker's
+    /// settings on Chat & Slack, for an app that can open them.
+    func testTheChatWarningOpensChatAndSlack() throws {
+        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        let tool = tool()
+        let page = tool.islandPage()
+        XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Chat & Slack…")
+        XCTAssertFalse(texts(page).contains(Pages.fixChatInSettings), "the button replaces the caption")
+        XCTAssertEqual(tool.section, .general)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
+        XCTAssertEqual(tool.section, .monitor, "Settings opens on Chat & Slack")
+        guard case .choice(let section)? = tool.settingsPage().blocks.first(where: { $0.id == Pages.Block.section })?.content else {
+            // Without a choice the section is a picker of another kind; the
+            // tool's own section is what matters.
+            return
+        }
+        XCTAssertEqual(section.value, Pages.Section.monitor.rawValue)
+    }
+
+    func testTheChatWarningRedrawsAnOpenSettingsPanelOnChatAndSlack() {
+        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        let tool = tool()
+        _ = tool.settingsPage()
+        _ = tool.islandPage()
+        link.rendered = []
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
+        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
+        XCTAssertTrue(link.rendered.last.map { $0.tree.blocks.contains { $0.id == Pages.Block.slackEnabled } } ?? false,
+                      "redrawn on Chat & Slack")
+    }
+
+    /// An app that cannot open Settings gets the caption, naming where
+    /// Chat & Slack is in Vitruvian, and a stray tap is kept.
+    func testWithoutOpenSettingsTheWarningSaysWhereChatAndSlackIs() {
+        for features in [[], Self.before358] as [Set<ProtocolFeature>] {
+            link.features = features
+            link.featureNames = []
+            store.config?.effectiveChatMonitor.slackEnabled = true
+            let tool = tool()
+            let page = tool.islandPage()
+            XCTAssertNil(button(page, Pages.Block.openChatSettings), "\(features)")
+            XCTAssertTrue(texts(page).contains(Pages.fixChatInSettings), "\(features)")
+            XCTAssertTrue(Pages.fixChatInSettings.contains("Vitruvian Settings › Extensions › HomeSpeaker"))
+            XCTAssertTrue(Pages.fixChatInSettings.contains("Chat & Slack"))
+            XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .keep, "\(features)")
+            XCTAssertEqual(tool.section, .general)
+        }
     }
 
     func testASwitchOverAFileThatDoesNotReadSavesNothing() {
