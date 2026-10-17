@@ -39,7 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = AppModel(supervisor: supervisor)
         // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
         let telegram = TelegramCredentialSource()
-        let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials })
+        let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials },
+                              preferences: InboxPreferences())
         self.inbox = inbox
         let attention = Attention(source: SystemPresence())
         self.attention = attention
@@ -78,7 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
-            showWindow: { [windowOpener] in windowOpener.show() })
+            showWindow: { [windowOpener] in windowOpener.show() },
+            // The inbox's own object, which Settings changes: a copy would ignore the change until the next launch.
+            preferences: inbox.preferences)
         notifier.coordinator = coordinator
         notifications = coordinator
         coordinator.start()

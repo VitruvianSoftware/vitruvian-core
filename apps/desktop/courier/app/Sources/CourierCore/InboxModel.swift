@@ -136,7 +136,8 @@ public final class InboxModel: ObservableObject {
     ///   - hasTelegramCredentials: whether the app has an app ID to start Telegram with (its own, or one the person
     ///     saved). Without one Telegram is "not started" by design, and Add a network asks for the keys, so that
     ///     is no banner; with one, a Telegram that did not start is a fault and says so. The default says it has.
-    ///   - preferences: the inbox's settings; nil reads the app's own.
+    ///   - preferences: the inbox's settings. Required: the Settings screen, the notifications and this model must
+    ///     share one object, because it reads the defaults once and a second copy would not see a change.
     ///   - entitlement: what the person's plan includes. A feature it doesn't is never asked of the engine.
     ///   - window: how long changes are gathered before one read, in seconds.
     ///   - retryDelay: how long after a failed read the next one waits, in seconds.
@@ -144,14 +145,14 @@ public final class InboxModel: ObservableObject {
     ///   - toastDuration: how long a toast shows, in seconds.
     ///   - toastSleep: waits `toastDuration`; tests give one they can open.
     public init(appModel: AppModel, hasTelegramCredentials: @escaping @MainActor () -> Bool = { true },
-                preferences: InboxPreferences? = nil, entitlement: any EntitlementProvider = AlwaysEntitled(),
+                preferences: InboxPreferences, entitlement: any EntitlementProvider = AlwaysEntitled(),
                 window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 toastDuration: TimeInterval = 6,
                 toastSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
         self.appModel = appModel
         self.hasTelegramCredentials = hasTelegramCredentials
-        self.preferences = preferences ?? InboxPreferences()
+        self.preferences = preferences
         self.entitlement = entitlement
         self.window = window
         self.retryDelay = retryDelay

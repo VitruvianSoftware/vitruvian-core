@@ -546,7 +546,7 @@ final class InboxModelTests: XCTestCase {
         let delivery = FakeDelivery()
         let coordinator = NotificationCoordinator(
             appModel: h.app, delivery: delivery, row: { [inbox = h.inbox] id in inbox.rows.first { $0.roomID == id } },
-            isLooking: { false }, restoreDraft: { _, _, _ in }, showWindow: {}, window: 0.01)
+            isLooking: { false }, restoreDraft: { _, _, _ in }, showWindow: {}, preferences: h.preferences, window: 0.01)
         _ = coordinator
         let reads = h.count("inbox.list")
         let now = Int64(Date().timeIntervalSince1970 * 1000)

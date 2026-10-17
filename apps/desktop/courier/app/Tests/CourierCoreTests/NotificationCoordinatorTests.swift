@@ -243,8 +243,6 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
-    // MARK: - The buttons
-
     // MARK: - Reminders
 
     func testReminderNotifiesEvenWhenMuted() async throws {
@@ -320,6 +318,26 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertFalse(h.server.receivedMethods().contains("reminder.set"))
         await finish(h)
     }
+
+    func testAReminderForTheChatYouAreReadingIsSilent() async throws {
+        let h = try await start()
+        h.window.rows["!b"] = inboxRow("!b", name: "Chat B")
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        h.server.notify(["kind": "reminder", "room_id": "!b"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        XCTAssertEqual(h.delivery.delivered[0].roomID, "!b", "another chat's reminder still comes")
+
+        // Open but not looked at (the window is not key, the screen is locked): it does come.
+        h.window.isKey = false
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(h.delivery.delivered[1].roomID, "!a")
+        await finish(h)
+    }
+
+    // MARK: - The buttons
 
     func testClickingOpensTheChatAndTheWindow() async throws {
         let h = try await start()

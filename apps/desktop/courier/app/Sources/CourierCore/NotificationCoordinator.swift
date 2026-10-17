@@ -63,22 +63,25 @@ public final class NotificationCoordinator {
     ///     engine did not answer, so it may have been sent.
     ///   - replyTimeout: how long a reply waits for the engine; nil is the client's own limit (30 s).
     ///   - showWindow: brings the main window forward, opening it again if it was closed.
-    ///   - preferences: the inbox's settings: whether requests notify, and when a reminder brings a chat back.
-    ///   - entitlement: whether the plan includes reminders (the remind-later buttons set one).
+    ///   - preferences: the inbox's settings: whether requests notify, and when a reminder brings a chat back. It
+    ///     must be the object the Settings screen changes (`InboxModel.preferences`), not a copy: it reads the
+    ///     defaults once, so a copy would not see a change until the next launch. Required for that reason.
+    ///   - entitlement: whether the plan includes reminders (the remind-later buttons set one). It must be the same
+    ///     provider the `Notifier` was given, so the buttons shown and the buttons that work agree (part 4.7).
     ///   - window: how long a chat's changes are gathered before it is read, in seconds.
     ///   - sleep: waits `window`.
     ///   - clock: the time now; tests give one they move.
     public init(appModel: AppModel, delivery: any NotificationDelivering,
                 row: @escaping @MainActor (String) -> InboxRow?, isLooking: @escaping @MainActor () -> Bool,
                 restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void,
-                showWindow: @escaping @MainActor () -> Void, preferences: InboxPreferences? = nil,
+                showWindow: @escaping @MainActor () -> Void, preferences: InboxPreferences,
                 entitlement: any EntitlementProvider = AlwaysEntitled(), window: TimeInterval = 0.1,
                 replyTimeout: TimeInterval? = nil,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 clock: @escaping @Sendable () -> Date = { Date() }) {
         self.appModel = appModel
         self.delivery = delivery
-        self.preferences = preferences ?? InboxPreferences()
+        self.preferences = preferences
         self.entitlement = entitlement
         self.row = row
         self.isLooking = isLooking
@@ -159,8 +162,10 @@ public final class NotificationCoordinator {
     // MARK: - Reminders
 
     /// One notification for a reminder that came due, whatever the chat's state: muted, low priority and hidden
-    /// chats too. The engine says it once per reminder, and so does this.
+    /// chats too, but not the chat the person is looking at. The engine says it once per reminder, and so does this.
     private func announceReminder(roomID: String) async {
+        // Not while the person is reading that chat: the row keeps its Reminder badge.
+        if isLooking(), appModel.selectedRoomID == roomID { return }
         var chat = row(roomID)
         if chat == nil, let client = appModel.client {
             chat = await lookUp(roomID, with: client)
