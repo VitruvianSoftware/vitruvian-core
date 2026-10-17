@@ -152,8 +152,7 @@ the checkout, and agy loads `.agents/hooks.json` only when started there
 (checked live on 2026-10-17: agy started in another folder ran a command in a
 worktree of this branch, and only the per-user hook logged it). A session
 started in `~`, another repo or Cowork that then works here would be
-unguarded. So, once, from **your own terminal** (agents may only `--dry-run`
-or `--check`):
+unguarded. So install it once (an agent may do this; see "Who may do what"):
 
 ```sh
 bazel run //tools/agent-guard:install -- --dry-run   # see the exact change to both user files
@@ -188,6 +187,76 @@ runs it. Nothing is copied:
 - Every other hook is kept, each file is backed up beside itself before a
   write, and running it twice changes nothing. `--uninstall` removes only
   agent-guard's entries (and any old copy); the log stays.
+
+### Who may do what
+
+| | Agents | James only |
+|---|---|---|
+| `bazel run //tools/agent-guard:install` (install or refresh the backstop) | yes, after the checks below | |
+| `-- --check`, `-- --dry-run`, `-- --uninstall --dry-run` (shows James the change) | yes | |
+| `-- --uninstall` | | yes |
+| changing modes (a `policy.json` change he merges; `--mode` is refused) | | yes |
+| the first switch from the old copied install | | yes |
+| pointing the backstop at a different checkout | | yes |
+| other settings in `~/.claude/settings.json` and `~/.gemini/config/hooks.json` | yes, with Claude Code's Edit, MultiEdit or Write, leaving agent-guard's entries alone | |
+
+The guard lets an agent run the target exactly as
+`bazel run //tools/agent-guard:install`, or with only `--check`/`--dry-run`
+(and `--uninstall` together with `--dry-run`) after `--`. It refuses a real
+`--uninstall`, `--mode`, every other flag or argument (`--home`,
+`--workspace`), any Bazel option on that command (`--run_under` or
+`--script_path` could run it as something else, or without the agent marker),
+running `install.py` or `bazel-bin/.../install` directly for anything but
+those read-only flags, and hiding the agent marker.
+
+**And only the installer as `origin/main` has it.** `bazel run` builds the
+installer from the checkout it runs in, so an agent's own edit to `install.py`
+would run with James's HOME and skip any check `install.py` makes. So the
+guard, which itself runs from `origin/main`, allows any of those runs (`bazel
+run`, or the direct read-only ones) only when, in that checkout,
+`tools/agent-guard/install.py`, `agent_guard.py` and `BUILD` are byte for byte
+`origin/main`'s, and no bazelrc that `bazel run` reads there (`/etc/bazel.bazelrc`,
+the workspace `.bazelrc` and everything it imports, `user.bazelrc` included,
+and `~/.bazelrc`) mentions `run_under` or `script_path` outside a comment.
+An agent changing the installer tests it with `bazel test`, and runs it once
+the change is on main.
+
+`install.py` then checks again (a second line: an edited `install.py` would
+skip it, which is why the guard checks first). When it sees an agent marker
+(`CLAUDECODE`, `ANTIGRAVITY_*`, `GEMINI_CLI`), it installs only if all of
+these hold, and otherwise refuses with the reason:
+
+- **It is the installer `bazel run` built from that checkout**: it runs from
+  the target's runfiles (`.../install.runfiles/...`), and that file is a link
+  to the checkout's own `tools/agent-guard/install.py`, which, with
+  `agent_guard.py` and `BUILD`, is `origin/main`'s (the guard's check again).
+- **The main checkout is the real one**: the parent of the git common dir of
+  the checkout `bazel run` ran in (as for any install), a primary checkout
+  whose `MODULE.bazel` declares `vitruvian_core` and whose `origin` is
+  `github.com/VitruvianSoftware/vitruvian-core`. `--home` and `--workspace`
+  are refused, so an agent installs only for its own HOME.
+- **That checkout's `tools/agent-guard/hook.sh` and `agent_guard.py` are byte
+  for byte `origin/main`'s**, so the backstop never points at unreviewed
+  launcher code. A local edit or an unmerged commit there means "bring it up
+  to date with main first"; no `origin/main` means "fetch first".
+- **The old copied install is gone, and any backstop already there runs this
+  same checkout.** Migrating off the old copy and moving the backstop are
+  James's.
+- **The result is exactly the standard entries** for that checkout, merged as
+  usual: the files are read back and compared, then self-tested, and both are
+  put back if either check fails.
+
+Every install an agent runs, refused or not, is one line in the log
+(`"event": "agent-install"`, with `outcome`, `reason`, `main`, the `marker`
+and the `session`). `--dry-run` from an agent session also says whether an
+agent may run the install, and why not.
+
+**The first switch from the old copied install is James's.** A Mac still on
+the old install (the guard copied to `~/.local/share/agent-guard`) runs that
+copy as its per-user hook, and that copy refuses every agent install and does
+not know this rule; `install.py` refuses an agent install while it is there as
+well. So James runs `bazel run //tools/agent-guard:install` once, from his own
+terminal. After that, agents can reinstall.
 
 **Running twice is harmless.** In a session started inside the repo both the
 project hook and the backstop run (their commands differ, so Claude Code does
@@ -297,7 +366,7 @@ another branch; until one lands, the refusal says so and points to James.
 | | `edit/exec/rollout restart/scale/label/...` | no target: tell James |
 | `helm` | `install/upgrade/uninstall/rollback` | `bazel run //tools/gitops:helm`, or change git |
 | `bazel-cache` | `rm -r` of `~/.cache/bazel`, `~/Library/Caches/bazel` or `_bazel_*`; `find -delete` there; `bazel clean --expunge`; `--output_user_root`/`--output_base` | `bazel run //tools/bazel-cache:gc` |
-| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); running `//tools/agent-guard:install` (`bazel run`, `bazel-bin/.../install` or `install.py`) without `--dry-run`/`--check`; hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal |
+| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); changing agent-guard's entries in, or setting `"disableAllHooks": true` in, the backstop's user files (`~/.claude/settings.json`, `~/.gemini/config/hooks.json`), and any shell, Desktop Commander or agy write to them (other settings: Claude Code's Edit tools, see "Limits"); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); `bazel run //tools/agent-guard:install` with anything but nothing, `--check` or `--dry-run` (so a real `--uninstall`, `--mode`, other flags, Bazel options), or from a checkout whose installer is not `origin/main`'s, and running `bazel-bin/.../install` or `install.py` directly for anything but `--check`/`--dry-run` (see "Who may do what"); hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal; agents may run the plain install |
 | `oversize` | a command with more than 20,000 simple commands in it (the hook must answer inside its 10 s timeout, and command tools fail closed) | split it into smaller commands |
 
 **Always allowed:** read-only git (`status log diff show fetch rev-parse
@@ -419,11 +488,35 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
   `git checkout <ref> -- .claude/settings.json`, as can a script that writes
   them. `tools/cloud-bootstrap/cloud-bootstrap.sh`, which
   `.claude/session-start.sh` runs, is not protected either.
+- **The installer is checked, not everything Bazel runs.** The guard compares
+  the installer's own three files with `origin/main` and reads the bazelrc
+  files, but any other Bazel target an agent writes can still write the user
+  files, as can a bazelisk wrapper (`tools/bazel`, `.bazeliskrc`) or a changed
+  toolchain in `MODULE.bazel`. The "real checkout" test in `install.py` reads
+  `MODULE.bazel`, `origin`'s URL and `origin/main` locally, so a repo built to
+  forge all three passes it. These stop mistakes, not a determined agent.
+- **The installer is not a special route.** Any `bazel run` of edited code can
+  already write anywhere, through `--override_repository` in `user.bazelrc`,
+  a `local_path_override` in `MODULE.bazel`, an untracked `tools/bazel`
+  wrapper or `.bazeliskrc`, or an edit made between the hook's check and the
+  build.
 - **The backstop's user files** (`~/.claude/settings.json`,
-  `~/.gemini/config/hooks.json`) are not protected, so an agent could remove
-  the backstop there; `--check` shows it. In the repo, `"disableAllHooks":
-  false` outranks a user-level `true`, but a nested `claude -p --settings
-  '{"disableAllHooks": true}'` started by an agent would run unguarded.
+  `~/.gemini/config/hooks.json`) are guarded by content, not locked. Claude
+  Code's Edit and MultiEdit are applied to the current file in the hook and
+  refused if the result changes agent-guard's entries (any entry whose command
+  names `agent-guard/hook.sh`, the old copy, or `agent-guard-backstop`; in
+  `hooks.json` also the `agent-guard` key) or sets `"disableAllHooks": true`
+  (`false` is fine); an edit that cannot be applied is refused if its
+  `old_string` names agent-guard. Write is refused unless the new file keeps
+  the same entries, is valid JSON, and has no `"disableAllHooks": true`.
+  Desktop Commander's `write_file`, `edit_block` and `move_file`, and agy's
+  file tools (whose content arguments are not verified), may not write them at
+  all; nor may shell writes (`>`, `tee`, `cp`/`mv`/`ln` onto them, `sed -i`,
+  `perl -i`, `rm`, `python -c` that opens one for writing). Reading them is
+  free. Shell writes are matched by name, as everywhere here. In the repo,
+  `"disableAllHooks": false` outranks a user-level `true`, but a nested
+  `claude -p --settings '{"disableAllHooks": true}'` started by an agent
+  would run unguarded.
 - **Agent detection is by environment marker** (`CLAUDECODE`,
   `ANTIGRAVITY_AGENT`, `ANTIGRAVITY_*`, `GEMINI_CLI`). `ANTIGRAVITY_AGENT=1` is
   in the agy binary; the Gemini CLI marker is the `GEMINI_CLI` name its
@@ -445,8 +538,14 @@ bazel test //tools/agent-guard/...
 `agent_guard_test` replays a table of 400+ real commands (from a week of agent
 logs) against expected decisions, plus redaction, scope, modes, the hook's
 input and output in both formats (including agy's captured payload shape,
-the missing-`Cwd` fallback and the log fields), the hook files' protection, a
-real git merge conflict, and timing on 100 KB, 1 MB and 5 MB inputs.
+the missing-`Cwd` fallback and the log fields), the hook files' protection,
+the backstop user files' protection (Edit, MultiEdit and Write that keep or
+change agent-guard's entries or set `"disableAllHooks": true` (and allow
+`false`), and the other tools),
+the installer allowed only as `origin/main` has it (an edited `install.py`,
+`BUILD` or `agent_guard.py`, in the checkout or a worktree, committed or not;
+no `origin/main`; `run_under` in a bazelrc), a real git merge conflict, and
+timing on 100 KB, 1 MB and 5 MB inputs.
 `hook_test` runs `hook.sh` in a throwaway git checkout with an `origin/main`:
 origin/main's guard wins over a broken local edit, a merged change takes
 effect, the cache, each working-copy fallback, the python fallback, agy's
@@ -456,6 +555,12 @@ effect, the cache, each working-copy fallback, the python fallback, agy's
 agy hook pointing at the main checkout (also from a worktree), migrating and
 deleting the old copy, idempotence, dry run, rollback when the self-test
 fails, `--uninstall` (both files, shared groups, the desktop app's JSON style,
-a broken `hooks.json`), refusal inside an agent session, and `--check`
+a broken `hooks.json`), an agent's install (it succeeds with a main checkout
+matching its `origin/main`, also from a worktree, and is logged; it is refused
+when `hook.sh`, `agent_guard.py` or a worktree's `install.py` differ from
+`origin/main`, when not run from Bazel's runfiles of that checkout, outside a
+checkout, for a repo that is not vitruvian-core or whose `origin` is not, while
+the old copy is installed, or to move the backstop; `--uninstall` and `--mode`
+are refused), and `--check`
 passing and failing (no backstop, the old copy, a moved main checkout, an
 unwired repo file, a broken launcher, a category switched off).

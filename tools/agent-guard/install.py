@@ -26,6 +26,13 @@
   bazel run //tools/agent-guard:install -- --check        # repo wiring, backstop, and the launcher answering
   bazel run //tools/agent-guard:install -- --uninstall    # remove the backstop (and any old copy)
 
+Who may do what: agents may install (or refresh) the backstop, `--check` and
+`--dry-run`; `--uninstall` is James's, from his own terminal. An agent's install
+goes ahead only after agent_check() passes: the main checkout is a real
+vitruvian-core primary checkout, its hook.sh and agent_guard.py are byte for
+byte origin/main's, the old copied install is gone, and any backstop already
+there runs this same checkout. Every agent install is logged.
+
 The repo wires the hook up itself: .claude/settings.json for Claude Code and
 .agents/hooks.json for Antigravity (agy) run tools/agent-guard/hook.sh, which
 runs the guard as it is on origin/main. But project hooks load only in a
@@ -517,7 +524,9 @@ def install(home: str, workspace: str, now: str, dry_run: bool) -> int:
             % exc
         )
         return 4
-    problems = self_test_command(command, home, agy)
+    problems = written_problems(home, command, agy) or self_test_command(
+        command, home, agy
+    )
     if problems:
         put_back()
         for p in problems:
@@ -544,6 +553,32 @@ def install(home: str, workspace: str, now: str, dry_run: bool) -> int:
         "repo's are let through."
     )
     return 0
+
+
+def written_problems(home: str, command: str, agy: bool) -> List[str]:
+    """Read the files back: agent-guard's entries must be exactly the standard ones."""
+    problems = []
+    try:
+        settings, _ = read_settings(settings_path(home))
+        ours = [
+            e
+            for e in (settings.get("hooks") or {}).get("PreToolUse", [])
+            if isinstance(e, dict) and any(_is_ours(h) for h in e.get("hooks", []))
+        ]
+        if ours != claude_entries(command):
+            problems.append(
+                "%s did not read back as the standard entries" % settings_path(home)
+            )
+        if agy:
+            hooks, _ = read_settings(gemini_hooks_path(home))
+            if hooks.get(AGY_HOOK_NAME) != agy_entry(command):
+                problems.append(
+                    "%s did not read back as the standard hook"
+                    % gemini_hooks_path(home)
+                )
+    except (SystemExit, AttributeError) as exc:
+        problems.append(str(exc))
+    return problems
 
 
 def self_test_command(command: str, home: str, agy: bool) -> List[str]:
@@ -596,13 +631,16 @@ def check_backstop(home: str) -> List[str]:
     problems = []
     claude_cmds, agy_cmds = backstop_commands(home)
     agy = os.path.isdir(os.path.join(home, ".gemini"))
-    fix = "run `bazel run //tools/agent-guard:install` from your own terminal"
+    # Agents may run the install, except for the first switch from the old copy
+    # and for moving the backstop to another checkout: those are James's.
+    fix = "run `bazel run //tools/agent-guard:install` (an agent may)"
+    james = "run `bazel run //tools/agent-guard:install` from your own terminal"
     if os.path.isdir(install_dir(home)) or any(
         agent_guard.INSTALL_DIR_REL in c for c in claude_cmds + agy_cmds
     ):
         problems.append(
             "the old per-user copy (%s) is still installed: %s to migrate"
-            % (install_dir(home), fix)
+            % (install_dir(home), james)
         )
         return problems
     if not claude_cmds or (agy and not agy_cmds):
@@ -623,7 +661,7 @@ def check_backstop(home: str) -> List[str]:
             problems.append(
                 "the backstop runs %s, which is gone (did the main checkout move?): calls in "
                 "vitruvian-core are refused until you %s again"
-                % (launcher, fix.split("run ", 1)[1])
+                % (launcher, james.split("run ", 1)[1])
             )
     try:
         settings, _ = read_settings(settings_path(home))
@@ -721,6 +759,172 @@ def uninstall(home: str, now: str, dry_run: bool) -> int:
         "hook files, sessions started anywhere else are not."
     )
     return 0
+
+
+# --- Agents installing -------------------------------------------------------
+def _git_out(cwd: str, *args: str) -> Optional[bytes]:
+    try:
+        r = subprocess.run(
+            ["git", "-C", cwd] + list(args),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def origin_slug(main: str) -> str:
+    """owner/name of the main checkout's origin, as configured (no insteadOf rewriting)."""
+    url = _git_out(main, "config", "--get", "remote.origin.url")
+    m = agent_guard._GH_URL_RE.search((url or b"").decode("utf-8", "replace").strip())
+    return "%s/%s" % (m.group(1), re.sub(r"\.git$", "", m.group(2))) if m else ""
+
+
+# Where this installer runs from. `bazel run //tools/agent-guard:install`
+# runs it from the target's runfiles, a link to the checkout's own install.py.
+RUNNING_FROM = os.path.abspath(__file__)
+
+
+def runfiles_problem(workspace: str) -> str:
+    """Why this is not the installer `bazel run` builds from workspace ("" if it is)."""
+    want = os.path.realpath(
+        os.path.join(workspace, "tools", "agent-guard", "install.py")
+    )
+    if (
+        "/install.runfiles/" not in RUNNING_FROM
+        or os.path.realpath(RUNNING_FROM) != want
+    ):
+        return (
+            "this installer (%s) is not the one `bazel run //tools/agent-guard:install` "
+            "builds from %s" % (RUNNING_FROM, workspace)
+        )
+    return ""
+
+
+def agent_check(home: str, workspace: str) -> Tuple[Optional[str], str]:
+    """(the main checkout, "") if an agent may install the backstop, else (main or None, why not).
+
+    The guard (from origin/main) already refused to start an agent's install
+    from a checkout whose installer is not origin/main's; an edited install.py
+    would skip these checks, so they are a second line, not the first.
+    """
+    if not workspace:
+        return None, "run it through `bazel run` (no checkout given)"
+    why = runfiles_problem(workspace) or agent_guard.installer_problem(workspace, home)
+    if why:
+        return None, why
+    try:
+        main = main_checkout(workspace)
+    except SystemExit as exc:
+        return None, str(exc)
+    # (a) The real vitruvian-core: a primary checkout (the parent of the git
+    # common dir, as main_checkout found it) declaring the module, with origin
+    # on GitHub's VitruvianSoftware/vitruvian-core.
+    if not os.path.isdir(os.path.join(main, ".git")):
+        return main, "%s is not a primary checkout (no .git folder)" % main
+    try:
+        with open(os.path.join(main, "MODULE.bazel"), encoding="utf-8") as fh:
+            module = fh.read()
+    except OSError:
+        module = ""
+    if not agent_guard.MODULE_NAME_RE.search(module):
+        return main, "%s is not a vitruvian-core checkout (its MODULE.bazel)" % main
+    slug = origin_slug(main)
+    if not agent_guard.is_vitruvian_core_slug(slug):
+        return main, (
+            "%s's origin is %s, not github.com/VitruvianSoftware/vitruvian-core"
+            % (main, slug or "missing or not GitHub")
+        )
+    # (b) What the backstop will run is what main has reviewed: the launcher
+    # and the guard in the main checkout are byte for byte origin/main's.
+    for rel in (LAUNCHER_REL, "tools/agent-guard/agent_guard.py"):
+        want = _git_out(main, "cat-file", "blob", "origin/main:" + rel)
+        if want is None:
+            return main, (
+                "%s has no origin/main:%s to compare with; `git fetch` there first"
+                % (main, rel)
+            )
+        try:
+            with open(os.path.join(main, rel), "rb") as fh:
+                have = fh.read()
+        except OSError:
+            have = None
+        if have != want:
+            return main, (
+                "%s in the main checkout %s differs from origin/main's; the backstop would "
+                "run unreviewed code. Bring that checkout up to date with main first"
+                % (rel, main)
+            )
+    # The first switch from the old copied install, and moving the backstop to
+    # another checkout, are James's.
+    claude_cmds, agy_cmds = backstop_commands(home)
+    if os.path.isdir(install_dir(home)) or any(
+        agent_guard.INSTALL_DIR_REL in c for c in claude_cmds + agy_cmds
+    ):
+        return main, (
+            "the old copied install (%s) is still in place; the first switch from it is "
+            "James's, from his own terminal" % install_dir(home)
+        )
+    for cmd in claude_cmds + agy_cmds:
+        current = backstop_main(cmd)
+        if current and current != main:
+            return main, (
+                "the backstop runs the checkout %s, not %s; moving it is James's, from his "
+                "own terminal" % (current, main)
+            )
+    return main, ""
+
+
+def log_agent_install(
+    home: str, marker: str, main: Optional[str], outcome: str, why: str = ""
+) -> None:
+    """One line in agent-guard's log for each install an agent runs."""
+    agent_guard.write_log(
+        home,
+        {
+            "ts": agent_guard._now(),
+            "agent": "claude-code"
+            if marker == "CLAUDECODE"
+            else "antigravity"
+            if marker.startswith("ANTIGRAVITY_")
+            else "gemini-cli",
+            "event": "agent-install",
+            "tool": "install.py",
+            "category": "guard-config",
+            "op": "bazel run //tools/agent-guard:install",
+            "decision": "deny" if outcome == "refused" else "allow",
+            "outcome": outcome,
+            "reason": why[:500],
+            "main": main or "",
+            "marker": "%s=%s" % (marker, os.environ.get(marker, "")[:64]),
+            "session": (
+                os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get(marker, "")
+            )[:64],
+            "source": "install.py",
+        },
+    )
+
+
+def agent_install(home: str, workspace: str, now: str, marker: str) -> int:
+    main, why = agent_check(home, workspace)
+    if why:
+        log_agent_install(home, marker, main, "refused", why)
+        sys.stderr.write(
+            "agent-guard: not installing the backstop from an agent session (%s is set): "
+            "%s.\n" % (marker, why)
+        )
+        return 2
+    try:
+        rc = install(home, workspace, now, False)
+    except SystemExit as exc:  # a user file that is not valid JSON, say
+        log_agent_install(home, marker, main, "failed", str(exc))
+        raise
+    log_agent_install(
+        home, marker, main, "installed" if rc == 0 else "failed (rc %d)" % rc
+    )
+    return rc
 
 
 # --- --check ------------------------------------------------------------------
@@ -952,12 +1156,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         return check(workspace, home)
     marker = agent_marker(dict(os.environ))
-    if marker and not args.dry_run:
+    if marker and args.uninstall and not args.dry_run:
         sys.stderr.write(
-            "agent-guard: refusing to %s inside an agent session (%s is set).\n"
-            "Installing or removing the backstop is James's job, from his own terminal. "
-            "--dry-run and --check are allowed.\n"
-            % ("uninstall" if args.uninstall else "install", marker)
+            "agent-guard: refusing to uninstall inside an agent session (%s is set).\n"
+            "Removing the backstop is James's job, from his own terminal. Agents may "
+            "install, --check and --dry-run.\n" % marker
+        )
+        return 2
+    if (
+        marker
+        and not args.uninstall
+        and not args.dry_run
+        and (args.home or args.workspace)
+    ):
+        sys.stderr.write(
+            "agent-guard: refusing --home/--workspace inside an agent session (%s is set): "
+            "an agent installs only for its own HOME, from the checkout `bazel run` ran in.\n"
+            % marker
         )
         return 2
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -968,7 +1183,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             "agent-guard: run this through `bazel run` (no checkout given)\n"
         )
         return 2
-    return install(home, workspace, now, args.dry_run)
+    if marker and not args.dry_run:
+        return agent_install(home, workspace, now, marker)
+    rc = install(home, workspace, now, args.dry_run)
+    if marker:
+        _main, why = agent_check(home, workspace)
+        print(
+            "an agent may run this install: %s" % ("yes" if not why else "no, " + why)
+        )
+    return rc
 
 
 if __name__ == "__main__":

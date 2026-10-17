@@ -464,11 +464,12 @@ class InstallTest(Base):
             self.run_main(workspace=self.co.root)
         self.assertIn("pull main there first", str(cm.exception))
 
-    def test_refused_inside_an_agent_session_except_dry_run(self):
+    def test_an_agent_may_not_aim_it_with_home_or_workspace(self):
         os.environ["CLAUDECODE"] = "1"
         try:
             rc, out = self.run_main(workspace=self.co.root)
             self.assertEqual(rc, 2)
+            self.assertIn("--home/--workspace", out)
             self.assertIn("CLAUDECODE", out)
             rc, _ = self.run_main("--dry-run", workspace=self.co.root)
             self.assertEqual(rc, 0)
@@ -488,6 +489,273 @@ class InstallTest(Base):
         rc, out = self.run_main("--mode", "git-push=warn")
         self.assertEqual(rc, 2)
         self.assertIn("policy.json", out)
+
+
+ORIGIN = "https://github.com/VitruvianSoftware/vitruvian-core.git"
+
+
+def installable(co):
+    """Give a fake checkout the installer's own files and a GitHub origin, all on origin/main."""
+    shutil.copy(os.path.join(install.HERE, "install.py"), co.guard_dir)
+    co.write("tools/agent-guard/BUILD", "# the installer's BUILD\n")
+    co.commit_to_main("installer")
+    testlib.git(co.root, "remote", "add", "origin", ORIGIN)
+    return co
+
+
+def runfiles_link(tmp, workspace):
+    """Where `bazel run` would run workspace's install.py from: a runfiles link to it."""
+    d = os.path.join(
+        tmp,
+        "bazel-bin-%d" % len(os.listdir(tmp)),
+        "tools/agent-guard/install.runfiles/_main/tools/agent-guard",
+    )
+    os.makedirs(d)
+    link = os.path.join(d, "install.py")
+    os.symlink(os.path.join(workspace, "tools", "agent-guard", "install.py"), link)
+    return link
+
+
+class AgentInstallTest(Base):
+    """An agent's install: the real HOME (here a temp one) and the checkout
+    `bazel run` ran in, never --home/--workspace; checked, then logged."""
+
+    def setUp(self):
+        super().setUp()
+        self.co = installable(testlib.Checkout())
+        self.command = install.backstop_command(self.co.root)
+        self._running_from = install.RUNNING_FROM
+        install.agent_guard._scope_cache.clear()
+        install.agent_guard._root_cache.clear()
+        self._saved = {
+            k: os.environ.get(k)
+            for k in ("HOME", "BUILD_WORKSPACE_DIRECTORY", "CLAUDE_CODE_SESSION_ID")
+        }
+        os.environ.update(
+            HOME=self.home,
+            BUILD_WORKSPACE_DIRECTORY=self.co.root,
+            CLAUDE_CODE_SESSION_ID="session-under-test",
+            CLAUDECODE="1",
+        )
+
+    def tearDown(self):
+        install.RUNNING_FROM = self._running_from
+        os.environ.pop("CLAUDECODE", None)
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        self.co.close()
+        super().tearDown()
+
+    def agent(self, *args, workspace=None, running_from=None):
+        if workspace is not None:
+            os.environ["BUILD_WORKSPACE_DIRECTORY"] = workspace
+        install.RUNNING_FROM = running_from or runfiles_link(
+            self.co.tmp, os.environ["BUILD_WORKSPACE_DIRECTORY"]
+        )
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            rc = install.main(list(args))
+        return rc, out.getvalue()
+
+    def ours(self):
+        s = self.load(self.settings)
+        return [
+            e
+            for e in s.get("hooks", {}).get("PreToolUse", [])
+            if any(install._is_ours(h) for h in e.get("hooks", []))
+        ]
+
+    def installs(self):
+        """The agent-install lines in agent-guard's log."""
+        path = os.path.join(self.home, ".local", "state", "agent-guard", "log.jsonl")
+        if not os.path.exists(path):
+            return []
+        with open(path) as fh:
+            lines = [json.loads(line) for line in fh]
+        return [r for r in lines if r.get("event") == "agent-install"]
+
+    def assert_refused(self, rc, out, needle):
+        self.assertEqual(rc, 2, out)
+        self.assertIn(needle, out)
+        self.assertIn("CLAUDECODE", out)
+        self.assertEqual(self.ours(), [])
+        self.assertEqual(self.load(self.settings), EXISTING)
+        self.assertEqual(self.load(self.gemini), EXISTING_GEMINI)
+        last = self.installs()[-1]
+        self.assertEqual(last["outcome"], "refused")
+        self.assertEqual(last["decision"], "deny")
+        self.assertIn(needle, last["reason"])
+
+    def test_installs_when_the_main_checkout_matches_origin_main(self):
+        rc, out = self.agent()
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.ours(), install.claude_entries(self.command))
+        self.assertEqual(
+            self.load(self.gemini)["agent-guard"], install.agy_entry(self.command)
+        )
+        s = self.load(self.settings)
+        for event, entries in EXISTING["hooks"].items():
+            self.assertEqual(s["hooks"][event], entries)
+        self.assertEqual(len(glob.glob(self.settings + ".agent-guard-*.bak")), 1)
+        (rec,) = self.installs()
+        self.assertEqual(
+            {k: rec[k] for k in ("outcome", "decision", "main", "marker", "session")},
+            {
+                "outcome": "installed",
+                "decision": "allow",
+                "main": self.co.root,
+                "marker": "CLAUDECODE=1",
+                "session": "session-under-test",
+            },
+        )
+        self.assertEqual(rec["agent"], "claude-code")
+        # Again: nothing changes, and it is logged again.
+        before = (self.text(self.settings), self.text(self.gemini))
+        rc, out = self.agent()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("already installed", out)
+        self.assertEqual((self.text(self.settings), self.text(self.gemini)), before)
+        self.assertEqual(len(self.installs()), 2)
+
+    def test_from_a_worktree_it_installs_for_the_main_checkout(self):
+        wt = os.path.join(self.co.tmp, "vitruvian-core-worktrees", "feat-x")
+        testlib.git(self.co.root, "worktree", "add", "-q", "--detach", wt)
+        rc, out = self.agent(workspace=wt)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.ours(), install.claude_entries(self.command))
+
+    def test_an_antigravity_marker_is_logged_as_antigravity(self):
+        del os.environ["CLAUDECODE"]
+        os.environ["ANTIGRAVITY_AGENT"] = "1"
+        try:
+            rc, out = self.agent()
+        finally:
+            del os.environ["ANTIGRAVITY_AGENT"]
+        self.assertEqual(rc, 0, out)
+        rec = self.installs()[-1]
+        self.assertEqual(
+            (rec["agent"], rec["marker"]), ("antigravity", "ANTIGRAVITY_AGENT=1")
+        )
+
+    def test_refused_when_hook_sh_differs_from_origin_main(self):
+        with open(os.path.join(self.co.guard_dir, "hook.sh"), "a") as fh:
+            fh.write("# an unreviewed local edit\n")
+        rc, out = self.agent()
+        self.assert_refused(rc, out, "tools/agent-guard/hook.sh in the main checkout")
+
+    def test_refused_when_agent_guard_py_differs_from_origin_main(self):
+        with open(os.path.join(self.co.guard_dir, "agent_guard.py"), "a") as fh:
+            fh.write("# an unreviewed local edit\n")
+        rc, out = self.agent()
+        self.assert_refused(
+            rc, out, "tools/agent-guard/agent_guard.py in %s differs" % self.co.root
+        )
+
+    def test_refused_when_a_local_commit_is_ahead_of_origin_main(self):
+        with open(os.path.join(self.co.guard_dir, "hook.sh"), "a") as fh:
+            fh.write("# committed, never merged\n")
+        testlib.git(self.co.root, "commit", "-qam", "local", "--no-gpg-sign")
+        rc, out = self.agent()
+        self.assert_refused(rc, out, "differs from origin/main's")
+
+    def test_refused_without_origin_main(self):
+        testlib.git(self.co.root, "update-ref", "-d", "refs/remotes/origin/main")
+        rc, out = self.agent()
+        self.assert_refused(rc, out, "origin/main or its installer cannot be read")
+
+    def test_refused_outside_any_checkout(self):
+        rc, out = self.agent(workspace=self.co.out)
+        self.assert_refused(rc, out, "vitruvian-core checkout")
+
+    def test_refused_for_a_repo_that_is_not_vitruvian_core(self):
+        self.co.write("MODULE.bazel", 'module(name = "something_else")\n')
+        self.co.commit_to_main("not vitruvian-core")
+        rc, out = self.agent()
+        self.assert_refused(rc, out, "not run from inside a vitruvian-core checkout")
+
+    def test_refused_when_origin_is_not_vitruvian_core(self):
+        for url in (
+            "https://github.com/someone/vitruvian-core.git",
+            "/tmp/a-local-fake",
+        ):
+            testlib.git(self.co.root, "remote", "set-url", "origin", url)
+            rc, out = self.agent()
+            self.assert_refused(
+                rc, out, "not github.com/VitruvianSoftware/vitruvian-core"
+            )
+
+    def test_refused_while_the_old_copy_is_installed(self):
+        old_install(self.home)
+        before = (self.text(self.settings), self.text(self.gemini))
+        rc, out = self.agent()
+        self.assertEqual(rc, 2, out)
+        self.assertIn("the first switch from it is James's", out)
+        self.assertEqual((self.text(self.settings), self.text(self.gemini)), before)
+        self.assertTrue(os.path.isdir(self.idir))
+        self.assertEqual(self.installs()[-1]["outcome"], "refused")
+
+    def test_refused_to_move_the_backstop_to_another_checkout(self):
+        other = installable(testlib.Checkout())
+        try:
+            rc, out = self.agent(workspace=other.root)
+            self.assertEqual(rc, 0, out)
+            before = self.text(self.settings)
+            rc, out = self.agent(workspace=self.co.root)
+            self.assertEqual(rc, 2, out)
+            self.assertIn("moving it is James's", out)
+            self.assertEqual(self.text(self.settings), before)
+        finally:
+            other.close()
+
+    def test_an_edited_installer_in_a_worktree_is_refused(self):
+        wt = os.path.join(self.co.tmp, "vitruvian-core-worktrees", "feat-x")
+        testlib.git(self.co.root, "worktree", "add", "-q", "--detach", wt)
+        with open(os.path.join(wt, "tools/agent-guard/install.py"), "a") as fh:
+            fh.write("# an agent's own edit\n")
+        rc, out = self.agent(workspace=wt)
+        self.assert_refused(rc, out, "tools/agent-guard/install.py in %s differs" % wt)
+
+    def test_refused_unless_run_from_bazels_runfiles(self):
+        # Run directly from the checkout (python3 tools/agent-guard/install.py).
+        direct = os.path.join(self.co.root, "tools/agent-guard/install.py")
+        rc, out = self.agent(running_from=direct)
+        self.assert_refused(
+            rc, out, "is not the one `bazel run //tools/agent-guard:install` builds"
+        )
+        # A runfiles tree, but of another checkout's installer.
+        other = installable(testlib.Checkout())
+        try:
+            rc, out = self.agent(running_from=runfiles_link(self.co.tmp, other.root))
+            self.assert_refused(rc, out, "is not the one")
+        finally:
+            other.close()
+
+    def test_uninstall_and_mode_are_refused(self):
+        rc, out = self.agent()
+        self.assertEqual(rc, 0, out)
+        installed = (self.text(self.settings), self.text(self.gemini))
+        rc, out = self.agent("--uninstall")
+        self.assertEqual(rc, 2)
+        self.assertIn("Removing the backstop is James's job", out)
+        rc, out = self.agent("--mode", "git-push=off")
+        self.assertEqual(rc, 2)
+        self.assertEqual((self.text(self.settings), self.text(self.gemini)), installed)
+
+    def test_dry_run_and_check_still_work_and_say_whether_an_agent_may_install(self):
+        rc, out = self.agent("--dry-run")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("an agent may run this install: yes", out)
+        self.assertEqual(self.ours(), [])
+        with open(os.path.join(self.co.guard_dir, "hook.sh"), "a") as fh:
+            fh.write("# edit\n")
+        rc, out = self.agent("--dry-run")
+        self.assertIn("an agent may run this install: no, ", out)
+        rc, out = self.agent("--check")
+        self.assertEqual(rc, 1)  # no backstop yet
+        self.assertIn("(an agent may)", out)
 
 
 class CheckTest(Base):
