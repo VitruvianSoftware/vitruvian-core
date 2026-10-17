@@ -16,12 +16,8 @@ package struct MenuPanelExtensionsStrings {
     package let manage: String
     /// The tab, when every extension that has a panel is switched off for it.
     package let emptyAllOff: String
-    /// Opens Settings › Menu bar, where those switches are.
+    /// Opens the tab's edit mode, where those switches are.
     package let choose: String
-    /// The heading of the switches in Settings › Menu bar.
-    package let settingsTitle: String
-    /// The line under that heading.
-    package let settingsCaption: String
     /// In place of a web page the Dynamic Island is showing: the two cannot
     /// draw one web page at once, and the island keeps it.
     package let shownInIsland: String
@@ -29,16 +25,13 @@ package struct MenuPanelExtensionsStrings {
     package let openInIsland: String
 
     package init(title: String, sectionDescription: String, emptyNone: String, manage: String,
-                 emptyAllOff: String, choose: String, settingsTitle: String, settingsCaption: String,
-                 shownInIsland: String, openInIsland: String) {
+                 emptyAllOff: String, choose: String, shownInIsland: String, openInIsland: String) {
         self.title = title
         self.sectionDescription = sectionDescription
         self.emptyNone = emptyNone
         self.manage = manage
         self.emptyAllOff = emptyAllOff
         self.choose = choose
-        self.settingsTitle = settingsTitle
-        self.settingsCaption = settingsCaption
         self.shownInIsland = shownInIsland
         self.openInIsland = openInIsland
     }
@@ -74,8 +67,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Manage Extensions…",
         emptyAllOff: "Every extension is switched off for this tab.",
         choose: "Choose Extensions…",
-        settingsTitle: "Extensions tab",
-        settingsCaption: "Choose which extensions show their panel in the Extensions tab.",
         shownInIsland: "Showing in the Dynamic Island",
         openInIsland: "Open in the Dynamic Island"
     )
@@ -87,8 +78,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Gerenciar extensões…",
         emptyAllOff: "Todas as extensões estão desativadas nesta aba.",
         choose: "Escolher extensões…",
-        settingsTitle: "Aba Extensões",
-        settingsCaption: "Escolha quais extensões mostram o painel na aba Extensões.",
         shownInIsland: "Aparecendo no Dynamic Island",
         openInIsland: "Abrir no Dynamic Island"
     )
@@ -100,8 +89,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Uzantıları Yönet…",
         emptyAllOff: "Bu sekme için tüm uzantılar kapalı.",
         choose: "Uzantıları Seç…",
-        settingsTitle: "Uzantılar sekmesi",
-        settingsCaption: "Uzantılar sekmesinde hangi uzantıların panelini göstereceğini seçin.",
         shownInIsland: "Dynamic Island’da gösteriliyor",
         openInIsland: "Dynamic Island’da aç"
     )
@@ -113,8 +100,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Управлять расширениями…",
         emptyAllOff: "Все расширения выключены для этой вкладки.",
         choose: "Выбрать расширения…",
-        settingsTitle: "Вкладка «Расширения»",
-        settingsCaption: "Выберите, какие расширения показывают свою панель на вкладке «Расширения».",
         shownInIsland: "Показывается в Dynamic Island",
         openInIsland: "Открыть в Dynamic Island"
     )
@@ -126,8 +111,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Gestionar extensiones…",
         emptyAllOff: "Todas las extensiones están desactivadas en esta pestaña.",
         choose: "Elegir extensiones…",
-        settingsTitle: "Pestaña Extensiones",
-        settingsCaption: "Elige qué extensiones muestran su panel en la pestaña Extensiones.",
         shownInIsland: "Se muestra en el Dynamic Island",
         openInIsland: "Abrir en el Dynamic Island"
     )
@@ -139,8 +122,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Spravovať rozšírenia…",
         emptyAllOff: "Všetky rozšírenia sú pre túto kartu vypnuté.",
         choose: "Vybrať rozšírenia…",
-        settingsTitle: "Karta Rozšírenia",
-        settingsCaption: "Vyberte, ktoré rozšírenia zobrazia svoj panel na karte Rozšírenia.",
         shownInIsland: "Zobrazuje sa v Dynamic Island",
         openInIsland: "Otvoriť v Dynamic Island"
     )
@@ -152,8 +133,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Erweiterungen verwalten…",
         emptyAllOff: "Alle Erweiterungen sind für diesen Tab ausgeschaltet.",
         choose: "Erweiterungen auswählen…",
-        settingsTitle: "Tab „Erweiterungen“",
-        settingsCaption: "Wähle, welche Erweiterungen ihren Bereich im Tab „Erweiterungen“ zeigen.",
         shownInIsland: "Wird im Dynamic Island angezeigt",
         openInIsland: "Im Dynamic Island öffnen"
     )
@@ -165,8 +144,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Gérer les extensions…",
         emptyAllOff: "Toutes les extensions sont désactivées pour cet onglet.",
         choose: "Choisir les extensions…",
-        settingsTitle: "Onglet Extensions",
-        settingsCaption: "Choisissez les extensions qui affichent leur panneau dans l’onglet Extensions.",
         shownInIsland: "Affiché dans le Dynamic Island",
         openInIsland: "Ouvrir dans le Dynamic Island"
     )
@@ -178,8 +155,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Gestisci estensioni…",
         emptyAllOff: "Tutte le estensioni sono disattivate per questa scheda.",
         choose: "Scegli estensioni…",
-        settingsTitle: "Scheda Estensioni",
-        settingsCaption: "Scegli quali estensioni mostrano il loro pannello nella scheda Estensioni.",
         shownInIsland: "Mostrato nel Dynamic Island",
         openInIsland: "Apri nel Dynamic Island"
     )
@@ -191,8 +166,6 @@ extension MenuPanelExtensionsStrings {
         manage: "拡張機能を管理…",
         emptyAllOff: "このタブではすべての拡張機能がオフになっています。",
         choose: "拡張機能を選択…",
-        settingsTitle: "「拡張機能」タブ",
-        settingsCaption: "「拡張機能」タブにパネルを表示する拡張機能を選びます。",
         shownInIsland: "Dynamic Islandに表示中",
         openInIsland: "Dynamic Islandで開く"
     )
@@ -204,8 +177,6 @@ extension MenuPanelExtensionsStrings {
         manage: "확장 프로그램 관리…",
         emptyAllOff: "이 탭에서 모든 확장 프로그램이 꺼져 있습니다.",
         choose: "확장 프로그램 선택…",
-        settingsTitle: "확장 프로그램 탭",
-        settingsCaption: "확장 프로그램 탭에 패널을 표시할 확장 프로그램을 선택하세요.",
         shownInIsland: "Dynamic Island에 표시 중",
         openInIsland: "Dynamic Island에서 열기"
     )
@@ -217,8 +188,6 @@ extension MenuPanelExtensionsStrings {
         manage: "Керувати розширеннями…",
         emptyAllOff: "Усі розширення вимкнено для цієї вкладки.",
         choose: "Вибрати розширення…",
-        settingsTitle: "Вкладка «Розширення»",
-        settingsCaption: "Виберіть, які розширення показують свою панель на вкладці «Розширення».",
         shownInIsland: "Показується в Dynamic Island",
         openInIsland: "Відкрити в Dynamic Island"
     )
@@ -230,8 +199,6 @@ extension MenuPanelExtensionsStrings {
         manage: "管理扩展…",
         emptyAllOff: "所有扩展都已在此标签页中关闭。",
         choose: "选择扩展…",
-        settingsTitle: "“扩展”标签页",
-        settingsCaption: "选择哪些扩展在“扩展”标签页中显示面板。",
         shownInIsland: "正在 Dynamic Island 中显示",
         openInIsland: "在 Dynamic Island 中打开"
     )
@@ -243,8 +210,6 @@ extension MenuPanelExtensionsStrings {
         manage: "管理擴充功能…",
         emptyAllOff: "所有擴充功能都已在此標籤頁中關閉。",
         choose: "選擇擴充功能…",
-        settingsTitle: "「擴充功能」標籤頁",
-        settingsCaption: "選擇哪些擴充功能在「擴充功能」標籤頁中顯示面板。",
         shownInIsland: "正在 Dynamic Island 中顯示",
         openInIsland: "在 Dynamic Island 中打開"
     )
@@ -256,8 +221,6 @@ extension MenuPanelExtensionsStrings {
         manage: "管理擴充功能…",
         emptyAllOff: "所有擴充功能都已在此分頁中關閉。",
         choose: "選擇擴充功能…",
-        settingsTitle: "「擴充功能」分頁",
-        settingsCaption: "選擇哪些擴充功能在「擴充功能」分頁中顯示面板。",
         shownInIsland: "正在 Dynamic Island 中顯示",
         openInIsland: "在 Dynamic Island 中打開"
     )

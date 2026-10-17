@@ -356,9 +356,12 @@ package enum DefaultsKey {
     package static let panelShowWallpaper = "panelShowWallpaper"
     // The Extensions tab: absent means it shows exactly while an extension
     // has an island page, so it is never registered. The extensions switched
-    // off for it are comma-joined tool ids; absent means none.
+    // off for it, their custom order and the ones collapsed in it are
+    // comma-joined tool ids; absent means none.
     package static let panelShowExtensions = "panelShowExtensions"
     package static let panelHiddenExtensions = "panelHiddenExtensions"
+    package static let panelExtensionOrder = "panelExtensionOrder"
+    package static let panelCollapsedExtensions = "panelCollapsedExtensions"
     // Quick toggles tab: per-action visibility (the order lives in panelToggleOrder).
     package static let panelToggleDarkMode = "panelToggleDarkMode"
     package static let panelToggleKeyboardLight = "panelToggleKeyboardLight"

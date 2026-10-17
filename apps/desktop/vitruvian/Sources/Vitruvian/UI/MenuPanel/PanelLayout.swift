@@ -18,6 +18,7 @@ package struct PanelSection<Content: View>: View {
     private let collapsible: Bool
     private let supportsEditing: Bool
     private let editButtonVisible: Bool
+    private let externalEditing: Binding<Bool>?
     private let resetAction: (() -> Void)?
     private let content: (Bool) -> Content
     @State private var collapsed: Bool
@@ -30,6 +31,7 @@ package struct PanelSection<Content: View>: View {
         self.collapsible = collapsible
         self.supportsEditing = false
         self.editButtonVisible = false
+        self.externalEditing = nil
         self.resetAction = nil
         self.content = { _ in content() }
         _collapsed = State(initialValue: PanelLayout.isCollapsed(id))
@@ -38,6 +40,7 @@ package struct PanelSection<Content: View>: View {
     package init(_ id: PanelSectionID, title: String, collapsible: Bool = true,
          supportsEditing: Bool,
          editButtonVisible: Bool = true,
+         isEditing: Binding<Bool>? = nil,
          resetAction: (() -> Void)? = nil,
          @ViewBuilder content: @escaping (Bool) -> Content) {
         self.id = id
@@ -45,6 +48,7 @@ package struct PanelSection<Content: View>: View {
         self.collapsible = collapsible
         self.supportsEditing = supportsEditing
         self.editButtonVisible = editButtonVisible
+        self.externalEditing = isEditing
         self.resetAction = resetAction
         self.content = content
         _collapsed = State(initialValue: PanelLayout.isCollapsed(id))
@@ -141,14 +145,18 @@ package struct PanelSection<Content: View>: View {
         .help(l10n.s.mixerOutputDefault)
     }
 
-    private var isEditing: Bool { supportsEditing && editButtonVisible && editing }
+    private var editingFlag: Bool { externalEditing?.wrappedValue ?? editing }
+
+    private var isEditing: Bool { supportsEditing && editButtonVisible && editingFlag }
 
     private func toggleEditing() {
         if collapsed {
             collapsed = false
             PanelLayout.setCollapsed(false, for: id)
         }
-        editing.toggle()
+        let next = !editingFlag
+        editing = next
+        externalEditing?.wrappedValue = next
     }
 
     private func toggle() {

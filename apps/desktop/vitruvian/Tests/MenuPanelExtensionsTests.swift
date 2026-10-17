@@ -15,6 +15,7 @@ enum MenuPanelExtensionsTests {
         theSectionHasANewSavedName(suite)
         itShowsByDefaultOnlyWithAnIslandPage(suite)
         eachExtensionHasASwitchThatIsSaved(suite)
+        extensionsCanBeReorderedCollapsedAndReset(suite)
         savedLayoutsStillRead(suite)
         itListsOnlyIslandPages(suite)
         theTabOpensAPageTheIslandDoesNotHave(suite)
@@ -56,8 +57,10 @@ enum MenuPanelExtensionsTests {
                      "no hub feature keeps the tab: an extension is added in Settings, so the tab is always there "
                          + "to switch on")
         suite.expect(SettingsBackupSupport.exportKeys().isSuperset(of: [DefaultsKey.panelShowExtensions,
-                                                                        DefaultsKey.panelHiddenExtensions]),
-                     "the tab's switch and the extensions switched off for it go into a settings backup")
+                                                                        DefaultsKey.panelHiddenExtensions,
+                                                                        DefaultsKey.panelExtensionOrder,
+                                                                        DefaultsKey.panelCollapsedExtensions]),
+                     "the tab's switch, hidden extensions, custom order and collapsed cards go into a settings backup")
     }
 
     static func itShowsByDefaultOnlyWithAnIslandPage(_ suite: TestSuite) {
@@ -106,6 +109,44 @@ enum MenuPanelExtensionsTests {
             defaults.set("com.acme.deploys,../x,,.bad", forKey: DefaultsKey.panelHiddenExtensions)
             suite.expect(MenuPanelExtensionsSupport.hidden(in: defaults) == [deploys],
                          "an id that is not well formed is dropped when read")
+        }
+    }
+
+    static func extensionsCanBeReorderedCollapsedAndReset(_ suite: TestSuite) {
+        let deploys = ToolID("com.acme.deploys")!
+        let board = ToolID("com.acme.board")!
+        let notes = ToolID("com.acme.notes")!
+        withDefaults("order-and-collapse") { defaults in
+            suite.expect(MenuPanelExtensionsSupport.ordered([deploys, board, notes], in: defaults) == [deploys, board, notes]
+                             && defaults.object(forKey: DefaultsKey.panelExtensionOrder) == nil,
+                         "with no saved order, extensions appear in the order they were added")
+            MenuPanelExtensionsSupport.setOrder([board, notes, deploys], in: defaults)
+            suite.expect(MenuPanelExtensionsSupport.ordered([deploys, board, notes], in: defaults) == [board, notes, deploys]
+                             && MenuPanelExtensionsSupport.shown([deploys, board, notes], in: defaults) == [board, notes, deploys],
+                         "a saved order rearranges the extensions in the tab")
+            // An extension temporarily absent (switched off in Settings) keeps its place when the others move.
+            MenuPanelExtensionsSupport.setOrder([deploys, board], in: defaults)
+            suite.expect(MenuPanelExtensionsSupport.ordered([deploys, board, notes], in: defaults) == [deploys, notes, board],
+                         "an extension not in the live list keeps its saved place when it comes back")
+
+            suite.expect(!MenuPanelExtensionsSupport.isCollapsed(deploys, in: defaults)
+                             && defaults.object(forKey: DefaultsKey.panelCollapsedExtensions) == nil,
+                         "every extension card starts expanded")
+            MenuPanelExtensionsSupport.setCollapsed(true, for: board, in: defaults)
+            suite.expect(MenuPanelExtensionsSupport.isCollapsed(board, in: defaults)
+                             && !MenuPanelExtensionsSupport.isCollapsed(deploys, in: defaults),
+                         "collapsing one extension card saves its id and leaves the others open")
+            MenuPanelExtensionsSupport.setCollapsed(false, for: board, in: defaults)
+            suite.expect(defaults.object(forKey: DefaultsKey.panelCollapsedExtensions) == nil,
+                         "expanding the last collapsed card removes the key")
+
+            MenuPanelExtensionsSupport.setShown(false, for: deploys, in: defaults)
+            MenuPanelExtensionsSupport.setCollapsed(true, for: board, in: defaults)
+            MenuPanelExtensionsSupport.reset(in: defaults)
+            suite.expect(defaults.object(forKey: DefaultsKey.panelHiddenExtensions) == nil
+                             && defaults.object(forKey: DefaultsKey.panelExtensionOrder) == nil
+                             && defaults.object(forKey: DefaultsKey.panelCollapsedExtensions) == nil,
+                         "resetting the tab clears hidden extensions, custom order and collapsed cards")
         }
     }
 
@@ -171,13 +212,16 @@ enum MenuPanelExtensionsTests {
         bench.store.setOn(board.tool, false)
         suite.expect(MenuPanelExtensions.available(store: bench.store, language: .enUS).map(\.key) == [deploys],
                      "an extension that is switched off is not listed")
+        bench.store.setOn(board.tool, true)
         withDefaults("listed") { defaults in
-            suite.expect(MenuPanelExtensions.shown(store: bench.store, defaults: defaults, language: .enUS).map(\.key) == [deploys],
-                         "every listed extension shows until it is turned off")
-            MenuPanelExtensionsSupport.setShown(false, for: deploys.tool, in: defaults)
-            suite.expect(MenuPanelExtensions.shown(store: bench.store, defaults: defaults, language: .enUS).isEmpty
-                             && MenuPanelExtensions.available(store: bench.store, language: .enUS).map(\.key) == [deploys],
-                         "one turned off leaves the tab and stays in Settings, where it can be turned on again")
+            MenuPanelExtensionsSupport.setOrder([board.tool, deploys.tool], in: defaults)
+            suite.expect(MenuPanelExtensions.ordered(store: bench.store, defaults: defaults, language: .enUS).map(\.key) == [board, deploys]
+                             && MenuPanelExtensions.shown(store: bench.store, defaults: defaults, language: .enUS).map(\.key) == [board, deploys],
+                         "the tab and its edit mode list the extensions in the saved order")
+            MenuPanelExtensionsSupport.setShown(false, for: board.tool, in: defaults)
+            suite.expect(MenuPanelExtensions.shown(store: bench.store, defaults: defaults, language: .enUS).map(\.key) == [deploys]
+                             && MenuPanelExtensions.ordered(store: bench.store, defaults: defaults, language: .enUS).map(\.key) == [board, deploys],
+                         "one turned off leaves the tab and stays in edit mode, where it can be turned on again")
         }
     }
 
@@ -376,10 +420,6 @@ enum MenuPanelExtensionsTests {
         suite.expect(manage == FeatureSettingsDestination(.extensions) && manage.sectionAnchor == nil
                          && manage == ExtensionsPageSupport.destination,
                      "the tab's empty state leads to Settings' Extensions page, where every link to the extensions goes")
-        let switches = MenuPanelExtensions.tabSettings
-        suite.expect(switches.page == .general && switches.sectionAnchor == .panelConfiguration
-                         && switches.hasValidSectionAnchor,
-                     "with every extension switched off, it leads to Settings › Menu bar, where the switches are")
     }
 
     /// The extension's program ends by itself (a crash) and may start again
