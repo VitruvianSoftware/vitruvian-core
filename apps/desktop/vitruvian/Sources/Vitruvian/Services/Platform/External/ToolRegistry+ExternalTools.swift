@@ -10,11 +10,14 @@ extension ToolRegistry {
     /// command's title in the person's language, as the tool's author
     /// wrote them, with English where the author wrote no other. Its
     /// commands run through the tool host, like those of a feature that has
-    /// become a tool, and "can it run?" is the host's answer.
+    /// become a tool, and "can it run?" is the host's answer. A tool whose
+    /// manifest has an island panel is noted, so the island's Tools grid
+    /// leaves its commands to that page.
     package func register(_ tool: ExternalToolManifest, host: @escaping @MainActor () -> ToolHost) throws {
         let descriptor = tool.manifest.tool
         try register(descriptor)
         try setName({ language in tool.name.text(for: language.rawValue) ?? descriptor.name }, for: descriptor.id)
+        if tool.panel(in: .island) != nil { try setHasIslandPage(for: descriptor.id) }
         for command in descriptor.commands {
             let titles = tool.commandTitles[command.id]
             try setHandler(.init(title: { language in titles?.text(for: language.rawValue) ?? command.title },

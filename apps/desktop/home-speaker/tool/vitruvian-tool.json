@@ -26,7 +26,6 @@
         "icon": "hifispeaker.2",
         "surfaces": [
           "commandBar",
-          "quickPanel",
           "shortcut"
         ]
       },

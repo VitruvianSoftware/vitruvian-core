@@ -193,6 +193,31 @@ final class HomeSpeakerToolTests: XCTestCase {
         XCTAssertThrowsError(try tool.run(command: "sayClipboard")) { XCTAssertTrue("\($0)".contains("switched off")) }
     }
 
+    /// The island's Speak clipboard button runs the `sayClipboard` command:
+    /// the Tools grid no longer offers it, so the page must.
+    func testTheIslandsSpeakClipboardButtonRunsTheCommand() throws {
+        // Not signed in: the button shows only when this Mac speaks.
+        store.config?.effectiveSpeakLocal = true
+        let tool = tool()
+        tool.start()
+        driver.answer(.volume(Volume(speaker: "Kitchen", percent: 30)))
+        let page = tool.islandPage()
+        guard case .button(let button)? = page.blocks.first(where: { $0.id == Pages.Block.sayClipboard })?.content else {
+            return XCTFail("no Speak clipboard button")
+        }
+        XCTAssertEqual(button.title.text(for: "en"), "Speak clipboard")
+        let jobs = driver.jobs.count
+        guard case .page(let refused) = tool.islandEvent(PanelEvent(block: Pages.Block.sayClipboard, kind: .tap)) else {
+            return XCTFail("no page")
+        }
+        XCTAssertEqual(driver.jobs.count, jobs, "an empty clipboard says nothing")
+        XCTAssertTrue(refused.blocks.contains { if case .text(let t) = $0.content { return t.text.text(for: "en") == "The clipboard holds no text" } else { return false } },
+                      "and the page says why")
+        link.clipboard = "  read me  "
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.sayClipboard, kind: .tap))
+        XCTAssertEqual(driver.jobs.last, .say("read me"), "the same job the command sends")
+    }
+
     func testSwitchesAndVolumeChangeTheFileAndHomeSpeaker() throws {
         let tool = tool()
         tool.start()

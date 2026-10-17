@@ -217,8 +217,10 @@ final class IslandTests: XCTestCase {
         var status = ready()
         status.account.isSignedIn = false
         XCTAssertFalse(ids(Pages.island(status)).contains(Pages.Block.say), "only Home speakers, and none set up: nothing would speak")
+        XCTAssertFalse(ids(Pages.island(status)).contains(Pages.Block.sayClipboard), "nor would the clipboard")
         status.config.effectiveSpeakLocal = true
         XCTAssertTrue(ids(Pages.island(status)).contains(Pages.Block.say), "this Mac speaks without a sign-in")
+        XCTAssertTrue(ids(Pages.island(status)).contains(Pages.Block.sayClipboard), "and so does Speak clipboard")
     }
 
     func testTheToolsSetupButtonsDoWhatSettingsDoes() {

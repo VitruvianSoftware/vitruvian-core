@@ -170,8 +170,8 @@ final class ParityTests: XCTestCase {
         let summary = GitHubSummary(states: [Self.web: state(queue: queue), Self.api: state(Self.api)],
                                     watched: [Self.web, Self.api])
         let page = Pages.island(summary: summary, auth: .signedIn(login: "me"))
-        XCTAssertEqual(page.kinds, ["row", "row", "heading", "list", "heading", "text", "button", "button"])
-        XCTAssertEqual(page.ids, ["repo.acme.web", "repo.acme.api", "queue", "refresh", "openRepo"])
+        XCTAssertEqual(page.kinds, ["row", "row", "heading", "list", "heading", "text", "button", "button", "button"])
+        XCTAssertEqual(page.ids, ["repo.acme.web", "repo.acme.api", "queue", "openPulls", "refresh", "openRepo"])
         XCTAssertEqual(page.english(2), "Merge queue")
         guard case .list(let list) = page.blocks[3].content else { return XCTFail() }
         XCTAssertEqual(list.rows.map(\.id), ["queue.acme.web.11", "queue.acme.web.12", "queue.acme.web.13",

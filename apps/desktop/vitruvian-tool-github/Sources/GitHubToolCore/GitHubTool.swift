@@ -481,6 +481,9 @@ public final class GitHubTool {
         case (Pages.refreshButton?, .tap):
             refresh()
             return .page(islandPage())
+        case (Pages.openPullsButton?, .tap):
+            openPulls()
+            return .keep
         case (Pages.openRepoButton?, .tap):
             if let repo = focusedRepository { host.open(Pages.webURL(repo)) }
             return .keep

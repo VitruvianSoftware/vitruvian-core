@@ -46,6 +46,8 @@ package final class ToolRegistry: ObservableObject {
     private var tools: [ToolID: ToolDescriptor] = [:]
     private var handlers: [CommandID: Handler] = [:]
     private var names: [ToolID: @MainActor (AppLanguage) -> String] = [:]
+    /// The outside tools whose manifest gives them a page in the island.
+    private var islandPages: Set<ToolID> = []
 
     package init(isAvailable: @escaping (AppFeature) -> Bool) {
         self.isAvailable = isAvailable
@@ -74,10 +76,21 @@ package final class ToolRegistry: ObservableObject {
         revision += 1
     }
 
+    /// Notes that a registered outside tool has a page of its own in the
+    /// island, so its commands stay off the island's Tools grid
+    /// (`extraCommands(on:)`). The app's own tools have none.
+    package func setHasIslandPage(for id: ToolID) throws {
+        guard let tool = tools[id] else { throw RegistrationError.unknownTool(id) }
+        guard tool.feature == nil else { return }
+        islandPages.insert(id)
+        revision += 1
+    }
+
     package func unregister(_ id: ToolID) {
         guard let tool = tools.removeValue(forKey: id) else { return }
         order.removeAll { $0 == id }
         names[id] = nil
+        islandPages.remove(id)
         tool.commands.forEach { handlers[$0.id] = nil }
         revision += 1
     }
@@ -98,6 +111,9 @@ package final class ToolRegistry: ObservableObject {
     }
 
     package func hasHandler(for id: CommandID) -> Bool { handlers[id] != nil }
+
+    /// Whether an outside tool has a page of its own in the island.
+    package func hasIslandPage(_ id: ToolID) -> Bool { islandPages.contains(id) }
 
     /// What a surface offers now: commands that asked for it, whose tool is
     /// switched on in the hub and that have a handler. In registration
