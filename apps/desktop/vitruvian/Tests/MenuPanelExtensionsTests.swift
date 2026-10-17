@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
+import AppKit
 import Foundation
+import SwiftUI
 import VitruvianCore
 import VitruvianServices
 import VitruvianToolProtocol
+import VitruvianUI
 
 /// The menu bar panel's Extensions tab: its place among the panel's saved
 /// sections, when it shows by default, the switch each extension has for it,
@@ -29,6 +32,7 @@ enum MenuPanelExtensionsTests {
         anUpdatedExtensionIsAskedAgain(suite)
         whetherAnyExtensionHasAnIslandPageIsKnownOncePerChange(suite)
         theEmptyStateLeadsToTheExtensionsPage(suite)
+        aDrawnCardOpensAndLetsGoOfItsPage(suite)
     }
 
     /// The names saved in a layout before the tab existed.
@@ -468,5 +472,88 @@ enum MenuPanelExtensionsTests {
         answer(tab, "again")
         suite.expect(ToolPanelHostTests.text(tab.host.shown[key("deploys")]) == "again",
                      "tab: a card shown again asks again, the program starts and its page is drawn")
+    }
+
+    /// What the drawn card's window shows: the card, expanded or not, or
+    /// no card at all.
+    private final class CardState: ObservableObject {
+        @Published var collapsed = false
+        @Published var present = true
+    }
+
+    private struct CardWindow: View {
+        @ObservedObject var state: CardState
+        let host: ToolPanelHost
+
+        var body: some View {
+            VStack {
+                if state.present {
+                    MenuPanelExtensionCard(entry: .init(key: key("deploys"), name: "Deploys", symbol: "bolt"),
+                                           collapsed: state.collapsed, size: .standard, host: host)
+                }
+            }
+            .frame(width: 320, height: 400, alignment: .top)
+        }
+    }
+
+    /// The card itself, drawn in a window of its own, as the tab draws it.
+    /// Expanded, it asks for its page as it appears, before there is any
+    /// page to draw; collapsed or gone, it lets go and the tool is told; and
+    /// a page that ends with its tool is not asked for again by itself.
+    static func aDrawnCardOpensAndLetsGoOfItsPage(_ suite: TestSuite) {
+        _ = NSApplication.shared
+        func settle() { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        let bench = Bench()
+        let state = CardState()
+        let view = NSHostingView(rootView: CardWindow(state: state, host: bench.host))
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 320, height: 400),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        window.orderFrontRegardless()
+        defer {
+            state.present = false
+            settle()
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
+        view.layoutSubtreeIfNeeded()
+        settle()
+
+        suite.expect(bench.host.shown[key("deploys")] == .waiting && bench.host.inMenuPanel[key("deploys")]?.count == 1,
+                     "a drawn card that is expanded asks for its page as it appears")
+        // A card that never asked started no program to answer.
+        guard !bench.runs.isEmpty else { return }
+        bench.current.greets()
+        if let asked = bench.current.lastRequest {
+            bench.current.answers(asked, #"{"tree":\#(ToolPanelHostTests.page("first"))}"#)
+        }
+        settle()
+        suite.expect(ToolPanelHostTests.text(bench.host.shown[key("deploys")]) == "first" && opens(bench) == 1,
+                     "the drawn card's page is drawn once the tool answers, and it is asked for once")
+
+        state.collapsed = true
+        settle()
+        suite.expect(bench.host.shown[key("deploys")] == nil && bench.host.inMenuPanel.isEmpty && closes(bench) == 1,
+                     "collapsing a drawn card lets go of its page, and the tool is told")
+        state.collapsed = false
+        settle()
+        suite.expect(bench.host.shown[key("deploys")] != nil && bench.host.inMenuPanel[key("deploys")]?.count == 1,
+                     "expanding a drawn card again asks for its page again")
+
+        bench.current.ends(0)
+        settle()
+        suite.expect(bench.host.shown[key("deploys")] == nil && bench.host.inMenuPanel.isEmpty,
+                     "a drawn card whose tool ends shows the page as not shown, and does not ask for it again by itself")
+
+        state.collapsed = true
+        settle()
+        state.collapsed = false
+        settle()
+        state.present = false
+        settle()
+        suite.expect(bench.host.inMenuPanel.isEmpty && bench.host.island == nil,
+                     "a drawn card that goes lets go of its page")
     }
 }

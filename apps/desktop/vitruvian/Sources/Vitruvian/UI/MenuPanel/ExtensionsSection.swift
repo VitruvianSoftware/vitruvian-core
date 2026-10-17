@@ -145,43 +145,25 @@ private struct ExtensionOrderItem: PanelOrderItem {
 /// then its island page while expanded. The page is opened when expanded and
 /// let go when collapsed or when the card goes; a page the island has open
 /// already is shown as it is.
-private struct MenuPanelExtensionCard: View {
+package struct MenuPanelExtensionCard: View {
     let entry: MenuPanelExtensions.Entry
     let collapsed: Bool
     let size: BlockTreeContent.Size
-    @ObservedObject private var host = ToolPanelHost.shared
-    /// Set once the card has asked for its page, so a page that is gone
-    /// (its tool stopped) reads as not shown rather than as nothing.
-    @State private var asked = false
-    /// This card's own token with the host: it lets go of its own view of
-    /// the page, never another card's.
-    @State private var viewer = UUID()
+    @ObservedObject private var host: ToolPanelHost
 
-    var body: some View {
+    package init(entry: MenuPanelExtensions.Entry, collapsed: Bool, size: BlockTreeContent.Size,
+                 host: ToolPanelHost = .shared) {
+        self.entry = entry
+        self.collapsed = collapsed
+        self.size = size
+        self.host = host
+    }
+
+    package var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
             if !collapsed {
-                Group {
-                    if host.defersToIsland(entry.key) {
-                        // The island holds the one web view; the page comes
-                        // back here when the island lets go.
-                        ShownInIsland(size: size) { MenuPanelExtensions.showInIsland(entry.key) }
-                    } else if asked, host.shown[entry.key] == nil {
-                        ToolPanelNotShown(size: size)
-                    } else {
-                        ToolPanelView(key: entry.key, size: size)
-                    }
-                }
-                // A page drawn for the island's width wraps to the panel's.
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .onAppear {
-                    host.openInMenuPanel(entry.key, viewer: viewer)
-                    asked = true
-                }
-                .onDisappear {
-                    host.closeInMenuPanel(entry.key, viewer: viewer)
-                    asked = false
-                }
+                MenuPanelExtensionPage(entry: entry, size: size, host: host)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -218,6 +200,58 @@ private struct MenuPanelExtensionCard: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// An expanded card's page, open with the host for exactly as long as it
+/// is on screen.
+///
+/// The open and close hooks sit on one stack, never on a `Group`: a
+/// `Group` hands its modifiers to each view it draws, so the hooks would
+/// fire only when something is drawn (before the page is asked for there
+/// was nothing, so it was never asked for and the card stayed empty) and
+/// again on every change of what is drawn (closing and reopening the page
+/// whenever it went from drawn to not shown, or to and from the island).
+/// The stack is one view whatever it holds, and it always holds something.
+private struct MenuPanelExtensionPage: View {
+    let entry: MenuPanelExtensions.Entry
+    let size: BlockTreeContent.Size
+    @ObservedObject var host: ToolPanelHost
+    /// Set once the card has asked for its page, so a page that is gone
+    /// (its tool stopped) reads as not shown rather than as still coming.
+    @State private var asked = false
+    /// This card's own token with the host: it lets go of its own view of
+    /// the page, never another card's.
+    @State private var viewer = UUID()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if host.defersToIsland(entry.key) {
+                // The island holds the one web view; the page comes back
+                // here when the island lets go.
+                ShownInIsland(size: size) { MenuPanelExtensions.showInIsland(entry.key) }
+            } else if host.shown[entry.key] == nil {
+                if asked {
+                    ToolPanelNotShown(size: size)
+                } else {
+                    // Drawn for the moment before the card asks, so the
+                    // stack is never empty.
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 44)
+                }
+            } else {
+                ToolPanelView(key: entry.key, size: size, host: host)
+            }
+        }
+        // A page drawn for the island's width wraps to the panel's.
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear {
+            host.openInMenuPanel(entry.key, viewer: viewer)
+            asked = true
+        }
+        .onDisappear {
+            host.closeInMenuPanel(entry.key, viewer: viewer)
+            asked = false
+        }
     }
 }
 
