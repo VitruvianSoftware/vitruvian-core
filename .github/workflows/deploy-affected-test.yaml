@@ -37,6 +37,8 @@ on:
       - "tools/ci/rdeps-map-ref_test.sh"
       - "tools/ci/queue-fast-pass.sh"
       - "tools/ci/queue-fast-pass_test.sh"
+      # The test also checks how ci.yaml's jobs wait on the queue lookup.
+      - ".github/workflows/ci.yaml"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
       - "tools/ci/td-lib.sh"
@@ -50,6 +52,8 @@ on:
       - "tools/ci/rdeps-map-ref_test.sh"
       - "tools/ci/queue-fast-pass.sh"
       - "tools/ci/queue-fast-pass_test.sh"
+      # The test also checks how ci.yaml's jobs wait on the queue lookup.
+      - ".github/workflows/ci.yaml"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
       - "tools/ci/td-lib.sh"

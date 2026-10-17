@@ -37,14 +37,33 @@
 # It never fails the job and never says "hit" on doubt: any error, any field
 # that does not match, is a miss, and a miss means "run the tests as usual".
 #
+# A second question, for a push to main (#3418): did the merge queue already
+# pass this workflow on this exact code? The queue squash-merges, so the
+# commit that lands on main has the same tree its merge_group run tested, and
+# re-testing it can only repeat the answer or trip over a flaky test. `queued`
+# lists this workflow's newest successful merge_group runs and looks for one
+# whose head commit has HEAD's tree. Same rule: doubt is a miss, and a miss
+# runs everything as before. A direct push, or a queue run that went red or
+# never happened, finds nothing.
+#
+# It also misses when the push changes a file that GitHub Actions cache keys
+# are built from (MODULE.bazel, go.sum, ...). Those caches live per branch:
+# one saved by a queue run sits on the queue's temporary branch, where pull
+# requests cannot read it. Only a run on main saves them where pull requests
+# look, and they are saved only when the key moves, so that push runs in
+# full. CACHE_KEY_REGEX overrides the list.
+#
 # Usage:
 #   queue-fast-pass.sh tree              print tree= and marker= for HEAD
 #   queue-fast-pass.sh lookup <check>    also print verdict=hit|miss, run=, reason=
+#   queue-fast-pass.sh queued            the same three, for a push to main
 #
 # Every line printed to stdout is also appended to $GITHUB_OUTPUT when set.
 #
 # Env: GH_TOKEN (needs actions: read), GITHUB_REPOSITORY, WORKFLOW_PATH
-# (optional, e.g. .github/workflows/presubmit.yaml: the run must be of it).
+# (optional for lookup, required for queued, e.g.
+# .github/workflows/presubmit.yaml: the run must be of it). queued also reads
+# PUSH_BEFORE (main's commit before the push) and FORCED_PUSH.
 set -uo pipefail
 
 log() { echo "queue-fast-pass: $*" >&2; }
@@ -69,8 +88,9 @@ check="${2:-}"
 case "${mode}" in
 tree) check="${check:-presubmit}" ;;
 lookup) ;;
+queued) check=presubmit ;;
 *)
-	log "usage: queue-fast-pass.sh tree | lookup <check>"
+	log "usage: queue-fast-pass.sh tree | lookup <check> | queued"
 	exit 2
 	;;
 esac
@@ -93,6 +113,43 @@ emit "marker=${marker}"
 
 repo="${GITHUB_REPOSITORY:-}"
 [ -n "${repo}" ] || finish miss "GITHUB_REPOSITORY is not set"
+
+if [ "${mode}" = queued ]; then
+	path="${WORKFLOW_PATH:-}"
+	[[ "${path}" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]] || finish miss "WORKFLOW_PATH is not a workflow file"
+	[ "${FORCED_PUSH:-false}" != true ] || finish miss "a forced push rewrote main's history"
+	before="${PUSH_BEFORE:-}"
+	[[ "${before}" =~ ^[0-9a-f]{40,64}$ ]] && [[ "${before}" =~ [1-9a-f] ]] ||
+		finish miss "no commit before this push to compare with"
+	head="$(git rev-parse --verify --quiet HEAD 2>/dev/null)" || finish miss "could not read HEAD"
+
+	# The files this push changed. The compare reply lists at most 300; a
+	# longer list could hide a cache-key file, so it counts as doubt.
+	if ! files="$(gh api "repos/${repo}/compare/${before}...${head}" 2>/dev/null |
+		jq -er 'if (.files | length) >= 300 then error("too many") else .files[].filename end' 2>/dev/null)"; then
+		finish miss "could not list the files this push changed"
+	fi
+	keys="${CACHE_KEY_REGEX:-(^|/)(MODULE\.bazel(\.lock)?|\.bazelversion|\.bazelrc|go\.(mod|sum|work|work\.sum)|\.xcode-version|\.golangci\.ya?ml)$}"
+	if hit_file="$(grep -m1 -E "${keys}" <<<"${files}")"; then
+		finish miss "${hit_file} changed, and caches keyed on it are saved only by a full run on main"
+	fi
+
+	if ! found="$(gh api "repos/${repo}/actions/workflows/${path##*/}/runs?event=merge_group&status=success&per_page=30" 2>/dev/null)"; then
+		finish miss "could not list merge queue runs"
+	fi
+	# A queue run counts only when it is this repository's own code, of this
+	# workflow, finished green, and its head commit has exactly HEAD's tree.
+	if ! id="$(jq -r --arg tree "${tree}" --arg repo "${repo}" --arg path "${path}" '
+		[.workflow_runs[]?
+		 | select(.event == "merge_group" and .conclusion == "success")
+		 | select(.head_repository.full_name == $repo and .path == $path)
+		 | select(.head_commit.tree_id == $tree)]
+		| first | .id // ""' <<<"${found}" 2>/dev/null)"; then
+		finish miss "could not read the merge queue runs"
+	fi
+	[[ "${id}" =~ ^[0-9]+$ ]] || finish miss "no green merge queue run of ${path##*/} on this exact tree"
+	finish hit "merge queue run ${id} passed ${path##*/} on this exact tree" "${id}"
+fi
 
 if ! found="$(gh api "repos/${repo}/actions/artifacts?name=${marker}&per_page=30" 2>/dev/null)"; then
 	finish miss "could not list artifacts"

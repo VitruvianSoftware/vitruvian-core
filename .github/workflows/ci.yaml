@@ -64,6 +64,52 @@ permissions:
   contents: read
 
 jobs:
+  # Push to main only (#3418): did the merge queue already pass this workflow
+  # on the exact code that just landed? The queue squash-merges, so main's
+  # commit has the same tree its merge_group run tested, and a re-test could
+  # only repeat that answer or trip over a flaky test. On a hit every other job
+  # below is skipped, which GitHub reports as passing, so the run ends green
+  # and notify-ci-issues has nothing to announce. Any doubt is a miss and the
+  # run is the full run it always was: a direct push, a red or missing queue
+  # run, a lookup error, or a change to a file the main-only Actions caches
+  # are keyed on (see tools/ci/queue-fast-pass.sh). If this job itself fails,
+  # `hit` is empty and everything runs.
+  #
+  # On a pull request or in the queue this job is skipped without taking a
+  # runner, and the `!cancelled()` on every job below lets them start at once.
+  queued:
+    name: queue-already-passed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      hit: ${{ steps.lookup.outputs.verdict == 'hit' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Only the script is needed; HEAD's tree hash comes with any checkout.
+          sparse-checkout: tools/ci
+      - name: Did the merge queue already pass this exact code?
+        id: lookup
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_PATH: .github/workflows/ci.yaml
+          PUSH_BEFORE: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+        run: |
+          bash tools/ci/queue-fast-pass.sh queued | tee "$RUNNER_TEMP/queued.out"
+          {
+            echo "### Already passed in the merge queue?"
+            echo ""
+            echo "- verdict: $(sed -n 's/^verdict=//p' "$RUNNER_TEMP/queued.out")"
+            echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/queued.out")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-test:
     # Release-bot PRs skip this job on the PR (#3268 follow-up). A release PR
     # only bumps versions and the changelog of code main already tested, and
@@ -72,8 +118,10 @@ jobs:
     # still satisfies the required check. Only the bot's own same-repo
     # release-please branches qualify; the merge_group and push lanes are
     # untouched.
+    needs: queued
     if: >-
-      ${{ !(github.event_name == 'pull_request' &&
+      ${{ !cancelled() && needs.queued.outputs.hit != 'true' &&
+          !(github.event_name == 'pull_request' &&
             startsWith(github.head_ref, 'release-please--') &&
             github.event.pull_request.user.type == 'Bot' &&
             github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -258,9 +306,11 @@ jobs:
           PLAN_BIN: ${{ runner.temp }}/pipeline-plan
         run: bash tools/ci/affected-targets.sh
 
-      # POSTSUBMIT (push to main). Verifies the landed commit; queue-merged
-      # commits were just tested as merge_group, so this is cheap re-verification
-      # of the same diff (plus coverage for admin/break-glass direct pushes).
+      # POSTSUBMIT (push to main). Verifies the landed commit. A queue-merged
+      # commit whose exact tree just passed as merge_group never gets here: the
+      # `queued` job skips this whole job (#3418). What does get here is a
+      # direct push, a commit the queue did not pass, or a change to a file
+      # the main-only caches are keyed on.
       # event.before is the zero SHA on ref creation -> script full-sweeps.
       # Additionally gated on relevant-paths: docs-only pushes skip the heavy
       # work (the nightly full sweep is the backstop).
@@ -293,6 +343,8 @@ jobs:
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
   detect-macos:
+    needs: queued
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
@@ -368,14 +420,21 @@ jobs:
     # `skipped`, which build-macos treats as a pass. Not a required check itself.
     # A release-bot PR never builds here: the merge queue builds the exact
     # commit that lands (see build-test).
-    needs: detect-macos
+    #
+    # The explicit `needs.detect-macos.result == 'success'` is what the implicit
+    # success() used to give. It has to be spelled out now that `queued` sits
+    # upstream: on a pull request `queued` is skipped, and an implicit
+    # success() looks at every job up the chain, so it would skip this job
+    # too, although detect-macos ran.
+    needs: [queued, detect-macos]
     if: >-
+      ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.detect-macos.result == 'success' && (
       (github.event_name == 'push' && needs.detect-macos.outputs.relevant != 'false') ||
       (github.event_name == 'merge_group' && needs.detect-macos.outputs.macos != 'false') ||
       (github.event_name == 'pull_request' && needs.detect-macos.outputs.macos == 'true' &&
        !(startsWith(github.head_ref, 'release-please--') &&
          github.event.pull_request.user.type == 'Bot' &&
-         github.event.pull_request.head.repo.full_name == github.repository))
+         github.event.pull_request.head.repo.full_name == github.repository))) }}
     # xcode-27: GitHub's image whose default Xcode is 27.0 (build 27A266a),
     # the version pinned in .xcode-version. macos-latest (macOS 26) only has
     # Xcode 26.x, whose Swift rejected code that 27.0 compiles (#2536).
@@ -476,8 +535,8 @@ jobs:
     # failed/was cancelled. This keeps the macOS-runner claim off the majority of
     # PRs that touch no macOS path (#821) WITHOUT the skipped-required-check
     # ambiguity this repo avoids -- the required job itself always runs + reports.
-    needs: [detect-macos, macos-build]
-    if: ${{ always() }}
+    needs: [queued, detect-macos, macos-build]
+    if: ${{ always() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -502,6 +561,8 @@ jobs:
     # check runs identically here and locally (`bazel run //tools/license:check`);
     # `bazel run //tools/license:add` fixes missing headers. Generated/tool-managed
     # files are ignored there (BUILD = gazelle, lockfiles, baselines, etc.).
+    needs: queued
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
@@ -555,6 +616,8 @@ jobs:
     # Zero-tolerance naming convention enforcement across all monorepo assets
     # (Go, Python, TypeScript, React, Shell, Starlark, Pulumi, workflows, and directories).
     # Runs the hermetic Bazel test harness and verifies 0 naming violations monorepo-wide.
+    needs: queued
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -604,6 +667,8 @@ jobs:
     # uncomputable diff base yields relevant=true. The whole-graph floor is
     # unchanged -- periodic-full-sweep.yaml still runs `bazel build //...` +
     # `bazel test //...` nightly.
+    needs: queued
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
@@ -712,8 +777,8 @@ jobs:
   # queue would wedge. Keep the two jobs identical apart from the module.
   go-lint-devx:
     name: go-lint (devx)
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-devx == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-devx == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -738,8 +803,8 @@ jobs:
 
   go-lint-homelab:
     name: go-lint (homelab)
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -774,8 +839,8 @@ jobs:
     # the day it lands, and only modules that actually contain a _test.go are
     # run -- `go test ./...` in a module with no tests is a slow no-op. GOWORK
     # is off because these modules are deliberately not workspace members.
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
@@ -823,8 +888,8 @@ jobs:
     #
     # Skips at the job level when `changes` says there is no Go to race-test
     # (a skipped job still satisfies the required check; see `changes`).
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-race == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-race == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
@@ -877,8 +942,8 @@ jobs:
     # Own job (not folded into go-test-infra) + generous timeout because it is
     # ~27 standalone modules each pulling the Pulumi SDK; runs only when the
     # example -- or a library it consumes -- actually changes (see `changes`).
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.example-build == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.example-build == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 40
     env:
@@ -922,8 +987,8 @@ jobs:
     # in-tree input is the template itself -- the envsubst vars are dummies and
     # butane comes from a container image -- so `changes` gates it on exactly
     # that file (plus this workflow).
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.validate-butane == 'true') }}
+    needs: [queued, changes]
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.validate-butane == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:

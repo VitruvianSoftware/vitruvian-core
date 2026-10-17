@@ -116,6 +116,10 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// Fails OPEN, deliberately. Every failure path here -- planner crash, no
 	// output, malformed output -- emits the full unit list, so a broken planner
 	// costs compute rather than test coverage.
+	// The condition on every step that only feeds the planner: skipped for a
+	// release-bot PR, and for a push the merge queue already passed.
+	const planNeeded = "steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit'"
+
 	b.WriteString("  plan:\n")
 	b.WriteString("    name: plan/affected-units\n")
 	b.WriteString("    runs-on: ubuntu-26.04\n")
@@ -152,6 +156,32 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("        env:\n")
 	b.WriteString("          RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.type == 'Bot' && github.event.pull_request.head.repo.full_name == github.repository }}\n")
 	b.WriteString("        run: echo \"skip=$RELEASE_PR\" | tee -a \"$GITHUB_OUTPUT\"\n\n")
+	// A push to main plans NO units when the merge queue already passed this
+	// workflow on the exact code that landed (#3418). The queue squash-merges,
+	// so main's commit has the tree its merge_group run tested, and the
+	// re-test could only repeat that answer or trip over a flaky test. Any
+	// doubt -- a direct push, a red or missing queue run, a lookup error, a
+	// change to a file the main-only Actions caches are keyed on -- is a miss,
+	// and a miss plans as before. continue-on-error: a broken lookup must never
+	// cost a plan. The rdeps-map job does not read this and still runs on
+	// every push, so planning for later PRs keeps its dependency map.
+	b.WriteString("      - name: Did the merge queue already pass this exact code?\n")
+	b.WriteString("        id: queued\n")
+	b.WriteString("        if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n")
+	b.WriteString("        continue-on-error: true\n")
+	b.WriteString("        env:\n")
+	b.WriteString("          GH_TOKEN: ${{ github.token }}\n")
+	b.WriteString("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n")
+	b.WriteString("          PUSH_BEFORE: ${{ github.event.before }}\n")
+	b.WriteString("          FORCED_PUSH: ${{ github.event.forced }}\n")
+	b.WriteString("        run: |\n")
+	b.WriteString("          bash tools/ci/queue-fast-pass.sh queued | tee \"$RUNNER_TEMP/queued.out\"\n")
+	b.WriteString("          {\n")
+	b.WriteString("            echo \"### Already passed in the merge queue?\"\n")
+	b.WriteString("            echo \"\"\n")
+	b.WriteString("            echo \"- verdict: $(sed -n 's/^verdict=//p' \"$RUNNER_TEMP/queued.out\")\"\n")
+	b.WriteString("            echo \"- why: $(sed -n 's/^reason=//p' \"$RUNNER_TEMP/queued.out\")\"\n")
+	b.WriteString("          } >> \"$GITHUB_STEP_SUMMARY\"\n\n")
 	// LOG ONLY (#2841). In the merge queue, ask whether a pull-request run
 	// already passed this workflow on these exact files, and say so in the
 	// job summary. Nothing reads the verdict yet: every unit still runs. On a
@@ -160,7 +190,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// never cost a plan.
 	b.WriteString("      - name: Has this exact code already passed? (log only)\n")
 	b.WriteString("        id: fastpass\n")
-	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
+	b.WriteString("        if: " + planNeeded + "\n")
 	b.WriteString("        continue-on-error: true\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          GH_TOKEN: ${{ github.token }}\n")
@@ -179,10 +209,10 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("            echo \"- why: $(sed -n 's/^reason=//p' \"$RUNNER_TEMP/fastpass.out\")\"\n")
 	b.WriteString("          } >> \"$GITHUB_STEP_SUMMARY\"\n\n")
 	b.WriteString("      - name: Free up runner disk space\n")
-	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
+	b.WriteString("        if: " + planNeeded + "\n")
 	b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
 	b.WriteString("      - name: Set up Bazel\n")
-	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
+	b.WriteString("        if: " + planNeeded + "\n")
 	b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
 	// The dependency map for the diff base, saved by the rdeps-map job when
 	// that commit landed on main (#2465). A miss is normal (base not on main
@@ -192,7 +222,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// stdlib-only, so `go build` takes seconds. cache: false -- there are no
 	// module downloads to cache, and the Actions cache budget is shared.
 	b.WriteString("      - name: Set up Go\n")
-	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
+	b.WriteString("        if: " + planNeeded + "\n")
 	fmt.Fprintf(&b, "        uses: %s\n", pin("actions/setup-go"))
 	b.WriteString("        with:\n")
 	b.WriteString("          go-version-file: go.mod\n")
@@ -209,7 +239,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// stay as the fallback, so nothing is lost if the ref is not there.
 	b.WriteString("      - name: Fetch the dependency map kept under a git ref\n")
 	b.WriteString("        id: mapref\n")
-	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
+	b.WriteString("        if: " + planNeeded + "\n")
 	b.WriteString("        continue-on-error: true\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n")
@@ -217,7 +247,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("        run: bash tools/ci/rdeps-map-ref.sh fetch \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$BASE_SHA\"\n\n")
 	b.WriteString("      - name: List recent ancestors of the diff base\n")
 	b.WriteString("        id: mapkeys\n")
-	b.WriteString("        if: steps.release.outputs.skip != 'true'\n")
+	b.WriteString("        if: " + planNeeded + "\n")
 	b.WriteString("        env:\n")
 	b.WriteString("          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n")
 	b.WriteString("        run: |\n")
@@ -233,7 +263,7 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	// continue-on-error: the map is only ever a speed-up, so a cache problem
 	// must not fail the plan; the planner copes with having no map.
 	b.WriteString("      - name: Restore the dependency map for the diff base\n")
-	b.WriteString("        if: steps.release.outputs.skip != 'true' && steps.mapref.outputs.commit == ''\n")
+	b.WriteString("        if: " + planNeeded + " && steps.mapref.outputs.commit == ''\n")
 	b.WriteString("        continue-on-error: true\n")
 	fmt.Fprintf(&b, "        uses: %s\n", pin("actions/cache/restore"))
 	b.WriteString("        with:\n")
@@ -250,6 +280,8 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("          MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}\n")
 	b.WriteString("          PUSH_BEFORE: ${{ github.event.before }}\n")
 	b.WriteString("          RELEASE_SKIP: ${{ steps.release.outputs.skip }}\n")
+	b.WriteString("          QUEUED: ${{ steps.queued.outputs.verdict }}\n")
+	b.WriteString("          QUEUED_RUN: ${{ steps.queued.outputs.run }}\n")
 	fmt.Fprintf(&b, "          ALL_UNITS: '%s'\n", allNamesJSON)
 	b.WriteString("        run: |\n")
 	// `set +e` is load-bearing and easy to lose. GitHub runs `run:` steps as
@@ -264,6 +296,13 @@ func RenderPresubmitWorkflow(units []Unit, optPins ...*actionpins.Pins) (string,
 	b.WriteString("            echo \"units=[]\" >> \"$GITHUB_OUTPUT\"\n")
 	b.WriteString("            echo \"degraded=false\" >> \"$GITHUB_OUTPUT\"\n")
 	b.WriteString("            printf '### Affected units\\n\\nRelease-bot PR: none on the pull request. The merge queue tests the exact commit that lands.\\n' >> \"$GITHUB_STEP_SUMMARY\"\n")
+	b.WriteString("            exit 0\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          if [ \"$QUEUED\" = \"hit\" ]; then\n")
+	b.WriteString("            echo \"The merge queue already passed this exact code in run $QUEUED_RUN; no units run again on main.\"\n")
+	b.WriteString("            echo \"units=[]\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("            echo \"degraded=false\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("            printf '### Affected units\\n\\nNone on main: merge queue run %s already passed this exact code.\\n' \"$QUEUED_RUN\" >> \"$GITHUB_STEP_SUMMARY\"\n")
 	b.WriteString("            exit 0\n")
 	b.WriteString("          fi\n")
 	b.WriteString("          case \"$EVENT_NAME\" in\n")
