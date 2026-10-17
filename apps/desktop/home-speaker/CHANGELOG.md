@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.0...home-speaker-v1.24.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **home-speaker:** make the Beeper and Slack tokens easy to find and save ([#3456](https://github.com/VitruvianSoftware/vitruvian-core/issues/3456)) ([babb4ef](https://github.com/VitruvianSoftware/vitruvian-core/commit/babb4efe8f0aa6c4f866e85457db9f21b4aefd10))
+
 ## [1.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.23.0...home-speaker-v1.24.0) (2026-10-17)
 
 
