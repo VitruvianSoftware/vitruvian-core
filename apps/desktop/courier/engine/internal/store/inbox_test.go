@@ -87,9 +87,10 @@ func TestInboxPreviewAndUnread(t *testing.T) {
 	require.Equal(t, "text", row.PreviewKind)
 	require.False(t, row.PreviewMine)
 
-	// A reaction and a redaction are newer, but never the preview, never unread, and don't move the sort time.
+	// A reaction and a redaction (of that reaction) are newer, but never the preview, never unread, and don't move
+	// the sort time. (A redaction of a message: TestRedactingTheLastMessageFixesTheChatRow.)
 	mkMsg(t, s, "!r", "$re", ghost, "m.reaction", `{"m.relates_to":{"event_id":"$3","key":"x"}}`, time.Unix(40, 0))
-	mkMsg(t, s, "!r", "$rd", ghost, "m.room.redaction", `{"redacts":"$2"}`, time.Unix(50, 0))
+	mkMsg(t, s, "!r", "$rd", ghost, "m.room.redaction", `{"redacts":"$re"}`, time.Unix(50, 0))
 	row = inboxByID(t, s)["!r"]
 	require.Equal(t, "three", row.Preview)
 	require.Equal(t, 2, row.Unread)
@@ -151,23 +152,50 @@ func TestInboxOutOfOrderBackfillKeepsNewest(t *testing.T) {
 	require.Equal(t, time.Unix(500, 0).UnixMilli(), row.LastTS.UnixMilli())
 }
 
-func TestNetworkReadAlsoClearsUnread(t *testing.T) {
+// The bug this guards: a read receipt moved the marker to the time of the receipt, so a receipt that came in
+// after newer messages marked those read too. The marker is the message's own place, and only moves forward.
+func TestMyReadOnAnotherDeviceClearsUpToThatMessageOnly(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	mkRoom(t, s, "!r", time.Unix(1, 0))
-	for i := 1; i <= 4; i++ {
-		mkMsg(t, s, "!r", fmt.Sprintf("$%d", i), ghost, "m.room.message", text("m"), time.Unix(int64(i*10), 0))
-	}
-	require.Equal(t, 4, inboxByID(t, s)["!r"].Unread)
+	mkMsg(t, s, "!r", "$mine", me, "m.room.message", text("are you coming?"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$r1", ghost, "m.room.message", text("yes"), time.Unix(20, 0))
+	mkMsg(t, s, "!r", "$r2", ghost, "m.room.message", text("on my way"), time.Unix(30, 0))
+	require.Equal(t, 2, inboxByID(t, s)["!r"].Unread)
 
-	require.NoError(t, s.SetRead(ctx, "!r", "$3", time.Unix(30, 0))) // read on another device, reported by the bridge
+	// A receipt for my own message, reported later than both replies: they stay unread.
+	require.NoError(t, s.SetRead(ctx, "!r", "$mine", time.Unix(40, 0)))
+	require.Equal(t, 2, inboxByID(t, s)["!r"].Unread, "the receipt's time must not mark newer messages read")
+
+	// I read the first reply on my phone: only it clears.
+	require.NoError(t, s.SetRead(ctx, "!r", "$r1", time.Unix(50, 0)))
+	require.Equal(t, 1, inboxByID(t, s)["!r"].Unread)
+	// A late receipt for an older message does not move the marker back.
+	require.NoError(t, s.SetRead(ctx, "!r", "$mine", time.Unix(60, 0)))
 	require.Equal(t, 1, inboxByID(t, s)["!r"].Unread)
 
 	// The marker is the later of the two: an older local read must not bring messages back...
-	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$1", time.Unix(10, 0)))
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$mine", time.Unix(10, 0)))
 	require.Equal(t, 1, inboxByID(t, s)["!r"].Unread)
 	// ...and a newer local read wins over the network one.
-	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$4", time.Unix(40, 0)))
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$r2", time.Unix(30, 0)))
 	require.Equal(t, 0, inboxByID(t, s)["!r"].Unread)
+}
+
+func TestSetReadPublishesOnlyWhenItMoves(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$1", ghost, "m.room.message", text("a"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$2", ghost, "m.room.message", text("b"), time.Unix(20, 0))
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	require.NoError(t, s.SetRead(ctx, "!r", "$2", time.Unix(99, 0)))
+	require.Equal(t, Change{Kind: "read", RoomID: "!r", EventID: "$2"}, nextChange(t, ch))
+	require.NoError(t, s.SetRead(ctx, "!r", "$1", time.Unix(99, 0)))
+	select {
+	case c := <-ch:
+		t.Fatalf("an older read published %+v", c)
+	case <-time.After(50 * time.Millisecond):
+	}
 }
 
 func TestMarkReadLocalPublishesReadChange(t *testing.T) {
@@ -338,7 +366,7 @@ func TestMigrationFromMilestone2(t *testing.T) {
 	s, err := Open(path)
 	require.NoError(t, err)
 	defer s.Close()
-	require.Equal(t, 1, userVersion(t, s))
+	require.Equal(t, len(migrations), userVersion(t, s))
 
 	rows := inboxByID(t, s)
 	require.Len(t, rows, 3)
@@ -362,12 +390,12 @@ func TestMigrationFromMilestone2(t *testing.T) {
 	s2, err := Open(path)
 	require.NoError(t, err)
 	defer s2.Close()
-	require.Equal(t, 1, userVersion(t, s2))
+	require.Equal(t, len(migrations), userVersion(t, s2))
 	require.Len(t, inboxByID(t, s2), 3)
 }
 
 func TestFreshDatabaseIsAtLatestVersion(t *testing.T) {
-	require.Equal(t, 1, userVersion(t, open(t)))
+	require.Equal(t, len(migrations), userVersion(t, open(t)))
 }
 
 func TestNewerDatabaseIsRefused(t *testing.T) {
@@ -464,8 +492,9 @@ func TestInboxAndPagingAreIndexed(t *testing.T) {
 	requireIndexed(t, pagePlan)
 	require.Contains(t, strings.Join(pagePlan, "\n"), "events_room_ts")
 
-	// The secondary check: wall-clock. (Measured: about 7 ms, and about 25 ms under -race, against 200 ms.)
-	const bound = 200 * time.Millisecond
+	// The secondary check: wall-clock, with room for a busy machine. (Measured: about 7 ms, and about 25 ms under
+	// -race, against 1 s.) The plan above is what proves the queries scale; this only catches something gross.
+	const bound = time.Second
 	start := time.Now()
 	rows, err := s.Inbox(ctx)
 	took := time.Since(start)
@@ -619,7 +648,7 @@ func TestFailedMigrationRollsBack(t *testing.T) {
 	// The real migration still applies cleanly afterwards.
 	require.NoError(t, migrate(ctx, db))
 	require.NoError(t, db.QueryRow(ctx, "PRAGMA user_version").Scan(&v))
-	require.Equal(t, 1, v)
+	require.Equal(t, len(migrations), v)
 }
 
 func TestDeleteEventForgetsItAndFixesTheChatRow(t *testing.T) {
@@ -725,4 +754,84 @@ func TestFindReactionIgnoresFailedAndOtherPeople(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "$pending", id)
+}
+
+func redactionOf(target string) string {
+	b, _ := json.Marshal(map[string]string{"redacts": target})
+	return string(b)
+}
+
+func TestRedactingTheLastMessageFixesTheChatRow(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("first"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$b", ghost, "m.room.message", text("oops, wrong chat"), time.Unix(20, 0))
+	require.Equal(t, 2, inboxByID(t, s)["!r"].Unread)
+
+	mkMsg(t, s, "!r", "$x", ghost, "m.room.redaction", redactionOf("$b"), time.Unix(30, 0))
+	row := inboxByID(t, s)["!r"]
+	require.Equal(t, "$a", lastEventID(t, s, "!r"), "the chat points at the newest message that is left")
+	require.Equal(t, "first", row.Preview, "a deleted message is not the preview")
+	require.Equal(t, time.Unix(10, 0).UnixMilli(), row.LastTS.UnixMilli())
+	require.Equal(t, 1, row.Unread, "a deleted message is not unread")
+
+	// Deleting an older message leaves the row's message alone but still takes it off the unread count.
+	mkMsg(t, s, "!r", "$c", ghost, "m.room.message", text("third"), time.Unix(40, 0))
+	mkMsg(t, s, "!r", "$y", ghost, "m.room.redaction", redactionOf("$a"), time.Unix(50, 0))
+	row = inboxByID(t, s)["!r"]
+	require.Equal(t, "third", row.Preview)
+	require.Equal(t, 1, row.Unread)
+
+	// A redaction of something we do not have, or of a reaction, changes nothing.
+	mkMsg(t, s, "!r", "$z", ghost, "m.room.redaction", redactionOf("$never-seen"), time.Unix(60, 0))
+	mkMsg(t, s, "!r", "$w", ghost, "m.room.redaction", `not json`, time.Unix(61, 0))
+	require.Equal(t, "third", inboxByID(t, s)["!r"].Preview)
+}
+
+func TestMigration2MarksEarlierRedactions(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "courier.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = db.Exec(ctx, schema)
+	require.NoError(t, err)
+	require.NoError(t, migrateWith(ctx, db, migrations[:1]))
+	_, err = db.Exec(ctx, `INSERT INTO rooms (room_id, network, created_at) VALUES ('!r','whatsapp',1);
+INSERT INTO events (event_id, room_id, sender, type, content, ts, status, seq) VALUES
+  ('$a','!r','`+ghost+`','m.room.message','{"msgtype":"m.text","body":"kept"}',10,'',1),
+  ('$b','!r','`+ghost+`','m.room.message','{"msgtype":"m.text","body":"deleted"}',20,'',2),
+  ('$x','!r','`+ghost+`','m.room.redaction','{"redacts":"$b"}',30,'sent',3);
+UPDATE rooms SET last_ts=20, last_event_id='$b';`)
+	require.NoError(t, err)
+
+	require.NoError(t, migrate(ctx, db))
+	s := &Store{db: db, subs: map[chan Change]*subscriber{}}
+	row := inboxByID(t, s)["!r"]
+	require.Equal(t, "kept", row.Preview)
+	require.Equal(t, 1, row.Unread)
+}
+
+func TestFailInterruptedSends(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	for id, status := range map[string]string{"$pending": "pending", "$sent": "sent", "$failed": "failed", "$theirs": ""} {
+		_, err := s.InsertEvent(ctx, Event{
+			RoomID: "!r", EventID: id, Sender: me, Type: "m.room.message", Content: json.RawMessage(text(id)),
+			TS: time.Unix(5, 0), Status: status, StatusReason: map[bool]string{true: "offline"}[status == "failed"],
+		})
+		require.NoError(t, err)
+	}
+	n, err := s.FailInterruptedSends(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n)
+	want := map[string][2]string{
+		"$pending": {"failed", ReasonMayHaveBeenSent}, "$sent": {"sent", ""}, "$failed": {"failed", "offline"}, "$theirs": {"", ""},
+	}
+	for id, w := range want {
+		e, ok, err := s.GetEvent(ctx, id)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, w, [2]string{e.Status, e.StatusReason}, id)
+	}
+	require.Equal(t, "may have been sent", ReasonMayHaveBeenSent, "the app matches this exact text")
 }

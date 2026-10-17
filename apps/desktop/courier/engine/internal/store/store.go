@@ -302,10 +302,14 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 		}
 		n, _ := res.RowsAffected()
 		inserted = n == 1
-		if inserted && isMessageLike(e.Type, e.Content) {
+		switch {
+		case !inserted:
+		case isMessageLike(e.Type, e.Content):
 			// Only a message newer than the current newest moves the room: a backfilled older one must not.
 			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
 				e.RoomID, e.TS.UnixMilli(), e.EventID)
+		case e.Type == "m.room.redaction" && e.Status != "failed":
+			err = s.redact(ctx, e.RoomID, e.Content)
 		}
 		return err
 	})
@@ -317,6 +321,40 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	}
 	return inserted, nil
 }
+
+// redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message. If it was
+// the latest, the chat goes back to the newest message that is left (or to none), as DeleteEvent does. A
+// redaction of something we do not have, or with no target, changes nothing.
+func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessage) error {
+	var c struct {
+		Redacts string `json:"redacts"`
+	}
+	if json.Unmarshal(content, &c) != nil || c.Redacts == "" {
+		return nil
+	}
+	if _, err := s.db.Exec(ctx, "UPDATE events SET redacted=1 WHERE event_id=$1 AND room_id=$2", c.Redacts, roomID); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, c.Redacts)
+	return err
+}
+
+// FailInterruptedSends turns every message still pending from an earlier run into a failed one, with
+// ReasonMayHaveBeenSent. Run it once at engine start, before anything is served: a pending row then is one
+// whose send the last engine never heard back about, so it may or may not have gone. Nothing is sent again
+// unasked; the person can Retry or Delete it. It returns how many rows it changed, and publishes nothing (no
+// one is subscribed yet).
+func (s *Store) FailInterruptedSends(ctx context.Context) (int64, error) {
+	res, err := s.db.Exec(ctx, "UPDATE events SET status='failed', status_reason=$1 WHERE status='pending'", ReasonMayHaveBeenSent)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// ReasonMayHaveBeenSent is the status_reason of a message whose send was cut off by the engine stopping: the
+// network may have taken it. The app shows its own wording for it.
+const ReasonMayHaveBeenSent = "may have been sent"
 
 // isMessageLike reports whether an event can be a room's latest message: a message, sticker or encrypted
 // placeholder that is not an edit of an earlier message. (SQL twin: messageLikeTypes with notEditSQL.)
@@ -410,12 +448,12 @@ func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
 	return err
 }
 
-func (s *Store) SetRead(ctx context.Context, roomID, eventID string, ts time.Time) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO reads (room_id, event_id, ts) VALUES ($1,$2,$3)
-		ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, ts.UnixMilli())
-	if err == nil {
-		s.publish(Change{Kind: "read", RoomID: roomID, EventID: eventID})
-	}
+// SetRead records that I read roomID up to eventID on another device, as the network reports it. It is only ever
+// my own read: other people's receipts are not stored. The marker keeps the target event's own (ts, seq), not
+// the time of the receipt, so a later receipt for an older message does not mark newer ones read; for an event
+// we do not have, receiptTS stands in. Like the local marker it only moves forward.
+func (s *Store) SetRead(ctx context.Context, roomID, eventID string, receiptTS time.Time) error {
+	_, err := s.advanceMarker(ctx, "reads", roomID, eventID, receiptTS)
 	return err
 }
 

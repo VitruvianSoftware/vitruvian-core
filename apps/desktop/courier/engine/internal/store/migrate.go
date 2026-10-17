@@ -28,6 +28,15 @@ func markerSeq(marker, ev string) string {
 	return `CASE WHEN ` + marker + `.room_id IS NULL THEN 0 WHEN ` + ev + `.event_id IS NULL THEN ` + maxSeq + ` ELSE ` + ev + `.seq END`
 }
 
+// laterMarker is the (ts, seq) of the later of two read markers, as two SQL expressions: a and b are the aliases
+// of the marker rows, aEv and bEv of their events (see markerSeq). A missing marker is (0, 0).
+func laterMarker(a, aEv, b, bEv string) string {
+	aTS, aSeq := `COALESCE(`+a+`.ts, 0)`, markerSeq(a, aEv)
+	bTS, bSeq := `COALESCE(`+b+`.ts, 0)`, markerSeq(b, bEv)
+	aWins := `(` + aTS + `, ` + aSeq + `) >= (` + bTS + `, ` + bSeq + `)`
+	return `CASE WHEN ` + aWins + ` THEN ` + aTS + ` ELSE ` + bTS + ` END, CASE WHEN ` + aWins + ` THEN ` + aSeq + ` ELSE ` + bSeq + ` END`
+}
+
 // messageLikeTypes decides which events set a room's last_ts and last_event_id: the things a person would call
 // "the latest message". An encrypted placeholder counts, because the message exists even if we cannot read it.
 // Reactions, redactions, state events and edits (see notEditSQL) never count.
@@ -36,13 +45,29 @@ const messageLikeTypes = `'m.room.message','m.sticker','m.room.encrypted'`
 // unreadTypes is the narrower set that counts as unread: only messages we can show.
 const unreadTypes = `'m.room.message','m.sticker'`
 
-// backfillLastEventSQL points every room at its newest message-like event. Migration 1 runs it once; it is also
-// the single definition of "newest" (latest ts, then latest seq) that InsertEvent keeps up to date afterwards.
-var backfillLastEventSQL = `UPDATE rooms SET
-  last_ts = COALESCE((SELECT e.ts FROM events e WHERE e.room_id = rooms.room_id AND e.type IN (` + messageLikeTypes + `) AND ` + notEditSQL("e.content") + `
-                      ORDER BY e.ts DESC, e.seq DESC LIMIT 1), 0),
-  last_event_id = COALESCE((SELECT e.event_id FROM events e WHERE e.room_id = rooms.room_id AND e.type IN (` + messageLikeTypes + `) AND ` + notEditSQL("e.content") + `
-                      ORDER BY e.ts DESC, e.seq DESC LIMIT 1), '')`
+// lastEventSQL builds the statement that points every room at its newest message-like event (latest ts, then
+// latest seq). filter is extra SQL that the event e must also satisfy.
+func lastEventSQL(filter string) string {
+	pick := `FROM events e WHERE e.room_id = rooms.room_id AND e.type IN (` + messageLikeTypes + `) AND ` + notEditSQL("e.content") + filter + `
+                      ORDER BY e.ts DESC, e.seq DESC LIMIT 1`
+	return `UPDATE rooms SET
+  last_ts = COALESCE((SELECT e.ts ` + pick + `), 0),
+  last_event_id = COALESCE((SELECT e.event_id ` + pick + `), '')`
+}
+
+// backfillLastEventV1SQL is migration 1's statement, frozen as it shipped: it runs before migration 2's redacted
+// column exists, so it cannot use backfillLastEventSQL.
+var backfillLastEventV1SQL = lastEventSQL("")
+
+// backfillLastEventSQL points every room at its newest message-like event that has not been deleted (redacted).
+// It is the single definition of "newest" that InsertEvent keeps up to date afterwards; migration 2 runs it once,
+// and deleting or redacting a chat's last message runs it for that chat.
+var backfillLastEventSQL = lastEventSQL(" AND e.redacted = 0")
+
+// redactionTargetSQL is the event a redaction deletes: content.redacts. content is the column expression.
+func redactionTargetSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$.redacts') END)`
+}
 
 // migrations are applied in order. migrations[i] upgrades a database at PRAGMA user_version = i to i+1.
 // schema.sql is the version-0 baseline (the milestone-2 shape) and is never edited: every later change to the
@@ -61,6 +86,11 @@ CREATE TABLE local_reads (
   ts INTEGER NOT NULL
 );
 CREATE INDEX rooms_last_ts ON rooms(last_ts DESC, created_at DESC);
+` + backfillLastEventV1SQL + `;`,
+	// 2: a deleted (redacted) message is neither a chat's latest message nor unread.
+	`ALTER TABLE events ADD COLUMN redacted INTEGER NOT NULL DEFAULT 0;
+UPDATE events SET redacted = 1 WHERE (room_id, event_id) IN (
+  SELECT r.room_id, ` + redactionTargetSQL("r.content") + ` FROM events r WHERE r.type = 'm.room.redaction' AND r.status <> 'failed');
 ` + backfillLastEventSQL + `;`,
 }
 

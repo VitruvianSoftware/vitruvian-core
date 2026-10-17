@@ -319,7 +319,7 @@ func TestMarkReadAndDeleteRoom(t *testing.T) {
 	bot := c.BotIntent()
 	roomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
 	require.NoError(t, err)
-	require.NoError(t, bot.MarkRead(ctx, roomID, id.EventID("$e"), time.Unix(5, 0)))
+	require.NoError(t, bot.MarkRead(ctx, roomID, id.EventID("$e"), time.Unix(5, 0))) // the bot's receipt: ignored
 	require.NoError(t, bot.DeleteRoom(ctx, roomID, false))
 	_, ok, err := c.store.GetRoom(ctx, string(roomID))
 	require.NoError(t, err)
@@ -429,4 +429,56 @@ func TestGhostProfileReachesTheStore(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "New", name)
 	require.Equal(t, "mxc://courier.local/def", avatar)
+}
+
+// unreadOf is the inbox's unread count for roomID.
+func unreadOf(t *testing.T, c *Connector, roomID id.RoomID) int {
+	t.Helper()
+	rows, err := c.store.Inbox(context.Background())
+	require.NoError(t, err)
+	for _, r := range rows {
+		if r.ID == string(roomID) {
+			return r.Unread
+		}
+	}
+	t.Fatalf("no inbox row for %s", roomID)
+	return 0
+}
+
+// The bug this guards: a friend's read receipt for my message moved MY read marker to the receipt's time, which
+// wiped the unread count of the replies they had sent before reading it.
+func TestOnlyMyReadReceiptsMoveMyReadMarker(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	friend := c.GhostIntent("friend")
+	roomID, err := friend.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	meIntent, _, err := c.NewUserIntent(ctx, ids.Me, "")
+	require.NoError(t, err)
+	send := func(in bridgev2.MatrixAPI, body string, at int64) id.EventID {
+		t.Helper()
+		resp, err := in.SendMessage(ctx, roomID, event.EventMessage, textContent(body), &bridgev2.MatrixSendExtra{Timestamp: time.Unix(at, 0)})
+		require.NoError(t, err)
+		return resp.EventID
+	}
+	mine := send(meIntent, "are you coming?", 10)
+	reply1 := send(friend, "yes", 20)
+	send(friend, "on my way", 30)
+	require.Equal(t, 2, unreadOf(t, c, roomID))
+
+	// The friend reads my message, after both replies.
+	require.NoError(t, friend.MarkRead(ctx, roomID, mine, time.Unix(40, 0)))
+	require.Equal(t, 2, unreadOf(t, c, roomID), "someone else's receipt is not my read")
+	require.NoError(t, c.BotIntent().MarkRead(ctx, roomID, mine, time.Unix(41, 0)))
+	require.Equal(t, 2, unreadOf(t, c, roomID), "nor is the bot's")
+
+	// I read the first reply on my phone, and the receipt comes in later still: only that reply clears.
+	require.NoError(t, meIntent.MarkRead(ctx, roomID, reply1, time.Unix(50, 0)))
+	require.Equal(t, 1, unreadOf(t, c, roomID))
+
+	// I answer from another device without reading the rest, and the friend reads that answer: newer than
+	// everything unread, but it is their read, not mine.
+	send(friend, "where are you?", 60)
+	answer := send(meIntent, "nearly there", 70)
+	require.NoError(t, friend.MarkRead(ctx, roomID, answer, time.Unix(80, 0)))
+	require.Equal(t, 2, unreadOf(t, c, roomID), "someone else reading my newest message is not my read")
 }

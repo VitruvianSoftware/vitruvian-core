@@ -34,18 +34,18 @@ type InboxRow struct {
 //   - the unread count is a range scan of events_room_ts (room_id, ts, seq) from the read marker onward, so it
 //     only touches messages that are actually newer than the marker.
 //
-// There are two markers: the network's read (reads) and this device's (local_reads). A message is unread when it
-// is after both, which is the same as being after the later one. "After" compares (ts, seq), so a message in
-// the same millisecond as the marker but received later still counts. Edits are never unread.
+// There are two markers, both mine: what I read on another device, as the network reports it (reads), and what I
+// read on this one (local_reads). A message is unread when it is after both, which is the same as being after the
+// later one, so the count has one lower bound: the later marker. "After" compares (ts, seq), so a message in the
+// same millisecond as the marker but received later still counts. Edits and deleted messages are never unread.
 var inboxSQL = `SELECT r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at,
   r.last_ts,
   COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''),
   COALESCE(p.muted, 0),
   (SELECT COUNT(*) FROM events u
      WHERE u.room_id = r.room_id
-       AND (u.ts, u.seq) > (COALESCE(rd.ts, 0), ` + markerSeq("rd", "rde") + `)
-       AND (u.ts, u.seq) > (COALESCE(lr.ts, 0), ` + markerSeq("lr", "lre") + `)
-       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND ` + notEditSQL("u.content") + `)
+       AND (u.ts, u.seq) > (` + laterMarker("rd", "rde", "lr", "lre") + `)
+       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `)
 FROM rooms r
 LEFT JOIN events ev ON ev.event_id = r.last_event_id
 LEFT JOIN room_prefs p ON p.room_id = r.room_id
@@ -176,26 +176,34 @@ func (s *Store) MarkReadLocal(ctx context.Context, roomID, eventID string, ts ti
 // AdvanceReadLocal is MarkReadLocal that also says whether the marker moved. It does not move when the chat was
 // already read up to that event or beyond it.
 func (s *Store) AdvanceReadLocal(ctx context.Context, roomID, eventID string, ts time.Time) (bool, error) {
+	return s.advanceMarker(ctx, "local_reads", roomID, eventID, ts)
+}
+
+// advanceMarker moves table's read marker for roomID (reads or local_reads) to eventID, if that is later than
+// where it is. The marker keeps the event's own time, so its (ts, seq) is exactly that event's. An event we do
+// not have is kept at fallbackTS and compares on ts alone. It reports whether the marker moved, and publishes a
+// "read" change when it did.
+func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time) (bool, error) {
 	moved := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		newSeq := int64(math.MaxInt64) // an event we do not have yet: compare on ts alone
-		err := s.db.QueryRow(ctx, "SELECT seq FROM events WHERE event_id=$1 AND ts=$2", eventID, ts.UnixMilli()).Scan(&newSeq)
+		newTS, newSeq := fallbackTS.UnixMilli(), int64(math.MaxInt64) // an event we do not have yet: compare on ts alone
+		err := s.db.QueryRow(ctx, "SELECT ts, seq FROM events WHERE event_id=$1 AND room_id=$2", eventID, roomID).Scan(&newTS, &newSeq)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		var curTS, curSeq int64
-		err = s.db.QueryRow(ctx, `SELECT lr.ts, `+markerSeq("lr", "e")+` FROM local_reads lr
-			LEFT JOIN events e ON e.event_id = lr.event_id AND e.ts = lr.ts WHERE lr.room_id=$1`, roomID).Scan(&curTS, &curSeq)
+		err = s.db.QueryRow(ctx, `SELECT m.ts, `+markerSeq("m", "e")+` FROM `+table+` m
+			LEFT JOIN events e ON e.event_id = m.event_id AND e.ts = m.ts WHERE m.room_id=$1`, roomID).Scan(&curTS, &curSeq)
 		switch {
 		case err == nil:
-			if newTS := ts.UnixMilli(); newTS < curTS || (newTS == curTS && newSeq <= curSeq) {
+			if newTS < curTS || (newTS == curTS && newSeq <= curSeq) {
 				return nil // not later than what we have
 			}
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		_, err = s.db.Exec(ctx, `INSERT INTO local_reads (room_id, event_id, ts) VALUES ($1,$2,$3)
-			ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, ts.UnixMilli())
+		_, err = s.db.Exec(ctx, `INSERT INTO `+table+` (room_id, event_id, ts) VALUES ($1,$2,$3)
+			ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, newTS)
 		moved = err == nil
 		return err
 	})
