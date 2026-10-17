@@ -113,6 +113,37 @@ public final class LabelsModel: ObservableObject {
         return autoArchiveRules.first { $0.trigger == .olderThan && $0.scope == scope }
     }
 
+    /// The ages an "older than" rule and the archive-all tool take, in days: 3 days to a year.
+    public static let sweepAges = [3, 7, 14, 28, 90, 365]
+    /// The delays the General auto-archive rule (after I reply, after I read) takes, in minutes: none to a week.
+    public static let generalDelays = [0, 1, 5, 10, 30, 60, 240, 1440, 10080]
+
+    /// The General setting: one "after I reply" or "after I read" rule, scope "all". Nil is Never.
+    public var generalRule: AutoArchiveRule? {
+        autoArchiveRules.first { $0.scope == "all" && ($0.trigger == .afterReply || $0.trigger == .afterRead) }
+    }
+
+    /// Sets the General setting: after I reply or after I read, `minutes` later; nil is Never, which deletes the
+    /// rule and the archives it had scheduled. After I read archives only chats left with nothing unread.
+    public func setGeneral(_ trigger: AutoArchiveTrigger?, minutes: Int) async throws {
+        let current = generalRule
+        guard let trigger else {
+            if let current { try await deleteRule(current.ruleID) }
+            return
+        }
+        try await setRule(AutoArchiveRule(
+            ruleID: current?.ruleID ?? 0, scope: "all", trigger: trigger,
+            chatType: trigger == .afterRead ? .read : .all, durationMS: Int64(minutes) * 60_000, enabled: true))
+    }
+
+    /// Sets a space's "older than" rule: archive its chats (all, or only read ones) once their newest message is
+    /// `days` old, or stop (`enabled` false; the rule is kept, so its choices are too).
+    public func setSweep(for spaceID: String, chatType: AutoArchiveChatType, days: Int, enabled: Bool) async throws {
+        try await setRule(AutoArchiveRule(
+            ruleID: rules(for: spaceID)?.ruleID ?? 0, scope: spaceID == "inbox" ? "all" : spaceID, trigger: .olderThan,
+            chatType: chatType, durationMS: Int64(days) * 86_400_000, enabled: enabled))
+    }
+
     /// Saves a rule, new (rule id 0) or changed, and keeps it as the engine stored it. Part of a plan.
     public func setRule(_ rule: AutoArchiveRule) async throws {
         guard entitlement.isEntitled(.autoArchive) else {

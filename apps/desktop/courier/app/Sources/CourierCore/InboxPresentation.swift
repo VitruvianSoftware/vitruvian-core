@@ -132,3 +132,136 @@ public struct NetworkAppearance: Equatable, Sendable {
         }
     }
 }
+
+extension InboxRow {
+    /// Who is typing, in place of the preview: "Name is typing…", or for more than one, "N people are typing…".
+    /// Nil when no one is.
+    public var typingLine: String? {
+        switch typing.count {
+        case 0: nil
+        case 1: String(localized: "\(typing[0]) is typing…")
+        case let count: String(localized: "\(count) people are typing…")
+        }
+    }
+
+    /// What else mutes the chat, in the row: "Muted by Work" (a label) or "Muted by WhatsApp" (its account). Nil
+    /// when nothing else does.
+    public var mutedLine: String? {
+        guard mutedBy != .none, !mutedByName.isEmpty else { return nil }
+        return String(localized: "Muted by \(mutedByName)")
+    }
+
+    /// A reminder that came due and brought the chat back: the row's "Reminder" badge.
+    public var reminderFired: Bool { reminder?.fired ?? false }
+
+    /// The chat is marked unread with no unread messages: the row shows a dot in place of a count.
+    public var showsUnreadDot: Bool { markedUnread && unread == 0 }
+}
+
+/// What an empty chat list says: a title, and a line that explains the place when it needs explaining (spec §8).
+public struct EmptyState: Equatable, Sendable {
+    public let title: String
+    public let line: String?
+
+    public init(title: String, line: String? = nil) {
+        self.title = title
+        self.line = line
+    }
+
+    /// The empty state of a query. A filter says more than the space it narrows, so filters win: first a place
+    /// filter (Archived, Low Priority, Hidden, Requests, Reminders, Send Later), then the others in the Filter
+    /// menu's order. With none, the space's own; an account's space reads as the inbox.
+    public static func of(_ query: InboxQuery) -> EmptyState {
+        let precedence: [InboxFilter] = [
+            .archived, .lowPriority, .hidden, .requests, .reminders, .sendLater,
+            .unread, .dms, .groups, .drafts, .unanswered, .noReply, .unknown, .muted,
+        ]
+        if let filter = precedence.first(where: query.filters.contains) { return of(filter) }
+        switch query.space {
+        case "archive": return of(.archived)
+        case "low_priority": return of(.lowPriority)
+        case "requests": return of(.requests)
+        case "reminders": return of(.reminders)
+        case "send_later": return of(.sendLater)
+        case let space where space.hasPrefix("label:"):
+            return EmptyState(title: String(localized: "No chats with this label"),
+                              line: String(localized: "Right-click a chat and choose Label."))
+        default:
+            return EmptyState(title: String(localized: "You’re all caught up"),
+                              line: String(localized: "New messages show up here."))
+        }
+    }
+
+    private static func of(_ filter: InboxFilter) -> EmptyState {
+        switch filter {
+        case .unread: EmptyState(title: String(localized: "No unread chats"))
+        case .drafts: EmptyState(title: String(localized: "No drafts"),
+                                 line: String(localized: "A chat shows up here when you start a message and don’t send it."))
+        case .unanswered: EmptyState(title: String(localized: "Nothing waiting for your answer"))
+        case .noReply: EmptyState(title: String(localized: "No one owes you a reply"))
+        case .dms: EmptyState(title: String(localized: "No one-to-one chats"))
+        case .groups: EmptyState(title: String(localized: "No group chats"))
+        case .unknown: EmptyState(title: String(localized: "No chats from unknown numbers"))
+        case .muted: EmptyState(title: String(localized: "No muted chats"))
+        case .hidden: EmptyState(title: String(localized: "No hidden chats"),
+                                 line: String(localized: "Hide a chat to take it out of your inbox without leaving it."))
+        case .archived: EmptyState(title: String(localized: "Nothing archived"),
+                                   line: String(localized: "Archive a chat to clear it from your inbox. It comes back when someone writes."))
+        case .lowPriority: EmptyState(title: String(localized: "Nothing in Low Priority"),
+                                      line: String(localized: "Chats here stay out of your inbox, even when new messages arrive."))
+        case .requests: EmptyState(title: String(localized: "No message requests"),
+                                   line: String(localized: "Messages from people you haven’t chatted with before show up here."))
+        case .reminders: EmptyState(title: String(localized: "No reminders"),
+                                    line: String(localized: "Right-click a chat and choose Remind Me. It comes back to your inbox at that time."))
+        case .sendLater: EmptyState(title: String(localized: "No scheduled messages"),
+                                    line: String(localized: "Messages you schedule show up here."))
+        }
+    }
+}
+
+/// Whether a change reaches the phone too, for the chats it is made to: every one's network takes it, none does,
+/// or some do. Courier's own state stays on this Mac either way.
+public enum SyncReach: Equatable, Sendable {
+    case all, none, some
+
+    /// How far `sync` reaches for chats on these networks: by each network's Account.syncs. A network the engine
+    /// doesn't list takes nothing.
+    public static func of(_ sync: AccountSync, networks: [String], accounts: [Account]) -> SyncReach {
+        let takes = Set(accounts.filter { $0.syncs.contains(sync) }.map(\.network))
+        let wanted = Set(networks)
+        guard !wanted.isEmpty else { return .none }
+        if wanted.isSubset(of: takes) { return .all }
+        return wanted.isDisjoint(with: takes) ? .none : .some
+    }
+}
+
+/// The help text on Pin, Mute and Mark as Unread: what reaches the phone (spec §8).
+public enum SyncHelp {
+    /// Pin (`on`) or Unpin.
+    public static func pin(_ on: Bool, reach: SyncReach) -> String {
+        switch (on, reach) {
+        case (true, .all): String(localized: "Also pinned on your phone")
+        case (true, .none): String(localized: "Pinned on this Mac only")
+        case (true, .some): String(localized: "Also pinned on your phone, where its network takes pins")
+        case (false, .all): String(localized: "Also unpinned on your phone")
+        case (false, .none): String(localized: "Unpinned on this Mac only")
+        case (false, .some): String(localized: "Also unpinned on your phone, where its network takes pins")
+        }
+    }
+
+    /// Mute (`on`) or Unmute.
+    public static func mute(_ on: Bool, reach: SyncReach) -> String {
+        switch (on, reach) {
+        case (true, .all): String(localized: "Also muted on your phone")
+        case (true, .none): String(localized: "Muted on this Mac only")
+        case (true, .some): String(localized: "Also muted on your phone, where its network takes mutes")
+        case (false, .all): String(localized: "Also unmuted on your phone")
+        case (false, .none): String(localized: "Unmuted on this Mac only")
+        case (false, .some): String(localized: "Also unmuted on your phone, where its network takes mutes")
+        }
+    }
+
+    /// Mark as Unread. No network is ever sent an unread mark (Account.syncs never lists one), so this is always
+    /// the same.
+    public static var markUnread: String { String(localized: "On this Mac only") }
+}

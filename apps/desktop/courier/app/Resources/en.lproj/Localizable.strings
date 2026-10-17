@@ -606,3 +606,793 @@
 
 /* Question asked before "Mark all chats as read" runs from the command bar. The networks are told, so there is no Undo. */
 "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone." = "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone.";
+
+/* ---- Milestone 4.1: the space bar, filters, selection, menus and Settings ▸ Inbox. ---- */
+
+/* Title of the Edit Spaces window. */
+"Edit Spaces" = "Edit Spaces";
+
+/* Title of the window that lists every label. */
+"Edit Labels" = "Edit Labels";
+
+/* Fallback title of a label window. */
+"Label" = "Label";
+
+/* Title of an account's auto-archive window, and the heading of the auto-archive section of a label or account. */
+"Auto-archive" = "Auto-archive";
+
+/* Chat menu: the help on the Label submenu. */
+"A label puts the chat in a space of its own, on this Mac." = "A label puts the chat in a space of its own, on this Mac.";
+
+/* Chat menu and row button: accepts a message request. */
+"Accept" = "Accept";
+
+/* Chat menu and row button: declines a message request. */
+"Decline" = "Decline";
+
+/* Help on Accept: the chat moves out of Requests. */
+"Moves the chat into your inbox." = "Moves the chat into your inbox.";
+
+/* Help on Decline: the chat is hidden on this Mac and the network is not told. */
+"Hides the chat on this Mac. The person isn’t told." = "Hides the chat on this Mac. The person isn’t told.";
+
+/* Chat menu, selection bar, settings and buttons: archives the chat. Also the space Archive's name and the confirm button of Archive all read. */
+"Archive" = "Archive";
+
+/* Chat menu and selection bar: brings an archived chat back. */
+"Unarchive" = "Unarchive";
+
+/* Help on Archive (spec §8). */
+"Clears the chat from your inbox until someone writes again." = "Clears the chat from your inbox until someone writes again.";
+
+/* Help on a disabled Archive: every chat it would act on is pinned. */
+"Unpin a chat to archive it" = "Unpin a chat to archive it";
+
+/* Question before ⌘⇧E archives one read chat. */
+"Archive 1 read chat?" = "Archive 1 read chat?";
+
+/* Question before ⌘⇧E archives this many read chats. */
+"Archive %lld read chats?" = "Archive %lld read chats?";
+
+/* Under the ⌘⇧E question. */
+"Pinned chats stay where they are. You can undo this." = "Pinned chats stay where they are. You can undo this.";
+
+/* Chat menu: starts selecting several chats. */
+"Begin Selecting" = "Begin Selecting";
+
+/* Chat menu and selection bar: hides the chat on this Mac. */
+"Hide" = "Hide";
+
+/* Chat menu and selection bar: shows a hidden chat again. */
+"Unhide" = "Unhide";
+
+/* Help on Hide (spec §8). */
+"Takes the chat out of your inbox without leaving it. Filter ▸ Hidden shows it again." = "Takes the chat out of your inbox without leaving it. Filter ▸ Hidden shows it again.";
+
+/* Help on Move to Low Priority (spec §8). */
+"Keeps the chat out of your inbox, even when new messages arrive." = "Keeps the chat out of your inbox, even when new messages arrive.";
+
+/* Chat menu and selection bar: takes the chat out of Low Priority. */
+"Move to Inbox" = "Move to Inbox";
+
+/* Chat menu and selection bar: moves the chat to Low Priority. */
+"Move to Low Priority" = "Move to Low Priority";
+
+/* Chat menu and selection bar: mutes the chat. */
+"Mute" = "Mute";
+
+/* Chat menu and selection bar: unmutes the chat. */
+"Unmute" = "Unmute";
+
+/* Chat menu: pins the chat. */
+"Pin" = "Pin";
+
+/* Chat menu: unpins the chat. */
+"Unpin" = "Unpin";
+
+/* Label submenu, View menu and the label list: opens the window that makes a label. */
+"New Label…" = "New Label…";
+
+/* Button of an alert that only says something. */
+"OK" = "OK";
+
+/* Edit Spaces: the line under the list. */
+"Drag a space to change its place, or below Hidden to take it off the bar." = "Drag a space to change its place, or below Hidden to take it off the bar.";
+
+/* Edit Spaces: help on a space's eye button. */
+"Hide from the bar" = "Hide from the bar";
+
+/* Edit Spaces: help on a hidden space's eye button. */
+"Show on the bar" = "Show on the bar";
+
+/* Edit Spaces: under the Hidden divider when nothing is hidden. */
+"No hidden spaces" = "No hidden spaces";
+
+/* Edit Spaces: the search field. */
+"Search Spaces" = "Search Spaces";
+
+/* Filter menu: no filter. */
+"All" = "All";
+
+/* Filter menu. */
+"Archived" = "Archived";
+
+/* Help on the Low Priority filter. */
+"Chats that stay out of your inbox, even when new messages arrive." = "Chats that stay out of your inbox, even when new messages arrive.";
+
+/* Help on the Unanswered filter. Inferred (inventory 01 §3). */
+"Chats where someone else sent the newest message." = "Chats where someone else sent the newest message.";
+
+/* Help on the No reply filter. Inferred (inventory 01 §3). */
+"Chats where you sent the newest message and no one has answered." = "Chats where you sent the newest message and no one has answered.";
+
+/* Help on the Hidden filter. */
+"Chats you hid. They stay out of your inbox." = "Chats you hid. They stay out of your inbox.";
+
+/* Filter menu: turns every filter off. */
+"Clear all filters" = "Clear all filters";
+
+/* Filter menu: one-to-one chats. */
+"DMs" = "DMs";
+
+/* The sort menu beside the Filter menu. */
+"Display Options" = "Display Options";
+
+/* Filter menu. */
+"Drafts" = "Drafts";
+
+/* The Filter menu's title with no filter on. */
+"Filter" = "Filter";
+
+/* The Filter menu's title with this many filters on. */
+"Filter (%lld)" = "Filter (%lld)";
+
+/* Heading of the ⌘⌥A popover of accounts. */
+"Filter by Account" = "Filter by Account";
+
+/* Filter menu: one-to-one chats with no name or a phone number for a name. */
+"From unknown numbers" = "From unknown numbers";
+
+/* Filter menu: group chats. */
+"Groups" = "Groups";
+
+/* Filter menu, and the space's name on the bar. */
+"Low Priority" = "Low Priority";
+
+/* Help on the Requests filter. */
+"Messages from people you haven’t chatted with before." = "Messages from people you haven’t chatted with before.";
+
+/* Help on the Filter menu. */
+"Narrow the list (⌥Tab steps through the common filters)" = "Narrow the list (⌥Tab steps through the common filters)";
+
+/* Display Options: the default order. */
+"Newest message first" = "Newest message first";
+
+/* The ⌘⌥A popover with no account linked. */
+"No accounts yet" = "No accounts yet";
+
+/* Filter menu: chats where I sent the newest message. */
+"No reply" = "No reply";
+
+/* Display Options. */
+"Oldest message first" = "Oldest message first";
+
+/* Help on the From unknown numbers filter. Inferred (inventory 01 §3). */
+"One-to-one chats with no name, or a phone number for a name." = "One-to-one chats with no name, or a phone number for a name.";
+
+/* Help on the DMs filter. */
+"One-to-one chats." = "One-to-one chats.";
+
+/* Display Options: the picker of orders. */
+"Order" = "Order";
+
+/* Display Options: chats with the latest reminder first. */
+"Reminder latest" = "Reminder latest";
+
+/* Display Options: chats with the soonest reminder first. */
+"Reminder soonest" = "Reminder soonest";
+
+/* Filter menu, the space's name on the bar, and a settings section. */
+"Reminders" = "Reminders";
+
+/* Filter menu, the space's name on the bar, and a settings section. */
+"Requests" = "Requests";
+
+/* Filter menu, and the space's name on the bar. */
+"Send Later" = "Send Later";
+
+/* Filter menu: chats where someone else sent the newest message. */
+"Unanswered" = "Unanswered";
+
+/* Filter menu, and the pinned strip's unread dot. */
+"Unread" = "Unread";
+
+/* A label colour. */
+"Blue" = "Blue";
+
+/* A label colour. */
+"Brown" = "Brown";
+
+/* A label colour. */
+"Cyan" = "Cyan";
+
+/* A label colour. */
+"Green" = "Green";
+
+/* A label colour (never offered). */
+"Grey" = "Grey";
+
+/* A label colour. */
+"Indigo" = "Indigo";
+
+/* A label colour. */
+"Mint" = "Mint";
+
+/* A label colour. */
+"Orange" = "Orange";
+
+/* A label colour. */
+"Pink" = "Pink";
+
+/* A label colour. */
+"Purple" = "Purple";
+
+/* A label colour. */
+"Red" = "Red";
+
+/* A label colour. */
+"Teal" = "Teal";
+
+/* A label colour. */
+"Yellow" = "Yellow";
+
+/* Label window: the heading above the colours. */
+"Colour" = "Colour";
+
+/* Label window: the heading above the icons. */
+"Icon" = "Icon";
+
+/* Chat menu: archives every read chat of the space shown, after asking. */
+"Archive All Read Chats…" = "Archive All Read Chats…";
+
+/* Chat menu (⌥Tab): Unread, Drafts, Unanswered, DMs, Groups, then All. */
+"Cycle Filters" = "Cycle Filters";
+
+/* View menu: opens the window that lists every label. */
+"Edit Labels…" = "Edit Labels…";
+
+/* View menu and space menus: opens Edit Spaces. */
+"Edit Spaces…" = "Edit Spaces…";
+
+/* Chat menu: ends selecting. */
+"End Selecting" = "End Selecting";
+
+/* Chat menu (⌘⌥A): opens the popover of accounts. */
+"Filter by Account…" = "Filter by Account…";
+
+/* Chat menu: the submenu of the first nine chats (⌃1–⌃9). */
+"Go to Chat" = "Go to Chat";
+
+/* Chat menu: the submenu of the first nine spaces (⌘1–⌘9). */
+"Go to Space" = "Go to Space";
+
+/* View menu and the built-in spaces' menu (⌘S). */
+"Hide Space Bar" = "Hide Space Bar";
+
+/* View menu and the built-in spaces' menu (⌘S). */
+"Show Space Bar" = "Show Space Bar";
+
+/* Chat menu (⌘⇧]). */
+"Next Account" = "Next Account";
+
+/* Chat menu (⌘⇧[). */
+"Previous Account" = "Previous Account";
+
+/* Edit menu. */
+"Redo" = "Redo";
+
+/* Edit menu: undoes the toast's action while it shows, else the text's. */
+"Undo" = "Undo";
+
+/* Chat menu (⌘L): the Remind Me popover for the open chat. */
+"Remind Me…" = "Remind Me…";
+
+/* Chat menu: selects every chat shown. */
+"Select All Chats" = "Select All Chats";
+
+/* Chat menu (⌘⇧Y) while the Unread filter is on. */
+"Show All Chats" = "Show All Chats";
+
+/* Chat menu (⌘⇧Y): turns the Unread filter on. */
+"Show Only Unread Chats" = "Show Only Unread Chats";
+
+/* A chat with no name, in its row and menus. */
+"Unnamed chat" = "Unnamed chat";
+
+/* The space bar's first space, and the chat list's title for it. */
+"Inbox" = "Inbox";
+
+/* VoiceOver: the grey rows shown while the first page loads. */
+"Loading chats" = "Loading chats";
+
+/* Remind Me submenu, popover and Custom sheet. */
+"Remind Me" = "Remind Me";
+
+/* Empty Drafts. */
+"A chat shows up here when you start a message and don’t send it." = "A chat shows up here when you start a message and don’t send it.";
+
+/* Help on Mute: every chat's network takes mutes (Account.syncs). */
+"Also muted on your phone" = "Also muted on your phone";
+
+/* Help on Mute: some of the chats' networks take mutes. */
+"Also muted on your phone, where its network takes mutes" = "Also muted on your phone, where its network takes mutes";
+
+/* Help on Pin: every chat's network takes pins (Account.syncs). */
+"Also pinned on your phone" = "Also pinned on your phone";
+
+/* Help on Pin: some of the chats' networks take pins. */
+"Also pinned on your phone, where its network takes pins" = "Also pinned on your phone, where its network takes pins";
+
+/* Help on Unmute: every chat's network takes mutes. */
+"Also unmuted on your phone" = "Also unmuted on your phone";
+
+/* Help on Unmute: some of the chats' networks take mutes. */
+"Also unmuted on your phone, where its network takes mutes" = "Also unmuted on your phone, where its network takes mutes";
+
+/* Help on Unpin: every chat's network takes pins. */
+"Also unpinned on your phone" = "Also unpinned on your phone";
+
+/* Help on Unpin: some of the chats' networks take pins. */
+"Also unpinned on your phone, where its network takes pins" = "Also unpinned on your phone, where its network takes pins";
+
+/* Empty Archive. */
+"Archive a chat to clear it from your inbox. It comes back when someone writes." = "Archive a chat to clear it from your inbox. It comes back when someone writes.";
+
+/* Empty Low Priority. */
+"Chats here stay out of your inbox, even when new messages arrive." = "Chats here stay out of your inbox, even when new messages arrive.";
+
+/* Empty Hidden. */
+"Hide a chat to take it out of your inbox without leaving it." = "Hide a chat to take it out of your inbox without leaving it.";
+
+/* Empty Requests. */
+"Messages from people you haven’t chatted with before show up here." = "Messages from people you haven’t chatted with before show up here.";
+
+/* Empty Send Later. */
+"Messages you schedule show up here." = "Messages you schedule show up here.";
+
+/* A row's line when a label or its account mutes it. The argument is the label's title or the network's name. */
+"Muted by %@" = "Muted by %@";
+
+/* Help on Mute: no chat's network takes mutes. */
+"Muted on this Mac only" = "Muted on this Mac only";
+
+/* Empty inbox. */
+"New messages show up here." = "New messages show up here.";
+
+/* Empty From unknown numbers. */
+"No chats from unknown numbers" = "No chats from unknown numbers";
+
+/* Empty label space. */
+"No chats with this label" = "No chats with this label";
+
+/* Empty Drafts. */
+"No drafts" = "No drafts";
+
+/* Empty Groups. */
+"No group chats" = "No group chats";
+
+/* Empty Hidden. */
+"No hidden chats" = "No hidden chats";
+
+/* Empty Requests. */
+"No message requests" = "No message requests";
+
+/* Empty Muted. */
+"No muted chats" = "No muted chats";
+
+/* Empty No reply. */
+"No one owes you a reply" = "No one owes you a reply";
+
+/* Empty DMs. */
+"No one-to-one chats" = "No one-to-one chats";
+
+/* Empty Reminders. */
+"No reminders" = "No reminders";
+
+/* Empty Send Later. */
+"No scheduled messages" = "No scheduled messages";
+
+/* Empty Archive. */
+"Nothing archived" = "Nothing archived";
+
+/* Empty Low Priority. */
+"Nothing in Low Priority" = "Nothing in Low Priority";
+
+/* Empty Unanswered. */
+"Nothing waiting for your answer" = "Nothing waiting for your answer";
+
+/* Help on Mark as Unread: an unread mark never reaches a network. */
+"On this Mac only" = "On this Mac only";
+
+/* Help on Pin: no chat's network takes pins. */
+"Pinned on this Mac only" = "Pinned on this Mac only";
+
+/* Empty label space. */
+"Right-click a chat and choose Label." = "Right-click a chat and choose Label.";
+
+/* Empty Reminders. */
+"Right-click a chat and choose Remind Me. It comes back to your inbox at that time." = "Right-click a chat and choose Remind Me. It comes back to your inbox at that time.";
+
+/* Help on Unmute: no chat's network takes mutes. */
+"Unmuted on this Mac only" = "Unmuted on this Mac only";
+
+/* Help on Unpin: no chat's network takes pins. */
+"Unpinned on this Mac only" = "Unpinned on this Mac only";
+
+/* Empty inbox. */
+"You’re all caught up" = "You’re all caught up";
+
+/* A row's line while more than one person types. The argument is how many. */
+"%lld people are typing…" = "%lld people are typing…";
+
+/* A row's line while one person types. The argument is their name. */
+"%@ is typing…" = "%@ is typing…";
+
+/* Help on a row's Reminder badge. */
+"A reminder you set brought this chat back." = "A reminder you set brought this chat back.";
+
+/* Before a row's draft. */
+"Draft:" = "Draft:";
+
+/* Help on a row's dot: the person marked it unread. */
+"Marked as unread" = "Marked as unread";
+
+/* A row's line for a message request. */
+"Message request" = "Message request";
+
+/* Help and VoiceOver on a More menu. */
+"More" = "More";
+
+/* VoiceOver: a row's checkbox while selecting. */
+"Not selected" = "Not selected";
+
+/* VoiceOver: a row's checkbox while selecting. */
+"Selected" = "Selected";
+
+/* A row's badge once its reminder came due. */
+"Reminder" = "Reminder";
+
+/* Help on a row's @: an unread message mentions me. */
+"You were mentioned" = "You were mentioned";
+
+/* A delay. */
+"1 day" = "1 day";
+
+/* A delay. */
+"1 hour" = "1 hour";
+
+/* A delay. */
+"1 minute" = "1 minute";
+
+/* A delay and an age. */
+"1 week" = "1 week";
+
+/* A delay of this many hours. */
+"%lld hours" = "%lld hours";
+
+/* A delay of this many minutes. */
+"%lld minutes" = "%lld minutes";
+
+/* A delay of none. */
+"No time" = "No time";
+
+/* Settings ▸ Inbox ▸ Requests: help. */
+"A message request is someone you haven’t chatted with before writing to you." = "A message request is someone you haven’t chatted with before writing to you.";
+
+/* Settings: the General auto-archive rule. */
+"After I read them" = "After I read them";
+
+/* Settings: the General auto-archive rule. */
+"After I reply" = "After I reply";
+
+/* Settings ▸ Inbox ▸ Archiving. */
+"After archiving the open chat" = "After archiving the open chat";
+
+/* Settings ▸ Inbox ▸ Archiving. */
+"After marking the open chat read or unread" = "After marking the open chat read or unread";
+
+/* Settings and Custom reminder: remind even if I have answered. */
+"Always" = "Always";
+
+/* Settings: help on the General auto-archive rule. */
+"An archived chat comes back to your inbox when someone writes." = "An archived chat comes back to your inbox when someone writes.";
+
+/* Settings ▸ Inbox ▸ Reminders. */
+"Archive a chat when I set a reminder on it" = "Archive a chat when I set a reminder on it";
+
+/* Settings ▸ Inbox ▸ Archiving: the General auto-archive rule. */
+"Archive chats by themselves" = "Archive chats by themselves";
+
+/* Settings: double-click archives. */
+"Archives it" = "Archives it";
+
+/* Settings: help on the archive-all tool. */
+"Archives these chats in your inbox once, now. Pinned chats stay where they are." = "Archives these chats in your inbox once, now. Pinned chats stay where they are.";
+
+/* Settings ▸ Inbox: a section. */
+"Archiving" = "Archiving";
+
+/* Settings ▸ Inbox ▸ Chat list: the hover button setting. */
+"Button on a chat you point at" = "Button on a chat you point at";
+
+/* Settings ▸ Inbox: a section. */
+"Chat list" = "Chat list";
+
+/* Settings: after an action, close the chat. */
+"Close the chat" = "Close the chat";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Colour network icons" = "Colour network icons";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Compact chat list" = "Compact chat list";
+
+/* Settings: double-click does nothing. */
+"Does nothing" = "Does nothing";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Double-clicking a chat" = "Double-clicking a chat";
+
+/* Settings and Custom reminder: remind only if I haven't sent a message since setting it. */
+"If no reply" = "If no reply";
+
+/* Settings: the hover button marks read or unread. */
+"Mark Read or Unread" = "Mark Read or Unread";
+
+/* Settings ▸ Inbox ▸ Archiving. */
+"Mark chats read when I archive them" = "Mark chats read when I archive them";
+
+/* Settings: double-click marks read or unread. */
+"Marks it read or unread" = "Marks it read or unread";
+
+/* Settings: the hover button opens the chat's menu. */
+"Menu" = "Menu";
+
+/* Settings: double-click moves to or from Low Priority. */
+"Moves it to Low Priority or back" = "Moves it to Low Priority or back";
+
+/* Settings: double-click mutes or unmutes. */
+"Mutes or unmutes it" = "Mutes or unmutes it";
+
+/* Settings: no General auto-archive rule. */
+"Never" = "Never";
+
+/* Settings: no hover button. Show in Inbox: none of the chats. */
+"None" = "None";
+
+/* Settings ▸ Inbox ▸ Requests. */
+"Notify me about message requests" = "Notify me about message requests";
+
+/* Settings: help on pinned chats as full rows. */
+"Off, pinned chats sit above the list as small pictures." = "Off, pinned chats sit above the list as small pictures.";
+
+/* Settings: after an action, open the next chat. */
+"Open the next chat" = "Open the next chat";
+
+/* Settings: after an action, open the previous chat. */
+"Open the previous chat" = "Open the previous chat";
+
+/* Settings ▸ Inbox ▸ Reminders: the default condition; also the Custom reminder's picker. */
+"Remind me" = "Remind me";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show message previews" = "Show message previews";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show network icons" = "Show network icons";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show pinned chats as full rows" = "Show pinned chats as full rows";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show the space bar" = "Show the space bar";
+
+/* Settings ▸ Inbox ▸ Chat list. */
+"Show unread counts" = "Show unread counts";
+
+/* Settings: after an action, keep the chat open. */
+"Stay on it" = "Stay on it";
+
+/* Settings: help on archive when setting a reminder. */
+"The reminder brings it back to your inbox when it is due." = "The reminder brings it back to your inbox when it is due.";
+
+/* Settings: the General auto-archive rule's delay. */
+"Wait" = "Wait";
+
+/* Settings: help on mark read on archive. */
+"Your networks are told the chat was read, as when you open it." = "Your networks are told the chat was read, as when you open it.";
+
+/* A space's count. */
+"1 chat" = "1 chat";
+
+/* A space's count. */
+"%lld chats" = "%lld chats";
+
+/* Auto-archive section. */
+"1 chat here already matches this rule." = "1 chat here already matches this rule.";
+
+/* Auto-archive section. */
+"%lld chats here already match this rule." = "%lld chats here already match this rule.";
+
+/* The Reminders space's count. */
+"1 reminder" = "1 reminder";
+
+/* The Reminders space's count. */
+"%lld reminders" = "%lld reminders";
+
+/* The Requests space's count. */
+"1 request" = "1 request";
+
+/* The Requests space's count. */
+"%lld requests" = "%lld requests";
+
+/* An age. */
+"1 year" = "1 year";
+
+/* An age. */
+"2 weeks" = "2 weeks";
+
+/* An age. */
+"3 months" = "3 months";
+
+/* An age. */
+"4 weeks" = "4 weeks";
+
+/* An age. */
+"%lld days" = "%lld days";
+
+/* The label list with no label. */
+"A label groups chats from any network into a space of its own." = "A label groups chats from any network into a space of its own.";
+
+/* VoiceOver: the age picker of a sweep. */
+"Age" = "Age";
+
+/* Auto-archive section and archive-all tool: archives the one chat that matches. */
+"Archive 1 chat" = "Archive 1 chat";
+
+/* Auto-archive section and archive-all tool: archives the chats that match. */
+"Archive %lld chats" = "Archive %lld chats";
+
+/* Auto-archive section: the engine couldn't count the chats that match. */
+"Couldn’t check" = "Couldn’t check";
+
+/* Auto-archive section: help on the rule. */
+"Courier archives chats here by itself once their newest message is this old. They come back when someone writes." = "Courier archives chats here by itself once their newest message is this old. They come back when someone writes.";
+
+/* Label window: makes the label. */
+"Create Label" = "Create Label";
+
+/* The delete-label confirmation's button, and the label menu. */
+"Delete Label" = "Delete Label";
+
+/* The delete-label confirmation. */
+"Delete this label?" = "Delete this label?";
+
+/* The label list: deletes a label. */
+"Delete…" = "Delete…";
+
+/* Title of the window that changes a label. */
+"Edit Label" = "Edit Label";
+
+/* The label list: changes a label. */
+"Edit…" = "Edit…";
+
+/* Under the delete-label confirmation. */
+"It comes off every chat. The chats stay." = "It comes off every chat. The chats stay.";
+
+/* Title of the window that makes a label. */
+"New Label" = "New Label";
+
+/* The label list with no label. */
+"No labels yet" = "No labels yet";
+
+/* The label window's explanation. */
+"Pick a name, a colour and an icon. This is how the label looks everywhere in Courier." = "Pick a name, a colour and an icon. This is how the label looks everywhere in Courier.";
+
+/* Label window: saves the changes. */
+"Save" = "Save";
+
+/* Label window: the title field. */
+"Title" = "Title";
+
+/* VoiceOver: the all-or-read picker of a sweep. */
+"Which chats" = "Which chats";
+
+/* A sweep: Archive [all] chats older than … . */
+"all" = "all";
+
+/* A sweep: Archive [all / read] chats older than [age]. */
+"chats older than" = "chats older than";
+
+/* A sweep: Archive [read] chats older than … . */
+"read" = "read";
+
+/* Help on Remind Me. */
+"Brings the chat back to your inbox at the time you pick." = "Brings the chat back to your inbox at the time you pick.";
+
+/* Remind Me: opens the date picker. */
+"Custom…" = "Custom…";
+
+/* Remind Me: ends the chat's reminder. */
+"Dismiss Reminder" = "Dismiss Reminder";
+
+/* Custom reminder: sets it. */
+"Set Reminder" = "Set Reminder";
+
+/* VoiceOver: the Custom reminder's date picker. */
+"When" = "When";
+
+/* Help on If no reply. Inferred (inventory 01 §18). */
+"“If no reply” skips the reminder when you have sent a message in the chat since you set it." = "“If no reply” skips the reminder when you have sent a message in the chat since you set it.";
+
+/* The list's header while selecting one chat. */
+"1 chat selected" = "1 chat selected";
+
+/* The list's header while selecting this many chats. */
+"%lld chats selected" = "%lld chats selected";
+
+/* The list's header while selecting: selects every chat shown. */
+"Select All" = "Select All";
+
+/* Help on Cancel while selecting. */
+"Stop selecting (Esc)" = "Stop selecting (Esc)";
+
+/* Show in Inbox: every chat. */
+"All Messages" = "All Messages";
+
+/* Account menu: opens the account's auto-archive window. */
+"Auto-Archive…" = "Auto-Archive…";
+
+/* Label menu: opens the label's window. */
+"Edit Label…" = "Edit Label…";
+
+/* Label menu. */
+"Mute Label" = "Mute Label";
+
+/* Label menu. */
+"Unmute Label" = "Unmute Label";
+
+/* Account menu. */
+"Mute Space" = "Mute Space";
+
+/* Account menu. */
+"Unmute Space" = "Unmute Space";
+
+/* Help on Mute Space. */
+"Mutes every chat of this account on this Mac." = "Mutes every chat of this account on this Mac.";
+
+/* Help on Mute Label. */
+"Mutes every chat with this label on this Mac." = "Mutes every chat with this label on this Mac.";
+
+/* VoiceOver: the bar's nudge to make the first label. */
+"New label" = "New label";
+
+/* Help on the bar's nudge to make the first label. */
+"New label: put chats from any network into a space of their own." = "New label: put chats from any network into a space of their own.";
+
+/* Show in Inbox: only one-to-one chats. */
+"Only DMs" = "Only DMs";
+
+/* Account and label menus: which of the space's chats also show in the inbox. */
+"Show in Inbox" = "Show in Inbox";
+
+/* VoiceOver: the space bar. */
+"Spaces" = "Spaces";
+
+/* Help on Show in Inbox. */
+"Which of these chats also show in your inbox." = "Which of these chats also show in your inbox.";
+
+/* Help on the toast's Undo. */
+"Undo (⌘Z)" = "Undo (⌘Z)";
+/* VoiceOver: one of the 24 label icons, by its place in the grid. */
+"Icon %lld" = "Icon %lld";

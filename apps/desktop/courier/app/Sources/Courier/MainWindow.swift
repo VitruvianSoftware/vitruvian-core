@@ -4,19 +4,40 @@
 import CourierCore
 import SwiftUI
 
-/// The main window: how the engine is doing until it is up, then two panes, the inbox and the conversation.
-/// (The space bar and the right pane are milestone 4's.)
+/// What the inbox's views show that is no model's: the Custom… reminder sheet, the ⌘L Remind Me popover and the
+/// ⌘⌥A account popover. The menus, keys and rows set it; the window shows it.
+@MainActor
+final class InboxUI: ObservableObject {
+    @Published var customReminder: ReminderRequest?
+    @Published var remindPopover = false
+    @Published var accountPopover = false
+}
+
+/// The main window: how the engine is doing until it is up, then the space bar, the chat list and the
+/// conversation (01 §2, §3). (The right pane is a later part's.)
 struct MainWindow: View {
     @ObservedObject var model: AppModel
     @ObservedObject var inbox: InboxModel
     @ObservedObject var conversation: ConversationModel
     @ObservedObject var login: LoginFlowModel
+    @ObservedObject var spaces: SpacesModel
+    @ObservedObject var preferences: InboxPreferences
+    @ObservedObject var ui: InboxUI
+    let labels: LabelsModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         content
             .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
             .sheet(isPresented: addingNetwork) {
                 AddNetworkView(login: login)
+            }
+            .sheet(item: $ui.customReminder) { request in
+                CustomReminderSheet(request: request, inbox: inbox)
+            }
+            // The Edit spaces command (and the bar's menus) ask for the window this way.
+            .onChange(of: spaces.isEditing) { _, editing in
+                if editing { openWindow(id: WindowID.editSpaces) }
             }
             .navigationTitle("Courier")
             .navigationSubtitle(StatusText.subtitle(for: model.engineState))
@@ -26,17 +47,10 @@ struct MainWindow: View {
     private var content: some View {
         switch model.engineState {
         case .connected:
-            if inbox.showsAddNetwork {
-                VStack(spacing: 0) {
-                    // A network that could not start shows here too, before any network is linked.
-                    ForEach(inbox.banners) { banner in
-                        AccountBannerView(banner: banner) { inbox.perform(banner) }
-                    }
-                    AddNetworkPrompt(add: inbox.addNetwork)
-                }
-            } else {
-                panes
-            }
+            // Before any network is linked the window is already the whole app (its spaces, labels and settings
+            // work), with the prompt to add one where a chat would open. A network that could not start shows as a
+            // banner above the list.
+            panes
         case .updateNeeded:
             message(symbol: "exclamationmark.triangle") {
                 Text(String(localized: "This copy of Courier and its engine don’t match. Reinstall Courier to update it."))
@@ -67,10 +81,21 @@ struct MainWindow: View {
 
     private var panes: some View {
         NavigationSplitView {
-            InboxList(inbox: inbox)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 480)
+            HStack(spacing: 0) {
+                if preferences.showSpaceBar {
+                    SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
+                    Divider()
+                }
+                InboxList(inbox: inbox, spaces: spaces, preferences: preferences, ui: ui)
+            }
+            .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,
+                                            ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,
+                                            max: 480 + SpaceBar.width)
         } detail: {
-            if model.selectedRoomID != nil {
+            if inbox.showsAddNetwork {
+                AddNetworkPrompt(add: inbox.addNetwork)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.selectedRoomID != nil {
                 ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox)
             } else {
                 NoChatSelected()

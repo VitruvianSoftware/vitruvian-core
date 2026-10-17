@@ -12,6 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let inbox: InboxModel
     let conversation: ConversationModel
     let login: LoginFlowModel
+    /// The spaces bar, and the labels with their auto-archive rules.
+    let spaces: SpacesModel
+    let labels: LabelsModel
+    /// The sheets and popovers the inbox's menus and keys open.
+    let inboxUI = InboxUI()
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
     let attention: Attention
     let windowOpener = MainWindowOpener()
@@ -50,6 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
         let login = LoginFlowModel(appModel: model)
         self.login = login
+        spaces = SpacesModel(appModel: model, inbox: inbox)
+        labels = LabelsModel(appModel: model)
         // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
         inbox.onReconnect = { network in login.begin(network: network) }

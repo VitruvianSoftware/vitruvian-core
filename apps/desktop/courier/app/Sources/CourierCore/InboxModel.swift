@@ -127,6 +127,8 @@ public final class InboxModel: ObservableObject {
 
     /// The chat a shift-click extends the selection from: the last one selected.
     private var anchor: String?
+    /// The chat ⇧J and ⇧K last reached, where the next one moves from.
+    private var cursor: String?
     private var undoAction: (@MainActor () async -> Void)?
     private var toastTimer: Task<Void, Never>?
 
@@ -386,13 +388,58 @@ public final class InboxModel: ObservableObject {
         return shown + selection.subtracting(shown).sorted()
     }
 
+    /// The rows of the chats an action would act on (`ids`, else `targets`) that are loaded, in that order. A menu
+    /// reads them to say Archive or Unarchive, Pin or Unpin.
+    public func targetRows(_ ids: [String]? = nil) -> [InboxRow] {
+        let shown = rowsByID
+        return (ids ?? targets).compactMap { shown[$0] }
+    }
+
+    /// Whether the person's plan includes a feature. A menu shows "Available with a plan" in place of an action
+    /// it doesn't.
+    public func isEntitled(_ feature: Feature) -> Bool { entitlement.isEntitled(feature) }
+
     /// Starts selecting, with the open chat selected.
     public func beginSelecting() {
         guard !isSelecting else { return }
         isSelecting = true
         selection = selectedRoomID.map { [$0] } ?? []
         anchor = selectedRoomID
+        cursor = selectedRoomID
     }
+
+    /// ⇧J (`step` 1) and ⇧K (-1): the chat below (above) the last one reached joins the selection. It starts
+    /// selecting; from nothing open and nothing selected, ⇧J takes the first chat and ⇧K the last.
+    public func extendSelection(by step: Int) {
+        guard !rows.isEmpty else { return }
+        beginSelecting()
+        let start = (cursor ?? anchor).flatMap { id in rows.firstIndex { $0.roomID == id } }
+        let index: Int
+        if let start {
+            index = min(max(start + step, 0), rows.count - 1)
+        } else {
+            index = step > 0 ? 0 : rows.count - 1
+        }
+        let id = rows[index].roomID
+        selection.insert(id)
+        if anchor == nil { anchor = id }
+        cursor = id
+    }
+
+    /// ⌃1–⌃9: opens the nth chat of the list. Past the last one, nothing happens.
+    public func selectChat(number n: Int) {
+        guard n >= 1, n <= rows.count else { return }
+        select(rows[n - 1].roomID)
+    }
+
+    /// A row came into view. Within the last `loadMoreMargin` rows, the next page is read.
+    public func rowAppeared(at index: Int) {
+        guard hasMore, index >= rows.count - Self.loadMoreMargin else { return }
+        Task { await loadMore() }
+    }
+
+    /// How close to the end of the list a row that appears reads the next page.
+    public static let loadMoreMargin = 20
 
     /// ⌘-click: a chat in or out of the selection. It starts selecting.
     public func toggleSelected(_ roomID: String) {
@@ -401,6 +448,7 @@ public final class InboxModel: ObservableObject {
             selection.insert(roomID)
             anchor = roomID
         }
+        cursor = roomID
     }
 
     /// ⇧-click: every chat from the last one selected to this one, in the list's order.
@@ -413,6 +461,7 @@ public final class InboxModel: ObservableObject {
             return
         }
         for row in rows[min(from, to) ... max(from, to)] { selection.insert(row.roomID) }
+        cursor = roomID
     }
 
     /// ⌘A: every chat shown.
@@ -425,6 +474,7 @@ public final class InboxModel: ObservableObject {
         isSelecting = false
         selection = []
         anchor = nil
+        cursor = nil
     }
 
     /// Escape: it ends selecting first. False when there was nothing to end, so the key can do something else.
@@ -449,16 +499,25 @@ public final class InboxModel: ObservableObject {
 
     /// An unread or marked-unread chat is marked read; a read one is marked unread. The mark stays on this Mac:
     /// no network is told. Then `afterToggleRead` says which chat opens.
-    public func toggleRead() async {
-        let ids = beginAction()
+    ///
+    /// Every action that takes `ids` acts on those chats (a context menu's), and with none on `targets`.
+    public func toggleRead(ids: [String]? = nil) async {
+        let chosen = ids ?? targets
+        let shown = rowsByID
+        await setRead(chosen.contains { shown[$0]?.isUnread ?? false }, ids: chosen)
+    }
+
+    /// Mark as Read (`read`) or Mark as Unread, whatever the chats are now. Marking read reaches the networks, as
+    /// opening the chat does; an unread mark stays on this Mac. Then `afterToggleRead` says which chat opens.
+    public func setRead(_ read: Bool, ids: [String]? = nil) async {
+        let ids = beginAction(ids)
         guard !ids.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
-        let after = preferences.afterToggleRead
-        let next = neighbor(for: after, leaving: [], fallBack: false)
-        if ids.contains(where: { shown[$0]?.isUnread ?? false }) {
+        let next = neighbor(for: preferences.afterToggleRead, leaving: [], fallBack: false)
+        if read {
             // room.markRead also clears an unread mark and a reminder that fired. A failure is shown by the read
-            // below, which has the chat as the engine has it.
-            for id in ids where shown[id]?.isUnread ?? false {
+            // below, which has the chat as the engine has it. A chat that isn't loaded is marked too.
+            for id in ids where shown[id]?.isUnread ?? true {
                 let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: id))
             }
         } else {
@@ -469,11 +528,17 @@ public final class InboxModel: ObservableObject {
         requestRead(waiting: false)
     }
 
-    public func toggleMute() async {
-        dismissToast()
-        guard let row = selectedRow, let client = appModel.client else { return }
-        // Ignored on failure: the read below shows the truth.
-        let _: Empty? = try? await client.call("room.setMuted", SetMutedParams(roomID: row.roomID, muted: !row.muted))
+    /// Mutes the chats, or unmutes them when every one is muted already. A network that takes mutes hears it.
+    public func toggleMute(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty, let client = appModel.client else { return }
+        let shown = rowsByID
+        let mute = !ids.allSatisfy { shown[$0]?.muted ?? false }
+        for id in ids where shown[id]?.muted != mute {
+            // Ignored on failure: the read below shows the truth.
+            let _: Empty? = try? await client.call("room.setMuted", SetMutedParams(roomID: id, muted: mute))
+        }
+        finishBulk()
         requestRead(waiting: false)
     }
 
@@ -481,8 +546,8 @@ public final class InboxModel: ObservableObject {
 
     /// Archives the targets, or brings them back. A pinned chat is never archived: when every one is, the toast
     /// says to unpin. Archiving says how many with Undo, and then `afterArchive` says which chat opens.
-    public func archive(_ on: Bool) async {
-        let ids = beginAction()
+    public func archive(_ on: Bool, ids: [String]? = nil) async {
+        let ids = beginAction(ids)
         guard !ids.isEmpty else { return }
         let next = neighbor(for: preferences.afterArchive, leaving: Set(ids), fallBack: true)
         let markRead: Bool? = on && preferences.markReadOnArchive ? true : nil
@@ -502,8 +567,8 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Pins the targets, or unpins them when every one is pinned already. A network that takes pins hears it.
-    public func togglePin() async {
-        let ids = beginAction()
+    public func togglePin(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
         guard !ids.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
         let pin = !ids.allSatisfy { shown[$0]?.pinned ?? false }
@@ -516,22 +581,22 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Moves the targets to Low priority (part of a plan), or back (always).
-    public func setLowPriority(_ on: Bool) async {
+    public func setLowPriority(_ on: Bool, ids: [String]? = nil) async {
         if on, !entitlement.isEntitled(.lowPriority) {
             denied()
             return
         }
-        await setFlag("room.setLowPriority", on, toast: String(localized: "Moved to Low Priority"))
+        await setFlag("room.setLowPriority", on, ids: ids, toast: String(localized: "Moved to Low Priority"))
     }
 
     /// Hides the targets on this Mac, or shows them again.
-    public func setHidden(_ on: Bool) async {
-        await setFlag("room.setHidden", on, toast: String(localized: "Hidden"))
+    public func setHidden(_ on: Bool, ids: [String]? = nil) async {
+        await setFlag("room.setHidden", on, ids: ids, toast: String(localized: "Hidden"))
     }
 
     /// Puts a label on the targets, or takes it off.
-    public func setLabel(_ id: Int64, on: Bool) async {
-        let ids = beginAction()
+    public func setLabel(_ id: Int64, on: Bool, ids: [String]? = nil) async {
+        let ids = beginAction(ids)
         guard !ids.isEmpty else { return }
         do {
             _ = try await changeEach("room.setLabel", ids) { SetLabelParams(roomIDs: $0, labelID: id, on: on) }
@@ -543,8 +608,8 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Low priority and hidden: a toast with Undo when turned on, which turns it off for exactly the chats changed.
-    private func setFlag(_ method: String, _ on: Bool, toast message: String) async {
-        let ids = beginAction()
+    private func setFlag(_ method: String, _ on: Bool, ids: [String]?, toast message: String) async {
+        let ids = beginAction(ids)
         guard !ids.isEmpty else { return }
         do {
             let changed = try await changeEach(method, ids) { RoomsFlagParams(roomIDs: $0, on: on) }
@@ -564,12 +629,12 @@ public final class InboxModel: ObservableObject {
 
     /// Sets a reminder on the targets (part of a plan). With "Archive after setting a reminder" on, they are
     /// archived until it brings them back. Undo puts back the reminders they had and unarchives what it archived.
-    public func remind(at due: Date, condition: RemindCondition) async {
+    public func remind(at due: Date, condition: RemindCondition, ids: [String]? = nil) async {
         guard entitlement.isEntitled(.reminders) else {
             denied()
             return
         }
-        let ids = beginAction()
+        let ids = beginAction(ids)
         guard !ids.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
         let archive = preferences.archiveAfterReminder
@@ -625,8 +690,8 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Ends the targets' reminders, set or fired.
-    public func dismissReminder() async {
-        let ids = beginAction()
+    public func dismissReminder(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
         guard !ids.isEmpty, let client = appModel.client else { return }
         for chunk in ids.chunked(Self.batchSize) {
             let _: Empty? = try? await client.call("reminder.clear", RoomsParams(roomIDs: chunk))
@@ -636,8 +701,8 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Accepts the targets' message requests: they move to the inbox, and a network that takes accepts hears it.
-    public func acceptRequest() async {
-        let ids = beginAction()
+    public func acceptRequest(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
         guard !ids.isEmpty, let client = appModel.client else { return }
         var failure: Error?
         for id in ids {
@@ -653,15 +718,29 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Declining a request hides the chat, on this Mac: the network is not told, and the chat is in Hidden.
-    public func declineRequest() async {
-        await setHidden(true)
+    public func declineRequest(ids: [String]? = nil) async {
+        await setHidden(true, ids: ids)
     }
 
     // MARK: - All at once
 
     /// The space shown can be swept: only the inbox, an account's or a label's can.
-    public var canArchiveAll: Bool {
-        query.space == "inbox" || query.space.hasPrefix("account:") || query.space.hasPrefix("label:")
+    public var canArchiveAll: Bool { Self.canSweep(query.space) }
+
+    /// Only the inbox, an account's space or a label's can be swept.
+    public static func canSweep(_ space: String) -> Bool {
+        space == "inbox" || space.hasPrefix("account:") || space.hasPrefix("label:")
+    }
+
+    /// How many chats `archiveAll` would archive now, from the engine's dry run of the same sweep; nil when it
+    /// couldn't say (no engine, a refusal): "couldn't check", never 0. `space` nil is the space shown.
+    public func archiveAllCount(readOnly: Bool, olderThanDays days: Int = 0, space: String? = nil) async -> Int? {
+        let space = space ?? query.space
+        guard let client = appModel.client, Self.canSweep(space) else { return nil }
+        let result: RoomsChanged? = try? await client.call("inbox.archiveMatching", ArchiveMatchingParams(
+            space: space == "inbox" ? nil : space, readOnly: readOnly, olderThanMS: Int64(days) * 86_400_000,
+            dryRun: true))
+        return result?.roomIDs.count
     }
 
     /// "Archive all read": every chat the space lists with nothing unread, but pinned ones. Undo unarchives exactly
@@ -673,10 +752,11 @@ public final class InboxModel: ObservableObject {
     /// "Archive all" of the space shown: every chat it lists but pinned ones, or only the read ones, or only those
     /// whose newest message is older than `days` (0, or one of 3, 7, 14, 28, 90 or 365: the ages the engine
     /// offers). Undo unarchives exactly the chats this archived. Returns how many it archived.
-    public func archiveAll(readOnly: Bool, olderThanDays days: Int = 0) async -> Int {
+    /// `space` nil is the space shown; an auto-archive section names its own.
+    public func archiveAll(readOnly: Bool, olderThanDays days: Int = 0, space: String? = nil) async -> Int {
         dismissToast()
-        guard let client = appModel.client, canArchiveAll else { return 0 }
-        let space = query.space
+        let space = space ?? query.space
+        guard let client = appModel.client, Self.canSweep(space) else { return 0 }
         let result: RoomsChanged
         do {
             result = try await client.call("inbox.archiveMatching", ArchiveMatchingParams(
@@ -785,10 +865,10 @@ public final class InboxModel: ObservableObject {
 
     // MARK: - Doing it
 
-    /// The chats an action acts on. A new action takes the toast down.
-    private func beginAction() -> [String] {
+    /// The chats an action acts on: those given, else `targets`. A new action takes the toast down.
+    private func beginAction(_ ids: [String]? = nil) -> [String] {
         dismissToast()
-        return targets
+        return ids ?? targets
     }
 
     /// A bulk action is done: selecting ends.

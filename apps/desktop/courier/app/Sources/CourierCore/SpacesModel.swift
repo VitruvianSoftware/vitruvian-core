@@ -177,3 +177,63 @@ public final class SpacesModel: ObservableObject {
         }
     }
 }
+
+/// The Edit Spaces list while the person drags it: the spaces in the bar's order, then the "Hidden" divider, then
+/// the hidden ones. Dragging an entry below the divider hides it; above, shows it. The inbox stays first and is
+/// never hidden, whatever is dropped where.
+public struct SpacesLayoutDraft: Equatable, Sendable {
+    public enum Entry: Hashable, Sendable {
+        case space(String)
+        case divider
+    }
+
+    public private(set) var entries: [Entry]
+
+    public init(spaces: [Space]) {
+        let ids = spaces.map(\.spaceID)
+        let hidden = spaces.filter { $0.hidden && $0.spaceID != "inbox" }.map(\.spaceID)
+        let shown = ids.filter { !hidden.contains($0) }
+        entries = shown.map(Entry.space) + [.divider] + hidden.map(Entry.space)
+        normalize()
+    }
+
+    /// Every space, in order: spaces.setLayout's `order`.
+    public var order: [String] {
+        entries.compactMap { if case let .space(id) = $0 { id } else { nil } }
+    }
+
+    /// The spaces below the divider: spaces.setLayout's `hidden`.
+    public var hidden: [String] {
+        guard let divider = entries.firstIndex(of: .divider) else { return [] }
+        return entries[(divider + 1)...].compactMap { if case let .space(id) = $0 { id } else { nil } }
+    }
+
+    public func isHidden(_ id: String) -> Bool { hidden.contains(id) }
+
+    /// A drag, as a list's onMove gives it.
+    public mutating func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        let moving = source.sorted().map { entries[$0] }
+        var kept = entries.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let insertAt = destination - source.filter { $0 < destination }.count
+        kept.insert(contentsOf: moving, at: min(max(insertAt, 0), kept.count))
+        entries = kept
+        normalize()
+    }
+
+    /// The eye button: a space goes to the end of the bar (shown) or the top of the hidden ones.
+    public mutating func setHidden(_ id: String, _ hide: Bool) {
+        guard id != "inbox", let index = entries.firstIndex(of: .space(id)) else { return }
+        entries.remove(at: index)
+        let divider = entries.firstIndex(of: .divider) ?? entries.endIndex
+        entries.insert(.space(id), at: hide ? divider + 1 : divider)
+        normalize()
+    }
+
+    /// The inbox first, one divider, the inbox above it.
+    private mutating func normalize() {
+        let hasInbox = entries.contains(.space("inbox"))
+        entries.removeAll { $0 == .space("inbox") }
+        if !entries.contains(.divider) { entries.append(.divider) }
+        if hasInbox { entries.insert(.space("inbox"), at: 0) }
+    }
+}

@@ -24,6 +24,8 @@ enum AttachmentPicker {
 struct ComposerView: View {
     @ObservedObject var composer: ComposerModel
     @Binding var textHeight: CGFloat
+    /// Esc's first use outside the composer (leaving selection mode); true when it was used.
+    var escapeFirst: () -> Bool = { false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -62,7 +64,7 @@ struct ComposerView: View {
                     placeholder: String(localized: "Type a message…"),
                     focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")",
                     onReturn: { composer.handleReturn(modifiers: $0) },
-                    onEscape: { composer.escape() },
+                    onEscape: { escapeFirst() || composer.escape() },
                     onPasteFiles: { urls in
                         composer.attach(urls)
                         return true
