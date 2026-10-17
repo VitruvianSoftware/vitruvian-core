@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.23.0...home-speaker-v1.24.0) (2026-10-17)
+
+
+### Features
+
+* **home-speaker:** per-agent and per-chat-app switches on the island, tap to replay ([#3444](https://github.com/VitruvianSoftware/vitruvian-core/issues/3444)) ([d50160a](https://github.com/VitruvianSoftware/vitruvian-core/commit/d50160a4c6fce5f4f5db39c1518e292df276db45))
+
 ## [1.23.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.22.0...home-speaker-v1.23.0) (2026-10-17)
 
 
