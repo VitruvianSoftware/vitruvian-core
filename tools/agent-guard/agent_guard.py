@@ -2758,6 +2758,52 @@ def _mentions_guard(word: str, cwd: str, home: str) -> bool:
     return False
 
 
+_PYTHON_RE = re.compile(r"^python(3(\.\d+)?)?$")
+_PY_LITERAL = re.compile(r"(['\"])((?:(?!\1).){1,500}?)\1")
+# Where a path literal sits when Python code writes, moves or deletes it: the
+# first argument of these calls...
+_PY_WRITE_FIRST = re.compile(
+    r"\b(rmtree|remove|unlink|rmdir|removedirs|rename|renames|replace|move|chmod|chown|"
+    r"truncate|makedirs|mkdir|symlink|link|utime|chflags)\(\s*$"
+)
+# ...the second argument of these (the first is what is read or moved from)...
+_PY_WRITE_SECOND = re.compile(
+    r"\b(copy\w*|move|rename|renames|replace|symlink|link)\(\s*(['\"])[^'\"]*\2\s*,\s*$"
+)
+# ...and Path(<path>) followed by a writing method.
+_PY_PATH_WRITE = re.compile(
+    r"^\s*\)\s*\.\s*(write_text|write_bytes|unlink|rmdir|mkdir|touch|rename|replace|"
+    r"chmod|symlink_to|hardlink_to|open\(\s*['\"][wax])"
+)
+
+
+def _python_writes(text: str, protected: Callable[[str], bool]) -> str:
+    """The protected path literal that Python code writes, moves or deletes, or "".
+
+    Reads a `python -c` text the way the rest of the guard reads shell: by its
+    shape. A protected path counts only where it is written: `open(p, "w")`,
+    the first argument of rmtree/remove/rename/..., the destination of
+    copy/move, or `Path(p).write_text(...)`. As a read or copy source it is fine.
+    """
+    for m in _PY_LITERAL.finditer(text):
+        lit = m.group(2)
+        if not protected(lit):
+            continue
+        before, after = (
+            text[max(0, m.start() - 120) : m.start()],
+            text[m.end() : m.end() + 40],
+        )
+        if re.search(r"\bopen\(\s*$", before) and re.match(
+            r"^\s*,\s*(mode\s*=\s*)?['\"][^'\"]*[wax+]", after
+        ):
+            return lit
+        if _PY_WRITE_FIRST.search(before) or _PY_WRITE_SECOND.search(before):
+            return lit
+        if re.search(r"\bPath\(\s*$", before) and _PY_PATH_WRITE.match(after):
+            return lit
+    return ""
+
+
 _HOOK_FILE_HINT = re.compile(r"\.claude|\.agents|settings|hooks\.json|hook\.sh|tools")
 _PATHISH = re.compile(r"[^\s'\"=,;:()<>|&`]+")
 
@@ -2888,22 +2934,26 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
                 "Changing agent-guard is James's job, from his own terminal.",
             )
     prog = inv.prog
-    if prog in READERS:
-        if prog in ("python", "python3"):
-            # python -c that mentions the guard's files and writes: refuse; reading is fine.
+    if prog in READERS or _PYTHON_RE.match(prog):
+        if _PYTHON_RE.match(prog):
+            # python -c that WRITES one of the guard's files: refuse. Naming one
+            # only as something to read or copy from is fine.
             text = " ".join(inv.argv[1:])
-            if any(
-                _mentions_guard(w, inv.cwd, ctx.home)
-                or _mentions_hook_file(w, inv.cwd, ctx.home)
-                for w in inv.argv[1:]
-            ) and re.search(
-                r"open\([^)]*['\"][wa]|write|unlink|remove|rmtree|rename|replace", text
-            ):
+            hit = _python_writes(
+                text,
+                lambda p: guard_path(expand_path(p, inv.cwd, ctx.home), ctx.home),
+            )
+            if hit:
+                hook = protected_repo_file(expand_path(hit, inv.cwd, ctx.home))
                 return V(
                     "guard-config",
-                    "writing agent-guard files",
+                    "writing agent-guard's hook files"
+                    if hook
+                    else "writing agent-guard files",
                     None,
-                    "Changing agent-guard is James's job, from his own terminal.",
+                    HOOK_FILES_NOTE
+                    if hook
+                    else "Changing agent-guard is James's job, from his own terminal.",
                 )
         return None
     if (
@@ -2919,7 +2969,7 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
         # message that names the guard's folder, say). What a target does is
         # out of sight by design; the installer is judged in classify_bazel.
         return None
-    if any(_mentions_guard(w, inv.cwd, ctx.home) for w in inv.argv[1:]):
+    if any(_mentions_guard(w, inv.cwd, ctx.home) for w in _written_words(inv.argv)):
         return V(
             "guard-config",
             "%s on agent-guard files" % prog,

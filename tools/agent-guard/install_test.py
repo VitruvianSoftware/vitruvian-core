@@ -29,6 +29,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -316,9 +317,7 @@ class InstallTest(Base):
         rc, out = self.run_main(workspace=self.co.root)
         self.assertEqual(rc, 0, out)
         self.assertEqual(self.ours(), install.claude_entries(self.command))
-        self.assertIn(
-            os.path.join(self.co.root, "tools/agent-guard/hook.sh"), self.command
-        )
+        self.assertEqual(install.backstop_main(self.command), self.co.root)
         self.assertEqual(
             self.load(self.gemini)["agent-guard"], install.agy_entry(self.command)
         )
@@ -352,6 +351,74 @@ class InstallTest(Base):
         rc, out = self.run_main(workspace=wt)
         self.assertEqual(rc, 0, out)
         self.assertEqual(self.ours(), install.claude_entries(self.command))
+
+    def test_a_write_error_puts_both_files_back(self):
+        old_install(self.home)
+        before = (self.text(self.settings), self.text(self.gemini))
+        real = install.write_atomic
+
+        def failing(path, text):
+            if path == self.gemini and text != before[1]:
+                raise OSError("disk full")
+            real(path, text)
+
+        install.write_atomic = failing
+        try:
+            rc, out = self.run_main(workspace=self.co.root)
+        finally:
+            install.write_atomic = real
+        self.assertEqual(rc, 4, out)
+        self.assertIn("disk full", out)
+        self.assertEqual((self.text(self.settings), self.text(self.gemini)), before)
+        self.assertTrue(os.path.isdir(self.idir))
+
+    def backstop(self, payload):
+        """Run the backstop's command the way the agents do."""
+        r = subprocess.run(
+            self.command,
+            shell=True,
+            input=json.dumps(payload).encode(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=self.home,
+            env=dict(os.environ, HOME=self.home),
+            timeout=60,
+        )
+        return r.returncode, r.stdout.decode().strip(), r.stderr.decode()
+
+    def test_backstop_with_its_launcher_runs_the_guard(self):
+        rc, out, err = self.backstop(testlib.claude("git stash", self.co.root))
+        self.assertEqual((rc, testlib.decision(out)), (0, "deny"), err)
+
+    def test_backstop_without_its_launcher_refuses_only_vitruvian_core(self):
+        os.remove(os.path.join(self.co.root, "tools/agent-guard/hook.sh"))
+        wt = self.co.root + "-worktrees"
+        for payload in (
+            testlib.claude("ls", self.co.root),
+            testlib.claude("ls", os.path.join(self.co.root, "apps")),
+            testlib.claude("ls", os.path.join(wt, "feat-x")),
+            testlib.claude("cat %s/README.md" % self.co.root, self.home),
+        ):
+            rc, out, err = self.backstop(payload)
+            # Claude Code: exit 2 refuses the call, with stderr as the reason.
+            self.assertEqual((rc, out), (2, ""), payload)
+            self.assertIn("launcher is missing from %s" % self.co.root, err)
+            self.assertIn("James must reinstall", err)
+        rc, out, _err = self.backstop(
+            testlib.agy("ls", os.path.join(self.co.root, "apps"))
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["decision"], "deny")
+        self.assertIn("launcher is missing", json.loads(out)["reason"])
+        # Anything else, including a sibling folder with a longer name, goes through.
+        for payload in (
+            testlib.claude("ls", self.home),
+            testlib.claude("ls", self.co.root + "-other"),
+            testlib.agy("ls", self.home),
+        ):
+            rc, out, err = self.backstop(payload)
+            self.assertEqual((rc, out), (0, ""), payload)
+            self.assertIn("allowing this call", err)
 
     def test_idempotent(self):
         self.run_main(workspace=self.co.root)

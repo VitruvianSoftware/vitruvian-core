@@ -37,9 +37,10 @@ So this installs a thin per-user BACKSTOP: the same entries in
 checkout's tools/agent-guard/hook.sh by absolute path (found from the checkout
 you run this from, even a worktree). Nothing is copied. Because hook.sh loads
 the guard from origin/main, guard changes arrive with a pull or fetch; there is
-no reinstall. Only moving or deleting the main checkout needs one, and until
-then every agent's commands are refused (the backstop fails closed), so run
-this again or `--uninstall` from your own terminal.
+no reinstall. Only moving or deleting the main checkout needs one. Until then
+the backstop (a short script kept in the entry itself, BACKSTOP_SCRIPT) finds
+no launcher and refuses only calls in vitruvian-core, letting every other
+repo's through, so run this again or `--uninstall` from your own terminal.
 
 In a session started inside the repo both the backstop and the project hook
 run. That is harmless: they run the same guard from the same origin/main and
@@ -369,8 +370,49 @@ def main_checkout(workspace: str) -> str:
     return main
 
 
+# The backstop's whole command, kept IN the settings entry so it cannot go
+# missing. With the main checkout's hook.sh present it just runs it. Without it
+# (the checkout moved, or an old branch is checked out there) it fails closed
+# ONLY for calls that mention the main checkout or its -worktrees/ sibling:
+# refused, with the reason in each agent's own format (Claude Code: exit 2 and
+# the reason on stderr; agy: its deny JSON). Every other call is let through
+# with a warning on stderr, so a missing launcher never wedges other repos.
+# $1 is the main checkout. No single quotes inside: it is wrapped in them.
+BACKSTOP_SCRIPT = (
+    'h="$1/tools/agent-guard/hook.sh"; '
+    '[ -f "$h" ] && exec /bin/sh "$h"; '
+    "in=$(cat); "
+    'why="agent-guard: its launcher is missing from $1 (tools/agent-guard/hook.sh); '
+    'James must reinstall the backstop or restore the checkout"; '
+    'case $in in *"$1"/*|*"$1"\\"*|*"$1"-worktrees/*) '
+    'case $in in *\\"toolCall\\"*) printf "{\\"decision\\":\\"deny\\",\\"reason\\":\\"%s\\"}\\n" "$why"; exit 0;; esac; '
+    'echo "$why" >&2; exit 2;; esac; '
+    'echo "$why; allowing this call, which is not in vitruvian-core" >&2; exit 0'
+)
+# Characters the main checkout's path may not contain: they would break the
+# quoting above or the JSON reason.
+_UNSAFE_PATH = re.compile(r"[\"\\'\n$`]")
+
+
 def backstop_command(main: str) -> str:
-    return "/bin/sh %s" % shlex.quote(os.path.join(main, LAUNCHER_REL))
+    if _UNSAFE_PATH.search(main):
+        raise SystemExit(
+            "agent-guard: the main checkout's path %r has a quote, backslash, $ or backtick; "
+            "the backstop cannot quote it safely" % main
+        )
+    return "/bin/sh -c '%s' agent-guard-backstop %s" % (
+        BACKSTOP_SCRIPT,
+        shlex.quote(main),
+    )
+
+
+def backstop_main(command: str) -> str:
+    """The main checkout a backstop command runs (its last word), or ""."""
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return ""
+    return words[-1] if len(words) >= 4 and words[-2] == "agent-guard-backstop" else ""
 
 
 def with_ours(settings: Dict[str, Any], command: str) -> Dict[str, Any]:
@@ -451,18 +493,33 @@ def install(home: str, workspace: str, now: str, dry_run: bool) -> int:
         print("the backstop is already installed and up to date (%s)" % command)
         return 0
     backups = []
-    for path, old, new in changes:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        if os.path.exists(path):
-            backups.append(backup(path, now))
-        write_atomic(path, new)
-    problems = self_test_command(command, home, agy)
-    if problems:
-        for path, old, _new in changes:
-            if old:
+    existed = {path: os.path.exists(path) for path, _old, _new in changes}
+    written: List[Tuple[str, str]] = []
+
+    def put_back() -> None:
+        for path, old in written:
+            if existed[path]:
                 write_atomic(path, old)
             elif os.path.exists(path):
                 os.remove(path)
+
+    try:
+        for path, old, new in changes:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            if existed[path]:
+                backups.append(backup(path, now))
+            written.append((path, old))
+            write_atomic(path, new)
+    except OSError as exc:
+        put_back()
+        sys.stderr.write(
+            "agent-guard: writing failed (%s); every file was put back as it was.\n"
+            % exc
+        )
+        return 4
+    problems = self_test_command(command, home, agy)
+    if problems:
+        put_back()
         for p in problems:
             sys.stderr.write("PROBLEM: %s\n" % p)
         sys.stderr.write(
@@ -482,6 +539,10 @@ def install(home: str, workspace: str, now: str, dry_run: bool) -> int:
         % os.path.join(main, LAUNCHER_REL)
     )
     print("guard updates arrive with a pull; reinstall only if you move %s." % main)
+    print(
+        "If that file goes missing, calls in vitruvian-core are refused and every other "
+        "repo's are let through."
+    )
     return 0
 
 
@@ -551,12 +612,18 @@ def check_backstop(home: str) -> List[str]:
         )
         return problems
     for cmd in set(claude_cmds + agy_cmds):
-        parts = shlex.split(cmd)
-        launcher = parts[-1] if parts else ""
-        if not os.path.isfile(launcher):
+        main = backstop_main(cmd)
+        launcher = os.path.join(main, LAUNCHER_REL) if main else ""
+        if not main:
             problems.append(
-                "the backstop runs %s, which is gone (did the main checkout move?): %s again"
-                % (launcher, fix)
+                "the backstop's command is not one this install.py writes: %s again"
+                % fix
+            )
+        elif not os.path.isfile(launcher):
+            problems.append(
+                "the backstop runs %s, which is gone (did the main checkout move?): calls in "
+                "vitruvian-core are refused until you %s again"
+                % (launcher, fix.split("run ", 1)[1])
             )
     try:
         settings, _ = read_settings(settings_path(home))
@@ -834,7 +901,11 @@ def check(workspace: str, home: str) -> int:
     print(
         "agent-guard is wired into %s and %s, and the per-user backstop runs %s. Both allow "
         "`git status` and refuse `git stash` (Claude Code's payload) and `go vet` (agy's)."
-        % (CLAUDE_SETTINGS_REL, AGY_HOOKS_REL, backstop_commands(home)[0][0])
+        % (
+            CLAUDE_SETTINGS_REL,
+            AGY_HOOKS_REL,
+            os.path.join(backstop_main(backstop_commands(home)[0][0]), LAUNCHER_REL),
+        )
     )
     print("guard that answered: %s" % (", ".join(sources) or "unknown"))
     return 0

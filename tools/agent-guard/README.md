@@ -162,22 +162,29 @@ bazel run //tools/agent-guard:install
 
 It merges the same two Claude Code entries into `~/.claude/settings.json`, and
 the same `agent-guard` hook into `~/.gemini/config/hooks.json` if `~/.gemini`
-exists, with the command `/bin/sh <main checkout>/tools/agent-guard/hook.sh`.
-The main checkout is found from wherever you run it, even a worktree, and
-stored as an absolute path. Nothing is copied:
+exists. The command is a short `/bin/sh -c '...'` script written into the
+entry itself (`BACKSTOP_SCRIPT` in `install.py`), given the main checkout's
+absolute path, which is found from wherever you run the install, even a
+worktree. If `<main checkout>/tools/agent-guard/hook.sh` exists, the script
+runs it. Nothing is copied:
 
 - **Guard changes need no reinstall.** The backstop runs the main checkout's
   `hook.sh`, which loads the guard from `origin/main`, so changes arrive with
   a pull or fetch.
 - **Moving or deleting the main checkout needs a reinstall**, as does
-  checking out a branch there that predates `hook.sh`. Until then the
-  backstop cannot start, and because it fails closed, every agent command is
-  refused in every session. `--check` says so; reinstall, or `--uninstall`.
+  checking out a branch there that predates `hook.sh`. Until then the script
+  finds no launcher and fails closed **only for vitruvian-core**: a call whose
+  payload names the main checkout or its `-worktrees/` sibling is refused with
+  "agent-guard: its launcher is missing from <main>; James must reinstall..."
+  (Claude Code: exit 2 with that reason; agy: its deny JSON). Every other call,
+  in any other repo, is let through with a warning on stderr. `--check` says
+  so; reinstall, or `--uninstall`.
 - **It migrates the old install.** Entries that point at the old copy in
   `~/.local/share/agent-guard` are replaced, and that copy is deleted, once the
   new entries pass a self-test (`git status` allowed, `git stash` and `go vet`
   refused, in both payload shapes, from a folder outside any checkout). If the
-  self-test fails, both files are put back and nothing is deleted.
+  self-test fails, or a write fails part-way, both files are put back and
+  nothing is deleted.
 - Every other hook is kept, each file is backed up beside itself before a
   write, and running it twice changes nothing. `--uninstall` removes only
   agent-guard's entries (and any old copy); the log stays.
@@ -290,7 +297,7 @@ another branch; until one lands, the refusal says so and points to James.
 | | `edit/exec/rollout restart/scale/label/...` | no target: tell James |
 | `helm` | `install/upgrade/uninstall/rollback` | `bazel run //tools/gitops:helm`, or change git |
 | `bazel-cache` | `rm -r` of `~/.cache/bazel`, `~/Library/Caches/bazel` or `_bazel_*`; `find -delete` there; `bazel clean --expunge`; `--output_user_root`/`--output_base` | `bazel run //tools/bazel-cache:gc` |
-| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); editing or removing the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy; running `//tools/agent-guard:install` (`bazel run`, `bazel-bin/.../install` or `install.py`) without `--dry-run`/`--check`; hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal |
+| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); running `//tools/agent-guard:install` (`bazel run`, `bazel-bin/.../install` or `install.py`) without `--dry-run`/`--check`; hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal |
 | `oversize` | a command with more than 20,000 simple commands in it (the hook must answer inside its 10 s timeout, and command tools fail closed) | split it into smaller commands |
 
 **Always allowed:** read-only git (`status log diff show fetch rev-parse
