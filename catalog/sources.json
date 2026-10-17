@@ -1,13 +1,19 @@
 {
   "_comment": [
     "Which release updates which catalog entry. Read by bump.py, which",
-    "the workflow catalog-bump runs each hour: when the newest release of a row",
-    "is newer than its entry, it opens a pull request that lists it.",
+    "the workflow catalog-bump runs when a release workflow below finishes and",
+    "each hour: when the newest release of a row is newer than its entry, it",
+    "opens a pull request that lists it.",
     "repo: where the release and its zip are. tagPrefix: the tag is this",
     "followed by the version. asset: the zip's name, {version} filled in.",
     "uploader: the only account whose upload of the zip and its .sha256 is",
     "listed (the release workflow's; checked on the real releases 2026-10-16).",
     "universal: the tool's program must hold x86_64 and arm64, as it has.",
+    "releaseWorkflow: the name of the workflow in this repository that uploads",
+    "the zip; catalog-bump starts when it finishes. Only for a tool released",
+    "from this repository: one released elsewhere is picked up each hour.",
+    "//catalog:release_trigger_test fails when a row released from here has",
+    "none, or when catalog-bump's workflow_run list differs from this column.",
     "manual: entries that are only ever changed by hand, and why.",
     "//catalog:bump_test fails when an entry is in neither list."
   ],
@@ -18,7 +24,8 @@
       "tagPrefix": "home-speaker-v",
       "asset": "HomeSpeaker-{version}-tool.zip",
       "uploader": "github-actions[bot]",
-      "universal": true
+      "universal": true,
+      "releaseWorkflow": "home-speaker-release"
     },
     {
       "id": "dev.vitruvian.github",
@@ -34,7 +41,8 @@
       "tagPrefix": "android-remote-v",
       "asset": "VitruvianRemote-{version}-tool.zip",
       "uploader": "github-actions[bot]",
-      "universal": true
+      "universal": true,
+      "releaseWorkflow": "android-remote-release"
     }
   ],
   "manual": {

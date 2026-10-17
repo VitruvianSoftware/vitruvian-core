@@ -48,7 +48,7 @@ its panels, its protocol or its publisher; then it names each. A refusal's
 result carries the issue that records it.
 
 `plan` asks GitHub for the newest release of each row of sources.json and
-prints the ones that are newer than the catalog: what the hourly workflow
+prints the ones that are newer than the catalog: what the workflow
 bumps. `foreign`, `older` and `arm` tell the workflows what they may push
 over, close, and arm auto-merge on. Standard library only, apart from `gh`,
 so they run without Bazel.
@@ -172,6 +172,13 @@ def load_sources(path):
         if not isinstance(row.get("universal", False), bool):
             raise SystemExit(
                 f"sources.json: {row['id']}'s universal is not true or false"
+            )
+        # Read only by //catalog:release_trigger_test, which holds it to the
+        # workflows that start catalog-bump.
+        workflow = row.get("releaseWorkflow")
+        if workflow is not None and (not isinstance(workflow, str) or not workflow):
+            raise SystemExit(
+                f"sources.json: {row['id']}'s releaseWorkflow is not a workflow name"
             )
     return data
 

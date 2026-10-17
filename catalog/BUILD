@@ -177,3 +177,18 @@ py_test(
         "@pip//jsonschema",
     ],
 )
+
+# catalog-bump starts when a tool's release workflow finishes: its
+# workflow_run list must be the releaseWorkflow column of sources.json, and
+# every tool released from this repository must have one. Reads every
+# workflow, since workflow_run matches a workflow by its name: line.
+py_test(
+    name = "release_trigger_test",
+    size = "small",
+    srcs = ["release_trigger_test.py"],
+    data = [
+        "sources.json",
+        "//:workflow_files",
+    ],
+    deps = ["@pip//pyyaml"],
+)
