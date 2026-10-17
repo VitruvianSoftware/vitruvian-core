@@ -15,15 +15,43 @@ cannot lose work.
 
 ```sh
 bazel run //tools/worktree -- <branch> [base-ref]   # create; base defaults to origin/main
+bazel run //tools/worktree -- --detach <ref> <name> # a scratch tree at <ref>, no branch
 bazel run //tools/worktree -- --list                # list worktrees
-bazel run //tools/worktree -- --remove <branch>     # remove that worktree (branch kept)
+bazel run //tools/worktree -- --remove <branch|name> # remove that worktree or scratch tree (branch kept)
 bazel run //tools/worktree -- --remove <branch> --force          # ...with its uncommitted files
 bazel run //tools/worktree -- --remove <branch> --delete-branch  # ...and its branch, if clean AND landed
 bazel run //tools/worktree -- --prune               # dry run: what would go, what stays and why
 bazel run //tools/worktree -- --prune --execute     # remove them, with their branches, and landed branches with no worktree
+bazel run //tools/worktree -- --lock [reason]       # keep the worktree you run it from safe from every pruner
+bazel run //tools/worktree -- --unlock              # let it go again
 ```
 
-Then `cd` into the printed path and work there.
+`--lock` and `--unlock` act on the worktree you run them from; add
+`--on <branch|name>` to act on another one.
+
+Then `cd` into the printed path and work there. Commit, push and catch up with
+main through [`//tools/git`](../git/README.md).
+
+## Scratch trees (`--detach`)
+
+For reading or building code at some commit without a branch: reviewing a PR,
+bisecting, comparing. `--detach <ref> <name>` makes `<worktrees>/<name>` at
+`<ref>`, detached, with its own Bazel output root like any other worktree. It is
+marked as a scratch tree inside its git directory (not among its files).
+
+`--remove <name>` removes it. `--prune` removes it once it is clean, unlocked,
+has no Bazel server running, is still at the commit it was made at, and has
+not been used for a day (`WORKTREE_SCRATCH_TTL_HOURS`). "Used" means its index,
+HEAD or HEAD reflog changed, which checkouts, resets and builds' git calls do.
+A scratch tree someone moved to another commit is never pruned, and nor is a
+detached worktree made by hand.
+
+## Locking (`--lock`)
+
+A locked worktree is kept by `--prune`, by `git worktree prune`, and by the
+Antigravity hygiene pruner. Lock a worktree you are using for longer than one
+session. `--remove` also refuses a locked worktree and names the `--unlock`
+command. With no reason given, the lock says who locked it and when.
 
 ## What `--prune` removes
 
@@ -38,7 +66,8 @@ and the dry run prints the reason next to it.
 | a Bazel server is running for it | it is in use |
 | its branch has no commits of its own yet | almost always a worktree that was just made |
 | `//tools/landed -- --branch <branch>` says it is not landed | commits that are not on `origin/main` |
-| it is detached, or its directory is missing | nothing to check against |
+| it is detached and not a scratch tree, or its directory is missing | nothing to check against |
+| it is a scratch tree used in the last day, or moved off the commit it was made at | still in use; `--lock` keeps it longer |
 
 "Landed" means every commit on the **local** branch is on `origin/main`: the
 branch is behind main, or merging it into main would change nothing (this is
@@ -73,7 +102,12 @@ just before deleting it.
   `.vitruvian-worktree` file naming the worktree. `//tools/bazel-cache:gc` uses
   it to tell an orphaned root from a live one.
 - Removing a worktree first stops its Bazel server in **both** places it can
-  have one (the default output root and its own), then deletes its own output root.
+  have one (the default output root and its own), then deletes both of its
+  caches: its own output root, and the default output base a plain `bazel` run
+  there made (`<bazel root>/<md5 of its path>`). The second is skipped if a
+  server is still live there, or if that base's `DO_NOT_BUILD_HERE` names a
+  different workspace. Before, that base was left for `//tools/bazel-cache:gc`,
+  which keeps a missing workspace's base for a day in case it comes back.
 - `--remove` finds the worktree by the branch checked out in it, so it works
   for a worktree made by hand under any directory name. It exits non-zero and
   removes nothing when no worktree has that branch.

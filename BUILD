@@ -219,6 +219,23 @@ exports_files(
     visibility = ["//:__subpackages__"],
 )
 
+# CI's gitleaks rules. //tools/secret-scan runs the pinned gitleaks with exactly
+# these, and //tools/git:commit and :push run //tools/secret-scan.
+exports_files(
+    [".gitleaks.toml"],
+    visibility = [
+        "//tools/git:__pkg__",
+        "//tools/secret-scan:__pkg__",
+    ],
+)
+
+# The workflow that pins actionlint. //tools/ci:actionlint_test fails when its
+# version and tools/tools.lock.json's drift apart.
+exports_files(
+    [".github/workflows/actionlint.yaml"],
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 # Produce aspect_rules_py targets rather than rules_python
 # gazelle:map_kind py_binary py_binary @aspect_rules_py//py:defs.bzl
 # gazelle:map_kind py_library py_library @aspect_rules_py//py:defs.bzl

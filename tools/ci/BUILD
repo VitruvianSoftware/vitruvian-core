@@ -22,6 +22,7 @@
 # deploy-affected.sh is shelled, never rewritten), so the scripts must be
 # visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
 load("@aspect_rules_py//py:defs.bzl", "py_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # `bazel run //tools/ci:gen` — regenerate the generated delivery workflows
@@ -59,6 +60,9 @@ exports_files([
     # these gates honour as a person's hold (PERSON_LABEL).
     "release-beta-gate.sh",
     "release-hold.sh",
+    # CI's gitleaks pin. //tools/secret-scan:secret-scan_test fails when it and
+    # tools/tools.lock.json disagree.
+    "secret-scan.sh",
 ])
 
 # The extracted-LLVM cache key. Keyed on every recorded input of the
@@ -179,4 +183,42 @@ py_test(
         "//apps/desktop/nexus-agent:release_workflow",
     ],
     main = "nexus_agent_release_rehearsal_test.py",
+)
+
+# `bazel run //tools/ci:actionlint` -- the required `actionlint` check, locally:
+# the pinned actionlint (tools/tools.lock.json, at the workflow's
+# ACTIONLINT_VERSION) with shellcheck over the `run:` blocks, then the
+# commit-SHA pin check the workflow runs from require-pinned-actions.sh.
+sh_binary(
+    name = "actionlint",
+    srcs = ["actionlint.sh"],
+    data = [
+        "require-pinned-actions.sh",
+        "@multitool//tools/actionlint",
+        "@multitool//tools/shellcheck",
+    ],
+    visibility = ["//visibility:public"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+# Throwaway repos and the real pinned binaries; also fails when the workflow's
+# ACTIONLINT_VERSION and the lockfile drift apart.
+sh_test(
+    name = "actionlint_test",
+    size = "small",
+    srcs = ["actionlint_test.sh"],
+    args = [
+        "$(location actionlint.sh)",
+        "$(location //:.github/workflows/actionlint.yaml)",
+        "$(location //tools:tools.lock.json)",
+    ],
+    data = [
+        "actionlint.sh",
+        "require-pinned-actions.sh",
+        "//:.github/workflows/actionlint.yaml",
+        "//tools:tools.lock.json",
+        "@multitool//tools/actionlint",
+        "@multitool//tools/shellcheck",
+    ],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
 )
