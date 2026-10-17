@@ -29,8 +29,8 @@ either way.
    remote machines (see "Remote only" below) and logs each run's BuildBuddy link
    and Bazel's count of where each process ran.
 5. If everything passed **and** ran remotely, writes a commit status on the head
-   commit: context `verified-run`, description `tree=<tree> base=<base> plan=<digest>`,
-   linking to the build results.
+   commit as the recorder (scout): context `verified-run`, description
+   `tree=<tree> base=<base> plan=<digest>`, linking to the build results.
 
 It prints what it ran, why, and what it left to CI.
 
@@ -63,31 +63,32 @@ There is no local-only mode: CI could not trust it.
 
 ## Recording
 
-The status must come from a GitHub App that **only** the recorder uses, with
-`Commit statuses: write`. Agent apps can't be used, because they open the PRs and
-a record must not come from the PR's author. No such App exists yet, so
-[`recorder.tsv`](recorder.tsv) is empty and the tool ends with:
+The status is set by the one identity named in [`recorder.tsv`](recorder.tsv):
+the **scout** agent's App (bot user id `314429511`). It is the only agent App with
+`Commit statuses: write`, granted by James on 2026-10-16 and listed in
+`tools/agent-app/permissions.tsv`. The tool checks that `recorder.tsv` agrees
+with `tools/agent-app/agents.tsv`, mints scout's one-hour token with
+`//tools/agent-app`'s `token` command from `scout.pem` in the agent key folder
+(the main checkout's `tools/sync-env-secrets/agent-keys`, or `$AGENT_KEY_DIR`),
+and never uses `GH_TOKEN` or the `gh` login. After writing, it reads GitHub's
+reply and refuses to call it recorded unless GitHub says scout set it.
 
-> The tests passed, but: not recorded: there is no recorder identity yet.
-
-(exit code 3). To set it up: create the App, install it on this repo, put its
-ids in `recorder.tsv`, and put its key at
-`tools/sync-env-secrets/agent-keys/verified-run-recorder.pem` in the main
-checkout. The token is minted with `//tools/agent-app`'s `token` command;
-`GH_TOKEN` and the `gh` login are never used.
+The commit must be pushed first; GitHub can't put a status on a commit it doesn't
+have.
 
 Exit codes: 0 passed (and recorded, or `--no-record`, or nothing to test),
 1 a test failed or the run can't count as remote, 2 couldn't start,
-3 passed but not recorded.
+3 passed but not recorded (the message says why).
 
 ## How the later PR check must verify a record
 
 Count a record only if **all** of these hold. Otherwise run the full tests.
 
 - The context is exactly `verified-run` and the state is `success`.
-- Its creator is the recorder App's bot account, compared by numeric id
-  (`bot_user_id` in `recorder.tsv`), not by name.
-- The PR's head branch is in this repo (not a fork), and an agent app opened it.
+- Its creator is scout's bot user, compared by numeric id `314429511`
+  (`recorder.tsv`), not by name.
+- The PR's head branch is in this repo (not a fork), and an agent app opened it,
+  but **never scout itself**: a record must not come from the PR's author.
 - `tree=` equals the tree hash of the PR head.
 - `base=` equals the PR's merge base with main.
 - It is recent (for example, under 24 hours old).
@@ -102,7 +103,7 @@ Count a record only if **all** of these hold. Otherwise run the full tests.
 Nothing a PR author controls can switch the heavy jobs off: not a label, not a
 file in the PR, not a status set with their own token.
 
-**Known limit.** The recorder key would sit on the same Mac as the agent keys,
+**Known limit.** The recorder key sits on the same Mac as the other agent keys,
 so an agent that went wrong could write a record without running anything. The
 merge queue still runs every test on the merged code, so the worst case is a
 wasted queue slot, not bad code on main.

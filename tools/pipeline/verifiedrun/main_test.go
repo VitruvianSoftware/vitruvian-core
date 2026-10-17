@@ -289,7 +289,7 @@ func TestRunSaysPlainlyWhenTheRecorderIsMissing(t *testing.T) {
 	if rc := v.run(context.Background()); rc != exitNotRecorded {
 		t.Fatalf("rc %d, want %d\n%s", rc, exitNotRecorded, out)
 	}
-	if !strings.Contains(out.String(), "The tests passed, but: not recorded: there is no recorder identity yet") {
+	if !strings.Contains(out.String(), "The tests passed, but: not recorded: tools/pipeline/verifiedrun/recorder.tsv names no recorder") {
 		t.Fatalf("output:\n%s", out)
 	}
 }

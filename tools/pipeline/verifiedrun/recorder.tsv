@@ -1,14 +1,15 @@
-# The one GitHub App allowed to write "verified-run" commit statuses (#3418).
-# NOT secret: these are public ids. The private key is never in git; it goes in
-# the agent key folder (tools/sync-env-secrets/agent-keys/verified-run-recorder.pem
-# in the main checkout, or $AGENT_KEY_DIR).
+# The one identity allowed to write "verified-run" commit statuses (#3418).
+# NOT secret: these are public ids. The private key is never in git: it is the
+# agent's usual key (<agent>.pem in the agent key folder,
+# tools/sync-env-secrets/agent-keys in the main checkout, or $AGENT_KEY_DIR).
 #
-# Empty on purpose: no recorder App exists yet, so //tools/pipeline/verifiedrun
-# refuses to record. It must be an App that only the recorder uses, with the
-# "Commit statuses: write" permission and nothing else it does not need. It must
-# NOT be an agent app: those open the PRs, and a record has to come from
-# someone other than the PR's author. Creating it is James's call.
+# One row: agent name (as in tools/agent-app/agents.tsv), a tab, its bot user
+# id. The bot user id must match agents.tsv; the tool refuses otherwise.
 #
-# The later PR check trusts a status only if its creator is bot_user_id.
+# scout is the only agent App with "Commit statuses: write" (granted by James
+# 2026-10-16, see tools/agent-app/permissions.tsv). The later PR check trusts
+# a verified-run status only if its creator id is this bot user id, and never
+# on a PR scout itself opened: the record must not come from the PR's author.
 #
-# app_id	installation_id	bot_user_id
+# agent	bot_user_id
+scout	314429511

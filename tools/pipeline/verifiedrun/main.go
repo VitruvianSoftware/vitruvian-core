@@ -499,6 +499,7 @@ func realMain() int {
 		}
 		rec := statusRecorder{
 			configPath: filepath.Join(root, recorderFile),
+			agentsPath: filepath.Join(root, agentsFile),
 			keyDir:     keyDir,
 			mint:       agentAppMinter(agentApp),
 			apiBase:    "https://api.github.com",

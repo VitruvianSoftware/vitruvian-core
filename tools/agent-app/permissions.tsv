@@ -14,7 +14,8 @@
 # API returns.
 #
 # Recorded from GitHub 2026-10-14; wren's actions=write was added by hand that
-# day so it can start workflow runs.
+# day so it can start workflow runs. scout's statuses=write was added by hand
+# 2026-10-16 so //tools/pipeline/verifiedrun can record verified runs (#3418).
 #
 # agent	permission	level
 beacon	checks	read
@@ -47,6 +48,7 @@ scout	contents	write
 scout	issues	write
 scout	metadata	read
 scout	pull_requests	write
+scout	statuses	write
 scout	workflows	write
 quill	checks	read
 quill	contents	write

@@ -22,11 +22,12 @@ package main
 
 // Writing the record: a GitHub commit status on the head commit.
 //
-// The status must be set by an identity that only this tool uses, so a later
-// PR check can tell "the recorder said so" apart from "the PR's author said
-// so". Agent apps open the PRs, so none of them qualifies, and none can write
-// statuses anyway. Until a recorder App exists, recording refuses with a
-// message that names what is missing, and never falls back to another token.
+// The status is set by ONE named identity, the recorder, listed in
+// recorder.tsv: today the scout agent's App, the only App granted "Commit
+// statuses: write". A later PR check trusts a status only from that bot user,
+// and never on a PR the recorder itself opened. The token is minted from the
+// recorder's own key; GH_TOKEN and the gh login are never used, so a record
+// cannot quietly come from whoever is logged in.
 
 import (
 	"bytes"
@@ -51,7 +52,7 @@ const (
 	statusContext = "verified-run"
 	repoSlug      = "VitruvianSoftware/vitruvian-core"
 	recorderFile  = "tools/pipeline/verifiedrun/recorder.tsv"
-	recorderKey   = "verified-run-recorder.pem"
+	agentsFile    = "tools/agent-app/agents.tsv"
 )
 
 // record is what a passing run writes.
@@ -132,27 +133,27 @@ func short(s string) string {
 	return s
 }
 
-// recorderConfig is the recorder App's public ids, from recorder.tsv.
+// recorderConfig is the recorder's public ids: the agent named in
+// recorder.tsv, resolved through //tools/agent-app's registry.
 type recorderConfig struct {
-	AppID, InstallationID, BotUserID string
+	Agent, AppID, InstallationID, BotUserID string
 }
 
-// errNoRecorder is the expected refusal today: nobody has made the App yet.
-var errNoRecorder = errors.New(`not recorded: there is no recorder identity yet.
-  The record has to be a commit status set by a GitHub App that only this tool
-  uses, with the "Commit statuses: write" permission. No such App exists, and
-  no agent app may be used instead: agent apps open the PRs, so a record they
-  set would be set by the PR's author.
-  To set it up (James): create the App, install it on this repo, add its ids
-  to ` + recorderFile + `,
-  and put its private key in the agent key folder as ` + recorderKey + `.`)
+// errNoRecorder: recorder.tsv names nobody.
+var errNoRecorder = errors.New(`not recorded: ` + recorderFile + ` names no recorder.
+  The record is a commit status, and it must be set by the one App named
+  there, which needs the "Commit statuses: write" permission.`)
 
-var digitsRe = regexp.MustCompile(`^[0-9]+$`)
+var (
+	digitsRe = regexp.MustCompile(`^[0-9]+$`)
+	agentRe  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+)
 
-func loadRecorder(path string) (recorderConfig, error) {
+// tsvRows returns the non-comment, non-blank lines of a tab-separated file.
+func tsvRows(path string) ([][]string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return recorderConfig{}, fmt.Errorf("not recorded: cannot read %s: %w", recorderFile, err)
+		return nil, err
 	}
 	var rows [][]string
 	for _, line := range strings.Split(string(b), "\n") {
@@ -162,17 +163,47 @@ func loadRecorder(path string) (recorderConfig, error) {
 		}
 		rows = append(rows, strings.Split(line, "\t"))
 	}
+	return rows, nil
+}
+
+// loadRecorder reads recorder.tsv (agent, bot user id) and checks it against
+// agents.tsv, which holds the same agent's app id, installation id and bot
+// user id. They must agree: the bot user id is what a PR check will trust.
+func loadRecorder(recorderPath, agentsPath string) (recorderConfig, error) {
+	rows, err := tsvRows(recorderPath)
+	if err != nil {
+		return recorderConfig{}, fmt.Errorf("not recorded: cannot read %s: %w", recorderFile, err)
+	}
 	switch {
 	case len(rows) == 0:
 		return recorderConfig{}, errNoRecorder
 	case len(rows) > 1:
-		return recorderConfig{}, fmt.Errorf("not recorded: %s must name exactly one App, it names %d", recorderFile, len(rows))
+		return recorderConfig{}, fmt.Errorf("not recorded: %s must name exactly one recorder, it names %d", recorderFile, len(rows))
 	}
 	r := rows[0]
-	if len(r) != 3 || !digitsRe.MatchString(r[0]) || !digitsRe.MatchString(r[1]) || !digitsRe.MatchString(r[2]) {
-		return recorderConfig{}, fmt.Errorf("not recorded: %s must be one line of three numbers (app id, installation id, bot user id) separated by tabs", recorderFile)
+	if len(r) != 2 || !agentRe.MatchString(r[0]) || !digitsRe.MatchString(r[1]) {
+		return recorderConfig{}, fmt.Errorf("not recorded: %s must be one line: agent name, a tab, its bot user id", recorderFile)
 	}
-	return recorderConfig{AppID: r[0], InstallationID: r[1], BotUserID: r[2]}, nil
+	cfg := recorderConfig{Agent: r[0], BotUserID: r[1]}
+
+	agents, err := tsvRows(agentsPath)
+	if err != nil {
+		return recorderConfig{}, fmt.Errorf("not recorded: cannot read %s: %w", agentsFile, err)
+	}
+	for _, a := range agents {
+		if len(a) < 4 || a[0] != cfg.Agent {
+			continue
+		}
+		if a[3] != cfg.BotUserID {
+			return recorderConfig{}, fmt.Errorf("not recorded: %s says %s's bot user id is %s, %s says %s", recorderFile, cfg.Agent, cfg.BotUserID, agentsFile, a[3])
+		}
+		if !digitsRe.MatchString(a[1]) || !digitsRe.MatchString(a[2]) {
+			return recorderConfig{}, fmt.Errorf("not recorded: %s has no usable app id and installation id for %s", agentsFile, cfg.Agent)
+		}
+		cfg.AppID, cfg.InstallationID = a[1], a[2]
+		return cfg, nil
+	}
+	return recorderConfig{}, fmt.Errorf("not recorded: the recorder %q is not in %s", cfg.Agent, agentsFile)
 }
 
 // tokenMinter turns the recorder's key into a short-lived installation token.
@@ -187,18 +218,18 @@ func agentAppMinter(agentApp string) tokenMinter {
 		var out, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &stderr
 		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("could not get a token for the recorder App: %v: %s", err, strings.TrimSpace(stderr.String()))
+			return "", fmt.Errorf("could not get a token for %s: %v: %s", cfg.Agent, err, strings.TrimSpace(stderr.String()))
 		}
 		tok := strings.TrimSpace(out.String())
 		if tok == "" {
-			return "", errors.New("could not get a token for the recorder App: empty token")
+			return "", fmt.Errorf("could not get a token for %s: empty token", cfg.Agent)
 		}
 		return tok, nil
 	}
 }
 
 // withoutGitHubTokens drops ambient GitHub credentials, so nothing on the way
-// to the recorder's own token can quietly use the PR author's.
+// to the recorder's own token can quietly use someone else's.
 func withoutGitHubTokens(env []string) []string {
 	var out []string
 	for _, kv := range env {
@@ -212,9 +243,10 @@ func withoutGitHubTokens(env []string) []string {
 }
 
 // statusRecorder writes the record. Its only credential is the token minted
-// from the recorder key; it never reads GH_TOKEN or the gh CLI's login.
+// from the recorder's key.
 type statusRecorder struct {
 	configPath string
+	agentsPath string
 	keyDir     string
 	mint       tokenMinter
 	apiBase    string
@@ -222,13 +254,13 @@ type statusRecorder struct {
 }
 
 func (s statusRecorder) record(ctx context.Context, r record) error {
-	cfg, err := loadRecorder(s.configPath)
+	cfg, err := loadRecorder(s.configPath, s.agentsPath)
 	if err != nil {
 		return err
 	}
-	keyPath := filepath.Join(s.keyDir, recorderKey)
+	keyPath := filepath.Join(s.keyDir, cfg.Agent+".pem")
 	if _, err := os.Stat(keyPath); err != nil {
-		return fmt.Errorf("not recorded: the recorder App is listed in %s, but its private key is not at %s", recorderFile, keyPath)
+		return fmt.Errorf("not recorded: the recorder is %s, but its private key is not at %s (bazel run //tools/sync-env-secrets:agent-keys-pull)", cfg.Agent, keyPath)
 	}
 	token, err := s.mint(ctx, cfg, keyPath)
 	if err != nil {
@@ -257,13 +289,30 @@ func (s statusRecorder) record(ctx context.Context, r record) error {
 		return fmt.Errorf("not recorded: GitHub could not be reached: %w", err)
 	}
 	defer resp.Body.Close()
+	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if resp.StatusCode != http.StatusCreated {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		hint := ""
 		if resp.StatusCode == http.StatusUnprocessableEntity {
 			hint = " (has this commit been pushed?)"
 		}
-		return fmt.Errorf("not recorded: GitHub answered %d%s: %s", resp.StatusCode, hint, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("not recorded: GitHub answered %d%s: %s", resp.StatusCode, hint, strings.TrimSpace(short512(msg)))
+	}
+	// Check GitHub's own account of who set it, rather than assume.
+	var created struct {
+		Creator struct {
+			ID    json.Number `json:"id"`
+			Login string      `json:"login"`
+		} `json:"creator"`
+	}
+	if err := json.Unmarshal(msg, &created); err != nil || created.Creator.ID.String() != cfg.BotUserID {
+		return fmt.Errorf("the status was written, but GitHub says it was set by %q (id %s), not the recorder %s (id %s). Do not trust it", created.Creator.Login, created.Creator.ID, cfg.Agent, cfg.BotUserID)
 	}
 	return nil
+}
+
+func short512(b []byte) string {
+	if len(b) > 512 {
+		return string(b[:512]) + "..."
+	}
+	return string(b)
 }
