@@ -15,7 +15,7 @@ One rule for the day: do not open the same chat in the other chat app while test
 
 ## Before you start
 
-- Set up Telegram first. Get an api_id and api_hash from my.telegram.org, then press Set up on Courier's Telegram banner and enter them. Telegram does not start without them.
+- Install Courier with `bazel run --config=macos-app //apps/desktop/courier/app:install`. It puts Courier in /Applications with Courier's own Telegram app ID built in, so there is nothing to set up for Telegram: Add a Network, then Telegram, goes straight to its QR code. If the install says "this Courier has no Telegram app ID built in", run `bazel run //tools/sync-env-secrets:bw-pull` and install again (`app/README.md` says where the ID lives). A Courier without it asks for an api_id and api_hash from my.telegram.org when you pick Telegram, once, and carries on by itself.
 - Link all five networks again, from the app (Add a Network). The links made with the command-line tool in Milestone 1 are separate and are not used here.
 - On your phones, unlink the old Courier Milestone 1 devices (WhatsApp and Signal: Settings, Linked devices). Leaving them linked can bring every message in twice.
 - Linking Google Messages here signs out any other web session of Google Messages, in any browser.

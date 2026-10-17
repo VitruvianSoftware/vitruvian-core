@@ -5,7 +5,7 @@ import CourierCore
 import SwiftUI
 
 /// A banner for an account that needs the person: logged out, refused, stuck on an error, or not started, with the
-/// button that fixes it.
+/// button that fixes it (none, for one that did not start).
 struct AccountBannerView: View {
     let banner: AccountBanner
     let act: () -> Void
@@ -46,7 +46,6 @@ struct AccountBannerView: View {
     private var buttonTitle: String? {
         switch banner.action {
         case .reconnect: String(localized: "Reconnect")
-        case .setUp: String(localized: "Set up")
         case nil: nil
         }
     }

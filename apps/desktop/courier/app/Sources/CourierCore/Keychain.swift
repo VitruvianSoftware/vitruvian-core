@@ -12,8 +12,9 @@ public protocol CredentialStore: Sendable {
     func delete(account: String) throws
 }
 
-/// Telegram's api_id and api_hash. The app asks for them once and keeps them in the Keychain; the engine gets
-/// them only in its environment, at launch, and nothing ever logs or writes them anywhere else.
+/// Telegram's api_id and api_hash. A finished Courier carries its own (TelegramBuiltIn); a build without one asks
+/// the person once and keeps the pair in the Keychain. Either way the engine gets them only in its environment, at
+/// launch, and nothing ever logs or writes them anywhere else (TelegramCredentialSource says which is used).
 public struct TelegramCredentials: Equatable, Sendable {
     public static let service = "com.vitruviansoftware.courier.telegram"
     public static let apiIDAccount = "api_id"

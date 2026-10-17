@@ -32,7 +32,8 @@ final class InboxModelTests: XCTestCase {
 
     /// An app model on a stand-in engine, an inbox model on that, and the first inbox read done.
     private func start(rooms: [[String: Any]] = [], accounts: [[String: Any]] = [account("whatsapp", "CONNECTED")],
-                       autoRelease: Bool = false, failFirstReads: Int = 0) async throws -> Harness {
+                       autoRelease: Bool = false, failFirstReads: Int = 0,
+                       hasTelegramCredentials: Bool = true) async throws -> Harness {
         let script = InboxScript(rooms: rooms, accounts: accounts)
         script.failReads = failFirstReads
         let server = try TestEngineServer(handler: script.handle)
@@ -45,7 +46,8 @@ final class InboxModelTests: XCTestCase {
         let app = AppModel(supervisor: supervisor)
         let sleeps = SleepControl()
         if autoRelease { await sleeps.releaseAlways() }
-        let inbox = InboxModel(appModel: app, window: 0.1, retryDelay: 2, sleep: { await sleeps.sleep($0) })
+        let inbox = InboxModel(appModel: app, hasTelegramCredentials: { hasTelegramCredentials }, window: 0.1,
+                               retryDelay: 2, sleep: { await sleeps.sleep($0) })
         app.start()
         try await waitUntil { inbox.isLoaded && !app.accounts.isEmpty }
         return Harness(script: script, server: server, launcher: launcher, supervisor: supervisor, app: app,
@@ -354,10 +356,11 @@ final class InboxModelTests: XCTestCase {
         XCTAssertEqual(h.inbox.banners[1].reason, .badCredentials)
         XCTAssertEqual(h.inbox.banners[1].action, .reconnect)
 
-        // Not started: the engine's reason, and a Set up button for Telegram only.
+        // Not started: the engine's reason, and no button. Telegram has keys here (see the next test for
+        // when it has none), so its not starting is a fault like Slack's.
         XCTAssertEqual(h.inbox.banners[2].reason, .notStarted)
         XCTAssertEqual(h.inbox.banners[2].detail, "Telegram needs an api_id and api_hash.")
-        XCTAssertEqual(h.inbox.banners[2].action, .setUp)
+        XCTAssertNil(h.inbox.banners[2].action)
         XCTAssertEqual(h.inbox.banners[3].detail, "The Slack bridge could not start.")
         XCTAssertNil(h.inbox.banners[3].action)
 
@@ -368,17 +371,27 @@ final class InboxModelTests: XCTestCase {
 
         // The buttons go to the closures Task 9 fills in.
         var reconnected: [String] = []
-        var setUp: [String] = []
         h.inbox.onReconnect = { reconnected.append($0) }
-        h.inbox.onSetUp = { setUp.append($0) }
         for banner in h.inbox.banners { h.inbox.perform(banner) }
         XCTAssertEqual(reconnected, ["whatsapp", "signal", "gmessages"])
-        XCTAssertEqual(setUp, ["telegram"])
 
         // Logging in again clears the banner.
         h.script.accounts = [account("whatsapp", "CONNECTED")]
         h.server.notify(["kind": "bridge", "network": "whatsapp"])
         try await waitUntil { h.inbox.banners.isEmpty }
+        await stop(h)
+    }
+
+    /// Telegram without an app ID is not started by design, and Add a network asks for the keys when it is
+    /// picked: no banner, and in particular no "Set up" button.
+    func testNoBannerForTelegramThatHasNoKeysYet() async throws {
+        let h = try await start(accounts: [
+            account("whatsapp", "LOGGED_OUT", error: "You were logged out"),
+            account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
+            account("slack", "NOT_STARTED", notStarted: "The Slack bridge could not start."),
+        ], hasTelegramCredentials: false)
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["whatsapp", "slack"])
+        XCTAssertFalse(h.inbox.banners.contains { $0.network == "telegram" })
         await stop(h)
     }
 
@@ -410,16 +423,10 @@ final class InboxModelTests: XCTestCase {
     func testEmptyStateWhenNoNetworkIsLinked() async throws {
         let h = try await start(accounts: [
             account("whatsapp", "UNCONFIGURED"), account("telegram", "NOT_STARTED", notStarted: "Needs a key."),
-        ])
+        ], hasTelegramCredentials: false)
         XCTAssertTrue(h.inbox.showsAddNetwork)
-        // Telegram can be set up before anything is linked, so its banner is there on this screen too.
-        XCTAssertEqual(h.inbox.banners.map(\.network), ["telegram"])
-        XCTAssertEqual(h.inbox.banners.first?.action, .setUp)
-        XCTAssertEqual(h.inbox.banners.first?.detail, "Needs a key.")
-        var setUp: [String] = []
-        h.inbox.onSetUp = { setUp.append($0) }
-        h.inbox.perform(h.inbox.banners[0])
-        XCTAssertEqual(setUp, ["telegram"])
+        // Telegram has no keys here yet: no banner, and no Set up button. Add a network asks for them.
+        XCTAssertEqual(h.inbox.banners.map(\.network), [])
         var added = 0
         h.inbox.onAddNetwork = { added += 1 }
         h.inbox.addNetwork()

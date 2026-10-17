@@ -6,9 +6,9 @@ import Foundation
 /// Owns the courier-engine child process: starts it, waits for its ready line, says hello, and when it goes away
 /// starts it again after a back-off. One engine at a time; the client of the engine that is up is `client`.
 ///
-/// The engine is started as `courier-engine --data <dataDir> --parent-fd 0`, with the app's environment and the
-/// Telegram credentials from the Keychain. Its standard input is a pipe only the app writes to, so the engine
-/// stops when the app closes it, or dies.
+/// The engine is started as `courier-engine --data <dataDir> --parent-fd 0`, with the app's environment and
+/// Telegram's app ID (Courier's own, built into the app, else one the person saved in the Keychain). Its
+/// standard input is a pipe only the app writes to, so the engine stops when the app closes it, or dies.
 ///
 /// - The ready line may take a while: the engine prints it once its networks have started. Two minutes.
 /// - The last 500 lines of the engine's standard error are kept in memory, for a problem report. Never on disk.
@@ -96,7 +96,7 @@ public final class EngineSupervisor: @unchecked Sendable {
     private let dataDir: URL
     private let baseEnvironment: [String: String]
     private let launcher: ProcessLaunching
-    private let credentials: CredentialStore
+    private let credentials: TelegramCredentialSource
     private let clientName: String
     private let timing: Timing
 
@@ -118,15 +118,18 @@ public final class EngineSupervisor: @unchecked Sendable {
     ///   - enginePath: the courier-engine executable.
     ///   - dataDir: the engine's data directory.
     ///   - environment: the engine's environment, before the Telegram credentials are added: the app's own.
-    ///   - credentials: where the Telegram credentials are, read again at every launch.
+    ///   - credentials: the Keychain the person's own Telegram credentials are in.
+    ///   - builtInCredentials: Courier's own, packaged into the app. They win over the Keychain's. Both are read
+    ///     again at every launch.
     public init(enginePath: String, dataDir: URL, environment: [String: String], launcher: ProcessLaunching,
                 credentials: CredentialStore = KeychainStore(service: TelegramCredentials.service),
+                builtInCredentials: @escaping @Sendable () -> TelegramCredentials? = { TelegramBuiltIn.load() },
                 clientName: String = EngineClient.defaultClientName, timing: Timing = .standard) {
         self.enginePath = enginePath
         self.dataDir = dataDir
         self.baseEnvironment = environment
         self.launcher = launcher
-        self.credentials = credentials
+        self.credentials = TelegramCredentialSource(store: credentials, builtIn: builtInCredentials)
         self.clientName = clientName
         self.timing = timing
     }
@@ -403,8 +406,8 @@ public final class EngineSupervisor: @unchecked Sendable {
 
     private func childEnvironment() -> [String: String] {
         var environment = baseEnvironment
-        if let telegram = TelegramCredentials.load(from: credentials) {
-            environment.merge(telegram.environment) { _, keychain in keychain }
+        if let telegram = credentials.resolve() {
+            environment.merge(telegram.environment) { _, telegram in telegram }
         }
         return environment
     }

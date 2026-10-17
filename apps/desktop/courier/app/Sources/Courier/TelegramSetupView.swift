@@ -5,7 +5,9 @@ import CourierCore
 import SwiftUI
 
 /// Telegram's app credentials: api_id and api_hash from my.telegram.org, checked as the engine checks them, then
-/// saved in the Keychain. Nothing is filled in from the Keychain, so a saved value is never shown again.
+/// saved in the Keychain. The first step of linking Telegram in a build that carries no app ID of its own (the
+/// finished app does, and never shows this). Nothing is filled in from the Keychain, so a saved value is never
+/// shown again.
 struct TelegramSetupView: View {
     @ObservedObject var login: LoginFlowModel
     @State private var apiID = ""
@@ -15,7 +17,7 @@ struct TelegramSetupView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(String(localized: "Set up Telegram"))
                 .font(.title3.weight(.semibold))
-            Text(String(localized: "Telegram asks every app for its own credentials. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain."))
+            Text(String(localized: "This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram."))
                 .fixedSize(horizontal: false, vertical: true)
             Link(String(localized: "Open my.telegram.org"), destination: TelegramSetup.appsURL)
             // Telegram's own names for the two values: never translated.
@@ -39,7 +41,7 @@ struct TelegramSetupView: View {
                 Spacer()
                 Button(String(localized: "Cancel"), action: login.close)
                     .keyboardShortcut(.cancelAction)
-                Button(String(localized: "Save"), action: save)
+                Button(String(localized: "Save and continue"), action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!problems.isEmpty)
             }

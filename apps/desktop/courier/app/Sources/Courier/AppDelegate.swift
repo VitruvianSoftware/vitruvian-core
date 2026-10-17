@@ -32,7 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launcher: FoundationProcessLauncher()
         )
         model = AppModel(supervisor: supervisor)
-        let inbox = InboxModel(appModel: model)
+        // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
+        let telegram = TelegramCredentialSource()
+        let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials })
         self.inbox = inbox
         let attention = Attention(source: SystemPresence())
         self.attention = attention
@@ -45,7 +47,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
         inbox.onReconnect = { network in login.begin(network: network) }
-        inbox.onSetUp = { _ in login.showTelegramSetup() }
         super.init()
     }
 

@@ -21,7 +21,19 @@ final class LoginFlowModelTests: XCTestCase {
     private final class Counts {
         var reloads = 0
         var restarts = 0
+        /// What the accounts are now; a test changes it as the engine would.
+        var accounts: [Account] = []
+        /// Runs at each reload, after it is counted.
+        var onReload: () -> Void = {}
     }
+
+    /// Courier's own Telegram app ID, as a finished app carries it. Made up.
+    private nonisolated static let builtIn = TelegramCredentials(apiID: "4242424", apiHash: String(repeating: "0a", count: 16))
+
+    /// A wait for Telegram of three looks that takes no time.
+    private nonisolated static let quickWait = TelegramStartWait(timeout: 3, interval: 1, sleep: { _ in
+        await Task.yield()
+    })
 
     private nonisolated static let accounts = [
         Account(network: "whatsapp", displayName: "WhatsApp", flows: ["qr"], state: .running),
@@ -32,13 +44,18 @@ final class LoginFlowModelTests: XCTestCase {
         Account(network: "signal", displayName: "Signal", flows: ["qr"], state: .connected, remoteName: "+1 555 0100"),
     ]
 
-    private func make(accounts: [Account] = LoginFlowModelTests.accounts) -> Harness {
+    /// - Parameter builtIn: the app ID packaged into the app; by default it has one, like a finished Courier.
+    private func make(accounts: [Account] = LoginFlowModelTests.accounts,
+                      builtIn: TelegramCredentials? = LoginFlowModelTests.builtIn,
+                      keychain: [String: String] = [:]) -> Harness {
         let caller = ScriptedLoginCaller()
-        let credentials = InMemoryCredentialStore()
+        let credentials = InMemoryCredentialStore(keychain)
         let counts = Counts()
-        let model = LoginFlowModel(caller: caller, accounts: { accounts },
-                                   reloadAccounts: { counts.reloads += 1 }, credentials: credentials,
-                                   restartEngine: { counts.restarts += 1 })
+        counts.accounts = accounts
+        let model = LoginFlowModel(caller: caller, accounts: { counts.accounts },
+                                   reloadAccounts: { counts.reloads += 1; counts.onReload() },
+                                   credentials: credentials, builtInCredentials: { builtIn },
+                                   telegramWait: Self.quickWait, restartEngine: { counts.restarts += 1 })
         return Harness(model: model, caller: caller, credentials: credentials, counts: counts)
     }
 
@@ -88,7 +105,6 @@ final class LoginFlowModelTests: XCTestCase {
         let choices = harness.model.choices
         XCTAssertEqual(choices.map(\.network), ["whatsapp", "telegram", "gmessages", "slack", "signal"])
         XCTAssertEqual(choices.first { $0.network == "slack" }?.flows, ["token", "email"])
-        XCTAssertEqual(choices.first { $0.network == "telegram" }?.needsSetUp, true)
         XCTAssertEqual(choices.first { $0.network == "signal" }?.isLinked, true)
         XCTAssertEqual(choices.first { $0.network == "whatsapp" }?.isLinked, false)
     }
@@ -385,7 +401,7 @@ final class LoginFlowModelTests: XCTestCase {
     /// 32 hexadecimal characters, upper and lower case, made up.
     private let madeUpHash = String(repeating: "0a1B", count: 8)
 
-    func testTelegramSetupValidatesSavesAndRestarts() {
+    func testTelegramKeysAreCheckedAsTheEngineChecksThem() {
         XCTAssertEqual(TelegramSetup.problems(apiID: "", apiHash: ""), [.apiID, .apiHash])
         XCTAssertEqual(TelegramSetup.problems(apiID: "0", apiHash: String(repeating: "a", count: 32)), [.apiID])
         XCTAssertEqual(TelegramSetup.problems(apiID: "-5", apiHash: String(repeating: "a", count: 32)), [.apiID])
@@ -397,23 +413,168 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertEqual(TelegramSetup.problems(apiID: "12345", apiHash: String(repeating: "a", count: 31)), [.apiHash])
         XCTAssertEqual(TelegramSetup.problems(apiID: " 12345 ", apiHash: " \(madeUpHash) "), [],
                        "spaces around a pasted value don't count, as in the engine")
+    }
 
+    /// A Courier that carries its own app ID never shows the keys screen: Telegram goes straight to its QR code.
+    func testTelegramWithABuiltInAppIDGoesStraightToTheQRCode() async {
         let harness = make()
-        harness.model.showTelegramSetup()
-        XCTAssertEqual(harness.model.screen, .telegramSetup)
+        harness.caller.answer("start", qr("tg-code"))
+        harness.caller.answer("wait", step(.complete, remoteName: "Made-up"))
+        harness.model.begin(network: "telegram")
+        XCTAssertEqual(harness.model.screen, .working(network: "telegram"))
+        await harness.model.settle()
+        // The QR code was asked for at once, and waited on: nothing in between asked for keys.
+        XCTAssertEqual(harness.caller.calls, [.start(network: "telegram", flow: "qr"), .wait(loginID: "L1")])
+        XCTAssertEqual(harness.model.screen, .linked(network: "telegram", remoteName: "Made-up"))
+        XCTAssertEqual(harness.counts.restarts, 0)
+    }
+
+    /// The pair the person saved before counts as much as the built-in one.
+    func testTelegramWithKeysInTheKeychainGoesStraightToTheQRCode() async {
+        let harness = make(builtIn: nil, keychain: [
+            TelegramCredentials.apiIDAccount: "1234567", TelegramCredentials.apiHashAccount: madeUpHash,
+        ])
+        harness.caller.answer("start", qr("tg-code"))
+        harness.caller.answer("wait", step(.complete, remoteName: "Made-up"))
+        harness.model.begin(network: "telegram")
+        await harness.model.settle()
+        XCTAssertEqual(harness.caller.calls.first, .start(network: "telegram", flow: "qr"))
+        XCTAssertEqual(harness.model.screen, .linked(network: "telegram", remoteName: "Made-up"))
+        XCTAssertEqual(harness.counts.restarts, 0)
+    }
+
+    /// A built-in pair that does not fit is no pair: the person is asked.
+    func testAnInvalidBuiltInAppIDMeansTheKeysAreAsked() {
+        let harness = make(builtIn: TelegramCredentials(apiID: "0", apiHash: "not hex"))
+        harness.model.begin(network: "telegram")
+        XCTAssertEqual(harness.model.screen, .telegramSetup(flow: "qr"))
+    }
+
+    func testTelegramWithoutKeysAsksForThemFirstThenRestartsWaitsAndLinks() async {
+        let harness = make(builtIn: nil)
+        harness.caller.answer("start", qr("tg-code"))
+        harness.caller.answer("wait", step(.complete, remoteName: "Made-up"))
+        harness.model.begin(network: "telegram")
+        await harness.model.settle()
+        XCTAssertEqual(harness.model.screen, .telegramSetup(flow: "qr"), "the keys come first")
+        XCTAssertEqual(harness.caller.calls, [], "no sign-in is started before there are keys")
+
+        // Values that don't fit save nothing and keep the screen.
         XCTAssertFalse(harness.model.saveTelegram(apiID: "nope", apiHash: "nope"))
         XCTAssertEqual(harness.counts.restarts, 0)
         XCTAssertNil(TelegramCredentials.load(from: harness.credentials), "nothing is saved until both fit")
+        XCTAssertEqual(harness.model.screen, .telegramSetup(flow: "qr"))
+        XCTAssertNotNil(harness.model.notice)
 
+        // Telegram comes up on the third look: not started, then starting, then running. The sign-in has not
+        // been started before that.
+        var callsWhenRunning: [ScriptedLoginCaller.Call]?
+        let counts = harness.counts
+        let caller = harness.caller
+        counts.onReload = {
+            let states: [AccountState] = [.notStarted, .starting, .running]
+            let state = states[min(counts.reloads, states.count) - 1]
+            counts.accounts = LoginFlowModelTests.accounts.map { account in
+                var account = account
+                if account.network == "telegram" { account.state = state }
+                return account
+            }
+            if state == .running, callsWhenRunning == nil { callsWhenRunning = caller.calls }
+        }
         XCTAssertTrue(harness.model.saveTelegram(apiID: " 12345 ", apiHash: madeUpHash))
         XCTAssertEqual(TelegramCredentials.load(from: harness.credentials),
                        TelegramCredentials(apiID: "12345", apiHash: madeUpHash))
+        XCTAssertEqual(harness.counts.restarts, 1, "the engine restarts to start Telegram with the keys")
+        XCTAssertEqual(harness.model.screen, .working(network: "telegram"))
+        XCTAssertNil(harness.model.notice)
+        await harness.model.settle()
+
+        XCTAssertEqual(callsWhenRunning, [], "nothing started before Telegram was running")
+        XCTAssertEqual(harness.counts.reloads, 4, "three looks at Telegram, and one more when the link completed")
+        XCTAssertEqual(harness.caller.calls, [.start(network: "telegram", flow: "qr"), .wait(loginID: "L1")],
+                       "straight into Telegram's QR code, with no second look at the keys")
+        XCTAssertEqual(harness.model.screen, .linked(network: "telegram", remoteName: "Made-up"))
         XCTAssertEqual(harness.counts.restarts, 1)
-        guard case let .message(network: "telegram", text: text) = harness.model.screen else {
-            return XCTFail("expected a confirmation")
+    }
+
+    /// Another way in ("Other ways" on the picker) is the sign-in the keys lead on to.
+    func testTheFlowChosenSurvivesTheKeysScreen() async {
+        let harness = make(builtIn: nil)
+        let counts = harness.counts
+        counts.onReload = {
+            counts.accounts = LoginFlowModelTests.accounts.map { account in
+                var account = account
+                if account.network == "telegram" { account.state = .running }
+                return account
+            }
         }
-        XCTAssertFalse(text.contains("12345"), "the values are never shown after saving")
-        XCTAssertFalse(text.contains(madeUpHash))
+        harness.caller.answer("start", step(.userInput, fields: [inputField("phone_number", type: .phoneNumber)]))
+        harness.model.begin(network: "telegram", flow: "phone")
+        XCTAssertEqual(harness.model.screen, .telegramSetup(flow: "phone"))
+        XCTAssertTrue(harness.model.saveTelegram(apiID: "12345", apiHash: madeUpHash))
+        await harness.model.settle()
+        XCTAssertEqual(harness.caller.calls, [.start(network: "telegram", flow: "phone")])
+        guard case .input(network: "telegram", step: _) = harness.model.screen else {
+            return XCTFail("expected the phone number step, got \(harness.model.screen)")
+        }
+    }
+
+    /// Telegram never comes up: the wait is bounded and ends with a plain message, not a spinner.
+    func testTelegramThatDoesNotStartEndsWithAClearMessage() async {
+        let harness = make(builtIn: nil)
+        harness.model.begin(network: "telegram")
+        XCTAssertTrue(harness.model.saveTelegram(apiID: "12345", apiHash: madeUpHash))
+        await harness.model.settle()
+
+        XCTAssertEqual(harness.counts.reloads, 3, "it looked as often as the wait allows, and no more")
+        XCTAssertEqual(harness.caller.calls, [], "no sign-in was started")
+        XCTAssertEqual(harness.model.screen,
+                       .message(network: "telegram", text: LoginFlowModel.telegramDidNotStartText))
+        XCTAssertTrue(LoginFlowModel.telegramDidNotStartText.contains("saved your keys"))
+        XCTAssertNotNil(TelegramCredentials.load(from: harness.credentials), "the keys stay saved")
+        XCTAssertEqual(harness.counts.restarts, 1)
+
+        // Trying again does not ask for them again.
+        harness.caller.answer("start", qr("tg-code"))
+        harness.caller.answer("wait", step(.complete, remoteName: "Made-up"))
+        harness.model.begin(network: "telegram")
+        await harness.model.settle()
+        XCTAssertEqual(harness.caller.calls, [.start(network: "telegram", flow: "qr"), .wait(loginID: "L1")])
+    }
+
+    func testClosingTheSheetWhileTelegramStartsLeavesNothingStarted() async {
+        let harness = make(builtIn: nil)
+        let counts = harness.counts
+        counts.onReload = {
+            counts.accounts = LoginFlowModelTests.accounts.map { account in
+                var account = account
+                if account.network == "telegram" { account.state = .running }
+                return account
+            }
+        }
+        harness.model.begin(network: "telegram")
+        XCTAssertTrue(harness.model.saveTelegram(apiID: "12345", apiHash: madeUpHash))
+        harness.model.close()
+        await harness.model.settle()
+        XCTAssertEqual(harness.model.screen, .closed)
+        XCTAssertEqual(harness.caller.calls, [], "the person walked away: no sign-in is started")
+    }
+
+    func testSavingKeysOutsideTheKeysScreenDoesNothing() {
+        let harness = make(builtIn: nil)
+        XCTAssertFalse(harness.model.saveTelegram(apiID: "12345", apiHash: madeUpHash))
+        XCTAssertNil(TelegramCredentials.load(from: harness.credentials))
+        XCTAssertEqual(harness.counts.restarts, 0)
+    }
+
+    /// The keys screen is for Telegram alone.
+    func testOtherNetworksNeverAskForTelegramsKeys() async {
+        let harness = make(builtIn: nil)
+        harness.caller.answer("start", qr("code-1"))
+        harness.caller.answer("wait", step(.complete, remoteName: "Made-up"))
+        harness.model.begin(network: "whatsapp")
+        await harness.model.settle()
+        XCTAssertEqual(harness.caller.calls.first, .start(network: "whatsapp", flow: "qr"))
     }
 }
 

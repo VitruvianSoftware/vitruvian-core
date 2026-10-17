@@ -102,9 +102,6 @@
 /* Banner button: signs in to the network again. */
 "Reconnect" = "Reconnect";
 
-/* Banner button: asks for what the network needs before it can start. */
-"Set up" = "Set up";
-
 /* The date line in a chat for messages sent today. */
 "Today" = "Today";
 
@@ -460,8 +457,8 @@
 /* The title of Telegram's set-up. */
 "Set up Telegram" = "Set up Telegram";
 
-/* Telegram's set-up. api_id, api_hash and API development tools are Telegram's own names; keep them as they are. */
-"Telegram asks every app for its own credentials. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain." = "Telegram asks every app for its own credentials. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain.";
+/* Telegram's keys, the first step of linking Telegram in a build with no app ID of its own. api_id, api_hash and API development tools are Telegram's own names; keep them as they are. */
+"This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram." = "This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram.";
 
 /* The link to Telegram's site for app credentials. */
 "Open my.telegram.org" = "Open my.telegram.org";
@@ -472,8 +469,8 @@
 /* Under Telegram's api_hash field when it is not 32 hexadecimal characters. */
 "api_hash is 32 letters and digits." = "api_hash is 32 letters and digits.";
 
-/* The button that saves Telegram's credentials. */
-"Save" = "Save";
+/* The button that saves Telegram's credentials and goes on to link Telegram. */
+"Save and continue" = "Save and continue";
 
 /* Telegram's credentials do not fit; nothing was saved. */
 "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org." = "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org.";
@@ -481,8 +478,8 @@
 /* The Keychain refused Telegram's credentials. */
 "Courier couldn’t save these in your Keychain." = "Courier couldn’t save these in your Keychain.";
 
-/* Telegram's credentials were saved and the engine is restarting with them. */
-"Saved. Courier is restarting its engine to start Telegram. Then add Telegram from Add a network." = "Saved. Courier is restarting its engine to start Telegram. Then add Telegram from Add a network.";
+/* Telegram did not start within a minute of Courier's engine restarting with the saved keys. */
+"Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again." = "Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again.";
 
 /* The menu-bar icon's spoken name, and the app's name. */
 "Courier" = "Courier";

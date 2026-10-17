@@ -12,6 +12,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load(":version.bzl", "COURIER_VERSION")
@@ -56,6 +57,8 @@ apple_bundle_version(
     name = "version",
     build_version = COURIER_VERSION,
     short_version_string = COURIER_VERSION,
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
 )
 
 # The engine, as the file the app bundles. macos_application's
@@ -116,6 +119,42 @@ sh_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# bazel run --config=macos-app //apps/desktop/courier/app:install [-- --dest DIR]
+#
+# Puts the app Bazel built into /Applications (or DIR) with Courier's own Telegram app ID added.
+# It builds nothing but its data (Courier.zip). The app ID never passes through a Bazel action,
+# whose outputs can land in the remote cache: scripts/inject-app-credentials.sh adds it to the
+# unpacked app afterwards, on this Mac, from the environment or the gitignored secret store
+# (tools/sync-env-secrets), and signs the app again. See README.md.
+sh_binary(
+    name = "install",
+    srcs = ["scripts/install.sh"],
+    args = [
+        "$(rootpath scripts/inject-app-credentials.sh)",
+        "$(rootpaths :Courier)",
+    ],
+    data = [
+        "scripts/inject-app-credentials.sh",
+        ":Courier",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The injector against a tiny stand-in app: it writes a valid TelegramApp.plist, signs the app so
+# it passes codesign --verify, refuses bad values without printing them, and honours
+# --allow-missing. macOS-only (plutil, codesign) and `manual`: the courier-app-macos unit below
+# runs it by label.
+sh_test(
+    name = "inject_app_credentials_test",
+    size = "small",
+    srcs = ["scripts/inject_app_credentials_test.sh"],
+    args = ["$(rootpath scripts/inject-app-credentials.sh)"],
+    data = ["scripts/inject-app-credentials.sh"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 # What the app assumes about its engine (the flags it starts it with, the
 # protocol number), checked against the engine and protocol.json. Not
 # `manual` and not tied to macOS: it is the only test here that the presubmit
@@ -147,6 +186,7 @@ pipeline_unit(
         ":CourierCoreTests",
         ":app_holds_engine_test",
         ":engine_contract_test",
+        ":inject_app_credentials_test",
     ],
     tier = "L1",
     # A cold build of the engine it bundles is libsignal's 2,000+ actions

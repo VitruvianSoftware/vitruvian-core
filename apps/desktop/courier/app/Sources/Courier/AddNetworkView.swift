@@ -126,7 +126,7 @@ struct AddNetworkView: View {
     }
 }
 
-/// One network in the picker: linked, needing set-up, or its ways to sign in, the app's choice first.
+/// One network in the picker: linked, or its ways to sign in, the app's choice first.
 private struct NetworkChoiceRow: View {
     let choice: NetworkChoice
     @ObservedObject var login: LoginFlowModel
@@ -139,8 +139,6 @@ private struct NetworkChoiceRow: View {
             if choice.isLinked {
                 Text(String(localized: "Linked"))
                     .foregroundStyle(.secondary)
-            } else if choice.needsSetUp {
-                Button(String(localized: "Set up"), action: login.showTelegramSetup)
             } else if let first = choice.flows.first {
                 if choice.flows.count > 1 {
                     Menu {

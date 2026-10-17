@@ -58,8 +58,6 @@ public struct NetworkChoice: Equatable, Identifiable, Sendable {
     public let flows: [String]
     /// The account works: linking it again is refused (-32013), so the picker says "Linked".
     public let isLinked: Bool
-    /// The network is not running for want of what only the person can give (Telegram's api_id and api_hash).
-    public let needsSetUp: Bool
 
     public var id: String { network }
 }
@@ -88,10 +86,35 @@ public enum TelegramSetup {
     }
 }
 
-/// Adding a network, from the picker to "Linked as …", and Telegram's set-up.
+/// How long to wait for Telegram to start after the engine is restarted with a pair just saved: look at the
+/// accounts every `interval` seconds, at most `attempts` times. `sleep` is the wait between; tests give one that
+/// returns at once.
+public struct TelegramStartWait: Sendable {
+    public var attempts: Int
+    public var interval: TimeInterval
+    public var sleep: @Sendable (TimeInterval) async throws -> Void
+
+    public init(timeout: TimeInterval, interval: TimeInterval,
+                sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
+                    try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+                }) {
+        self.attempts = max(1, Int((timeout / interval).rounded(.up)))
+        self.interval = interval
+        self.sleep = sleep
+    }
+
+    /// A minute, looking twice a second.
+    public static let standard = TelegramStartWait(timeout: 60, interval: 0.5)
+}
+
+/// Adding a network, from the picker to "Linked as …", and Telegram's keys when the app has none.
 ///
 /// - The picker lists every network the engine knows, each with the flows the app offers for it, its choice
 ///   first (`offeredFlows`).
+/// - Telegram needs an app ID. A finished Courier carries its own (TelegramBuiltIn), so Telegram goes straight to
+///   its QR code. A build without one asks for the pair first, as the first step of the same flow: it is saved in
+///   the Keychain, the engine restarts to start Telegram with it, and when Telegram is running the sign-in
+///   carries on by itself. If Telegram does not start within a minute, the app says so.
 /// - Google Messages first warns that linking it here ends its web session elsewhere; only Continue starts it.
 /// - A display step (a QR code, an emoji, a code) waits on the phone with login.wait and shows each next step.
 /// - A user_input step checks each value against its pattern and options as it is typed, and sends only the
@@ -118,9 +141,11 @@ public final class LoginFlowModel: ObservableObject {
         case signIn(network: String, step: LoginStep)
         case linked(network: String, remoteName: String)
         /// The end of a sign-in that did not link: what happened, in the app's words (or an unsupported step's
-        /// advice). Also Telegram's "saved".
+        /// advice).
         case message(network: String?, text: String)
-        case telegramSetup
+        /// Telegram's api_id and api_hash, asked for before its sign-in because the app has none of its own.
+        /// `flow` is the sign-in to start once Telegram is running.
+        case telegramSetup(flow: String)
     }
 
     /// How a user_input field is typed.
@@ -142,6 +167,8 @@ public final class LoginFlowModel: ObservableObject {
     private let accounts: @MainActor () -> [Account]
     private let reloadAccounts: @MainActor () async -> Void
     private let credentials: CredentialStore
+    private let telegramCredentials: TelegramCredentialSource
+    private let telegramWait: TelegramStartWait
     private let restartEngine: @MainActor () -> Void
     private var subscription: AnyCancellable?
 
@@ -155,11 +182,14 @@ public final class LoginFlowModel: ObservableObject {
 
     public init(caller: LoginCalling, accounts: @escaping @MainActor () -> [Account],
                 reloadAccounts: @escaping @MainActor () async -> Void, credentials: CredentialStore,
-                restartEngine: @escaping @MainActor () -> Void) {
+                builtInCredentials: @escaping @Sendable () -> TelegramCredentials? = { TelegramBuiltIn.load() },
+                telegramWait: TelegramStartWait = .standard, restartEngine: @escaping @MainActor () -> Void) {
         self.caller = caller
         self.accounts = accounts
         self.reloadAccounts = reloadAccounts
         self.credentials = credentials
+        self.telegramCredentials = TelegramCredentialSource(store: credentials, builtIn: builtInCredentials)
+        self.telegramWait = telegramWait
         self.restartEngine = restartEngine
     }
 
@@ -203,8 +233,7 @@ public final class LoginFlowModel: ObservableObject {
         accounts().map { account in
             NetworkChoice(network: account.network, displayName: account.displayName,
                           flows: Self.offeredFlows(network: account.network, reported: account.flows),
-                          isLinked: Self.workingStates.contains(account.state),
-                          needsSetUp: account.network == "telegram" && account.state == .notStarted)
+                          isLinked: Self.workingStates.contains(account.state))
         }
     }
 
@@ -234,14 +263,9 @@ public final class LoginFlowModel: ObservableObject {
         screen = .picker
     }
 
-    /// "Set up" on Telegram's banner.
-    public func showTelegramSetup() {
-        endSignIn()
-        screen = .telegramSetup
-    }
-
     /// Starts signing in to `network` with `flow`, or the first flow offered for it. Google Messages warns
-    /// first. Any sign-in already open here is cancelled.
+    /// first, and Telegram asks for its keys first when the app has none. Any sign-in already open here is
+    /// cancelled.
     public func begin(network: String, flow: String? = nil) {
         endSignIn()
         let reported = accounts().first { $0.network == network }?.flows ?? []
@@ -251,6 +275,10 @@ public final class LoginFlowModel: ObservableObject {
         }
         if network == "gmessages" {
             screen = .googleWarning(network: network, flow: flow)
+            return
+        }
+        if network == "telegram", !telegramCredentials.hasCredentials {
+            screen = .telegramSetup(flow: flow)
             return
         }
         start(network: network, flow: flow)
@@ -458,10 +486,12 @@ public final class LoginFlowModel: ObservableObject {
 
     // MARK: - Telegram
 
-    /// Checks and saves Telegram's credentials, then restarts the engine so it starts Telegram with them. False,
-    /// with a notice, when they don't fit or the Keychain refused them; nothing is saved then.
+    /// Checks and saves Telegram's keys, restarts the engine so it starts Telegram with them, and carries on into
+    /// Telegram's sign-in once Telegram is running. False, with a notice, when they don't fit or the Keychain
+    /// refused them; nothing is saved then, and the keys screen stays.
     @discardableResult
     public func saveTelegram(apiID: String, apiHash: String) -> Bool {
+        guard case let .telegramSetup(flow) = screen else { return false }
         guard TelegramSetup.problems(apiID: apiID, apiHash: apiHash).isEmpty else {
             notice = String(localized: "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org.")
             return false
@@ -474,13 +504,47 @@ public final class LoginFlowModel: ObservableObject {
             notice = String(localized: "Courier couldn’t save these in your Keychain.")
             return false
         }
+        session += 1
+        let session = session
+        network = "telegram"
         notice = nil
+        screen = .working(network: "telegram")
         restartEngine()
-        screen = .message(network: "telegram", text: String(localized: "Saved. Courier is restarting its engine to start Telegram. Then add Telegram from Add a network."))
+        run { await self.startAfterTelegramRuns(flow: flow, session: session) }
         return true
     }
 
+    /// The engine reads the keys only when it starts, so Telegram is not running until the restart is done. Looks
+    /// at the accounts until it is, then starts its sign-in; says so, calmly, if it does not come up in time.
+    private func startAfterTelegramRuns(flow: String, session: Int) async {
+        let wait = telegramWait
+        for _ in 0 ..< wait.attempts {
+            await reloadAccounts()
+            guard session == self.session else { return }
+            if let telegram = accounts().first(where: { $0.network == "telegram" }), Self.hasStarted(telegram.state) {
+                start(network: "telegram", flow: flow)
+                return
+            }
+            do {
+                try await wait.sleep(wait.interval)
+            } catch {
+                return
+            }
+            guard session == self.session else { return }
+        }
+        end(network: "telegram", text: Self.telegramDidNotStartText)
+    }
+
+    /// A network the engine started: not "not started", and past the bridge's own "starting".
+    private static func hasStarted(_ state: AccountState) -> Bool {
+        state != .notStarted && state != .starting
+    }
+
     // MARK: - Words
+
+    static var telegramDidNotStartText: String {
+        String(localized: "Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again.")
+    }
 
     public static var cantDoThisStepText: String {
         String(localized: "This sign-in needs a step Courier can’t do yet.")

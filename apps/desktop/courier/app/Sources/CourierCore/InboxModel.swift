@@ -21,8 +21,6 @@ public struct AccountBanner: Equatable, Identifiable, Sendable {
     public enum Action: Equatable, Sendable {
         /// Starts that network's login again.
         case reconnect
-        /// Asks for what the network needs before it can start (Telegram's api_id and api_hash).
-        case setUp
     }
 
     public let network: String
@@ -63,12 +61,11 @@ public final class InboxModel: ObservableObject {
 
     /// "Reconnect" on a banner: start that network's login again. Task 9 sets it.
     public var onReconnect: @MainActor (_ network: String) -> Void = { _ in }
-    /// "Set up" on a banner: ask for what the network needs. Task 9 sets it.
-    public var onSetUp: @MainActor (_ network: String) -> Void = { _ in }
     /// "Add a network". Task 9 sets it.
     public var onAddNetwork: @MainActor () -> Void = {}
 
     private let appModel: AppModel
+    private let hasTelegramCredentials: @MainActor () -> Bool
     private let window: TimeInterval
     private let retryDelay: TimeInterval
     private let sleep: @Sendable (TimeInterval) async -> Void
@@ -81,12 +78,17 @@ public final class InboxModel: ObservableObject {
     private var readAgain = false
 
     /// - Parameters:
+    ///   - hasTelegramCredentials: whether the app has an app ID to start Telegram with (its own, or one the person
+    ///     saved). Without one Telegram is "not started" by design, and Add a network asks for the keys, so that
+    ///     is no banner; with one, a Telegram that did not start is a fault and says so. The default says it has.
     ///   - window: how long changes are gathered before one read, in seconds.
     ///   - retryDelay: how long after a failed read the next one waits, in seconds.
     ///   - sleep: waits `window` and `retryDelay`; tests give one they can open.
-    public init(appModel: AppModel, window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
+    public init(appModel: AppModel, hasTelegramCredentials: @escaping @MainActor () -> Bool = { true },
+                window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
         self.appModel = appModel
+        self.hasTelegramCredentials = hasTelegramCredentials
         self.window = window
         self.retryDelay = retryDelay
         self.sleep = sleep
@@ -136,8 +138,11 @@ public final class InboxModel: ObservableObject {
                 AccountBanner(network: account.network, displayName: account.displayName, reason: .unknownError,
                               detail: account.error, action: .reconnect)
             case .notStarted:
-                AccountBanner(network: account.network, displayName: account.displayName, reason: .notStarted,
-                              detail: account.notStarted, action: account.network == "telegram" ? .setUp : nil)
+                // Telegram without an app ID is not a fault: Add a network asks for the keys when it is picked.
+                account.network == "telegram" && !hasTelegramCredentials()
+                    ? nil
+                    : AccountBanner(network: account.network, displayName: account.displayName,
+                                    reason: .notStarted, detail: account.notStarted, action: nil)
             default:
                 nil
             }
@@ -174,7 +179,6 @@ public final class InboxModel: ObservableObject {
     public func perform(_ banner: AccountBanner) {
         switch banner.action {
         case .reconnect: onReconnect(banner.network)
-        case .setUp: onSetUp(banner.network)
         case nil: break
         }
     }

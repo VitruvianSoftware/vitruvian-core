@@ -28,7 +28,7 @@ struct MainWindow: View {
         case .connected:
             if inbox.showsAddNetwork {
                 VStack(spacing: 0) {
-                    // Telegram's "Set up" is here too: it has to be set up before it can be linked.
+                    // A network that could not start shows here too, before any network is linked.
                     ForEach(inbox.banners) { banner in
                         AccountBannerView(banner: banner) { inbox.perform(banner) }
                     }
