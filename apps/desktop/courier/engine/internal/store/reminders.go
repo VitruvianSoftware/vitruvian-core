@@ -12,7 +12,7 @@ import (
 
 // A reminder's condition.
 const (
-	// Inferred: "If no reply" means "if I haven't sent a message since setting it" (repliedSinceSQL).
+	// Inferred (inventory 01 §18): "If no reply" means "if I haven't sent a message since setting it" (repliedSinceSQL).
 	condIfNoReply = "if_no_reply"
 	condAlways    = "always"
 )

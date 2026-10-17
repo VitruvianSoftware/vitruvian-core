@@ -277,8 +277,8 @@ func (s *Store) AdvanceReadLocal(ctx context.Context, roomID, eventID string, ts
 // advanceMarker moves table's read marker for roomID (reads or local_reads) to eventID, if that is later than
 // where it is. The marker keeps the event's own time, so its (ts, seq) is exactly that event's. An event we do
 // not have is kept at fallbackTS and compares on ts alone. It reports whether the marker moved, and publishes a
-// "read" change when it did. A marker that moves is a read: with an enabled after_read rule it schedules the
-// chat's archive (scheduleArchive), in the same transaction.
+// "read" change when it did. A marker that moves to a message received after Courier first saw the chat is a read:
+// with an enabled after_read rule it schedules the chat's archive (scheduleArchive), in the same transaction.
 func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time) (bool, error) {
 	moved := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
@@ -303,7 +303,17 @@ func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string
 			return err
 		}
 		moved = true
-		// I read the chat: with an enabled after_read rule it is archived that long from now.
+		// I read the chat: with an enabled after_read rule it is archived that long from now. Only a read of a
+		// message Courier received live counts, one after it first saw the chat (rooms.created_at is set when the
+		// store first inserts the room and never changes). The markers an account brings in on its first sync are
+		// older reads from the phone; scheduling on them would archive every chat already read there.
+		var firstSeen int64
+		if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT created_at FROM rooms WHERE room_id=$1), 0)", roomID).Scan(&firstSeen); err != nil {
+			return err
+		}
+		if firstSeen == 0 || newTS <= firstSeen {
+			return nil
+		}
 		return s.scheduleArchive(ctx, roomID, trigAfterRead, s.now().UnixMilli())
 	})
 	if err == nil && moved {

@@ -128,6 +128,34 @@ func TestAfterReadArchivesAfterTheDelay(t *testing.T) {
 	require.True(t, rowOf(t, s, "!phone").Archived)
 }
 
+// Ruling 15: the read markers an account brings in when it first syncs are reads I did on my phone before Courier
+// knew the chat. They don't schedule archives, or turning on "after I read" and adding an account would archive
+// every chat already read there. Only a read of a message Courier received live does: one after the chat was
+// first seen (rooms.created_at).
+func TestSyncedReadMarkersDoNotScheduleArchives(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	firstSeen := time.UnixMilli(1_000_000_000)
+	clock := clockAt(s, firstSeen.Add(time.Hour))
+	mkRule(t, s, "all", "after_read", "all", 10*time.Minute)
+	for _, id := range []string{"!local", "!phone"} {
+		require.NoError(t, s.UpsertRoom(ctx, Room{ID: id, Network: "whatsapp", Name: id, CreatedAt: firstSeen}))
+		mkMsg(t, s, id, "$old"+id, ghost, "m.room.message", text("synced"), firstSeen.Add(-time.Millisecond))
+		mkMsg(t, s, id, "$new"+id, ghost, "m.room.message", text("live"), firstSeen.Add(time.Millisecond))
+	}
+
+	require.NoError(t, s.MarkReadLocal(ctx, "!local", "$old!local", firstSeen.Add(-time.Millisecond)))
+	require.NoError(t, s.SetRead(ctx, "!phone", "$old!phone", firstSeen.Add(-time.Millisecond)))
+	require.True(t, dueAt(t, s, "!local").IsZero(), "a read of a message from before Courier saw the chat")
+	require.True(t, dueAt(t, s, "!phone").IsZero(), "the same from the network's sync")
+
+	clock.set(firstSeen.Add(2 * time.Hour))
+	require.NoError(t, s.MarkReadLocal(ctx, "!local", "$new!local", firstSeen.Add(time.Millisecond)))
+	require.NoError(t, s.SetRead(ctx, "!phone", "$new!phone", firstSeen.Add(time.Millisecond)))
+	want := firstSeen.Add(2*time.Hour + 10*time.Minute)
+	require.Equal(t, want, dueAt(t, s, "!local"), "a read of a message received live: now + the delay")
+	require.Equal(t, want, dueAt(t, s, "!phone"))
+}
+
 // Ruling 8: only a message from someone else that is newer than the chat's newest message cancels a pending
 // auto-archive.
 func TestBackfillDoesNotCancelAutoArchive(t *testing.T) {
