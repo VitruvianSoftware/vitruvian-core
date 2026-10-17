@@ -49,15 +49,16 @@ public enum NotificationPolicy {
         public var now: Int64
         /// The chat that is open.
         public var openRoomID: String?
-        /// The window is the one being used (key), so the person can see the open chat.
-        public var windowIsKey: Bool
+        /// The person is looking at the open chat (`Attention`): the window is key, the screen unlocked and awake,
+        /// and they are not idle.
+        public var isLooking: Bool
 
-        public init(me: String, connectedAt: Int64, now: Int64, openRoomID: String?, windowIsKey: Bool) {
+        public init(me: String, connectedAt: Int64, now: Int64, openRoomID: String?, isLooking: Bool) {
             self.me = me
             self.connectedAt = connectedAt
             self.now = now
             self.openRoomID = openRoomID
-            self.windowIsKey = windowIsKey
+            self.isLooking = isLooking
         }
     }
 
@@ -66,14 +67,15 @@ public enum NotificationPolicy {
     /// Yes for a message or a sticker that is not from me, in a chat that is not muted, that is live (sent after the
     /// app connected and not more than two minutes ago: the first sync's history must not notify), and that is not
     /// in the chat the person is looking at. Reactions, edits, deletions and anything the app cannot read do not.
-    /// A notification for another chat does come while the window is in front.
+    /// A notification for another chat does come while the window is in front, and one for the open chat does
+    /// while nobody is looking at it (the screen locked or asleep, or the person away).
     public static func shouldNotify(event: Event, room: InboxRow, context: Context) -> Bool {
         guard event.type == "m.room.message" || event.type == "m.sticker" else { return false }
         guard !Timeline.isEdit(event) else { return false }
         guard !event.mine, event.sender != context.me else { return false }
         guard !room.muted else { return false }
         guard event.ts >= context.connectedAt, context.now - event.ts <= liveWindowMillis else { return false }
-        if context.windowIsKey, context.openRoomID == event.roomID { return false }
+        if context.isLooking, context.openRoomID == event.roomID { return false }
         return true
     }
 

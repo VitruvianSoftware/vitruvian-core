@@ -36,7 +36,8 @@ final class ConversationModelTests: XCTestCase {
         var counts: [String: Int] = [:]
     }
 
-    private func start(_ events: [String: [[String: Any]]], windowIsKey: Bool = true) async throws -> Harness {
+    private func start(_ events: [String: [[String: Any]]], windowIsKey: Bool = true,
+                       presence: StaticPresence? = nil) async throws -> Harness {
         let script = ConversationScript(events: events)
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
@@ -47,7 +48,8 @@ final class ConversationModelTests: XCTestCase {
             credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         let unread = UnreadBox()
-        let conversation = ConversationModel(appModel: app, unreadCount: { unread.counts[$0] ?? 0 })
+        let conversation = ConversationModel(appModel: app, unreadCount: { unread.counts[$0] ?? 0 },
+                                             attention: Attention(source: presence ?? StaticPresence(), pollInterval: nil))
         conversation.setWindowKey(windowIsKey)
         app.start()
         try await waitUntil { app.client != nil }
@@ -359,6 +361,42 @@ final class ConversationModelTests: XCTestCase {
 
         // My own message, a reaction and a status change are not messages to read.
         h.script.add("!a", textEvent(id: "$4", room: "!a", at: 4, mine: true, status: "pending"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$4"])
+        try await waitUntil { h.messageIDs().last == "$4" }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.count("room.markRead"), 2)
+        await stop(h)
+    }
+
+    func testAKeyWindowNobodyIsLookingAtDoesNotMarkReadUntilTheyAre() async throws {
+        let presence = StaticPresence()
+        presence.isScreenLocked = true
+        let h = try await start(["!a": history(2)], presence: presence)
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.count("room.markRead"), 0, "the window is key, but the screen is locked")
+
+        // Unlocked: the chat is read then.
+        presence.isScreenLocked = false
+        presence.onChange?()
+        try await waitUntil { h.count("room.markRead") == 1 }
+
+        // Away from the keyboard: a new message waits, and is read when they come back.
+        presence.secondsSinceLastInput = Attention.idleLimit + 1
+        h.conversation.attention.reevaluate()
+        h.script.add("!a", textEvent(id: "$3", room: "!a", at: 3))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$3"])
+        try await waitUntil { h.messageIDs().last == "$3" }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.count("room.markRead"), 1, "nobody has touched the Mac for three minutes")
+        presence.secondsSinceLastInput = 0
+        h.conversation.attention.reevaluate()
+        try await waitUntil { h.count("room.markRead") == 2 }
+
+        // The view went away (⌘W): an open chat in a closed window is not being read.
+        h.conversation.setWindowKey(false)
+        h.script.add("!a", textEvent(id: "$4", room: "!a", at: 4))
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$4"])
         try await waitUntil { h.messageIDs().last == "$4" }
         try await Task.sleep(nanoseconds: 100_000_000)

@@ -14,7 +14,7 @@ final class NotificationPolicyTests: XCTestCase {
 
     private func context(open: String? = nil, key: Bool = false, now: Int64? = nil) -> NotificationPolicy.Context {
         NotificationPolicy.Context(me: Timeline.meUserID, connectedAt: connectedAt, now: now ?? self.now,
-                                   openRoomID: open, windowIsKey: key)
+                                   openRoomID: open, isLooking: key)
     }
 
     private func row(_ id: String = "!a", name: String = "Chat A", direct: Bool = true, unread: Int = 0,
@@ -64,7 +64,8 @@ final class NotificationPolicyTests: XCTestCase {
 
     func testOpenAndFocusedChatDoesNotNotify() {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(), room: row(), context: context(open: "!a", key: true)))
-        // The chat is open, but the window is not the one being used: the person is not looking at it.
+        // The chat is open, but the person is not looking at it: the window is not the one being used, or the
+        // screen is locked or asleep, or they are away (Attention decides; the policy is told).
         XCTAssertTrue(NotificationPolicy.shouldNotify(event: event(), room: row(), context: context(open: "!a", key: false)))
     }
 

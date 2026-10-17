@@ -36,6 +36,8 @@ struct ConversationView: View {
         .onChange(of: controlActiveState, initial: true) { _, state in
             conversation.setWindowKey(state == .key)
         }
+        // A window that closes (⌘W) is never told it stopped being key: going away says it.
+        .onDisappear { conversation.setWindowKey(false) }
         .onExitCommand { _ = composer.escape() }
     }
 

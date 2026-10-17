@@ -37,7 +37,7 @@ public final class NotificationCoordinator {
     private let appModel: AppModel
     private let delivery: any NotificationDelivering
     private let row: @MainActor (String) -> InboxRow?
-    private let windowIsKey: @MainActor () -> Bool
+    private let isLooking: @MainActor () -> Bool
     private let restoreDraft: @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void
     private let replyTimeout: TimeInterval?
     private let showWindow: @MainActor () -> Void
@@ -55,7 +55,7 @@ public final class NotificationCoordinator {
 
     /// - Parameters:
     ///   - row: the inbox's row for a chat, if it has one (its name and whether it is muted).
-    ///   - windowIsKey: whether the window being used is the app's (so the open chat is in front of the person).
+    ///   - isLooking: whether the person is looking at the open chat (`Attention.isLooking`).
     ///   - restoreDraft: puts text that could not be sent into a chat's composer draft; the last argument says the
     ///     engine did not answer, so it may have been sent.
     ///   - replyTimeout: how long a reply waits for the engine; nil is the client's own limit (30 s).
@@ -64,7 +64,7 @@ public final class NotificationCoordinator {
     ///   - sleep: waits `window`.
     ///   - clock: the time now; tests give one they move.
     public init(appModel: AppModel, delivery: any NotificationDelivering,
-                row: @escaping @MainActor (String) -> InboxRow?, windowIsKey: @escaping @MainActor () -> Bool,
+                row: @escaping @MainActor (String) -> InboxRow?, isLooking: @escaping @MainActor () -> Bool,
                 restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void,
                 showWindow: @escaping @MainActor () -> Void, window: TimeInterval = 0.1, replyTimeout: TimeInterval? = nil,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
@@ -72,7 +72,7 @@ public final class NotificationCoordinator {
         self.appModel = appModel
         self.delivery = delivery
         self.row = row
-        self.windowIsKey = windowIsKey
+        self.isLooking = isLooking
         self.restoreDraft = restoreDraft
         self.replyTimeout = replyTimeout
         self.showWindow = showWindow
@@ -176,7 +176,7 @@ public final class NotificationCoordinator {
         guard let connectedAt = appModel.connectedAt else { return }
         let context = NotificationPolicy.Context(
             me: Timeline.meUserID, connectedAt: Self.millis(connectedAt), now: Self.millis(clock()),
-            openRoomID: appModel.selectedRoomID, windowIsKey: windowIsKey())
+            openRoomID: appModel.selectedRoomID, isLooking: isLooking())
         // A message deleted before it was announced is not announced.
         let deleted = NotificationPolicy.redactedEventIDs(in: events)
         for event in events.reversed() where seen.insert(event.eventID) {

@@ -47,7 +47,8 @@ public final class ConversationModel: ObservableObject {
     public private(set) var lastOutgoingID: String?
 
     public let composer: ComposerModel
-    public var isWindowKey: Bool { windowIsKey }
+    /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
+    public let attention: Attention
 
     private let appModel: AppModel
     private let unreadCount: @MainActor (String) -> Int
@@ -74,15 +75,17 @@ public final class ConversationModel: ObservableObject {
     private var dropPending = false
 
     // Reading.
-    private var windowIsKey = false
     private var needsRead = false
 
-    /// - Parameter unreadCount: a chat's unread count as the inbox has it, read when the chat is opened (the
-    ///   "New" divider goes above that many of the newest messages from others).
+    /// - Parameters:
+    ///   - unreadCount: a chat's unread count as the inbox has it, read when the chat is opened (the "New" divider
+    ///     goes above that many of the newest messages from others).
+    ///   - attention: whether the person is looking; nil makes one that only follows `setWindowKey`.
     public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
-                calendar: Calendar = .autoupdatingCurrent) {
+                attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent) {
         self.appModel = appModel
         self.unreadCount = unreadCount
+        self.attention = attention ?? Attention(source: StaticPresence(), pollInterval: nil)
         self.calendar = calendar
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel))
         composer.onSettled = { [weak self] in self?.requestRefetch() }
@@ -92,6 +95,7 @@ public final class ConversationModel: ObservableObject {
         }
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
+        self.attention.onReturn { [weak self] in self?.personReturned() }
     }
 
     // MARK: - Opening
@@ -234,12 +238,12 @@ public final class ConversationModel: ObservableObject {
         isLoaded = true
 
         if !wasLoaded {
-            if windowIsKey { markRead() }
+            if attention.isLooking { markRead() }
         } else {
             let incoming = fresh.filter(Timeline.isIncomingMessage)
             if !incoming.isEmpty {
                 if !isAtBottom { newMessageCount += incoming.count }
-                if windowIsKey { markRead() } else { needsRead = true }
+                if attention.isLooking { markRead() } else { needsRead = true }
             }
         }
     }
@@ -303,10 +307,14 @@ public final class ConversationModel: ObservableObject {
 
     // MARK: - Reading and scrolling
 
-    /// The window of the open chat became key, or stopped being key.
+    /// The window of the open chat became key, or stopped being key (or the conversation view went away).
     public func setWindowKey(_ isKey: Bool) {
-        windowIsKey = isKey
-        if isKey, needsRead, isLoaded { markRead() }
+        attention.setWindowKey(isKey)
+    }
+
+    /// The person is looking again: what waited for them is read now.
+    private func personReturned() {
+        if needsRead, isLoaded { markRead() }
     }
 
     /// Tells the engine the open chat is read. The engine does nothing for a chat that already is.

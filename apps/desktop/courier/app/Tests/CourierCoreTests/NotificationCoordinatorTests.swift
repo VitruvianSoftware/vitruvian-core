@@ -53,7 +53,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let delivery = FakeDelivery()
         let window = WindowState()
         let coordinator = NotificationCoordinator(
-            appModel: app, delivery: delivery, row: { window.rows[$0] }, windowIsKey: { window.isKey },
+            appModel: app, delivery: delivery, row: { window.rows[$0] }, isLooking: { window.isKey },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
             window: gather, replyTimeout: replyTimeout, clock: { clock.date })
         if connected {

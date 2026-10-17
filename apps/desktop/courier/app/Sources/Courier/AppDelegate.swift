@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let inbox: InboxModel
     let conversation: ConversationModel
     let login: LoginFlowModel
+    /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
+    let attention: Attention
     let windowOpener = MainWindowOpener()
     private var signInWindows: SignInWindowPresenter?
     private var notifications: NotificationCoordinator?
@@ -29,10 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = AppModel(supervisor: supervisor)
         let inbox = InboxModel(appModel: model)
         self.inbox = inbox
+        let attention = Attention(source: SystemPresence())
+        self.attention = attention
         // The "New" divider goes above as many messages as the inbox counted unread when the chat was opened.
         conversation = ConversationModel(appModel: model, unreadCount: { id in
             inbox.rows.first { $0.roomID == id }?.unread ?? 0
-        })
+        }, attention: attention)
         let login = LoginFlowModel(appModel: model)
         self.login = login
         // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
@@ -50,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
-            windowIsKey: { [conversation] in conversation.isWindowKey },
+            isLooking: { [attention] in attention.isLooking },
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
