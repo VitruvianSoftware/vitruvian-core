@@ -81,13 +81,17 @@ public final class ConversationModel: ObservableObject {
     ///   - unreadCount: a chat's unread count as the inbox has it, read when the chat is opened (the "New" divider
     ///     goes above that many of the newest messages from others).
     ///   - attention: whether the person is looking; nil makes one that only follows `setWindowKey`.
+    ///   - savedDraft: a chat's draft as the engine keeps it (its inbox row's), for a chat opened with no text in
+    ///     the composer's memory.
     public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
-                attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent) {
+                attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent,
+                savedDraft: @escaping @MainActor (String) -> String = { _ in "" }) {
         self.appModel = appModel
         self.unreadCount = unreadCount
         self.attention = attention ?? Attention(source: StaticPresence(), pollInterval: nil)
         self.calendar = calendar
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel))
+        composer.savedDraft = savedDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
         composer.onSubmit = { [weak self] in self?.jumpToBottom() }
         subscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
@@ -152,8 +156,10 @@ public final class ConversationModel: ObservableObject {
         case let .room(room):
             // With no room, names or pictures changed in chats unknown: this one may be among them.
             if room == nil || room == open { requestRefetch() }
-        case .bridge, .resync:
-            break // resync reads through the app model's connect hooks
+        case .bridge, .resync, .spaces, .typing, .reminder:
+            // resync reads through the app model's connect hooks. Typing, spaces and a reminder change rows, not the
+            // chat's events (a reminder that fires brings a room change of its own).
+            break
         }
     }
 

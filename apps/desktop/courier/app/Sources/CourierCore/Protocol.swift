@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 1
+    public static let version = 2
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
 }
@@ -178,9 +178,11 @@ public struct Account: ProtocolType, Equatable {
     public var error: String
     public var remoteName: String
     public var notStarted: String
+    /// The chat changes Courier also sends to this network. Everything else stays on this Mac.
+    public var syncs: [AccountSync]
 
     public init(network: String, displayName: String, flows: [String], state: AccountState, error: String = "",
-                remoteName: String = "", notStarted: String = "") {
+                remoteName: String = "", notStarted: String = "", syncs: [AccountSync] = []) {
         self.network = network
         self.displayName = displayName
         self.flows = flows
@@ -188,6 +190,7 @@ public struct Account: ProtocolType, Equatable {
         self.error = error
         self.remoteName = remoteName
         self.notStarted = notStarted
+        self.syncs = syncs
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -198,7 +201,19 @@ public struct Account: ProtocolType, Equatable {
         case error
         case remoteName = "remote_name"
         case notStarted = "not_started"
+        case syncs
     }
+}
+
+/// Account.syncs: a chat change Courier also sends to the network, so it shows on the phone too.
+public struct AccountSync: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let pin = Self(rawValue: "pin")
+    public static let mute = Self(rawValue: "mute")
+    public static let acceptRequest = Self(rawValue: "accept_request")
+    public static let known: [Self] = [.pin, .mute, .acceptRequest]
 }
 
 public struct AccountsResult: ProtocolType, Equatable {
@@ -242,7 +257,64 @@ public struct InboxRow: ProtocolType, Equatable {
     public var previewKind: PreviewKind
     public var previewMine: Bool
     public var unread: Int
+    /// I muted this chat itself. `mutedBy` says what else mutes it.
     public var muted: Bool
+    /// Pinned chats come first in every sort, in the order they were pinned.
+    public var pinned: Bool
+    public var archived: Bool
+    public var lowPriority: Bool
+    public var hidden: Bool
+    /// Marked unread by me (or by a reminder that fired), whatever `unread` says. It stays on this Mac.
+    public var markedUnread: Bool
+    /// A message request: someone new writing first.
+    public var request: Bool
+    /// The unsent text of the chat's composer. "" when there is none.
+    public var draft: String
+    /// The label_id of each label on the chat, smallest first.
+    public var labels: [Int64]
+    public var mutedBy: MutedBy
+    public var mutedByName: String
+    /// Reminder|null: always on the wire, null when the chat has none.
+    public var reminder: Reminder?
+    public var typing: [String]
+    public var unreadMentions: Int
+    public var previewMediaPath: String
+
+    public init(roomID: String, network: String, name: String, avatarPath: String, isDirect: Bool, lastTS: Int64,
+                preview: String, previewKind: PreviewKind, previewMine: Bool, unread: Int, muted: Bool,
+                pinned: Bool = false, archived: Bool = false, lowPriority: Bool = false, hidden: Bool = false,
+                markedUnread: Bool = false, request: Bool = false, draft: String = "", labels: [Int64] = [],
+                mutedBy: MutedBy = .none, mutedByName: String = "", reminder: Reminder? = nil,
+                typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "") {
+        self.roomID = roomID
+        self.network = network
+        self.name = name
+        self.avatarPath = avatarPath
+        self.isDirect = isDirect
+        self.lastTS = lastTS
+        self.preview = preview
+        self.previewKind = previewKind
+        self.previewMine = previewMine
+        self.unread = unread
+        self.muted = muted
+        self.pinned = pinned
+        self.archived = archived
+        self.lowPriority = lowPriority
+        self.hidden = hidden
+        self.markedUnread = markedUnread
+        self.request = request
+        self.draft = draft
+        self.labels = labels
+        self.mutedBy = mutedBy
+        self.mutedByName = mutedByName
+        self.reminder = reminder
+        self.typing = typing
+        self.unreadMentions = unreadMentions
+        self.previewMediaPath = previewMediaPath
+    }
+
+    /// Unread messages, or marked unread: what toggle read and the Unread filter go by.
+    public var isUnread: Bool { unread > 0 || markedUnread }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
@@ -256,16 +328,641 @@ public struct InboxRow: ProtocolType, Equatable {
         case previewMine = "preview_mine"
         case unread
         case muted
+        case pinned
+        case archived
+        case lowPriority = "low_priority"
+        case hidden
+        case markedUnread = "marked_unread"
+        case request
+        case draft
+        case labels
+        case mutedBy = "muted_by"
+        case mutedByName = "muted_by_name"
+        case reminder
+        case typing
+        case unreadMentions = "unread_mentions"
+        case previewMediaPath = "preview_media_path"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        roomID = try container.decode(String.self, forKey: .roomID)
+        network = try container.decode(String.self, forKey: .network)
+        name = try container.decode(String.self, forKey: .name)
+        avatarPath = try container.decode(String.self, forKey: .avatarPath)
+        isDirect = try container.decode(Bool.self, forKey: .isDirect)
+        lastTS = try container.decode(Int64.self, forKey: .lastTS)
+        preview = try container.decode(String.self, forKey: .preview)
+        previewKind = try container.decode(PreviewKind.self, forKey: .previewKind)
+        previewMine = try container.decode(Bool.self, forKey: .previewMine)
+        unread = try container.decode(Int.self, forKey: .unread)
+        muted = try container.decode(Bool.self, forKey: .muted)
+        pinned = try container.decode(Bool.self, forKey: .pinned)
+        archived = try container.decode(Bool.self, forKey: .archived)
+        lowPriority = try container.decode(Bool.self, forKey: .lowPriority)
+        hidden = try container.decode(Bool.self, forKey: .hidden)
+        markedUnread = try container.decode(Bool.self, forKey: .markedUnread)
+        request = try container.decode(Bool.self, forKey: .request)
+        draft = try container.decode(String.self, forKey: .draft)
+        labels = try container.decode([Int64].self, forKey: .labels)
+        mutedBy = try container.decode(MutedBy.self, forKey: .mutedBy)
+        mutedByName = try container.decode(String.self, forKey: .mutedByName)
+        reminder = try container.decode(Reminder?.self, forKey: .reminder) // the key must be there
+        typing = try container.decode([String].self, forKey: .typing)
+        unreadMentions = try container.decode(Int.self, forKey: .unreadMentions)
+        previewMediaPath = try container.decode(String.self, forKey: .previewMediaPath)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(roomID, forKey: .roomID)
+        try container.encode(network, forKey: .network)
+        try container.encode(name, forKey: .name)
+        try container.encode(avatarPath, forKey: .avatarPath)
+        try container.encode(isDirect, forKey: .isDirect)
+        try container.encode(lastTS, forKey: .lastTS)
+        try container.encode(preview, forKey: .preview)
+        try container.encode(previewKind, forKey: .previewKind)
+        try container.encode(previewMine, forKey: .previewMine)
+        try container.encode(unread, forKey: .unread)
+        try container.encode(muted, forKey: .muted)
+        try container.encode(pinned, forKey: .pinned)
+        try container.encode(archived, forKey: .archived)
+        try container.encode(lowPriority, forKey: .lowPriority)
+        try container.encode(hidden, forKey: .hidden)
+        try container.encode(markedUnread, forKey: .markedUnread)
+        try container.encode(request, forKey: .request)
+        try container.encode(draft, forKey: .draft)
+        try container.encode(labels, forKey: .labels)
+        try container.encode(mutedBy, forKey: .mutedBy)
+        try container.encode(mutedByName, forKey: .mutedByName)
+        try container.encode(reminder, forKey: .reminder) // null, not left out
+        try container.encode(typing, forKey: .typing)
+        try container.encode(unreadMentions, forKey: .unreadMentions)
+        try container.encode(previewMediaPath, forKey: .previewMediaPath)
+    }
+}
+
+/// InboxRow.muted_by: what else mutes the chat. An account mute wins.
+public struct MutedBy: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let none = Self(rawValue: "")
+    public static let account = Self(rawValue: "account")
+    public static let label = Self(rawValue: "label")
+    public static let known: [Self] = [.none, .account, .label]
+}
+
+/// Reminder.condition and ReminderParams.condition.
+public struct ReminderCondition: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// Only if I haven't sent a message in the chat since setting it.
+    public static let ifNoReply = Self(rawValue: "if_no_reply")
+    public static let always = Self(rawValue: "always")
+    public static let known: [Self] = [.ifNoReply, .always]
+}
+
+/// Brings a chat back to my attention at `dueAt`.
+public struct Reminder: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "Reminder"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Unix milliseconds.
+    public var dueAt: Int64
+    public var condition: ReminderCondition
+    public var fired: Bool
+
+    public init(dueAt: Int64, condition: ReminderCondition, fired: Bool = false) {
+        self.dueAt = dueAt
+        self.condition = condition
+        self.fired = fired
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case dueAt = "due_at"
+        case condition
+        case fired
+    }
+}
+
+/// One page of chats: a query (space, filters, sort) a page at a time, or the chats `roomIDs` names.
+public struct InboxListParams: ProtocolType, Equatable {
+    public static let protocolName = "InboxListParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var space: String?
+    /// Left out (or []) is All. There is no all filter.
+    public var filters: [InboxFilter]?
+    public var sort: InboxSort?
+    public var cursor: String?
+    public var limit: Int?
+    public var roomIDs: [String]?
+
+    public init(space: String? = nil, filters: [InboxFilter]? = nil, sort: InboxSort? = nil, cursor: String? = nil,
+                limit: Int? = nil, roomIDs: [String]? = nil) {
+        self.space = space
+        self.filters = filters
+        self.sort = sort
+        self.cursor = cursor
+        self.limit = limit
+        self.roomIDs = roomIDs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case space
+        case filters
+        case sort
+        case cursor
+        case limit
+        case roomIDs = "room_ids"
     }
 }
 
 public struct InboxResult: ProtocolType, Equatable {
     public static let protocolName = "InboxResult"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// In the query's order.
     public var rooms: [InboxRow]
+    /// string|null: the cursor of the next page; null on the last page. Only null ends paging: a page may hold
+    /// fewer chats than asked for and still have one.
+    public var nextCursor: String?
+
+    public init(rooms: [InboxRow], nextCursor: String? = nil) {
+        self.rooms = rooms
+        self.nextCursor = nextCursor
+    }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case rooms
+        case nextCursor = "next_cursor"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        rooms = try container.decode([InboxRow].self, forKey: .rooms)
+        nextCursor = try container.decode(String?.self, forKey: .nextCursor) // the key must be there
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(rooms, forKey: .rooms)
+        try container.encode(nextCursor, forKey: .nextCursor) // null, not left out
+    }
+}
+
+/// Space.kind.
+public struct SpaceKind: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let builtin = Self(rawValue: "builtin")
+    public static let account = Self(rawValue: "account")
+    public static let label = Self(rawValue: "label")
+    public static let known: [Self] = [.builtin, .account, .label]
+}
+
+/// Space.show_in_inbox and SpaceUpdateParams.show_in_inbox: which of an account's or a label's chats also show
+/// in the inbox space. "" for a built-in space (never sent).
+public struct ShowInInbox: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let all = Self(rawValue: "all")
+    public static let dms = Self(rawValue: "dms")
+    public static let none = Self(rawValue: "none")
+    public static let notApplicable = Self(rawValue: "")
+    public static let known: [Self] = [.all, .dms, .none, .notApplicable]
+    /// The values spaces.update takes.
+    public static let settable: [Self] = [.all, .dms, .none]
+}
+
+/// One entry of the spaces bar.
+public struct Space: ProtocolType, Equatable, Identifiable {
+    public static let protocolName = "Space"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var spaceID: String
+    public var kind: SpaceKind
+    public var title: String
+    public var network: String
+    public var labelID: Int64
+    public var color: Int
+    public var icon: String
+    public var hidden: Bool
+    public var muted: Bool
+    public var showInInbox: ShowInInbox
+    public var chats: Int
+    public var unreadChats: Int
+
+    public var id: String { spaceID }
+
+    public init(spaceID: String, kind: SpaceKind, title: String = "", network: String = "", labelID: Int64 = 0,
+                color: Int = 0, icon: String = "", hidden: Bool = false, muted: Bool = false,
+                showInInbox: ShowInInbox = .notApplicable, chats: Int = 0, unreadChats: Int = 0) {
+        self.spaceID = spaceID
+        self.kind = kind
+        self.title = title
+        self.network = network
+        self.labelID = labelID
+        self.color = color
+        self.icon = icon
+        self.hidden = hidden
+        self.muted = muted
+        self.showInInbox = showInInbox
+        self.chats = chats
+        self.unreadChats = unreadChats
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case spaceID = "space_id"
+        case kind
+        case title
+        case network
+        case labelID = "label_id"
+        case color
+        case icon
+        case hidden
+        case muted
+        case showInInbox = "show_in_inbox"
+        case chats
+        case unreadChats = "unread_chats"
+    }
+}
+
+public struct SpacesResult: ProtocolType, Equatable {
+    public static let protocolName = "SpacesResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var spaces: [Space]
+
+    public init(spaces: [Space]) { self.spaces = spaces }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case spaces
+    }
+}
+
+public struct SpaceLayoutParams: ProtocolType, Equatable {
+    public static let protocolName = "SpaceLayoutParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var order: [String]
+    public var hidden: [String]
+
+    public init(order: [String], hidden: [String]) {
+        self.order = order
+        self.hidden = hidden
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case order
+        case hidden
+    }
+}
+
+public struct SpaceUpdateParams: ProtocolType, Equatable {
+    public static let protocolName = "SpaceUpdateParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var spaceID: String
+    public var muted: Bool?
+    public var showInInbox: ShowInInbox?
+
+    public init(spaceID: String, muted: Bool? = nil, showInInbox: ShowInInbox? = nil) {
+        self.spaceID = spaceID
+        self.muted = muted
+        self.showInInbox = showInInbox
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case spaceID = "space_id"
+        case muted
+        case showInInbox = "show_in_inbox"
+    }
+}
+
+public struct LabelParams: ProtocolType, Equatable {
+    public static let protocolName = "LabelParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var title: String
+    public var color: Int
+    public var icon: String
+
+    public init(title: String, color: Int, icon: String) {
+        self.title = title
+        self.color = color
+        self.icon = icon
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case title
+        case color
+        case icon
+    }
+}
+
+public struct LabelResult: ProtocolType, Equatable {
+    public static let protocolName = "LabelResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var labelID: Int64
+
+    public init(labelID: Int64) { self.labelID = labelID }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case labelID = "label_id"
+    }
+}
+
+/// A field left out stays as it is.
+public struct LabelUpdateParams: ProtocolType, Equatable {
+    public static let protocolName = "LabelUpdateParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var labelID: Int64
+    public var title: String?
+    public var color: Int?
+    public var icon: String?
+
+    public init(labelID: Int64, title: String? = nil, color: Int? = nil, icon: String? = nil) {
+        self.labelID = labelID
+        self.title = title
+        self.color = color
+        self.icon = icon
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case labelID = "label_id"
+        case title
+        case color
+        case icon
+    }
+}
+
+public struct LabelIDParams: ProtocolType, Equatable {
+    public static let protocolName = "LabelIDParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var labelID: Int64
+
+    public init(labelID: Int64) { self.labelID = labelID }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case labelID = "label_id"
+    }
+}
+
+public struct SetPinnedParams: ProtocolType, Equatable {
+    public static let protocolName = "SetPinnedParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var pinned: Bool
+
+    public init(roomID: String, pinned: Bool) {
+        self.roomID = roomID
+        self.pinned = pinned
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case pinned
+    }
+}
+
+public struct ArchiveParams: ProtocolType, Equatable {
+    public static let protocolName = "ArchiveParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// 1 to 500 chats.
+    public var roomIDs: [String]
+    public var archived: Bool
+    public var markRead: Bool?
+
+    public init(roomIDs: [String], archived: Bool, markRead: Bool? = nil) {
+        self.roomIDs = roomIDs
+        self.archived = archived
+        self.markRead = markRead
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case archived
+        case markRead = "mark_read"
+    }
+}
+
+/// The chats a call changed, in the order asked for; [] when none did. Undo reverses exactly these.
+public struct RoomsChanged: ProtocolType, Equatable {
+    public static let protocolName = "RoomsChanged"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomIDs: [String]
+
+    public init(roomIDs: [String]) { self.roomIDs = roomIDs }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+    }
+}
+
+public struct RoomsFlagParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomsFlagParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// 1 to 500 chats.
+    public var roomIDs: [String]
+    public var on: Bool
+
+    public init(roomIDs: [String], on: Bool) {
+        self.roomIDs = roomIDs
+        self.on = on
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case on
+    }
+}
+
+public struct SetLabelParams: ProtocolType, Equatable {
+    public static let protocolName = "SetLabelParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomIDs: [String]
+    public var labelID: Int64
+    public var on: Bool
+
+    public init(roomIDs: [String], labelID: Int64, on: Bool) {
+        self.roomIDs = roomIDs
+        self.labelID = labelID
+        self.on = on
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case labelID = "label_id"
+        case on
+    }
+}
+
+public struct DraftParams: ProtocolType, Equatable {
+    public static let protocolName = "DraftParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    /// "" clears the draft.
+    public var text: String
+
+    public init(roomID: String, text: String) {
+        self.roomID = roomID
+        self.text = text
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case text
+    }
+}
+
+public struct ReminderParams: ProtocolType, Equatable {
+    public static let protocolName = "ReminderParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomIDs: [String]
+    /// Unix milliseconds: after now, at most 5 years ahead.
+    public var dueAt: Int64
+    public var condition: ReminderCondition
+    /// Also archive the chats (all but pinned ones) until the reminder brings them back.
+    public var archive: Bool?
+
+    public init(roomIDs: [String], dueAt: Int64, condition: ReminderCondition, archive: Bool? = nil) {
+        self.roomIDs = roomIDs
+        self.dueAt = dueAt
+        self.condition = condition
+        self.archive = archive
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case dueAt = "due_at"
+        case condition
+        case archive
+    }
+}
+
+public struct RoomsParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomsParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomIDs: [String]
+
+    public init(roomIDs: [String]) { self.roomIDs = roomIDs }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+    }
+}
+
+public struct ArchiveMatchingParams: ProtocolType, Equatable {
+    public static let protocolName = "ArchiveMatchingParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// inbox (when left out), an account:<network> or a label:<label_id>.
+    public var space: String?
+    public var readOnly: Bool
+    public var olderThanMS: Int64
+    public var dryRun: Bool
+
+    public init(space: String? = nil, readOnly: Bool, olderThanMS: Int64 = 0, dryRun: Bool = false) {
+        self.space = space
+        self.readOnly = readOnly
+        self.olderThanMS = olderThanMS
+        self.dryRun = dryRun
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case space
+        case readOnly = "read_only"
+        case olderThanMS = "older_than_ms"
+        case dryRun = "dry_run"
+    }
+}
+
+public struct SpaceParams: ProtocolType, Equatable {
+    public static let protocolName = "SpaceParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Left out means inbox.
+    public var space: String?
+
+    public init(space: String? = nil) { self.space = space }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case space
+    }
+}
+
+/// AutoArchiveRule.trigger.
+public struct AutoArchiveTrigger: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let afterReply = Self(rawValue: "after_reply")
+    public static let afterRead = Self(rawValue: "after_read")
+    public static let olderThan = Self(rawValue: "older_than")
+    public static let known: [Self] = [.afterReply, .afterRead, .olderThan]
+}
+
+/// AutoArchiveRule.chat_type.
+public struct AutoArchiveChatType: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let all = Self(rawValue: "all")
+    public static let read = Self(rawValue: "read")
+    public static let known: [Self] = [.all, .read]
+}
+
+/// A rule that archives chats by itself.
+public struct AutoArchiveRule: ProtocolType, Equatable, Identifiable {
+    public static let protocolName = "AutoArchiveRule"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// 0 in autoArchive.set makes a new rule.
+    public var ruleID: Int64
+    public var scope: String
+    public var trigger: AutoArchiveTrigger
+    public var chatType: AutoArchiveChatType
+    public var durationMS: Int64
+    public var enabled: Bool
+
+    public var id: Int64 { ruleID }
+
+    public init(ruleID: Int64 = 0, scope: String, trigger: AutoArchiveTrigger, chatType: AutoArchiveChatType,
+                durationMS: Int64, enabled: Bool) {
+        self.ruleID = ruleID
+        self.scope = scope
+        self.trigger = trigger
+        self.chatType = chatType
+        self.durationMS = durationMS
+        self.enabled = enabled
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case ruleID = "rule_id"
+        case scope
+        case trigger
+        case chatType = "chat_type"
+        case durationMS = "duration_ms"
+        case enabled
+    }
+}
+
+public struct RulesResult: ProtocolType, Equatable {
+    public static let protocolName = "RulesResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var rules: [AutoArchiveRule]
+
+    public init(rules: [AutoArchiveRule]) { self.rules = rules }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case rules
+    }
+}
+
+public struct RuleIDParams: ProtocolType, Equatable {
+    public static let protocolName = "RuleIDParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var ruleID: Int64
+
+    public init(ruleID: Int64) { self.ruleID = ruleID }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case ruleID = "rule_id"
     }
 }
 
@@ -737,8 +1434,11 @@ public struct ChangedKind: OpenValues {
     public static let status = Self(rawValue: "status")
     public static let read = Self(rawValue: "read")
     public static let bridge = Self(rawValue: "bridge")
+    public static let spaces = Self(rawValue: "spaces")
+    public static let typing = Self(rawValue: "typing")
+    public static let reminder = Self(rawValue: "reminder")
     public static let resync = Self(rawValue: "resync")
-    public static let known: [Self] = [.room, .event, .status, .read, .bridge, .resync]
+    public static let known: [Self] = [.room, .event, .status, .read, .bridge, .spaces, .typing, .reminder, .resync]
 }
 
 /// The changed notification's params, as on the wire. The app reads them as a `Change`.
@@ -799,6 +1499,13 @@ public enum Change: Equatable, Hashable, Sendable {
     case read(roomID: String, eventID: String?)
     /// The network's account changed state.
     case bridge(network: String)
+    /// Labels, the spaces layout, or an account's or label's space settings changed: re-read the spaces, and the
+    /// inbox, whose rows show labels and what mutes them.
+    case spaces
+    /// Who is typing in the room changed.
+    case typing(roomID: String)
+    /// The room's reminder fired: tell the person. A `room` change for its row comes too.
+    case reminder(roomID: String)
     /// Changes were lost: re-read everything.
     case resync
 
@@ -820,6 +1527,14 @@ public enum Change: Equatable, Hashable, Sendable {
         case .bridge:
             guard let network = changed.network else { self = .resync; return }
             self = .bridge(network: network)
+        case .spaces:
+            self = .spaces
+        case .typing:
+            guard let room = changed.roomID else { self = .resync; return }
+            self = .typing(roomID: room)
+        case .reminder:
+            guard let room = changed.roomID else { self = .resync; return }
+            self = .reminder(roomID: room)
         default:
             self = .resync
         }
@@ -835,7 +1550,29 @@ public enum ProtocolMethods {
     public static let all: [String: (params: any ProtocolType.Type, result: any ProtocolType.Type)] = [
         "hello": (HelloParams.self, HelloResult.self),
         "accounts.list": (Empty.self, AccountsResult.self),
-        "inbox.list": (Empty.self, InboxResult.self),
+        "inbox.list": (InboxListParams.self, InboxResult.self),
+        "spaces.list": (Empty.self, SpacesResult.self),
+        "spaces.setLayout": (SpaceLayoutParams.self, Empty.self),
+        "spaces.update": (SpaceUpdateParams.self, Empty.self),
+        "labels.create": (LabelParams.self, LabelResult.self),
+        "labels.update": (LabelUpdateParams.self, Empty.self),
+        "labels.delete": (LabelIDParams.self, Empty.self),
+        "room.setPinned": (SetPinnedParams.self, Empty.self),
+        "room.setArchived": (ArchiveParams.self, RoomsChanged.self),
+        "room.setLowPriority": (RoomsFlagParams.self, RoomsChanged.self),
+        "room.setHidden": (RoomsFlagParams.self, RoomsChanged.self),
+        "room.setMarkedUnread": (RoomsFlagParams.self, RoomsChanged.self),
+        "room.setLabel": (SetLabelParams.self, RoomsChanged.self),
+        "room.setDraft": (DraftParams.self, Empty.self),
+        "room.acceptRequest": (RoomParams.self, Empty.self),
+        "reminder.set": (ReminderParams.self, Empty.self),
+        "reminder.clear": (RoomsParams.self, Empty.self),
+        "reminder.clearAll": (Empty.self, Empty.self),
+        "inbox.archiveMatching": (ArchiveMatchingParams.self, RoomsChanged.self),
+        "inbox.markAllRead": (SpaceParams.self, RoomsChanged.self),
+        "autoArchive.list": (Empty.self, RulesResult.self),
+        "autoArchive.set": (AutoArchiveRule.self, AutoArchiveRule.self),
+        "autoArchive.delete": (RuleIDParams.self, Empty.self),
         "room.events": (RoomEventsParams.self, EventsPage.self),
         "room.markRead": (RoomParams.self, Empty.self),
         "room.setMuted": (SetMutedParams.self, Empty.self),
@@ -853,7 +1590,11 @@ public enum ProtocolMethods {
     /// Every type of protocol.json's "types".
     public static let types: [any ProtocolType.Type] = [
         Empty.self, HelloParams.self, HelloResult.self, Account.self, AccountsResult.self, InboxRow.self,
-        InboxResult.self, Cursor.self, RoomParams.self, RoomEventsParams.self, Event.self, EventsPage.self,
+        Reminder.self, InboxListParams.self, InboxResult.self, Space.self, SpacesResult.self, SpaceLayoutParams.self,
+        SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
+        SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetLabelParams.self,
+        DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
+        AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, RoomEventsParams.self, Event.self, EventsPage.self,
         SetMutedParams.self, SendParams.self, SendFileParams.self, ReactParams.self, EventParams.self, Sent.self,
         LoginStartParams.self, LoginSubmitParams.self, LoginParams.self, LoginStep.self, LoginDisplay.self,
         LoginField.self, LoginCookies.self, LoginCookieField.self, LoginCookieSource.self, Changed.self,
@@ -863,7 +1604,18 @@ public enum ProtocolMethods {
     /// The open-valued fields, by "Type.field", with the values this app knows.
     public static let values: [String: [String]] = [
         "Account.state": AccountState.known.map(\.rawValue),
+        "Account.syncs": AccountSync.known.map(\.rawValue),
         "InboxRow.preview_kind": PreviewKind.known.map(\.rawValue),
+        "InboxRow.muted_by": MutedBy.known.map(\.rawValue),
+        "Reminder.condition": ReminderCondition.known.map(\.rawValue),
+        "InboxListParams.filters": InboxFilter.wireOrder.map(\.rawValue),
+        "InboxListParams.sort": InboxSort.allCases.map(\.rawValue),
+        "Space.kind": SpaceKind.known.map(\.rawValue),
+        "Space.show_in_inbox": ShowInInbox.known.map(\.rawValue),
+        "SpaceUpdateParams.show_in_inbox": ShowInInbox.settable.map(\.rawValue),
+        "ReminderParams.condition": ReminderCondition.known.map(\.rawValue),
+        "AutoArchiveRule.trigger": AutoArchiveTrigger.known.map(\.rawValue),
+        "AutoArchiveRule.chat_type": AutoArchiveChatType.known.map(\.rawValue),
         "Event.status": EventStatus.known.map(\.rawValue),
         "LoginStep.type": LoginStepType.known.map(\.rawValue),
         "LoginDisplay.kind": LoginDisplayKind.known.map(\.rawValue),
@@ -893,6 +1645,9 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
     case notConnected
     case notFailed
     case notFound
+    case pinned
+    case notEntitled
+    case notSupported
     /// A code this app does not know.
     case other(Int)
 
@@ -916,6 +1671,9 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
         (.notConnected, -32018, "not_connected"),
         (.notFailed, -32019, "not_failed"),
         (.notFound, -32020, "not_found"),
+        (.pinned, -32021, "pinned"),
+        (.notEntitled, -32022, "not_entitled"),
+        (.notSupported, -32023, "not_supported"),
     ]
 
     public init(number: Int) {

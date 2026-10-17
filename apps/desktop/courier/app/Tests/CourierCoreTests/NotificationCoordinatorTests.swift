@@ -303,7 +303,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
-    func testSeveralUnlistedChatsShareOneInboxRead() async throws {
+    func testEachUnlistedChatIsLookedUpByItsID() async throws {
         let h = try await start(window: 0.1)
         h.clock.advance(seconds: 5)
         h.window.rows = [:]
@@ -314,32 +314,24 @@ final class NotificationCoordinatorTests: XCTestCase {
             h.server.notify(["kind": "event", "room_id": id, "event_id": "$\(id)"])
         }
         try await waitUntil { h.delivery.delivered.count == 5 }
-        XCTAssertLessThanOrEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2)
+        XCTAssertEqual(Set(h.delivery.delivered.map(\.title)), Set(ids.map { "Chat \($0)" }))
+        // One lookup per chat, by its id: the inbox pages now, so a whole-inbox read may not hold the chat.
+        let lookups = h.server.receivedParams("inbox.list")
+        XCTAssertEqual(lookups.count, 5)
+        XCTAssertEqual(Set(lookups.compactMap { ($0["room_ids"] as? [String])?.first }), Set(ids))
+        XCTAssertTrue(lookups.allSatisfy { $0.count == 1 && ($0["room_ids"] as? [String])?.count == 1 })
         await finish(h)
     }
 
-    func testARoomMissingFromAnInboxReadThatStartedTooEarlyGetsAFreshRead() async throws {
+    func testAChatTheEngineDoesNotHaveIsNotAnnounced() async throws {
         let h = try await start(window: 0.02)
         h.clock.advance(seconds: 5)
         h.window.rows = [:]
-        h.script.hold("inbox.list") // the first inbox read is slow
-        h.script.events["!x"] = [message("$x", ts: connectedMillis + 1000, text: "from x", room: "!x")]
-        h.server.notify(["kind": "event", "room_id": "!x", "event_id": "$x"])
+        h.script.events["!gone"] = [message("$g", ts: connectedMillis + 1000, text: "hello", room: "!gone")]
+        h.server.notify(["kind": "event", "room_id": "!gone", "event_id": "$g"])
         try await waitUntil { h.server.receivedMethods().contains("inbox.list") }
-
-        // !y appears while that read is on its way, and its read joins it.
-        h.script.rooms = [inboxRowJSON("!x", name: "Chat X"), inboxRowJSON("!y", name: "Chat Y")]
-        h.script.events["!y"] = [message("$y", ts: connectedMillis + 2000, text: "from y", room: "!y")]
-        h.server.notify(["kind": "event", "room_id": "!y", "event_id": "$y"])
-        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!y" } }
         try await Task.sleep(nanoseconds: 100_000_000)
-
-        // The slow read answers from before !y existed.
-        let held = h.server.received.first { $0["method"] as? String == "inbox.list" }
-        h.server.reply(to: held?["id"] as? Int ?? -1, with: ["rooms": [inboxRowJSON("!x", name: "Chat X")]])
-        try await waitUntil { h.delivery.delivered.count == 2 }
-        XCTAssertEqual(Set(h.delivery.delivered.map(\.title)), ["Chat X", "Chat Y"])
-        XCTAssertEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2, "one stale, one fresh")
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "no row, so no name to show: nothing is announced")
         await finish(h)
     }
 
@@ -470,7 +462,11 @@ final class NotificationScript: @unchecked Sendable {
         switch method {
         case "hello": return TestEngineServer.helloOK
         case "accounts.list": return .result(["accounts": [account("whatsapp", "CONNECTED")]])
-        case "inbox.list": return .result(["rooms": rooms])
+        case "inbox.list":
+            // Only lookups by id: a room_id the engine doesn't have is left out.
+            let ids = params?["room_ids"] as? [String] ?? []
+            return .result(["rooms": rooms.filter { ids.contains($0["room_id"] as? String ?? "") },
+                            "next_cursor": NSNull()])
         case "room.events":
             let room = params?["room_id"] as? String ?? ""
             return .result(["events": events[room] ?? [], "before": NSNull()])

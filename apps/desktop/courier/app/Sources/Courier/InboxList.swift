@@ -35,6 +35,12 @@ struct InboxList: View {
                         ForEach(inbox.rows, id: \.roomID) { row in
                             InboxRowView(row: row, networkName: inbox.networkName(row.network), now: timeline.date)
                                 .tag(row.roomID)
+                                .onAppear {
+                                    // The last chat shown came into view: read the next page.
+                                    if inbox.hasMore, row.roomID == inbox.rows.last?.roomID {
+                                        Task { await inbox.loadMore() }
+                                    }
+                                }
                         }
                     }
                     .listStyle(.inset)

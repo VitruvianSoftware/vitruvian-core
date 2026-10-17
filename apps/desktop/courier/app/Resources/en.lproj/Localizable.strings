@@ -45,7 +45,7 @@
 /* Chat menu: opens the next chat that has unread messages (⌘U). */
 "Next Unread Chat" = "Next Unread Chat";
 
-/* Chat menu: marks the open chat read (⌘⇧U), dimmed when it has no unread messages. Also the button on a notification that marks that chat read. */
+/* Chat menu: marks the open (or selected) chats read (⌘⇧U) when one of them is unread or marked unread. Also the button on a notification that marks that chat read. */
 "Mark as Read" = "Mark as Read";
 
 /* Chat menu: mutes the open chat (⌘⇧M). */
@@ -504,3 +504,33 @@
 
 /* The body of a notification that says a reply typed in a notification may or may not have been sent, because the engine did not answer. The text is waiting in that chat's message box. */
 "Your reply may not have been sent — check the chat before sending again." = "Your reply may not have been sent — check the chat before sending again.";
+
+/* Chat menu: marks the open (or selected) chats unread again. The mark stays on this Mac; no network is told. */
+"Mark as Unread" = "Mark as Unread";
+
+/* Toast under the inbox after one chat was archived. It has an Undo button. */
+"Archived 1 chat" = "Archived 1 chat";
+
+/* Toast under the inbox after chats were archived. The argument is how many, 2 or more. It has an Undo button. */
+"Archived %lld chats" = "Archived %lld chats";
+
+/* Toast under the inbox after chats were moved to Low Priority. It has an Undo button. */
+"Moved to Low Priority" = "Moved to Low Priority";
+
+/* Toast under the inbox after chats were hidden on this Mac. It has an Undo button. */
+"Hidden" = "Hidden";
+
+/* Toast under the inbox after a reminder was set. The argument is the reminder's date and time. It has an Undo button. */
+"Reminder set for %@" = "Reminder set for %@";
+
+/* Toast, and the words in place of an action, when the feature is not part of the person's plan. */
+"Available with a plan" = "Available with a plan";
+
+/* Toast when every chat asked to be archived is pinned: a pinned chat is never archived. */
+"Unpin a chat to archive it." = "Unpin a chat to archive it.";
+
+/* Toast when the chat's network cannot do what was asked (accept a message request, say). Nothing changed. */
+"This chat’s network can’t do that." = "This chat’s network can’t do that.";
+
+/* Toast when an inbox action failed for a reason the app has no words for. Nothing changed. */
+"That didn’t work. Try again." = "That didn’t work. Try again.";

@@ -24,7 +24,7 @@ struct InboxCommands: Commands {
             Button(String(localized: "Next Unread Chat"), action: inbox.selectNextUnread)
                 .keyboardShortcut("u", modifiers: .command)
             Divider()
-            Button(String(localized: "Mark as Read")) {
+            Button(inbox.toggleReadMarksRead ? String(localized: "Mark as Read") : String(localized: "Mark as Unread")) {
                 Task { await inbox.toggleRead() }
             }
             .keyboardShortcut("u", modifiers: [.command, .shift])

@@ -25,7 +25,8 @@ public protocol NotificationDelivering: AnyObject {
 /// A burst of changes in one chat is read once: the first change opens a short window, changes inside it add
 /// nothing, and the read follows; a change that comes while that read is in flight asks for one more after it. So
 /// the first sync's hundreds of events in a chat cost two reads, not hundreds. A chat the inbox has not listed
-/// yet is looked up with one inbox read that every chat waiting for it shares.
+/// (a new chat, an archived one, or one further down than the pages read) is looked up by its id:
+/// `inbox.list {room_ids: [id]}`, never a read of the whole inbox, which comes a page at a time.
 ///
 /// An answer is used only if it came from the client that is up now, as the other models do.
 @MainActor
@@ -50,8 +51,6 @@ public final class NotificationCoordinator {
     /// Chats with a read in flight, and those that changed again during it.
     private var inFlight: Set<String> = []
     private var readAgain: Set<String> = []
-    /// The inbox read that chats the inbox has not listed are waiting on.
-    private var inboxLookup: Task<[InboxRow], Never>?
 
     /// - Parameters:
     ///   - row: the inbox's row for a chat, if it has one (its name and whether it is muted).
@@ -139,35 +138,10 @@ public final class NotificationCoordinator {
         announce(page.events, in: chat)
     }
 
-    /// One inbox read at a time, shared by every chat that is waiting for it. A chat that is not in an answer it
-    /// joined gets one read of its own: that read may have started before the chat existed.
+    /// The chat's row, wherever it is (archived, hidden, in another space). Nil when the engine doesn't have it.
     private func lookUp(_ roomID: String, with client: EngineClient) async -> InboxRow? {
-        var read: Task<[InboxRow], Never>
-        var joined = false
-        if let running = inboxLookup {
-            read = running
-            joined = true
-        } else {
-            read = startInboxRead(with: client)
-        }
-        var found = await read.value.first { $0.roomID == roomID }
-        if inboxLookup == read { inboxLookup = nil }
-        if found == nil, joined {
-            read = startInboxRead(with: client)
-            found = await read.value.first { $0.roomID == roomID }
-            if inboxLookup == read { inboxLookup = nil }
-        }
-        return found
-    }
-
-    /// Starts an inbox read and makes it the one that later chats join.
-    private func startInboxRead(with client: EngineClient) -> Task<[InboxRow], Never> {
-        let read = Task {
-            let inbox: InboxResult? = try? await client.call("inbox.list", Empty())
-            return inbox?.rooms ?? []
-        }
-        inboxLookup = read
-        return read
+        let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
+        return result?.rooms.first { $0.roomID == roomID }
     }
 
     /// `events` are newest first, as room.events has them; the oldest is announced first.

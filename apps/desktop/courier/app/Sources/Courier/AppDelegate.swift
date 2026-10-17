@@ -39,9 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let attention = Attention(source: SystemPresence())
         self.attention = attention
         // The "New" divider goes above as many messages as the inbox counted unread when the chat was opened.
+        // A chat opened with no text in the composer's memory takes the draft the engine keeps (its row's).
         conversation = ConversationModel(appModel: model, unreadCount: { id in
             inbox.rows.first { $0.roomID == id }?.unread ?? 0
-        }, attention: attention)
+        }, attention: attention, savedDraft: { id in
+            inbox.rows.first { $0.roomID == id }?.draft ?? ""
+        })
         let login = LoginFlowModel(appModel: model)
         self.login = login
         // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).

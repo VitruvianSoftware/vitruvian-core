@@ -62,10 +62,21 @@ public enum ComposerNotice: Equatable, Sendable {
 public protocol MessageSending: AnyObject, Sendable {
     func sendText(roomID: String, text: String, replyTo: String?) async throws
     func sendFile(roomID: String, url: URL, size: Int64, replyTo: String?) async throws
+    /// Keeps a chat's unsent text (room.setDraft). It stays on this Mac.
+    func saveDraft(roomID: String, text: String) async throws
+}
+
+extension MessageSending {
+    /// A sender with nowhere to keep drafts keeps none.
+    public func saveDraft(roomID: String, text: String) async throws {}
 }
 
 /// The composer's state: the text, attachments and reply chip of the open chat, and a draft for every other chat
 /// the person has typed in.
+///
+/// The open chat's text is also kept by the engine (`room.setDraft`), a second after typing stops and at once on
+/// switching chats, so it is there after a restart. A chat opened with no text in memory takes the engine's draft
+/// (`savedDraft`, the inbox row's).
 ///
 /// Sending clears the composer at once and sends in the background, a chat at a time and in order, so two messages
 /// typed quickly arrive in that order. The text goes first, then the files, one `message.sendFile` each; a reply
@@ -78,7 +89,9 @@ public final class ComposerModel: ObservableObject {
     public nonisolated static let maxAttachmentBytes: Int64 = 90 * 1024 * 1024
 
     /// The text of the open chat's draft. The text view writes it.
-    @Published public var text = ""
+    @Published public var text = "" {
+        didSet { if text != oldValue { textChanged() } }
+    }
     @Published public private(set) var attachments: [ComposerAttachment] = []
     @Published public private(set) var replyTarget: QuotedMessage?
     /// What the person should be told, first the most important. Cleared when another chat opens or on dismiss.
@@ -92,6 +105,8 @@ public final class ComposerModel: ObservableObject {
     public var onSettled: @MainActor () -> Void = {}
     /// Called when something is submitted, before it is sent.
     public var onSubmit: @MainActor () -> Void = {}
+    /// The draft the engine keeps for a chat (its inbox row's `draft`), for a chat opened with none in memory.
+    public var savedDraft: @MainActor (_ roomID: String) -> String = { _ in "" }
 
     private struct Draft {
         var text = ""
@@ -131,10 +146,27 @@ public final class ComposerModel: ObservableObject {
     private var drafts: [String: Draft] = [:]
     private var queues: [String: (token: UUID, task: Task<Void, Never>)] = [:]
     private let fileInfo: (URL) -> ComposerFileInfo?
+    private let draftDelay: TimeInterval
+    private let sleep: @Sendable (TimeInterval) async -> Void
+    /// The text the engine has for each chat, as far as this composer knows: what it saved, or the draft it took.
+    private var savedTexts: [String: String] = [:]
+    /// Goes up with each change of text and each switch: a wait that finds it moved on saves nothing.
+    private var draftToken = 0
+    /// Saves to the engine, a chat at a time and in order.
+    private var draftSaves: [String: Task<Void, Never>] = [:]
+    /// The text is being set by opening a chat, not by typing.
+    private var openingChat = false
 
-    public init(sender: MessageSending? = nil, fileInfo: @escaping (URL) -> ComposerFileInfo? = ComposerModel.readFileInfo) {
+    /// - Parameters:
+    ///   - draftDelay: how long after the last keystroke the draft is saved, in seconds.
+    ///   - sleep: waits `draftDelay`; tests give one they can open.
+    public init(sender: MessageSending? = nil, fileInfo: @escaping (URL) -> ComposerFileInfo? = ComposerModel.readFileInfo,
+                draftDelay: TimeInterval = 1,
+                sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
         self.sender = sender
         self.fileInfo = fileInfo
+        self.draftDelay = draftDelay
+        self.sleep = sleep
     }
 
     // MARK: - Keys
@@ -161,13 +193,26 @@ public final class ComposerModel: ObservableObject {
 
     // MARK: - Chats and drafts
 
-    /// Opens a chat's composer: the open chat's draft is kept, and this chat's (if it has one) comes back.
+    /// Opens a chat's composer: the open chat's draft is kept (and saved at once if the engine doesn't have it),
+    /// and this chat's comes back: the one in memory, or with none, the engine's.
     public func open(_ room: String?) {
         guard room != roomID else { return }
-        if let roomID { drafts[roomID] = currentDraft.isEmpty ? nil : currentDraft }
+        if let roomID {
+            if text != (savedTexts[roomID] ?? "") { saveDraft(text, in: roomID) }
+            drafts[roomID] = currentDraft.isEmpty ? nil : currentDraft
+        }
+        draftToken += 1 // a wait for the chat left behind saves nothing
         roomID = room
         let draft = room.flatMap { drafts[$0] } ?? Draft()
-        text = draft.text
+        openingChat = true
+        defer { openingChat = false }
+        if let room, draft.text.isEmpty {
+            let kept = savedTexts[room] ?? savedDraft(room)
+            savedTexts[room] = kept
+            text = kept
+        } else {
+            text = draft.text
+        }
         attachments = draft.attachments
         replyTarget = draft.reply
         notices = draft.notices
@@ -175,6 +220,32 @@ public final class ComposerModel: ObservableObject {
     }
 
     private var currentDraft: Draft { Draft(text: text, attachments: attachments, reply: replyTarget) }
+
+    /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.
+    private func textChanged() {
+        guard !openingChat, let room = roomID else { return }
+        draftToken += 1
+        guard text != (savedTexts[room] ?? "") else { return } // back to what the engine has: nothing to save
+        let token = draftToken
+        Task { [weak self, sleep, draftDelay] in
+            await sleep(draftDelay)
+            guard let self, self.draftToken == token, self.roomID == room else { return }
+            self.saveDraft(self.text, in: room)
+        }
+    }
+
+    /// Hands the draft to the engine, after the saves before it for that chat. A failure is not shown: the text is
+    /// still in the composer, and the next change saves it again.
+    private func saveDraft(_ body: String, in room: String) {
+        savedTexts[room] = body
+        guard let sender else { return }
+        let previous = draftSaves[room]
+        let save = Task {
+            await previous?.value
+            try? await sender.saveDraft(roomID: room, text: body)
+        }
+        draftSaves[room] = save
+    }
 
     // MARK: - Reply
 
