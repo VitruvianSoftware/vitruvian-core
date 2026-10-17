@@ -1659,6 +1659,15 @@ MUTATIONS = [
      "        guard var viewers = inMenuPanel[key], viewers.remove(viewer) != nil else { return }\n",
      "        guard var viewers = inMenuPanel[key] else { return }\n        viewers = []\n",
      "the old card going after the new card appeared leaves the new card's page open"),
+    ("an Extensions tab card draws nothing before it asks for its page", "tool-runtime",
+     "Sources/Vitruvian/UI/MenuPanel/ExtensionsSection.swift",
+     "        VStack(alignment: .leading, spacing: 0) {\n"
+     "            if host.defersToIsland(entry.key) {\n",
+     "        Group {\n"
+     "            if !asked, host.shown[entry.key] == nil {\n"
+     "                ToolPanelView(key: entry.key, size: size, host: host)\n"
+     "            } else if host.defersToIsland(entry.key) {\n",
+     "a drawn card that is expanded asks for its page as it appears"),
     ("the agent mark stays beside a tool's words", "platform",
      "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
      "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n"

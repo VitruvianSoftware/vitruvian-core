@@ -14,14 +14,15 @@ package struct ToolPanelView: View {
     package let key: ToolPanelHost.Key
     package let size: BlockTreeContent.Size
     package let focus: FocusState<ExternalToolDetail.Focus?>.Binding?
-    @ObservedObject private var host = ToolPanelHost.shared
+    @ObservedObject private var host: ToolPanelHost
     @ObservedObject private var l10n = L10n.shared
 
     package init(key: ToolPanelHost.Key, size: BlockTreeContent.Size,
-                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil) {
+                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil, host: ToolPanelHost = .shared) {
         self.key = key
         self.size = size
         self.focus = focus
+        self.host = host
     }
 
     package var body: some View {
