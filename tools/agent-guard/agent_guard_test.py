@@ -398,6 +398,62 @@ TABLE = [
         "guard-config",
         "out",
     ),
+    # --- the checkout's hook files: they take effect before review -------------
+    ("sed -i '' /agent-guard/d .claude/settings.json", D, "guard-config", ""),
+    (
+        "jq 'del(.hooks)' .claude/settings.json > /tmp/s && mv /tmp/s .claude/settings.json",
+        D,
+        "guard-config",
+        "",
+    ),
+    ("echo '{}' > .agents/hooks.json", D, "guard-config", ""),
+    ("echo '{}' >| .agents/hooks.json", D, "guard-config", ""),
+    ("cat /tmp/x | tee .agents/hooks.json", D, "guard-config", ""),
+    ("cp /tmp/hooks.json .agents/hooks.json", D, "guard-config", ""),
+    ("cp /tmp/hooks.json .agents/", D, "guard-config", ""),
+    ("cp -t .claude /tmp/settings.json", D, "guard-config", ""),
+    ("rm .agents/hooks.json", D, "guard-config", ""),
+    ("rm -rf .claude", D, "guard-config", ""),
+    ("mv .agents /tmp/agents", D, "guard-config", ""),
+    ("mv tools/agent-guard /tmp/ag", D, "guard-config", ""),
+    ("chmod -R a-w tools", D, "guard-config", ""),
+    ("echo 'exit 0' > tools/agent-guard/hook.sh", D, "guard-config", ""),
+    ("perl -pi -e s/block/continue/ .claude/settings.json", D, "guard-config", ""),
+    (
+        "python3 -c \"open('.claude/settings.json', 'w').write('{}')\"",
+        D,
+        "guard-config",
+        "",
+    ),
+    (
+        "echo '{\"disableAllHooks\": true}' > .claude/settings.local.json",
+        D,
+        "guard-config",
+        "",
+    ),
+    ("cd .claude && echo '{}' > settings.json", D, "guard-config", ""),
+    ("echo '{}' > {wt}/.claude/settings.json", D, "guard-config", "out"),
+    ("rm {repo}/.agents/hooks.json", D, "guard-config", "out"),
+    ("cat .claude/settings.json", A, None, ""),
+    ("jq '.hooks.PreToolUse' .claude/settings.json", A, None, ""),
+    ("git diff origin/main -- .claude/settings.json .agents/hooks.json", A, None, ""),
+    ("git log -p -- tools/agent-guard/hook.sh", A, None, ""),
+    ("printf '{}' | /bin/sh tools/agent-guard/hook.sh", A, None, ""),
+    ("cp tools/agent-guard/hook.sh /tmp/hook.sh", A, None, ""),
+    ("sed -n 1,20p tools/agent-guard/hook.sh", A, None, ""),
+    ("diff .agents/hooks.json /tmp/hooks.json", A, None, ""),
+    ("sed -i '' s/foo/bar/ tools/agent-guard/agent_guard.py", A, None, ""),
+    ("echo '{}' > tools/agent-guard/policy.json", A, None, ""),
+    ("mkdir -p .agents/rules && echo x > .agents/rules/x.md", A, None, ""),
+    ("echo x > .claude/notes.md", A, None, ""),
+    ("bazel test //tools/agent-guard/...", A, None, ""),
+    (
+        "bazel run //tools/git:commit -- -m 'cache in ~/.local/state/agent-guard/cache' tools/agent-guard/hook.sh",
+        A,
+        None,
+        "",
+    ),
+    ("echo '{}' > /tmp/elsewhere/.claude/settings.json", A, None, "out"),
     # --- in-progress merge / rebase / cherry-pick ------------------------------
     ("git merge --continue", A, None, "merging"),
     ("git merge --abort", A, None, "merging"),
@@ -1437,6 +1493,89 @@ class HookIOTest(HookHarness):
             )
         )
 
+    def test_file_tools_cannot_touch_the_hook_files(self):
+        for tool in ("Write", "Edit", "MultiEdit"):
+            for rel in (
+                ".claude/settings.json",
+                ".claude/settings.local.json",
+                ".agents/hooks.json",
+                "tools/agent-guard/hook.sh",
+            ):
+                for root in (self.fx.repo, self.fx.wt):
+                    out = self.hook(
+                        {
+                            "tool_name": tool,
+                            "cwd": root,
+                            "tool_input": {"file_path": os.path.join(root, rel)},
+                        }
+                    )
+                    self.assertEqual(
+                        out["hookSpecificOutput"]["permissionDecision"],
+                        "deny",
+                        (tool, rel),
+                    )
+            # Relative paths count too, and the log names the file.
+            out = self.hook(
+                {
+                    "tool_name": tool,
+                    "cwd": self.fx.repo,
+                    "tool_input": {"file_path": ".agents/hooks.json"},
+                }
+            )
+            self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertEqual(self.log()[-1]["category"], "guard-config")
+        # The guard's source and policy are fine to edit: they only take
+        # effect once merged, because hook.sh runs origin/main's copy.
+        for rel in (
+            "tools/agent-guard/agent_guard.py",
+            "tools/agent-guard/policy.json",
+            ".claude/notes.md",
+        ):
+            self.assertIsNone(
+                self.hook(
+                    {
+                        "tool_name": "Edit",
+                        "cwd": self.fx.repo,
+                        "tool_input": {"file_path": os.path.join(self.fx.repo, rel)},
+                    }
+                ),
+                rel,
+            )
+        # Outside a vitruvian-core checkout the same names are someone else's.
+        self.assertIsNone(
+            self.hook(
+                {
+                    "tool_name": "Write",
+                    "cwd": self.fx.out,
+                    "tool_input": {
+                        "file_path": os.path.join(self.fx.out, ".claude/settings.json")
+                    },
+                }
+            )
+        )
+
+    def test_log_records_which_copy_decided(self):
+        os.environ["AGENT_GUARD_SOURCE"] = "origin/main:abc"
+        try:
+            self.hook(
+                {
+                    "tool_name": "Bash",
+                    "cwd": self.fx.repo,
+                    "tool_input": {"command": "git status"},
+                }
+            )
+        finally:
+            del os.environ["AGENT_GUARD_SOURCE"]
+        self.assertEqual(self.log()[-1]["source"], "origin/main:abc")
+        self.hook(
+            {
+                "tool_name": "Bash",
+                "cwd": self.fx.repo,
+                "tool_input": {"command": "git status"},
+            }
+        )
+        self.assertEqual(self.log()[-1]["source"], "")
+
     def test_antigravity_format(self):
         out = self.hook(
             {
@@ -1648,6 +1787,25 @@ class AntigravityHookTest(HookHarness):
                 ),
                 tool,
             )
+
+    def test_file_tools_cannot_touch_the_hook_files(self):
+        for rel in (
+            ".agents/hooks.json",
+            ".claude/settings.json",
+            "tools/agent-guard/hook.sh",
+        ):
+            path = os.path.join(self.fx.repo, rel)
+            out = self.hook(
+                agy_payload(
+                    None,
+                    None,
+                    [self.fx.repo],
+                    tool="write_to_file",
+                    args={"TargetFile": path},
+                )
+            )
+            self.assertEqual(out["decision"], "deny", rel)
+            self.assertIn("James's call", out["reason"])
 
     def test_warn_mode_prints_nothing(self):
         with open(self.policy) as fh:

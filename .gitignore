@@ -37,6 +37,7 @@ scratchpad/
 !.agents/agents/
 !.agents/skills/
 !.agents/rules/
+!.agents/hooks.json
 
 # Autonomous agent project & test scaffolds accidentally emitted to the repo root
 /PROJECT.md

@@ -57,6 +57,17 @@ exports_files(
     visibility = ["//tools/maven:__pkg__"],
 )
 
+# agent-guard's hook files. .claude is in .bazelignore (Claude Code keeps
+# worktrees under it), but a file named from this package still resolves.
+# //tools/agent-guard:hook_test fails if agent-guard is unwired from either.
+exports_files(
+    [
+        ".agents/hooks.json",
+        ".claude/settings.json",
+    ],
+    visibility = ["//tools/agent-guard:__pkg__"],
+)
+
 # .github/ has no BUILD file, so its workflows belong to THIS package and must
 # be exported to be reachable as a `data` dep.
 #

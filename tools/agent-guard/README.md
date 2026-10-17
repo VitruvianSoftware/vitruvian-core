@@ -5,7 +5,8 @@ Bazel targets: `bazel run //tools/git:commit`, not `git commit`; `bazel test`,
 not `go test`. Instructions alone did not hold, so agent-guard enforces it. It
 is a hook for Claude Code and Antigravity (agy) that reads each command an
 agent is about to run and refuses the ones that have a Bazel route, naming the
-target to use instead.
+target to use instead. It runs from the repo itself: every checkout and
+worktree is guarded with nothing to install (see "How it is wired").
 
 It is a **guardrail, not a security boundary**. It reads command text, so it
 stops habits; a determined workaround (a script that calls git inside it) gets
@@ -28,99 +29,149 @@ flowchart LR
   M -- off --> OK
 ```
 
-## Install
+## How it is wired: from the repo, nothing to install
 
-**Not before the targets land.** The guard sends agents to targets that are
-still being built, so the installer refuses to install from a checkout that
-does not have all of them: `tools/git/BUILD` declaring `commit`, `push` and
-`sync`; `tools/secret-scan/BUILD`; and `pr-enqueue` in
-`tools/agent-app/agent-app.sh`, so arming auto-merge has a route on day one.
-The refusal names what is missing. Pull main once those are merged, then run it
-from your own terminal. Inside an agent
-session (`CLAUDECODE`, `ANTIGRAVITY_AGENT`, any other `ANTIGRAVITY_*`, or
-`GEMINI_CLI` set) it only runs `--dry-run` and `--check`.
+Every checkout and worktree is guarded the moment it exists. The repo carries
+the hook itself:
 
-```sh
-bazel run //tools/agent-guard:install -- --dry-run   # see the exact change to both hook files
-bazel run //tools/agent-guard:install                # install or update
-bazel run //tools/agent-guard:install -- --check     # current and working? exit 1 if not
-bazel run //tools/agent-guard:install -- --mode git-push=warn   # one category; `all=warn` for every one
-bazel run //tools/agent-guard:install -- --uninstall # remove the hooks and the copy; the log stays
+```mermaid
+flowchart LR
+  CC["Claude Code<br/>.claude/settings.json"] --> H["tools/agent-guard/hook.sh<br/>(this checkout)"]
+  AG["Antigravity<br/>.agents/hooks.json"] --> H
+  H --> Q{"origin/main has the guard?"}
+  Q -- yes --> M["run origin/main's agent_guard.py + policy.json<br/>(cached by blob id)"]
+  Q -- "no, or git fails" --> L["run this checkout's copy<br/>(logged as working-copy)"]
 ```
 
-What it does:
-
-- **Copies** `agent_guard.py` and `policy.json` to `~/.local/share/agent-guard/`
-  with a `VERSION.json` stamp (version, source commit, checksum), plus
-  `hook.py`, a two-line launcher that imports the guard so its compiled
-  bytecode is cached, and `hook.sh`, which picks the Python (below). The hook points at that copy, not at a checkout: a worktree can be
-  deleted, the main checkout changes on every pull, and an agent could weaken
-  the policy by editing the repo's `policy.json`. The copy changes only when
-  you reinstall.
-- **Merges two `PreToolUse` entries** into `~/.claude/settings.json`, the user
-  file, so they cover every project, worktree and subagent:
+- **Claude Code**: `.claude/settings.json` has two `PreToolUse` entries, both
+  running `/bin/sh "$CLAUDE_PROJECT_DIR/tools/agent-guard/hook.sh"`:
   - **command tools** (`Bash`, `Monitor`, the terminal panel, Desktop
     Commander's `start_process`/`interact_with_process`, the auto-merge tool,
-    the kubernetes MCP write tools) with `onFailure: block` (Claude Code
-    2.1.295+): if the hook cannot run, the command is refused, not let through;
+    the kubernetes MCP write tools) with `onFailure: block`: if the hook
+    cannot run, the command is refused, not let through. Claude Code honours
+    this in project settings: the hooks reference's own example of it is a
+    `PreToolUse` hook "in `.claude/settings.json`" (Hooks reference, "Block the
+    action when a hook fails"; Claude Code 2.1.295+, here 2.1.302);
   - **file tools** (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`, Desktop
     Commander's `write_file`, `edit_block`, `move_file`, `create_directory`,
-    `write_pdf`) with **no** `onFailure`. They are checked only to keep agents
-    out of the guard's own folders, so a broken hook never stops code edits.
+    `write_pdf`) with **no** `onFailure`. They are checked only to protect the
+    guard's own files, so a broken hook never stops code edits.
 
-  Every other hook is kept, and the file keeps its formatting. It is backed up
-  to `settings.json.agent-guard-<time>.bak` before each write. Running the
-  installer twice changes nothing.
-- **Merges one named hook, `agent-guard`, into `~/.gemini/config/hooks.json`**
-  for Antigravity, if `~/.gemini` exists (details below). Other named hooks,
-  such as `response-contract`, are kept; the file is backed up the same way.
-- **Tests itself, and rolls back on failure.** After writing, it runs the
-  installed hook on four sample calls, with every category enforced: in Claude
-  Code's format `git status` must be allowed and `git stash` refused; in agy's
-  real payload shape, run from a folder outside any checkout as agy does,
-  `git status` must be allowed and `go vet` refused. If any fails, both hook
-  files and the previous copy are put back and it says why. `--check` runs the
-  same test and also checks the agy entry.
-- The repo's own `.claude/block-queue-bypass.sh` hook stays. Both run, and
-  either one's refusal wins.
+  The repo's `.claude/block-queue-bypass.sh` hook stays beside them. Both run,
+  and either one's refusal wins. Project hooks need the folder trusted in an
+  interactive session; `-p` and SDK sessions always run them.
+- **Antigravity (agy)**: `.agents/hooks.json` has one named hook,
+  `agent-guard`, in the grouped shape (details below). agy runs a hook from the
+  folder holding its `hooks.json`, so the command is
+  `/bin/sh ../tools/agent-guard/hook.sh`.
 
-**Which Python.** The hook command is `/bin/sh ~/.local/share/agent-guard/hook.sh`.
-That script reads the tool call once and hands it to each of these in turn,
-with `-I`, until one exits cleanly. It fails (and the command-tool entry then
-refuses the command) only if none of them works:
+**The launcher, `hook.sh`**, finds the checkout from its own path, never from
+the working folder (agy runs it from `.agents/`, Claude Code from wherever the
+agent is). Then:
 
-1. the Python chosen at install: Homebrew's newest versioned link, such as
-   `/opt/homebrew/opt/python@3.15/bin/python3.15`. It does not depend on Xcode
-   or the Command Line Tools and survives patch upgrades, but if Homebrew
-   installed it only as another formula's dependency, its automatic cleanup can
-   remove it;
-2. every `python@3.N` you installed yourself (`brew list --installed-on-request`;
-   here `python@3.12`), which cleanup leaves alone;
-3. `/Library/Developer/CommandLineTools/usr/bin/python3`: not tied to the
-   selected Xcode, replaced in place by Command Line Tools updates;
-4. `/usr/bin/python3`: Apple's shim, resolved through `xcode-select` on every
-   call. It fails while Xcode is being replaced.
+1. **It runs the guard as it is on `origin/main`, not this checkout's copy.**
+   `git rev-parse origin/main:tools/agent-guard/agent_guard.py` (and
+   `policy.json`) gives their blob ids; the files are written once per change
+   on main to `~/.local/state/agent-guard/cache/` and reused from there. So an
+   agent's edit to `agent_guard.py` or `policy.json` in a worktree governs
+   nothing until it is reviewed and merged, and agents may edit those files
+   like any other code. `origin/main` is as fresh as your last fetch.
+2. **If that is not possible**, because there is no `origin/main`, main has no
+   guard yet, git is missing, or the cache cannot be written, it runs this
+   checkout's copy and says so: on stderr, and in the log's `source` field
+   (`working-copy (why)` instead of `origin/main:<blob>`). It does the same if
+   main's copy will not start on a python.
+3. **It tries each python3 in turn**, with `-I -S` (no `PYTHON*` variables, no
+   site packages; the guard needs only the standard library), until one exits
+   cleanly. The order is the one the per-user installer used: Homebrew's
+   versioned links newest first (`/opt/homebrew/opt/python@3.N/bin/python3.N`,
+   then `/usr/local/opt/...`; independent of Xcode, stable across patch
+   upgrades, and including every `python@3.N` installed on request, which
+   Homebrew's cleanup leaves alone), then the Command Line Tools' python3,
+   then Apple's `/usr/bin/python3` shim (resolved through `xcode-select` on
+   every call, so it fails while Xcode is being replaced). It exits 1 only if
+   none works, and the call is then refused (Claude Code's `onFailure: block`;
+   agy always fails closed). It caches the guard's bytecode for whichever
+   python runs, since Apple's never writes its own.
 
-The installer caches the guard's bytecode for each of them (Apple's Python
-never writes its own cache), so whichever runs starts fast: about 30 ms a call
-on Homebrew's, 80-100 ms through Apple's shim. Pass `--python /abs/path/python3`
-to choose the first. `--check` runs the self-test through the same script.
+**Speed.** About 48 ms a call on this Mac with a warm cache (median of 30,
+Homebrew python 3.15): ~4 ms for `sh`, ~12 ms for the `git rev-parse`, ~14 ms
+for python to start, the rest the guard. The first call after main changes
+also writes the cache: ~110 ms. The per-user install was ~30 ms because it had
+no git step. If those 12 ms ever matter, the launcher could key its cache on
+the `origin/main` commit read straight from `.git` (no process) and call git
+only when that commit changes.
 
-**Antigravity (agy).** Verified live against agy 1.4.0 on 2026-10-16: with
-the entry below, agy refused `go vet ./...` and showed the agent the guard's
-reason, let `git status` run, and the log recorded `"agent": "antigravity"`.
-What the installer writes, and why:
+**The guard's own files are protected** (category `guard-config`): agents may
+not write, move or delete `.claude/settings.json`, `.claude/settings.local.json`
+(it could switch hooks off), `.agents/hooks.json` or `tools/agent-guard/hook.sh`
+in any vitruvian-core checkout, through the file tools or the obvious shell
+writes (`>`, `tee`, `cp` onto them, `mv`, `rm`, `sed -i`, `perl -i`,
+`python -c` that writes, `chmod`). Those take effect before review, so
+changing them is James's call. Reading them, `git diff`, and running the
+launcher by hand are fine. The rest of `tools/agent-guard/` is ordinary code.
+
+**Checking it.**
+
+```sh
+bazel run //tools/agent-guard:install -- --check
+```
+
+It fails if agent-guard's entries in either file are missing or differ from
+`install.py`'s `claude_entries()`/`agy_entry()`, then runs the real launcher
+on sample tool calls in Claude Code's and agy's real payload shapes, from the
+folder each runs it in: `git status` must be allowed, `git stash` (Claude
+Code) and `go vet` (agy) refused. It says which copy of the guard answered,
+and points out a leftover per-user install.
+
+### The retired per-user install
+
+agent-guard used to be installed per user: a copy in
+`~/.local/share/agent-guard`, two entries in `~/.claude/settings.json` and one
+in `~/.gemini/config/hooks.json`. That is gone. A plain
+`bazel run //tools/agent-guard:install` now says so and changes nothing; the
+target is kept because it is how the old copy comes out, from **your own
+terminal** (agents may only `--dry-run` or `--check`):
+
+```sh
+bazel run //tools/agent-guard:install -- --uninstall --dry-run   # see exactly what it removes
+bazel run //tools/agent-guard:install -- --uninstall
+```
+
+It removes `~/.local/share/agent-guard` and only agent-guard's entries from
+both user files (every other hook is kept, each file is backed up beside
+itself first, a broken `hooks.json` does not stop the Claude Code side). The
+log stays.
+
+**Until then both copies run, and that is harmless.** They read the same
+rules, so they give the same answer; when they differ (the repo's copy also
+protects the hook files), Claude Code takes the refusal, so the result is
+never weaker than either alone. Claude Code runs the two in parallel. agy
+seemed to run them one after the other: their log lines were about 40 ms
+apart, and on a refusal only one of them logged. The log gets two lines for each allowed call: the repo hook's carry a
+`source` field once this change is on main, the old copy's never do.
+
+### Antigravity details
+
+Verified live against agy 1.4.0. The entry in `.agents/hooks.json`:
 
 ```json
 "agent-guard": {
   "enabled": true,
   "PreToolUse": [
     {"matcher": "run_command|shell_exec|send_command_input|manage_task|git_commit|write_to_file|replace_file_content|multi_replace_file_content|notebook_edit",
-     "hooks": [{"type": "command", "command": "/bin/sh ~/.local/share/agent-guard/hook.sh", "timeout": 10}]}
+     "hooks": [{"type": "command", "command": "/bin/sh ../tools/agent-guard/hook.sh", "timeout": 10}]}
   ]
 }
 ```
 
+- **Read from the project.** agy reads `.agents/hooks.json` in the folder it
+  runs in as well as `~/.gemini/config/hooks.json`, and runs a hook from the
+  folder holding its file. Tested on 2026-10-17 in a worktree of this branch:
+  agy refused `go vet ./does-not-exist-agent-guard-probe/...` with the guard's
+  reason and let `git status` run, and the log showed the repo hook's lines
+  (marked by forcing the launcher's working-copy path for the test) next to
+  the per-user hook's. The same name in both files does not clash: both ran.
 - **Grouped shape only.** agy loads a flat `PreToolUse` entry (`type` and
   `command` beside `matcher`) but silently ignores it.
 - **One regex matcher** against the tool name; plain `|` alternation was
@@ -135,45 +186,32 @@ What the installer writes, and why:
     names are guesses: `shell_exec` (read like `run_command`; the guard tries
     `Command`, `command`, `CommandLine`), `send_command_input` (`Input` or
     `input`) and `git_commit` (refused as a commit whatever its arguments).
-- **Where a command runs.** agy runs hooks in the folder holding `hooks.json`
-  (`~/.gemini/config`), not the agent's, and sends no top-level `cwd`. The
-  guard uses `args.Cwd`; without it, a `workspacePaths` entry inside
-  vitruvian-core if any is, else the first one; without either, the location
-  is unknown and the command is judged as if it were
-  inside vitruvian-core. A missing location never means allowed.
+- **Where a command runs.** agy sends no top-level `cwd`. The guard uses
+  `args.Cwd`; without it, a `workspacePaths` entry inside vitruvian-core if any
+  is, else the first one; without either, the location is unknown and the
+  command is judged as if it were inside vitruvian-core. The hook's own folder
+  (`.agents/`) is never used: a missing location never means allowed.
 - **Replies.** Allow prints nothing; deny prints
   `{"decision":"deny","reason":"..."}`. Warn mode prints nothing (agy has no
   "allow with a note" reply), so a warning reaches only the log.
-- **A broken hook fails closed** (tested live on 2026-10-17 with agy 1.4.0).
-  agy refused the `run_command` call when the hook exited 1, printed
-  half-finished JSON, hung past its timeout, or could not start its
-  interpreter (exit 126), and reported a failed JSON hook to the agent. A
-  working hook let the same command run. See "If the hook breaks".
+- **A broken hook fails closed** (tested live with agy 1.4.0): agy refused the
+  `run_command` call when the hook exited 1, printed half-finished JSON, hung
+  past its timeout, or could not start its interpreter.
+- Not checked: whether agy started in a subfolder of the checkout still finds
+  `.agents/hooks.json` at the top.
 
 ## If the hook breaks
 
 A broken hook refuses every command an agent runs (by design: it fails
-closed). In Claude Code, file edits keep working. Antigravity fails closed too
-(tested live with agy 1.4.0: a hook that exits 1, prints half-finished JSON,
-hangs past its timeout or has no interpreter makes agy refuse `run_command`,
-reporting that a JSON hook failed), so a broken agent-guard also stops agy's
-command runs. agy has one matcher for commands and file writes, so its file
-edits are probably refused as well; only `run_command` was tested. `hook.sh`
-trying several Pythons in turn is what makes a broken hook unlikely. To
-recover, from **your own terminal** (hooks do not run there):
-
-```sh
-bazel run //tools/agent-guard:install -- --uninstall
-```
-
-It removes only agent-guard's entries from both hook files. A broken
-`~/.gemini/config/hooks.json` does not stop it removing the Claude Code hook.
-Or delete the entries by hand: in `~/.claude/settings.json`, under
-`hooks.PreToolUse`, remove the entries whose `command` ends in
-`.local/share/agent-guard/hook.sh`; in `~/.gemini/config/hooks.json`, remove
-the `"agent-guard"` key. Backups of the file before each install are
-beside it as `settings.json.agent-guard-<time>.bak`. Then find out why with
-`bazel run //tools/agent-guard:install -- --check`, fix it, and reinstall.
+closed). In Claude Code, file edits keep working; in agy, which has one
+matcher for commands and file writes, probably not. The launcher's python
+fallback and its working-copy fallback make this unlikely. Run
+`bazel run //tools/agent-guard:install -- --check` from your own terminal
+(hooks do not run there) to see why. To switch the guard off while you fix it,
+from your own terminal: remove the two agent-guard entries from
+`.claude/settings.json` and the `"agent-guard"` key from `.agents/hooks.json`
+in the affected checkout (or set `"enabled": false` there), and land the fix
+through a PR.
 
 ## What is blocked, and what to use
 
@@ -212,7 +250,7 @@ another branch; until one lands, the refusal says so and points to James.
 | | `edit/exec/rollout restart/scale/label/...` | no target: tell James |
 | `helm` | `install/upgrade/uninstall/rollback` | `bazel run //tools/gitops:helm`, or change git |
 | `bazel-cache` | `rm -r` of `~/.cache/bazel`, `~/Library/Caches/bazel` or `_bazel_*`; `find -delete` there; `bazel clean --expunge`; `--output_user_root`/`--output_base` | `bazel run //tools/bazel-cache:gc` |
-| `guard-config` | agents editing or removing the installed guard, its policy or its log; running the installer (`bazel run`, `bazel-bin/.../install` or `install.py`) without `--dry-run`/`--check`; hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal |
+| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); editing or removing the guard's log and cache (`~/.local/state/agent-guard`) or the retired per-user copy; running `//tools/agent-guard:install` (`bazel run`, `bazel-bin/.../install` or `install.py`) without `--dry-run`/`--check`; hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal |
 | `oversize` | a command with more than 20,000 simple commands in it (the hook must answer inside its 10 s timeout, and command tools fail closed) | split it into smaller commands |
 
 **Always allowed:** read-only git (`status log diff show fetch rev-parse
@@ -260,16 +298,16 @@ scoped by that repository instead: vitruvian-core is in scope wherever the
 command runs, and any other repository is out of scope even from inside this
 checkout. `{owner}/{repo}` placeholders mean the current directory's repo.
 For Antigravity the directory is `args.Cwd`, then a `workspacePaths` entry
-inside vitruvian-core (or the first one if none is); with neither, the command is treated as inside (see Install).
+inside vitruvian-core (or the first one if none is); with neither, the command is treated as inside (see "Antigravity details").
 
 ## Modes
 
 `tools/agent-guard/policy.json` sets each category to `enforce`, `warn` or
 `off`. `enforce` refuses. `warn` lets the command run, tells the agent it would
 have been refused, and logs it. `off` skips the check. A missing or broken
-policy file means enforce everything. The installer copies the policy;
-`--mode` changes only the installed copy, and a plain reinstall keeps modes you
-set before.
+policy file means enforce everything. The hook reads the policy from
+`origin/main`, so a mode changes for every agent when a change to this file
+merges, not when someone edits it locally.
 
 ## The log
 
@@ -278,7 +316,10 @@ Every command an agent runs through a covered tool is one JSON line in
 `antigravity`), tool, directory, scope, category, operation, decision, the
 command (redacted, cut to 1,000 characters) and the session. For Antigravity
 the directory is the one the guard judged by (empty if agy gave none, with
-scope `unknown`) and the session is agy's `conversationId`. File edits are logged only when refused. The directory is 0700
+scope `unknown`) and the session is agy's `conversationId`. `source` says which
+copy of the guard decided: `origin/main:<blob id>`, or `working-copy (why)`
+when the launcher fell back (lines from the retired per-user install have no
+`source`). File edits are logged only when refused. The directory is 0700
 and the file 0600. Secrets are replaced by `[REDACTED]`: values after
 `--password`/`--token`/`--secret`, attached `-pPASSWORD` (not `git log -p 5`),
 `curl -u user:pass`, `gh secret set ... --body`, `NAME_TOKEN=`/`*_KEY=`/
@@ -294,6 +335,8 @@ jq -r 'select(.decision=="deny") | .category' ~/.local/state/agent-guard/log.jso
 jq -c 'select(.decision=="deny") | {ts, category, command}' ~/.local/state/agent-guard/log.jsonl | tail -10
 # What warn mode would have refused
 jq -c 'select(.decision=="warn")' ~/.local/state/agent-guard/log.jsonl
+# Calls decided by a checkout's own copy rather than origin/main's
+jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-guard/log.jsonl
 ```
 
 ## Limits
@@ -316,10 +359,21 @@ jq -c 'select(.decision=="warn")' ~/.local/state/agent-guard/log.jsonl
   freely. A target that misbehaves has to be fixed in the target.
 - **Only the tools in its matchers.** A new MCP server or agy tool that runs
   commands or changes the repo is a gap until it is added to the matchers in
-  `install.py` and to the tool tables in `agent_guard.py`.
-- **Edits to `~/.claude/settings.json` or `~/.gemini/config/hooks.json` are
-  not blocked**, so an agent could in principle remove the hook that way;
-  `--check` shows it.
+  `install.py`, the two hook files and the tool tables in `agent_guard.py`
+  (`hook_test` fails if the files and `install.py` disagree).
+- **The launcher and the two hook files run from the checkout**, not from
+  `origin/main`: something has to start the hook. That is why agents may not
+  write them. A checkout whose files were changed by hand, or a branch that
+  predates them, runs whatever it has; `--check` shows it.
+- **`origin/main` is only as fresh as the last fetch**, so a merged guard
+  change reaches a checkout when it next fetches.
+- **Shell writes to the hook files are matched by name**, like everything
+  else here: `git checkout <other-branch> -- .claude/settings.json` or a
+  script that writes them is not seen.
+- **Agents' user-level hook files** (`~/.claude/settings.json`,
+  `~/.gemini/config/hooks.json`) are not protected; with the repo wiring the
+  guard no longer lives there. A user-level `disableAllHooks` would still
+  switch it off.
 - **Agent detection is by environment marker** (`CLAUDECODE`,
   `ANTIGRAVITY_AGENT`, `ANTIGRAVITY_*`, `GEMINI_CLI`). `ANTIGRAVITY_AGENT=1` is
   in the agy binary; the Gemini CLI marker is the `GEMINI_CLI` name its
@@ -341,9 +395,14 @@ bazel test //tools/agent-guard/...
 `agent_guard_test` replays a table of 400+ real commands (from a week of agent
 logs) against expected decisions, plus redaction, scope, modes, the hook's
 input and output in both formats (including agy's captured payload shape,
-the missing-`Cwd` fallback and the log fields), a real git merge conflict, and
-timing on 100 KB, 1 MB and 5 MB inputs. `install_test` runs the installer
-against a temporary HOME: merge, the two Claude Code entries and the agy entry,
-idempotence, dry run, uninstall, modes, the self-test and rollback, the
-interpreter fallback, the targets-first refusal and refusal inside an agent
-session.
+the missing-`Cwd` fallback and the log fields), the hook files' protection, a
+real git merge conflict, and timing on 100 KB, 1 MB and 5 MB inputs.
+`hook_test` runs `hook.sh` in a throwaway git checkout with an `origin/main`:
+origin/main's guard wins over a broken local edit, a merged change takes
+effect, the cache, each working-copy fallback, the python fallback, agy's
+`.agents/` working folder; it also reads the real `.claude/settings.json` and
+`.agents/hooks.json` and fails if agent-guard is unwired from either.
+`install_test` covers removing the per-user install from a temporary HOME
+(both files, shared groups, the desktop app's JSON style, a broken
+`hooks.json`, refusal inside an agent session), the plain run that changes
+nothing, and `--check` passing and failing.
