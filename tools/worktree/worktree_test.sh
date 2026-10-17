@@ -372,5 +372,181 @@ else
     fail "--prune --execute deleted the wrong branches (rc=$rc): $out"
 fi
 
+# 17. --detach: a scratch tree at a ref, no branch, its own Bazel root, marked.
+scratch_mark() { echo "$(git -C "$1" rev-parse --path-format=absolute --git-dir)/vitruvian-scratch"; }
+# age_scratch <dir>: as if nobody had touched it since 2020.
+age_scratch() {
+    local gd
+    gd="$(git -C "$1" rev-parse --path-format=absolute --git-dir)"
+    touch -t 202001010000 "$gd/vitruvian-scratch" "$gd/index" "$gd/HEAD" "$gd/logs/HEAD"
+}
+out="$(tool --detach main review-1 2>&1)"
+rc=$?
+sroot="$HOME/.cache/bazel/worktrees/repo-review-1"
+if [ "$rc" -eq 0 ] && [ -d "$work/wt/review-1" ] &&
+   [ -z "$(git -C "$work/wt/review-1" symbolic-ref -q HEAD)" ] &&
+   [ "$(git -C "$work/wt/review-1" rev-parse HEAD)" = "$(git rev-parse main)" ] &&
+   grep -q "output_user_root=$sroot\$" "$work/wt/review-1/user.bazelrc" &&
+   [ "$(cat "$sroot/.vitruvian-worktree")" = "$work/wt/review-1" ] &&
+   [ "$(cat "$(scratch_mark "$work/wt/review-1")")" = "$(git rev-parse main)" ] &&
+   [ -z "$(git -C "$work/wt/review-1" status --porcelain)" ]; then
+    pass "--detach makes a detached scratch tree with its own Bazel root and a scratch mark outside its files"
+else
+    fail "--detach did not make a proper scratch tree (rc=$rc): $out"
+fi
+out="$(tool --detach no-such-ref review-2 2>&1)"
+rc=$?
+if [ "$rc" -eq 1 ] && [ ! -e "$work/wt/review-2" ] && grep -q "not a commit" <<<"$out"; then
+    pass "--detach refuses a ref that is not a commit"
+else
+    fail "--detach with a bad ref (rc=$rc): $out"
+fi
+out="$(tool --detach main 2>&1)"
+rc=$?
+if [ "$rc" -eq 2 ] && grep -q -- "--detach <ref> <name>" <<<"$out"; then
+    pass "--detach without a name is a usage error that shows the usage"
+else
+    fail "--detach without a name (rc=$rc): $out"
+fi
+
+# 18. --remove <name> removes a scratch tree and its Bazel root.
+out="$(tool --remove review-1 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$work/wt/review-1" ] && [ ! -e "$sroot" ] && grep -q "removed scratch worktree" <<<"$out"; then
+    pass "--remove <name> removes a scratch tree and its own Bazel root"
+else
+    fail "--remove of a scratch tree (rc=$rc): $out"
+fi
+tool --detach main review-3 >/dev/null 2>&1
+out="$(tool --remove review-3 --delete-branch 2>&1)"
+rc=$?
+if [ "$rc" -eq 1 ] && [ -d "$work/wt/review-3" ] && grep -q "no branch to delete" <<<"$out"; then
+    pass "--delete-branch on a scratch tree is refused, and it is kept"
+else
+    fail "--delete-branch on a scratch tree (rc=$rc): $out"
+fi
+tool --remove review-3 >/dev/null 2>&1
+
+# 19. --prune takes a scratch tree only when clean, unlocked, unmoved and unused
+# for the TTL.
+tool --detach main s-old >/dev/null 2>&1        # REMOVE
+tool --detach main s-young >/dev/null 2>&1      # KEEP: just made
+tool --detach main s-dirty >/dev/null 2>&1      # KEEP: untracked file
+tool --detach main s-locked >/dev/null 2>&1     # KEEP: locked
+tool --detach main s-used >/dev/null 2>&1       # KEEP: made long ago, used just now
+tool --detach main s-moved >/dev/null 2>&1      # KEEP: someone checked out another commit
+git -C "$work/wt/s-moved" checkout -q --detach main~1
+for d in s-old s-dirty s-locked s-used s-moved; do age_scratch "$work/wt/$d"; done
+touch "$(git -C "$work/wt/s-used" rev-parse --path-format=absolute --git-dir)/index"
+echo wip >"$work/wt/s-dirty/notes.txt"
+git worktree lock --reason "reviewing" "$work/wt/s-locked"
+out="$(tool --prune 2>&1)"
+rc=$?
+want "lists an old clean scratch tree for removal" s-old REMOVE "scratch tree, clean"
+want "keeps a scratch tree just made, and says how to keep it longer" s-young KEEP "used in the last 24h"
+want "keeps a scratch tree made long ago but used recently (index touched)" s-used KEEP "used in the last 24h"
+want "keeps a scratch tree whose HEAD moved from where it was made" s-moved KEEP "HEAD moved"
+want "keeps a dirty scratch tree" s-dirty KEEP "uncommitted or untracked"
+want "keeps a locked scratch tree" s-locked KEEP "reviewing"
+out="$(tool --prune --execute 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$work/wt/s-old" ] && [ ! -e "$HOME/.cache/bazel/worktrees/repo-s-old" ] &&
+   [ -d "$work/wt/s-young" ] && [ -f "$work/wt/s-dirty/notes.txt" ] && [ -d "$work/wt/s-locked" ] &&
+   [ -d "$work/wt/s-used" ] && [ -d "$work/wt/s-moved" ] && [ -d "$work/wt/p-detached" ]; then
+    pass "--prune --execute removes only the old clean scratch tree (and keeps a hand-made detached one)"
+else
+    fail "--prune --execute on scratch trees (rc=$rc): $out"
+fi
+git worktree unlock "$work/wt/s-locked"
+
+# 20. --lock / --unlock: the worktree it runs from, or the one --on names.
+git worktree add -q -b fix/twenty "$work/wt/fix-twenty" main
+in20() { BUILD_WORKSPACE_DIRECTORY="$work/wt/fix-twenty" bash "$SCRIPT" "$@"; }
+locked_reason() { git worktree list --porcelain | awk -v p="$1" '$0 == "worktree " p {f=1; next} /^worktree /{f=0} f && /^locked/ {print substr($0, 8); exit}'; }
+out="$(in20 --lock agent wren reviewing 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && [ "$(locked_reason "$work/wt/fix-twenty")" = "agent wren reviewing" ] && grep -q -- "--unlock" <<<"$out"; then
+    pass "--lock locks the worktree it runs from, with the reason given"
+else
+    fail "--lock from inside a worktree (rc=$rc, reason='$(locked_reason "$work/wt/fix-twenty")'): $out"
+fi
+out="$(tool --remove fix/twenty --force 2>&1)"
+rc=$?
+if [ "$rc" -ne 0 ] && [ -d "$work/wt/fix-twenty" ] && grep -q "bazel run //tools/worktree -- --unlock --on fix/twenty" <<<"$out"; then
+    pass "a locked worktree is kept by --remove, which names the --unlock command"
+else
+    fail "--remove of a --lock'ed worktree (rc=$rc): $out"
+fi
+out="$(in20 --unlock 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && [ -z "$(locked_reason "$work/wt/fix-twenty")" ]; then
+    pass "--unlock unlocks it"
+else
+    fail "--unlock (rc=$rc): $out"
+fi
+out="$(tool --lock --on fix/twenty 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && locked_reason "$work/wt/fix-twenty" | grep -q "//tools/worktree --lock"; then
+    pass "--lock --on <branch> locks another worktree, with a default reason naming who and when"
+else
+    fail "--lock --on (rc=$rc, reason='$(locked_reason "$work/wt/fix-twenty")'): $out"
+fi
+out="$(tool --lock --on fix/twenty 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && grep -q "already locked" <<<"$out"; then
+    pass "--lock on a locked worktree says so and succeeds"
+else
+    fail "--lock twice (rc=$rc): $out"
+fi
+tool --unlock --on fix/twenty >/dev/null 2>&1
+out="$(tool --lock 2>&1)"
+rc=$?
+if [ "$rc" -eq 1 ] && grep -q "primary checkout" <<<"$out" && ! git worktree list --porcelain | awk -v p="$repo" '$0 == "worktree " p {f=1; next} /^worktree /{f=0} f && /^locked/ {x=1} END {exit !x}'; then
+    pass "--lock in the primary checkout is refused"
+else
+    fail "--lock in the primary (rc=$rc): $out"
+fi
+
+# 21. Removing a worktree on purpose also removes its DEFAULT output base (the
+# one a plain `bazel` run there makes before user.bazelrc pins its own root),
+# even for a worktree the tool did not make. A base that belongs to another
+# workspace, or any other base, is left alone.
+git worktree add -q -b fix/twentyone "$work/wt/by-hand" main
+base21="$BAZEL_ROOT/$(md5_of "$work/wt/by-hand")"
+mkdir -p "$base21/external/x" "$base21/execroot"
+printf '%s' "$work/wt/by-hand" >"$base21/DO_NOT_BUILD_HERE"
+chmod -R a-w "$base21/external"
+other_base="$BAZEL_ROOT/0123456789abcdef0123456789abcdef"
+mkdir -p "$other_base"
+out="$(tool --remove fix/twentyone 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$work/wt/by-hand" ] && [ ! -e "$base21" ] && [ -d "$other_base" ] && grep -q "default output base" <<<"$out"; then
+    pass "--remove deletes the worktree's default output base (read-only files too), and no other"
+else
+    fail "the default output base was left, or another was touched (rc=$rc): $out"
+fi
+git worktree add -q -b fix/twentytwo "$work/wt/not-mine" main
+base22="$BAZEL_ROOT/$(md5_of "$work/wt/not-mine")"
+mkdir -p "$base22"
+printf '%s' "/somewhere/else" >"$base22/DO_NOT_BUILD_HERE"
+out="$(tool --remove fix/twentytwo 2>&1)"
+rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$work/wt/not-mine" ] && [ -d "$base22" ] && grep -q "belongs to /somewhere/else" <<<"$out"; then
+    pass "a base whose DO_NOT_BUILD_HERE names another workspace is kept"
+else
+    fail "a base belonging to another workspace was removed (rc=$rc): $out"
+fi
+# --prune --execute takes the default base too.
+landed_branch fix/twentythree "$work/wt/fix-twentythree"
+base23="$BAZEL_ROOT/$(md5_of "$work/wt/fix-twentythree")"
+mkdir -p "$base23"
+out="$(tool --prune --execute 2>&1)"
+rc=$?
+if [ ! -e "$work/wt/fix-twentythree" ] && [ ! -e "$base23" ]; then
+    pass "--prune --execute removes a removed worktree's default output base"
+else
+    fail "--prune left the default output base (rc=$rc): $out"
+fi
+
 echo "worktree_test: $pass_n passed, $fail_n failed"
 [ "$fail_n" -eq 0 ]
