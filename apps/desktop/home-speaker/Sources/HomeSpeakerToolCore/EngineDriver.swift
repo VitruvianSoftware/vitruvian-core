@@ -157,7 +157,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
     /// would ask for it.
     static func command(for job: Job) -> HomeSpeakerCommandLine.Command {
         switch job {
-        case .say(let text): return .say(text)
+        case .say(let text), .replay(let text): return .say(text)
         case .volume, .setVolume, .mute, .unmute: return .volume(volumeRequest(job))
         case .app(let command): return .app(.success(command))
         case .signIn(let chatOnly): return .signIn(chatOnly ? .chat : .home)
@@ -175,6 +175,12 @@ public final class EngineDriver: SpeakerDriver, Sendable {
             return await HomeSpeakerCommandLine.say(
                 text, config: settings, announcer: parts.announcer, history: history,
                 standsAside: parts.standsAside(), door: door)
+        case .replay(let text):
+            // Already in the history: spoken again, not listed again.
+            let settings = await settings(of: engine)
+            return await HomeSpeakerCommandLine.say(
+                text, config: settings, announcer: parts.announcer, history: history,
+                standsAside: parts.standsAside(), door: door, records: false)
         case .volume, .setVolume, .mute, .unmute:
             let settings = await settings(of: engine)
             return await HomeSpeakerCommandLine.volume(volumeRequest(job), config: settings, speaker: parts.speaker)

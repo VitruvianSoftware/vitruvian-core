@@ -318,4 +318,96 @@ private func item(_ text: String, source: String = "Test", at time: Date = Date(
         await ClaudeStopHook.run(input: f.input, configManager: f.manager, history: f.history) { _, _, _, _ in false }
         #expect(f.history.load().isEmpty)
     }
+    /// Claude Code's own switch off: the hook reads the reply and says
+    /// nothing, neither on the home speaker nor through `--announce`.
+    @Test func claudeCodesSwitchOffSilencesTheHook() async throws {
+        let f = try await fixture()
+        await MainActor.run {
+            f.manager.config.setAnnounces(.claudeCode, false)
+            f.manager.config.effectiveSpeakLocal = true
+        }
+        let asked = HookCalls()
+        await ClaudeStopHook.run(input: f.input, configManager: f.manager, history: f.history,
+                                 launchDetached: { _ in asked.add("detached") }) { _, _, _, _ in
+            asked.add("home")
+            return true
+        }
+        #expect(asked.all.isEmpty)
+        #expect(f.history.load().isEmpty)
+    }
+
+    /// Antigravity's switch is not Claude Code's.
+    @Test func antigravitysSwitchLeavesTheHookAlone() async throws {
+        let f = try await fixture()
+        await MainActor.run { f.manager.config.setAnnounces(.antigravity, false) }
+        await ClaudeStopHook.run(input: f.input, configManager: f.manager, history: f.history) { _, _, _, _ in true }
+        #expect(f.history.load().count == 1)
+    }
+}
+
+private final class HookCalls: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func add(_ item: String) { lock.withLock { items.append(item) } }
+    var all: [String] { lock.withLock { items } }
+}
+
+/// The menu bar's and Settings' switches: saved, and the chat monitor
+/// brought along, since a save of this process's own is not seen by the
+/// file watcher.
+@Suite @MainActor struct ConfigManagerSwitchTests {
+    private final class Monitor: ChatMonitorControlling {
+        var isRunning = false
+        var calls: [String] = []
+        func start() { calls.append("start"); isRunning = true }
+        func stop() { calls.append("stop"); isRunning = false }
+    }
+
+    private func manager() throws -> (ConfigManager, URL) {
+        let dir = try scratchDir()
+        let url = dir.appendingPathComponent("c.json")
+        let manager = ConfigManager(configPath: url, historyPath: dir.appendingPathComponent("h.json"),
+                                    secrets: SecretStore(fileURL: dir.appendingPathComponent("s.json")))
+        return (manager, url)
+    }
+
+    @Test func aChatSourceStartsStopsAndRestartsTheMonitor() throws {
+        let (manager, url) = try manager()
+        let monitor = Monitor()
+        manager.chatMonitor = monitor
+        #expect(manager.setChatSource(\.slackEnabled, true))
+        #expect(monitor.calls == ["start"], "on from all off starts it")
+        #expect(manager.setChatSource(\.beeperEnabled, true))
+        #expect(monitor.calls == ["start", "stop", "start"], "another source restarts it so it is read too")
+        #expect(!manager.setChatSource(\.beeperEnabled, true), "unchanged: nothing saved, nothing restarted")
+        #expect(monitor.calls.count == 3)
+        #expect(manager.setChatSource(\.slackEnabled, false))
+        #expect(manager.setChatSource(\.beeperEnabled, false))
+        #expect(monitor.calls.suffix(1) == ["stop"], "the last one off stops it")
+        #expect(!monitor.isRunning)
+        let saved = try JSONDecoder().decode(SpeakerConfig.self, from: Data(contentsOf: url))
+        #expect(!saved.effectiveChatMonitor.anySourceEnabled)
+    }
+
+    @Test func anAgentsSwitchIsSaved() throws {
+        let (manager, url) = try manager()
+        #expect(!manager.setAnnounces(.claudeCode, true), "already on: nothing to write")
+        #expect(manager.setAnnounces(.claudeCode, false))
+        let saved = try JSONDecoder().decode(SpeakerConfig.self, from: Data(contentsOf: url))
+        #expect(!saved.announces(.claudeCode))
+        #expect(saved.announces(.antigravity))
+    }
+
+    @Test func aFileThatWillNotTakeItChangesNothing() throws {
+        let (manager, url) = try manager()
+        try Data("not json".utf8).write(to: url)
+        manager.loadConfig()
+        let monitor = Monitor()
+        manager.chatMonitor = monitor
+        #expect(!manager.setChatSource(\.slackEnabled, true))
+        #expect(!manager.config.effectiveChatMonitor.slackEnabled, "put back as it was")
+        #expect(monitor.calls.isEmpty)
+        #expect(!manager.setAnnounces(.antigravity, false))
+        #expect(manager.config.announces(.antigravity))
+    }
 }

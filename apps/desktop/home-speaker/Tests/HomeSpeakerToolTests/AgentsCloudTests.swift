@@ -479,4 +479,35 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains("Antigravity hook · Not installed on this Mac. Nothing to do here."))
         XCTAssertFalse(tree.blocks.contains { $0.id.flatMap(Pages.Block.agentAction) != nil }, "no agent buttons")
     }
+
+    // MARK: - Each agent's switch, in Settings
+
+    func testAIAgentsHasEachAgentsSwitchFirst() {
+        let tool = opened(.agents)
+        let page = tool.settingsPage()
+        guard let heading = texts(page).firstIndex(of: "Announcements") else { return XCTFail("no Announcements") }
+        XCTAssertEqual(heading, texts(page).firstIndex { $0 == "Announcements" || $0 == "Claude Code" || $0 == "Antigravity" },
+                       "above the agents' hooks")
+        guard case .toggle(let claude)? = content(page, Pages.Block.claudeCodeEnabled),
+              case .toggle(let antigravity)? = content(page, Pages.Block.antigravityEnabled) else { return XCTFail("no switches") }
+        XCTAssertEqual(claude.title.text(for: "en"), "Announce Claude Code replies")
+        XCTAssertEqual(antigravity.title.text(for: "en"), "Announce Antigravity replies")
+        XCTAssertEqual(claude.value, true)
+        XCTAssertEqual(antigravity.value, true)
+        XCTAssertTrue(texts(page).contains(Pages.agentSwitchesHelp))
+    }
+
+    func testTheAgentSwitchesInSettingsSaveTheFile() {
+        let tool = opened(.agents)
+        let page = event(tool, Pages.Block.antigravityEnabled, .toggle, .bool(false))
+        XCTAssertEqual(store.config?.announces(.antigravity), false)
+        XCTAssertEqual(store.config?.announces(.claudeCode), true)
+        guard case .toggle(let antigravity)? = content(page, Pages.Block.antigravityEnabled) else { return XCTFail("no switch") }
+        XCTAssertEqual(antigravity.value, false, "the redraw shows it")
+        event(tool, Pages.Block.claudeCodeEnabled, .toggle, .bool(false))
+        XCTAssertEqual(store.config?.announces(.claudeCode), false)
+        let saves = store.saves
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.claudeCodeEnabled, kind: .tap)), .keep, "no value, nothing saved")
+        XCTAssertEqual(store.saves, saves)
+    }
 }

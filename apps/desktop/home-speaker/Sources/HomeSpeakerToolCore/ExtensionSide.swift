@@ -181,9 +181,11 @@ public enum ExtensionSide {
 
     /// The command line's parts on the extension's side: it stands aside
     /// while the app is chosen and installed, and `--sign-out` keeps any
-    /// login the app shares (`appSecrets`), as the tool's pages do.
+    /// login the app shares (`appSecrets`), as the tool's pages do. While
+    /// the app is the one in use, an agent's `--say` follows the app's
+    /// switches (`appSettingsURL`).
     public static func commandLineParts(
-        check: DoorCheck, appSecretsURL: URL,
+        check: DoorCheck, appSecretsURL: URL, appSettingsURL: URL? = nil,
         postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
             SignOutNotice.post(chatOnly: $0, name: $1)
         }
@@ -191,7 +193,12 @@ public enum ExtensionSide {
         .extension(
             standsAside: { check.standsAside(me: .extension) },
             otherSecrets: appSecrets(check: check, appSecretsURL: appSecretsURL),
-            postSignedOut: postSignedOut)
+            postSignedOut: postSignedOut,
+            inUseSettings: {
+                guard let appSettingsURL, check.standsAside(me: .extension),
+                      case .loaded(let settings) = SpeakerConfigFile(url: appSettingsURL).read() else { return nil }
+                return settings
+            })
     }
 
     /// Runs `work` on the main actor, later: how the kit's thread reaches
