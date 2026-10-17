@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "_comment": "Per-category mode: enforce (refuse), warn (run, but tell the agent and log it) or off (no check). Every category is enforced: James wants it locked down. This file is the source; the installer copies it to ~/.local/share/agent-guard/policy.json, and `bazel run //tools/agent-guard:install -- --mode CATEGORY=MODE` changes the installed copy only.",
+  "default_mode": "enforce",
+  "categories": {
+    "git-commit": {
+      "mode": "enforce",
+      "covers": "git add / rm / mv / commit"
+    },
+    "git-push": {
+      "mode": "enforce",
+      "covers": "git push"
+    },
+    "git-history": {
+      "mode": "enforce",
+      "covers": "git rebase, merge, pull (except ff-only on the primary checkout), reset, cherry-pick, revert, am, bisect, tag"
+    },
+    "git-stash": {
+      "mode": "enforce",
+      "covers": "git stash (anything but list/show)"
+    },
+    "git-branch": {
+      "mode": "enforce",
+      "covers": "creating, switching, renaming or deleting branches"
+    },
+    "git-worktree": {
+      "mode": "enforce",
+      "covers": "git worktree add/remove/prune/lock/unlock/move, and rm -r of a worktree"
+    },
+    "git-other": {
+      "mode": "enforce",
+      "covers": "every other git verb that writes (config, remote, apply, clean, gc, clone, ...)"
+    },
+    "gh-pr": {
+      "mode": "enforce",
+      "covers": "gh pr create/edit/comment/merge/ready/close/review, and the auto-merge MCP tool"
+    },
+    "gh-run": {
+      "mode": "enforce",
+      "covers": "gh workflow run/enable/disable, gh run rerun/cancel/delete"
+    },
+    "gh-api": {
+      "mode": "enforce",
+      "covers": "gh api writes and GraphQL mutations"
+    },
+    "gh-other": {
+      "mode": "enforce",
+      "covers": "every other gh command that writes (release, secret, repo, label, ...)"
+    },
+    "go": {
+      "mode": "enforce",
+      "covers": "go build/test/vet/run/install/generate/mod/get/fmt"
+    },
+    "swift": {
+      "mode": "enforce",
+      "covers": "swift build/test/run/package, swiftc"
+    },
+    "xcode": {
+      "mode": "enforce",
+      "covers": "xcodebuild, xcrun notarytool/stapler/altool/swift"
+    },
+    "node": {
+      "mode": "enforce",
+      "covers": "npm/pnpm/npx/yarn/bun installs and runs"
+    },
+    "cargo": {
+      "mode": "enforce",
+      "covers": "cargo build/test/run/publish/..."
+    },
+    "gradle": {
+      "mode": "enforce",
+      "covers": "gradle and gradlew"
+    },
+    "pytest": {
+      "mode": "enforce",
+      "covers": "pytest, python -m pytest"
+    },
+    "lint": {
+      "mode": "enforce",
+      "covers": "linters and formatters run directly (gofmt, golangci-lint, ruff, eslint, prettier, ...)"
+    },
+    "actionlint": {
+      "mode": "enforce",
+      "covers": "actionlint run directly"
+    },
+    "secret-scan": {
+      "mode": "enforce",
+      "covers": "gitleaks run directly"
+    },
+    "iac": {
+      "mode": "enforce",
+      "covers": "pulumi and terraform run directly"
+    },
+    "kubectl": {
+      "mode": "enforce",
+      "covers": "kubectl writes (apply, delete, patch, edit, exec, rollout, scale, ...) and the kubernetes MCP write tools"
+    },
+    "helm": {
+      "mode": "enforce",
+      "covers": "helm install/upgrade/uninstall/rollback"
+    },
+    "bazel-cache": {
+      "mode": "enforce",
+      "covers": "deleting Bazel output bases (rm -r, bazel clean --expunge, --output_user_root/--output_base overrides)"
+    },
+    "guard-config": {
+      "mode": "enforce",
+      "covers": "agents changing agent-guard itself"
+    },
+    "oversize": {
+      "mode": "enforce",
+      "covers": "a command too large to check in time (over 20,000 commands); split it up"
+    }
+  }
+}

@@ -127,10 +127,10 @@ your checkout. Previews are always fine; applies are not.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
 - macOS app (nexus-agent): `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`.
 
-## Git writes go through Bazel targets
+## Repo and dev operations go through Bazel targets
 **Use these targets for every git write.** Raw git writes (`git commit`, `git push`,
-`git rebase`, `git worktree add/remove`, `git stash`, …) are about to be blocked by a
-hook in agent sessions; reads (`git status`, `log`, `diff`, `show`, `fetch`) stay allowed.
+`git rebase`, `git worktree add/remove`, `git stash`, …) are blocked by agent-guard
+in agent sessions once it is installed (below); reads (`git status`, `log`, `diff`, `show`, `fetch`) stay allowed.
 Each target does the write plus the checks that belong with it, and every refusal
 prints the command to use instead. If no target fits, stop and say which one is missing.
 
@@ -155,6 +155,17 @@ shared by every worktree. See [`tools/git/README.md`](tools/git/README.md).
 Pull requests are not here: open one with `bazel run //tools/agent-app -- pr-create`
 (below). The other PR commands (edit, comment, enqueue) are coming separately as
 more `//tools/agent-app` `pr-*` commands; until then, use `gh pr …` as below.
+
+The same goes for toolchains and `gh` writes: `bazel test //...` instead of `go test`,
+`swift test`, `pnpm test` or `cargo test`; `bazel run //tools/format` and `aspect lint`
+instead of running linters; `bazel run //tools/agent-app -- pr-create` instead of
+`gh pr create`. Read-only commands (`git status/log/diff`, `gh pr view`, `kubectl get`)
+stay fine. Where this guide still names a raw command, use the target if it exists; if it
+does not, stop and tell James which one is missing.
+
+In Claude Code this is enforced by **agent-guard**, a hook that refuses the raw command and
+names the target ([tools/agent-guard](tools/agent-guard/README.md)). It reads command text,
+so it stops habits, not determined workarounds: do not route around it.
 
 ## Finishing work: PR, checks, land, clean up
 Run every change to completion — an unmerged branch is unfinished work, not a deliverable.
