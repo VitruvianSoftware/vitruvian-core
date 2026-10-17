@@ -494,15 +494,39 @@ class InstallTest(Base):
 ORIGIN = "https://github.com/VitruvianSoftware/vitruvian-core.git"
 
 
+def installable(co):
+    """Give a fake checkout the installer's own files and a GitHub origin, all on origin/main."""
+    shutil.copy(os.path.join(install.HERE, "install.py"), co.guard_dir)
+    co.write("tools/agent-guard/BUILD", "# the installer's BUILD\n")
+    co.commit_to_main("installer")
+    testlib.git(co.root, "remote", "add", "origin", ORIGIN)
+    return co
+
+
+def runfiles_link(tmp, workspace):
+    """Where `bazel run` would run workspace's install.py from: a runfiles link to it."""
+    d = os.path.join(
+        tmp,
+        "bazel-bin-%d" % len(os.listdir(tmp)),
+        "tools/agent-guard/install.runfiles/_main/tools/agent-guard",
+    )
+    os.makedirs(d)
+    link = os.path.join(d, "install.py")
+    os.symlink(os.path.join(workspace, "tools", "agent-guard", "install.py"), link)
+    return link
+
+
 class AgentInstallTest(Base):
     """An agent's install: the real HOME (here a temp one) and the checkout
     `bazel run` ran in, never --home/--workspace; checked, then logged."""
 
     def setUp(self):
         super().setUp()
-        self.co = testlib.Checkout()
-        testlib.git(self.co.root, "remote", "add", "origin", ORIGIN)
+        self.co = installable(testlib.Checkout())
         self.command = install.backstop_command(self.co.root)
+        self._running_from = install.RUNNING_FROM
+        install.agent_guard._scope_cache.clear()
+        install.agent_guard._root_cache.clear()
         self._saved = {
             k: os.environ.get(k)
             for k in ("HOME", "BUILD_WORKSPACE_DIRECTORY", "CLAUDE_CODE_SESSION_ID")
@@ -515,6 +539,7 @@ class AgentInstallTest(Base):
         )
 
     def tearDown(self):
+        install.RUNNING_FROM = self._running_from
         os.environ.pop("CLAUDECODE", None)
         for k, v in self._saved.items():
             if v is None:
@@ -524,9 +549,12 @@ class AgentInstallTest(Base):
         self.co.close()
         super().tearDown()
 
-    def agent(self, *args, workspace=None):
+    def agent(self, *args, workspace=None, running_from=None):
         if workspace is not None:
             os.environ["BUILD_WORKSPACE_DIRECTORY"] = workspace
+        install.RUNNING_FROM = running_from or runfiles_link(
+            self.co.tmp, os.environ["BUILD_WORKSPACE_DIRECTORY"]
+        )
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
             rc = install.main(list(args))
@@ -622,7 +650,9 @@ class AgentInstallTest(Base):
         with open(os.path.join(self.co.guard_dir, "agent_guard.py"), "a") as fh:
             fh.write("# an unreviewed local edit\n")
         rc, out = self.agent()
-        self.assert_refused(rc, out, "agent_guard.py in the main checkout")
+        self.assert_refused(
+            rc, out, "tools/agent-guard/agent_guard.py in %s differs" % self.co.root
+        )
 
     def test_refused_when_a_local_commit_is_ahead_of_origin_main(self):
         with open(os.path.join(self.co.guard_dir, "hook.sh"), "a") as fh:
@@ -634,17 +664,17 @@ class AgentInstallTest(Base):
     def test_refused_without_origin_main(self):
         testlib.git(self.co.root, "update-ref", "-d", "refs/remotes/origin/main")
         rc, out = self.agent()
-        self.assert_refused(rc, out, "`git fetch` there first")
+        self.assert_refused(rc, out, "origin/main or its installer cannot be read")
 
     def test_refused_outside_any_checkout(self):
         rc, out = self.agent(workspace=self.co.out)
-        self.assert_refused(rc, out, "not a git checkout")
+        self.assert_refused(rc, out, "vitruvian-core checkout")
 
     def test_refused_for_a_repo_that_is_not_vitruvian_core(self):
         self.co.write("MODULE.bazel", 'module(name = "something_else")\n')
         self.co.commit_to_main("not vitruvian-core")
         rc, out = self.agent()
-        self.assert_refused(rc, out, "is not a vitruvian-core checkout")
+        self.assert_refused(rc, out, "not run from inside a vitruvian-core checkout")
 
     def test_refused_when_origin_is_not_vitruvian_core(self):
         for url in (
@@ -668,9 +698,8 @@ class AgentInstallTest(Base):
         self.assertEqual(self.installs()[-1]["outcome"], "refused")
 
     def test_refused_to_move_the_backstop_to_another_checkout(self):
-        other = testlib.Checkout()
+        other = installable(testlib.Checkout())
         try:
-            testlib.git(other.root, "remote", "add", "origin", ORIGIN)
             rc, out = self.agent(workspace=other.root)
             self.assertEqual(rc, 0, out)
             before = self.text(self.settings)
@@ -678,6 +707,29 @@ class AgentInstallTest(Base):
             self.assertEqual(rc, 2, out)
             self.assertIn("moving it is James's", out)
             self.assertEqual(self.text(self.settings), before)
+        finally:
+            other.close()
+
+    def test_an_edited_installer_in_a_worktree_is_refused(self):
+        wt = os.path.join(self.co.tmp, "vitruvian-core-worktrees", "feat-x")
+        testlib.git(self.co.root, "worktree", "add", "-q", "--detach", wt)
+        with open(os.path.join(wt, "tools/agent-guard/install.py"), "a") as fh:
+            fh.write("# an agent's own edit\n")
+        rc, out = self.agent(workspace=wt)
+        self.assert_refused(rc, out, "tools/agent-guard/install.py in %s differs" % wt)
+
+    def test_refused_unless_run_from_bazels_runfiles(self):
+        # Run directly from the checkout (python3 tools/agent-guard/install.py).
+        direct = os.path.join(self.co.root, "tools/agent-guard/install.py")
+        rc, out = self.agent(running_from=direct)
+        self.assert_refused(
+            rc, out, "is not the one `bazel run //tools/agent-guard:install` builds"
+        )
+        # A runfiles tree, but of another checkout's installer.
+        other = installable(testlib.Checkout())
+        try:
+            rc, out = self.agent(running_from=runfiles_link(self.co.tmp, other.root))
+            self.assert_refused(rc, out, "is not the one")
         finally:
             other.close()
 

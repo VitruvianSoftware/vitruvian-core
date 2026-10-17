@@ -35,6 +35,8 @@ import tempfile
 import time
 import unittest
 from collections import Counter
+from typing import Any, Dict
+from unittest import mock
 
 # The folder name has a hyphen, so it cannot be a package: import by path.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -397,12 +399,8 @@ TABLE = [
         "guard-config",
         "",
     ),
-    (
-        "bazel run //tools/agent-guard:install -- --uninstall --dry-run",
-        D,
-        "guard-config",
-        "",
-    ),
+    ("bazel run //tools/agent-guard:install -- --uninstall --dry-run", A, None, ""),
+    ("bazel run //tools/agent-guard:install -- --dry-run --uninstall", A, None, ""),
     ("bazel run //tools/agent-guard:install -- --mode=all=off", D, "guard-config", ""),
     ("bazel run //tools/agent-guard:install -- --home /tmp/h", D, "guard-config", ""),
     (
@@ -429,11 +427,42 @@ TABLE = [
     ("bazel --bazelrc=/tmp/rc run //tools/agent-guard:install", D, "guard-config", ""),
     ("env -u CLAUDECODE bazel run //tools/agent-guard:install", D, "guard-config", ""),
     ("bazel-bin/tools/agent-guard/install", D, "guard-config", ""),
+    ("python3 tools/agent-guard/install.py --uninstall --dry-run", A, None, ""),
+    # --- the backstop's user files: read freely, written only by the Edit tools
+    ("echo '{}' > ~/.claude/settings.json", D, "guard-config", "out"),
     (
-        "python3 tools/agent-guard/install.py --uninstall --dry-run",
+        "jq '.a=1' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json",
         D,
         "guard-config",
-        "",
+        "out",
+    ),
+    ("sed -i '' 's/agent-guard/x/' ~/.claude/settings.json", D, "guard-config", "out"),
+    ("cp /tmp/h.json ~/.gemini/config/hooks.json", D, "guard-config", "out"),
+    ("cp /tmp/hooks.json ~/.gemini/config/", D, "guard-config", "out"),
+    ("tee ~/.gemini/config/hooks.json < /tmp/h.json", D, "guard-config", "out"),
+    ("rm ~/.claude/settings.json", D, "guard-config", "out"),
+    ("rm -rf ~/.gemini", D, "guard-config", "out"),
+    ("mv ~/.claude/settings.json /tmp/s.json", D, "guard-config", "out"),
+    ("perl -pi -e 's/x/y/' ~/.claude/settings.json", D, "guard-config", "out"),
+    ("ln -sf /tmp/s.json ~/.claude/settings.json", D, "guard-config", "out"),
+    (
+        "python3 -c \"open('{home}/.claude/settings.json', 'w').write('{}')\"",
+        D,
+        "guard-config",
+        "out",
+    ),
+    ("cat ~/.claude/settings.json", A, None, "out"),
+    ("jq .hooks ~/.claude/settings.json", A, None, "out"),
+    ("grep -n agent-guard ~/.gemini/config/hooks.json", A, None, "out"),
+    ("cp ~/.claude/settings.json /tmp/backup.json", A, None, "out"),
+    ("perl -ne 'print if /hook/' ~/.claude/settings.json", A, None, "out"),
+    ("ls -la ~/.claude ~/.gemini/config", A, None, "out"),
+    ("echo note > ~/.claude/notes.md", A, None, "out"),
+    (
+        "python3 -c \"print(open('{home}/.claude/settings.json').read())\"",
+        A,
+        None,
+        "out",
     ),
     ("bazel run //tools/git:commit -- -m 'tools/agent-guard:install'", A, None, ""),
     (
@@ -980,12 +1009,19 @@ class Fixture(object):
 
 
 class DecisionTableTest(unittest.TestCase):
+    """Command shapes. The fixture is not a real git checkout, so whether the
+    installer there is origin/main's is taken as yes here; InstallerSourceTest
+    checks that part against a real one."""
+
     @classmethod
     def setUpClass(cls):
         cls.fx = Fixture()
+        cls._patch = mock.patch.object(g, "installer_problem", return_value="")
+        cls._patch.start()
 
     @classmethod
     def tearDownClass(cls):
+        cls._patch.stop()
         cls.fx.close()
 
     def test_table_is_big_enough(self):
@@ -1061,6 +1097,139 @@ class DecisionTableTest(unittest.TestCase):
         msg = self.fx.run("git commit", "merging").message
         self.assertIn("//tools/git:commit", msg)
         self.assertIn("concludes", msg)
+
+
+GIT_TEST_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@e",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@e",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_NOSYSTEM": "1",
+}
+
+
+class InstallerSourceTest(unittest.TestCase):
+    """An agent may run the installer only from a checkout where install.py,
+    agent_guard.py and BUILD are origin/main's and no bazelrc sets run_under:
+    an edited installer would otherwise run with James's HOME."""
+
+    def setUp(self):
+        self.tmp = os.path.realpath(
+            tempfile.mkdtemp(
+                prefix="agent-guard-installer-",
+                dir="/tmp" if os.access("/tmp", os.W_OK) else None,
+            )
+        )
+        self.repo = os.path.join(self.tmp, "vitruvian-core")
+        self.home = os.path.join(self.tmp, "home")
+        os.makedirs(self.home)
+        files = {
+            "MODULE.bazel": 'module(name = "vitruvian_core")\n',
+            ".bazelrc": "try-import %workspace%/user.bazelrc\nbuild --jobs=4\n"
+            "# run_under in a comment is fine\n",
+            "tools/agent-guard/install.py": "print('installer')\n",
+            "tools/agent-guard/agent_guard.py": "# guard\n",
+            "tools/agent-guard/BUILD": 'py_binary(name = "install", main = "install.py")\n',
+        }
+        for rel, text in files.items():
+            self.write(rel, text)
+        self.git("init", "-q", "-b", "main")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "init", "--no-gpg-sign")
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        g._scope_cache.clear()
+        g._root_cache.clear()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        g._scope_cache.clear()
+        g._root_cache.clear()
+
+    def write(self, rel, text, root=None):
+        path = os.path.join(root or self.repo, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            fh.write(text)
+
+    def git(self, *args, cwd=None):
+        subprocess.run(
+            ["git", "-C", cwd or self.repo] + list(args),
+            env=dict(os.environ, **GIT_TEST_ENV),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    def decide(self, command, cwd=None):
+        return g.evaluate(
+            command,
+            cwd or self.repo,
+            home=self.home,
+            git_state=lambda _d: g.GitState(),
+        )
+
+    COMMANDS = (
+        "bazel run //tools/agent-guard:install",
+        "bazel run //tools/agent-guard:install -- --check",
+        "bazel run //tools/agent-guard:install -- --dry-run",
+        "bazel run //tools/agent-guard:install -- --uninstall --dry-run",
+        "python3 tools/agent-guard/install.py --check",
+        "bazel-bin/tools/agent-guard/install --dry-run",
+    )
+
+    def assert_all(self, want, cwd=None, needle=""):
+        for command in self.COMMANDS:
+            d = self.decide(command, cwd)
+            self.assertEqual(d.decision, want, "%s: %s" % (command, d.message))
+            if want == D:
+                self.assertEqual(d.category, "guard-config")
+                self.assertIn(needle, d.message, command)
+
+    def test_allowed_when_the_installer_is_origin_mains(self):
+        self.assertEqual(g.installer_problem(self.repo, self.home), "")
+        self.assert_all(A)
+
+    def test_an_edited_install_py_is_refused(self):
+        self.write("tools/agent-guard/install.py", "print('anything I like')\n")
+        self.assert_all(
+            D, needle="tools/agent-guard/install.py in %s differs" % self.repo
+        )
+
+    def test_an_edited_build_or_guard_is_refused(self):
+        for rel in ("tools/agent-guard/BUILD", "tools/agent-guard/agent_guard.py"):
+            self.write(rel, "# changed\n")
+            self.assert_all(D, needle=rel)
+            self.git("checkout", "--", rel)
+        self.assert_all(A)
+
+    def test_a_committed_but_unmerged_edit_is_refused(self):
+        self.write("tools/agent-guard/install.py", "print('mine')\n")
+        self.git("commit", "-qam", "mine", "--no-gpg-sign")
+        self.assert_all(D, needle="differs from origin/main's")
+
+    def test_an_edited_installer_in_a_worktree_is_refused_there_only(self):
+        wt = os.path.join(self.tmp, "vitruvian-core-worktrees", "feat-x")
+        self.git("worktree", "add", "-q", "--detach", wt)
+        self.write("tools/agent-guard/install.py", "print('mine')\n", root=wt)
+        self.assert_all(D, cwd=wt, needle="install.py in %s differs" % wt)
+        self.assert_all(A)
+
+    def test_no_origin_main_is_refused(self):
+        self.git("update-ref", "-d", "refs/remotes/origin/main")
+        self.assert_all(D, needle="origin/main or its installer cannot be read")
+
+    def test_run_under_in_any_bazelrc_is_refused(self):
+        self.write("user.bazelrc", "run --run_under='env -u CLAUDECODE'\n")
+        self.assert_all(D, needle="user.bazelrc sets run_under")
+        os.remove(os.path.join(self.repo, "user.bazelrc"))
+        self.write(".bazelrc", "run --script_path=/tmp/x.sh\n", root=self.home)
+        self.assert_all(D, needle=".bazelrc sets run_under or script_path")
+
+    def test_outside_a_checkout_is_refused(self):
+        d = self.decide("bazel run //tools/agent-guard:install", cwd=self.home)
+        self.assertEqual(d.decision, D, d.message)
+        self.assertIn("not run from inside a vitruvian-core checkout", d.message)
 
 
 class ScopeTest(unittest.TestCase):
@@ -1827,6 +1996,236 @@ def agy_payload(command, cwd=None, workspace=None, tool="run_command", args=None
     if workspace is not None:
         p["workspacePaths"] = workspace
     return p
+
+
+BACKSTOP_CMD = "/bin/sh -c 'h=...' agent-guard-backstop /Users/j/vitruvian-core"
+USER_SETTINGS: Dict[str, Any] = {
+    "effortLevel": "high",
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "^(Bash)$",
+                "hooks": [
+                    {"type": "command", "command": BACKSTOP_CMD, "onFailure": "block"}
+                ],
+            },
+            {
+                "matcher": "^(Edit)$",
+                "hooks": [{"type": "command", "command": BACKSTOP_CMD}],
+            },
+        ],
+        "Stop": [{"hooks": [{"type": "command", "command": "/h/stop.sh"}]}],
+    },
+}
+USER_GEMINI: Dict[str, Any] = {
+    "agent-guard": {
+        "enabled": True,
+        "PreToolUse": [
+            {
+                "matcher": "run_command",
+                "hooks": [{"type": "command", "command": BACKSTOP_CMD}],
+            }
+        ],
+    },
+    "response-contract": {"enabled": True, "PreInvocation": []},
+}
+
+
+class UserFileToolTest(HookHarness):
+    """The backstop's user files: other settings may change through Claude
+    Code's Edit, MultiEdit and Write; agent-guard's entries and
+    disableAllHooks may not; other tools may not write them at all."""
+
+    def setUp(self):
+        super().setUp()
+        self.settings = os.path.join(self.fx.home, ".claude", "settings.json")
+        self.gemini = os.path.join(self.fx.home, ".gemini", "config", "hooks.json")
+        for path, data in ((self.settings, USER_SETTINGS), (self.gemini, USER_GEMINI)):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                json.dump(data, fh, indent=2)
+        with open(self.settings) as fh:
+            self.text = fh.read()
+        with open(self.gemini) as fh:
+            self.gtext = fh.read()
+
+    def decide(self, tool, tin):
+        out = self.hook({"tool_name": tool, "cwd": self.fx.out, "tool_input": tin})
+        return out["hookSpecificOutput"]["permissionDecision"] if out else "allow"
+
+    def edit(self, old, new, path=None, **kw):
+        return self.decide(
+            "Edit",
+            dict(file_path=path or self.settings, old_string=old, new_string=new, **kw),
+        )
+
+    def test_edits_to_other_settings_are_allowed(self):
+        self.assertEqual(self.edit('"effortLevel": "high"', '"effortLevel": "low"'), A)
+        self.assertEqual(self.edit('"/h/stop.sh"', '"/h/stop2.sh"'), A)
+        self.assertEqual(
+            self.edit(
+                '"response-contract": {',
+                '"other": {}, "response-contract": {',
+                self.gemini,
+            ),
+            A,
+        )
+        self.assertEqual(
+            self.decide(
+                "MultiEdit",
+                {
+                    "file_path": self.settings,
+                    "edits": [
+                        {"old_string": '"high"', "new_string": '"max"'},
+                        {"old_string": "/h/stop.sh", "new_string": "/h/s.sh"},
+                    ],
+                },
+            ),
+            A,
+        )
+
+    def test_edits_that_remove_or_change_agent_guard_entries_are_refused(self):
+        self.assertEqual(self.edit('"onFailure": "block"', '"onFailure": "allow"'), D)
+        self.assertEqual(
+            self.edit("agent-guard-backstop", "nothing", replace_all=True), D
+        )
+        self.assertEqual(
+            self.edit('"matcher": "^(Bash)$"', '"matcher": "^(Nothing)$"'), D
+        )
+        self.assertEqual(
+            self.edit(
+                '"enabled": true,\n    "PreToolUse"',
+                '"enabled": false,\n    "PreToolUse"',
+                self.gemini,
+            ),
+            D,
+        )
+        self.assertEqual(
+            self.decide(
+                "MultiEdit",
+                {
+                    "file_path": self.settings,
+                    "edits": [
+                        {"old_string": '"high"', "new_string": '"max"'},
+                        {"old_string": '"onFailure": "block"', "new_string": '"x": 1'},
+                    ],
+                },
+            ),
+            D,
+        )
+        # Not found in the file (so it cannot be simulated) but aimed at our entries.
+        self.assertEqual(self.edit("tools/agent-guard/hook.sh gone", "x"), D)
+
+    def test_disable_all_hooks_is_refused(self):
+        self.assertEqual(
+            self.edit(
+                '"effortLevel": "high"',
+                '"effortLevel": "high", "disableAllHooks": true',
+            ),
+            D,
+        )
+        self.assertEqual(
+            self.edit(
+                '"effortLevel": "high"',
+                '"disableAllHooks": false, "effortLevel": "high"',
+            ),
+            D,
+        )
+        data = dict(USER_SETTINGS, disableAllHooks=True)
+        self.assertEqual(
+            self.decide(
+                "Write", {"file_path": self.settings, "content": json.dumps(data)}
+            ),
+            D,
+        )
+
+    def test_write_must_keep_the_same_entries(self):
+        kept = dict(USER_SETTINGS, effortLevel="low", model="x")
+        self.assertEqual(
+            self.decide(
+                "Write",
+                {"file_path": self.settings, "content": json.dumps(kept, indent=4)},
+            ),
+            A,
+        )
+        dropped = dict(USER_SETTINGS, hooks={"Stop": USER_SETTINGS["hooks"]["Stop"]})
+        for content in (json.dumps(dropped), "{}", "{not json"):
+            self.assertEqual(
+                self.decide("Write", {"file_path": self.settings, "content": content}),
+                D,
+                content,
+            )
+        g2 = {k: v for k, v in USER_GEMINI.items() if k != "agent-guard"}
+        self.assertEqual(
+            self.decide("Write", {"file_path": self.gemini, "content": json.dumps(g2)}),
+            D,
+        )
+        self.assertEqual(
+            self.decide(
+                "Write",
+                {
+                    "file_path": self.gemini,
+                    "content": json.dumps(dict(USER_GEMINI, extra={})),
+                },
+            ),
+            A,
+        )
+
+    def test_write_with_no_entries_to_keep_is_allowed(self):
+        os.remove(self.settings)
+        self.assertEqual(
+            self.decide("Write", {"file_path": self.settings, "content": '{"a": 1}'}), A
+        )
+        self.assertEqual(
+            self.decide(
+                "Write",
+                {"file_path": self.settings, "content": '{"disableAllHooks": true}'},
+            ),
+            D,
+        )
+
+    def test_other_tools_may_not_write_them(self):
+        for tool, tin in (
+            (g.DC + "write_file", {"path": self.settings, "content": self.text}),
+            (
+                g.DC + "edit_block",
+                {"file_path": self.gemini, "old_string": "a", "new_string": "b"},
+            ),
+            (g.DC + "move_file", {"source": self.settings, "destination": "/tmp/x"}),
+            (g.DC + "move_file", {"source": "/tmp/x", "destination": self.gemini}),
+            (
+                g.DC + "move_file",
+                {"source": os.path.dirname(self.settings), "destination": "/tmp/x"},
+            ),
+        ):
+            self.assertEqual(self.decide(tool, tin), D, tool)
+        out = self.hook(
+            {
+                "toolCall": {
+                    "name": "write_to_file",
+                    "args": {"TargetFile": self.gemini, "CodeContent": "{}"},
+                },
+                "workspacePaths": [self.fx.out],
+            }
+        )
+        self.assertEqual(out["decision"], "deny")
+
+    def test_the_refusal_says_what_to_do(self):
+        out = self.hook(
+            {
+                "tool_name": "Edit",
+                "cwd": self.fx.out,
+                "tool_input": {
+                    "file_path": self.settings,
+                    "old_string": '"onFailure": "block"',
+                    "new_string": '"onFailure": "allow"',
+                },
+            }
+        )
+        msg = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("removes or changes agent-guard's entries", msg)
+        self.assertIn("bazel run //tools/agent-guard:install", msg)
+        self.assertEqual(self.log()[-1]["category"], "guard-config")
 
 
 class AntigravityHookTest(HookHarness):

@@ -782,10 +782,39 @@ def origin_slug(main: str) -> str:
     return "%s/%s" % (m.group(1), re.sub(r"\.git$", "", m.group(2))) if m else ""
 
 
+# Where this installer runs from. `bazel run //tools/agent-guard:install`
+# runs it from the target's runfiles, a link to the checkout's own install.py.
+RUNNING_FROM = os.path.abspath(__file__)
+
+
+def runfiles_problem(workspace: str) -> str:
+    """Why this is not the installer `bazel run` builds from workspace ("" if it is)."""
+    want = os.path.realpath(
+        os.path.join(workspace, "tools", "agent-guard", "install.py")
+    )
+    if (
+        "/install.runfiles/" not in RUNNING_FROM
+        or os.path.realpath(RUNNING_FROM) != want
+    ):
+        return (
+            "this installer (%s) is not the one `bazel run //tools/agent-guard:install` "
+            "builds from %s" % (RUNNING_FROM, workspace)
+        )
+    return ""
+
+
 def agent_check(home: str, workspace: str) -> Tuple[Optional[str], str]:
-    """(the main checkout, "") if an agent may install the backstop, else (main or None, why not)."""
+    """(the main checkout, "") if an agent may install the backstop, else (main or None, why not).
+
+    The guard (from origin/main) already refused to start an agent's install
+    from a checkout whose installer is not origin/main's; an edited install.py
+    would skip these checks, so they are a second line, not the first.
+    """
     if not workspace:
         return None, "run it through `bazel run` (no checkout given)"
+    why = runfiles_problem(workspace) or agent_guard.installer_problem(workspace, home)
+    if why:
+        return None, why
     try:
         main = main_checkout(workspace)
     except SystemExit as exc:

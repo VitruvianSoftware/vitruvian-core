@@ -159,6 +159,9 @@ class Verdict(object):
                     " That target is being built and is not in this checkout yet: if `bazel run` "
                     "cannot find it, stop and tell James."
                 )
+        elif self.category == "guard-config":
+            # Protecting the guard is not a missing target: say what is refused.
+            text = "Blocked by agent-guard: `%s` is not for agents." % self.op
         else:
             text = (
                 "Blocked by agent-guard: `%s` must go through a Bazel target in vitruvian-core, "
@@ -2226,7 +2229,7 @@ def classify_tool(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str
         return classify_gh(inv), cwd
 
     if prog in ("bazel", "bazelisk", "aspect", "ibazel"):
-        return classify_bazel(args, cwd), cwd
+        return classify_bazel(args, cwd, ctx.home), cwd
 
     if prog == "go":
         sub = args[0] if args else ""
@@ -2585,7 +2588,7 @@ def classify_tool(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str
     return None, cwd
 
 
-def classify_bazel(args: List[str], cwd: str = "") -> Optional[Verdict]:
+def classify_bazel(args: List[str], cwd: str = "", home: str = "") -> Optional[Verdict]:
     for a in args:
         if a.startswith("--output_user_root") or a.startswith("--output_base"):
             return V(
@@ -2601,12 +2604,13 @@ def classify_bazel(args: List[str], cwd: str = "") -> Optional[Verdict]:
     if cmd == "clean" and any(a in ("--expunge", "--expunge_async") for a in args):
         return V("bazel-cache", "bazel clean --expunge", T_CACHE_GC)
     if cmd == "run":
-        return classify_installer_run(args, cwd)
+        return classify_installer_run(args, cwd, home)
     return None
 
 
 # What an agent may pass to //tools/agent-guard:install: nothing (install or
 # refresh the backstop, which install.py then checks itself), or only these.
+# `--uninstall` only with `--dry-run`, to show James the change.
 AGENT_INSTALL_FLAGS = ("--check", "--dry-run", "--help", "-h")
 _INSTALL_LABEL_RE = re.compile(r"(^|/)tools/agent-guard:install$")
 
@@ -2620,14 +2624,147 @@ def _is_install_label(word: str, cwd: str) -> bool:
     )
 
 
-def classify_installer_run(args: List[str], cwd: str = "") -> Optional[Verdict]:
+def installer_args_ok(args: List[str]) -> bool:
+    """Only --check/--dry-run/--help, plus --uninstall alongside --dry-run."""
+    if any(a not in AGENT_INSTALL_FLAGS + ("--uninstall",) for a in args):
+        return False
+    return "--uninstall" not in args or "--dry-run" in args
+
+
+# The files `bazel run //tools/agent-guard:install` builds and runs. An agent
+# may run it only from a checkout where they are origin/main's, byte for byte:
+# otherwise an agent's own edit to install.py (or to BUILD's `main`) would run
+# with James's HOME, whatever install.py claims to check.
+INSTALLER_SOURCES = (
+    "tools/agent-guard/install.py",
+    "tools/agent-guard/agent_guard.py",
+    "tools/agent-guard/BUILD",
+)
+_RC_RUN_UNDER = re.compile(r"(run_under|script_path)")
+_RC_IMPORT = re.compile(r"^\s*(try-)?import\s+(\S+)")
+
+
+def _git_env() -> Dict[str, str]:
+    env = dict(os.environ)
+    for k in list(env):
+        if k.startswith("GIT_") and k not in (
+            "GIT_CONFIG_NOSYSTEM",
+            "GIT_CONFIG_GLOBAL",
+        ):
+            del env[k]
+    return env
+
+
+def origin_main_files(
+    root: str, rels: Sequence[str]
+) -> Optional[Dict[str, Optional[bytes]]]:
+    """{rel: origin/main's bytes, or None if main has no such file}, or None if git cannot say."""
+    request = "".join("origin/main:%s\n" % r for r in rels).encode()
+    try:
+        r = subprocess.run(
+            ["git", "-C", root, "cat-file", "--batch"],
+            input=request,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=_git_env(),
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    out, pos, found = r.stdout, 0, {}
+    for rel in rels:
+        nl = out.find(b"\n", pos)
+        if nl < 0:
+            return None
+        header = out[pos:nl].split()
+        pos = nl + 1
+        if len(header) == 3 and header[1] == b"blob":
+            size = int(header[2])
+            found[rel] = out[pos : pos + size]
+            pos += size + 1
+        elif header[-1:] == [b"missing"]:
+            found[rel] = None
+        else:
+            return None
+    return found
+
+
+def _bazelrc_files(root: str, home: str) -> List[str]:
+    """Every bazelrc a `bazel run` in root reads: system, workspace (and its imports), user."""
+    out: List[str] = []
+
+    def visit(path: str, depth: int) -> None:
+        path = os.path.normpath(path)
+        if depth > 8 or path in out or not os.path.isfile(path):
+            return
+        out.append(path)
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            return
+        for line in lines:
+            m = _RC_IMPORT.match(line)
+            if m:
+                target = m.group(2).replace("%workspace%", root)
+                visit(
+                    target if os.path.isabs(target) else os.path.join(root, target),
+                    depth + 1,
+                )
+
+    visit("/etc/bazel.bazelrc", 0)
+    visit(os.path.join(root, ".bazelrc"), 0)
+    if home:
+        visit(os.path.join(home, ".bazelrc"), 0)
+    return out
+
+
+def installer_problem(cwd: str, home: str) -> str:
+    """Why an agent may not run the installer from cwd's checkout ("" if it may)."""
+    root = repo_root_of(cwd)
+    if root is None:
+        return "it is not run from inside a vitruvian-core checkout"
+    main = origin_main_files(root, INSTALLER_SOURCES)
+    if main is None or all(v is None for v in main.values()):
+        return "origin/main or its installer cannot be read in %s (fetch first)" % root
+    for rel in INSTALLER_SOURCES:
+        try:
+            with open(os.path.join(root, rel), "rb") as fh:
+                have: Optional[bytes] = fh.read()
+        except OSError:
+            have = None
+        if have != main[rel]:
+            return (
+                "%s in %s differs from origin/main's, so an unreviewed installer would run; "
+                "run it from a checkout that is up to date with main" % (rel, root)
+            )
+    for rc in _bazelrc_files(root, home):
+        try:
+            with open(rc, "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if not line.lstrip().startswith("#") and _RC_RUN_UNDER.search(line):
+                        return (
+                            "%s sets run_under or script_path, which would run the installer as "
+                            "something else" % rc
+                        )
+        except OSError:
+            continue
+    return ""
+
+
+def classify_installer_run(
+    args: List[str], cwd: str = "", home: str = ""
+) -> Optional[Verdict]:
     """`bazel run //tools/agent-guard:install`: agents may install, check and dry-run.
 
-    Allowed: the label alone, or with only --check/--dry-run/--help after
-    `--`. Refused: --uninstall, --mode, any other flag or argument, and any
-    Bazel option at all (--run_under or --script_path could run it without
-    the agent marker, or as something else). install.py makes its own checks
-    before an agent's install writes anything.
+    Allowed: the label alone, or with only --check/--dry-run/--help (and
+    --uninstall with --dry-run) after `--`, from a checkout whose installer is
+    origin/main's (installer_problem). Refused: a real --uninstall, --mode,
+    any other flag or argument, and any Bazel option at all (--run_under or
+    --script_path could run it without the agent marker, or as something
+    else). install.py makes its own checks before an agent's install writes.
     """
     stop = args.index("--") if "--" in args else len(args)
     label = next(
@@ -2637,19 +2774,27 @@ def classify_installer_run(args: List[str], cwd: str = "") -> Optional[Verdict]:
         return None
     target_args = [a for a in args[label + 1 :] if a != "--"]
     bazel_opts = [a for a in args[:label] if a.startswith("-")]
-    extra = [a for a in target_args if a not in AGENT_INSTALL_FLAGS]
-    if not extra and not bazel_opts:
-        return None
     shown = " ".join(
         bazel_opts + [args[label]] + (["--"] if target_args else []) + target_args
     )
-    if any(a == "--uninstall" or a.startswith("--mode") for a in extra):
+    if installer_args_ok(target_args) and not bazel_opts:
+        why = installer_problem(cwd, home)
+        if not why:
+            return None
+        return V(
+            "guard-config",
+            "bazel run %s" % shown,
+            None,
+            "Agents may run the installer only as origin/main has it: %s." % why,
+        )
+    if any(a == "--uninstall" or a.startswith("--mode") for a in target_args):
         return V(
             "guard-config",
             "bazel run %s" % shown,
             None,
             "Removing the backstop (--uninstall) and changing modes are James's, from his own "
-            "terminal. Agents may install, check and dry-run it.",
+            "terminal. Agents may install, check and dry-run it (`-- --uninstall --dry-run` "
+            "shows him the change).",
         )
     return V(
         "guard-config",
@@ -2764,6 +2909,80 @@ def guard_path(path: str, home: str) -> bool:
         if p == base or p.startswith(base + os.sep):
             return True
     return protected_repo_file(p) is not None
+
+
+# The per-user files that hold the backstop. Agents may edit them for other
+# settings with Claude Code's Edit/MultiEdit/Write, which the guard checks
+# keep agent-guard's entries (user_file_change_problem); shell, Desktop
+# Commander and agy writes to them are refused.
+USER_HOOK_FILES_REL = (".claude/settings.json", ".gemini/config/hooks.json")
+_USER_HOOK_MARK = re.compile(
+    r"agent-guard/(agent_guard\.py|hook\.py|hook\.sh)|agent-guard-backstop"
+)
+USER_FILES_NOTE = (
+    "Shell, Desktop Commander and Antigravity writes to ~/.claude/settings.json and "
+    "~/.gemini/config/hooks.json are refused because they hold agent-guard's backstop. "
+    "Change other settings there with the Edit tool (it may not touch agent-guard's entries "
+    "or disableAllHooks); the backstop itself changes only through "
+    "`bazel run //tools/agent-guard:install`."
+)
+
+
+def user_hook_file(path: str, home: str, folders: bool = False) -> Optional[str]:
+    """The backstop file that path is (with folders: or holds), else None."""
+    p = os.path.normpath(path)
+    if ".claude" not in p and ".gemini" not in p:
+        return None
+    for rel in USER_HOOK_FILES_REL:
+        f = os.path.normpath(os.path.join(home, rel))
+        if p == f or (
+            folders and p != os.path.normpath(home) and f.startswith(p + os.sep)
+        ):
+            return f
+    return None
+
+
+def _guard_entries(path: str, data: Any) -> Any:
+    """agent-guard's part of a backstop file: what an edit must leave unchanged."""
+    if not isinstance(data, dict):
+        return None
+    if path.endswith("hooks.json"):
+        return {
+            name: spec
+            for name, spec in data.items()
+            if name == "agent-guard" or _USER_HOOK_MARK.search(json.dumps(spec))
+        }
+    hooks = data.get("hooks")
+    if not isinstance(hooks, dict):
+        return {}
+    return {
+        event: [e for e in entries if _USER_HOOK_MARK.search(json.dumps(e))]
+        for event, entries in hooks.items()
+        if isinstance(entries, list)
+        and any(_USER_HOOK_MARK.search(json.dumps(e)) for e in entries)
+    }
+
+
+def user_file_change_problem(path: str, before: Optional[str], after: str) -> str:
+    """Why writing `after` over `before` would break the backstop in path ("" if it would not)."""
+    try:
+        new = json.loads(after) if after.strip() else {}
+    except ValueError:
+        new = None
+    if isinstance(new, dict) and new.get("disableAllHooks") is True:
+        return 'it sets "disableAllHooks": true'
+    try:
+        old = json.loads(before) if before and before.strip() else {}
+    except ValueError:
+        old = None
+    want = _guard_entries(path, old)
+    if not want:
+        return ""  # nothing of agent-guard's there to keep
+    if new is None:
+        return "the result is not valid JSON, so agent-guard's entries cannot be kept"
+    if _guard_entries(path, new) != want:
+        return "it removes or changes agent-guard's entries"
+    return ""
 
 
 def protected_repo_file(path: str, folders: bool = True) -> Optional[str]:
@@ -2933,11 +3152,10 @@ HOOK_FILES_NOTE = (
 _INSTALLER_RE = re.compile(
     r"(^|/)(tools/)?agent-guard/install(\.py)?$|(^|/)agent-guard/install(\.py)?$"
 )
-_READ_ONLY_INSTALL = AGENT_INSTALL_FLAGS
 
 
-def _installer_run(inv: Invocation) -> bool:
-    """Is this the installer run directly (not via bazel), other than only --dry-run/--check?"""
+def _installer_run(inv: Invocation) -> Optional[Tuple[bool, str]]:
+    """The installer run directly (not via bazel): (does it write, its path), or None."""
     argv = inv.argv
     for i, w in enumerate(argv):
         if not _INSTALLER_RE.search(w):
@@ -2948,16 +3166,26 @@ def _installer_run(inv: Invocation) -> bool:
             and re.match(r"^python(3(\.\d+)?)?$", os.path.basename(argv[0])) is not None
             and all(a.startswith("-") for a in argv[1:i])
         )
-        rest = argv[i + 1 :]
-        if (direct or via_python) and (
-            not rest or any(a not in _READ_ONLY_INSTALL for a in rest)
-        ):
-            return True
-    return False
+        if direct or via_python:
+            rest = argv[i + 1 :]
+            return (not rest or not installer_args_ok(rest)), w
+    return None
 
 
 def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
-    if _installer_run(inv):
+    run = _installer_run(inv)
+    if run and not run[0]:
+        why = installer_problem(
+            os.path.dirname(expand_path(run[1], inv.cwd, ctx.home)), ctx.home
+        )
+        if why:
+            return V(
+                "guard-config",
+                "running the agent-guard installer directly",
+                None,
+                "Agents may run the installer only as origin/main has it: %s." % why,
+            )
+    if run and run[0]:
         return V(
             "guard-config",
             "running the agent-guard installer directly",
@@ -2968,6 +3196,13 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
         )
     for op, target in inv.redirects:
         path = expand_path(target, inv.cwd, ctx.home)
+        if op not in ("<",) and user_hook_file(path, ctx.home):
+            return V(
+                "guard-config",
+                "writing the backstop's user files",
+                None,
+                USER_FILES_NOTE,
+            )
         if op not in ("<",) and guard_path(path, ctx.home):
             if protected_repo_file(path):
                 return V(
@@ -2992,6 +3227,19 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
                 text,
                 lambda p: guard_path(expand_path(p, inv.cwd, ctx.home), ctx.home),
             )
+            if not hit and _python_writes(
+                text,
+                lambda p: (
+                    user_hook_file(expand_path(p, inv.cwd, ctx.home), ctx.home)
+                    is not None
+                ),
+            ):
+                return V(
+                    "guard-config",
+                    "writing the backstop's user files",
+                    None,
+                    USER_FILES_NOTE,
+                )
             if hit:
                 hook = protected_repo_file(expand_path(hit, inv.cwd, ctx.home))
                 return V(
@@ -3035,7 +3283,51 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
             None,
             HOOK_FILES_NOTE,
         )
+    in_place = prog not in ("perl", "ruby") or any(
+        a.startswith("-i")
+        or (a.startswith("-") and "i" in a[1:] and not a.startswith("--"))
+        for a in inv.argv[1:]
+    )
+    if (
+        prog in _USER_FILE_WRITERS
+        and in_place
+        and any(
+            user_hook_file(
+                expand_path(m.group(0), inv.cwd, ctx.home), ctx.home, prog in _REMOVERS
+            )
+            for w in _written_words(inv.argv)
+            for m in _PATHISH.finditer(w)
+            if ".claude" in w or ".gemini" in w or "settings" in w or "hooks.json" in w
+        )
+    ):
+        return V(
+            "guard-config",
+            "%s on the backstop's user files" % prog,
+            None,
+            USER_FILES_NOTE,
+        )
     return None
+
+
+# Programs that write, move or delete the paths they are given. Only these are
+# checked against the backstop's user files, so reading them stays free.
+_USER_FILE_WRITERS = (
+    _REMOVERS
+    | _COPIERS
+    | {
+        "tee",
+        "ln",
+        "touch",
+        "truncate",
+        "sed",
+        "perl",
+        "ruby",
+        "sponge",
+        "patch",
+        "ed",
+        "ex",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -3441,6 +3733,82 @@ def resolve_cwd(payload: Dict[str, Any], home: str) -> Tuple[str, bool]:
     return expand_path(raw, os.getcwd(), home), True
 
 
+def _edited(text: str, edits: List[Dict[str, Any]]) -> Optional[str]:
+    """text after Claude Code's Edit/MultiEdit edits, or None if one would not apply."""
+    for e in edits:
+        old = str(e.get("old_string") or "")
+        new = str(e.get("new_string") or "")
+        if not old or old not in text:
+            return None
+        text = (
+            text.replace(old, new)
+            if e.get("replace_all")
+            else text.replace(old, new, 1)
+        )
+    return text
+
+
+def user_file_tool_decision(
+    tool: str, tin: Dict[str, Any], cwd: str, home: str, modes: Dict[str, str]
+) -> Optional[Tuple["Decision", str, str]]:
+    """The decision on a file tool that touches a backstop user file, or None if it touches none."""
+    mode = modes.get("guard-config", "enforce")
+    if mode == "off":
+        return None
+    hit = ""
+    for f in FILE_TOOLS[tool]:
+        raw = str(tin.get(f) or "")
+        if raw and user_hook_file(
+            expand_path(raw, cwd, home), home, tool == DC + "move_file"
+        ):
+            hit = expand_path(raw, cwd, home)
+            break
+    if not hit:
+        return None
+    why = ""
+    if tool in ("Edit", "MultiEdit", "Write"):
+        try:
+            with open(hit, "r", encoding="utf-8") as fh:
+                before: Optional[str] = fh.read()
+        except OSError:
+            before = None
+        if tool == "Write":
+            why = user_file_change_problem(hit, before, str(tin.get("content") or ""))
+        else:
+            edits = tin.get("edits") if tool == "MultiEdit" else [tin]
+            edits = [e for e in (edits or []) if isinstance(e, dict)]
+            if any("disableAllHooks" in str(e.get("new_string") or "") for e in edits):
+                why = "it sets disableAllHooks"
+            else:
+                after = _edited(before, edits) if before is not None else None
+                if after is not None:
+                    why = user_file_change_problem(hit, before, after)
+                elif any(
+                    _USER_HOOK_MARK.search(str(e.get("old_string") or ""))
+                    or "agent-guard" in str(e.get("old_string") or "")
+                    for e in edits
+                ):
+                    why = "it edits agent-guard's entries"
+        if not why:
+            return Decision("allow", None, "", "outside"), tool, ""
+        note = (
+            "This %s of %s is refused: %s. Other settings there are yours to change; "
+            "agent-guard's entries change only through `bazel run //tools/agent-guard:install`, "
+            "and removing them is James's." % (tool, hit, why)
+        )
+    else:
+        note = USER_FILES_NOTE
+    v = V("guard-config", "%s of the backstop's user files" % tool, None, note)
+    d = Decision(
+        "deny" if mode == "enforce" else "warn",
+        "guard-config",
+        v.message(None),
+        "outside",
+        v.op,
+    )
+    return d, tool, hit
+
+
 def evaluate_tool(
     payload: Dict[str, Any], modes: Dict[str, str], home: str, git_state=None
 ) -> Tuple[Decision, str, str]:
@@ -3462,6 +3830,9 @@ def evaluate_tool(
         )
 
     if tool in FILE_TOOLS:
+        user = user_file_tool_decision(tool, tin, cwd, home, modes)
+        if user is not None:
+            return user
         paths = [str(tin.get(f) or "") for f in FILE_TOOLS[tool]]
         path = next(
             (p for p in paths if p and guard_path(expand_path(p, cwd, home), home)), ""
