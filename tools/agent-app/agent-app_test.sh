@@ -197,6 +197,124 @@ else
   bad "$missing row(s) missing bot_user_id -- commits would be attributed to nobody"
 fi
 
+echo "== pr-create opens the PR as the agent, with the fast-lane label once =="
+# Offline: stub curl (GitHub's token endpoint), jq (absent in the sandbox) and
+# gh on PATH. The token is a sentinel, so any place it leaks is easy to see.
+STUB="$KEYDIR/stub"
+mkdir -p "$STUB" "$KEYDIR/keys"
+cp "$KEYDIR/key.pem" "$KEYDIR/keys/wren.pem"
+cp "$KEYDIR/key.pem" "$KEYDIR/keys/beacon.pem"
+SECRET="ghs_SENTINEL_never_print_me"
+cat >"$STUB/curl" <<STUBEOF
+#!/usr/bin/env bash
+for a in "\$@"; do case "\$a" in http*) echo "\$a" >>"$KEYDIR/curl.log" ;; esac; done
+printf '{"token":"%s"}' "$SECRET"
+STUBEOF
+cat >"$STUB/jq" <<'STUBEOF'
+#!/usr/bin/env bash
+sed -n 's/.*"token":"\([^"]*\)".*/\1/p'
+STUBEOF
+cat >"$STUB/gh" <<STUBEOF
+#!/usr/bin/env bash
+: >"$KEYDIR/gh.args"
+for a in "\$@"; do printf '%s\n' "\$a" >>"$KEYDIR/gh.args"; done
+if [ "\${GH_TOKEN:-}" = "$SECRET" ]; then echo ok; else echo wrong; fi >"$KEYDIR/gh.token"
+echo "\${GITHUB_TOKEN:-}" >"$KEYDIR/gh.github_token"
+echo "https://github.com/o/r/pull/1"
+STUBEOF
+chmod +x "$STUB/curl" "$STUB/jq" "$STUB/gh"
+prc() { # args... -> runs pr-create, output in $KEYDIR/prc.out
+  rm -f "$KEYDIR/gh.args" "$KEYDIR/gh.token" "$KEYDIR/curl.log"
+  PATH="$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR="$KEYDIR/keys" GITHUB_TOKEN=ambient \
+    bash "$SCRIPT" pr-create "$@" >"$KEYDIR/prc.out" 2>&1
+}
+label_count() { grep -cx "agent-fast-lane" "$KEYDIR/gh.args" 2>/dev/null || true; }
+inst_of() { awk -F'\t' -v a="$1" '!/^#/ && $1==a {print $3}' "$REGISTRY"; }
+
+prc --title "two words" --body-file pr.md --draft
+want="$(printf '%s\n' pr create --title "two words" --body-file pr.md --draft --label agent-fast-lane)"
+if [ "$(cat "$KEYDIR/gh.args" 2>/dev/null)" = "$want" ]; then
+  ok "adds --label agent-fast-lane and passes every other argument through unchanged"
+else
+  bad "gh got: $(tr '\n' '|' <"$KEYDIR/gh.args" 2>/dev/null) ; out: $(cat "$KEYDIR/prc.out")"
+fi
+[ "$(cat "$KEYDIR/gh.token" 2>/dev/null)" = ok ] && ok "gh runs with the agent's token" || bad "gh did not get the agent token"
+[ -z "$(cat "$KEYDIR/gh.github_token" 2>/dev/null)" ] && ok "an ambient GITHUB_TOKEN cannot override it" || bad "GITHUB_TOKEN leaked through to gh"
+grep -q "/app/installations/$(inst_of wren)/access_tokens" "$KEYDIR/curl.log" 2>/dev/null &&
+  ok "defaults to the wren app" || bad "did not mint wren's token: $(cat "$KEYDIR/curl.log" 2>/dev/null)"
+if grep -q "$SECRET" "$KEYDIR/prc.out" "$KEYDIR/gh.args"; then
+  bad "the token was printed or passed as an argument"
+else
+  ok "the token is never printed and never in argv"
+fi
+
+for given in "--label agent-fast-lane" "--label=agent-fast-lane" "-l agent-fast-lane" "--label ci,agent-fast-lane"; do
+  # shellcheck disable=SC2086
+  prc --title t $given
+  if [ "$(label_count)" -le 1 ] && grep -q "agent-fast-lane" "$KEYDIR/gh.args" &&
+    [ "$(grep -c -e '^--label' -e '^-l$' "$KEYDIR/gh.args")" -eq 1 ]; then
+    ok "not added again when the caller passed '$given'"
+  else
+    bad "'$given': gh got $(tr '\n' '|' <"$KEYDIR/gh.args")"
+  fi
+done
+prc --title t --label ci
+[ "$(label_count)" = 1 ] && grep -qx ci "$KEYDIR/gh.args" &&
+  ok "another label does not count: the fast-lane label is still added" || bad "with --label ci, gh got $(tr '\n' '|' <"$KEYDIR/gh.args")"
+
+prc --agent beacon --title t
+grep -q "/app/installations/$(inst_of beacon)/access_tokens" "$KEYDIR/curl.log" 2>/dev/null &&
+  ! grep -qx -e --agent -e beacon "$KEYDIR/gh.args" &&
+  ok "--agent picks the app and is not passed to gh" || bad "--agent beacon: curl $(cat "$KEYDIR/curl.log" 2>/dev/null); gh $(tr '\n' '|' <"$KEYDIR/gh.args")"
+
+echo "== pr-create fails clearly and opens nothing when no token can be minted =="
+rm -f "$KEYDIR/gh.args"
+if PATH="$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent bash "$SCRIPT" pr-create --title t >"$KEYDIR/prc.out" 2>&1; then
+  bad "pr-create exited 0 without a key"
+elif [ -e "$KEYDIR/gh.args" ]; then
+  bad "gh was run anyway, as whoever it is logged in as"
+elif grep -q "NOT opened" "$KEYDIR/prc.out" && grep -q "agent-keys-pull" "$KEYDIR/prc.out"; then
+  ok "no key: says the PR was not opened and names the fix; gh never runs"
+else
+  bad "unclear failure: $(cat "$KEYDIR/prc.out")"
+fi
+rm -f "$KEYDIR/gh.args"
+if prc --agent nosuchagent --title t; then
+  bad "pr-create accepted an unknown agent"
+elif [ -e "$KEYDIR/gh.args" ]; then
+  bad "gh was run for an unknown agent"
+else
+  ok "an unknown agent opens nothing"
+fi
+printf '#!/usr/bin/env bash\nexit 22\n' >"$STUB/curl"
+rm -f "$KEYDIR/gh.args"
+if prc --title t; then
+  bad "pr-create exited 0 when GitHub refused the token"
+elif [ -e "$KEYDIR/gh.args" ]; then
+  bad "gh was run after the token request failed"
+else
+  ok "GitHub refusing the token opens nothing"
+fi
+
+echo "== a worktree finds the keys in the main checkout =="
+if command -v git >/dev/null 2>&1; then
+  main="$KEYDIR/main"
+  git init -q "$main" && git -C "$main" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init &&
+    git -C "$main" worktree add -q "$KEYDIR/wt" 2>/dev/null
+  mkdir -p "$main/tools/sync-env-secrets/agent-keys" "$KEYDIR/wt/tools/sync-env-secrets"
+  out="$(BUILD_WORKSPACE_DIRECTORY="$KEYDIR/wt" AGENT_REGISTRY="$REGISTRY" bash "$SCRIPT" login wren 2>&1 || true)"
+  real_main="$(cd "$main" && pwd -P)"
+  if [[ "$out" == *"no key at $real_main/tools/sync-env-secrets/agent-keys/wren.pem"* ]]; then
+    ok "looks for the key in the main checkout when the worktree has none"
+  else
+    bad "worktree key lookup: $out"
+  fi
+  out="$(BUILD_WORKSPACE_DIRECTORY="$KEYDIR/wt" AGENT_KEY_DIR=/given AGENT_REGISTRY="$REGISTRY" bash "$SCRIPT" login wren 2>&1 || true)"
+  [[ "$out" == *"no key at /given/wren.pem"* ]] && ok "an AGENT_KEY_DIR the caller set is used as given" || bad "AGENT_KEY_DIR ignored: $out"
+else
+  ok "git not available here; worktree lookup not checked"
+fi
+
 if [ "$failures" -ne 0 ]; then
   echo "agent-app_test: $failures failure(s)" >&2
   exit 1
