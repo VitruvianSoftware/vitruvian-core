@@ -163,7 +163,7 @@ instead of running linters; `bazel run //tools/agent-app -- pr-create` instead o
 stay fine. Where this guide still names a raw command, use the target if it exists; if it
 does not, stop and tell James which one is missing.
 
-In Claude Code this is enforced by **agent-guard**, a hook that refuses the raw command and
+In Claude Code and Antigravity (agy) this is enforced by **agent-guard**, a hook that refuses the raw command and
 names the target ([tools/agent-guard](tools/agent-guard/README.md)). It reads command text,
 so it stops habits, not determined workarounds: do not route around it.
 

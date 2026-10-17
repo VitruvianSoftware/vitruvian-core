@@ -90,6 +90,21 @@ EXISTING: Dict[str, Any] = {
     "remoteControlAtStartup": True,
 }
 
+# The shape of James's ~/.gemini/config/hooks.json before agent-guard: one
+# named hook, flat because PreInvocation takes the flat shape.
+EXISTING_GEMINI: Dict[str, Any] = {
+    "response-contract": {
+        "enabled": True,
+        "PreInvocation": [
+            {
+                "type": "command",
+                "command": "/h/.gemini/hooks/response-contract.py",
+                "timeout": 5,
+            }
+        ],
+    }
+}
+
 # Stub files that satisfy every install prerequisite.
 CHECKOUT = {
     "tools/git/BUILD": 'sh_binary(name = "commit")\nsh_binary(name = "push")\nsh_binary(name = "sync")\n',
@@ -126,6 +141,12 @@ class InstallTest(unittest.TestCase):
         self.settings = os.path.join(self.home, ".claude", "settings.json")
         with open(self.settings, "w") as fh:
             json.dump(EXISTING, fh, indent=2)
+        self.gemini_dir = os.path.join(self.home, ".gemini", "config")
+        os.makedirs(self.gemini_dir)
+        self.gemini = os.path.join(self.gemini_dir, "hooks.json")
+        with open(self.gemini, "w") as fh:
+            json.dump(EXISTING_GEMINI, fh, indent=2)
+            fh.write("\n")
         # A checkout that already has the targets the guard points to.
         self.workspace = os.path.join(self.home, "checkout")
         write_checkout(self.workspace)
@@ -178,6 +199,30 @@ class InstallTest(unittest.TestCase):
     def snapshot(self):
         with open(self.settings) as fh:
             return fh.read()
+
+    def gemini_text(self):
+        with open(self.gemini) as fh:
+            return fh.read()
+
+    def load_gemini(self):
+        with open(self.gemini) as fh:
+            return json.load(fh)
+
+    def agy_hook(self, payload, cwd=None):
+        """Run the installed hook the way agy does: from the hooks.json folder."""
+        command = self.ours(self.load())[0][2]["command"]
+        r = subprocess.run(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=60,
+            cwd=cwd or self.gemini_dir,
+            input=json.dumps(payload).encode(),
+            env=dict(os.environ, HOME=self.home),
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout) if r.stdout.strip() else None
 
     # --- merging ------------------------------------------------------------
     def test_merge_keeps_every_existing_hook(self):
@@ -361,11 +406,13 @@ class InstallTest(unittest.TestCase):
     # --- self-test and rollback --------------------------------------------
     def test_a_broken_hook_is_rolled_back(self):
         original = self.snapshot()
+        original_gemini = self.gemini_text()
         rc, out = self.run_install(python="/usr/bin/false")
         self.assertEqual(rc, 4)
         self.assertIn("self-test", out)
         self.assertIn("put back", out)
         self.assertEqual(self.snapshot(), original)
+        self.assertEqual(self.gemini_text(), original_gemini)
         self.assertFalse(os.path.exists(self.idir))
         self.assertEqual(glob.glob(self.idir + ".previous-*"), [])
 
@@ -594,6 +641,215 @@ class InstallTest(unittest.TestCase):
         self.assertTrue(
             all("onFailure" not in h for _e, _x, h in self.ours(self.load()))
         )
+
+    # --- Antigravity (agy) -------------------------------------------------
+    def test_antigravity_entry_is_merged_in_the_grouped_shape(self):
+        rc, out = self.run_install()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Antigravity hook written to", out)
+        hooks = self.load_gemini()
+        self.assertEqual(list(hooks), ["response-contract", "agent-guard"])
+        self.assertEqual(
+            hooks["response-contract"], EXISTING_GEMINI["response-contract"]
+        )
+        command = self.ours(self.load())[0][2]["command"]
+        entry = hooks["agent-guard"]
+        self.assertEqual(entry, install.agy_entry(command))
+        self.assertIs(entry["enabled"], True)
+        (group,) = entry["PreToolUse"]
+        # Grouped: matcher beside a hooks list, never type/command beside matcher
+        # (agy loads that flat shape but silently ignores it).
+        self.assertEqual(set(group), {"matcher", "hooks"})
+        self.assertEqual(group["matcher"], install.AGY_MATCHER)
+        self.assertEqual(
+            group["hooks"],
+            [{"type": "command", "command": command, "timeout": install.HOOK_TIMEOUT}],
+        )
+
+    def test_antigravity_matcher_covers_what_the_guard_reads(self):
+        m = re.compile(install.AGY_MATCHER)
+        agy_tools = [
+            "run_command",
+            "shell_exec",
+            "send_command_input",
+            "manage_task",
+            "git_commit",
+            "write_to_file",
+            "replace_file_content",
+            "multi_replace_file_content",
+            "notebook_edit",
+        ]
+        for tool in agy_tools:
+            self.assertTrue(m.search(tool), tool)
+            self.assertTrue(
+                tool in agent_guard.COMMAND_FIELDS
+                or tool in agent_guard.FILE_TOOLS
+                or tool in (agent_guard.AGY_MANAGE_TASK, agent_guard.AGY_GIT_COMMIT),
+                tool,
+            )
+        self.assertEqual(sorted(install.AGY_MATCHER.split("|")), sorted(agy_tools))
+        for tool in ("view_file", "list_dir", "grep_search", "read_url_content"):
+            self.assertFalse(m.search(tool), tool)
+
+    def test_antigravity_hand_wired_entry_is_replaced_in_place(self):
+        command = install.hook_command(self.home)
+        hand = dict(EXISTING_GEMINI)
+        hand["agent-guard"] = {
+            "enabled": True,
+            "PreToolUse": [
+                {
+                    "matcher": "run_command",
+                    "hooks": [{"type": "command", "command": command, "timeout": 10}],
+                }
+            ],
+        }
+        # An old flat-shape try under another name, which agy ignored.
+        hand["guard-try"] = {
+            "PreToolUse": [
+                {"matcher": "run_command", "type": "command", "command": command}
+            ]
+        }
+        hand["later"] = {"Stop": [{"type": "command", "command": "/x/stop.sh"}]}
+        with open(self.gemini, "w") as fh:
+            json.dump(hand, fh, indent=2)
+        rc, out = self.run_install()
+        self.assertEqual(rc, 0, out)
+        hooks = self.load_gemini()
+        self.assertEqual(list(hooks), ["response-contract", "agent-guard", "later"])
+        self.assertEqual(hooks["agent-guard"], install.agy_entry(command))
+        self.assertEqual(hooks["later"], hand["later"])
+
+    def test_antigravity_idempotent_with_one_backup(self):
+        original = self.gemini_text()
+        self.run_install()
+        after = self.gemini_text()
+        backups = glob.glob(self.gemini + ".agent-guard-*.bak")
+        self.assertEqual(len(backups), 1)
+        with open(backups[0]) as fh:
+            self.assertEqual(fh.read(), original)
+        rc, out = self.run_install()
+        self.assertEqual(rc, 0)
+        self.assertIn("already installed and up to date", out)
+        self.assertEqual(self.gemini_text(), after)
+        self.assertEqual(glob.glob(self.gemini + ".agent-guard-*.bak"), backups)
+
+    def test_antigravity_only_change_is_still_installed(self):
+        # Installed before this change: Claude Code wired, agy not.
+        self.run_install()
+        with open(self.gemini, "w") as fh:
+            json.dump(EXISTING_GEMINI, fh, indent=2)
+        rc, out = self.run_install()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("agent-guard", self.load_gemini())
+
+    def test_antigravity_dry_run_writes_nothing(self):
+        before = self.gemini_text()
+        rc, out = self.run_install("--dry-run")
+        self.assertEqual(rc, 0)
+        self.assertIn("Antigravity hooks:", out)
+        self.assertIn(install.AGY_MATCHER, out)
+        self.assertEqual(self.gemini_text(), before)
+        self.assertEqual(glob.glob(self.gemini + ".agent-guard-*.bak"), [])
+
+    def test_antigravity_uninstall_removes_only_ours(self):
+        self.run_install()
+        _rc, out = self.run_install("--uninstall", "--dry-run")
+        self.assertIn("Antigravity hooks:", out)
+        self.assertIn("agent-guard", self.load_gemini())
+        rc, out = self.run_install("--uninstall")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load_gemini(), EXISTING_GEMINI)
+        _rc, out = self.run_install("--uninstall")
+        self.assertIn("Antigravity hooks: no agent-guard hook to remove", out)
+
+    def test_antigravity_check(self):
+        self.run_install()
+        rc, out = self.run_install("--check")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("both hook formats", out)
+        hooks = self.load_gemini()
+        hooks["agent-guard"]["PreToolUse"][0]["matcher"] = "run_command"
+        with open(self.gemini, "w") as fh:
+            json.dump(hooks, fh)
+        rc, out = self.run_install("--check")
+        self.assertEqual(rc, 1)
+        self.assertIn(self.gemini, out)
+
+    def test_antigravity_not_installed_is_left_alone(self):
+        shutil.rmtree(os.path.join(self.home, ".gemini"))
+        rc, out = self.run_install()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("not found", out)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".gemini")))
+        rc, out = self.run_install("--check")
+        self.assertEqual(rc, 0, out)
+
+    def test_broken_hooks_json_blocks_install_not_uninstall(self):
+        self.run_install()
+        with open(self.gemini, "w") as fh:
+            fh.write("{broken")
+        claude_before = self.snapshot()
+        with self.assertRaises(SystemExit):
+            self.run_install("--mode", "go=warn")
+        self.assertEqual(self.snapshot(), claude_before)
+        rc, out = self.run_install("--check")
+        self.assertEqual(rc, 1)
+        self.assertIn("not valid JSON", out)
+        rc, _out = self.run_install("--uninstall")
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.load(), EXISTING)
+        self.assertEqual(self.gemini_text(), "{broken")
+
+    def test_installed_hook_answers_agys_real_payload(self):
+        self.run_install()
+        repo = fake_repo(self.home)
+
+        def payload(command, cwd, workspace):
+            p = {
+                "toolCall": {
+                    "name": "run_command",
+                    "args": {
+                        "CommandLine": command,
+                        "WaitMsBeforeAsync": 5000,
+                        "toolAction": "Running command",
+                        "toolSummary": "Run it",
+                    },
+                },
+                "stepIdx": 3,
+                "conversationId": "11111111-2222-4333-8444-555555555555",
+                "workspacePaths": workspace,
+                "transcriptPath": "/fake/transcript.jsonl",
+                "artifactDirectoryPath": "/fake/artifacts",
+                "modelName": "auto",
+            }
+            if cwd:
+                p["toolCall"]["args"]["Cwd"] = cwd
+            return p
+
+        out = self.agy_hook(payload("go vet ./...", repo, [repo]))
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("bazel test", out["reason"])
+        self.assertIsNone(self.agy_hook(payload("git status", repo, [repo])))
+        # No Cwd: the workspace decides, not the hooks.json folder it runs in.
+        self.assertEqual(
+            self.agy_hook(payload("go vet ./...", None, [repo]))["decision"], "deny"
+        )
+        self.assertEqual(
+            self.agy_hook(payload("go vet ./...", None, []))["decision"], "deny"
+        )
+        with open(agent_guard.log_path(self.home)) as fh:
+            recs = [json.loads(line) for line in fh]
+        mine = [
+            r
+            for r in recs
+            if r.get("session") == "11111111-2222-4333-8444-555555555555"
+        ]
+        self.assertEqual(len(mine), 4)
+        self.assertEqual(
+            [(r["agent"], r["cwd"]) for r in mine[:3]],
+            [("antigravity", repo)] * 3,
+        )
+        self.assertEqual((mine[3]["cwd"], mine[3]["scope"]), ("", "unknown"))
 
     def test_python_preference_puts_apples_shim_last(self):
         cands = install.python_candidates()

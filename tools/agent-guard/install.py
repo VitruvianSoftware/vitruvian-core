@@ -19,7 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Install agent-guard as a user-level Claude Code PreToolUse hook.
+"""Install agent-guard as a user-level PreToolUse hook for Claude Code and Antigravity.
 
   bazel run //tools/agent-guard:install                       # install or update
   bazel run //tools/agent-guard:install -- --dry-run          # show what would change
@@ -47,12 +47,18 @@ that cannot run refuses the call instead of letting it through. File tools
 (Edit, Write, ...) are checked only to protect the guard's own folders, so they
 get no onFailure: a broken hook must never stop an agent editing code.
 
-SAFETY NET. After writing, the installer runs the installed hook on two sample
-calls (one harmless, one that must be refused). If either fails, it puts the
-settings file and the old copy back and says why.
+ANTIGRAVITY. If ~/.gemini exists, one named hook, "agent-guard", is merged into
+~/.gemini/config/hooks.json in the grouped shape agy requires for PreToolUse
+(the flat shape is loaded but silently ignored). Every other named hook, such as
+"response-contract", is kept. One regex matcher covers agy's command tools and
+its file-write tools. agy fails closed on a broken hook (tested live: exit 1,
+bad JSON, timeout and a missing interpreter all made it refuse run_command), so
+there is no setting to add.
 
-Antigravity is not wired: its hook format is described in the design but not
-yet tested live, so the installer prints the snippet instead of guessing.
+SAFETY NET. After writing, the installer runs the installed hook on sample
+calls in both formats: Claude Code's (`git status` allowed, `git stash`
+refused) and agy's real payload shape (`git status` allowed, `go vet` refused).
+If any fails, it puts both settings files and the old copy back and says why.
 """
 
 from __future__ import annotations
@@ -102,6 +108,17 @@ FILE_MATCHER = (
     "|" + _DC + "(write_file|edit_block|move_file|create_directory|write_pdf)"
     ")$"
 )
+# Antigravity (agy 1.4.0). Its matcher is a Go regex tested against the tool
+# name; plain `|` alternation was verified live. run_command, write_to_file and
+# replace_file_content were seen live; multi_replace_file_content, manage_task
+# and notebook_edit are in agy's tool declarations; shell_exec,
+# send_command_input and git_commit exist in the binary but were never seen
+# offered to the model. Every name here is one agent_guard reads.
+AGY_HOOK_NAME = "agent-guard"
+AGY_MATCHER = (
+    "run_command|shell_exec|send_command_input|manage_task|git_commit"
+    "|write_to_file|replace_file_content|multi_replace_file_content|notebook_edit"
+)
 HOOK_TIMEOUT = 10
 ON_FAILURE_MIN = (2, 1, 295)  # Claude Code first accepting "onFailure"
 
@@ -137,6 +154,15 @@ def install_dir(home: str) -> str:
 
 def settings_path(home: str) -> str:
     return os.path.join(home, ".claude", "settings.json")
+
+
+def gemini_hooks_path(home: str) -> str:
+    return os.path.join(home, ".gemini", "config", "hooks.json")
+
+
+def antigravity_present(home: str) -> bool:
+    """agy keeps its state in ~/.gemini; without it there is nothing to wire."""
+    return os.path.isdir(os.path.join(home, ".gemini"))
 
 
 def sha256_files(directory: str) -> str:
@@ -424,6 +450,74 @@ def with_ours(
     return out
 
 
+def agy_entry(command: str) -> Dict[str, Any]:
+    """Our named hook for ~/.gemini/config/hooks.json, in the grouped shape."""
+    return {
+        "enabled": True,
+        "PreToolUse": [
+            {
+                "matcher": AGY_MATCHER,
+                "hooks": [
+                    {"type": "command", "command": command, "timeout": HOOK_TIMEOUT}
+                ],
+            }
+        ],
+    }
+
+
+def strip_ours_gemini(hooks: Dict[str, Any]) -> Dict[str, Any]:
+    """hooks.json without any agent-guard handler, grouped or flat.
+
+    A named hook left with no handlers by that is dropped; every other named
+    hook, and every handler that is not ours, is kept as is.
+    """
+    out = json.loads(json.dumps(hooks))
+    for name in list(out.keys()):
+        spec = out[name]
+        if not isinstance(spec, dict):
+            continue
+        removed = False
+        for event in list(spec.keys()):
+            entries = spec[event]
+            if not isinstance(entries, list):
+                continue
+            kept = []
+            for entry in entries:
+                if isinstance(entry, dict) and isinstance(entry.get("hooks"), list):
+                    handlers = [h for h in entry["hooks"] if not _is_ours(h)]
+                    if len(handlers) != len(entry["hooks"]):
+                        removed = True
+                        if not handlers:
+                            continue
+                        entry = dict(entry)
+                        entry["hooks"] = handlers
+                elif _is_ours(entry):  # the flat shape agy ignores for PreToolUse
+                    removed = True
+                    continue
+                kept.append(entry)
+            if len(kept) != len(entries):
+                if kept:
+                    spec[event] = kept
+                else:
+                    del spec[event]
+        if removed and not any(isinstance(v, list) and v for v in spec.values()):
+            del out[name]
+    return out
+
+
+def gemini_with_ours(hooks: Dict[str, Any], command: str) -> Dict[str, Any]:
+    """hooks.json with our named hook, kept where it already was."""
+    stripped = strip_ours_gemini(hooks)
+    out: Dict[str, Any] = {}
+    for name in hooks:
+        if name == AGY_HOOK_NAME:
+            out[name] = agy_entry(command)
+        elif name in stripped:
+            out[name] = stripped[name]
+    out.setdefault(AGY_HOOK_NAME, agy_entry(command))
+    return out
+
+
 def dump(settings: Dict[str, Any], like: str = "") -> str:
     """Serialise in the style the file already uses, so the diff is only our change.
 
@@ -545,22 +639,62 @@ def precompile(python: str, path: str) -> Optional[str]:
     return None
 
 
+def _agy_selftest_payload(sample: str, scratch: str) -> Dict[str, Any]:
+    """agy 1.4.0's real PreToolUse payload shape: no top-level cwd or session_id."""
+    return {
+        "toolCall": {
+            "name": "run_command",
+            "args": {
+                "CommandLine": sample,
+                "Cwd": scratch,
+                "WaitMsBeforeAsync": 5000,
+                "toolAction": "Running command",
+                "toolSummary": "agent-guard install self-test",
+            },
+        },
+        "stepIdx": 0,
+        "conversationId": "agent-guard-install-selftest",
+        "workspacePaths": [scratch],
+        "transcriptPath": os.path.join(scratch, "transcript.jsonl"),
+        "artifactDirectoryPath": scratch,
+        "modelName": "auto",
+    }
+
+
 def self_test(command: str, home: str) -> Optional[str]:
-    """Run the installed hook on two sample calls. None if it works, else why not."""
+    """Run the installed hook on sample calls in both formats. None if it works, else why not."""
     scratch = tempfile.mkdtemp(prefix="agent-guard-selftest-")
+    # agy runs hooks in the folder holding hooks.json, outside any checkout.
+    hook_dir = tempfile.mkdtemp(prefix="agent-guard-selftest-hookdir-")
     try:
         with open(os.path.join(scratch, "MODULE.bazel"), "w") as fh:
             fh.write('module(name = "vitruvian_core")\n')
         # A harmless command must pass, and one the guard always refuses must not.
-        cases = [("git status", "allow"), ("git stash", "deny")]
-        env = dict(os.environ, HOME=home)
-        for sample, want in cases:
-            payload = {
-                "tool_name": "Bash",
-                "cwd": scratch,
-                "session_id": "agent-guard-install-selftest",
-                "tool_input": {"command": sample},
-            }
+        cases: List[Tuple[str, str, str]] = [
+            ("claude-code", "git status", "allow"),
+            ("claude-code", "git stash", "deny"),
+            ("antigravity", "git status", "allow"),
+            ("antigravity", "go vet ./...", "deny"),
+        ]
+        # Judge the samples with every category enforced: the test is that the
+        # hook runs and answers in both formats, and modes James chose (go=off,
+        # say) must not make it fail.
+        policy = os.path.join(scratch, "enforce-everything.json")
+        with open(policy, "w") as fh:
+            fh.write('{"default_mode": "enforce"}\n')
+        env = dict(os.environ, HOME=home, AGENT_GUARD_POLICY=policy)
+        for agent, sample, want in cases:
+            if agent == "antigravity":
+                payload = _agy_selftest_payload(sample, scratch)
+                cwd: Optional[str] = hook_dir
+            else:
+                payload = {
+                    "tool_name": "Bash",
+                    "cwd": scratch,
+                    "session_id": "agent-guard-install-selftest",
+                    "tool_input": {"command": sample},
+                }
+                cwd = None
             try:
                 r = subprocess.run(
                     command,
@@ -569,6 +703,7 @@ def self_test(command: str, home: str) -> Optional[str]:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     env=env,
+                    cwd=cwd,
                     timeout=HOOK_TIMEOUT,
                 )
             except subprocess.TimeoutExpired:
@@ -582,41 +717,28 @@ def self_test(command: str, home: str) -> Optional[str]:
                 )
             out = r.stdout.decode("utf-8", "replace").strip()
             try:
-                got = (
-                    json.loads(out)["hookSpecificOutput"]["permissionDecision"]
-                    if out
-                    else "allow"
-                )
+                if not out:
+                    got = "allow"
+                elif agent == "antigravity":
+                    got = json.loads(out)["decision"]
+                else:
+                    got = json.loads(out)["hookSpecificOutput"]["permissionDecision"]
             except (ValueError, KeyError, TypeError):
-                return (
-                    "the hook printed something that is not hook JSON: %r" % out[:200]
+                return "the hook printed something that is not %s hook JSON: %r" % (
+                    agent,
+                    out[:200],
                 )
             if got != want:
-                return "the hook said %s to `%s`, expected %s" % (
+                return "the hook said %s to `%s` (%s format), expected %s" % (
                     got,
                     sample,
+                    agent,
                     want,
                 )
         return None
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-
-
-ANTIGRAVITY_SNIPPET = """\
-Antigravity (agy) is NOT wired by this installer. Its PreToolUse hook is
-described in the design (event PreToolUse, matcher run_command, command line in
-toolCall.args.CommandLine, reply {"decision":"deny","reason":...}) but has not
-been tested live. agent-guard already understands that format. To try it, add
-this entry to ~/.gemini/config/hooks.json beside "response-contract", then
-confirm a blocked command (for example `git stash`) is refused:
-
-  "agent-guard": {
-    "enabled": true,
-    "PreToolUse": [
-      {"matcher": "run_command", "type": "command", "command": %s, "timeout": %d}
-    ]
-  }
-"""
+        shutil.rmtree(hook_dir, ignore_errors=True)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -678,12 +800,36 @@ def main(argv: Optional[List[str]] = None) -> int:
     sp = settings_path(home)
     idir = install_dir(home)
     settings, old_text = read_settings(sp)
+    gp = gemini_hooks_path(home)
+    agy = antigravity_present(home)
+    gemini: Dict[str, Any] = {}
+    gemini_old = ""
+    gemini_error: Optional[str] = None
+    if agy:
+        try:
+            gemini, gemini_old = read_settings(gp)
+        except SystemExit as exc:
+            if not (args.uninstall or args.check):
+                raise
+            # A broken hooks.json must not block removing or checking the
+            # Claude Code hook, which is the way out of a broken install.
+            gemini_error = str(exc)
+            sys.stderr.write("%s; leaving it alone\n" % exc)
+            agy = False
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     if args.check:
-        return check(home, settings)
+        return check(home, settings, gemini if agy else None, gemini_error)
     if args.uninstall:
-        return uninstall(sp, idir, settings, old_text, now, args.dry_run)
+        return uninstall(
+            sp,
+            idir,
+            settings,
+            old_text,
+            now,
+            args.dry_run,
+            (gp, gemini, gemini_old) if agy else None,
+        )
 
     missing = missing_prerequisites(workspace)
     if missing and not args.dry_run:
@@ -706,6 +852,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     command = hook_command(home)
     new = with_ours(settings, command, on_failure)
     new_text = dump(new, old_text)
+    new_gemini_text = (
+        dump(gemini_with_ours(gemini, command), gemini_old) if agy else gemini_old
+    )
+    gemini_changed = new_gemini_text != gemini_old
 
     with open(os.path.join(sources_dir(), "policy.json"), "r", encoding="utf-8") as fh:
         src_policy = fh.read()
@@ -766,6 +916,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             if settings_changed
             else "settings: already up to date"
         )
+        print(antigravity_status(agy, gp, gemini_old, new_gemini_text))
         for name, cur, text in file_changes:
             print(
                 "would %s %s"
@@ -775,10 +926,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(_diff(cur, text, os.path.join(idir, name)))
         if not file_changes:
             print("installed copy: already up to date")
-        print("\n" + ANTIGRAVITY_SNIPPET % (json.dumps(command), HOOK_TIMEOUT))
         return 0
 
-    if not settings_changed and not file_changes:
+    if not settings_changed and not file_changes and not gemini_changed:
         print("agent-guard is already installed and up to date (%s)" % idir)
         return 0
 
@@ -786,9 +936,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     previous = idir + ".previous-" + now
     had_copy = os.path.isdir(idir)
     had_settings = os.path.exists(sp)
+    had_gemini = os.path.exists(gp)
     if had_copy:
         shutil.copytree(idir, previous)
     settings_backup = None
+    gemini_backup = None
     stamp: Dict[str, Any] = {}
     try:
         os.makedirs(idir, exist_ok=True)
@@ -815,6 +967,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         if settings_changed and not problem:
             settings_backup = backup(sp, now)
             write_atomic(sp, new_text)
+        if gemini_changed and not problem:
+            gemini_backup = backup(gp, now)
+            write_atomic(gp, new_gemini_text)
         problem = problem or self_test(command, home)
     except OSError as exc:
         problem = "writing failed (%s)" % exc
@@ -824,6 +979,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 write_atomic(sp, old_text)
             elif os.path.exists(sp):
                 os.remove(sp)
+        if gemini_changed:
+            if had_gemini:
+                write_atomic(gp, gemini_old)
+            elif os.path.exists(gp):
+                os.remove(gp)
         shutil.rmtree(idir, ignore_errors=True)
         if had_copy:
             os.replace(previous, idir)
@@ -840,30 +1000,66 @@ def main(argv: Optional[List[str]] = None) -> int:
             "hook written to %s%s"
             % (sp, " (backup: %s)" % settings_backup if settings_backup else "")
         )
+    if gemini_changed:
+        print(
+            "Antigravity hook written to %s%s"
+            % (gp, " (backup: %s)" % gemini_backup if gemini_backup else "")
+        )
+    elif not agy:
+        print(antigravity_status(agy, gp, "", ""))
     print(
         "guard installed at %s (version %s, source %s, python %s)"
         % (idir, stamp["version"], stamp["source_rev"], python)
     )
     print(
-        "self-test passed: the installed hook allows `git status` and refuses `git stash`"
+        "self-test passed: the installed hook allows `git status` and refuses "
+        "`git stash` (Claude Code) and `go vet` (Antigravity's payload)"
     )
     print("log: %s" % agent_guard.log_path(home))
-    print("\n" + ANTIGRAVITY_SNIPPET % (json.dumps(command), HOOK_TIMEOUT))
     return 0
 
 
+def antigravity_status(agy: bool, gp: str, old: str, new: str) -> str:
+    """What a dry run would do to agy's hooks.json."""
+    if not agy:
+        return "Antigravity: %s not found, so its hooks are left alone" % (
+            os.path.dirname(os.path.dirname(gp))
+        )
+    if old == new:
+        return "Antigravity hooks: already up to date"
+    return "Antigravity hooks:\n" + _diff(old, new, gp)
+
+
 def uninstall(
-    sp: str, idir: str, settings: Dict[str, Any], old_text: str, now: str, dry_run: bool
+    sp: str,
+    idir: str,
+    settings: Dict[str, Any],
+    old_text: str,
+    now: str,
+    dry_run: bool,
+    gemini: Optional[Tuple[str, Dict[str, Any], str]] = None,
 ) -> int:
     new = strip_ours(settings)
     new_text = dump(new, old_text) if (new or old_text) else ""
     changed = new != settings
+    g_changed = False
+    if gemini is not None:
+        gp, g_data, g_old = gemini
+        g_new = strip_ours_gemini(g_data)
+        g_changed = g_new != g_data
+        g_new_text = dump(g_new, g_old) if g_changed else g_old
     if dry_run:
         print(
             _diff(old_text, new_text, sp)
             if changed
             else "settings: no agent-guard hook to remove"
         )
+        if gemini is not None:
+            print(
+                "Antigravity hooks:\n" + _diff(g_old, g_new_text, gp)
+                if g_changed
+                else "Antigravity hooks: no agent-guard hook to remove"
+            )
         print(
             "would remove %s" % idir
             if os.path.isdir(idir)
@@ -876,6 +1072,16 @@ def uninstall(
         print("removed the agent-guard hooks from %s (backup: %s)" % (sp, b))
     else:
         print("settings: no agent-guard hook to remove")
+    if gemini is not None:
+        if g_changed:
+            b = backup(gp, now)
+            write_atomic(gp, g_new_text)
+            print(
+                "removed the agent-guard hook from %s, other hooks kept (backup: %s)"
+                % (gp, b)
+            )
+        else:
+            print("Antigravity hooks: no agent-guard hook to remove")
     if os.path.isdir(idir):
         shutil.rmtree(idir)
         print(
@@ -884,7 +1090,12 @@ def uninstall(
     return 0
 
 
-def check(home: str, settings: Dict[str, Any]) -> int:
+def check(
+    home: str,
+    settings: Dict[str, Any],
+    gemini: Optional[Dict[str, Any]] = None,
+    gemini_error: Optional[str] = None,
+) -> int:
     idir = install_dir(home)
     problems = []
     command = None
@@ -913,6 +1124,23 @@ def check(home: str, settings: Dict[str, Any]) -> int:
             "the agent-guard PreToolUse entries in %s are missing or differ from this checkout's (reinstall)"
             % settings_path(home)
         )
+    if gemini_error:
+        problems.append(gemini_error)
+    elif gemini is None:
+        print(
+            "Antigravity: ~/.gemini not found, so its hook was not checked "
+            "(the self-test still runs its payload)"
+        )
+    else:
+        rest = {k: v for k, v in gemini.items() if k != AGY_HOOK_NAME}
+        if (
+            gemini.get(AGY_HOOK_NAME) != agy_entry(hook_command(home))
+            or strip_ours_gemini(rest) != rest
+        ):
+            problems.append(
+                "the agent-guard hook in %s is missing or differs from this checkout's (reinstall)"
+                % gemini_hooks_path(home)
+            )
     if command and not problems:
         problem = self_test(command, home)
         if problem:
@@ -921,7 +1149,10 @@ def check(home: str, settings: Dict[str, Any]) -> int:
         for p in problems:
             print("DRIFT: " + p)
         return 1
-    print("agent-guard is installed, matches this checkout, and passed its self-test")
+    print(
+        "agent-guard is installed, matches this checkout, and passed its self-test "
+        "in both hook formats"
+    )
     return 0
 
 
