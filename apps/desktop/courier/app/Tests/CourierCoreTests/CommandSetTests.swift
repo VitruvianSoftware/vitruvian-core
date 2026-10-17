@@ -1,0 +1,193 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import XCTest
+
+@testable import CourierCore
+
+/// The inbox's commands, which the command bar (part 4.7) will list.
+@MainActor
+final class CommandSetTests: XCTestCase {
+    private var harnesses: [InboxHarness] = []
+
+    override func tearDown() async throws {
+        for harness in harnesses {
+            await harness.app.stop()
+            harness.cleanUp()
+        }
+        harnesses = []
+    }
+
+    /// The ledger's names (docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv, "command"
+    /// rows), in the order they are registered.
+    private let ledger = [
+        "Archive all chats", "Archive all chats older than a week", "Archive all read chats",
+        "Mark all chats as read", "Next Chat", "Show message requests", "Toggle space bar", "Edit spaces",
+        "Filter Chats", "Filter by folder type", "Filter by type", "Filter by account",
+        "Toggle chat selection mode",
+    ]
+
+    private func start(rooms: [[String: Any]]? = nil) async throws -> (InboxHarness, SpacesModel, [CourierCommand]) {
+        let h = try await startInbox(
+            rooms: rooms ?? [room("!a", ts: 200), room("!b", ts: 100, unread: 2), room("!c", ts: 50)],
+            autoRelease: true)
+        harnesses.append(h)
+        h.script.spaces = [
+            spaceJSON("inbox"), spaceJSON("requests"), spaceJSON("archive"),
+            spaceJSON("account:whatsapp", kind: "account", title: "WhatsApp", network: "whatsapp", showInInbox: "all"),
+            spaceJSON("account:signal", kind: "account", title: "Signal", network: "signal", showInInbox: "all"),
+        ]
+        let spaces = SpacesModel(appModel: h.app, inbox: h.inbox, sleep: { _ in })
+        try await waitUntil { !spaces.spaces.isEmpty }
+        return (h, spaces, CommandSet.inbox(h.inbox, spaces))
+    }
+
+    private func command(_ commands: [CourierCommand], _ id: String) throws -> CourierCommand {
+        try XCTUnwrap(commands.first { $0.id == id }, id)
+    }
+
+    func testEveryCommandHasALedgerNameAndRuns() async throws {
+        let (h, spaces, commands) = try await start()
+        XCTAssertEqual(commands.map(\.id), ledger, "exactly the ledger's 13, once each")
+        XCTAssertEqual(Set(commands.map(\.id)).count, 13)
+        for command in commands {
+            XCTAssertEqual(command.title, command.id, "the title is the ledger's name (in English)")
+            XCTAssertTrue(command.isEnabled(), command.id)
+        }
+
+        // The sweeps ask the engine, for the space that is shown.
+        try command(commands, "Archive all chats").run()
+        try await waitUntil { h.count("inbox.archiveMatching") == 1 }
+        try command(commands, "Archive all chats older than a week").run()
+        try await waitUntil { h.count("inbox.archiveMatching") == 2 }
+        try command(commands, "Archive all read chats").run()
+        try await waitUntil { h.count("inbox.archiveMatching") == 3 }
+        XCTAssertEqual(dicts(h.server.receivedParams("inbox.archiveMatching")), dicts([
+            ["read_only": false, "older_than_ms": 0, "dry_run": false],
+            ["read_only": false, "older_than_ms": 604_800_000, "dry_run": false],
+            ["read_only": true, "older_than_ms": 0, "dry_run": false],
+        ]))
+
+        try command(commands, "Mark all chats as read").run()
+        try await waitUntil { h.count("inbox.markAllRead") == 1 }
+        XCTAssertEqual(dicts(h.server.receivedParams("inbox.markAllRead")), dicts([[String: Any]()]),
+                       "the inbox: no space named")
+
+        // Next Chat opens the first chat.
+        XCTAssertNil(h.inbox.selectedRoomID)
+        try command(commands, "Next Chat").run()
+        XCTAssertNotNil(h.inbox.selectedRoomID)
+
+        try command(commands, "Toggle space bar").run()
+        XCTAssertFalse(h.preferences.showSpaceBar, "it was on")
+        try command(commands, "Toggle space bar").run()
+        XCTAssertTrue(h.preferences.showSpaceBar)
+
+        try command(commands, "Edit spaces").run()
+        XCTAssertTrue(spaces.isEditing)
+
+        try command(commands, "Toggle chat selection mode").run()
+        XCTAssertTrue(h.inbox.isSelecting)
+        try command(commands, "Toggle chat selection mode").run()
+        XCTAssertFalse(h.inbox.isSelecting)
+
+        try command(commands, "Show message requests").run()
+        XCTAssertEqual(h.inbox.query.space, "requests")
+
+        try command(commands, "Filter by account").run()
+        XCTAssertEqual(h.inbox.query.space, "account:whatsapp", "the next account after the space shown")
+    }
+
+    func testFilterCommandsStepThroughTheirChoices() async throws {
+        let (h, _, commands) = try await start()
+        let filter = try command(commands, "Filter Chats")
+        let folder = try command(commands, "Filter by folder type")
+        let type = try command(commands, "Filter by type")
+        let account = try command(commands, "Filter by account")
+
+        // Filter by account steps through the accounts only, and wraps.
+        account.run()
+        XCTAssertEqual(h.inbox.query.space, "account:whatsapp")
+        account.run()
+        XCTAssertEqual(h.inbox.query.space, "account:signal")
+        account.run()
+        XCTAssertEqual(h.inbox.query.space, "account:whatsapp")
+
+        // Filter Chats is Cycle Filters: Unread, Drafts, Unanswered, DMs, Groups, then All.
+        filter.run()
+        XCTAssertEqual(h.inbox.query.filters, [.unread])
+        filter.run()
+        XCTAssertEqual(h.inbox.query.filters, [.drafts])
+        h.inbox.query.filters = []
+
+        // Folder type steps through the place filters and back to none, keeping the other filters.
+        h.inbox.query.filters = [.unread]
+        var seen: [Set<InboxFilter>] = []
+        for _ in 0 ..< 7 {
+            folder.run()
+            seen.append(h.inbox.query.filters)
+        }
+        XCTAssertEqual(seen, [
+            [.unread, .archived], [.unread, .lowPriority], [.unread, .hidden], [.unread, .requests],
+            [.unread, .reminders], [.unread, .sendLater], [.unread],
+        ])
+
+        // Type: DMs, Groups, neither.
+        h.inbox.query.filters = [.unread, .archived]
+        type.run()
+        XCTAssertEqual(h.inbox.query.filters, [.unread, .archived, .dms])
+        type.run()
+        XCTAssertEqual(h.inbox.query.filters, [.unread, .archived, .groups])
+        type.run()
+        XCTAssertEqual(h.inbox.query.filters, [.unread, .archived])
+    }
+
+    func testSweepsAreOffWhereTheEngineWouldRefuse() async throws {
+        let (_, spaces, commands) = try await start()
+        let sweeps = ["Archive all chats", "Archive all chats older than a week", "Archive all read chats"]
+        for id in sweeps { XCTAssertTrue(try command(commands, id).isEnabled(), id) }
+        spaces.select("account:signal")
+        for id in sweeps { XCTAssertTrue(try command(commands, id).isEnabled(), id) }
+        spaces.select("archive")
+        for id in sweeps { XCTAssertFalse(try command(commands, id).isEnabled(), id) }
+    }
+
+    func testCommandsThatNeedChatsAreOffWithoutThem() async throws {
+        let (h, _, commands) = try await start(rooms: [room("!a", ts: 200)])
+        XCTAssertFalse(try command(commands, "Mark all chats as read").isEnabled(), "nothing is unread")
+        XCTAssertTrue(try command(commands, "Next Chat").isEnabled())
+
+        h.script.rooms = [room("!a", ts: 200, unread: 1)]
+        h.server.notify(["kind": "room"])
+        try await waitUntil { h.inbox.rows.first?.unread == 1 }
+        XCTAssertTrue(try command(commands, "Mark all chats as read").isEnabled())
+
+        h.script.rooms = []
+        h.server.notify(["kind": "room"])
+        try await waitUntil { h.inbox.rows.isEmpty }
+        XCTAssertFalse(try command(commands, "Next Chat").isEnabled())
+        XCTAssertFalse(try command(commands, "Toggle chat selection mode").isEnabled())
+    }
+
+    func testKeysAreTheLedgersWhereItGivesOne() async throws {
+        let (_, _, commands) = try await start()
+        let keys = Dictionary(uniqueKeysWithValues: commands.map { ($0.id, $0.keys) })
+        XCTAssertEqual(keys["Archive all read chats"], "⌘⇧E")
+        XCTAssertEqual(keys["Next Chat"], "⌘]")
+        XCTAssertEqual(keys["Filter by account"], "⌘⌥A")
+        XCTAssertEqual(keys["Toggle space bar"], "⌘S")
+        XCTAssertNil(keys["Edit spaces"] ?? nil)
+    }
+
+    func testFilterByAccountIsOffWithoutAccounts() async throws {
+        let h = try await startInbox(rooms: [room("!a", ts: 100)], autoRelease: true)
+        harnesses.append(h)
+        h.script.spaces = [spaceJSON("inbox"), spaceJSON("archive")]
+        let spaces = SpacesModel(appModel: h.app, inbox: h.inbox, sleep: { _ in })
+        try await waitUntil { !spaces.spaces.isEmpty }
+        let account = try command(CommandSet.inbox(h.inbox, spaces), "Filter by account")
+        XCTAssertFalse(account.isEnabled())
+        account.run()
+        XCTAssertEqual(h.inbox.query.space, "inbox")
+    }
+}

@@ -659,23 +659,52 @@ public final class InboxModel: ObservableObject {
 
     // MARK: - All at once
 
+    /// The space shown can be swept: only the inbox, an account's or a label's can.
+    public var canArchiveAll: Bool {
+        query.space == "inbox" || query.space.hasPrefix("account:") || query.space.hasPrefix("label:")
+    }
+
     /// "Archive all read": every chat the space lists with nothing unread, but pinned ones. Undo unarchives exactly
     /// those, and leaves alone the chats that were archived before. Returns how many it archived.
     public func archiveAllRead() async -> Int {
+        await archiveAll(readOnly: true)
+    }
+
+    /// "Archive all" of the space shown: every chat it lists but pinned ones, or only the read ones, or only those
+    /// whose newest message is older than `days` (0, or one of 3, 7, 14, 28, 90 or 365: the ages the engine
+    /// offers). Undo unarchives exactly the chats this archived. Returns how many it archived.
+    public func archiveAll(readOnly: Bool, olderThanDays days: Int = 0) async -> Int {
         dismissToast()
-        guard let client = appModel.client else { return 0 }
+        guard let client = appModel.client, canArchiveAll else { return 0 }
         let space = query.space
-        // Only the inbox, an account's or a label's space can be swept.
-        guard space == "inbox" || space.hasPrefix("account:") || space.hasPrefix("label:") else { return 0 }
         let result: RoomsChanged
         do {
             result = try await client.call("inbox.archiveMatching", ArchiveMatchingParams(
-                space: space == "inbox" ? nil : space, readOnly: true, olderThanMS: 0, dryRun: false))
+                space: space == "inbox" ? nil : space, readOnly: readOnly, olderThanMS: Int64(days) * 86_400_000,
+                dryRun: false))
         } catch {
             fail(error)
             return 0
         }
         showArchived(result.roomIDs)
+        requestRead(waiting: false)
+        return result.roomIDs.count
+    }
+
+    /// "Mark all chats as read": every unread chat the space shown lists. Each network is told, as when one chat is
+    /// read. There is no Undo: a network has heard it. Returns how many it marked.
+    @discardableResult
+    public func markAllRead() async -> Int {
+        dismissToast()
+        guard let client = appModel.client else { return 0 }
+        let space = query.space
+        let result: RoomsChanged
+        do {
+            result = try await client.call("inbox.markAllRead", SpaceParams(space: space == "inbox" ? nil : space))
+        } catch {
+            fail(error)
+            return 0
+        }
         requestRead(waiting: false)
         return result.roomIDs.count
     }
@@ -717,6 +746,18 @@ public final class InboxModel: ObservableObject {
         toastTimer = nil
         toast = nil
         undoAction = nil
+    }
+
+    /// A toast about something done outside this model (the spaces bar saved, say). It has no Undo.
+    func announce(_ message: String) {
+        dismissToast()
+        showToast(message)
+    }
+
+    /// The toast for an error from something done outside this model.
+    func report(_ error: Error) {
+        dismissToast()
+        fail(error)
     }
 
     /// A feature the plan doesn't include: nothing is asked of the engine.

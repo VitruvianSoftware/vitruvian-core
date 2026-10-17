@@ -978,6 +978,8 @@ final class InboxScript: @unchecked Sendable {
     private var _pageCap: Int?
     private var _errors: [String: Int] = [:]
     private var _onMarkRead: (@Sendable (String) -> Void)?
+    private var _spaces: [[String: Any]] = []
+    private var _rules: [[String: Any]] = []
 
     init(rooms: [[String: Any]], accounts: [[String: Any]]) {
         _rooms = rooms
@@ -999,6 +1001,18 @@ final class InboxScript: @unchecked Sendable {
     var accounts: [[String: Any]] {
         get { lock.withLock { _accounts } }
         set { lock.withLock { _accounts = newValue } }
+    }
+
+    /// What spaces.list answers.
+    var spaces: [[String: Any]] {
+        get { lock.withLock { _spaces } }
+        set { lock.withLock { _spaces = newValue } }
+    }
+
+    /// What autoArchive.list answers; autoArchive.set stores into it (a new rule gets the next rule_id).
+    var rules: [[String: Any]] {
+        get { lock.withLock { _rules } }
+        set { lock.withLock { _rules = newValue } }
     }
 
     /// room.events' newest page, by room.
@@ -1085,10 +1099,44 @@ final class InboxScript: @unchecked Sendable {
             let matching = rooms.filter {
                 $0["unread"] as? Int == 0 && $0["marked_unread"] as? Bool == false && $0["pinned"] as? Bool == false
             }.map { $0["room_id"] as! String }
+            // A dry run says which chats, and changes nothing.
+            if params?["dry_run"] as? Bool == true { return .result(["room_ids": matching]) }
             return archive(matching, true)
+        case "inbox.markAllRead":
+            let unread = rooms.filter { ($0["unread"] as? Int ?? 0) > 0 || $0["marked_unread"] as? Bool == true }
+                .map { $0["room_id"] as! String }
+            for id in unread { update(id) { $0["unread"] = 0; $0["marked_unread"] = false } }
+            return .result(["room_ids": unread])
+        case "spaces.list":
+            return .result(["spaces": spaces])
+        case "labels.create":
+            return .result(["label_id": 7])
+        case "autoArchive.list":
+            return .result(["rules": rules])
+        case "autoArchive.set":
+            return .result(storeRule(params ?? [:]))
+        case "autoArchive.delete":
+            let id = params?["rule_id"] as? Int
+            lock.withLock { _rules.removeAll { $0["rule_id"] as? Int == id } }
+            return .result([String: Any]())
         case "room.setLowPriority", "room.setHidden", "room.setLabel":
             return .result(["room_ids": ids])
         default: return .result([String: Any]())
+        }
+    }
+
+    /// Stores a rule as autoArchive.set does: rule_id 0 makes a new one, any other replaces it.
+    private func storeRule(_ params: [String: Any]) -> [String: Any] {
+        lock.withLock {
+            var rule = params
+            let id = rule["rule_id"] as? Int ?? 0
+            if id == 0 {
+                rule["rule_id"] = (_rules.compactMap { $0["rule_id"] as? Int }.max() ?? 0) + 1
+                _rules.append(rule)
+            } else if let index = _rules.firstIndex(where: { $0["rule_id"] as? Int == id }) {
+                _rules[index] = rule
+            }
+            return rule
         }
     }
 

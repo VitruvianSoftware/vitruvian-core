@@ -534,3 +534,63 @@
 
 /* Toast when an inbox action failed for a reason the app has no words for. Nothing changed. */
 "That didn’t work. Try again." = "That didn’t work. Try again.";
+
+/* Toast under the inbox after the order or the hidden spaces of the spaces bar was saved. */
+"Sidebar updated" = "Sidebar updated";
+
+/* Remind Me menu: the time of the last reminder that was set, offered again. The argument is its date and time. */
+"Last Used %@" = "Last Used %@";
+
+/* Remind Me menu: one hour from now. */
+"In an Hour" = "In an Hour";
+
+/* Remind Me menu: two hours from now. */
+"In Two Hours" = "In Two Hours";
+
+/* Remind Me menu: 6 pm today. Offered only before 5 pm. */
+"This Evening" = "This Evening";
+
+/* Remind Me menu: 9 am tomorrow. */
+"Tomorrow" = "Tomorrow";
+
+/* Remind Me menu: 9 am on the coming Saturday. Offered Monday to Thursday. */
+"This Weekend" = "This Weekend";
+
+/* Remind Me menu: 9 am on the coming Monday. */
+"Next Week" = "Next Week";
+
+/* Command bar: archives every chat of the space shown, except pinned ones. It can be undone. */
+"Archive all chats" = "Archive all chats";
+
+/* Command bar: archives every chat of the space shown whose newest message is over a week old, except pinned ones. */
+"Archive all chats older than a week" = "Archive all chats older than a week";
+
+/* Command bar: archives every chat of the space shown that has nothing unread, except pinned ones. */
+"Archive all read chats" = "Archive all read chats";
+
+/* Command bar: marks every unread chat of the space shown as read. */
+"Mark all chats as read" = "Mark all chats as read";
+
+/* Command bar: shows the chats of people who have not been accepted yet. */
+"Show message requests" = "Show message requests";
+
+/* Command bar: shows or hides the spaces bar. */
+"Toggle space bar" = "Toggle space bar";
+
+/* Command bar: opens the screen where the spaces bar's order and hidden spaces are changed. */
+"Edit spaces" = "Edit spaces";
+
+/* Command bar: narrows the inbox by Unread, Drafts, Unanswered, DMs or Groups, one at a time. */
+"Filter Chats" = "Filter Chats";
+
+/* Command bar: narrows the inbox to Archived, Low Priority, Hidden, Requests, Reminders or Send Later. */
+"Filter by folder type" = "Filter by folder type";
+
+/* Command bar: narrows the inbox to direct messages or to groups. */
+"Filter by type" = "Filter by type";
+
+/* Command bar: shows the chats of one account, then the next. */
+"Filter by account" = "Filter by account";
+
+/* Command bar: starts or ends selecting several chats at once. */
+"Toggle chat selection mode" = "Toggle chat selection mode";
