@@ -462,7 +462,22 @@ type overflowed struct {
 	sent, got     int               // changes sent through the store, and changed notifications that arrived for them
 	resyncs       []json.RawMessage // the params of each resync that arrived, in order
 	lastWasResync bool
-	resyncAfter   time.Duration // from the end of the burst to the resync's arrival
+	backToBack    int           // resyncs that arrived straight after another resync, with no change between
+	resyncAfter   time.Duration // from the end of the burst to the last resync's arrival
+}
+
+// requireToldToResync checks what a client that fell behind must be able to rely on. It is told to resync at
+// least once, and the last thing it hears is a resync, so it re-reads after everything that was kept. A resync
+// never follows another one directly, and a resync carries nothing else. How many resyncs arrive depends on how
+// many times the client fell behind during the burst, which depends on scheduling, so the count is not fixed.
+func requireToldToResync(t *testing.T, o overflowed) {
+	t.Helper()
+	require.NotEmpty(t, o.resyncs, "a client that fell behind is told to resync")
+	require.True(t, o.lastWasResync, "the last thing it hears is a resync, after everything that was kept")
+	require.Zero(t, o.backToBack, "a resync never follows another one directly")
+	for _, r := range o.resyncs {
+		require.JSONEq(t, `{"kind":"resync"}`, string(r), "a resync carries nothing else")
+	}
 }
 
 // overflow sends changes through the store while conn, a connection that has said hello, reads nothing, so its
@@ -495,8 +510,12 @@ func overflow(t *testing.T, s *store.Store, conn net.Conn, r *bufio.Reader) over
 			require.Equal(t, "changed", m.Method)
 			var ch changed
 			require.NoError(t, json.Unmarshal(m.Params, &ch))
+			wasResync := o.lastWasResync
 			o.lastWasResync = ch.Kind == "resync"
 			if o.lastWasResync {
+				if wasResync {
+					o.backToBack++
+				}
 				o.resyncs = append(o.resyncs, m.Params)
 				o.resyncAfter = time.Since(ended)
 				continue
@@ -539,9 +558,7 @@ func TestSlowClientIsToldToResync(t *testing.T) {
 	require.Greater(t, o.got, store.SubscriberBuffer, "what fitted was delivered, the store's buffer and more")
 	require.Less(t, o.got, o.sent, "the client read nothing, so changes must have been dropped")
 	t.Logf("%d changes sent, %d reached the client that read nothing", o.sent, o.got)
-	require.Len(t, o.resyncs, 1, "one resync for one burst")
-	require.True(t, o.lastWasResync, "after everything that was kept")
-	require.JSONEq(t, `{"kind":"resync"}`, string(o.resyncs[0]), "a resync carries nothing else")
+	requireToldToResync(t, o)
 
 	// Later changes come as they are: the drop was already reported.
 	require.NoError(t, s.SetBridgeState(context.Background(), "after", json.RawMessage(`{}`)))
@@ -573,8 +590,7 @@ func TestResyncArrivesEvenIfNothingChangesAfterTheDrop(t *testing.T) {
 	conn, r := rawHello(t, path)
 	o := overflow(t, s, conn, r) // nothing changes once the burst ends
 	require.Less(t, o.got, o.sent)
-	require.Len(t, o.resyncs, 1)
-	require.True(t, o.lastWasResync)
+	requireToldToResync(t, o)
 	require.Less(t, o.resyncAfter, 2*time.Second, "promptly, as soon as the client has read what was kept")
 }
 

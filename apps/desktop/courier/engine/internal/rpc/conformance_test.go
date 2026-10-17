@@ -668,9 +668,9 @@ func triggerNotification(t *testing.T, w *world, c *client, name string) changed
 	case "changed-resync":
 		conn, r := rawHello(t, w.path)
 		o := overflow(t, w.s, conn, r)
-		require.Len(t, o.resyncs, 1)
+		requireToldToResync(t, o)
 		var ch changed
-		require.NoError(t, json.Unmarshal(o.resyncs[0], &ch))
+		require.NoError(t, json.Unmarshal(o.resyncs[len(o.resyncs)-1], &ch))
 		return ch
 	}
 	t.Fatalf("notification example %s has no trigger: add one", name)
