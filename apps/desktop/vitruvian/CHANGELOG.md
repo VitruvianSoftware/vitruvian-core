@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.59.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.58.0...vitruvian-v3.59.0) (2026-10-17)
+
+
+### Features
+
+* **vitruvian:** add collapsible cards and inline edit mode to Extensions menu bar tab ([#3413](https://github.com/VitruvianSoftware/vitruvian-core/issues/3413)) ([c3edf56](https://github.com/VitruvianSoftware/vitruvian-core/commit/c3edf56b9106c557c890785785f44633b121f28a))
+
 ## [3.58.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.57.0...vitruvian-v3.58.0) (2026-10-16)
 
 
