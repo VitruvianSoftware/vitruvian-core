@@ -17,6 +17,18 @@
 # day so it can start workflow runs. scout's statuses=write was added by hand
 # 2026-10-16 so //tools/pipeline/verifiedrun can record verified runs (#3418).
 #
+# What the //tools/agent-app commands need (GitHub's "Permissions required for
+# GitHub Apps" page, checked 2026-10-16):
+#   pr-create, pr-edit, pr-ready, pr-close    pull_requests write
+#   pr-comment                                pull_requests or issues write
+#   pr-enqueue (arm auto-merge, join queue)   contents + pull_requests write;
+#       workflows write too when the PR changes .github/workflows. Every agent
+#       has these, and it works: scout armed auto-merge on #3421 and it merged.
+#   pr-hold, pr-unhold                        the same as pr-enqueue (turn
+#       auto-merge off, leave the queue) plus pull_requests write for the label.
+#   run-rerun, run-cancel, workflow-run       actions write -- wren only, so
+#       the tool refuses them for any other agent before calling GitHub.
+#
 # agent	permission	level
 beacon	checks	read
 beacon	contents	write

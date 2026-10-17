@@ -1,0 +1,10 @@
+{
+  "data": {
+    "node": {
+      "state": "OPEN",
+      "autoMergeRequest": null,
+      "mergeQueueEntry": null,
+      "labels": { "nodes": [] }
+    }
+  }
+}

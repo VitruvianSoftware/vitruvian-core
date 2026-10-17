@@ -1,0 +1,10 @@
+{
+  "data": {
+    "node": {
+      "state": "MERGED",
+      "autoMergeRequest": null,
+      "mergeQueueEntry": null,
+      "labels": { "nodes": [{ "name": "agent-fast-lane" }] }
+    }
+  }
+}

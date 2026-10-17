@@ -1,0 +1,10 @@
+{
+  "data": {
+    "node": {
+      "state": "OPEN",
+      "autoMergeRequest": null,
+      "mergeQueueEntry": { "id": "MQE_lQDOSm8lb88AAAABI9mZLs4AA1v8zgNRtk4" },
+      "labels": { "nodes": [{ "name": "do-not-automerge" }] }
+    }
+  }
+}

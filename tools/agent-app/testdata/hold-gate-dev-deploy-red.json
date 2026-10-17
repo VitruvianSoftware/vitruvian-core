@@ -1,0 +1,15 @@
+{
+  "data": {
+    "node": {
+      "state": "OPEN",
+      "autoMergeRequest": null,
+      "mergeQueueEntry": null,
+      "labels": {
+        "nodes": [
+          { "name": "autorelease: pending" },
+          { "name": "dev-deploy-red" }
+        ]
+      }
+    }
+  }
+}

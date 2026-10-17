@@ -1,0 +1,9 @@
+{
+  "data": {
+    "node": {
+      "state": "OPEN",
+      "autoMergeRequest": null,
+      "mergeQueueEntry": { "position": 1, "state": "AWAITING_CHECKS" }
+    }
+  }
+}

@@ -55,6 +55,10 @@ exports_files([
     "llvm-cache-key_test.sh",
     "llvm-cache-stage.sh",
     "llvm-cache-stage_test.sh",
+    # Read by //tools/agent-app:agent-app_test: pr-hold must use the label
+    # these gates honour as a person's hold (PERSON_LABEL).
+    "release-beta-gate.sh",
+    "release-hold.sh",
 ])
 
 # The extracted-LLVM cache key. Keyed on every recorded input of the

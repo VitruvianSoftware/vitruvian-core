@@ -1,0 +1,12 @@
+{
+  "data": {
+    "node": {
+      "state": "OPEN",
+      "autoMergeRequest": {
+        "mergeMethod": "SQUASH",
+        "enabledBy": { "login": "vitruvian-wren-agent" }
+      },
+      "mergeQueueEntry": null
+    }
+  }
+}
