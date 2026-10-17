@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.22.0...home-speaker-v1.23.0) (2026-10-17)
+
+
+### Features
+
+* **vitruvian:** keep Dynamic Island Tools grid to tools without an island panel ([#3434](https://github.com/VitruvianSoftware/vitruvian-core/issues/3434)) ([573d91b](https://github.com/VitruvianSoftware/vitruvian-core/commit/573d91b968509913b99b24c132749d92b52b7aad))
+
 ## [1.22.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.21.0...home-speaker-v1.22.0) (2026-10-16)
 
 
