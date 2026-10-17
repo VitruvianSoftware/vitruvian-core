@@ -2226,7 +2226,7 @@ def classify_tool(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str
         return classify_gh(inv), cwd
 
     if prog in ("bazel", "bazelisk", "aspect", "ibazel"):
-        return classify_bazel(args), cwd
+        return classify_bazel(args, cwd), cwd
 
     if prog == "go":
         sub = args[0] if args else ""
@@ -2585,7 +2585,7 @@ def classify_tool(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str
     return None, cwd
 
 
-def classify_bazel(args: List[str]) -> Optional[Verdict]:
+def classify_bazel(args: List[str], cwd: str = "") -> Optional[Verdict]:
     for a in args:
         if a.startswith("--output_user_root") or a.startswith("--output_base"):
             return V(
@@ -2601,17 +2601,64 @@ def classify_bazel(args: List[str]) -> Optional[Verdict]:
     if cmd == "clean" and any(a in ("--expunge", "--expunge_async") for a in args):
         return V("bazel-cache", "bazel clean --expunge", T_CACHE_GC)
     if cmd == "run":
-        if any(re.search(r"(^|/)tools/agent-guard:install$", a) for a in args):
-            after = args[args.index("--") + 1 :] if "--" in args else []
-            if not any(a in ("--dry-run", "--check", "--help", "-h") for a in after):
-                return V(
-                    "guard-config",
-                    "bazel run //tools/agent-guard:install",
-                    None,
-                    "Installing, changing or removing agent-guard is James's job, from his own terminal. "
-                    "`-- --dry-run` and `-- --check` are fine.",
-                )
+        return classify_installer_run(args, cwd)
     return None
+
+
+# What an agent may pass to //tools/agent-guard:install: nothing (install or
+# refresh the backstop, which install.py then checks itself), or only these.
+AGENT_INSTALL_FLAGS = ("--check", "--dry-run", "--help", "-h")
+_INSTALL_LABEL_RE = re.compile(r"(^|/)tools/agent-guard:install$")
+
+
+def _is_install_label(word: str, cwd: str) -> bool:
+    if _INSTALL_LABEL_RE.search(word):
+        return True
+    # A label relative to the package, run from tools/agent-guard itself.
+    return word in (":install", "install") and bool(
+        re.search(r"/tools/agent-guard/?$", cwd or "")
+    )
+
+
+def classify_installer_run(args: List[str], cwd: str = "") -> Optional[Verdict]:
+    """`bazel run //tools/agent-guard:install`: agents may install, check and dry-run.
+
+    Allowed: the label alone, or with only --check/--dry-run/--help after
+    `--`. Refused: --uninstall, --mode, any other flag or argument, and any
+    Bazel option at all (--run_under or --script_path could run it without
+    the agent marker, or as something else). install.py makes its own checks
+    before an agent's install writes anything.
+    """
+    stop = args.index("--") if "--" in args else len(args)
+    label = next(
+        (i for i, a in enumerate(args[:stop]) if _is_install_label(a, cwd)), None
+    )
+    if label is None:
+        return None
+    target_args = [a for a in args[label + 1 :] if a != "--"]
+    bazel_opts = [a for a in args[:label] if a.startswith("-")]
+    extra = [a for a in target_args if a not in AGENT_INSTALL_FLAGS]
+    if not extra and not bazel_opts:
+        return None
+    shown = " ".join(
+        bazel_opts + [args[label]] + (["--"] if target_args else []) + target_args
+    )
+    if any(a == "--uninstall" or a.startswith("--mode") for a in extra):
+        return V(
+            "guard-config",
+            "bazel run %s" % shown,
+            None,
+            "Removing the backstop (--uninstall) and changing modes are James's, from his own "
+            "terminal. Agents may install, check and dry-run it.",
+        )
+    return V(
+        "guard-config",
+        "bazel run %s" % shown,
+        ("bazel run //tools/agent-guard:install", None),
+        "Run it exactly so, or with `-- --check` or `-- --dry-run`: no other flags or Bazel "
+        "options (--run_under or --script_path could run it as something else, or without "
+        "the agent marker).",
+    )
 
 
 CACHE_RES = [
@@ -2886,11 +2933,11 @@ HOOK_FILES_NOTE = (
 _INSTALLER_RE = re.compile(
     r"(^|/)(tools/)?agent-guard/install(\.py)?$|(^|/)agent-guard/install(\.py)?$"
 )
-_READ_ONLY_INSTALL = ("--dry-run", "--check", "--help", "-h")
+_READ_ONLY_INSTALL = AGENT_INSTALL_FLAGS
 
 
 def _installer_run(inv: Invocation) -> bool:
-    """Is this the installer run directly (not via bazel) without --dry-run/--check?"""
+    """Is this the installer run directly (not via bazel), other than only --dry-run/--check?"""
     argv = inv.argv
     for i, w in enumerate(argv):
         if not _INSTALLER_RE.search(w):
@@ -2901,8 +2948,9 @@ def _installer_run(inv: Invocation) -> bool:
             and re.match(r"^python(3(\.\d+)?)?$", os.path.basename(argv[0])) is not None
             and all(a.startswith("-") for a in argv[1:i])
         )
-        if (direct or via_python) and not any(
-            a in _READ_ONLY_INSTALL for a in argv[i + 1 :]
+        rest = argv[i + 1 :]
+        if (direct or via_python) and (
+            not rest or any(a not in _READ_ONLY_INSTALL for a in rest)
         ):
             return True
     return False
@@ -2912,10 +2960,11 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
     if _installer_run(inv):
         return V(
             "guard-config",
-            "running the agent-guard installer",
-            None,
-            "Installing, changing or removing agent-guard is James's job, from his own terminal. "
-            "`--dry-run` and `--check` are fine.",
+            "running the agent-guard installer directly",
+            ("bazel run //tools/agent-guard:install", None),
+            "Agents install the backstop only through that target, which checks the main "
+            "checkout first; `--dry-run` and `--check` are fine directly. Removing it "
+            "(--uninstall) is James's, from his own terminal.",
         )
     for op, target in inv.redirects:
         path = expand_path(target, inv.cwd, ctx.home)
