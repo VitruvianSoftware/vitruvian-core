@@ -21,4 +21,4 @@
 package toolkit
 
 // Version is the version of the Vitruvian SDK this kit was released with.
-const Version = "1.6.0" // x-release-please-version
+const Version = "1.7.0" // x-release-please-version
