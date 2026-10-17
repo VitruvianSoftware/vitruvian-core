@@ -386,6 +386,26 @@ final class ComposerModelTests: XCTestCase {
         XCTAssertEqual(composer.text, "see you\n\nand also")
     }
 
+    func testTextThatMayHaveGoneCarriesTheMayHaveBeenSentNotice() {
+        let (composer, _) = make()
+        // A chat that is not open: the notice waits with the draft and shows when it opens.
+        composer.open("!b")
+        composer.restoreUnsent(text: "on my way", in: "!a", mayHaveBeenSent: true)
+        XCTAssertNil(composer.notice)
+        composer.open("!a")
+        XCTAssertEqual(composer.text, "on my way")
+        XCTAssertEqual(composer.notice, .noAnswer)
+
+        // The chat is open: the text and the notice show at once. Plain failures carry no notice.
+        composer.open("!b")
+        composer.restoreUnsent(text: "see you", in: "!b", mayHaveBeenSent: true)
+        XCTAssertEqual(composer.text, "see you")
+        XCTAssertEqual(composer.notice, .noAnswer)
+        composer.open("!c")
+        composer.restoreUnsent(text: "plain", in: "!c", mayHaveBeenSent: false)
+        XCTAssertNil(composer.notice)
+    }
+
     func testTheNoticeGoesWhenTheChatChanges() {
         let (composer, _) = make()
         composer.open("!a")

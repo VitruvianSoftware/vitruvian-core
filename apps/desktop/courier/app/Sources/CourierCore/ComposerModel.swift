@@ -335,8 +335,10 @@ public final class ComposerModel: ObservableObject {
 
     /// Text that was typed somewhere else (a notification's Reply) and could not be sent: it goes into that chat's
     /// draft, so it is there when the chat opens, or straight into the composer if the chat is open.
-    public func restoreUnsent(text body: String, in room: String) {
+    /// `mayHaveBeenSent`: the engine did not answer, so it may have gone; the chat says so with its usual notice.
+    public func restoreUnsent(text body: String, in room: String, mayHaveBeenSent: Bool = false) {
         _ = putBack([Outgoing.text(body)][...], reply: nil, in: room)
+        if mayHaveBeenSent { show([.noAnswer], in: room) }
     }
 
     /// Tells the person: now if the chat is open, otherwise with that chat's draft, for when it is.
@@ -357,11 +359,18 @@ public final class ComposerModel: ObservableObject {
 
     /// Whether the engine said no, or may have said yes without being heard.
     private static func classify(_ error: Error) -> Failure {
-        switch error as? EngineError {
-        case .timedOut, .disconnected, .badResponse:
-            return .unanswered
-        default:
-            return .refused(EngineErrorText.text(for: error, fallback: String(localized: "The message could not be sent.")))
+        if (error as? EngineError)?.mayHaveBeenHandled == true { return .unanswered }
+        return .refused(EngineErrorText.text(for: error, fallback: String(localized: "The message could not be sent.")))
+    }
+}
+
+extension EngineError {
+    /// The engine may have done what was asked though no answer came: the call timed out, the connection ended, or
+    /// the answer was unreadable. The thing asked is then never sent again unasked.
+    var mayHaveBeenHandled: Bool {
+        switch self {
+        case .timedOut, .disconnected, .badResponse: true
+        default: false
         }
     }
 }

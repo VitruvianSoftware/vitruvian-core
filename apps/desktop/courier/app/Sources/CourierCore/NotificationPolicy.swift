@@ -88,10 +88,14 @@ public enum NotificationPolicy {
     }
 
     /// What a chat says when a reply typed in a notification could not be sent: the text is waiting in the chat.
-    public static func replyNotSent(roomID: String, title: String) -> NotificationContent {
+    /// `mayHaveGone`: the engine did not answer, so the reply may have been sent after all.
+    public static func replyNotSent(roomID: String, title: String, mayHaveGone: Bool = false) -> NotificationContent {
         NotificationContent(
-            eventID: "reply-not-sent-" + UUID().uuidString, roomID: roomID, title: title.isEmpty ? String(localized: "Courier") : title,
-            subtitle: nil, body: String(localized: "Your reply wasn’t sent — it’s waiting in the chat."))
+            eventID: "reply-not-sent-" + UUID().uuidString, roomID: roomID,
+            title: title.isEmpty ? String(localized: "Courier") : title, subtitle: nil,
+            body: mayHaveGone
+                ? String(localized: "Your reply may not have been sent — check the chat before sending again.")
+                : String(localized: "Your reply wasn’t sent — it’s waiting in the chat."))
     }
 
     /// The events a page says were deleted (by a redaction in the page that was not itself refused).

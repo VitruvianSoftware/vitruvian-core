@@ -38,7 +38,8 @@ public final class NotificationCoordinator {
     private let delivery: any NotificationDelivering
     private let row: @MainActor (String) -> InboxRow?
     private let windowIsKey: @MainActor () -> Bool
-    private let restoreDraft: @MainActor (_ roomID: String, _ text: String) -> Void
+    private let restoreDraft: @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void
+    private let replyTimeout: TimeInterval?
     private let showWindow: @MainActor () -> Void
     private let window: TimeInterval
     private let sleep: @Sendable (TimeInterval) async -> Void
@@ -55,15 +56,17 @@ public final class NotificationCoordinator {
     /// - Parameters:
     ///   - row: the inbox's row for a chat, if it has one (its name and whether it is muted).
     ///   - windowIsKey: whether the window being used is the app's (so the open chat is in front of the person).
-    ///   - restoreDraft: puts text that could not be sent into a chat's composer draft.
+    ///   - restoreDraft: puts text that could not be sent into a chat's composer draft; the last argument says the
+    ///     engine did not answer, so it may have been sent.
+    ///   - replyTimeout: how long a reply waits for the engine; nil is the client's own limit (30 s).
     ///   - showWindow: brings the main window forward, opening it again if it was closed.
     ///   - window: how long a chat's changes are gathered before it is read, in seconds.
     ///   - sleep: waits `window`.
     ///   - clock: the time now; tests give one they move.
     public init(appModel: AppModel, delivery: any NotificationDelivering,
                 row: @escaping @MainActor (String) -> InboxRow?, windowIsKey: @escaping @MainActor () -> Bool,
-                restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String) -> Void,
-                showWindow: @escaping @MainActor () -> Void, window: TimeInterval = 0.1,
+                restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void,
+                showWindow: @escaping @MainActor () -> Void, window: TimeInterval = 0.1, replyTimeout: TimeInterval? = nil,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 clock: @escaping @Sendable () -> Date = { Date() }) {
         self.appModel = appModel
@@ -71,6 +74,7 @@ public final class NotificationCoordinator {
         self.row = row
         self.windowIsKey = windowIsKey
         self.restoreDraft = restoreDraft
+        self.replyTimeout = replyTimeout
         self.showWindow = showWindow
         self.window = window
         self.sleep = sleep
@@ -135,21 +139,35 @@ public final class NotificationCoordinator {
         announce(page.events, in: chat)
     }
 
-    /// One inbox read at a time, shared by every chat that is waiting for it.
+    /// One inbox read at a time, shared by every chat that is waiting for it. A chat that is not in an answer it
+    /// joined gets one read of its own: that read may have started before the chat existed.
     private func lookUp(_ roomID: String, with client: EngineClient) async -> InboxRow? {
-        let read: Task<[InboxRow], Never>
+        var read: Task<[InboxRow], Never>
+        var joined = false
         if let running = inboxLookup {
             read = running
+            joined = true
         } else {
-            read = Task {
-                let inbox: InboxResult? = try? await client.call("inbox.list", Empty())
-                return inbox?.rooms ?? []
-            }
-            inboxLookup = read
+            read = startInboxRead(with: client)
         }
-        let rooms = await read.value
-        inboxLookup = nil
-        return rooms.first { $0.roomID == roomID }
+        var found = await read.value.first { $0.roomID == roomID }
+        if inboxLookup == read { inboxLookup = nil }
+        if found == nil, joined {
+            read = startInboxRead(with: client)
+            found = await read.value.first { $0.roomID == roomID }
+            if inboxLookup == read { inboxLookup = nil }
+        }
+        return found
+    }
+
+    /// Starts an inbox read and makes it the one that later chats join.
+    private func startInboxRead(with client: EngineClient) -> Task<[InboxRow], Never> {
+        let read = Task {
+            let inbox: InboxResult? = try? await client.call("inbox.list", Empty())
+            return inbox?.rooms ?? []
+        }
+        inboxLookup = read
+        return read
     }
 
     /// `events` are newest first, as room.events has them; the oldest is announced first.
@@ -194,16 +212,20 @@ public final class NotificationCoordinator {
     public func reply(roomID: String, text: String) async {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        var mayHaveGone = false
         if let client = appModel.client {
             do {
-                let _: Sent = try await client.call("message.send", SendParams(roomID: roomID, text: text))
+                let _: Sent = try await client.call("message.send", SendParams(roomID: roomID, text: text),
+                                                    timeout: replyTimeout)
                 return
             } catch {
-                // Falls through: whatever the reason, the text is kept below. (A send the engine took but did not
-                // answer in time may then show twice; the person sees both in the chat and can delete one.)
+                // Falls through, whatever the reason: the text is kept below. When the engine did not answer, the
+                // send may have gone, and the person is told to look before sending it again.
+                mayHaveGone = (error as? EngineError)?.mayHaveBeenHandled ?? false
             }
         }
-        restoreDraft(roomID, text)
-        delivery.deliver(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? ""))
+        restoreDraft(roomID, text, mayHaveGone)
+        delivery.deliver(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? "",
+                                                         mayHaveGone: mayHaveGone))
     }
 }

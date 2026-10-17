@@ -34,11 +34,12 @@ final class NotificationCoordinatorTests: XCTestCase {
     final class WindowState {
         var isKey = false
         var shown = 0
-        var drafts: [(room: String, text: String)] = []
+        var drafts: [(room: String, text: String, mayHaveBeenSent: Bool)] = []
         var rows: [String: InboxRow] = ["!a": inboxRow("!a", name: "Chat A")]
     }
 
-    private func start(connected: Bool = true, window gather: TimeInterval = 0.02) async throws -> Harness {
+    private func start(connected: Bool = true, window gather: TimeInterval = 0.02,
+                       replyTimeout: TimeInterval? = nil) async throws -> Harness {
         let script = NotificationScript()
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
@@ -53,8 +54,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         let window = WindowState()
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, windowIsKey: { window.isKey },
-            restoreDraft: { window.drafts.append(($0, $1)) }, showWindow: { window.shown += 1 },
-            window: gather, clock: { clock.date })
+            restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
+            window: gather, replyTimeout: replyTimeout, clock: { clock.date })
         if connected {
             app.start()
             try await waitUntil { app.client != nil }
@@ -231,6 +232,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         await h.coordinator.reply(roomID: "!a", text: "on my way")
         XCTAssertEqual(h.window.drafts.map(\.room), ["!a"])
         XCTAssertEqual(h.window.drafts.map(\.text), ["on my way"])
+        XCTAssertEqual(h.window.drafts.map(\.mayHaveBeenSent), [false])
         XCTAssertEqual(h.delivery.delivered.count, 1)
         XCTAssertEqual(h.delivery.delivered[0].title, "Chat A")
         XCTAssertEqual(h.delivery.delivered[0].body, "Your reply wasn’t sent — it’s waiting in the chat.")
@@ -243,7 +245,24 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.script.failSend = true
         await h.coordinator.reply(roomID: "!a", text: "  on my way ")
         XCTAssertEqual(h.window.drafts.map(\.text), ["on my way"])
+        XCTAssertEqual(h.window.drafts.map(\.mayHaveBeenSent), [false])
         XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!a"])
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["Your reply wasn’t sent — it’s waiting in the chat."])
+        await finish(h)
+    }
+
+    func testAReplyThatTimedOutSaysItMayHaveGone() async throws {
+        let h = try await start(replyTimeout: 0.2)
+        h.script.hold("message.send") // the engine never answers
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.window.drafts.map(\.text), ["on my way"])
+        XCTAssertEqual(h.window.drafts.map(\.mayHaveBeenSent), [true], "the draft carries the may-have-been-sent notice")
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        XCTAssertEqual(h.delivery.delivered[0].title, "Chat A")
+        XCTAssertEqual(h.delivery.delivered[0].body,
+                       "Your reply may not have been sent — check the chat before sending again.")
+        XCTAssertEqual(h.delivery.delivered[0].roomID, "!a", "a click opens that chat")
+        XCTAssertEqual(h.delivery.delivered[0].threadIdentifier, "!a")
         await finish(h)
     }
 
@@ -296,6 +315,61 @@ final class NotificationCoordinatorTests: XCTestCase {
         }
         try await waitUntil { h.delivery.delivered.count == 5 }
         XCTAssertLessThanOrEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2)
+        await finish(h)
+    }
+
+    func testARoomMissingFromAnInboxReadThatStartedTooEarlyGetsAFreshRead() async throws {
+        let h = try await start(window: 0.02)
+        h.clock.advance(seconds: 5)
+        h.window.rows = [:]
+        h.script.hold("inbox.list") // the first inbox read is slow
+        h.script.events["!x"] = [message("$x", ts: connectedMillis + 1000, text: "from x", room: "!x")]
+        h.server.notify(["kind": "event", "room_id": "!x", "event_id": "$x"])
+        try await waitUntil { h.server.receivedMethods().contains("inbox.list") }
+
+        // !y appears while that read is on its way, and its read joins it.
+        h.script.rooms = [inboxRowJSON("!x", name: "Chat X"), inboxRowJSON("!y", name: "Chat Y")]
+        h.script.events["!y"] = [message("$y", ts: connectedMillis + 2000, text: "from y", room: "!y")]
+        h.server.notify(["kind": "event", "room_id": "!y", "event_id": "$y"])
+        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!y" } }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        // The slow read answers from before !y existed.
+        let held = h.server.received.first { $0["method"] as? String == "inbox.list" }
+        h.server.reply(to: held?["id"] as? Int ?? -1, with: ["rooms": [inboxRowJSON("!x", name: "Chat X")]])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(Set(h.delivery.delivered.map(\.title)), ["Chat X", "Chat Y"])
+        XCTAssertEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2, "one stale, one fresh")
+        await finish(h)
+    }
+
+    func testAChangeWhileTheChatIsBeingReadMakesExactlyOneFollowUpRead() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 5)
+        h.script.hold("room.events")
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 1000, text: "one")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.server.receivedMethods().contains("room.events") }
+
+        // Two more changes while that read is in flight.
+        h.script.events["!a"] = [
+            message("$3", ts: connectedMillis + 3000, text: "three"), message("$2", ts: connectedMillis + 2000, text: "two"),
+            message("$1", ts: connectedMillis + 1000, text: "one"),
+        ]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$2"])
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$3"])
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(h.server.receivedMethods().filter { $0 == "room.events" }.count, 1, "nothing new is read while it is in flight")
+
+        // The held read answers with what the engine had when it was asked.
+        let held = h.server.received.first { $0["method"] as? String == "room.events" }
+        h.server.reply(to: held?["id"] as? Int ?? -1, with: [
+            "events": [message("$1", ts: connectedMillis + 1000, text: "one")], "before": NSNull(),
+        ])
+        try await waitUntil { h.delivery.delivered.count == 3 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(h.server.receivedMethods().filter { $0 == "room.events" }.count, 2, "exactly one follow-up read")
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["one", "two", "three"], "each announced once")
         await finish(h)
     }
 
@@ -368,6 +442,7 @@ final class NotificationScript: @unchecked Sendable {
     private var _events: [String: [[String: Any]]] = [:]
     private var _rooms: [[String: Any]] = []
     private var _failSend = false
+    private var _held: Set<String> = []
 
     var events: [String: [[String: Any]]] {
         get { lock.withLock { _events } }
@@ -379,6 +454,11 @@ final class NotificationScript: @unchecked Sendable {
         set { lock.withLock { _rooms = newValue } }
     }
 
+    /// The next call of `method` is not answered until the test answers it (or never).
+    func hold(_ method: String) { lock.withLock { _ = _held.insert(method) } }
+
+    private func takeHold(_ method: String) -> Bool { lock.withLock { _held.remove(method) != nil } }
+
     /// message.send is refused.
     var failSend: Bool {
         get { lock.withLock { _failSend } }
@@ -386,6 +466,7 @@ final class NotificationScript: @unchecked Sendable {
     }
 
     func handle(_ method: String, _ params: [String: Any]?) -> TestEngineServer.Reply {
+        if method != "hello", takeHold(method) { return .later }
         switch method {
         case "hello": return TestEngineServer.helloOK
         case "accounts.list": return .result(["accounts": [account("whatsapp", "CONNECTED")]])
