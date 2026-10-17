@@ -37,7 +37,10 @@ on:
       - "tools/ci/rdeps-map-ref_test.sh"
       - "tools/ci/queue-fast-pass.sh"
       - "tools/ci/queue-fast-pass_test.sh"
-      # The test also checks how ci.yaml's jobs wait on the queue lookup.
+      - "tools/ci/agent-fast-lane.sh"
+      - "tools/ci/agent-fast-lane_test.sh"
+      - "tools/agent-app/agents.tsv"
+      # Both tests also check how ci.yaml's jobs wait on their lookups.
       - ".github/workflows/ci.yaml"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
@@ -52,7 +55,10 @@ on:
       - "tools/ci/rdeps-map-ref_test.sh"
       - "tools/ci/queue-fast-pass.sh"
       - "tools/ci/queue-fast-pass_test.sh"
-      # The test also checks how ci.yaml's jobs wait on the queue lookup.
+      - "tools/ci/agent-fast-lane.sh"
+      - "tools/ci/agent-fast-lane_test.sh"
+      - "tools/agent-app/agents.tsv"
+      # Both tests also check how ci.yaml's jobs wait on their lookups.
       - ".github/workflows/ci.yaml"
       - "tools/ci/deploy-affected.sh"
       - "tools/ci/deploy-affected_test.sh"
@@ -84,3 +90,7 @@ jobs:
 
       - name: Run the queue-fast-pass script tests
         run: bash tools/ci/queue-fast-pass_test.sh
+
+      # Which PRs may skip the heavy jobs (#3418, Step 2b).
+      - name: Run the agent-fast-lane script tests
+        run: bash tools/ci/agent-fast-lane_test.sh

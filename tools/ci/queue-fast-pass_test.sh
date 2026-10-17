@@ -278,7 +278,7 @@ jobs="$(awk '
 ' "$ci")"
 count=0
 while IFS=$'\t' read -r job needs cond; do
-	[ "$job" = queued ] && continue
+	case "$job" in queued | fast-lane) continue ;; esac
 	count=$((count + 1))
 	why=""
 	[[ "$needs" =~ (^|[^a-z-])queued([^a-z-]|$) ]] || why="does not need queued"
