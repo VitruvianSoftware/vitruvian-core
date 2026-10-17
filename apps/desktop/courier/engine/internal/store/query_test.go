@@ -341,45 +341,60 @@ func TestPagesNeverRepeatOrSkip(t *testing.T) {
 		})
 	}
 
-	// A chat already shown, and one not yet shown, get a new message between pages 3 and 4. Each appears at most
-	// once; every chat that didn't move appears exactly once.
-	q := InboxQuery{Limit: 100}
-	count := map[string]int{}
-	moved := map[string]bool{}
-	for page := 1; ; page++ {
-		rows, next, err := s.InboxPage(ctx, q)
-		require.NoError(t, err)
-		require.LessOrEqual(t, len(rows), 100)
-		for _, r := range rows {
-			count[r.ID]++
-		}
-		if page == 3 {
-			last := rows[len(rows)-1].ID
-			require.Equal(t, 1, count[last])
-			mkMsg(t, s, last, "$bump-seen", ghost, "m.room.message", text("again"), time.Unix(5_000, 0))
-			moved[last] = true
-			for i := 1233; i >= 0; i-- {
-				if id := fmt.Sprintf("!r%d", i); count[id] == 0 {
-					mkMsg(t, s, id, "$bump-unseen", ghost, "m.room.message", text("again"), time.Unix(5_000, 0))
-					moved[id] = true
-					break
-				}
+	// A chat already shown, and one not yet shown, get a new message between pages 3 and 4. Every chat that
+	// didn't move appears exactly once. Under newest each moved chat goes to the top, before the cursor, so it
+	// appears at most once; under oldest the shown one goes to the end and can come back (callers dedupe).
+	bump := 5_000
+	movingPages := func(t *testing.T, sort string) (count map[string]int, moved map[string]bool) {
+		q := InboxQuery{Sort: sort, Limit: 100}
+		count, moved = map[string]int{}, map[string]bool{}
+		for page := 1; ; page++ {
+			rows, next, err := s.InboxPage(ctx, q)
+			require.NoError(t, err)
+			require.LessOrEqual(t, len(rows), 100)
+			for _, r := range rows {
+				count[r.ID]++
 			}
-			require.Len(t, moved, 2)
+			if page == 3 {
+				bump++
+				last := rows[len(rows)-1].ID
+				require.Equal(t, 1, count[last])
+				mkMsg(t, s, last, "$bump-seen-"+sort, ghost, "m.room.message", text("again"), time.Unix(int64(bump), 0))
+				moved[last] = true
+				for i := 1233; i >= 0; i-- {
+					if id := fmt.Sprintf("!r%d", i); count[id] == 0 {
+						mkMsg(t, s, id, "$bump-unseen-"+sort, ghost, "m.room.message", text("again"), time.Unix(int64(bump), 0))
+						moved[id] = true
+						break
+					}
+				}
+				require.Len(t, moved, 2)
+			}
+			if next == "" {
+				return count, moved
+			}
+			q.After = next
 		}
-		if next == "" {
-			break
-		}
-		q.After = next
 	}
-	for i := 0; i < 1234; i++ {
-		id := fmt.Sprintf("!r%d", i)
-		if moved[id] {
-			require.LessOrEqual(t, count[id], 1, id)
-		} else {
-			require.Equal(t, 1, count[id], id)
+	t.Run("a chat moves under newest", func(t *testing.T) {
+		count, moved := movingPages(t, "newest")
+		for i := 0; i < 1234; i++ {
+			id := fmt.Sprintf("!r%d", i)
+			if moved[id] {
+				require.LessOrEqual(t, count[id], 1, id)
+			} else {
+				require.Equal(t, 1, count[id], id)
+			}
 		}
-	}
+	})
+	t.Run("a chat moves under oldest", func(t *testing.T) {
+		count, moved := movingPages(t, "oldest")
+		for i := 0; i < 1234; i++ {
+			if id := fmt.Sprintf("!r%d", i); !moved[id] {
+				require.Equal(t, 1, count[id], id)
+			}
+		}
+	})
 }
 
 func TestCursorFromAnotherQueryIsRefused(t *testing.T) {

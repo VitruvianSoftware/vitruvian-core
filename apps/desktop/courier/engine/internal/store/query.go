@@ -332,8 +332,9 @@ func (s keyedScan) Scan(dest ...any) error {
 }
 
 // InboxPage returns one page of q: up to Limit chats and the cursor of the next page ("" when this is the last).
-// Paging is by key, never by offset, so a chat that doesn't move is listed exactly once across the pages, and one
-// that moves (a new message) at most once.
+// Paging is by key, never by offset, so in every sort a chat that doesn't move is listed exactly once across the
+// pages. A chat that moves between pages can be listed twice: under oldest after a new message, or in any sort
+// after a pin, an unpin or a reminder change. Callers dedupe by room ID.
 func (s *Store) InboxPage(ctx context.Context, q InboxQuery) (rows []InboxRow, next string, err error) {
 	pq, err := normalize(q)
 	if err != nil {
