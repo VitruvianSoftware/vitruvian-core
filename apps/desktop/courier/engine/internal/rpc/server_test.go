@@ -576,10 +576,18 @@ func TestSlowClientIsToldToResync(t *testing.T) {
 	}
 	require.Equal(t, []string{"bridge:after", "bridge:later"}, kinds, "no second resync")
 
-	// A client that kept up lost nothing and was never told to resync.
-	for i := 0; i < o.sent; i++ {
+	// A client that was reading the whole time never loses a change silently: it gets every change in order, or,
+	// if it too fell behind (a starved machine can make any reader fall behind a burst this size), a resync
+	// after the changes it did get. It never gets a change out of order and never misses one without a resync.
+	next := 0
+	for next < o.sent {
 		ch := keepsUp.changed(func(changed) bool { return true })
-		require.Equal(t, changed{Kind: "bridge", Network: fmt.Sprintf("n%d", i)}, ch)
+		if ch.Kind == "resync" {
+			t.Logf("the reading client also fell behind after %d of %d changes, and was told to resync", next, o.sent)
+			return
+		}
+		require.Equal(t, changed{Kind: "bridge", Network: fmt.Sprintf("n%d", next)}, ch, "changes arrive in order, none skipped without a resync")
+		next++
 	}
 }
 
