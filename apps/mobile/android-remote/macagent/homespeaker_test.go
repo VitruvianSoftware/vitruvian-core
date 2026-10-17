@@ -672,3 +672,228 @@ func TestHomeSpeakerVoiceName(t *testing.T) {
 		}
 	}
 }
+
+// --- sources and recent broadcasts (HomeSpeaker 1.23) ---------------------
+
+// A config written before the source keys existed reads as the app's own
+// defaults: both coding agents spoken, every chat app off. Every field is
+// present so the phone can tell this agent from an older one.
+func TestHomeSpeakerSourcesDefaultWhenAbsent(t *testing.T) {
+	_, _, ts, _ := newTestHomeSpeaker(t, true)
+	resp, err := http.Get(ts.URL + "/v1/homespeaker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var raw map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"announce_claude_code": true,
+		"announce_antigravity": true,
+		"slack_enabled":        false,
+		"google_chat_enabled":  false,
+		"beeper_enabled":       false,
+	}
+	for key, v := range want {
+		got, ok := raw[key]
+		if !ok {
+			t.Errorf("%s missing from the reply; the phone would read this agent as an old one", key)
+			continue
+		}
+		if got != v {
+			t.Errorf("%s = %v, want %v", key, got, v)
+		}
+	}
+	if r, ok := raw["recent"].([]any); !ok || len(r) != 0 {
+		t.Errorf("recent = %#v, want [] (not null) with no history", raw["recent"])
+	}
+}
+
+// No chat_monitor at all (a fresh config) still reads, and a toggle creates it.
+func TestHomeSpeakerChatToggleCreatesChatMonitorWhenAbsent(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	cfg, _ := h.readConfig()
+	delete(cfg, "chat_monitor")
+	if err := h.writeConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if st := getState(t, ts); st.SlackEnabled == nil || *st.SlackEnabled {
+		t.Fatalf("slack_enabled without chat_monitor = %v, want false", st.SlackEnabled)
+	}
+	tok := pairedToken(t, store)
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"beeper_enabled":true}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	got, _ := h.readConfig()
+	monitor, _ := got["chat_monitor"].(map[string]any)
+	if monitor["beeper_enabled"] != true {
+		t.Errorf("chat_monitor = %v, want beeper_enabled true", got["chat_monitor"])
+	}
+}
+
+// Each switch writes its own key, in its own place, and nothing else: the
+// coding agents at the top level, the chat apps inside chat_monitor next to
+// every setting the app keeps there.
+func TestHomeSpeakerSourceTogglesWriteTheirKeysAndKeepChatMonitor(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	cfg, err := h.readConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg["chat_monitor"] = map[string]any{
+		"slack_enabled":         false,
+		"poll_interval_seconds": 15.0,
+		"slack_Mode":            "mentions",
+		"gchat_command":         "gws chat",
+		"beeper_base_url":       "http://localhost:23373",
+		"beeper_token":          "keep-me",
+	}
+	if err := h.writeConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	tok := pairedToken(t, store)
+
+	cases := []struct {
+		body     string
+		topLevel bool
+		key      string
+		want     bool
+		read     func(homeSpeakerState) *bool
+	}{
+		{`{"announce_claude_code":false}`, true, "announce_claude_code", false, func(s homeSpeakerState) *bool { return s.AnnounceClaudeCode }},
+		{`{"announce_antigravity":false}`, true, "announce_antigravity", false, func(s homeSpeakerState) *bool { return s.AnnounceAntigravity }},
+		{`{"slack_enabled":true}`, false, "slack_enabled", true, func(s homeSpeakerState) *bool { return s.SlackEnabled }},
+		{`{"google_chat_enabled":true}`, false, "google_chat_enabled", true, func(s homeSpeakerState) *bool { return s.GoogleChatEnabled }},
+		{`{"beeper_enabled":true}`, false, "beeper_enabled", true, func(s homeSpeakerState) *bool { return s.BeeperEnabled }},
+	}
+	for _, c := range cases {
+		resp := postJSON(t, ts, "/v1/homespeaker", tok, c.body)
+		var st homeSpeakerState
+		json.NewDecoder(resp.Body).Decode(&st)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d", c.body, resp.StatusCode)
+		}
+		if v := c.read(st); v == nil || *v != c.want {
+			got := "absent"
+			if v != nil {
+				got = fmt.Sprint(*v)
+			}
+			t.Errorf("%s: reply %s = %s, want %v", c.body, c.key, got, c.want)
+		}
+		got, _ := h.readConfig()
+		monitor, _ := got["chat_monitor"].(map[string]any)
+		if c.topLevel {
+			if got[c.key] != c.want {
+				t.Errorf("%s: on disk %s = %v", c.body, c.key, got[c.key])
+			}
+			if _, ok := monitor[c.key]; ok {
+				t.Errorf("%s: also written inside chat_monitor", c.key)
+			}
+		} else {
+			if monitor[c.key] != c.want {
+				t.Errorf("%s: on disk chat_monitor.%s = %v", c.body, c.key, monitor[c.key])
+			}
+			if _, ok := got[c.key]; ok {
+				t.Errorf("%s: also written at the top level, where HomeSpeaker never reads it", c.key)
+			}
+		}
+	}
+
+	got, _ := h.readConfig()
+	monitor := got["chat_monitor"].(map[string]any)
+	for key, want := range map[string]any{
+		"poll_interval_seconds": 15.0,
+		"slack_Mode":            "mentions",
+		"gchat_command":         "gws chat",
+		"beeper_base_url":       "http://localhost:23373",
+		"beeper_token":          "keep-me",
+	} {
+		if monitor[key] != want {
+			t.Errorf("chat_monitor.%s = %v after the toggles, want %v", key, monitor[key], want)
+		}
+	}
+	if got["enabled"] != true || got["structure_id"] != "5219a9d7" {
+		t.Error("untouched top-level keys changed")
+	}
+}
+
+// The source fields count as "something to change"; nothing at all is refused.
+func TestHomeSpeakerUpdateNeedsARecognisedField(t *testing.T) {
+	_, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+	for body, want := range map[string]int{
+		`{}`:                             http.StatusBadRequest,
+		`{"announce_claude_code":true}`:  http.StatusOK,
+		`{"google_chat_enabled":false}`:  http.StatusOK,
+		`{"announce_antigravity":false}`: http.StatusOK,
+	} {
+		resp := postJSON(t, ts, "/v1/homespeaker", tok, body)
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%s: %d, want %d", body, resp.StatusCode, want)
+		}
+	}
+}
+
+// Recent is the newest five, newest first, and last is still recent[0] for
+// phones that only read last.
+func TestHomeSpeakerRecentBroadcasts(t *testing.T) {
+	h, _, ts, _ := newTestHomeSpeaker(t, true)
+	if st := getState(t, ts); len(st.Recent) != 0 || st.Last != nil {
+		t.Fatalf("no history: recent %v last %v", st.Recent, st.Last)
+	}
+	base := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC).Sub(swiftReferenceEpoch).Seconds()
+	var items []string
+	for i := 0; i < 7; i++ {
+		// The app writes newest first: item 0 is the latest.
+		items = append(items, fmt.Sprintf(`{"id":"%d","timestamp":%.0f,"text":"line %d","targetName":"Kitchen speaker","source":"Claude Code"}`, i, base-float64(i*60), i))
+	}
+	if err := os.WriteFile(h.historyPath, []byte("["+strings.Join(items, ",")+"]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st := getState(t, ts)
+	if len(st.Recent) != recentBroadcasts {
+		t.Fatalf("recent has %d, want %d", len(st.Recent), recentBroadcasts)
+	}
+	for i, r := range st.Recent {
+		if r.Text != fmt.Sprintf("line %d", i) {
+			t.Errorf("recent[%d] = %q, want newest first", i, r.Text)
+		}
+	}
+	if st.Last == nil || st.Last.Text != "line 0" || !st.Last.At.Equal(st.Recent[0].At) {
+		t.Errorf("last = %+v, want recent[0]", st.Last)
+	}
+	if st.Recent[0].Source != "Claude Code" || st.Recent[0].Target != "Kitchen speaker" {
+		t.Errorf("recent[0] = %+v", st.Recent[0])
+	}
+}
+
+// A replay is a --say of the history's text, run without the coding-agent
+// markers so HomeSpeaker does not hold it to an agent's switch.
+func TestHomeSpeakerSayRunsAsAPerson(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	var sayArgs []string
+	h.say = func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
+		sayArgs = args
+		return "sent\n", "", nil
+	}
+	tok := pairedToken(t, store)
+	resp := postJSON(t, ts, "/v1/homespeaker/say", tok, `{"text":"line 0"}`)
+	resp.Body.Close()
+	if len(sayArgs) != 2 || sayArgs[0] != "--say" || sayArgs[1] != "line 0" {
+		t.Errorf("say ran %v, want [--say \"line 0\"] through the person runner", sayArgs)
+	}
+	if newHomeSpeaker().say == nil {
+		t.Error("production --say does not use the person runner")
+	}
+
+	env := personEnv([]string{"PATH=/usr/bin", "CLAUDECODE=1", "ANTIGRAVITY_AGENT=1", "AI_AGENT=claude-code", "CLAUDECODE_X=keep", "HOME=/Users/j"})
+	if strings.Join(env, " ") != "PATH=/usr/bin CLAUDECODE_X=keep HOME=/Users/j" {
+		t.Errorf("personEnv = %v", env)
+	}
+}

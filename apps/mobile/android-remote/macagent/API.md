@@ -526,3 +526,43 @@ remains the only judge. Its button is the app link
 `intent:` URL with `package=dev.vitruvian.remote`. `<Host>` is the request's own `Host` header,
 the address the phone already reached, and must be a bare `host[:port]` or the page is a 400. A
 code that is not six digits is a 400. The page sends `Content-Security-Policy: default-src 'none'`.
+
+# v1.10 additions: HomeSpeaker sources and replay
+
+HomeSpeaker 1.23 can switch each sender on and off under its master switch (`enabled`): the two
+coding agents, and the chat apps it watches. The phone gets the same switches, and a list of recent
+broadcasts it can replay with a tap.
+
+`GET /v1/homespeaker` gains:
+
+| Field | Read from the config file | When the key is absent |
+|---|---|---|
+| `announce_claude_code` (bool) | top-level `announce_claude_code` | `true` |
+| `announce_antigravity` (bool) | top-level `announce_antigravity` | `true` |
+| `slack_enabled` (bool) | `chat_monitor.slack_enabled` | `false` |
+| `google_chat_enabled` (bool) | `chat_monitor.google_chat_enabled` | `false` |
+| `beeper_enabled` (bool) | `chat_monitor.beeper_enabled` | `false` |
+| `recent` (`[{text, target, source, at}]`) | the newest 5 of `~/.gemini/speaker_history.json`, newest first | `[]` |
+
+The defaults are HomeSpeaker's own: a config written before the agent switches existed still speaks
+for both agents, and no chat app is read until someone turns it on. All six fields are always
+present from a v1.10 agent. `last` stays, and is `recent[0]` whenever both are present.
+
+`POST /v1/homespeaker` accepts the five switches as optional bools. The two agent switches are
+written at the top level; the three chat switches are written **inside** `chat_monitor`, editing
+that object in place so every other key HomeSpeaker keeps there (poll interval, Beeper's URL and
+token, …) survives. A missing `chat_monitor` is created. As before, only the keys sent are written,
+and a body with none of the recognised fields is 400.
+
+**Replay** is `POST /v1/homespeaker/say` with the broadcast's `text`; no new endpoint. Two notes:
+
+- The agent runs `--say` with `CLAUDECODE`, `ANTIGRAVITY_AGENT` and `AI_AGENT` removed from the
+  child's environment. HomeSpeaker 1.23 infers who is speaking from those, so an agent started
+  from a coding agent's shell would otherwise have a replay held by that agent's switch. Removing
+  them works on every HomeSpeaker version; passing `--source user` would be refused by one older
+  than 1.23.
+- HomeSpeaker's CLI has no flag that leaves its history alone, so a replay is listed again, as
+  "Say".
+
+The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
+no `recent` it falls back to `last` as a one-row list.

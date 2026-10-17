@@ -256,6 +256,63 @@ public object HostCodec {
   }
 }
 
+// --- HomeSpeaker's sources and recent broadcasts ------------------------
+
+/** One HomeSpeaker broadcast, as `/v1/homespeaker` lists it in `last` and `recent`. */
+public data class AgentLastBroadcast(
+    val text: String,
+    val target: String,
+    val source: String,
+    val at: String,
+)
+
+/**
+ * The parts of `GET /v1/homespeaker` added in agent v1.10: which senders HomeSpeaker speaks for,
+ * and its newest broadcasts.
+ *
+ * Each switch is null when the key is absent -- an agent older than v1.10 -- so the dashboard hides
+ * it instead of drawing a guess that the Mac would then refuse. That distinction is the whole
+ * point, and it fails silently if wrong, so it is parsed here, where a JVM test reaches it.
+ */
+public data class HomeSpeakerSources(
+    val announceClaudeCode: Boolean?,
+    val announceAntigravity: Boolean?,
+    val slackEnabled: Boolean?,
+    val googleChatEnabled: Boolean?,
+    val beeperEnabled: Boolean?,
+    val recent: List<AgentLastBroadcast>,
+)
+
+public object HomeSpeakerWire {
+  /**
+   * Reads the v1.10 fields; anything unparseable reads as an older agent (all null, no history).
+   */
+  public fun sources(json: String): HomeSpeakerSources {
+    val o =
+        runCatching { JsonReader(json).readValue() as? Map<*, *> }.getOrNull()
+            ?: emptyMap<Any, Any>()
+    fun flag(key: String): Boolean? = o[key] as? Boolean
+    val recent =
+        (o["recent"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          AgentLastBroadcast(
+              text = it["text"] as? String ?: "",
+              target = it["target"] as? String ?: "",
+              source = it["source"] as? String ?: "",
+              at = it["at"] as? String ?: "",
+          )
+        }
+    return HomeSpeakerSources(
+        announceClaudeCode = flag("announce_claude_code"),
+        announceAntigravity = flag("announce_antigravity"),
+        slackEnabled = flag("slack_enabled"),
+        googleChatEnabled = flag("google_chat_enabled"),
+        beeperEnabled = flag("beeper_enabled"),
+        recent = recent,
+    )
+  }
+}
+
 /**
  * The smallest JSON reader that can read what [HostCodec] writes, and survive what it did not.
  *

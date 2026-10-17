@@ -312,4 +312,69 @@ public class WireTest {
         )
         .forEach { assertNull(it, DeepLink.pairing(it)) }
   }
+
+  // --- HomeSpeaker sources and recent broadcasts (agent v1.10) -------------
+
+  /** What a v1.10 agent sends: every switch, and the history newest first. */
+  private val homeSpeakerV110 =
+      """
+      {"available":true,"enabled":true,"speak_home":true,"speak_local":false,
+       "announce_claude_code":false,"announce_antigravity":true,
+       "slack_enabled":true,"google_chat_enabled":false,"beeper_enabled":true,
+       "last":{"text":"Build is green.","target":"Kitchen speaker","source":"Claude Code","at":"2026-10-17T09:00:00Z"},
+       "recent":[
+         {"text":"Build is green.","target":"Kitchen speaker","source":"Claude Code","at":"2026-10-17T09:00:00Z"},
+         {"text":"New message from Ana","target":"Kitchen speaker","source":"Slack","at":"2026-10-17T08:59:00Z"}
+       ]}
+      """
+          .trimIndent()
+
+  @Test
+  public fun `homespeaker reads every source switch and the recent list in order`() {
+    val s = HomeSpeakerWire.sources(homeSpeakerV110)
+    assertEquals(false, s.announceClaudeCode)
+    assertEquals(true, s.announceAntigravity)
+    assertEquals(true, s.slackEnabled)
+    assertEquals(false, s.googleChatEnabled)
+    assertEquals(true, s.beeperEnabled)
+    assertEquals(
+        listOf(
+            AgentLastBroadcast(
+                "Build is green.", "Kitchen speaker", "Claude Code", "2026-10-17T09:00:00Z"),
+            AgentLastBroadcast(
+                "New message from Ana", "Kitchen speaker", "Slack", "2026-10-17T08:59:00Z"),
+        ),
+        s.recent)
+  }
+
+  /**
+   * An agent older than v1.10 sends none of these. Null -- not false -- is what hides the switches:
+   * a false would draw "off" for Claude Code on a Mac that is in fact speaking every reply.
+   */
+  @Test
+  public fun `homespeaker from an older agent reads as unknown, not off`() {
+    val old =
+        """{"available":true,"enabled":true,"speak_home":true,"speak_local":false,""" +
+            """"last":{"text":"hi","target":"Kitchen","source":"Say","at":"2026-10-17T09:00:00Z"}}"""
+    val s = HomeSpeakerWire.sources(old)
+    assertNull(s.announceClaudeCode)
+    assertNull(s.announceAntigravity)
+    assertNull(s.slackEnabled)
+    assertNull(s.googleChatEnabled)
+    assertNull(s.beeperEnabled)
+    assertTrue(s.recent.isEmpty())
+  }
+
+  @Test
+  public fun `homespeaker survives odd shapes without inventing switches`() {
+    listOf("", "not json", "[]", """{"announce_claude_code":"yes","recent":{"text":"x"}}""")
+        .forEach { json ->
+          val s = HomeSpeakerWire.sources(json)
+          assertNull(json, s.announceClaudeCode)
+          assertTrue(json, s.recent.isEmpty())
+        }
+    // One bad entry in the list is skipped, not fatal for the rest.
+    val mixed = HomeSpeakerWire.sources("""{"recent":[42,{"text":"ok"}]}""")
+    assertEquals(listOf(AgentLastBroadcast("ok", "", "", "")), mixed.recent)
+  }
 }
