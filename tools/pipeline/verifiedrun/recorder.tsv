@@ -1,0 +1,15 @@
+# The one identity allowed to write "verified-run" commit statuses (#3418).
+# NOT secret: these are public ids. The private key is never in git: it is the
+# agent's usual key (<agent>.pem in the agent key folder,
+# tools/sync-env-secrets/agent-keys in the main checkout, or $AGENT_KEY_DIR).
+#
+# One row: agent name (as in tools/agent-app/agents.tsv), a tab, its bot user
+# id. The bot user id must match agents.tsv; the tool refuses otherwise.
+#
+# scout is the only agent App with "Commit statuses: write" (granted by James
+# 2026-10-16, see tools/agent-app/permissions.tsv). The later PR check trusts
+# a verified-run status only if its creator id is this bot user id, and never
+# on a PR scout itself opened: the record must not come from the PR's author.
+#
+# agent	bot_user_id
+scout	314429511
