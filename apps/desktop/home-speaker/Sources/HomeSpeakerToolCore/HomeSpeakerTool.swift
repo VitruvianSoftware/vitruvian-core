@@ -275,6 +275,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// secret is never drawn back into its field.
     public private(set) var draftClientId = ""
     public private(set) var draftClientSecret = ""
+    /// The Slack and Beeper tokens pasted and not saved yet, held until
+    /// Save Token (or Return). Never drawn back into their fields.
+    public private(set) var draftSlackToken = ""
+    public private(set) var draftBeeperToken = ""
     private var voices: [LocalVoice]?
     /// Asked once each time Settings opens, so a failure is not asked again
     /// at every redraw.
@@ -440,6 +444,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             guard event.kind == .tap, opensSettings else { return .keep }
             return .open(Self.settingsPanel)
         }
+        if event.block == Pages.Block.openChatSettings {
+            // As More settings…, but on Chat & Slack: where the chat
+            // warning's fix is. An open panel is redrawn on that section.
+            guard event.kind == .tap, opensSettings else { return .keep }
+            section = .monitor
+            removingSpeakers = false
+            if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
+            return .open(Self.settingsPanel)
+        }
+        if let answer = islandTokenEvent(event) { return answer }
         if doorEvent(event) {
             if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
             return .page(Pages.island(status()))
@@ -529,6 +543,45 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return .page(Pages.island(status()))
     }
 
+    /// The island's token fields, under a chat source switched on with no
+    /// token: pasted and saved there, so the warning goes at once. Return
+    /// saves what it carries; Save Token saves what was pasted. A change
+    /// is only held: saving each keystroke would keep a half-typed token,
+    /// and a redraw would wipe the field. Nothing typed clears nothing
+    /// here: clearing is Settings' button. Nil for any other block.
+    private func islandTokenEvent(_ event: PanelEvent) -> PanelAnswer? {
+        let isSlack: Bool
+        switch event.block {
+        case Pages.Block.slackToken?, Pages.Block.saveSlackToken?: isSlack = true
+        case Pages.Block.beeperToken?, Pages.Block.saveBeeperToken?: isSlack = false
+        default: return nil
+        }
+        let typed: String
+        switch (event.block, event.kind) {
+        case (Pages.Block.slackToken?, .change), (Pages.Block.beeperToken?, .change):
+            if isSlack { draftSlackToken = event.text ?? "" } else { draftBeeperToken = event.text ?? "" }
+            return .keep
+        case (Pages.Block.slackToken?, .submit), (Pages.Block.beeperToken?, .submit):
+            typed = event.text ?? (isSlack ? draftSlackToken : draftBeeperToken)
+        case (Pages.Block.saveSlackToken?, .tap), (Pages.Block.saveBeeperToken?, .tap):
+            typed = isSlack ? draftSlackToken : draftBeeperToken
+        default:
+            return .keep
+        }
+        guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            notice = "Paste the \(isSlack ? "Slack" : "Beeper") token first"
+            return .page(Pages.island(status()))
+        }
+        do {
+            if isSlack { try saveSlackToken(typed) } else { try saveBeeperToken(typed) }
+            notice = setupNotice
+        } catch {
+            notice = Self.words(error)
+        }
+        if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
+        return .page(Pages.island(status()))
+    }
+
     /// The island's first-run buttons: the same actions as Settings'
     /// Sign In, Import and Find Speakers. Nil for any other block. What
     /// goes wrong is said where setup speaks, under the steps.
@@ -562,6 +615,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             voices = nil
             draftClientId = parts.account.customOAuthClientId ?? ""
             draftClientSecret = ""
+            draftSlackToken = ""
+            draftBeeperToken = ""
         }
         openPanels.insert(Self.settingsPanel)
         reload()
@@ -622,17 +677,45 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.importAntigravity?:
                 try importAntigravity()
             case Pages.Block.slackToken?:
-                // Return only: leaving the field half-typed saves nothing.
+                // A change is held for Save Token; the page draws the field
+                // empty, so a redraw now would wipe it. Return saves what
+                // it carries (nothing clears it), as before.
+                if event.kind == .change {
+                    draftSlackToken = event.text ?? ""
+                    return .keep
+                }
                 guard event.kind == .submit, let text = event.text else { return .keep }
                 try saveSlackToken(text)
+                tokenSavedElsewhere()
+            case Pages.Block.saveSlackToken?:
+                guard event.kind == .tap else { return .keep }
+                // Never a clear: an empty Save is a slip, not a request.
+                guard !draftSlackToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw CommandRefused("paste the Slack token first")
+                }
+                try saveSlackToken(draftSlackToken)
+                tokenSavedElsewhere()
             case Pages.Block.clearSlackToken?:
                 try saveSlackToken("")
+                tokenSavedElsewhere()
             case Pages.Block.beeperToken?:
-                // Return only: leaving the field half-typed saves nothing.
+                if event.kind == .change {
+                    draftBeeperToken = event.text ?? ""
+                    return .keep
+                }
                 guard event.kind == .submit, let text = event.text else { return .keep }
                 try saveBeeperToken(text)
+                tokenSavedElsewhere()
+            case Pages.Block.saveBeeperToken?:
+                guard event.kind == .tap else { return .keep }
+                guard !draftBeeperToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw CommandRefused("paste the Beeper token first")
+                }
+                try saveBeeperToken(draftBeeperToken)
+                tokenSavedElsewhere()
             case Pages.Block.clearBeeperToken?:
                 try saveBeeperToken("")
+                tokenSavedElsewhere()
             case Pages.Block.grantChat?:
                 try setupJob(.signIn(chatOnly: true))
             case Pages.Block.disconnectChat?:
@@ -1519,6 +1602,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         if !config.hasSpeakers, parts.driver.isInstalled, setupBusy == nil { try discover() }
     }
 
+    /// A token saved or cleared from Settings: the island, if open, is
+    /// redrawn, so its warning and token field follow at once.
+    private func tokenSavedElsewhere() {
+        if openPanels.contains(Self.islandPanel) { parts.link.render(panel: Self.islandPanel, Pages.island(status())) }
+    }
+
     /// Saves the Slack token typed, trimmed; nothing typed clears it. The
     /// token goes to the secrets file and nowhere else -- not the page, not
     /// a notice -- and a running HomeSpeaker is told, so a monitor waiting
@@ -1531,6 +1620,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         } else {
             try parts.chat.saveSlackToken(token)
             setupNotice = "Slack token saved"
+            draftSlackToken = ""
         }
         parts.credentialsChanged()
     }
@@ -1546,6 +1636,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         } else {
             try parts.chat.saveBeeperToken(token)
             setupNotice = "Beeper token saved"
+            draftBeeperToken = ""
         }
         parts.credentialsChanged()
     }

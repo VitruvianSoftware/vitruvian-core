@@ -211,7 +211,19 @@ public enum Pages {
     public static let homeSpeakersOff = "Home speakers are off"
     /// A volume or mute that waited, dropped: it was for the old speaker.
     public static let pendingDropped = "The waiting volume or mute change was dropped: the speaker changed"
-    public static let fixChatInSettings = "Fix it in Settings > Chat & Slack"
+    /// Where to fix a chat problem, for an app that cannot open HomeSpeaker's
+    /// settings (3.57 and before): the Section menu's Chat & Slack.
+    public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Section: Chat & Slack"
+    /// The warning's button, for an app that can: opens HomeSpeaker's
+    /// settings on Chat & Slack.
+    public static let openChatSettingsButton = "Open Chat & Slack…"
+    /// The token fields' save buttons, as HomeSpeaker's own Settings has.
+    public static let saveTokenButton = "Save Token"
+    public static let slackTokenTitle = "User token (xoxp-…)"
+    public static let beeperTokenTitle = "Access token"
+    /// The island's token fields, under a source switched on with no token.
+    public static let pasteSlackToken = "Paste Slack token and press Return"
+    public static let pasteBeeperToken = "Paste Beeper token and press Return"
     /// Where the rest of HomeSpeaker's settings are, at the foot of the
     /// island, for an app that cannot open them (3.57 and before).
     public static let moreSettings = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
@@ -256,9 +268,12 @@ public enum Pages {
         public static let slackEnabled = "slackEnabled"
         public static let slackToken = "slackToken"
         public static let clearSlackToken = "clearSlackToken"
+        /// Saves what was pasted into the Slack token field, as Return does.
+        public static let saveSlackToken = "saveSlackToken"
         public static let beeperEnabled = "beeperEnabled"
         public static let beeperToken = "beeperToken"
         public static let clearBeeperToken = "clearBeeperToken"
+        public static let saveBeeperToken = "saveBeeperToken"
         public static let beeperAnnounce = "beeperAnnounce"
         public static let googleChatEnabled = "googleChatEnabled"
         /// Each coding agent's own switch, under Broadcasting: on the
@@ -282,6 +297,9 @@ public enum Pages {
         /// The island's last line, as a button: opens Settings on
         /// HomeSpeaker's detail.
         public static let moreSettings = "moreSettings"
+        /// The island's chat warning, as a button: opens Settings on
+        /// HomeSpeaker's Chat & Slack.
+        public static let openChatSettings = "openChatSettings"
         // The island's first-run setup and its outputs. Their own ids, so
         // the island never answers to a settings control's.
         public static let setupSignIn = "setup.signIn"
@@ -551,8 +569,20 @@ public enum Pages {
             }
             text("Chat apps", style: .caption)
             toggle(Block.slackEnabled, "Slack", isOn: chat.slackEnabled)
+            // On with no token: the field to paste it, right under the
+            // switch, so turning a source on is all it takes to find it.
+            if chat.slackEnabled && !status.chat.hasSlackToken {
+                field(Block.slackToken, title: UIText.plain(slackTokenTitle), value: "", placeholder: UIText.plain(pasteSlackToken),
+                      kind: .secret)
+                button(Block.saveSlackToken, UIText.plain(saveTokenButton))
+            }
             toggle(Block.googleChatEnabled, "Google Chat", isOn: chat.googleChatEnabled)
             toggle(Block.beeperEnabled, "Beeper", isOn: chat.beeperEnabled)
+            if chat.beeperEnabled && !status.chat.hasBeeperToken {
+                field(Block.beeperToken, title: UIText.plain(beeperTokenTitle), value: "", placeholder: UIText.plain(pasteBeeperToken),
+                      kind: .secret)
+                button(Block.saveBeeperToken, UIText.plain(saveTokenButton))
+            }
             if !config.enabled {
                 text(UIText.plain(sourcesSilent), style: .caption)
             }
@@ -582,12 +612,19 @@ public enum Pages {
         return lines
     }
 
+    /// The chat warnings, then where to fix them: a button that opens
+    /// Chat & Slack, for an app that can open HomeSpeaker's settings;
+    /// otherwise where that is.
     static func chatWarningBlocks(_ status: Status) -> [UIBlock] {
         let lines = chatWarnings(status)
         guard !lines.isEmpty else { return [] }
         return UITree {
             problemRows(lines)
-            text(UIText.plain(fixChatInSettings), style: .caption)
+            if status.opensSettings {
+                button(Block.openChatSettings, UIText.plain(openChatSettingsButton))
+            } else {
+                text(UIText.plain(fixChatInSettings), style: .caption)
+            }
         }.blocks
     }
 
@@ -842,9 +879,10 @@ public enum Pages {
 
             heading("Slack")
             toggle(Block.slackEnabled, "Announce Slack messages", isOn: monitor.slackEnabled)
-            field(Block.slackToken, title: "User token (xoxp-…)", value: "",
-                  placeholder: chat.hasSlackToken ? "Paste a new token to replace it" : "Paste the token and press Return",
+            field(Block.slackToken, title: UIText.plain(slackTokenTitle), value: "",
+                  placeholder: chat.hasSlackToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
                   kind: .secret)
+            button(Block.saveSlackToken, UIText.plain(saveTokenButton), style: .prominent)
             if chat.hasSlackToken {
                 row(nil, "Slack token saved", icon: "checkmark.circle.fill")
                 button(Block.clearSlackToken, "Clear Slack Token")
@@ -889,9 +927,10 @@ public enum Pages {
                        UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
                    },
                    choice: status.offersChoice)
-            field(Block.beeperToken, title: "Access token", value: "",
-                  placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token and press Return",
+            field(Block.beeperToken, title: UIText.plain(beeperTokenTitle), value: "",
+                  placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
                   kind: .secret)
+            button(Block.saveBeeperToken, UIText.plain(saveTokenButton), style: .prominent)
             if chat.hasBeeperToken {
                 row(nil, "Beeper token saved", icon: "checkmark.circle.fill")
                 button(Block.clearBeeperToken, "Clear Beeper Token")

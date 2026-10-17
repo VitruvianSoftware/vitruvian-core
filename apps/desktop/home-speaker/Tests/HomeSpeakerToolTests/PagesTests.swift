@@ -339,15 +339,15 @@ final class PagesTests: XCTestCase {
         var status = Pages.Status()
         status.section = .monitor
         // Nothing on, nothing saved, nothing installed.
-        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "googleChatEnabled", "chatSource",
-                                                    "grantChat", "beeperEnabled", "beeperAnnounce", "beeperToken",
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "saveSlackToken", "googleChatEnabled", "chatSource",
+                                                    "grantChat", "beeperEnabled", "beeperAnnounce", "beeperToken", "saveBeeperToken",
                                                     "muteOwnMessages", "pollInterval"])
         // Tokens saved, Chat granted, gws there.
         status.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", ownerRunning: true,
                                  hasBeeperToken: true)
-        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "clearSlackToken", "googleChatEnabled",
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "saveSlackToken", "clearSlackToken", "googleChatEnabled",
                                                     "chatSource", "disconnectChat", "gwsAccount", "beeperEnabled", "beeperAnnounce",
-                                                    "beeperToken", "clearBeeperToken", "muteOwnMessages", "pollInterval"])
+                                                    "beeperToken", "saveBeeperToken", "clearBeeperToken", "muteOwnMessages", "pollInterval"])
         XCTAssertTrue(texts(Pages.settings(status)).contains("Beeper token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("Slack token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("HomeSpeaker is running · "))
@@ -389,7 +389,10 @@ final class PagesTests: XCTestCase {
         status.voices = (0..<100).map { LocalVoice(id: "com.apple.voice.v\($0)", name: "Voice \($0)", language: "en-US", quality: .enhanced) }
         status.config.effectiveSpeakLocal = true
         status.recentBroadcasts = (0..<30).map { _ in BroadcastLogItem(text: String(repeating: "m", count: 2_000), targetName: "Kitchen", source: "Say") }
-        status.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true)
+        // Every source on with no token: the island draws both token fields.
+        status.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true, beeperEnabled: true)
+        var opens = status
+        opens.opensSettings = true
         var setup = status
         setup.config.targets = [:]
         setup.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
@@ -434,7 +437,7 @@ final class PagesTests: XCTestCase {
         quiet.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
         doors.append(quiet)
         let doorPages = doors.flatMap { [Pages.island($0), Pages.settings($0)] }
-        for tree in [Pages.island(status), Pages.island(setup), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
+        for tree in [Pages.island(status), Pages.island(opens), Pages.island(setup), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
                      Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] + doorPages {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
