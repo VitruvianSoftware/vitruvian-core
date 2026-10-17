@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-17T00:15:47Z",
+  "generated": "2026-10-17T09:50:53Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -83,14 +83,14 @@
         "zh-TW": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
         "zh-HK": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。"
       },
-      "version": "1.4.1",
+      "version": "1.5.0",
       "protocol": "2",
       "minimumAppVersion": "3.46.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-tool-github",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.4.1/github-tool-1.4.1.zip",
-        "sha256": "94aca696dbb5f2d5df13b02c1666dc19348fb39d037e48251518a0047a2a03e9",
-        "size": 1347606
+        "url": "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.5.0/github-tool-1.5.0.zip",
+        "sha256": "74f7aab25103834a009cb7da35ac9be89f044a48d8173c6579d8daca02eb5b01",
+        "size": 1348878
       },
       "uses": ["clipboard.write", "notify", "open", "storage"],
       "commands": [
@@ -146,14 +146,14 @@
       "summary": {
         "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
       },
-      "version": "1.22.0",
+      "version": "1.24.0",
       "protocol": "2",
       "minimumAppVersion": "3.45.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.22.0/HomeSpeaker-1.22.0-tool.zip",
-        "sha256": "5a4f16354938dbc9175994b3b75d040fb79f101dbd44ac41f8e51c90ada86d1d",
-        "size": 2957268
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.24.0/HomeSpeaker-1.24.0-tool.zip",
+        "sha256": "08ce625fd2a21450bddeddf3b267913c397ffdbcc8c91a0b4e3676470704b583",
+        "size": 2993924
       },
       "uses": ["notify", "clipboard.read", "open"],
       "commands": [
@@ -199,14 +199,14 @@
       "summary": {
         "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
       },
-      "version": "0.1.5",
+      "version": "0.1.7",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.5/VitruvianRemote-0.1.5-tool.zip",
-        "sha256": "4f72d30e892943232867157951f890e8732f87233c179b41c96b385755f060e9",
-        "size": 13133127
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.7/VitruvianRemote-0.1.7-tool.zip",
+        "sha256": "a272b546429b7b1d77a2734d89d64ce7ccd3ca4173b3252ae187e1f8b0d2ffa8",
+        "size": 13133110
       },
       "uses": ["notify", "clipboard.write", "open"],
       "commands": [
