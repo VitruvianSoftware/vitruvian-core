@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.61.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.60.0...vitruvian-v3.61.0) (2026-10-17)
+
+
+### Features
+
+* **home-speaker:** per-agent and per-chat-app switches on the island, tap to replay ([#3444](https://github.com/VitruvianSoftware/vitruvian-core/issues/3444)) ([d50160a](https://github.com/VitruvianSoftware/vitruvian-core/commit/d50160a4c6fce5f4f5db39c1518e292df276db45))
+
 ## [3.60.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.59.1...vitruvian-v3.60.0) (2026-10-17)
 
 
