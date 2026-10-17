@@ -2178,6 +2178,7 @@ public class RemoteState(
         prompts = false,
         listLabel = "Controls and speakers",
         rows = if (hs == null || !hs.available) emptyList() else homeSpeakerRows(hs),
+        extraLists = if (hs == null || !hs.available) emptyList() else homeSpeakerExtraLists(hs),
         composer =
             ModuleComposer(
                 placeholder = "Announce on ${selected?.name ?: "the speaker"}…",
@@ -2422,6 +2423,112 @@ public class RemoteState(
     }
   }
 
+  /**
+   * The senders HomeSpeaker speaks for (agent v1.10), and its recent broadcasts.
+   *
+   * Each sender list appears only when the Mac sent every switch in it: an older agent gets no
+   * switches rather than ones it would refuse. Every switch sits under Broadcasting -- with that
+   * off nothing is spoken, so the rows say so instead of claiming "reads aloud".
+   */
+  private fun homeSpeakerExtraLists(hs: AgentHomeSpeaker): List<ModuleList> = buildList {
+    fun sourceRow(
+        title: String,
+        on: Boolean,
+        onLine: String,
+        offLine: String,
+        set: (Boolean) -> Unit,
+    ): ModuleRow =
+        ModuleRow(
+            title = title,
+            subtitle =
+                when {
+                  !hs.enabled -> "held · Broadcasting is off"
+                  on -> onLine
+                  else -> offLine
+                },
+            trailing = if (on) "on" else "off",
+            tone = if (on && hs.enabled) StatusTone.Ok else StatusTone.Neutral,
+            actions =
+                listOf(RowAction(if (on) "Turn off" else "Turn on", enabled = paired) { set(!on) }),
+        )
+
+    val claude = hs.announceClaudeCode
+    val antigravity = hs.announceAntigravity
+    if (claude != null && antigravity != null) {
+      add(
+          ModuleList(
+              "Coding agents",
+              listOf(
+                  sourceRow(
+                      "Claude Code",
+                      claude,
+                      "its replies are read aloud",
+                      "its replies stay silent") {
+                        setHomeSpeaker(
+                            "Claude Code ${if (it) "on" else "off"}", announceClaudeCode = it)
+                      },
+                  sourceRow(
+                      "Antigravity",
+                      antigravity,
+                      "its replies are read aloud",
+                      "its replies stay silent") {
+                        setHomeSpeaker(
+                            "Antigravity ${if (it) "on" else "off"}", announceAntigravity = it)
+                      },
+              )))
+    }
+    val slack = hs.slackEnabled
+    val googleChat = hs.googleChatEnabled
+    val beeper = hs.beeperEnabled
+    if (slack != null && googleChat != null && beeper != null) {
+      // Signing in to each app, and what counts as worth reading, are set on the Mac.
+      add(
+          ModuleList(
+              "Chat apps",
+              listOf(
+                  sourceRow("Slack", slack, "new messages are read aloud", "not watched") {
+                    setHomeSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
+                  },
+                  sourceRow(
+                      "Google Chat", googleChat, "new messages are read aloud", "not watched") {
+                        setHomeSpeaker(
+                            "Google Chat ${if (it) "on" else "off"}", googleChatEnabled = it)
+                      },
+                  sourceRow("Beeper", beeper, "new messages are read aloud", "not watched") {
+                    setHomeSpeaker("Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
+                  },
+              )))
+    }
+    // An agent older than v1.10 sends only `last`: a one-row list, still replayable.
+    val recent = hs.recent.ifEmpty { listOfNotNull(hs.last) }
+    if (recent.isNotEmpty()) {
+      // Replay is `HomeSpeaker --say`, which needs the app on this Mac.
+      val canReplay = paired && hs.installed
+      add(
+          ModuleList(
+              "Recent broadcasts",
+              recent.map { b ->
+                ModuleRow(
+                    title = b.text,
+                    subtitle =
+                        Format.parts(
+                            b.target,
+                            b.source,
+                            Format.relativeTime(b.at, System.currentTimeMillis()).ifBlank { b.at }),
+                    trailing = "",
+                    tone = StatusTone.Neutral,
+                    titleLines = 2,
+                    actions =
+                        listOf(
+                            RowAction("Replay", enabled = canReplay) {
+                              replayAnnouncement(b.text)
+                            }),
+                    onSelect = if (canReplay) ({ replayAnnouncement(b.text) }) else null,
+                )
+              }))
+    }
+  }
+
   // The same status, health and outputs line on Home's "Running now" row and
   // the dashboard header. An agent older than v1.8 does not send the outputs:
   // read as the app's defaults (home only), which is what that Mac does.
@@ -2502,6 +2609,11 @@ public class RemoteState(
       announceVolume: Int? = null,
       speakHome: Boolean? = null,
       speakLocal: Boolean? = null,
+      announceClaudeCode: Boolean? = null,
+      announceAntigravity: Boolean? = null,
+      slackEnabled: Boolean? = null,
+      googleChatEnabled: Boolean? = null,
+      beeperEnabled: Boolean? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
     scope.launch {
@@ -2516,7 +2628,12 @@ public class RemoteState(
                 announceVolumeEnabled,
                 announceVolume,
                 speakHome,
-                speakLocal)
+                speakLocal,
+                announceClaudeCode,
+                announceAntigravity,
+                slackEnabled,
+                googleChatEnabled,
+                beeperEnabled)
           }
           .onSuccess {
             agentHomeSpeaker = it
@@ -2575,6 +2692,30 @@ public class RemoteState(
             }
           }
           .onFailure { actFailed("homespeaker · say", it) }
+    }
+  }
+
+  /**
+   * Speaks a recent broadcast again, through the same `HomeSpeaker --say` as the Say box: the
+   * master switch holds, quiet hours do not. The Mac lists it again in its history.
+   */
+  public fun replayAnnouncement(text: String) {
+    val line = text.trim()
+    if (line.isEmpty()) return
+    val client = actClient("homespeaker · replay") ?: return
+    scope.launch {
+      runCatching { client.homeSpeakerSay(line) }
+          .onSuccess { result ->
+            if (result.ok) {
+              log("info", "homespeaker · replayed \"${Format.clip(line, 60)}\"")
+              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+            } else {
+              log(
+                  "warn",
+                  "homespeaker · not replayed · ${result.output.ifBlank { "no reason given" }}")
+            }
+          }
+          .onFailure { actFailed("homespeaker · replay", it) }
     }
   }
 

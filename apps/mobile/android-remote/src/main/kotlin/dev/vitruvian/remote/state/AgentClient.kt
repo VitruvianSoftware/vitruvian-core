@@ -419,6 +419,18 @@ public data class AgentHomeSpeaker(
     val quietHoursEnd: String,
     val targets: List<AgentSpeakerTarget>,
     val last: AgentLastBroadcast?,
+    /**
+     * Which senders are spoken (agent v1.10, HomeSpeaker 1.23), each under [enabled]: the two
+     * coding agents, then the chat apps HomeSpeaker watches. Null from an older agent, which cannot
+     * switch them -- the dashboard then hides the switches rather than guessing.
+     */
+    val announceClaudeCode: Boolean? = null,
+    val announceAntigravity: Boolean? = null,
+    val slackEnabled: Boolean? = null,
+    val googleChatEnabled: Boolean? = null,
+    val beeperEnabled: Boolean? = null,
+    /** The newest few broadcasts, newest first (agent v1.10); empty from an older agent. */
+    val recent: List<AgentLastBroadcast> = emptyList(),
 )
 
 /**
@@ -440,13 +452,6 @@ public data class AgentSpeakerTarget(
     val room: String,
     val type: String,
     val selected: Boolean,
-)
-
-public data class AgentLastBroadcast(
-    val text: String,
-    val target: String,
-    val source: String,
-    val at: String,
 )
 
 /** Whether the agent has somewhere to publish notifications, from `/healthz`. */
@@ -706,12 +711,22 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       announceVolume: Int? = null,
       speakHome: Boolean? = null,
       speakLocal: Boolean? = null,
+      announceClaudeCode: Boolean? = null,
+      announceAntigravity: Boolean? = null,
+      slackEnabled: Boolean? = null,
+      googleChatEnabled: Boolean? = null,
+      beeperEnabled: Boolean? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
             JSONObject().apply {
               if (speakHome != null) put("speak_home", speakHome)
               if (speakLocal != null) put("speak_local", speakLocal)
+              if (announceClaudeCode != null) put("announce_claude_code", announceClaudeCode)
+              if (announceAntigravity != null) put("announce_antigravity", announceAntigravity)
+              if (slackEnabled != null) put("slack_enabled", slackEnabled)
+              if (googleChatEnabled != null) put("google_chat_enabled", googleChatEnabled)
+              if (beeperEnabled != null) put("beeper_enabled", beeperEnabled)
               if (enabled != null) put("enabled", enabled)
               if (defaultTarget != null) put("default_target", defaultTarget)
               if (speechLength != null) put("speech_length", speechLength)
@@ -1218,6 +1233,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
     public fun parseHomeSpeaker(json: String): AgentHomeSpeaker {
       val o = JSONObject(json)
+      // The v1.10 fields are read by the JVM-tested HomeSpeakerWire (Wire.kt).
+      val sources = HomeSpeakerWire.sources(json)
       val quiet = o.optJSONObject("quiet_hours")
       val last = o.optJSONObject("last")
       return AgentHomeSpeaker(
@@ -1263,6 +1280,12 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                     at = it.optString("at"),
                 )
               },
+          announceClaudeCode = sources.announceClaudeCode,
+          announceAntigravity = sources.announceAntigravity,
+          slackEnabled = sources.slackEnabled,
+          googleChatEnabled = sources.googleChatEnabled,
+          beeperEnabled = sources.beeperEnabled,
+          recent = sources.recent,
       )
     }
 
