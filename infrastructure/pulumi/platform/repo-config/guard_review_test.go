@@ -183,7 +183,7 @@ func TestGuardReviewRuleShape(t *testing.T) {
 // someone skip James's approval who cannot skip the queue.
 func TestGuardReviewBypassMatchesMergeQueue(t *testing.T) {
 	type actor struct {
-		id         int
+		id        int
 		typ, mode string
 	}
 	flatten := func(name string, arr github.RepositoryRulesetBypassActorArray) []actor {
