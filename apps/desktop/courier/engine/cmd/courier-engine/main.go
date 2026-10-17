@@ -193,6 +193,12 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		return err
 	}
 	defer s.Close()
+	// Sends the last engine was still waiting on when it stopped: it never heard back, and the bridges forgot them.
+	// They become failed ("may have been sent") for the person to Retry or Delete; nothing is sent again unasked.
+	// This is safe only here, holding the data directory's lock, before any bridge or client is running.
+	if _, err = s.FailInterruptedSends(context.Background()); err != nil {
+		return fmt.Errorf("mark interrupted sends: %w", err)
+	}
 	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
 
 	// The bridges must outlive the signal that stops us: they are stopped below, after the server has drained.

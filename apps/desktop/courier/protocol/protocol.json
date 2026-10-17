@@ -216,7 +216,7 @@
         },
         "status_reason": {
           "type": "string",
-          "doc": "Why it failed, for people. \"\" otherwise."
+          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it (the app words this itself)."
         },
         "media_path": {
           "type": "string",
@@ -608,7 +608,7 @@
         "code": -32013,
         "name": "already_linked",
         "message": "this network is already linked",
-        "when": "login.start on a network whose account works. Only a signed-out account can be linked again."
+        "when": "login.start on a network whose account works. Only an account that is LOGGED_OUT, BAD_CREDENTIALS or UNKNOWN_ERROR can be linked again."
       },
       {
         "code": -32014,

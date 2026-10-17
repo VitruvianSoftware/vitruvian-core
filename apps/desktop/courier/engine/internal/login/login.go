@@ -158,8 +158,9 @@ func (d *Driver) unreserve(network string) {
 	delete(d.starting, network)
 }
 
-// mayRelink reports whether the network's account is one the person is allowed to replace: it has signed out or
-// its credentials stopped working. With no state recorded, or state that can't be read, it is working.
+// mayRelink reports whether the network's account is one the person is allowed to replace: it has signed out, its
+// credentials stopped working, or the bridge hit an error it could not get past (UNKNOWN_ERROR, which the app
+// offers Reconnect for). With no state recorded, or state that can't be read, it is working.
 func (d *Driver) mayRelink(ctx context.Context, network string) bool {
 	if d.store == nil {
 		return false
@@ -174,7 +175,11 @@ func (d *Driver) mayRelink(ctx context.Context, network string) bool {
 	if json.Unmarshal(raw, &st) != nil {
 		return false
 	}
-	return st.StateEvent == "LOGGED_OUT" || st.StateEvent == "BAD_CREDENTIALS"
+	switch st.StateEvent {
+	case "LOGGED_OUT", "BAD_CREDENTIALS", "UNKNOWN_ERROR":
+		return true
+	}
+	return false
 }
 
 // StartProcess steps through a login process that already exists, for a front end that creates its own (the

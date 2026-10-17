@@ -6,6 +6,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
 // These tests run the real binary, the one the app ships. Bazel hands it over as test data (see BUILD); it links
@@ -411,4 +413,34 @@ func TestWaitBoundedGivesUpAtTheBound(t *testing.T) {
 	require.Less(t, time.Since(start), 5*time.Second)
 	close(done)
 	require.True(t, waitBounded(done, time.Hour))
+}
+
+// A message still pending when the last engine stopped is one it never heard back about: on the next start it is
+// failed with "may have been sent", before any client can see it, and not sent again.
+func TestPendingFromAnEarlierRunBecomesMayHaveBeenSent(t *testing.T) {
+	ctx := context.Background()
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	s, err := store.Open(filepath.Join(data, "courier.db"))
+	require.NoError(t, err)
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "whatsapp", Name: "Test chat"}))
+	_, err = s.InsertEvent(ctx, store.Event{
+		RoomID: "!r:courier.local", EventID: "$p", Sender: "@me:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"cut off"}`), TS: time.Unix(5, 0), Status: "pending",
+	})
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	p, _ := start(t, data, nil)
+	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
+	require.Equal(t, 0, p.exited(t, 60*time.Second))
+
+	s, err = store.Open(filepath.Join(data, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	e, ok, err := s.GetEvent(ctx, "$p")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "failed", e.Status)
+	require.Equal(t, store.ReasonMayHaveBeenSent, e.StatusReason)
 }

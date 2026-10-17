@@ -417,7 +417,7 @@ func TestAlreadyLinkedRefusedUnlessLoggedOut(t *testing.T) {
 		require.NoError(t, w.s.SetBridgeState(ctx, "fake", json.RawMessage(fmt.Sprintf(`{"state_event":%q}`, event))))
 	}
 
-	for _, event := range []string{"", "CONNECTED", "CONNECTING", "TRANSIENT_DISCONNECT", "UNKNOWN_ERROR"} {
+	for _, event := range []string{"", "CONNECTED", "CONNECTING", "TRANSIENT_DISCONNECT", "BACKFILLING"} {
 		t.Run("refused when "+event, func(t *testing.T) {
 			w := newWorld(t, true, complete())
 			if event != "" { // "" is no state at all
@@ -432,7 +432,7 @@ func TestAlreadyLinkedRefusedUnlessLoggedOut(t *testing.T) {
 		})
 	}
 
-	for _, event := range []string{"LOGGED_OUT", "BAD_CREDENTIALS"} {
+	for _, event := range []string{"LOGGED_OUT", "BAD_CREDENTIALS", "UNKNOWN_ERROR"} {
 		t.Run("may re-link when "+event, func(t *testing.T) {
 			w := newWorld(t, true, complete())
 			setState(t, w, event)
