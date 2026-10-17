@@ -152,6 +152,8 @@ trap 'restore "Interrupted."' INT TERM HUP
 if [ "$had_old" -eq 1 ]; then mv "$installed" "$aside"; fi
 mv "$staging" "$installed" || restore "Could not move the new app into place."
 codesign --verify --deep --strict "$installed" || restore "The new app does not pass codesign --verify."
-rm -rf "$aside"
+# The new app is verified and in place: nothing left to guard. An interrupt from here on must not roll back to the
+# old app, least of all one half deleted by the rm below.
 trap - INT TERM HUP
+rm -rf "$aside"
 echo "Installed $installed."
