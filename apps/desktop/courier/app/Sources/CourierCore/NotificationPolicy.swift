@@ -6,6 +6,28 @@ import Foundation
 // When a message makes a notification, what the notification says, and what the Dock badge counts. Plain values and
 // pure functions, so the rules are tested here and the system's notification centre only carries them out.
 
+/// Which set of buttons a notification carries.
+public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
+    /// A new message: Mark as Read, Reply and the remind-later buttons.
+    case message
+    /// A reminder that came due: the same without Reply, because there is nothing new to answer.
+    case reminder
+
+    /// The buttons, in the order they are shown. The remind-later ones are part of a plan, so they are left out
+    /// when it doesn't include reminders (spec §3): a button that could only say no is not offered.
+    public func actions(entitlement: any EntitlementProvider) -> [NotificationAction] {
+        var actions: [NotificationAction] = [.markRead]
+        if self == .message { actions.append(.reply) }
+        if entitlement.isEntitled(.reminders) { actions += [.remindOneHour, .remindEightHours] }
+        return actions
+    }
+}
+
+/// A button on a notification.
+public enum NotificationAction: String, Equatable, Sendable, CaseIterable {
+    case markRead, reply, remindOneHour, remindEightHours
+}
+
 /// A notification, before the system draws it.
 public struct NotificationContent: Equatable, Sendable {
     public let eventID: String
@@ -16,13 +38,17 @@ public struct NotificationContent: Equatable, Sendable {
     public let subtitle: String?
     /// The text, or what kind of file it is.
     public let body: String
+    /// Which buttons it carries.
+    public let category: NotificationCategory
 
-    public init(eventID: String, roomID: String, title: String, subtitle: String?, body: String) {
+    public init(eventID: String, roomID: String, title: String, subtitle: String?, body: String,
+                category: NotificationCategory = .message) {
         self.eventID = eventID
         self.roomID = roomID
         self.title = title
         self.subtitle = subtitle
         self.body = body
+        self.category = category
     }
 
     /// Notifications of one chat are stacked together.
@@ -52,31 +78,59 @@ public enum NotificationPolicy {
         /// The person is looking at the open chat (`Attention`): the window is key, the screen unlocked and awake,
         /// and they are not idle.
         public var isLooking: Bool
+        /// The setting "notify for message requests" (`InboxPreferences.requestNotifications`).
+        public var requestNotifications: Bool
 
-        public init(me: String, connectedAt: Int64, now: Int64, openRoomID: String?, isLooking: Bool) {
+        public init(me: String, connectedAt: Int64, now: Int64, openRoomID: String?, isLooking: Bool,
+                    requestNotifications: Bool = true) {
             self.me = me
             self.connectedAt = connectedAt
             self.now = now
             self.openRoomID = openRoomID
             self.isLooking = isLooking
+            self.requestNotifications = requestNotifications
         }
     }
 
     /// Whether `event`, new in `room`, makes a notification.
     ///
-    /// Yes for a message or a sticker that is not from me, in a chat that is not muted, that is live (sent after the
-    /// app connected and not more than two minutes ago: the first sync's history must not notify), and that is not
-    /// in the chat the person is looking at. Reactions, edits, deletions and anything the app cannot read do not.
+    /// Yes for a message or a sticker that is not from me, in a chat that is not muted (by itself, its account or
+    /// a label), is not low priority or hidden, and is not a request while requests are turned off, that is live (sent
+    /// after the app connected and not more than two minutes ago: the first sync's history must not notify), and that
+    /// is not in the chat the person is looking at. An archived chat is none of these: its new message brings it back
+    /// to the inbox, and it notifies. Reactions, edits, deletions and anything the app cannot read do not.
     /// A notification for another chat does come while the window is in front, and one for the open chat does
     /// while nobody is looking at it (the screen locked or asleep, or the person away).
     public static func shouldNotify(event: Event, room: InboxRow, context: Context) -> Bool {
         guard event.type == "m.room.message" || event.type == "m.sticker" else { return false }
         guard !Timeline.isEdit(event) else { return false }
         guard !event.mine, event.sender != context.me else { return false }
-        guard !room.muted else { return false }
+        guard !isMuted(room) else { return false }
+        // Inferred (inventory 01 §18): Low Priority hides a chat "for good" and Hide removes it from the inbox, so a
+        // new message in one is not news.
+        guard !room.lowPriority, !room.hidden else { return false }
+        guard !room.request || context.requestNotifications else { return false }
         guard event.ts >= context.connectedAt, context.now - event.ts <= liveWindowMillis else { return false }
         if context.isLooking, context.openRoomID == event.roomID { return false }
         return true
+    }
+
+    /// Whether the chat is muted: by itself, or by its account or one of its labels.
+    public static func isMuted(_ room: InboxRow) -> Bool {
+        room.muted || room.mutedBy != .none
+    }
+
+    /// What the notification for a reminder that came due says. The title is the chat's name; there is no message
+    /// text, and nothing else about the chat. Each reminder has an id of its own, so one never replaces another.
+    ///
+    /// Inferred (inventory 01 §18): a reminder notifies even when the chat is muted, low priority or hidden. The
+    /// inventory describes the remind-later buttons (§18, §19) but not how a muted chat treats a reminder; the person
+    /// asked for this one, and a mute is about messages, so it is not held back.
+    public static func reminderContent(room: InboxRow) -> NotificationContent {
+        NotificationContent(
+            eventID: "reminder-" + room.roomID + "-" + UUID().uuidString, roomID: room.roomID,
+            title: room.name.isEmpty ? String(localized: "Courier") : room.name, subtitle: nil,
+            body: String(localized: "You asked to be reminded about this chat."), category: .reminder)
     }
 
     /// What the notification for `event` says.
@@ -134,10 +188,13 @@ public enum NotificationPolicy {
 
     // MARK: - The Dock badge
 
-    /// How many chats have unread messages and are not muted. Chats, not messages: three messages in one chat
-    /// are one.
+    /// How many chats have unread messages, or are marked unread, and are not muted (by themselves, their account
+    /// or a label), low priority, hidden or a request. Chats, not messages: three messages in one chat are one.
+    ///
+    /// Inferred (inventory 01 §18): a low-priority or hidden chat is out of the inbox, and a request is not yet a
+    /// conversation, so none of them asks for attention.
     public static func badgeCount(rows: [InboxRow]) -> Int {
-        rows.filter { $0.unread > 0 && !$0.muted }.count
+        rows.filter { $0.isUnread && !isMuted($0) && !$0.lowPriority && !$0.hidden && !$0.request }.count
     }
 
     /// The Dock tile's text; nil at zero, which clears it.

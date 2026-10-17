@@ -34,9 +34,13 @@ public final class NotificationCoordinator {
     /// How many of a chat's newest events are read for one change. A burst larger than this loses its oldest
     /// messages, which is fine for a notification.
     public static let pageSize = 10
+    /// "Remind in 1 Hour" and "Remind in 8 Hours", in seconds.
+    public static let remindOneHour: TimeInterval = 3600, remindEightHours: TimeInterval = 28800
 
     private let appModel: AppModel
     private let delivery: any NotificationDelivering
+    private let preferences: InboxPreferences
+    private let entitlement: any EntitlementProvider
     private let row: @MainActor (String) -> InboxRow?
     private let isLooking: @MainActor () -> Bool
     private let restoreDraft: @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void
@@ -59,17 +63,23 @@ public final class NotificationCoordinator {
     ///     engine did not answer, so it may have been sent.
     ///   - replyTimeout: how long a reply waits for the engine; nil is the client's own limit (30 s).
     ///   - showWindow: brings the main window forward, opening it again if it was closed.
+    ///   - preferences: the inbox's settings: whether requests notify, and when a reminder brings a chat back.
+    ///   - entitlement: whether the plan includes reminders (the remind-later buttons set one).
     ///   - window: how long a chat's changes are gathered before it is read, in seconds.
     ///   - sleep: waits `window`.
     ///   - clock: the time now; tests give one they move.
     public init(appModel: AppModel, delivery: any NotificationDelivering,
                 row: @escaping @MainActor (String) -> InboxRow?, isLooking: @escaping @MainActor () -> Bool,
                 restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void,
-                showWindow: @escaping @MainActor () -> Void, window: TimeInterval = 0.1, replyTimeout: TimeInterval? = nil,
+                showWindow: @escaping @MainActor () -> Void, preferences: InboxPreferences? = nil,
+                entitlement: any EntitlementProvider = AlwaysEntitled(), window: TimeInterval = 0.1,
+                replyTimeout: TimeInterval? = nil,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 clock: @escaping @Sendable () -> Date = { Date() }) {
         self.appModel = appModel
         self.delivery = delivery
+        self.preferences = preferences ?? InboxPreferences()
+        self.entitlement = entitlement
         self.row = row
         self.isLooking = isLooking
         self.restoreDraft = restoreDraft
@@ -92,6 +102,8 @@ public final class NotificationCoordinator {
             examine(roomID: roomID)
         case let .read(roomID, _):
             delivery.clear(roomID: roomID)
+        case let .reminder(roomID):
+            Task { [weak self] in await self?.announceReminder(roomID: roomID) }
         default:
             break
         }
@@ -144,13 +156,29 @@ public final class NotificationCoordinator {
         return result?.rooms.first { $0.roomID == roomID }
     }
 
+    // MARK: - Reminders
+
+    /// One notification for a reminder that came due, whatever the chat's state: muted, low priority and hidden
+    /// chats too. The engine says it once per reminder, and so does this.
+    private func announceReminder(roomID: String) async {
+        var chat = row(roomID)
+        if chat == nil, let client = appModel.client {
+            chat = await lookUp(roomID, with: client)
+            guard client === appModel.client else { return }
+        }
+        // A chat the engine doesn't have has no name to show.
+        guard let chat else { return }
+        delivery.deliver(NotificationPolicy.reminderContent(room: chat))
+    }
+
     /// `events` are newest first, as room.events has them; the oldest is announced first.
     private func announce(_ events: [Event], in room: InboxRow) {
         // Read at the moment of deciding: the person may have moved on while the page was on its way.
         guard let connectedAt = appModel.connectedAt else { return }
         let context = NotificationPolicy.Context(
             me: Timeline.meUserID, connectedAt: Self.millis(connectedAt), now: Self.millis(clock()),
-            openRoomID: appModel.selectedRoomID, isLooking: isLooking())
+            openRoomID: appModel.selectedRoomID, isLooking: isLooking(),
+            requestNotifications: preferences.requestNotifications)
         // A message deleted before it was announced is not announced.
         let deleted = NotificationPolicy.redactedEventIDs(in: events)
         for event in events.reversed() where seen.insert(event.eventID) {
@@ -179,6 +207,16 @@ public final class NotificationCoordinator {
             let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: roomID))
         }
         delivery.clear(roomID: roomID)
+    }
+
+    /// "Remind in 1 Hour" and "Remind in 8 Hours": a reminder `seconds` from now, brought back as the person's
+    /// default says. Like Mark as Read, a failure is ignored; the buttons are only offered with the plan, and a
+    /// denial or a dead engine changes nothing.
+    public func remind(roomID: String, after seconds: TimeInterval) async {
+        guard entitlement.isEntitled(.reminders), let client = appModel.client else { return }
+        let dueAt = Self.millis(clock()) + Int64((seconds * 1000).rounded())
+        let _: Empty? = try? await client.call(
+            "reminder.set", ReminderParams(roomIDs: [roomID], dueAt: dueAt, condition: preferences.remindDefault.wire))
     }
 
     /// The inline "Reply": sends the typed text to the chat. If it cannot be sent (the engine is not up, or refuses),

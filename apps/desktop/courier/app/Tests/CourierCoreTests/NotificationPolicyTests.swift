@@ -12,15 +12,19 @@ final class NotificationPolicyTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func context(open: String? = nil, key: Bool = false, now: Int64? = nil) -> NotificationPolicy.Context {
+    private func context(open: String? = nil, key: Bool = false, now: Int64? = nil,
+                         requestNotifications: Bool = true) -> NotificationPolicy.Context {
         NotificationPolicy.Context(me: Timeline.meUserID, connectedAt: connectedAt, now: now ?? self.now,
-                                   openRoomID: open, isLooking: key)
+                                   openRoomID: open, isLooking: key, requestNotifications: requestNotifications)
     }
 
     private func row(_ id: String = "!a", name: String = "Chat A", direct: Bool = true, unread: Int = 0,
-                     muted: Bool = false) -> InboxRow {
+                     muted: Bool = false, archived: Bool = false, lowPriority: Bool = false, hidden: Bool = false,
+                     markedUnread: Bool = false, request: Bool = false, mutedBy: MutedBy = .none) -> InboxRow {
         InboxRow(roomID: id, network: "whatsapp", name: name, avatarPath: "", isDirect: direct, lastTS: 0, preview: "",
-                 previewKind: .text, previewMine: false, unread: unread, muted: muted)
+                 previewKind: .text, previewMine: false, unread: unread, muted: muted, archived: archived,
+                 lowPriority: lowPriority, hidden: hidden, markedUnread: markedUnread, request: request,
+                 mutedBy: mutedBy, mutedByName: mutedBy == .none ? "" : "Somebody")
     }
 
     private func event(_ id: String = "$1", room: String = "!a", type: String = "m.room.message", mine: Bool = false,
@@ -62,6 +66,30 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(), room: row(muted: true), context: context()))
     }
 
+    func testMutedByLabelDoesNotNotify() {
+        let live = event()
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: live, room: row(mutedBy: .label), context: context()))
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: live, room: row(mutedBy: .account), context: context()))
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: live, room: row(), context: context()), "control")
+    }
+
+    func testLowPriorityAndHiddenDoNotNotify() {
+        let live = event()
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: live, room: row(lowPriority: true), context: context()))
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: live, room: row(hidden: true), context: context()))
+        // An archived chat is not one of them: its message brings it back, and it notifies as before.
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: live, room: row(archived: true), context: context()))
+    }
+
+    func testRequestsNotifyOnlyWhenTheSettingIsOn() {
+        let live = event()
+        let request = row(request: true)
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: live, room: request, context: context(requestNotifications: true)))
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: live, room: request, context: context(requestNotifications: false)))
+        // The setting is about requests only.
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: live, room: row(), context: context(requestNotifications: false)))
+    }
+
     func testOpenAndFocusedChatDoesNotNotify() {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(), room: row(), context: context(open: "!a", key: true)))
         // The chat is open, but the person is not looking at it: the window is not the one being used, or the
@@ -96,12 +124,63 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertTrue(NotificationPolicy.shouldNotify(event: reply, room: row(), context: context()))
     }
 
+    // MARK: - Reminders and the buttons
+
+    func testAReminderSaysWhatItIsFor() {
+        let content = NotificationPolicy.reminderContent(room: row(name: "Chat A", muted: true))
+        XCTAssertEqual(content.title, "Chat A")
+        XCTAssertEqual(content.body, "You asked to be reminded about this chat.")
+        XCTAssertNil(content.subtitle)
+        XCTAssertEqual(content.roomID, "!a")
+        XCTAssertEqual(content.category, .reminder)
+        XCTAssertEqual(content.userInfo, ["room_id": "!a"], "no text, no names")
+        XCTAssertEqual(NotificationPolicy.reminderContent(room: row(name: "")).title, "Courier")
+        // A message is a message.
+        XCTAssertEqual(NotificationPolicy.content(for: event(), room: row()).category, .message)
+    }
+
+    func testEachReminderMakesItsOwnNotification() {
+        let first = NotificationPolicy.reminderContent(room: row())
+        let second = NotificationPolicy.reminderContent(room: row())
+        XCTAssertNotEqual(first.eventID, second.eventID, "an id is the system's key: one reminder must not replace another")
+    }
+
+    func testRemindActionsHiddenWhenNotEntitled() {
+        struct NoReminders: EntitlementProvider {
+            func isEntitled(_ feature: Feature) -> Bool { feature != .reminders }
+        }
+        let plan = AlwaysEntitled()
+        XCTAssertEqual(NotificationCategory.message.actions(entitlement: plan),
+                       [.markRead, .reply, .remindOneHour, .remindEightHours])
+        XCTAssertEqual(NotificationCategory.reminder.actions(entitlement: plan),
+                       [.markRead, .remindOneHour, .remindEightHours])
+        XCTAssertEqual(NotificationCategory.message.actions(entitlement: NoReminders()), [.markRead, .reply])
+        XCTAssertEqual(NotificationCategory.reminder.actions(entitlement: NoReminders()), [.markRead])
+    }
+
     // MARK: - The Dock badge
 
     func testBadgeCountsUnreadChatsNotMessages() {
         let rows = [row("!a", unread: 7), row("!b", unread: 1), row("!c", unread: 0), row("!d", unread: 40, muted: true)]
         XCTAssertEqual(NotificationPolicy.badgeCount(rows: rows), 2, "two chats, however many messages; muted ones not counted")
         XCTAssertEqual(NotificationPolicy.badgeCount(rows: []), 0)
+    }
+
+    func testBadgeCountsMarkedUnreadAndSkipsLowPriorityHiddenRequests() {
+        let rows = [
+            row("!read"),
+            row("!unread", unread: 3),
+            row("!marked", markedUnread: true),
+            row("!both", unread: 2, markedUnread: true),
+            row("!muted", unread: 9, muted: true),
+            row("!mutedMarked", muted: true, markedUnread: true),
+            row("!acct", unread: 4, mutedBy: .account),
+            row("!label", markedUnread: true, mutedBy: .label),
+            row("!low", unread: 5, lowPriority: true),
+            row("!hidden", hidden: true, markedUnread: true),
+            row("!request", unread: 1, request: true),
+        ]
+        XCTAssertEqual(NotificationPolicy.badgeCount(rows: rows), 3, "unread, marked and both: one chat each")
     }
 
     func testBadgeIsEmptyAtZero() {

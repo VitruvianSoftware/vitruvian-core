@@ -1405,3 +1405,12 @@
 
 /* Question before an archive-all when the chats that match couldn't be counted. */
 "Archive these chats? Pinned chats stay where they are. You can undo this." = "Archive these chats? Pinned chats stay where they are. You can undo this.";
+
+/* Button on a notification: brings the chat back in one hour. */
+"Remind in 1 Hour" = "Remind in 1 Hour";
+
+/* Button on a notification: brings the chat back in eight hours. */
+"Remind in 8 Hours" = "Remind in 8 Hours";
+
+/* Notification text when a reminder the person set comes due. The notification's title is the chat's name. */
+"You asked to be reminded about this chat." = "You asked to be reminded about this chat.";
