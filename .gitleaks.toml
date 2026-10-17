@@ -119,3 +119,12 @@ paths = ['''(^|/)Cargo\.lock$''']
 [[allowlists]]
 description = "the documented token-less-preview placeholder is not a credential"
 regexes = ['''preview-only-not-a-real-cloudflare-token''']
+
+# Courier's tests need a Telegram `api_hash` to prove it travels only to the
+# engine's environment (EngineSupervisorTests). The value is the obvious
+# 0-9a-f counting run, 32 hex characters because the app validates that shape.
+# Allowlisted by its EXACT literal, like the placeholder above, so a real
+# 32-hex hash anywhere else is still caught.
+[[allowlists]]
+description = "the made-up Telegram api_hash in Courier's tests is not a credential"
+regexes = ['''0123456789abcdef0123456789abcdef''']
