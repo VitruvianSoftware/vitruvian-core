@@ -69,7 +69,7 @@ public enum NotificationPolicy {
     /// A notification for another chat does come while the window is in front.
     public static func shouldNotify(event: Event, room: InboxRow, context: Context) -> Bool {
         guard event.type == "m.room.message" || event.type == "m.sticker" else { return false }
-        guard event.content["m.relates_to"]?["rel_type"]?.stringValue != "m.replace" else { return false }
+        guard !Timeline.isEdit(event) else { return false }
         guard !event.mine, event.sender != context.me else { return false }
         guard !room.muted else { return false }
         guard event.ts >= context.connectedAt, context.now - event.ts <= liveWindowMillis else { return false }
@@ -79,11 +79,27 @@ public enum NotificationPolicy {
 
     /// What the notification for `event` says.
     public static func content(for event: Event, room: InboxRow) -> NotificationContent {
-        let name = room.name.isEmpty ? event.senderName : room.name
+        var name = room.name.isEmpty ? event.senderName : room.name
+        if name.isEmpty { name = String(localized: "Courier") }
         let sender = event.senderName.trimmingCharacters(in: .whitespaces)
         return NotificationContent(
             eventID: event.eventID, roomID: event.roomID, title: name,
             subtitle: room.isDirect || sender.isEmpty ? nil : sender, body: body(of: event))
+    }
+
+    /// What a chat says when a reply typed in a notification could not be sent: the text is waiting in the chat.
+    public static func replyNotSent(roomID: String, title: String) -> NotificationContent {
+        NotificationContent(
+            eventID: "reply-not-sent-" + UUID().uuidString, roomID: roomID, title: title.isEmpty ? String(localized: "Courier") : title,
+            subtitle: nil, body: String(localized: "Your reply wasn’t sent — it’s waiting in the chat."))
+    }
+
+    /// The events a page says were deleted (by a redaction in the page that was not itself refused).
+    public static func redactedEventIDs(in events: [Event]) -> Set<String> {
+        Set(events.compactMap { event in
+            guard event.type == "m.room.redaction", event.status != .failed else { return nil }
+            return event.content["redacts"]?.stringValue
+        })
     }
 
     private static func body(of event: Event) -> String {

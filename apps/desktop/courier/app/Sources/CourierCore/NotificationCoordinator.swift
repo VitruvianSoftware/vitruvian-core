@@ -22,6 +22,11 @@ public protocol NotificationDelivering: AnyObject {
 /// looks at each event it has not looked at before. Every event it reads is noted, notified or not: a message
 /// that was silent because the chat was open stays silent when the person looks away.
 ///
+/// A burst of changes in one chat is read once: the first change opens a short window, changes inside it add
+/// nothing, and the read follows; a change that comes while that read is in flight asks for one more after it. So
+/// the first sync's hundreds of events in a chat cost two reads, not hundreds. A chat the inbox has not listed
+/// yet is looked up with one inbox read that every chat waiting for it shares.
+///
 /// An answer is used only if it came from the client that is up now, as the other models do.
 @MainActor
 public final class NotificationCoordinator {
@@ -33,23 +38,42 @@ public final class NotificationCoordinator {
     private let delivery: any NotificationDelivering
     private let row: @MainActor (String) -> InboxRow?
     private let windowIsKey: @MainActor () -> Bool
+    private let restoreDraft: @MainActor (_ roomID: String, _ text: String) -> Void
     private let showWindow: @MainActor () -> Void
+    private let window: TimeInterval
+    private let sleep: @Sendable (TimeInterval) async -> Void
     private let clock: @Sendable () -> Date
     private var seen = SeenEvents()
+    /// Chats with a read waiting for its window, or in flight.
+    private var scheduled: Set<String> = []
+    /// Chats with a read in flight, and those that changed again during it.
+    private var inFlight: Set<String> = []
+    private var readAgain: Set<String> = []
+    /// The inbox read that chats the inbox has not listed are waiting on.
+    private var inboxLookup: Task<[InboxRow], Never>?
 
     /// - Parameters:
     ///   - row: the inbox's row for a chat, if it has one (its name and whether it is muted).
     ///   - windowIsKey: whether the window being used is the app's (so the open chat is in front of the person).
+    ///   - restoreDraft: puts text that could not be sent into a chat's composer draft.
     ///   - showWindow: brings the main window forward, opening it again if it was closed.
+    ///   - window: how long a chat's changes are gathered before it is read, in seconds.
+    ///   - sleep: waits `window`.
     ///   - clock: the time now; tests give one they move.
     public init(appModel: AppModel, delivery: any NotificationDelivering,
                 row: @escaping @MainActor (String) -> InboxRow?, windowIsKey: @escaping @MainActor () -> Bool,
-                showWindow: @escaping @MainActor () -> Void, clock: @escaping @Sendable () -> Date = { Date() }) {
+                restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String) -> Void,
+                showWindow: @escaping @MainActor () -> Void, window: TimeInterval = 0.1,
+                sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
+                clock: @escaping @Sendable () -> Date = { Date() }) {
         self.appModel = appModel
         self.delivery = delivery
         self.row = row
         self.windowIsKey = windowIsKey
+        self.restoreDraft = restoreDraft
         self.showWindow = showWindow
+        self.window = window
+        self.sleep = sleep
         self.clock = clock
         appModel.onChange { [weak self] change in self?.handle(change) }
     }
@@ -73,21 +97,59 @@ public final class NotificationCoordinator {
     // MARK: - New events
 
     private func examine(roomID: String) {
-        guard let client = appModel.client, appModel.connectedAt != nil else { return }
-        Task { [weak self] in
-            let page: EventsPage? = try? await client.call(
-                "room.events", RoomEventsParams(roomID: roomID, limit: Self.pageSize))
-            guard let page else { return }
-            // The row comes after the page, and from the inbox when it has the chat: it is read only for a chat
-            // the inbox has not listed yet.
-            var chat = self?.row(roomID)
-            if chat == nil {
-                let inbox: InboxResult? = try? await client.call("inbox.list", Empty())
-                chat = inbox?.rooms.first { $0.roomID == roomID }
-            }
-            guard let self, client === self.appModel.client, let chat else { return }
-            self.announce(page.events, in: chat)
+        guard appModel.client != nil, appModel.connectedAt != nil else { return }
+        if inFlight.contains(roomID) {
+            readAgain.insert(roomID)
+            return
         }
+        guard scheduled.insert(roomID).inserted else { return } // inside the window already: covered
+        Task { [weak self, sleep, window] in
+            await sleep(window)
+            await self?.readUntilQuiet(roomID)
+        }
+    }
+
+    /// Reads the chat, and again for as long as changes came in during a read.
+    private func readUntilQuiet(_ roomID: String) async {
+        inFlight.insert(roomID)
+        repeat {
+            readAgain.remove(roomID)
+            await readOnce(roomID)
+        } while readAgain.contains(roomID)
+        inFlight.remove(roomID)
+        scheduled.remove(roomID)
+    }
+
+    private func readOnce(_ roomID: String) async {
+        guard let client = appModel.client else { return }
+        let page: EventsPage? = try? await client.call(
+            "room.events", RoomEventsParams(roomID: roomID, limit: Self.pageSize))
+        guard let page, client === appModel.client else { return }
+        // The row is the inbox's when it has the chat, and read only for a chat it has not listed yet.
+        var chat = row(roomID)
+        if chat == nil {
+            chat = await lookUp(roomID, with: client)
+            guard client === appModel.client else { return }
+        }
+        guard let chat else { return }
+        announce(page.events, in: chat)
+    }
+
+    /// One inbox read at a time, shared by every chat that is waiting for it.
+    private func lookUp(_ roomID: String, with client: EngineClient) async -> InboxRow? {
+        let read: Task<[InboxRow], Never>
+        if let running = inboxLookup {
+            read = running
+        } else {
+            read = Task {
+                let inbox: InboxResult? = try? await client.call("inbox.list", Empty())
+                return inbox?.rooms ?? []
+            }
+            inboxLookup = read
+        }
+        let rooms = await read.value
+        inboxLookup = nil
+        return rooms.first { $0.roomID == roomID }
     }
 
     /// `events` are newest first, as room.events has them; the oldest is announced first.
@@ -97,8 +159,11 @@ public final class NotificationCoordinator {
         let context = NotificationPolicy.Context(
             me: Timeline.meUserID, connectedAt: Self.millis(connectedAt), now: Self.millis(clock()),
             openRoomID: appModel.selectedRoomID, windowIsKey: windowIsKey())
+        // A message deleted before it was announced is not announced.
+        let deleted = NotificationPolicy.redactedEventIDs(in: events)
         for event in events.reversed() where seen.insert(event.eventID) {
-            guard NotificationPolicy.shouldNotify(event: event, room: room, context: context) else { continue }
+            guard !deleted.contains(event.eventID),
+                  NotificationPolicy.shouldNotify(event: event, room: room, context: context) else { continue }
             delivery.deliver(NotificationPolicy.content(for: event, room: room))
         }
     }
@@ -124,12 +189,21 @@ public final class NotificationCoordinator {
         delivery.clear(roomID: roomID)
     }
 
-    /// The inline "Reply": sends the typed text to the chat.
+    /// The inline "Reply": sends the typed text to the chat. If it cannot be sent (the engine is not up, or refuses),
+    /// the text goes into that chat's draft and a notification says so, so the words are never lost.
     public func reply(roomID: String, text: String) async {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let client = appModel.client else { return }
-        // A failure is ignored: milestone 4's toasts can say more. The send is stored first, so a send the
-        // network refuses shows as failed, with Retry, in the chat.
-        let _: Sent? = try? await client.call("message.send", SendParams(roomID: roomID, text: text))
+        guard !text.isEmpty else { return }
+        if let client = appModel.client {
+            do {
+                let _: Sent = try await client.call("message.send", SendParams(roomID: roomID, text: text))
+                return
+            } catch {
+                // Falls through: whatever the reason, the text is kept below. (A send the engine took but did not
+                // answer in time may then show twice; the person sees both in the chat and can delete one.)
+            }
+        }
+        restoreDraft(roomID, text)
+        delivery.deliver(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? ""))
     }
 }

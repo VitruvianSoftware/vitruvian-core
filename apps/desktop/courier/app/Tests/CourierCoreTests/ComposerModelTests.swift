@@ -371,6 +371,21 @@ final class ComposerModelTests: XCTestCase {
         XCTAssertEqual(composer.text, "for a")
     }
 
+    func testTextThatCouldNotBeSentFromOutsideTheWindowWaitsInThatChat() {
+        let (composer, _) = make()
+        // The chat is not open: the text waits in its draft and is there when it opens.
+        composer.open("!b")
+        composer.restoreUnsent(text: "on my way", in: "!a")
+        XCTAssertEqual(composer.text, "")
+        composer.open("!a")
+        XCTAssertEqual(composer.text, "on my way")
+
+        // The chat is open: it goes straight in, above what has been typed since.
+        composer.text = "and also"
+        composer.restoreUnsent(text: "see you", in: "!a")
+        XCTAssertEqual(composer.text, "see you\n\nand also")
+    }
+
     func testTheNoticeGoesWhenTheChatChanges() {
         let (composer, _) = make()
         composer.open("!a")

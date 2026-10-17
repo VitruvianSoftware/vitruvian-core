@@ -34,10 +34,11 @@ final class NotificationCoordinatorTests: XCTestCase {
     final class WindowState {
         var isKey = false
         var shown = 0
+        var drafts: [(room: String, text: String)] = []
         var rows: [String: InboxRow] = ["!a": inboxRow("!a", name: "Chat A")]
     }
 
-    private func start(connected: Bool = true) async throws -> Harness {
+    private func start(connected: Bool = true, window gather: TimeInterval = 0.02) async throws -> Harness {
         let script = NotificationScript()
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
@@ -52,7 +53,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         let window = WindowState()
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, windowIsKey: { window.isKey },
-            showWindow: { window.shown += 1 }, clock: { clock.date })
+            restoreDraft: { window.drafts.append(($0, $1)) }, showWindow: { window.shown += 1 },
+            window: gather, clock: { clock.date })
         if connected {
             app.start()
             try await waitUntil { app.client != nil }
@@ -224,6 +226,111 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    func testAReplyWithNoEngineWaitsInTheChat() async throws {
+        let h = try await start(connected: false)
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.window.drafts.map(\.room), ["!a"])
+        XCTAssertEqual(h.window.drafts.map(\.text), ["on my way"])
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        XCTAssertEqual(h.delivery.delivered[0].title, "Chat A")
+        XCTAssertEqual(h.delivery.delivered[0].body, "Your reply wasn’t sent — it’s waiting in the chat.")
+        XCTAssertEqual(h.delivery.delivered[0].roomID, "!a", "a click opens that chat")
+        XCTAssertEqual(h.delivery.delivered[0].threadIdentifier, "!a")
+    }
+
+    func testAReplyTheEngineRefusesWaitsInTheChat() async throws {
+        let h = try await start()
+        h.script.failSend = true
+        await h.coordinator.reply(roomID: "!a", text: "  on my way ")
+        XCTAssertEqual(h.window.drafts.map(\.text), ["on my way"])
+        XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!a"])
+        await finish(h)
+    }
+
+    func testAReplyThatWasSentLeavesNothingBehind() async throws {
+        let h = try await start()
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertTrue(h.window.drafts.isEmpty)
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+        await finish(h)
+    }
+
+    // MARK: - A burst of changes
+
+    func testABurstOfEventsInOneChatReadsItAtMostTwice() async throws {
+        let h = try await start(window: 0.3)
+        h.clock.advance(seconds: 5)
+        h.script.events["!a"] = (1 ... 50).reversed().map {
+            message("$\($0)", ts: connectedMillis + Int64($0), text: "m\($0)")
+        }
+        for number in 1 ... 50 { h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$\(number)"]) }
+        // Ten come back for each read; the burst's last ten are announced.
+        try await waitUntil { h.delivery.delivered.count >= 10 }
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertLessThanOrEqual(h.server.receivedMethods().filter { $0 == "room.events" }.count, 2)
+        await finish(h)
+    }
+
+    func testABurstForAChatTheInboxHasNotListedReadsTheInboxAtMostTwice() async throws {
+        let h = try await start(window: 0.3)
+        h.clock.advance(seconds: 5)
+        h.window.rows = [:]
+        h.script.rooms = [inboxRowJSON("!new", name: "New Chat")]
+        h.script.events["!new"] = [message("$1", ts: connectedMillis + 1000, text: "hi", room: "!new")]
+        for number in 1 ... 50 { h.server.notify(["kind": "event", "room_id": "!new", "event_id": "$\(number)"]) }
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertLessThanOrEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2)
+        await finish(h)
+    }
+
+    func testSeveralUnlistedChatsShareOneInboxRead() async throws {
+        let h = try await start(window: 0.1)
+        h.clock.advance(seconds: 5)
+        h.window.rows = [:]
+        let ids = (1 ... 5).map { "!n\($0)" }
+        h.script.rooms = ids.map { inboxRowJSON($0, name: "Chat \($0)") }
+        for id in ids {
+            h.script.events[id] = [message("$\(id)", ts: connectedMillis + 1000, text: "hi", room: id)]
+            h.server.notify(["kind": "event", "room_id": id, "event_id": "$\(id)"])
+        }
+        try await waitUntil { h.delivery.delivered.count == 5 }
+        XCTAssertLessThanOrEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2)
+        await finish(h)
+    }
+
+    func testAChangeDuringAReadIsReadOnceMoreAndNotAnnouncedTwice() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 5)
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 1000, text: "one")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        h.script.events["!a"] = [
+            message("$2", ts: connectedMillis + 2000, text: "two"), message("$1", ts: connectedMillis + 1000, text: "one"),
+        ]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$2"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["one", "two"])
+        await finish(h)
+    }
+
+    // MARK: - Deleted before it was seen
+
+    func testAMessageDeletedBeforeItWasAnnouncedIsSilent() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 5)
+        let redaction: [String: Any] = [
+            "event_id": "$r", "room_id": "!a", "sender": "@other:courier.local", "sender_name": "Sam",
+            "sender_avatar_path": "", "mine": false, "type": "m.room.redaction", "content": ["redacts": "$1"],
+            "ts": connectedMillis + 2000, "seq": 2, "status": "sent", "status_reason": "", "media_path": "",
+        ]
+        h.script.events["!a"] = [redaction, message("$1", ts: connectedMillis + 1000, text: "oops")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r"])
+        try await settle(h)
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+        await finish(h)
+    }
+
     func testTheConnectionTimeIsWhenTheEngineWasGreeted() async throws {
         let h = try await start()
         XCTAssertEqual(h.app.connectedAt, h.clock.date)
@@ -260,6 +367,7 @@ final class NotificationScript: @unchecked Sendable {
     private let lock = NSLock()
     private var _events: [String: [[String: Any]]] = [:]
     private var _rooms: [[String: Any]] = []
+    private var _failSend = false
 
     var events: [String: [[String: Any]]] {
         get { lock.withLock { _events } }
@@ -271,6 +379,12 @@ final class NotificationScript: @unchecked Sendable {
         set { lock.withLock { _rooms = newValue } }
     }
 
+    /// message.send is refused.
+    var failSend: Bool {
+        get { lock.withLock { _failSend } }
+        set { lock.withLock { _failSend = newValue } }
+    }
+
     func handle(_ method: String, _ params: [String: Any]?) -> TestEngineServer.Reply {
         switch method {
         case "hello": return TestEngineServer.helloOK
@@ -279,7 +393,8 @@ final class NotificationScript: @unchecked Sendable {
         case "room.events":
             let room = params?["room_id"] as? String ?? ""
             return .result(["events": events[room] ?? [], "before": NSNull()])
-        case "message.send": return .result(["event_id": "$sent"])
+        case "message.send":
+            return failSend ? .error(code: -32000, message: "example failure") : .result(["event_id": "$sent"])
         default: return .result([String: Any]())
         }
     }

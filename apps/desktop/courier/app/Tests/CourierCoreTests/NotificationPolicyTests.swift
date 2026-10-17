@@ -156,6 +156,19 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(short.body, "hi")
     }
 
+    func testNoNamesAtAllStillGivesATitle() {
+        let content = NotificationPolicy.content(for: event(senderName: ""), room: row(name: ""))
+        XCTAssertEqual(content.title, "Courier")
+    }
+
+    func testRedactedMessagesInAPageAreFound() {
+        let gone = event("$gone")
+        let redaction = event("$r", type: "m.room.redaction", content: .object(["redacts": .string("$gone")]))
+        var failed = event("$r2", type: "m.room.redaction", content: .object(["redacts": .string("$other")]))
+        failed.status = .failed
+        XCTAssertEqual(NotificationPolicy.redactedEventIDs(in: [gone, redaction, failed, event("$keep")]), ["$gone"])
+    }
+
     func testAReplyShowsOnlyItsOwnText() {
         let reply = event(content: .object([
             "msgtype": .string("m.text"), "body": .string("> <@x:y> quoted\n\nmy answer"),

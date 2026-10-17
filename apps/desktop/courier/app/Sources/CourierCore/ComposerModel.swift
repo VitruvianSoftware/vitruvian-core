@@ -333,6 +333,12 @@ public final class ComposerModel: ObservableObject {
         return merged.leftOut
     }
 
+    /// Text that was typed somewhere else (a notification's Reply) and could not be sent: it goes into that chat's
+    /// draft, so it is there when the chat opens, or straight into the composer if the chat is open.
+    public func restoreUnsent(text body: String, in room: String) {
+        _ = putBack([Outgoing.text(body)][...], reply: nil, in: room)
+    }
+
     /// Tells the person: now if the chat is open, otherwise with that chat's draft, for when it is.
     private func show(_ notices: [ComposerNotice], in room: String) {
         if room == roomID {

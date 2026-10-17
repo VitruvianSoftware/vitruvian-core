@@ -501,3 +501,6 @@
 
 /* Menu-bar menu: quits Courier. */
 "Quit Courier" = "Quit Courier";
+
+/* The body of a notification that says a reply typed in another notification could not be sent. The text is waiting in that chat's message box. */
+"Your reply wasn’t sent — it’s waiting in the chat." = "Your reply wasn’t sent — it’s waiting in the chat.";

@@ -290,7 +290,8 @@ public enum Timeline {
                         replyTo: link["m.in_reply_to"]?["event_id"]?.stringValue)
     }
 
-    private static func isEdit(_ event: Event) -> Bool {
+    /// An edit of another message (m.replace): it is not a message of its own.
+    public static func isEdit(_ event: Event) -> Bool {
         relation(of: event).relType == "m.replace"
     }
 
