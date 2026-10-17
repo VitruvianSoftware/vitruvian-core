@@ -1,0 +1,22 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "inbox.list",
+    "params": {
+      "filters": ["unread"],
+      "cursor": "eyJxIjoiYW5vdGhlciJ9"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "error": {
+      "code": -32602,
+      "message": "invalid params",
+      "data": {
+        "reason": "cursor is not one this query handed out"
+      }
+    }
+  }
+}

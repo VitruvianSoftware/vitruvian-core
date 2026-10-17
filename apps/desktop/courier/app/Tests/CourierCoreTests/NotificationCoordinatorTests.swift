@@ -14,6 +14,8 @@ final class NotificationCoordinatorTests: XCTestCase {
     override func tearDown() async throws {
         for server in servers { server.stop() }
         servers = []
+        for store in defaultsStores { store.remove() }
+        defaultsStores = []
     }
 
     /// The moment the app connects, in ms.
@@ -27,6 +29,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let coordinator: NotificationCoordinator
         let clock: FakeClock
         let window: WindowState
+        let preferences: InboxPreferences
     }
 
     /// Mutable things the coordinator asks about, which the app's views own.
@@ -38,8 +41,12 @@ final class NotificationCoordinatorTests: XCTestCase {
         var rows: [String: InboxRow] = ["!a": inboxRow("!a", name: "Chat A")]
     }
 
+    /// A settings store of its own, removed when the test ends.
+    private var defaultsStores: [TestDefaults] = []
+
     private func start(connected: Bool = true, window gather: TimeInterval = 0.02,
-                       replyTimeout: TimeInterval? = nil) async throws -> Harness {
+                       replyTimeout: TimeInterval? = nil,
+                       entitlement: any EntitlementProvider = AlwaysEntitled()) async throws -> Harness {
         let script = NotificationScript()
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
@@ -52,16 +59,20 @@ final class NotificationCoordinatorTests: XCTestCase {
         let app = AppModel(supervisor: supervisor, clock: { clock.date })
         let delivery = FakeDelivery()
         let window = WindowState()
+        let store = TestDefaults()
+        defaultsStores.append(store)
+        let preferences = InboxPreferences(defaults: store.defaults)
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, isLooking: { window.isKey },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
+            preferences: preferences, entitlement: entitlement,
             window: gather, replyTimeout: replyTimeout, clock: { clock.date })
         if connected {
             app.start()
             try await waitUntil { app.client != nil }
         }
         return Harness(script: script, server: server, app: app, delivery: delivery, coordinator: coordinator,
-                       clock: clock, window: window)
+                       clock: clock, window: window, preferences: preferences)
     }
 
     private func finish(_ h: Harness) async { await h.app.stop() }
@@ -178,6 +189,42 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    func testALiveMessageInAChatThatCannotNotifyStaysSilent() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 5)
+        let silent: [InboxRow] = [
+            inboxRow("!a", name: "Chat A", mutedBy: .label), inboxRow("!a", name: "Chat A", mutedBy: .account),
+            inboxRow("!a", name: "Chat A", lowPriority: true), inboxRow("!a", name: "Chat A", hidden: true),
+        ]
+        for (number, chat) in silent.enumerated() {
+            h.window.rows["!a"] = chat
+            h.script.events["!a"] = [message("$s\(number)", ts: connectedMillis + 1000, text: "quiet")]
+            h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$s\(number)"])
+            try await settle(h, fetches: number + 1)
+        }
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+        await finish(h)
+    }
+
+    func testTheRequestSettingIsReadWhenAMessageIsDecided() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 5)
+        h.window.rows["!a"] = inboxRow("!a", name: "Chat A", request: true)
+        h.preferences.requestNotifications = false
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 1000, text: "hello?")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await settle(h)
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+
+        h.preferences.requestNotifications = true
+        h.script.events["!a"] = [message("$2", ts: connectedMillis + 2000, text: "anyone there?")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$2"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        XCTAssertEqual(h.delivery.delivered[0].body, "anyone there?")
+        XCTAssertEqual(h.delivery.delivered[0].category, .message)
+        await finish(h)
+    }
+
     func testNothingNotifiesBeforeTheAppHasConnected() async throws {
         let h = try await start(connected: false)
         // No engine yet, so no client and no connection time: nothing to read from.
@@ -193,6 +240,106 @@ final class NotificationCoordinatorTests: XCTestCase {
         let h = try await start()
         h.server.notify(["kind": "read", "room_id": "!a"])
         try await waitUntil { h.delivery.cleared == ["!a"] }
+        await finish(h)
+    }
+
+    // MARK: - Reminders
+
+    func testReminderNotifiesEvenWhenMuted() async throws {
+        let h = try await start()
+        // Muted by a label, and low priority and hidden besides: a reminder is something the person asked for.
+        h.window.rows["!a"] = inboxRow("!a", name: "Chat A", muted: true, lowPriority: true, hidden: true,
+                                       mutedBy: .label)
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        XCTAssertEqual(h.delivery.delivered[0].title, "Chat A")
+        XCTAssertEqual(h.delivery.delivered[0].body, "You asked to be reminded about this chat.")
+        XCTAssertEqual(h.delivery.delivered[0].roomID, "!a")
+        XCTAssertEqual(h.delivery.delivered[0].category, .reminder)
+
+        // Once per change: the room change that comes with it notifies nothing more.
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        XCTAssertFalse(h.server.receivedMethods().contains("room.events"), "a reminder reads no messages")
+        await finish(h)
+    }
+
+    func testReminderForAChatTheInboxHasNotListedIsLookedUpByItsID() async throws {
+        let h = try await start()
+        h.window.rows = [:]
+        h.script.rooms = [inboxRowJSON("!far", name: "Far Down"), inboxRowJSON("!other", name: "Other")]
+        h.server.notify(["kind": "reminder", "room_id": "!far"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        XCTAssertEqual(h.delivery.delivered[0].title, "Far Down")
+        let lookups = h.server.receivedParams("inbox.list")
+        XCTAssertEqual(lookups.count, 1)
+        XCTAssertEqual(lookups[0]["room_ids"] as? [String], ["!far"])
+        XCTAssertEqual(lookups[0].count, 1, "room_ids alone: never a read of the whole inbox")
+
+        // A chat the engine doesn't have says nothing: there is no name to show.
+        h.server.notify(["kind": "reminder", "room_id": "!gone"])
+        try await waitUntil { h.server.receivedParams("inbox.list").count == 2 }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        await finish(h)
+    }
+
+    func testRemindInOneAndEightHours() async throws {
+        let h = try await start()
+        h.clock.advance(seconds: 5)
+        let now = connectedMillis + 5000
+
+        await h.coordinator.remind(roomID: "!a", after: NotificationCoordinator.remindOneHour)
+        h.clock.advance(seconds: 90)
+        h.preferences.remindDefault = .always
+        await h.coordinator.remind(roomID: "!b", after: NotificationCoordinator.remindEightHours)
+
+        XCTAssertEqual(NotificationCoordinator.remindOneHour, 3600)
+        XCTAssertEqual(NotificationCoordinator.remindEightHours, 28800)
+        let calls = h.server.receivedParams("reminder.set")
+        XCTAssertEqual(calls.count, 2)
+        XCTAssertEqual(calls[0]["room_ids"] as? [String], ["!a"])
+        XCTAssertEqual(calls[0]["due_at"] as? Int64, now + 3_600_000, "exact against the clock, not the call's own time")
+        XCTAssertEqual(calls[0]["condition"] as? String, "if_no_reply", "the setting's default when it was pressed")
+        XCTAssertEqual(calls[1]["room_ids"] as? [String], ["!b"])
+        XCTAssertEqual(calls[1]["due_at"] as? Int64, now + 90_000 + 28_800_000)
+        XCTAssertEqual(calls[1]["condition"] as? String, "always")
+        XCTAssertNil(calls[0]["archive"], "the notification button sets a reminder and nothing else")
+        await finish(h)
+    }
+
+    func testRemindingWithoutThePlanCallsNothing() async throws {
+        struct NoReminders: EntitlementProvider {
+            func isEntitled(_ feature: Feature) -> Bool { feature != .reminders }
+        }
+        let h = try await start(entitlement: NoReminders())
+        await h.coordinator.remind(roomID: "!a", after: NotificationCoordinator.remindOneHour)
+        XCTAssertFalse(h.server.receivedMethods().contains("reminder.set"))
+        await finish(h)
+    }
+
+    /// Ruling 37: a reminder for the chat the person is reading is silent, and the chat is marked read, which ends
+    /// the reminder and its unread mark as opening the chat would have.
+    func testAReminderForTheChatYouAreReadingIsSilent() async throws {
+        let h = try await start()
+        h.window.rows["!b"] = inboxRow("!b", name: "Chat B")
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        h.server.notify(["kind": "reminder", "room_id": "!b"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        XCTAssertEqual(h.delivery.delivered[0].roomID, "!b", "another chat's reminder still comes")
+        try await waitUntil { !h.server.receivedParams("room.markRead").isEmpty }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!a"],
+                       "the chat being read is marked read; the other one isn't")
+
+        // Open but not looked at (the window is not key, the screen is locked): it does come.
+        h.window.isKey = false
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(h.delivery.delivered[1].roomID, "!a")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").count, 1, "not looked at: notified, not marked read")
         await finish(h)
     }
 
@@ -303,7 +450,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
-    func testSeveralUnlistedChatsShareOneInboxRead() async throws {
+    func testEachUnlistedChatIsLookedUpByItsID() async throws {
         let h = try await start(window: 0.1)
         h.clock.advance(seconds: 5)
         h.window.rows = [:]
@@ -314,32 +461,24 @@ final class NotificationCoordinatorTests: XCTestCase {
             h.server.notify(["kind": "event", "room_id": id, "event_id": "$\(id)"])
         }
         try await waitUntil { h.delivery.delivered.count == 5 }
-        XCTAssertLessThanOrEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2)
+        XCTAssertEqual(Set(h.delivery.delivered.map(\.title)), Set(ids.map { "Chat \($0)" }))
+        // One lookup per chat, by its id: the inbox pages now, so a whole-inbox read may not hold the chat.
+        let lookups = h.server.receivedParams("inbox.list")
+        XCTAssertEqual(lookups.count, 5)
+        XCTAssertEqual(Set(lookups.compactMap { ($0["room_ids"] as? [String])?.first }), Set(ids))
+        XCTAssertTrue(lookups.allSatisfy { $0.count == 1 && ($0["room_ids"] as? [String])?.count == 1 })
         await finish(h)
     }
 
-    func testARoomMissingFromAnInboxReadThatStartedTooEarlyGetsAFreshRead() async throws {
+    func testAChatTheEngineDoesNotHaveIsNotAnnounced() async throws {
         let h = try await start(window: 0.02)
         h.clock.advance(seconds: 5)
         h.window.rows = [:]
-        h.script.hold("inbox.list") // the first inbox read is slow
-        h.script.events["!x"] = [message("$x", ts: connectedMillis + 1000, text: "from x", room: "!x")]
-        h.server.notify(["kind": "event", "room_id": "!x", "event_id": "$x"])
+        h.script.events["!gone"] = [message("$g", ts: connectedMillis + 1000, text: "hello", room: "!gone")]
+        h.server.notify(["kind": "event", "room_id": "!gone", "event_id": "$g"])
         try await waitUntil { h.server.receivedMethods().contains("inbox.list") }
-
-        // !y appears while that read is on its way, and its read joins it.
-        h.script.rooms = [inboxRowJSON("!x", name: "Chat X"), inboxRowJSON("!y", name: "Chat Y")]
-        h.script.events["!y"] = [message("$y", ts: connectedMillis + 2000, text: "from y", room: "!y")]
-        h.server.notify(["kind": "event", "room_id": "!y", "event_id": "$y"])
-        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!y" } }
         try await Task.sleep(nanoseconds: 100_000_000)
-
-        // The slow read answers from before !y existed.
-        let held = h.server.received.first { $0["method"] as? String == "inbox.list" }
-        h.server.reply(to: held?["id"] as? Int ?? -1, with: ["rooms": [inboxRowJSON("!x", name: "Chat X")]])
-        try await waitUntil { h.delivery.delivered.count == 2 }
-        XCTAssertEqual(Set(h.delivery.delivered.map(\.title)), ["Chat X", "Chat Y"])
-        XCTAssertEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, 2, "one stale, one fresh")
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "no row, so no name to show: nothing is announced")
         await finish(h)
     }
 
@@ -470,7 +609,11 @@ final class NotificationScript: @unchecked Sendable {
         switch method {
         case "hello": return TestEngineServer.helloOK
         case "accounts.list": return .result(["accounts": [account("whatsapp", "CONNECTED")]])
-        case "inbox.list": return .result(["rooms": rooms])
+        case "inbox.list":
+            // Only lookups by id: a room_id the engine doesn't have is left out.
+            let ids = params?["room_ids"] as? [String] ?? []
+            return .result(["rooms": rooms.filter { ids.contains($0["room_id"] as? String ?? "") },
+                            "next_cursor": NSNull()])
         case "room.events":
             let room = params?["room_id"] as? String ?? ""
             return .result(["events": events[room] ?? [], "before": NSNull()])
@@ -491,9 +634,11 @@ func message(_ id: String, ts: Int64, text: String, mine: Bool = false, room: St
     ]
 }
 
-func inboxRow(_ id: String, name: String, direct: Bool = true, muted: Bool = false) -> InboxRow {
+func inboxRow(_ id: String, name: String, direct: Bool = true, muted: Bool = false, lowPriority: Bool = false,
+              hidden: Bool = false, request: Bool = false, mutedBy: MutedBy = .none) -> InboxRow {
     InboxRow(roomID: id, network: "whatsapp", name: name, avatarPath: "", isDirect: direct, lastTS: 0, preview: "",
-             previewKind: .text, previewMine: false, unread: 0, muted: muted)
+             previewKind: .text, previewMine: false, unread: 0, muted: muted, lowPriority: lowPriority, hidden: hidden,
+             request: request, mutedBy: mutedBy)
 }
 
 func inboxRowJSON(_ id: String, name: String) -> [String: Any] {

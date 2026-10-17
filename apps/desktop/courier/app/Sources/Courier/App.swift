@@ -11,20 +11,54 @@ struct CourierApp: App {
     var body: some Scene {
         Window("Courier", id: "main") {
             MainWindow(model: delegate.model, inbox: delegate.inbox, conversation: delegate.conversation,
-                       login: delegate.login)
+                       login: delegate.login, spaces: delegate.spaces, preferences: delegate.inbox.preferences,
+                       ui: delegate.inboxUI, labels: delegate.labels)
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
-        .defaultSize(width: 960, height: 640)
+        .defaultSize(width: 1020, height: 660)
         .commands {
-            InboxCommands(inbox: delegate.inbox, login: delegate.login)
+            InboxCommands(inbox: delegate.inbox, login: delegate.login, spaces: delegate.spaces,
+                          preferences: delegate.inbox.preferences, ui: delegate.inboxUI)
             ConversationCommands(conversation: delegate.conversation)
+        }
+
+        // The windows the space bar, the menus and the chat menu open.
+        Window(String(localized: "Edit Spaces"), id: WindowID.editSpaces) {
+            EditSpacesWindow(spaces: delegate.spaces, inbox: delegate.inbox)
+        }
+        .defaultSize(width: 360, height: 520)
+        .windowResizability(.contentMinSize)
+
+        WindowGroup(String(localized: "Label"), id: WindowID.label, for: LabelWindowTarget.self) { $target in
+            if let target {
+                LabelEditorWindow(target: target, labels: delegate.labels, spaces: delegate.spaces,
+                                  inbox: delegate.inbox)
+            }
+        }
+        .windowResizability(.contentSize)
+
+        Window(String(localized: "Edit Labels"), id: WindowID.editLabels) {
+            EditLabelsWindow(spaces: delegate.spaces, labels: delegate.labels)
+        }
+        .defaultSize(width: 420, height: 360)
+
+        WindowGroup(String(localized: "Auto-archive"), id: WindowID.autoArchive, for: String.self) { $spaceID in
+            if let spaceID {
+                AutoArchiveWindow(spaceID: spaceID, spaces: delegate.spaces, labels: delegate.labels,
+                                  inbox: delegate.inbox)
+            }
+        }
+        .windowResizability(.contentSize)
+
+        Settings {
+            SettingsView(inbox: delegate.inbox, labels: delegate.labels)
         }
 
         // The menu-bar icon. Closing the window leaves Courier running (spec §2), and this is how to get it back.
         MenuBarExtra {
-            MenuBarMenu(inbox: delegate.inbox, openCourier: delegate.windowOpener.show)
+            MenuBarMenu(spaces: delegate.spaces, openCourier: delegate.windowOpener.show)
         } label: {
-            MenuBarIcon(inbox: delegate.inbox)
+            MenuBarIcon(spaces: delegate.spaces)
         }
     }
 }

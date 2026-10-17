@@ -28,4 +28,9 @@ public final class EngineMessageSender: MessageSending {
             "message.sendFile", SendFileParams(roomID: roomID, path: url.path, replyTo: replyTo),
             timeout: Self.fileTimeout(forBytes: size))
     }
+
+    public func saveDraft(roomID: String, text: String) async throws {
+        guard let client = await appModel.client else { throw EngineError.notConnected }
+        let _: Empty = try await client.call("room.setDraft", DraftParams(roomID: roomID, text: text))
+    }
 }

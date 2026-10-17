@@ -34,7 +34,7 @@ These are not inventory rows. They are what the milestone was built to get right
 - [ ] `hotkey` Select Next Chat: ⌘] or ⌘⌥↓ moves to the next chat in the list. The selection stays on that chat when new messages arrive.
 - [ ] `hotkey` Select Previous Chat: ⌘[ or ⌘⌥↑ moves to the previous chat.
 - [ ] `hotkey` Select Next Unread Chat: ⌘U jumps to the next chat with unread messages, and wraps round to the first one.
-- [ ] `hotkey` Chat: Toggle Mark As Read: ⌘⇧U marks the selected chat read. With nothing unread it does nothing (marking a chat unread is Milestone 4).
+- [ ] `hotkey` Chat: Toggle Mark As Read: ⌘⇧U marks the selected chat read. With nothing unread it does nothing (marking a chat unread is in the Milestone 4 list, part 4.1).
 - [ ] `hotkey` Chat: Toggle Mute: ⌘⇧M mutes the selected chat; the menu item then reads Unmute Chat, and the row shows a muted bell.
 - [ ] `hotkey` Scroll to the bottom of a chat: ⌘↓ jumps to the newest message, including while typing in the box.
 - [ ] `hotkey` Chat: Send File: ⌘O opens a file picker; the chosen files show as chips above the box.
@@ -125,34 +125,24 @@ Also part of this, not an inventory row of its own: the Dock icon's badge counts
 
 Left for the next milestone. These have no tick box: they are not expected to work yet. Row names are as written in the inventory.
 
+The rows that part 4.1 (organise the inbox) now covers have moved, with tick boxes, to `m4-acceptance.md`. This list keeps the rest.
+
 ### Keys
 
 **Chats: archive, pin, history, spaces**
 
-- `hotkey` Chat: Archive All Read
 - `hotkey` Chat: Start New
-- `hotkey` Chat: Toggle Archive
-- `hotkey` Chat: Toggle Pin
 - `hotkey` Cycle Chats (hold shift to reverse)
 - `hotkey` History: Next Chat
 - `hotkey` History: Previous Chat
-- `hotkey` Switch First 9 Chats Modifier
-- `hotkey` Switch First 9 Spaces Modifier
-- `hotkey` Toggle Space Bar
 - `hotkey` Toggle Chat Info
 - `hotkey` Open User Profile
-- `hotkey` Remind Later
 
 **Search, the command bar, filters and accounts**
 
 - `hotkey` Command Bar
-- `hotkey` Cycle Filters
-- `hotkey` Filter By Account
-- `hotkey` Filter: Unread
 - `hotkey` Search
 - `hotkey` Search: Room
-- `hotkey` Select Next Account
-- `hotkey` Select Previous Account
 - `hotkey` Focus App and Command Bar
 
 **Messages: edit, forward, send later, media, reactions**
@@ -190,7 +180,6 @@ Left for the next milestone. These have no tick box: they are not expected to wo
 Settings for these (and the Settings window itself) are Milestone 4; Milestone 3 uses the defaults above.
 
 - `setting:notifications` Sound effects
-- `setting:notifications` Message request notifications
 - `setting:notifications` Notify when someone reacts to a message
 - `setting:notifications` Notify when someone starts typing (supported platforms only)
 - `setting:notifications` Delay notifications for
@@ -212,7 +201,6 @@ Courier has a few menu items of its own meanwhile (File ▸ Add a Network…, th
 - `menu:File` Open…
 - `menu:File` New Chat
 - `menu:File` Open Chat in New Window
-- `menu:View` Hide Space Bar
 - `menu:View` Hide Sidebar
 - `menu:Help` Report a Problem
 - `menu:Help` Open Beeper Help
@@ -225,19 +213,9 @@ Courier has a few menu items of its own meanwhile (File ▸ Add a Network…, th
 
 ### Inbox (§3)
 
-- `component` BrandTypingIndicator.tsx
 - `component` ContactItem.tsx
 - `component` DraftChatAvatar.tsx
-- `component` GroupAvatar.tsx
-- `component` PinnedThreadListItem.tsx
-- `component` SelectionModeActions.tsx
-- `component` SelectionModeHeader.tsx
-- `component` Skeleton.tsx
 - `component` StackedAvatars.tsx
-- `component` ThreadPreviewMedia.tsx
-- `component` TypingIndicator.tsx
-- `component` UnknownAvatar.tsx
-- `component` UnreadMentionIndicator.tsx
 
 ### Conversation (§5)
 
@@ -358,7 +336,6 @@ Courier has a few menu items of its own meanwhile (File ▸ Add a Network…, th
 ### Notifications (§19)
 
 - `component` AccountNotificationPrefs.tsx
-- `component` Toasts.tsx
 
 ### Not in this list
 

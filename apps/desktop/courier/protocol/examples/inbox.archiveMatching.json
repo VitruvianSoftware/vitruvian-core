@@ -1,0 +1,20 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "inbox.archiveMatching",
+    "params": {
+      "space": "inbox",
+      "read_only": false,
+      "older_than_ms": 0,
+      "dry_run": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "result": {
+      "room_ids": ["!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local"]
+    }
+  }
+}

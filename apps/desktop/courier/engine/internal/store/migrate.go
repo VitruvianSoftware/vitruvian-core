@@ -92,6 +92,30 @@ CREATE INDEX rooms_last_ts ON rooms(last_ts DESC, created_at DESC);
 UPDATE events SET redacted = 1 WHERE (room_id, event_id) IN (
   SELECT r.room_id, ` + redactionTargetSQL("r.content") + ` FROM events r WHERE r.type = 'm.room.redaction' AND r.status <> 'failed');
 ` + backfillLastEventSQL + `;`,
+	// 3: how chats are organised (milestone 4.1): pins, archive, low priority, hidden, marked unread, drafts,
+	// message requests, labels, per-account settings, the spaces layout, reminders and auto-archive.
+	`ALTER TABLE rooms ADD COLUMN request INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE room_prefs ADD COLUMN pinned_at INTEGER NOT NULL DEFAULT 0;     -- 0 = not pinned; pin order is pinned_at
+ALTER TABLE room_prefs ADD COLUMN archived_at INTEGER NOT NULL DEFAULT 0;   -- 0 = not archived
+ALTER TABLE room_prefs ADD COLUMN low_priority INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE room_prefs ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE room_prefs ADD COLUMN marked_unread INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE room_prefs ADD COLUMN draft TEXT NOT NULL DEFAULT '';
+CREATE INDEX room_prefs_place ON room_prefs(hidden, low_priority, archived_at);
+CREATE TABLE labels (label_id INTEGER PRIMARY KEY, title TEXT NOT NULL, color INTEGER NOT NULL, icon TEXT NOT NULL,
+  muted INTEGER NOT NULL DEFAULT 0, show_in_inbox TEXT NOT NULL DEFAULT 'all', created_at INTEGER NOT NULL);
+CREATE TABLE room_labels (room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
+  label_id INTEGER NOT NULL REFERENCES labels(label_id) ON DELETE CASCADE, PRIMARY KEY (room_id, label_id));
+CREATE INDEX room_labels_label ON room_labels(label_id);
+CREATE TABLE account_prefs (network TEXT PRIMARY KEY, muted INTEGER NOT NULL DEFAULT 0, show_in_inbox TEXT NOT NULL DEFAULT 'all');
+CREATE TABLE space_layout (space_id TEXT PRIMARY KEY, position INTEGER NOT NULL, hidden INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE reminders (room_id TEXT PRIMARY KEY REFERENCES rooms(room_id) ON DELETE CASCADE, due_at INTEGER NOT NULL,
+  condition TEXT NOT NULL, set_at INTEGER NOT NULL, fired_at INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX reminders_due ON reminders(fired_at, due_at);
+CREATE TABLE auto_archive_rules (rule_id INTEGER PRIMARY KEY, scope TEXT NOT NULL, trigger TEXT NOT NULL,
+  chat_type TEXT NOT NULL DEFAULT 'all', duration_ms INTEGER NOT NULL, enabled INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE archive_due (room_id TEXT PRIMARY KEY REFERENCES rooms(room_id) ON DELETE CASCADE, due_at INTEGER NOT NULL,
+  rule_id INTEGER NOT NULL REFERENCES auto_archive_rules(rule_id) ON DELETE CASCADE);`,
 }
 
 // migrate brings db up to the latest version.

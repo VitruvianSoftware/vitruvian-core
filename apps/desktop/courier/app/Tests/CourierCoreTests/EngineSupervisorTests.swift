@@ -302,7 +302,7 @@ final class EngineSupervisorTests: XCTestCase {
 
     func testHandshakeMismatchStopsWithUpdateNeeded() async throws {
         let server = try makeServer { method, _ in
-            method == "hello" ? .error(code: -32001, message: "protocol mismatch", data: ["engine": 2]) : .result([:])
+            method == "hello" ? .error(code: -32001, message: "protocol mismatch", data: ["engine": 3]) : .result([:])
         }
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let time = FakeTime()
@@ -486,7 +486,7 @@ final class EngineSupervisorTests: XCTestCase {
 
     private static func account(_ state: String) -> [String: Any] {
         ["network": "whatsapp", "display_name": "WhatsApp", "flows": ["qr"], "state": state, "error": "",
-         "remote_name": "", "not_started": ""]
+         "remote_name": "", "not_started": "", "syncs": [String]()]
     }
 }
 

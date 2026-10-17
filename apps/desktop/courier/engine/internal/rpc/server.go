@@ -28,13 +28,16 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
+	"github.com/VitruvianSoftware/courier/engine/internal/timers"
 )
 
 // Protocol is the protocol version this engine speaks: protocol.json's "protocol".
-const Protocol = 1
+// Protocol 2 pages the inbox: an app that speaks 1 would only ever see the first page.
+const Protocol = 2
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20
@@ -58,6 +61,11 @@ type Deps struct {
 	Actions *actions.Actions
 	Login   *login.Driver
 	Media   *media.Store
+	// Timers is the reminder and auto-archive loop, poked when a reminder or a rule changes so it looks again at
+	// once. nil pokes nothing: the loop still looks within timers.MaxSleep.
+	Timers *timers.Timers
+	// Entitlement says which plan features are allowed. nil allows everything (entitlement.Always).
+	Entitlement entitlement.Provider
 	// Networks lists every network the engine knows, in display order: hello's networks and accounts.list follow it.
 	Networks []NetworkInfo
 	// NotStarted holds, by network name, why a network was not started. Such a network shows as NOT_STARTED.

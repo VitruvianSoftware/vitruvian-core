@@ -3,9 +3,16 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "store",
     srcs = [
+        "autoarchive.go",
+        "chatstate.go",
         "inbox.go",
+        "labels.go",
         "migrate.go",
+        "query.go",
+        "reminders.go",
+        "spaces.go",
         "store.go",
+        "typing.go",
     ],
     embedsrcs = ["schema.sql"],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/store",
@@ -20,7 +27,13 @@ go_library(
 go_test(
     name = "store_test",
     srcs = [
+        "autoarchive_test.go",
+        "chatstate_test.go",
         "inbox_test.go",
+        "labels_test.go",
+        "query_test.go",
+        "reminders_test.go",
+        "spaces_test.go",
         "store_test.go",
     ],
     data = glob(["testdata/**"]),
@@ -28,5 +41,7 @@ go_test(
     deps = [
         "//apps/desktop/courier/engine/internal/sqlite",
         "@com_github_stretchr_testify//require",
+        "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//event",
     ],
 )

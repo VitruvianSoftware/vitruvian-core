@@ -9,7 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
+
+	"go.mau.fi/util/dbutil"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 )
@@ -20,77 +25,157 @@ const maxPreviewRunes = 140
 // InboxRow is one chat in the list: the room plus what the list shows beside its name.
 type InboxRow struct {
 	Room
-	LastTS      time.Time // zero when the room has no message yet
-	Preview     string    // body of the newest message-like event, at most 140 runes
-	PreviewKind string    // "text", "image", "video", "audio", "file", "sticker", or "" (nothing readable yet)
-	PreviewMine bool      // the newest message is mine
-	Unread      int       // messages from others newer than the read marker
-	Muted       bool
+	LastTS          time.Time // zero when the room has no message yet
+	Preview         string    // body of the newest message-like event, at most 140 runes
+	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", or "" (nothing readable yet)
+	PreviewMine     bool      // the newest message is mine
+	PreviewMediaURI string    // the newest message's image or sticker (its thumbnail when it has one), or ""
+	Unread          int       // messages from others newer than the read marker
+	UnreadMentions  int       // the unread ones that mention me, by name or the whole room
+	Muted           bool      // I muted this chat itself
+
+	// MutedBy says what else mutes this chat: "account" (its account; MutedByName is the network's display name),
+	// "label" (a muted label; MutedByName is the title of the first one, by label ID), or "". An account mute wins.
+	MutedBy, MutedByName string
+
+	PinnedAt                                             time.Time // zero when not pinned; pin order
+	Archived, LowPriority, Hidden, MarkedUnread, Request bool
+	Draft                                                string
+	Labels                                               []int64   // by label ID
+	Reminder                                             *Reminder // nil when the chat has none
 }
+
+// myID is $1 of every statement that needs to tell my messages from other people's.
+var myID = string(ids.Me)
+
+// readMarkerJoins brings in a room r's two read markers, both mine, with their events (for the seq): rd / rde
+// is what I read on another device, as the network reports it (reads), and lr / lre what I read on this one
+// (local_reads).
+const readMarkerJoins = `LEFT JOIN reads rd ON rd.room_id = r.room_id
+LEFT JOIN events rde ON rde.event_id = rd.event_id AND rde.ts = rd.ts
+LEFT JOIN local_reads lr ON lr.room_id = r.room_id
+LEFT JOIN events lre ON lre.event_id = lr.event_id AND lre.ts = lr.ts`
+
+// unreadSQL is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
+// is my user ID), not deleted, not an edit, and after both read markers (readMarkerJoins). After both is the same
+// as after the later one, so the range scan of events_room_ts has one lower bound. "After" compares (ts, seq), so
+// a message in the same millisecond as the marker but received later still counts.
+var unreadSQL = `u.room_id = r.room_id
+       AND (u.ts, u.seq) > (` + laterMarker("rd", "rde", "lr", "lre") + `)
+       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content")
+
+// mentionsMeSQL is the condition on an event u for "it mentions me": m.mentions.user_ids holds my user ID ($1),
+// or m.mentions.room is true.
+const mentionsMeSQL = `((CASE WHEN json_valid(u.content) THEN json_extract(u.content, '$."m.mentions".room') END) IS 1
+       OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(u.content) THEN u.content ELSE '{}' END, '$."m.mentions".user_ids')
+                  WHERE value = $1))`
+
+// mutedLabelSQL is the title of room r's first muted label, by label ID, or "".
+const mutedLabelSQL = `COALESCE((SELECT ml.title FROM room_labels mrl JOIN labels ml ON ml.label_id = mrl.label_id
+     WHERE mrl.room_id = r.room_id AND ml.muted = 1 ORDER BY mrl.label_id LIMIT 1), '')`
+
+// mutedBySQL is what else mutes room r: 'account' (its account_prefs ap), 'label' (a muted label), or the empty string.
+const mutedBySQL = `(CASE WHEN COALESCE(ap.muted, 0) = 1 THEN 'account' WHEN ` + mutedLabelSQL + ` <> '' THEN 'label' ELSE '' END)`
+
+// inboxColsSQL is the columns of an inbox row (scanInboxRow), for a room r with inboxJoinsSQL.
+var inboxColsSQL = `r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at,
+  r.last_ts,
+  COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''),
+  COALESCE(p.muted, 0),
+  (SELECT COUNT(*) FROM events u WHERE ` + unreadSQL + `),
+  (SELECT COUNT(*) FROM events u WHERE ` + unreadSQL + ` AND ` + mentionsMeSQL + `),
+  ` + mutedBySQL + `, CASE WHEN COALESCE(ap.muted, 0) = 1 THEN '' ELSE ` + mutedLabelSQL + ` END,
+  COALESCE(p.pinned_at, 0), COALESCE(p.archived_at, 0), COALESCE(p.low_priority, 0), COALESCE(p.hidden, 0),
+  COALESCE(p.marked_unread, 0), r.request, COALESCE(p.draft, ''),
+  COALESCE((SELECT group_concat(rl.label_id) FROM room_labels rl WHERE rl.room_id = r.room_id), ''),
+  rm.room_id IS NOT NULL, COALESCE(rm.condition, ''), COALESCE(rm.due_at, 0), COALESCE(rm.set_at, 0), COALESCE(rm.fired_at, 0)`
+
+// inboxJoinsSQL brings in what inboxColsSQL reads beside the room r.
+var inboxJoinsSQL = `LEFT JOIN events ev ON ev.event_id = r.last_event_id
+LEFT JOIN room_prefs p ON p.room_id = r.room_id
+LEFT JOIN account_prefs ap ON ap.network = r.network
+LEFT JOIN reminders rm ON rm.room_id = r.room_id
+` + readMarkerJoins
 
 // inboxSQL is the whole inbox in one statement. $1 is my user ID. Every part is an index lookup:
 //   - rooms come out of rooms_last_ts already in display order (no sort);
 //   - the preview event is a primary-key lookup on rooms.last_event_id;
-//   - the unread count is a range scan of events_room_ts (room_id, ts, seq) from the read marker onward, so it
-//     only touches messages that are actually newer than the marker.
-//
-// There are two markers, both mine: what I read on another device, as the network reports it (reads), and what I
-// read on this one (local_reads). A message is unread when it is after both, which is the same as being after the
-// later one, so the count has one lower bound: the later marker. "After" compares (ts, seq), so a message in the
-// same millisecond as the marker but received later still counts. Edits and deleted messages are never unread.
-var inboxSQL = `SELECT r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at,
-  r.last_ts,
-  COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''),
-  COALESCE(p.muted, 0),
-  (SELECT COUNT(*) FROM events u
-     WHERE u.room_id = r.room_id
-       AND (u.ts, u.seq) > (` + laterMarker("rd", "rde", "lr", "lre") + `)
-       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `)
+//   - the unread and unread-mention counts are range scans of events_room_ts (room_id, ts, seq) from the read
+//     marker onward (unreadSQL), so they only touch messages that are actually newer than the marker;
+//   - prefs, account prefs, the reminder, labels and muted labels are primary-key lookups.
+var inboxSQL = `SELECT ` + inboxColsSQL + `
 FROM rooms r
-LEFT JOIN events ev ON ev.event_id = r.last_event_id
-LEFT JOIN room_prefs p ON p.room_id = r.room_id
-LEFT JOIN reads rd ON rd.room_id = r.room_id
-LEFT JOIN events rde ON rde.event_id = rd.event_id AND rde.ts = rd.ts
-LEFT JOIN local_reads lr ON lr.room_id = r.room_id
-LEFT JOIN events lre ON lre.event_id = lr.event_id AND lre.ts = lr.ts
+` + inboxJoinsSQL + `
 ORDER BY r.last_ts DESC, r.created_at DESC`
 
 // Inbox lists every room, newest message first; rooms without a message follow, newest created first.
 func (s *Store) Inbox(ctx context.Context) ([]InboxRow, error) {
-	rows, err := s.db.Query(ctx, inboxSQL, string(ids.Me))
+	rows, err := s.db.Query(ctx, inboxSQL, myID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []InboxRow
 	for rows.Next() {
-		var r InboxRow
-		var direct, muted int
-		var created, lastTS int64
-		var sender, typ, content string
-		if err := rows.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created,
-			&lastTS, &sender, &typ, &content, &muted, &r.Unread); err != nil {
+		r, err := s.scanInboxRow(rows)
+		if err != nil {
 			return nil, err
 		}
-		r.IsDirect, r.CreatedAt, r.Muted = direct == 1, time.UnixMilli(created), muted == 1
-		if lastTS != 0 {
-			r.LastTS = time.UnixMilli(lastTS)
-		}
-		r.PreviewMine = sender == string(ids.Me)
-		r.Preview, r.PreviewKind = previewOf(typ, content)
 		out = append(out, r)
 	}
 	return out, rows.Err()
 }
 
-// previewOf turns the newest message's type and content into the inbox's one-line preview and its kind.
-// An encrypted placeholder has nothing readable, so it previews as empty text with no kind.
-func previewOf(typ, content string) (preview, kind string) {
+// scanInboxRow reads one row of inboxSQL's columns.
+func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
+	var r InboxRow
+	var direct, muted, low, hidden, markedUnread, request int
+	var created, lastTS, pinnedAt, archivedAt int64
+	var sender, typ, content, labels string
+	var hasReminder bool
+	var rem Reminder
+	var dueAt, setAt, firedAt int64
+	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created,
+		&lastTS, &sender, &typ, &content, &muted, &r.Unread, &r.UnreadMentions, &r.MutedBy, &r.MutedByName,
+		&pinnedAt, &archivedAt, &low, &hidden, &markedUnread, &request, &r.Draft, &labels,
+		&hasReminder, &rem.Condition, &dueAt, &setAt, &firedAt); err != nil {
+		return InboxRow{}, err
+	}
+	r.IsDirect, r.CreatedAt, r.Muted = direct == 1, time.UnixMilli(created), muted == 1
+	r.LastTS = msTime(lastTS)
+	r.PreviewMine = sender == myID
+	r.Preview, r.PreviewKind, r.PreviewMediaURI = previewOf(typ, content)
+	if r.MutedBy == "account" {
+		r.MutedByName = s.networkName(r.Network)
+	}
+	r.PinnedAt, r.Archived = msTime(pinnedAt), archivedAt != 0
+	r.LowPriority, r.Hidden, r.MarkedUnread, r.Request = low == 1, hidden == 1, markedUnread == 1, request == 1
+	if labels != "" {
+		for _, f := range strings.Split(labels, ",") {
+			id, err := strconv.ParseInt(f, 10, 64)
+			if err != nil {
+				return InboxRow{}, err
+			}
+			r.Labels = append(r.Labels, id)
+		}
+		slices.Sort(r.Labels)
+	}
+	if hasReminder {
+		rem.RoomID, rem.DueAt, rem.SetAt, rem.FiredAt = r.ID, msTime(dueAt), msTime(setAt), msTime(firedAt)
+		r.Reminder = &rem
+	}
+	return r, nil
+}
+
+// previewOf turns the newest message's type and content into the inbox's one-line preview, its kind and, for an
+// image or a sticker, the media to show beside it (the thumbnail when there is one). An encrypted placeholder
+// has nothing readable, so it previews as empty text with no kind.
+func previewOf(typ, content string) (preview, kind, mediaURI string) {
 	switch typ {
 	case "":
-		return "", ""
+		return "", "", ""
 	case "m.room.encrypted":
-		return "", ""
+		return "", "", ""
 	case "m.sticker":
 		kind = "sticker"
 	default:
@@ -99,6 +184,10 @@ func previewOf(typ, content string) (preview, kind string) {
 	var c struct {
 		Body    string `json:"body"`
 		MsgType string `json:"msgtype"`
+		URL     string `json:"url"`
+		Info    struct {
+			ThumbnailURL string `json:"thumbnail_url"`
+		} `json:"info"`
 	}
 	_ = json.Unmarshal([]byte(content), &c) // malformed content just previews as empty
 	if typ == "m.room.message" {
@@ -113,10 +202,16 @@ func previewOf(typ, content string) (preview, kind string) {
 			kind = "file"
 		}
 	}
+	if kind == "image" || kind == "sticker" {
+		mediaURI = c.Info.ThumbnailURL
+		if mediaURI == "" {
+			mediaURI = c.URL
+		}
+	}
 	if r := []rune(c.Body); len(r) > maxPreviewRunes {
 		c.Body = string(r[:maxPreviewRunes])
 	}
-	return c.Body, kind
+	return c.Body, kind, mediaURI
 }
 
 // Cursor marks a position in a chat's history: the oldest event of the page you already have.
@@ -182,7 +277,8 @@ func (s *Store) AdvanceReadLocal(ctx context.Context, roomID, eventID string, ts
 // advanceMarker moves table's read marker for roomID (reads or local_reads) to eventID, if that is later than
 // where it is. The marker keeps the event's own time, so its (ts, seq) is exactly that event's. An event we do
 // not have is kept at fallbackTS and compares on ts alone. It reports whether the marker moved, and publishes a
-// "read" change when it did.
+// "read" change when it did. A marker that moves to a message received after Courier first saw the chat is a read:
+// with an enabled after_read rule it schedules the chat's archive (scheduleArchive), in the same transaction.
 func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time) (bool, error) {
 	moved := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
@@ -202,10 +298,23 @@ func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		_, err = s.db.Exec(ctx, `INSERT INTO `+table+` (room_id, event_id, ts) VALUES ($1,$2,$3)
-			ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, newTS)
-		moved = err == nil
-		return err
+		if _, err = s.db.Exec(ctx, `INSERT INTO `+table+` (room_id, event_id, ts) VALUES ($1,$2,$3)
+			ON CONFLICT(room_id) DO UPDATE SET event_id=excluded.event_id, ts=excluded.ts`, roomID, eventID, newTS); err != nil {
+			return err
+		}
+		moved = true
+		// I read the chat: with an enabled after_read rule it is archived that long from now. Only a read of a
+		// message Courier received live counts, one after it first saw the chat (rooms.created_at is set when the
+		// store first inserts the room and never changes). The markers an account brings in on its first sync are
+		// older reads from the phone; scheduling on them would archive every chat already read there.
+		var firstSeen int64
+		if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT created_at FROM rooms WHERE room_id=$1), 0)", roomID).Scan(&firstSeen); err != nil {
+			return err
+		}
+		if firstSeen == 0 || newTS <= firstSeen {
+			return nil
+		}
+		return s.scheduleArchive(ctx, roomID, trigAfterRead, s.now().UnixMilli())
 	})
 	if err == nil && moved {
 		s.publish(Change{Kind: "read", RoomID: roomID, EventID: eventID})

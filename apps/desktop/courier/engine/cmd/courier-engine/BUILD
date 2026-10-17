@@ -9,12 +9,14 @@ go_library(
     deps = [
         "//apps/desktop/courier/engine/internal/actions",
         "//apps/desktop/courier/engine/internal/datadir",
+        "//apps/desktop/courier/engine/internal/entitlement",
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/sqlite",
         "//apps/desktop/courier/engine/internal/store",
+        "//apps/desktop/courier/engine/internal/timers",
         "@com_github_rs_zerolog//:zerolog",
     ],
 )
@@ -40,6 +42,8 @@ go_test(
     },
     deps = [
         "//apps/desktop/courier/engine/internal/datadir",
+        "//apps/desktop/courier/engine/internal/networks",
+        "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_stretchr_testify//require",
     ],

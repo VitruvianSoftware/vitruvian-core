@@ -5,8 +5,9 @@ import AppKit
 import CourierCore
 @preconcurrency import UserNotifications
 
-/// The system's notification centre for the coordinator: shows a notification for a message, with "Mark as Read"
-/// and an inline "Reply", and sends a click or a button back to the coordinator. Everything it decides is in
+/// The system's notification centre for the coordinator: shows a notification for a message or a reminder, with
+/// "Mark as Read", an inline "Reply" (messages only) and "Remind in 1 Hour" / "Remind in 8 Hours" (with a plan that
+/// includes reminders), and sends a click or a button back to the coordinator. Everything it decides is in
 /// CourierCore; this only carries it out.
 ///
 /// UNUserNotificationCenter aborts in a process that is not an app bundle (`swift run`, a bare binary), so every
@@ -14,8 +15,15 @@ import CourierCore
 @MainActor
 final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenterDelegate {
     static let categoryID = "com.vitruviansoftware.courier.message"
+    static let reminderCategoryID = "com.vitruviansoftware.courier.reminder"
     static let markReadActionID = "com.vitruviansoftware.courier.mark-read"
     static let replyActionID = "com.vitruviansoftware.courier.reply"
+    static let remindOneHourActionID = "com.vitruviansoftware.courier.remind-1h"
+    static let remindEightHoursActionID = "com.vitruviansoftware.courier.remind-8h"
+
+    /// Whether the plan includes reminders, which decides if the remind-later buttons are offered. Read when the
+    /// categories are registered, at the first notification or permission request.
+    var entitlement: any EntitlementProvider = AlwaysEntitled()
 
     /// Where clicks and buttons go. Set once, before the first notification can come.
     weak var coordinator: NotificationCoordinator?
@@ -34,17 +42,39 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         guard !started else { return center }
         started = true
         center.delegate = self
-        let markRead = UNNotificationAction(identifier: Self.markReadActionID,
-                                            title: String(localized: "Mark as Read"), options: [])
-        let reply = UNTextInputNotificationAction(
-            identifier: Self.replyActionID, title: String(localized: "Reply"), options: [],
-            textInputButtonTitle: String(localized: "Send"),
-            textInputPlaceholder: String(localized: "Message"))
-        center.setNotificationCategories([
-            UNNotificationCategory(identifier: Self.categoryID, actions: [reply, markRead], intentIdentifiers: [],
-                                   options: []),
-        ])
+        center.setNotificationCategories(Set(NotificationCategory.allCases.map(category)))
         return center
+    }
+
+    /// The system's category for one of ours, with the buttons the plan allows (`NotificationCategory.actions`).
+    private func category(_ category: NotificationCategory) -> UNNotificationCategory {
+        let actions = category.actions(entitlement: entitlement).map(action)
+        return UNNotificationCategory(identifier: Self.categoryID(of: category), actions: actions,
+                                      intentIdentifiers: [], options: [])
+    }
+
+    private func action(_ action: NotificationAction) -> UNNotificationAction {
+        switch action {
+        case .markRead:
+            UNNotificationAction(identifier: Self.markReadActionID, title: String(localized: "Mark as Read"), options: [])
+        case .reply:
+            UNTextInputNotificationAction(
+                identifier: Self.replyActionID, title: String(localized: "Reply"), options: [],
+                textInputButtonTitle: String(localized: "Send"), textInputPlaceholder: String(localized: "Message"))
+        case .remindOneHour:
+            UNNotificationAction(identifier: Self.remindOneHourActionID,
+                                 title: String(localized: "Remind in 1 Hour"), options: [])
+        case .remindEightHours:
+            UNNotificationAction(identifier: Self.remindEightHoursActionID,
+                                 title: String(localized: "Remind in 8 Hours"), options: [])
+        }
+    }
+
+    private static func categoryID(of category: NotificationCategory) -> String {
+        switch category {
+        case .message: categoryID
+        case .reminder: reminderCategoryID
+        }
     }
 
     // MARK: - NotificationDelivering
@@ -64,7 +94,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         message.body = content.body
         message.sound = .default
         message.threadIdentifier = content.threadIdentifier
-        message.categoryIdentifier = Self.categoryID
+        message.categoryIdentifier = Self.categoryID(of: content.category)
         message.userInfo = content.userInfo
         // The event's id is the request's, so the same event shown twice replaces itself.
         center.add(UNNotificationRequest(identifier: content.eventID, content: message, trigger: nil))
@@ -98,6 +128,10 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
                 Task { await coordinator?.markRead(roomID: roomID) }
             case Self.replyActionID:
                 if let typed { Task { await coordinator?.reply(roomID: roomID, text: typed) } }
+            case Self.remindOneHourActionID:
+                Task { await coordinator?.remind(roomID: roomID, after: NotificationCoordinator.remindOneHour) }
+            case Self.remindEightHoursActionID:
+                Task { await coordinator?.remind(roomID: roomID, after: NotificationCoordinator.remindEightHours) }
             case UNNotificationDefaultActionIdentifier:
                 coordinator?.open(roomID: roomID)
             default:

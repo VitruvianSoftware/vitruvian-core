@@ -6,7 +6,7 @@
 //
 // Standard output carries exactly one line, once the engine is serving:
 //
-//	{"ready":true,"socket":"/path/to/engine.sock","protocol":1}
+//	{"ready":true,"socket":"/path/to/engine.sock","protocol":2}
 //
 // Standard error carries warnings and errors as JSON lines; nothing is written to a log file, because a bridge's
 // error can quote what was submitted. Exit codes: 0 stopped cleanly, 2 usage, 3 another engine holds the data
@@ -32,12 +32,14 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
+	"github.com/VitruvianSoftware/courier/engine/internal/timers"
 )
 
 // version is the engine's version, sent in hello. A build stamps it with Bazel's x_defs ("main.version").
@@ -199,10 +201,29 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	if _, err = s.FailInterruptedSends(context.Background()); err != nil {
 		return fmt.Errorf("mark interrupted sends: %w", err)
 	}
+
+	// Account spaces and a row's muted_by_name say "WhatsApp", not "whatsapp" (Ruling 5).
+	all := networks.All()
+	s.SetNetworkNames(displayNames(all))
+
+	// Reminders and auto-archive. The loop stops with the engine's context, and is waited for before the store
+	// closes (defers run in reverse): it must never touch a closed store. The loop and the protocol ask one
+	// provider which plan features are allowed.
+	var ent entitlement.Provider = entitlement.Always{}
+	tm := timers.New(s, ent, timers.RealClock{}, log)
+	timersCtx, stopTimers := context.WithCancel(ctx)
+	timersDone := make(chan struct{})
+	go func() {
+		defer close(timersDone)
+		tm.Run(timersCtx)
+	}()
+	defer func() {
+		stopTimers()
+		<-timersDone
+	}()
 	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
 
 	// The bridges must outlive the signal that stops us: they are stopped below, after the server has drained.
-	all := networks.All()
 	eng, startErrs := networks.Start(context.Background(), cfg.data, s, m, all, log)
 	defer eng.Stop()
 	if ctx.Err() != nil {
@@ -221,11 +242,13 @@ func run(cfg config, stdout, stderr io.Writer) error {
 			n, ok := networks.Get(name)
 			return n.Flows, ok
 		}),
-		Media:      m,
-		Networks:   infos,
-		NotStarted: networks.NotStarted(startErrs),
-		Version:    version,
-		Log:        log,
+		Media:       m,
+		Timers:      tm,
+		Entitlement: ent,
+		Networks:    infos,
+		NotStarted:  networks.NotStarted(startErrs),
+		Version:     version,
+		Log:         log,
 	}
 
 	served := make(chan struct{})
@@ -251,6 +274,15 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// displayNames maps each network's name to its display name: whatsapp to WhatsApp.
+func displayNames(all []networks.Network) map[string]string {
+	out := make(map[string]string, len(all))
+	for _, n := range all {
+		out[n.Name] = n.DisplayName
+	}
+	return out
 }
 
 // removeStaleSocket removes what a crashed engine left at sock. Anything else at that path is not ours to delete.

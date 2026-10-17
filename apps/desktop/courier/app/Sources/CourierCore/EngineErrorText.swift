@@ -31,6 +31,9 @@ public enum EngineErrorText {
         case .notFound: String(localized: "That chat or message is no longer there.")
         case .badValue: String(localized: "That isn’t accepted. Check it and try again.")
         case .unknownLogin: String(localized: "The sign-in ended before it was finished. Try again.")
+        case .pinned: String(localized: "Unpin a chat to archive it.")
+        case .notEntitled: String(localized: "Available with a plan")
+        case .notSupported: String(localized: "This chat’s network can’t do that.")
         default: nil
         }
     }

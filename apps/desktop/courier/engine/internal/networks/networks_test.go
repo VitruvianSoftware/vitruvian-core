@@ -4,13 +4,28 @@
 package networks
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	gmessages "go.mau.fi/mautrix-gmessages/pkg/connector"
+	slack "go.mau.fi/mautrix-slack/pkg/connector"
 	telegram "go.mau.fi/mautrix-telegram/pkg/connector"
+	whatsapp "go.mau.fi/mautrix-whatsapp/pkg/connector"
 	"gopkg.in/yaml.v3"
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/host"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
 func fmtConfig(t *testing.T, data any) string {
@@ -157,4 +172,104 @@ func TestNotStartedKeepsTheReasonAndDropsDuplicateKeys(t *testing.T) {
 	})
 	require.Equal(t, map[string]string{"telegram": "Telegram needs its own app credentials"}, got)
 	require.Empty(t, NotStarted(nil))
+}
+
+// WhatsApp tags a chat archived on the phone with its archive_tag, which the example config leaves empty. Courier
+// sets it to m.lowpriority, the tag the store reads as archived, so such a chat arrives archived.
+func TestWhatsAppArchivedChatsArriveArchived(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	wa, ok := Get("whatsapp")
+	require.True(t, ok)
+	spec, err := wa.Spec()
+	require.NoError(t, err)
+	require.NotNil(t, spec.Configure, "WhatsApp needs its archive tag set")
+	nc, err := spec.Connector()
+	require.NoError(t, err)
+	h, err := host.Start(ctx, dir, spec.Name, s, &media.Store{Dir: filepath.Join(dir, "media")}, nc, zerolog.Nop(),
+		host.WithConfigure(spec.Configure))
+	require.NoError(t, err)
+	defer h.Stop()
+
+	cfg := nc.(*whatsapp.WhatsAppConnector).Config
+	require.Equal(t, event.RoomTagLowPriority, cfg.ArchiveTag)
+	require.Equal(t, event.RoomTagFavourite, cfg.PinnedTag, "pins keep the example's tag")
+	require.Contains(t, h.Bridge.Config.OnlyBridgeTags, cfg.ArchiveTag, "the bridge takes the tag in")
+	require.Equal(t, "{{or .BusinessName .PushName .Phone .RedactedPhone \"Unknown user\"}} (WA)", cfg.DisplaynameTemplate,
+		"every other setting keeps the example's value")
+}
+
+// The "sent" rows of the plan's per-network table (what Courier sends each network), and the bridgev2 interfaces
+// each pinned bridge's client implements, which is what they rest on. A bridge bump that adds or drops one of
+// these handlers fails here, so the table (and what Courier tells people reaches each network) is looked at again.
+//
+// The two differ in one place: WhatsApp's client takes unread marks, but its bridge inverts them, so Courier never
+// sends one (actions.SyncsOf; TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks).
+func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
+	rows := map[string]platformClient{
+		"whatsapp":  {client: (*whatsapp.WhatsAppClient)(nil), sent: []string{"pin", "mute"}, implements: []string{"pin", "mute", "unread"}},
+		"telegram":  {client: (*telegram.TelegramClient)(nil), sent: []string{"pin", "mute"}, implements: []string{"pin", "mute"}},
+		"gmessages": {client: (*gmessages.GMClient)(nil), sent: []string{}, implements: []string{}},
+		"slack":     {client: (*slack.SlackClient)(nil), sent: []string{}, implements: []string{}},
+	}
+	for name, c := range platformClients() {
+		rows[name] = c
+	}
+	var registered []string
+	for _, n := range All() {
+		registered = append(registered, n.Name)
+	}
+	require.ElementsMatch(t, registered, keys(rows), "every registered network has a row")
+	for name, r := range rows {
+		require.Equal(t, r.sent, actions.SyncsOf(r.client), "what Courier sends %s", name)
+		_, pin := r.client.(bridgev2.TagHandlingNetworkAPI)
+		_, mute := r.client.(bridgev2.MuteHandlingNetworkAPI)
+		_, unread := r.client.(bridgev2.MarkedUnreadHandlingNetworkAPI)
+		_, accept := r.client.(bridgev2.MessageRequestAcceptingNetworkAPI)
+		require.Equal(t, r.implements, pick(pin, "pin", mute, "mute", unread, "unread", accept, "accept_request"),
+			"what %s's bridge implements", name)
+	}
+}
+
+// WhatsApp's bridge inverts unread marks at the version Courier pins: HandleMarkedUnread passes Content.Unread as
+// whatsmeow's BuildMarkChatAsRead(target, read, ...) (pkg/connector/handlematrix.go:667 at v0.2609.0; still so at
+// :696 in v0.2610.0). So Courier sends it none (actions.SyncsOf). This fails when the pin moves, to make whoever
+// bumps it read that handler again before letting unread marks reach WhatsApp.
+func TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks(t *testing.T) {
+	// The engine's go.mod, a data dependency of this test, is what pins the bridge.
+	raw, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^\s*go\.mau\.fi/mautrix-whatsapp\s+(\S+)`).FindStringSubmatch(string(raw))
+	require.NotNil(t, m, "go.mod no longer requires mautrix-whatsapp")
+	require.Equal(t, "v0.2609.0", m[1],
+		"mautrix-whatsapp moved off v0.2609.0. Re-check HandleMarkedUnread in its pkg/connector/handlematrix.go: if it "+
+			"no longer passes Content.Unread as BuildMarkChatAsRead's \"read\" argument, unread marks can go to WhatsApp "+
+			"again (actions.SyncsOf and the plan's sync table). Then update this version.")
+}
+
+type platformClient struct {
+	client     bridgev2.NetworkAPI
+	sent       []string // what Courier sends the network (actions.SyncsOf)
+	implements []string // the chat-change interfaces the bridge's client implements
+}
+
+func keys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// pick lists the names whose flag is set, in order: pick(true, "a", false, "b") is ["a"].
+func pick(pairs ...any) []string {
+	out := []string{}
+	for i := 0; i < len(pairs); i += 2 {
+		if pairs[i].(bool) {
+			out = append(out, pairs[i+1].(string))
+		}
+	}
+	return out
 }

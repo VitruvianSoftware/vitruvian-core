@@ -43,27 +43,60 @@ public struct AccountStatusItem: Equatable, Identifiable, Sendable {
     public var id: String { network }
 }
 
-/// The inbox: every chat newest first, the open chat, and what the accounts need.
+/// The inbox: the chats a query lists, a page at a time, the open chat, the chats selected, and what the accounts
+/// need.
 ///
-/// The model reads `inbox.list` when the engine is greeted, on a resync, and when a change says a chat's row may
-/// have changed. A burst of changes is read once: the first change opens a short window, changes inside it add
-/// nothing, and the read follows. A change that comes while a read is in flight asks for one more read after it,
-/// however many come, so a burst costs at most two reads and the list is never stale for long.
+/// **Pages.** The engine sorts and filters; the list is in its order. The first page is `pageSize` chats, and
+/// `loadMore` reads the next with the last page's cursor. Only a null cursor is the last page: a page may hold
+/// fewer chats than asked for (it ends early before 1 MiB) and still have more after it. A chat that moved between
+/// two pages can come twice; the first copy is kept. Changing `query` reads its first page; no old cursor is
+/// reused.
 ///
-/// An answer is written only if it came from the client that is up now. A read that was in flight when the engine
-/// restarted is dropped, and the new engine's greeting reads again.
+/// **Keeping the list right.** The model reads when the engine is greeted, on a resync, and when a change says a
+/// row may have changed. A read starts at the top and reads as many chats as are shown (at least a page), in pages
+/// of `refreshPageSize`, so a chat further down that changed is read again too. A burst of changes is read once:
+/// the first change opens a short window, changes inside it add nothing, and the read follows. A change that comes
+/// while a read is in flight asks for one more read after it, however many come.
+///
+/// An answer is written only if it came from the client that is up now, for the query that is shown now. A read
+/// that was in flight when the engine restarted is dropped, and the new engine's greeting reads again.
+///
+/// **Actions** act on `targets`: the chats selected while selecting, else the open chat. A bulk action is one call
+/// per 500 chats (the most the engine takes). What can be undone shows a toast with Undo, which reverses exactly the
+/// chats the engine said it changed. Every state here is Courier's own, on this Mac; which of them a network also
+/// hears is the engine's business (Account.syncs), and an unread mark never reaches one.
 @MainActor
 public final class InboxModel: ObservableObject {
-    /// Every chat, newest message first.
+    /// The chats in a page that `loadMore` reads, and the least a refresh reads.
+    public static let pageSize = 200
+    /// The chats in each page of a refresh.
+    public static let refreshPageSize = 500
+    /// The most chats one call may name (protocol.json's "1 to 500 chats").
+    static let batchSize = 500
+
+    /// The chats shown, in the engine's order for `query`.
     @Published public private(set) var rows: [InboxRow] = []
     /// Whether the inbox has been read at least once from the engine that is up or was.
     @Published public private(set) var isLoaded = false
+    /// What the inbox lists. A change reads the first page again.
+    @Published public var query = InboxQuery() {
+        didSet { if query != oldValue { queryChanged() } }
+    }
+    /// There are more chats after `rows`: `loadMore` reads them.
+    @Published public private(set) var hasMore = false
+    /// The chats selected, while selecting.
+    @Published public private(set) var selection: Set<String> = []
+    @Published public private(set) var isSelecting = false
+    /// What was just done, with Undo when it can be. It goes after `toastDuration` or on the next action.
+    @Published public private(set) var toast: Toast?
 
     /// "Reconnect" on a banner: start that network's login again. Task 9 sets it.
     public var onReconnect: @MainActor (_ network: String) -> Void = { _ in }
     /// "Add a network". Task 9 sets it.
     public var onAddNetwork: @MainActor () -> Void = {}
 
+    public let preferences: InboxPreferences
+    private let entitlement: any EntitlementProvider
     private let appModel: AppModel
     private let hasTelegramCredentials: @MainActor () -> Bool
     /// What `hasTelegramCredentials` said, and for which accounts and which engine: reading the app bundle and the
@@ -72,6 +105,8 @@ public final class InboxModel: ObservableObject {
     private let window: TimeInterval
     private let retryDelay: TimeInterval
     private let sleep: @Sendable (TimeInterval) async -> Void
+    private let toastDuration: TimeInterval
+    private let toastSleep: @Sendable (TimeInterval) async -> Void
     private var subscription: AnyCancellable?
 
     /// The task that reads, from the first change until the last read is done. Nil when idle.
@@ -80,21 +115,50 @@ public final class InboxModel: ObservableObject {
     private var readInFlight = false
     private var readAgain = false
 
+    /// The cursor of the page after `rows`; nil when `rows` ends the list.
+    private var nextCursor: String?
+    /// Goes up with each new query: an answer for an older one is dropped.
+    private var queryGeneration = 0
+    /// Goes up each time a read replaces `rows`: a page read for the rows before it is dropped.
+    private var listVersion = 0
+    /// The next read is a new query's: its first page, not as many chats as the old query showed.
+    private var firstPageOnly = false
+    private var loadingMore: Task<Void, Never>?
+
+    /// The chat a shift-click extends the selection from: the last one selected.
+    private var anchor: String?
+    /// The chat ⇧J and ⇧K last reached, where the next one moves from.
+    private var cursor: String?
+    private var undoAction: (@MainActor () async -> Void)?
+    private var toastTimer: Task<Void, Never>?
+
     /// - Parameters:
     ///   - hasTelegramCredentials: whether the app has an app ID to start Telegram with (its own, or one the person
     ///     saved). Without one Telegram is "not started" by design, and Add a network asks for the keys, so that
     ///     is no banner; with one, a Telegram that did not start is a fault and says so. The default says it has.
+    ///   - preferences: the inbox's settings. Required: the Settings screen, the notifications and this model must
+    ///     share one object, because it reads the defaults once and a second copy would not see a change.
+    ///   - entitlement: what the person's plan includes. A feature it doesn't is never asked of the engine.
     ///   - window: how long changes are gathered before one read, in seconds.
     ///   - retryDelay: how long after a failed read the next one waits, in seconds.
     ///   - sleep: waits `window` and `retryDelay`; tests give one they can open.
+    ///   - toastDuration: how long a toast shows, in seconds.
+    ///   - toastSleep: waits `toastDuration`; tests give one they can open.
     public init(appModel: AppModel, hasTelegramCredentials: @escaping @MainActor () -> Bool = { true },
+                preferences: InboxPreferences, entitlement: any EntitlementProvider = AlwaysEntitled(),
                 window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
-                sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
+                sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
+                toastDuration: TimeInterval = 6,
+                toastSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
         self.appModel = appModel
         self.hasTelegramCredentials = hasTelegramCredentials
+        self.preferences = preferences
+        self.entitlement = entitlement
         self.window = window
         self.retryDelay = retryDelay
         self.sleep = sleep
+        self.toastDuration = toastDuration
+        self.toastSleep = toastSleep
         // The views watch this model; the open chat and the accounts are the app model's.
         subscription = appModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         appModel.onConnect { [weak self] _ in self?.requestRead(waiting: false) }
@@ -113,9 +177,6 @@ public final class InboxModel: ObservableObject {
         guard let id = appModel.selectedRoomID else { return nil }
         return rows.first { $0.roomID == id }
     }
-
-    /// How many chats have unread messages and are not muted: the Dock badge and the menu bar's line.
-    public var unreadChatCount: Int { NotificationPolicy.badgeCount(rows: rows) }
 
     public func select(_ roomID: String?) {
         appModel.selectedRoomID = roomID
@@ -206,6 +267,16 @@ public final class InboxModel: ObservableObject {
         onAddNetwork()
     }
 
+    /// A chat's draft as the engine keeps it, wherever the chat is: its row when loaded, else looked up by id.
+    /// Nil when the engine doesn't answer or doesn't have the chat: the draft is unknown, not empty.
+    public func lookUpDraft(_ roomID: String) async -> String? {
+        if let row = rows.first(where: { $0.roomID == roomID }) { return row.draft }
+        guard let client = appModel.client else { return nil }
+        let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
+        guard client === appModel.client else { return nil }
+        return result?.rooms.first { $0.roomID == roomID }?.draft
+    }
+
     // MARK: - Moving through the list
 
     public func selectNext() { move(by: 1) }
@@ -223,15 +294,15 @@ public final class InboxModel: ObservableObject {
         select(rows[target].roomID)
     }
 
-    /// The next chat with unread messages after the open one, and after the last, the first. Nothing moves when no
-    /// other chat is unread.
+    /// The next unread chat after the open one (unread messages, or marked unread, which a fired reminder also
+    /// does: `InboxRow.isUnread`), and after the last, the first. Nothing moves when no other chat is unread.
     public func selectNextUnread() {
         guard !rows.isEmpty else { return }
         let start = selectedIndex ?? -1
         for step in 1 ... rows.count {
             let index = (start + step) % rows.count
             guard index != start else { continue }
-            if rows[index].unread > 0 {
+            if rows[index].isUnread {
                 select(rows[index].roomID)
                 return
             }
@@ -243,35 +314,640 @@ public final class InboxModel: ObservableObject {
         return rows.firstIndex { $0.roomID == id }
     }
 
-    // MARK: - Reading and muting
+    // MARK: - Filters
 
-    /// Toggle read marks the open chat read when it has unread messages. Marking a chat unread is milestone 4.
-    public var canToggleRead: Bool { (selectedRow?.unread ?? 0) > 0 }
+    /// Cycle Filters (⌥Tab): Unread, Drafts, Unanswered, DMs, Groups, then All, one at a time. From any other
+    /// filters it starts at Unread.
+    public func cycleFilter() {
+        let cycle = InboxFilter.cycle
+        if query.filters.count == 1, let current = query.filters.first, let index = cycle.firstIndex(of: current) {
+            query.filters = index + 1 < cycle.count ? [cycle[index + 1]] : []
+        } else {
+            query.filters = [cycle[0]]
+        }
+    }
 
-    public var selectedRowIsMuted: Bool { selectedRow?.muted ?? false }
+    /// ⌘⇧Y: the Unread filter on or off, the other filters as they are.
+    public func toggleUnreadFilter() {
+        if query.filters.contains(.unread) {
+            query.filters.remove(.unread)
+        } else {
+            query.filters.insert(.unread)
+        }
+    }
 
-    public func toggleRead() async {
-        guard let row = selectedRow, row.unread > 0, let client = appModel.client else { return }
-        // A failure is ignored: the read below shows the chat as the engine has it, and milestone 3 has no place to
-        // say more. Milestone 4's toasts can.
-        let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: row.roomID))
-        // The engine says the marker moved too; this makes the list right even if that is slow.
+    // MARK: - Pages
+
+    /// Reads the page after the chats shown. It does nothing on the last page, and waits for a refresh that is in
+    /// flight so the two never write over each other.
+    public func loadMore() async {
+        if let running = loadingMore {
+            await running.value
+            return
+        }
+        if let reading { await reading.value }
+        if let running = loadingMore { // another loadMore started while this one waited
+            await running.value
+            return
+        }
+        guard let cursor = nextCursor, let client = appModel.client else { return }
+        let generation = queryGeneration
+        let version = listVersion
+        let params = query.params(cursor: cursor, limit: Self.pageSize)
+        let task = Task { [weak self] in
+            let result: InboxResult? = try? await client.call("inbox.list", params)
+            guard let self, let result, client === self.appModel.client, generation == self.queryGeneration,
+                  version == self.listVersion else { return }
+            // A chat that moved up between the pages is in both: the first copy stays.
+            var seen = Set(self.rows.map(\.roomID))
+            self.rows += result.rooms.filter { seen.insert($0.roomID).inserted }
+            self.nextCursor = result.nextCursor
+            self.hasMore = result.nextCursor != nil
+        }
+        loadingMore = task
+        await task.value
+        loadingMore = nil
+    }
+
+    private func queryChanged() {
+        queryGeneration += 1
+        nextCursor = nil
+        hasMore = false
+        firstPageOnly = true
         requestRead(waiting: false)
     }
 
-    public func toggleMute() async {
-        guard let row = selectedRow, let client = appModel.client else { return }
-        // Ignored on failure, as in toggleRead: the read below shows the truth.
-        let _: Empty? = try? await client.call("room.setMuted", SetMutedParams(roomID: row.roomID, muted: !row.muted))
+    // MARK: - Selecting
+
+    /// The chats an action acts on: the selection while selecting (in the list's order), else the open chat.
+    public var targets: [String] {
+        guard isSelecting else { return selectedRoomID.map { [$0] } ?? [] }
+        let shown = rows.map(\.roomID).filter(selection.contains)
+        return shown + selection.subtracting(shown).sorted()
+    }
+
+    /// The rows of the chats an action would act on (`ids`, else `targets`) that are loaded, in that order. A menu
+    /// reads them to say Archive or Unarchive, Pin or Unpin.
+    public func targetRows(_ ids: [String]? = nil) -> [InboxRow] {
+        let shown = rowsByID
+        return (ids ?? targets).compactMap { shown[$0] }
+    }
+
+    /// Whether the person's plan includes a feature. A menu shows "Available with a plan" in place of an action
+    /// it doesn't.
+    public func isEntitled(_ feature: Feature) -> Bool { entitlement.isEntitled(feature) }
+
+    /// Starts selecting, with the open chat selected.
+    public func beginSelecting() {
+        guard !isSelecting else { return }
+        isSelecting = true
+        selection = selectedRoomID.map { [$0] } ?? []
+        anchor = selectedRoomID
+        cursor = selectedRoomID
+    }
+
+    /// ⇧J (`step` 1) and ⇧K (-1): the chat below (above) the last one reached joins the selection. It starts
+    /// selecting; from nothing open and nothing selected, ⇧J takes the first chat and ⇧K the last.
+    public func extendSelection(by step: Int) {
+        guard !rows.isEmpty else { return }
+        beginSelecting()
+        let start = (cursor ?? anchor).flatMap { id in rows.firstIndex { $0.roomID == id } }
+        let index: Int
+        if let start {
+            index = min(max(start + step, 0), rows.count - 1)
+        } else {
+            index = step > 0 ? 0 : rows.count - 1
+        }
+        let id = rows[index].roomID
+        selection.insert(id)
+        if anchor == nil { anchor = id }
+        cursor = id
+    }
+
+    /// What plain E acts on: the chats selected while selecting; else, with no chat open, the chat the pointer or
+    /// keyboard is on (`pointedAt`); else nothing (with a chat open, E is a letter, not a key).
+    public func plainKeyTargets(pointedAt pointed: String?) -> [String] {
+        if isSelecting { return targets }
+        guard selectedRoomID == nil, let pointed else { return [] }
+        return [pointed]
+    }
+
+    /// ⌃1–⌃9: opens the nth chat of the list. Past the last one, nothing happens.
+    public func selectChat(number n: Int) {
+        guard n >= 1, n <= rows.count else { return }
+        select(rows[n - 1].roomID)
+    }
+
+    /// A row came into view. Within the last `loadMoreMargin` rows, the next page is read.
+    public func rowAppeared(at index: Int) {
+        guard hasMore, index >= rows.count - Self.loadMoreMargin else { return }
+        Task { await loadMore() }
+    }
+
+    /// How close to the end of the list a row that appears reads the next page.
+    public static let loadMoreMargin = 20
+
+    /// ⌘-click: a chat in or out of the selection. It starts selecting.
+    public func toggleSelected(_ roomID: String) {
+        beginSelecting()
+        if selection.remove(roomID) == nil {
+            selection.insert(roomID)
+            anchor = roomID
+        }
+        cursor = roomID
+    }
+
+    /// ⇧-click: every chat from the last one selected to this one, in the list's order.
+    public func extendSelection(to roomID: String) {
+        beginSelecting()
+        guard let from = anchor.flatMap({ id in rows.firstIndex { $0.roomID == id } }),
+              let to = rows.firstIndex(where: { $0.roomID == roomID }) else {
+            selection.insert(roomID)
+            anchor = roomID
+            return
+        }
+        for row in rows[min(from, to) ... max(from, to)] { selection.insert(row.roomID) }
+        cursor = roomID
+    }
+
+    /// ⌘A: every chat shown.
+    public func selectAll() {
+        beginSelecting()
+        selection = Set(rows.map(\.roomID))
+    }
+
+    public func endSelecting() {
+        isSelecting = false
+        selection = []
+        anchor = nil
+        cursor = nil
+    }
+
+    /// Escape: it ends selecting first. False when there was nothing to end, so the key can do something else.
+    public func escape() -> Bool {
+        guard isSelecting else { return false }
+        endSelecting()
+        return true
+    }
+
+    // MARK: - Reading and muting
+
+    /// Toggle read (⌘⇧U) has something to act on.
+    public var canToggleRead: Bool { !targets.isEmpty }
+
+    /// Toggle read would mark the targets read (one of them is unread or marked unread), not unread.
+    public var toggleReadMarksRead: Bool {
+        let shown = rowsByID
+        return targets.contains { shown[$0]?.isUnread ?? false }
+    }
+
+    public var selectedRowIsMuted: Bool { selectedRow?.muted ?? false }
+
+    /// An unread or marked-unread chat is marked read; a read one is marked unread. The mark stays on this Mac:
+    /// no network is told. Then `afterToggleRead` says which chat opens.
+    ///
+    /// Every action that takes `ids` acts on those chats (a context menu's), and with none on `targets`.
+    public func toggleRead(ids: [String]? = nil) async {
+        let chosen = ids ?? targets
+        let shown = rowsByID
+        await setRead(chosen.contains { shown[$0]?.isUnread ?? false }, ids: chosen)
+    }
+
+    /// Mark as Read (`read`) or Mark as Unread, whatever the chats are now. Marking read reaches the networks, as
+    /// opening the chat does; an unread mark stays on this Mac. Then `afterToggleRead` says which chat opens.
+    public func setRead(_ read: Bool, ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty, let client = appModel.client else { return }
+        let shown = rowsByID
+        let next = neighbor(for: preferences.afterToggleRead, leaving: [], fallBack: false)
+        if read {
+            // room.markRead also clears an unread mark and a reminder that fired. A failure is shown by the read
+            // below, which has the chat as the engine has it. A chat that isn't loaded is marked too.
+            for id in ids where shown[id]?.isUnread ?? true {
+                let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: id))
+            }
+        } else {
+            _ = try? await changeEach("room.setMarkedUnread", ids) { RoomsFlagParams(roomIDs: $0, on: true) }
+        }
+        finishBulk()
+        if let open = selectedRoomID, ids.contains(open) { apply(next) }
         requestRead(waiting: false)
+    }
+
+    /// Mutes the chats, or unmutes them when every one is muted already. A network that takes mutes hears it.
+    public func toggleMute(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty, let client = appModel.client else { return }
+        let shown = rowsByID
+        let mute = !ids.allSatisfy { shown[$0]?.muted ?? false }
+        for id in ids where shown[id]?.muted != mute {
+            // Ignored on failure: the read below shows the truth.
+            let _: Empty? = try? await client.call("room.setMuted", SetMutedParams(roomID: id, muted: mute))
+        }
+        finishBulk()
+        requestRead(waiting: false)
+    }
+
+    // MARK: - Archive, pin, low priority, hide, labels
+
+    /// Archives the targets, or brings them back. A pinned chat is never archived: when every one is, the toast
+    /// says to unpin. Archiving says how many with Undo, and then `afterArchive` says which chat opens.
+    public func archive(_ on: Bool, ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty else { return }
+        let next = neighbor(for: preferences.afterArchive, leaving: Set(ids), fallBack: true)
+        let markRead: Bool? = on && preferences.markReadOnArchive ? true : nil
+        do {
+            let changed = try await changeEach("room.setArchived", ids) {
+                ArchiveParams(roomIDs: $0, archived: on, markRead: markRead)
+            }
+            finishBulk()
+            if on {
+                if let open = selectedRoomID, changed.contains(open) { apply(next) }
+                showArchived(changed)
+            }
+        } catch {
+            fail(error)
+        }
+        requestRead(waiting: false)
+    }
+
+    /// Pins the targets, or unpins them when every one is pinned already. A network that takes pins hears it.
+    public func togglePin(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty, let client = appModel.client else { return }
+        let shown = rowsByID
+        let pin = !ids.allSatisfy { shown[$0]?.pinned ?? false }
+        for id in ids {
+            // Ignored on failure, as toggleMute: the read below shows the truth.
+            let _: Empty? = try? await client.call("room.setPinned", SetPinnedParams(roomID: id, pinned: pin))
+        }
+        finishBulk()
+        requestRead(waiting: false)
+    }
+
+    /// Moves the targets to Low priority (part of a plan), or back (always).
+    public func setLowPriority(_ on: Bool, ids: [String]? = nil) async {
+        if on, !entitlement.isEntitled(.lowPriority) {
+            denied()
+            return
+        }
+        await setFlag("room.setLowPriority", on, ids: ids, toast: String(localized: "Moved to Low Priority"))
+    }
+
+    /// Hides the targets on this Mac, or shows them again.
+    public func setHidden(_ on: Bool, ids: [String]? = nil) async {
+        await setFlag("room.setHidden", on, ids: ids, toast: String(localized: "Hidden"))
+    }
+
+    /// Puts a label on the targets, or takes it off.
+    public func setLabel(_ id: Int64, on: Bool, ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty else { return }
+        do {
+            _ = try await changeEach("room.setLabel", ids) { SetLabelParams(roomIDs: $0, labelID: id, on: on) }
+            finishBulk()
+        } catch {
+            fail(error)
+        }
+        requestRead(waiting: false)
+    }
+
+    /// Low priority and hidden: a toast with Undo when turned on, which turns it off for exactly the chats changed.
+    private func setFlag(_ method: String, _ on: Bool, ids: [String]?, toast message: String) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty else { return }
+        do {
+            let changed = try await changeEach(method, ids) { RoomsFlagParams(roomIDs: $0, on: on) }
+            finishBulk()
+            if on, !changed.isEmpty {
+                showToast(message) { [weak self] in
+                    _ = try? await self?.changeEach(method, changed) { RoomsFlagParams(roomIDs: $0, on: false) }
+                }
+            }
+        } catch {
+            fail(error)
+        }
+        requestRead(waiting: false)
+    }
+
+    // MARK: - Reminders and requests
+
+    /// Sets a reminder on the targets (part of a plan). With "Archive after setting a reminder" on, they are
+    /// archived until it brings them back. Undo puts back the reminders they had and unarchives what it archived.
+    public func remind(at due: Date, condition: RemindCondition, ids: [String]? = nil) async {
+        guard entitlement.isEntitled(.reminders) else {
+            denied()
+            return
+        }
+        let ids = beginAction(ids)
+        guard !ids.isEmpty, let client = appModel.client else { return }
+        let shown = rowsByID
+        let archive = preferences.archiveAfterReminder
+        let next = neighbor(for: preferences.afterArchive, leaving: Set(ids), fallBack: true)
+        let dueAt = Self.millis(due)
+        do {
+            for chunk in ids.chunked(Self.batchSize) {
+                let _: Empty = try await client.call("reminder.set", ReminderParams(
+                    roomIDs: chunk, dueAt: dueAt, condition: condition.wire, archive: archive ? true : nil))
+            }
+        } catch {
+            fail(error)
+            requestRead(waiting: false)
+            return
+        }
+        finishBulk()
+        preferences.lastUsedReminder = due
+        // What to put back: the reminders the chats had, and which of them this archived (not ones archived
+        // already, and never a pinned one, which the engine leaves where it is).
+        let before = ids.map { (id: $0, reminder: shown[$0]?.reminder) }
+        let archived = archive ? ids.filter { shown[$0].map { !$0.archived && !$0.pinned } ?? false } : []
+        if let open = selectedRoomID, archived.contains(open) { apply(next) }
+        let time = due.formatted(date: .abbreviated, time: .shortened)
+        showToast(String(localized: "Reminder set for \(time)")) { [weak self] in
+            await self?.restoreReminders(before, unarchiving: archived)
+        }
+        requestRead(waiting: false)
+    }
+
+    /// Undo of a reminder: a chat that had one still to come gets it back, the others lose theirs.
+    private func restoreReminders(_ before: [(id: String, reminder: Reminder?)], unarchiving archived: [String]) async {
+        guard let client = appModel.client else { return }
+        let now = Self.millis(Date())
+        var restore: [Reminder: [String]] = [:]
+        var clear: [String] = []
+        for item in before {
+            if let reminder = item.reminder, !reminder.fired, reminder.dueAt > now {
+                restore[reminder, default: []].append(item.id)
+            } else {
+                clear.append(item.id)
+            }
+        }
+        for chunk in clear.chunked(Self.batchSize) {
+            let _: Empty? = try? await client.call("reminder.clear", RoomsParams(roomIDs: chunk))
+        }
+        for (reminder, ids) in restore {
+            for chunk in ids.chunked(Self.batchSize) {
+                let _: Empty? = try? await client.call("reminder.set", ReminderParams(
+                    roomIDs: chunk, dueAt: reminder.dueAt, condition: reminder.condition))
+            }
+        }
+        _ = try? await changeEach("room.setArchived", archived) { ArchiveParams(roomIDs: $0, archived: false) }
+    }
+
+    /// Ends the targets' reminders, set or fired.
+    public func dismissReminder(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty, let client = appModel.client else { return }
+        for chunk in ids.chunked(Self.batchSize) {
+            let _: Empty? = try? await client.call("reminder.clear", RoomsParams(roomIDs: chunk))
+        }
+        finishBulk()
+        requestRead(waiting: false)
+    }
+
+    /// Accepts the targets' message requests: they move to the inbox, and a network that takes accepts hears it.
+    public func acceptRequest(ids: [String]? = nil) async {
+        let ids = beginAction(ids)
+        guard !ids.isEmpty, let client = appModel.client else { return }
+        var failure: Error?
+        for id in ids {
+            do {
+                let _: Empty = try await client.call("room.acceptRequest", RoomParams(roomID: id))
+            } catch {
+                failure = failure ?? error
+            }
+        }
+        finishBulk()
+        if let failure { fail(failure) }
+        requestRead(waiting: false)
+    }
+
+    /// Declining a request hides the chat, on this Mac: the network is not told, and the chat is in Hidden.
+    public func declineRequest(ids: [String]? = nil) async {
+        await setHidden(true, ids: ids)
+    }
+
+    // MARK: - All at once
+
+    /// The space shown can be swept: only the inbox, an account's or a label's can.
+    public var canArchiveAll: Bool { Self.canSweep(query.space) }
+
+    /// Only the inbox, an account's space or a label's can be swept.
+    public static func canSweep(_ space: String) -> Bool {
+        space == "inbox" || space.hasPrefix("account:") || space.hasPrefix("label:")
+    }
+
+    /// How many chats `archiveAll` would archive now, from the engine's dry run of the same sweep; nil when it
+    /// couldn't say (no engine, a refusal): "couldn't check", never 0. `space` nil is the space shown.
+    public func archiveAllCount(readOnly: Bool, olderThanDays days: Int = 0, space: String? = nil) async -> Int? {
+        let space = space ?? query.space
+        guard let client = appModel.client, Self.canSweep(space) else { return nil }
+        let result: RoomsChanged? = try? await client.call("inbox.archiveMatching", ArchiveMatchingParams(
+            space: space == "inbox" ? nil : space, readOnly: readOnly, olderThanMS: Int64(days) * 86_400_000,
+            dryRun: true))
+        return result?.roomIDs.count
+    }
+
+    /// "Archive all read": every chat the space lists with nothing unread, but pinned ones. Undo unarchives exactly
+    /// those, and leaves alone the chats that were archived before. Returns how many it archived.
+    public func archiveAllRead() async -> Int {
+        await archiveAll(readOnly: true)
+    }
+
+    /// "Archive all" of the space shown: every chat it lists but pinned ones, or only the read ones, or only those
+    /// whose newest message is older than `days` (0, or one of 3, 7, 14, 28, 90 or 365: the ages the engine
+    /// offers). Undo unarchives exactly the chats this archived. Returns how many it archived.
+    /// `space` nil is the space shown; an auto-archive section names its own.
+    public func archiveAll(readOnly: Bool, olderThanDays days: Int = 0, space: String? = nil) async -> Int {
+        dismissToast()
+        let space = space ?? query.space
+        guard let client = appModel.client, Self.canSweep(space) else { return 0 }
+        let result: RoomsChanged
+        do {
+            result = try await client.call("inbox.archiveMatching", ArchiveMatchingParams(
+                space: space == "inbox" ? nil : space, readOnly: readOnly, olderThanMS: Int64(days) * 86_400_000,
+                dryRun: false))
+        } catch {
+            fail(error)
+            return 0
+        }
+        showArchived(result.roomIDs)
+        requestRead(waiting: false)
+        return result.roomIDs.count
+    }
+
+    /// "Mark all chats as read": every unread chat the space shown lists. Each network is told, as when one chat is
+    /// read. There is no Undo: a network has heard it. Returns how many it marked.
+    @discardableResult
+    public func markAllRead() async -> Int {
+        dismissToast()
+        guard let client = appModel.client else { return 0 }
+        let space = query.space
+        let result: RoomsChanged
+        do {
+            result = try await client.call("inbox.markAllRead", SpaceParams(space: space == "inbox" ? nil : space))
+        } catch {
+            fail(error)
+            return 0
+        }
+        requestRead(waiting: false)
+        return result.roomIDs.count
+    }
+
+    // MARK: - Toasts and undo
+
+    /// ⌘Z while a toast with Undo shows: reverses what it did, for exactly the chats it changed.
+    public func undo() async {
+        guard toast?.canUndo == true, let action = undoAction else { return }
+        dismissToast()
+        await action()
+        requestRead(waiting: false)
+    }
+
+    private func showArchived(_ changed: [String]) {
+        guard !changed.isEmpty else { return }
+        let message = changed.count == 1
+            ? String(localized: "Archived 1 chat") : String(localized: "Archived \(changed.count) chats")
+        showToast(message) { [weak self] in
+            _ = try? await self?.changeEach("room.setArchived", changed) { ArchiveParams(roomIDs: $0, archived: false) }
+        }
+    }
+
+    private func showToast(_ message: String, undo: (@MainActor () async -> Void)? = nil) {
+        toastTimer?.cancel()
+        let shown = Toast(message: message, canUndo: undo != nil)
+        toast = shown
+        undoAction = undo
+        toastTimer = Task { [weak self, toastSleep, toastDuration] in
+            await toastSleep(toastDuration)
+            guard let self, self.toast?.id == shown.id else { return }
+            self.toast = nil
+            self.undoAction = nil
+        }
+    }
+
+    private func dismissToast() {
+        toastTimer?.cancel()
+        toastTimer = nil
+        toast = nil
+        undoAction = nil
+    }
+
+    /// A toast about something done outside this model (the spaces bar saved, say). It has no Undo.
+    func announce(_ message: String) {
+        dismissToast()
+        showToast(message)
+    }
+
+    /// The toast for an error from something done outside this model.
+    func report(_ error: Error) {
+        dismissToast()
+        fail(error)
+    }
+
+    /// A feature the plan doesn't include: nothing is asked of the engine.
+    private func denied() {
+        dismissToast()
+        showToast(String(localized: "Available with a plan"))
+    }
+
+    /// What went wrong, in the toast. The list is read again either way, and shows what the engine has.
+    private func fail(_ error: Error) {
+        if case let .rpc(code, _, _)? = error as? EngineError {
+            switch code {
+            case .pinned:
+                showToast(String(localized: "Unpin a chat to archive it."))
+                return
+            case .notEntitled:
+                showToast(String(localized: "Available with a plan"))
+                return
+            default:
+                break
+            }
+        }
+        showToast(EngineErrorText.text(for: error, fallback: String(localized: "That didn’t work. Try again.")))
+    }
+
+    // MARK: - Doing it
+
+    /// The chats an action acts on: those given, else `targets`. A new action takes the toast down.
+    private func beginAction(_ ids: [String]? = nil) -> [String] {
+        dismissToast()
+        return ids ?? targets
+    }
+
+    /// A bulk action is done: selecting ends.
+    private func finishBulk() {
+        if isSelecting { endSelecting() }
+    }
+
+    private var rowsByID: [String: InboxRow] {
+        Dictionary(rows.map { ($0.roomID, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Calls `method` for `ids`, at most `batchSize` a call, and answers every chat the engine said it changed, in
+    /// order. A batch that fails is left out; when nothing changed and one failed, that failure is thrown.
+    private func changeEach<P: Encodable & Sendable>(_ method: String, _ ids: [String],
+                                                     _ params: ([String]) -> P) async throws -> [String] {
+        guard !ids.isEmpty else { return [] }
+        guard let client = appModel.client else { throw EngineError.notConnected }
+        var changed: [String] = []
+        var failure: Error?
+        for chunk in ids.chunked(Self.batchSize) {
+            do {
+                let result: RoomsChanged = try await client.call(method, params(chunk))
+                changed += result.roomIDs
+            } catch {
+                failure = failure ?? error
+            }
+        }
+        if changed.isEmpty, let failure { throw failure }
+        return changed
+    }
+
+    /// Where the open chat goes after an action.
+    private enum Next {
+        case keep
+        case open(String?)
+    }
+
+    /// `leaving`: the chats the action takes out of the list, which are skipped. `fallBack`: with nothing after
+    /// (or before) the open chat, take the other side, since the open chat is going.
+    private func neighbor(for after: AfterAction, leaving: Set<String>, fallBack: Bool) -> Next {
+        guard let index = selectedIndex else { return .keep }
+        let following = rows[(index + 1)...].first { !leaving.contains($0.roomID) }?.roomID
+        let preceding = rows[..<index].last { !leaving.contains($0.roomID) }?.roomID
+        switch after {
+        case .selectNext:
+            if let following { return .open(following) }
+            return fallBack ? .open(preceding) : .keep
+        case .selectPrevious:
+            if let preceding { return .open(preceding) }
+            return fallBack ? .open(following) : .keep
+        case .closeChat:
+            return .open(nil)
+        case .nothing:
+            return .keep
+        }
+    }
+
+    private func apply(_ next: Next) {
+        if case let .open(id) = next { select(id) }
+    }
+
+    private static func millis(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 
     // MARK: - Keeping the list right
 
-    /// A change the engine reported. Only a chat's row can change the list; the accounts are the app model's.
+    /// A change the engine reported. Rows change with a chat's events, read marker, name, typing and reminder, and
+    /// with the spaces (a muted label changes many rows' muted_by with no room change). The accounts are the app
+    /// model's.
     public func handle(_ change: Change) {
         switch change {
-        case .room, .event, .status, .read:
+        case .room, .event, .status, .read, .spaces, .typing, .reminder:
             requestRead(waiting: true)
         case .resync:
             requestRead(waiting: false)
@@ -302,6 +978,7 @@ public final class InboxModel: ObservableObject {
         var again: Bool
         repeat {
             readAgain = false
+            if let loadingMore { await loadingMore.value } // the rows it adds are shown, so they are read again
             if await read() {
                 again = readAgain
                 if again { await sleep(window) }
@@ -314,29 +991,48 @@ public final class InboxModel: ObservableObject {
         reading = nil
     }
 
-    /// False when the engine that is up failed to answer: the caller tries again.
+    /// Reads from the top as many chats as are shown (for a new query, one page), in pages of `refreshPageSize`,
+    /// until it has that many or the cursor ends. False when the engine that is up failed to answer: the caller
+    /// tries again.
     private func read() async -> Bool {
         guard let client = appModel.client else { return true }
-        let result: InboxResult?
-        do {
-            result = try await client.call("inbox.list", Empty())
-        } catch {
-            // A client that is gone has nothing to retry: the new engine's greeting reads again.
-            return client !== appModel.client
-        }
-        // The engine may have restarted while this was in flight: its answer is not today's.
-        guard let result, client === appModel.client else { return true }
-        rows = Self.sorted(result.rooms)
+        let generation = queryGeneration
+        let query = self.query
+        let wanted = firstPageOnly ? Self.pageSize : max(rows.count, Self.pageSize)
+        var collected: [InboxRow] = []
+        var seen = Set<String>()
+        var cursor: String?
+        repeat {
+            let limit = min(Self.refreshPageSize, wanted - collected.count)
+            let result: InboxResult
+            do {
+                result = try await client.call("inbox.list", query.params(cursor: cursor, limit: limit))
+            } catch {
+                // A client that is gone has nothing to retry: the new engine's greeting reads again.
+                return client !== appModel.client
+            }
+            // The engine may have restarted while this was in flight: its answer is not today's. And a new query
+            // has asked for a read of its own.
+            guard client === appModel.client, generation == queryGeneration else { return true }
+            // A chat that moved between pages is in both: the first copy stays.
+            for row in result.rooms where seen.insert(row.roomID).inserted { collected.append(row) }
+            cursor = result.nextCursor
+            if result.rooms.isEmpty { break } // never spin on a page with nothing in it
+        } while cursor != nil && collected.count < wanted
+        rows = collected
+        nextCursor = cursor
+        hasMore = cursor != nil
+        firstPageOnly = false
+        listVersion += 1
         isLoaded = true
         return true
     }
+}
 
-    /// Newest first. Chats with the same time (chats with no message yet among them) keep the engine's order,
-    /// which is newest created first, so the list neither shuffles nor jumps to the rooms' ids' order.
-    static func sorted(_ rooms: [InboxRow]) -> [InboxRow] {
-        rooms.enumerated()
-            .sorted { ($0.element.lastTS, $1.offset) > ($1.element.lastTS, $0.offset) }
-            .map(\.element)
+extension Array {
+    /// The array in pieces of at most `size`, in order.
+    func chunked(_ size: Int) -> [[Element]] {
+        stride(from: 0, to: count, by: size).map { Array(self[$0 ..< Swift.min($0 + size, count)]) }
     }
 }
 

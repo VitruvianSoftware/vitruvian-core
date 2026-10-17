@@ -41,6 +41,9 @@ const (
 	CodeNotConnected     = -32018
 	CodeNotFailed        = -32019
 	CodeNotFound         = -32020
+	CodePinned           = -32021
+	CodeNotEntitled      = -32022
+	CodeNotSupported     = -32023
 )
 
 // errorMessages is each code's fixed message, as protocol.json has it. A message never carries a value that was
@@ -64,6 +67,9 @@ var errorMessages = map[int]string{
 	CodeNotConnected:     "the network isn't connected yet",
 	CodeNotFailed:        "only a failed message can be retried or discarded",
 	CodeNotFound:         "no such chat or message",
+	CodePinned:           "a pinned chat can't be archived",
+	CodeNotEntitled:      "this isn't part of your plan",
+	CodeNotSupported:     "this network can't do that",
 }
 
 // Error is a JSON-RPC error as it goes on the wire.
@@ -98,6 +104,10 @@ var sentinels = []struct {
 	{actions.ErrTooLarge, CodeTooLarge},
 	{actions.ErrNotConnected, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
+	{actions.ErrNotSupported, CodeNotSupported},
+	{store.ErrBadValue, CodeBadValue},
+	{store.ErrNotFound, CodeNotFound},
+	{store.ErrPinned, CodePinned},
 	{login.ErrAlreadyLinked, CodeAlreadyLinked},
 	{login.ErrBadValue, CodeBadValue},
 	{login.ErrUnknownLogin, CodeUnknownLogin},
@@ -119,6 +129,9 @@ func classify(err error) (*Error, bool) {
 	}
 	if errors.Is(err, actions.ErrEmpty) {
 		return invalidParams("there is nothing to send"), false
+	}
+	if errors.Is(err, store.ErrBadCursor) {
+		return invalidParams("cursor is not one this query handed out"), false
 	}
 	for _, s := range sentinels {
 		if errors.Is(err, s.err) {
@@ -146,6 +159,30 @@ var methods = map[string]handler{
 	"login.submit":     loginSubmit,
 	"login.wait":       loginWait,
 	"login.cancel":     loginCancel,
+
+	// Organising the inbox (organise.go).
+	"spaces.list":           spacesList,
+	"spaces.setLayout":      spacesSetLayout,
+	"spaces.update":         spacesUpdate,
+	"labels.create":         labelsCreate,
+	"labels.update":         labelsUpdate,
+	"labels.delete":         labelsDelete,
+	"room.setPinned":        roomSetPinned,
+	"room.setArchived":      roomSetArchived,
+	"room.setLowPriority":   roomSetLowPriority,
+	"room.setHidden":        roomSetHidden,
+	"room.setMarkedUnread":  roomSetMarkedUnread,
+	"room.setLabel":         roomSetLabel,
+	"room.setDraft":         roomSetDraft,
+	"room.acceptRequest":    roomAcceptRequest,
+	"reminder.set":          reminderSet,
+	"reminder.clear":        reminderClear,
+	"reminder.clearAll":     reminderClearAll,
+	"inbox.archiveMatching": inboxArchiveMatching,
+	"inbox.markAllRead":     inboxMarkAllRead,
+	"autoArchive.list":      autoArchiveList,
+	"autoArchive.set":       autoArchiveSet,
+	"autoArchive.delete":    autoArchiveDelete,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")
@@ -242,6 +279,7 @@ type account struct {
 	Error       string   `json:"error"`
 	RemoteName  string   `json:"remote_name"`
 	NotStarted  string   `json:"not_started"`
+	Syncs       []string `json:"syncs"`
 }
 
 func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -250,7 +288,10 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	}
 	out := make([]account, 0, len(d.Networks))
 	for _, n := range d.Networks {
-		a := account{Network: n.Name, DisplayName: n.DisplayName, Flows: append([]string{}, n.Flows...)}
+		a := account{Network: n.Name, DisplayName: n.DisplayName, Flows: append([]string{}, n.Flows...), Syncs: []string{}}
+		if d.Actions != nil {
+			a.Syncs = d.Actions.Syncs(n.Name) // never nil; empty for a network that isn't running or has no account
+		}
 		reason, notStarted := d.NotStarted[n.Name]
 		switch {
 		case notStarted || !d.running(n.Name):
@@ -283,39 +324,6 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		out = append(out, a)
 	}
 	return map[string]any{"accounts": out}, nil
-}
-
-type inboxRow struct {
-	RoomID      string `json:"room_id"`
-	Network     string `json:"network"`
-	Name        string `json:"name"`
-	AvatarPath  string `json:"avatar_path"`
-	IsDirect    bool   `json:"is_direct"`
-	LastTS      int64  `json:"last_ts"`
-	Preview     string `json:"preview"`
-	PreviewKind string `json:"preview_kind"`
-	PreviewMine bool   `json:"preview_mine"`
-	Unread      int    `json:"unread"`
-	Muted       bool   `json:"muted"`
-}
-
-func inboxList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
-	if err := decode(raw, &struct{}{}); err != nil {
-		return nil, err
-	}
-	rows, err := d.Store.Inbox(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]inboxRow, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, inboxRow{
-			RoomID: r.ID, Network: r.Network, Name: r.Name, AvatarPath: d.path(r.AvatarURI), IsDirect: r.IsDirect,
-			LastTS: ms(r.LastTS), Preview: r.Preview, PreviewKind: r.PreviewKind, PreviewMine: r.PreviewMine,
-			Unread: r.Unread, Muted: r.Muted,
-		})
-	}
-	return map[string]any{"rooms": out}, nil
 }
 
 type cursor struct {
@@ -444,18 +452,24 @@ func roomMarkRead(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
+	return nil, d.markRead(ctx, r)
+}
+
+// markRead marks a chat read (Actions.MarkRead): its unread count, an unread mark and a reminder that fired all
+// clear, then the network is told.
+func (d *Deps) markRead(ctx context.Context, r store.Room) error {
 	if d.Actions == nil {
-		return nil, errMissing
+		return errMissing
 	}
 	if err := d.Actions.MarkRead(ctx, r.ID); err != nil {
 		// This device's unread count is cleared before the network is told. A chat on a network that isn't
 		// running can't be told, and the receipt is best effort anyway: the chat is read.
 		if !d.running(r.Network) {
-			return nil, nil
+			return nil
 		}
-		return nil, err
+		return err
 	}
-	return nil, nil
+	return nil
 }
 
 func roomSetMuted(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -472,10 +486,10 @@ func roomSetMuted(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	if p.Muted == nil {
 		return nil, invalidParams("muted is required")
 	}
-	if _, err := d.room(ctx, *p.RoomID); err != nil {
-		return nil, err
+	if d.Actions == nil {
+		return nil, errMissing
 	}
-	return nil, d.Store.SetMuted(ctx, *p.RoomID, *p.Muted)
+	return nil, d.Actions.SetMuted(ctx, *p.RoomID, *p.Muted) // an unknown chat is store.ErrNotFound
 }
 
 type sent struct {

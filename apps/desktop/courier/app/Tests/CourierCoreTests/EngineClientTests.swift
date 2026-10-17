@@ -21,24 +21,24 @@ final class EngineClientTests: XCTestCase {
     func testHelloSendsOnlyTheDocumentedParams() async throws {
         let client = EngineClient(socketPath: server.path, client: "Courier/9.9.9")
         let hello = try await client.connect()
-        XCTAssertEqual(hello, HelloResult(protocol: 1, engine: "test", networks: ["whatsapp", "signal"]))
+        XCTAssertEqual(hello, HelloResult(protocol: 2, engine: "test", networks: ["whatsapp", "signal"]))
         let request = try XCTUnwrap(server.received.first)
         XCTAssertEqual(request["method"] as? String, "hello")
         XCTAssertEqual(request["jsonrpc"] as? String, "2.0")
-        XCTAssertEqual(request["params"] as? NSDictionary, ["protocol": 1, "client": "Courier/9.9.9"] as NSDictionary)
+        XCTAssertEqual(request["params"] as? NSDictionary, ["protocol": 2, "client": "Courier/9.9.9"] as NSDictionary)
         await client.close()
     }
 
     func testHelloMismatchSurfacesUpdateNeeded() async throws {
         server.setHandler { method, _ in
-            method == "hello" ? .error(code: -32001, message: "protocol mismatch", data: ["engine": 2]) : .result([:])
+            method == "hello" ? .error(code: -32001, message: "protocol mismatch", data: ["engine": 3]) : .result([:])
         }
         let client = EngineClient(socketPath: server.path)
         do {
             _ = try await client.connect()
             XCTFail("connect() succeeded against an engine that speaks protocol 2")
         } catch let error as EngineError {
-            XCTAssertEqual(error, .protocolMismatch(engine: 2))
+            XCTAssertEqual(error, .protocolMismatch(engine: 3))
             XCTAssertTrue(error.isUpdateNeeded)
         }
         // Nothing else is sent to an engine that refused the handshake.

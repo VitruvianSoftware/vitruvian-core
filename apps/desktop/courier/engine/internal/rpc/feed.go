@@ -22,7 +22,8 @@ type notificationLine struct {
 }
 
 // notification maps one store change to what the app is told. Members and profiles change what a chat's row
-// shows, so they are room changes; a profile can be in any chat, so its change names none. A kind this code does
+// shows, so they are room changes; a profile can be in any chat, so its change names none. A reminder that fires
+// is a room change too (the store publishes both), and "reminder" besides, so the app can notify. A kind this code does
 // not know becomes a resync: the app re-reads everything rather than miss something.
 func notification(c store.Change) changed {
 	switch c.Kind {
@@ -34,6 +35,10 @@ func notification(c store.Change) changed {
 		return changed{Kind: c.Kind, RoomID: c.RoomID, EventID: c.EventID}
 	case "bridge":
 		return changed{Kind: "bridge", Network: c.RoomID} // the store keeps a bridge change's network in RoomID
+	case "spaces": // labels, the layout, or an account's or label's space settings: no one chat
+		return changed{Kind: "spaces"}
+	case "typing", "reminder":
+		return changed{Kind: c.Kind, RoomID: c.RoomID}
 	default: // store.ChangeResync, and anything newer than this code
 		return changed{Kind: store.ChangeResync}
 	}

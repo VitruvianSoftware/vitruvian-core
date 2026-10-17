@@ -7,6 +7,8 @@ package fakenet
 import (
 	"context"
 	"errors"
+	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -54,6 +56,42 @@ type Receipt struct {
 	MessageID string // the remote ID of the message read up to; empty when the receipt was not for a bridged message
 }
 
+// TagChange is one change of a chat's tags the bridge delivered to the fake network: the tags the chat has now,
+// sorted. Empty means none (unpinned).
+type TagChange struct {
+	PortalID string
+	Tags     []event.RoomTag
+}
+
+// MuteChange is one mute the bridge delivered to the fake network: MutedUntil is Unix milliseconds, -1 for
+// "forever" and 0 for "not muted".
+type MuteChange struct {
+	PortalID   string
+	MutedUntil int64
+}
+
+// UnreadChange is one "marked unread" flag the bridge delivered to the fake network.
+type UnreadChange struct {
+	PortalID string
+	Unread   bool
+}
+
+// Accept is one accepted message request the bridge delivered to the fake network.
+type Accept struct {
+	PortalID string
+}
+
+// Chat is what the fake network says about one chat when the bridge first asks (GetChatInfo). Nil fields say
+// nothing.
+type Chat struct {
+	// Tag and MutedUntil are the chat's own state on the network (bridgev2's UserLocal info): Tag
+	// "m.favourite" is a chat pinned on the phone, "m.lowpriority" one archived there.
+	Tag        *event.RoomTag
+	MutedUntil *time.Time
+	// MessageRequest says the chat is someone new writing first, waiting to be accepted.
+	MessageRequest *bool
+}
+
 // Network is a fake bridgev2.NetworkConnector. Messages the bridge delivers to the "network" land on Sent.
 type Network struct {
 	br        *bridgev2.Bridge
@@ -61,6 +99,15 @@ type Network struct {
 	Files     chan File
 	Reactions chan Reaction
 	Receipts  chan Receipt
+	// Tags, Mutes, Unreads and Accepts receive the chat changes the bridge delivers. A network made with NewPlain
+	// takes none of them, so nothing ever lands there.
+	Tags    chan TagChange
+	Mutes   chan MuteChange
+	Unreads chan UnreadChange
+	Accepts chan Accept
+	// Refuse, when set before a change is sent, makes the network refuse every pin, mute, unread mark and
+	// request accept, the way an offline or unhappy network does.
+	Refuse bool
 	// Hold, when set before the first send, makes every message delivery wait until it is closed (or the bridge
 	// gives up), so a test can look at a message while it is still pending.
 	Hold chan struct{}
@@ -72,13 +119,45 @@ type Network struct {
 	LoginDelay time.Duration
 	// Script, when set, is the login CreateLogin returns for the flow ScriptFlow.
 	Script *ScriptedLogin
+
+	plain   bool // the client takes no tags, mutes, unread marks or request accepts
+	chatsMu sync.Mutex
+	chats   map[string]Chat
 }
 
+// New is a fake network whose client takes pins (tags), mutes, unread marks and request accepts, as WhatsApp
+// takes the first three and Signal the last.
 func New() *Network {
 	return &Network{
 		Sent: make(chan Sent, 16), Files: make(chan File, 16),
 		Reactions: make(chan Reaction, 16), Receipts: make(chan Receipt, 16),
+		Tags: make(chan TagChange, 16), Mutes: make(chan MuteChange, 16),
+		Unreads: make(chan UnreadChange, 16), Accepts: make(chan Accept, 16),
 	}
+}
+
+// NewPlain is a fake network whose client takes none of the chat changes New's does, as Google Messages and
+// Slack take none.
+func NewPlain() *Network {
+	n := New()
+	n.plain = true
+	return n
+}
+
+// SetChat says what GetChatInfo reports for chatID from now on.
+func (n *Network) SetChat(chatID string, c Chat) {
+	n.chatsMu.Lock()
+	defer n.chatsMu.Unlock()
+	if n.chats == nil {
+		n.chats = map[string]Chat{}
+	}
+	n.chats[chatID] = c
+}
+
+func (n *Network) chat(chatID string) Chat {
+	n.chatsMu.Lock()
+	defer n.chatsMu.Unlock()
+	return n.chats[chatID]
 }
 
 // FailWith makes every message, file and reaction delivery fail with err until it is called again with nil.
@@ -122,7 +201,12 @@ func (n *Network) CreateLogin(_ context.Context, _ *bridgev2.User, flow string) 
 }
 
 func (n *Network) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
-	login.Client = &client{n: n, login: login}
+	c := &client{n: n, login: login}
+	if n.plain {
+		login.Client = c
+	} else {
+		login.Client = &syncingClient{c}
+	}
 	return nil
 }
 
@@ -159,6 +243,18 @@ func (n *Network) Incoming(login *bridgev2.UserLogin, chatID, senderID, msgID, b
 	})
 }
 
+// Typing queues someone typing in a chat, as if the network had just said so. A timeout of 0 means they stopped.
+func (n *Network) Typing(login *bridgev2.UserLogin, chatID, senderID string, timeout time.Duration) {
+	n.br.QueueRemoteEvent(login, &simplevent.Typing{
+		EventMeta: simplevent.EventMeta{
+			Type: bridgev2.RemoteEventTyping, Timestamp: time.Now(),
+			PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID},
+			Sender:    bridgev2.EventSender{Sender: networkid.UserID(senderID)},
+		},
+		Timeout: timeout, Type: bridgev2.TypingTypeText,
+	})
+}
+
 type client struct {
 	n           *Network
 	login       *bridgev2.UserLogin
@@ -184,9 +280,15 @@ func (c *client) IsThisUser(_ context.Context, uid networkid.UserID) bool {
 	return uid == "me"
 }
 
-func (c *client) GetChatInfo(context.Context, *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	name := "Fake chat"
-	return &bridgev2.ChatInfo{Name: &name}, nil
+	info := &bridgev2.ChatInfo{Name: &name}
+	ch := c.n.chat(string(portal.ID))
+	if ch.Tag != nil || ch.MutedUntil != nil {
+		info.UserLocal = &bridgev2.UserLocalPortalInfo{Tag: ch.Tag, MutedUntil: ch.MutedUntil}
+	}
+	info.MessageRequest = ch.MessageRequest
+	return info, nil
 }
 
 func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -296,4 +398,51 @@ func (c *client) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixR
 
 func (c *client) HandleMatrixReactionRemove(context.Context, *bridgev2.MatrixReactionRemove) error {
 	return nil
+}
+
+// syncingClient is the client of a network made with New: the plain client plus the four chat-change interfaces.
+type syncingClient struct{ *client }
+
+var (
+	_ bridgev2.TagHandlingNetworkAPI             = (*syncingClient)(nil)
+	_ bridgev2.MuteHandlingNetworkAPI            = (*syncingClient)(nil)
+	_ bridgev2.MarkedUnreadHandlingNetworkAPI    = (*syncingClient)(nil)
+	_ bridgev2.MessageRequestAcceptingNetworkAPI = (*syncingClient)(nil)
+)
+
+// errRefused is what a network with Refuse set answers.
+var errRefused = errors.New("fakenet: the network refused the change")
+
+// deliver puts v on ch, unless the network refuses or nobody is draining ch.
+func deliver[T any](n *Network, ch chan T, v T, what string) error {
+	if n.Refuse {
+		return errRefused
+	}
+	select {
+	case ch <- v:
+		return nil
+	default:
+		return errors.New("fakenet: " + what + " buffer is full")
+	}
+}
+
+func (c *syncingClient) HandleRoomTag(_ context.Context, msg *bridgev2.MatrixRoomTag) error {
+	tags := []event.RoomTag{}
+	for t := range msg.Content.Tags {
+		tags = append(tags, t)
+	}
+	sort.Slice(tags, func(i, j int) bool { return tags[i] < tags[j] })
+	return deliver(c.n, c.n.Tags, TagChange{PortalID: string(msg.Portal.ID), Tags: tags}, "Tags")
+}
+
+func (c *syncingClient) HandleMute(_ context.Context, msg *bridgev2.MatrixMute) error {
+	return deliver(c.n, c.n.Mutes, MuteChange{PortalID: string(msg.Portal.ID), MutedUntil: msg.Content.MutedUntil}, "Mutes")
+}
+
+func (c *syncingClient) HandleMarkedUnread(_ context.Context, msg *bridgev2.MatrixMarkedUnread) error {
+	return deliver(c.n, c.n.Unreads, UnreadChange{PortalID: string(msg.Portal.ID), Unread: msg.Content.Unread}, "Unreads")
+}
+
+func (c *syncingClient) HandleMatrixAcceptMessageRequest(_ context.Context, msg *bridgev2.MatrixAcceptMessageRequest) error {
+	return deliver(c.n, c.n.Accepts, Accept{PortalID: string(msg.Portal.ID)}, "Accepts")
 }

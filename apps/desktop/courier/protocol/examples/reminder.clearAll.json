@@ -1,0 +1,12 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "reminder.clearAll"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "result": {}
+  }
+}

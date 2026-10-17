@@ -18,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/localmatrix"
@@ -103,8 +104,12 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		// this one, so retry after an unknown error (the minimum bridgev2 accepts is 1 minute).
 		UnknownErrorAutoReconnect:     5 * time.Minute,
 		UnknownErrorMaxAutoReconnects: 10,
-		TagOnlyOnCreate:               true,
-		MuteOnlyOnCreate:              true,
+		// A chat's pin, archive and mute on the network are taken in when it first arrives and never again, so a
+		// later change on the phone doesn't fight one made in Courier. Only these two tags mean anything to the
+		// store (pinned, archived); without the list no tag is taken in at all.
+		TagOnlyOnCreate:  true,
+		MuteOnlyOnCreate: true,
+		OnlyBridgeTags:   []event.RoomTag{event.RoomTagFavourite, event.RoomTagLowPriority},
 		// Deliberately not the example's values:
 		//  - BridgeStatusNotices stays "": there is no admin-command room to post into.
 		//  - PortalEventBuffer stays 0: events are handled and acknowledged synchronously, in order.

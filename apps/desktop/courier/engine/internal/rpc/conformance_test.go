@@ -579,8 +579,71 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		require.NoError(t, err)
 		return step.LoginID
 	}
+	label := func() int64 {
+		l, err := w.s.CreateLabel(ctx, "Work", 3, "briefcase")
+		require.NoError(t, err)
+		return l.ID
+	}
+	remind := func() {
+		require.NoError(t, w.s.SetReminder(ctx, []string{w.room}, time.Now().Add(time.Hour), "if_no_reply"))
+	}
+	rule := func() int64 {
+		r, err := w.s.SetRule(ctx, store.Rule{Scope: "all", Trigger: "after_read", ChatType: "read", Duration: 10 * time.Minute, Enabled: true})
+		require.NoError(t, err)
+		return r.ID
+	}
+	one := []any{w.room}
 	switch name {
-	case "hello", "hello-protocol-mismatch", "hello-required", "inbox.list", "login.wait-unknown":
+	case "hello", "hello-protocol-mismatch", "hello-required", "login.wait-unknown", "inbox.list-bad-cursor",
+		"spaces.setLayout", "spaces.update", "labels.create", "reminder.clearAll", "inbox.markAllRead":
+	case "inbox.list":
+		// The row shows everything a chat can have at once: a pin, a label, a draft, a reminder, someone typing.
+		require.NoError(t, w.s.SetPinned(ctx, w.room, true))
+		_, err := w.s.SetLabel(ctx, []string{w.room}, label(), true)
+		require.NoError(t, err)
+		require.NoError(t, w.s.SetDraft(ctx, w.room, "Half a thought"))
+		remind()
+		w.s.SetTyping(w.room, "@whatsapp_contact:courier.local", time.Now().Add(time.Minute))
+	case "inbox.list-first-page":
+		addRooms(t, w.s, "whatsapp", "second", 1)
+	case "inbox.list-room-ids", "room.setArchived", "room.setLowPriority", "room.setHidden", "room.setMarkedUnread",
+		"inbox.archiveMatching":
+		if _, ok := params["room_ids"]; ok {
+			params["room_ids"] = one
+		}
+	case "room.setArchived-pinned":
+		require.NoError(t, w.s.SetPinned(ctx, w.room, true))
+		params["room_ids"] = one
+	case "room.setLowPriority-not-entitled":
+		w.ent.deny.Store(true)
+		params["room_ids"] = one
+	case "spaces.list":
+		label()
+	case "labels.update", "labels.delete":
+		params["label_id"] = label()
+	case "room.setLabel":
+		params["room_ids"], params["label_id"] = one, label()
+	case "room.setPinned", "room.setDraft":
+		params["room_id"] = w.room
+	case "room.acceptRequest":
+		require.NoError(t, w.s.SetRequest(ctx, w.room, true))
+		params["room_id"] = w.room
+	case "room.acceptRequest-not-supported":
+		// Signal is running with no account: no one to send the accept.
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!request:courier.local", Network: "signal", Name: "Someone new"}))
+		require.NoError(t, w.s.SetRequest(ctx, "!request:courier.local", true))
+		params["room_id"] = "!request:courier.local"
+	case "reminder.set":
+		params["room_ids"], params["due_at"] = one, time.Now().Add(time.Hour).UnixMilli()
+	case "reminder.clear":
+		remind()
+		params["room_ids"] = one
+	case "autoArchive.list", "autoArchive.set":
+		if name == "autoArchive.list" {
+			rule()
+		}
+	case "autoArchive.delete":
+		params["rule_id"] = rule()
 	case "accounts.list":
 		require.NoError(t, w.s.SetBridgeState(ctx, "whatsapp",
 			json.RawMessage(`{"state_event":"CONNECTED","timestamp":1760600000,"ttl":3600,"remote_name":"Test Account"}`)))
@@ -665,6 +728,19 @@ func triggerNotification(t *testing.T, w *world, c *client, name string) changed
 	case "changed-bridge":
 		require.NoError(t, w.s.SetBridgeState(ctx, "conformance", json.RawMessage(`{"state_event":"CONNECTED"}`)))
 		return c.changed(func(ch changed) bool { return ch.Kind == "bridge" && ch.Network == "conformance" })
+	case "changed-spaces":
+		_, err := w.s.CreateLabel(ctx, "Work", 3, "briefcase")
+		require.NoError(t, err)
+		return c.changed(func(ch changed) bool { return ch.Kind == "spaces" })
+	case "changed-typing":
+		w.s.SetTyping(w.room, "@whatsapp_contact:courier.local", time.Now().Add(time.Minute))
+		return c.changed(func(ch changed) bool { return ch.Kind == "typing" && ch.RoomID == w.room })
+	case "changed-reminder":
+		require.NoError(t, w.s.SetReminder(ctx, []string{w.room}, time.Now().Add(time.Minute), "always"))
+		w.s.SetClock(func() time.Time { return time.Now().Add(2 * time.Minute) })
+		_, err := w.s.FireDueReminders(ctx)
+		require.NoError(t, err)
+		return c.changed(func(ch changed) bool { return ch.Kind == "reminder" && ch.RoomID == w.room })
 	case "changed-resync":
 		conn, r := rawHello(t, w.path)
 		o := overflow(t, w.s, conn, r)

@@ -12,6 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let inbox: InboxModel
     let conversation: ConversationModel
     let login: LoginFlowModel
+    /// The spaces bar, and the labels with their auto-archive rules.
+    let spaces: SpacesModel
+    let labels: LabelsModel
+    /// The sheets and popovers the inbox's menus and keys open.
+    let inboxUI = InboxUI()
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
     let attention: Attention
     let windowOpener = MainWindowOpener()
@@ -34,16 +39,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = AppModel(supervisor: supervisor)
         // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
         let telegram = TelegramCredentialSource()
-        let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials })
+        let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials },
+                              preferences: InboxPreferences())
         self.inbox = inbox
         let attention = Attention(source: SystemPresence())
         self.attention = attention
         // The "New" divider goes above as many messages as the inbox counted unread when the chat was opened.
+        // A chat opened with no text in the composer's memory takes the draft the engine keeps: its row's, or for a
+        // chat the inbox hasn't loaded (a notification opened it from another space, say), one looked up by id.
         conversation = ConversationModel(appModel: model, unreadCount: { id in
             inbox.rows.first { $0.roomID == id }?.unread ?? 0
-        }, attention: attention)
+        }, attention: attention, savedDraft: { id in
+            inbox.rows.first { $0.roomID == id }?.draft
+        }, lookUpDraft: { id in
+            await inbox.lookUpDraft(id)
+        })
         let login = LoginFlowModel(appModel: model)
         self.login = login
+        spaces = SpacesModel(appModel: model, inbox: inbox)
+        labels = LabelsModel(appModel: model)
         // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
         inbox.onReconnect = { network in login.begin(network: network) }
@@ -57,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         signInWindows = SignInWindowPresenter(login: login)
-        dockBadge = DockBadge(inbox: inbox)
+        dockBadge = DockBadge(spaces: spaces)
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
@@ -65,7 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
-            showWindow: { [windowOpener] in windowOpener.show() })
+            showWindow: { [windowOpener] in windowOpener.show() },
+            // The inbox's own object, which Settings changes: a copy would ignore the change until the next launch.
+            preferences: inbox.preferences)
         notifier.coordinator = coordinator
         notifications = coordinator
         coordinator.start()

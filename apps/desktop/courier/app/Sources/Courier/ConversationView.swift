@@ -29,7 +29,7 @@ struct ConversationView: View {
             if let problem = conversation.problem {
                 ProblemBar(problem: problem, retry: conversation.reload)
             }
-            ComposerView(composer: composer, textHeight: $composerTextHeight)
+            ComposerView(composer: composer, textHeight: $composerTextHeight, escapeFirst: { inbox.escape() })
         }
         .overlay { if isDropTargeted { DropOverlay() } }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: drop)
@@ -38,7 +38,8 @@ struct ConversationView: View {
         }
         // A window that closes (⌘W) is never told it stopped being key: going away says it.
         .onDisappear { conversation.setWindowKey(false) }
-        .onExitCommand { _ = composer.escape() }
+        // Esc leaves selection mode first, then clears a reply.
+        .onExitCommand { if !inbox.escape() { _ = composer.escape() } }
     }
 
     // MARK: Timeline

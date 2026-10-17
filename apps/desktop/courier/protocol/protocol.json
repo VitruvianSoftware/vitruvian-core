@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 1,
+  "protocol": 2,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -28,7 +28,8 @@
     "T?": "the key may be left out; when it is there the value is T",
     "Name": "a type defined in types",
     "values": "a field with values only ever holds one of them",
-    "times": "Every time (ts, last_ts) is Unix milliseconds.",
+    "times": "Every time (ts, last_ts, due_at) is Unix milliseconds.",
+    "durations": "Every *_ms that is not a time is a length of time in milliseconds.",
     "paths": "Every *_path is an absolute path on this Mac, or \"\" when there is no such file."
   },
 
@@ -106,6 +107,11 @@
         "not_started": {
           "type": "string",
           "doc": "Why the engine did not start the network (Telegram without its api_id and api_hash, say). \"\" unless state is NOT_STARTED."
+        },
+        "syncs": {
+          "type": "string[]",
+          "values": ["pin", "mute", "accept_request"],
+          "doc": "The chat changes Courier also sends to this network, so they show on the phone too. Every other change (archive, low priority, hide, labels, reminders, drafts, unread marks) stays on this Mac, and so does everything when the list is empty: the network isn't running or has no account. Sending is best effort: a network that is offline or refuses keeps the change on this Mac only."
         }
       }
     },
@@ -148,15 +154,378 @@
           "type": "int",
           "doc": "Messages from others after the read marker."
         },
-        "muted": { "type": "bool" }
+        "muted": { "type": "bool", "doc": "I muted this chat itself." },
+        "pinned": {
+          "type": "bool",
+          "doc": "Pinned chats come first in every sort, in the order they were pinned."
+        },
+        "archived": { "type": "bool" },
+        "low_priority": { "type": "bool" },
+        "hidden": { "type": "bool" },
+        "marked_unread": {
+          "type": "bool",
+          "doc": "Marked unread by me (or by a reminder that fired), whatever unread says."
+        },
+        "request": {
+          "type": "bool",
+          "doc": "A message request: someone new writing first, waiting for room.acceptRequest."
+        },
+        "draft": {
+          "type": "string",
+          "doc": "The unsent text of the chat's composer, whole. \"\" when there is none."
+        },
+        "labels": {
+          "type": "int[]",
+          "doc": "The label_id of each label on the chat, smallest first."
+        },
+        "muted_by": {
+          "type": "string",
+          "values": ["", "account", "label"],
+          "doc": "What else mutes the chat: its account's space, or one of its labels' spaces. \"\" when nothing does. An account mute wins."
+        },
+        "muted_by_name": {
+          "type": "string",
+          "doc": "For muted_by account, the network's display name (WhatsApp); for label, the title of the first muted label, by label_id. \"\" otherwise."
+        },
+        "reminder": {
+          "type": "Reminder|null",
+          "doc": "The chat's reminder, set or fired. null when it has none."
+        },
+        "typing": {
+          "type": "string[]",
+          "doc": "Who is typing in the chat now, by name: their name in the chat, else their profile's, else their ID's localpart. In order of their IDs."
+        },
+        "unread_mentions": {
+          "type": "int",
+          "doc": "The unread messages that mention me, by name or the whole chat."
+        },
+        "preview_media_path": {
+          "type": "string",
+          "doc": "When the newest message is an image or a sticker: its thumbnail (or the image itself), when the engine has it. \"\" otherwise."
+        }
+      }
+    },
+    "Reminder": {
+      "doc": "Bring a chat back to my attention at due_at. When it fires the chat is marked unread and comes back from the archive, and the engine sends changed kind reminder. Reading the chat ends a fired reminder.",
+      "fields": {
+        "due_at": { "type": "int" },
+        "condition": {
+          "type": "string",
+          "values": ["if_no_reply", "always"],
+          "doc": "if_no_reply: only if I haven't sent a message in the chat since setting it; otherwise it just ends. always: whatever happens."
+        },
+        "fired": { "type": "bool" }
+      }
+    },
+    "InboxListParams": {
+      "doc": "One page of chats. Leave everything out for the first page of the inbox, newest first. Or give room_ids alone to look those chats up wherever they are (after a changed notification, say).",
+      "fields": {
+        "space": {
+          "type": "string?",
+          "doc": "A space_id from spaces.list. Left out means inbox."
+        },
+        "filters": {
+          "type": "string[]?",
+          "values": [
+            "unread",
+            "drafts",
+            "unanswered",
+            "no_reply",
+            "dms",
+            "groups",
+            "unknown",
+            "muted",
+            "archived",
+            "low_priority",
+            "hidden",
+            "requests",
+            "reminders",
+            "send_later"
+          ],
+          "doc": "Left out or [] is All. Filters of one group are or'ed and the groups and'ed: dms with groups; unanswered with no_reply; the places archived, low_priority, hidden, requests, reminders and send_later, which take the space's place (its account or label still applies). unread, drafts, unknown (a one-to-one chat with no name, or a phone number for a name) and muted each stand alone. There is no all filter."
+        },
+        "sort": {
+          "type": "string?",
+          "values": [
+            "newest",
+            "oldest",
+            "least_time_remaining",
+            "most_time_remaining"
+          ],
+          "doc": "By the newest message (chats with none by when they arrived), or by reminder time, chats without one last. Left out means newest."
+        },
+        "cursor": {
+          "type": "string?",
+          "doc": "The last page's next_cursor, for the page after it. Only the query that handed it out takes it (the same space, filters, sort and room_ids); any other cursor is -32602. limit may change between pages."
+        },
+        "limit": {
+          "type": "int?",
+          "doc": "1 to 500. 200 when left out. A page holds at most this many chats, and fewer when that many would pass 1 MiB (long drafts): next_cursor says there is more."
+        },
+        "room_ids": {
+          "type": "string[]?",
+          "doc": "1 to 100 chats to look up, in any space or place, archived or hidden. Not with space, filters or sort. A room_id the engine doesn't have is left out."
+        }
       }
     },
     "InboxResult": {
       "fields": {
         "rooms": {
           "type": "InboxRow[]",
-          "doc": "Newest message first; chats with no message follow, newest first."
+          "doc": "In the query's order."
+        },
+        "next_cursor": {
+          "type": "string|null",
+          "doc": "Pass as cursor for the next page. null on the last page."
         }
+      }
+    },
+    "Space": {
+      "doc": "One entry of the spaces bar.",
+      "fields": {
+        "space_id": {
+          "type": "string",
+          "doc": "inbox, reminders, requests, low_priority, send_later, archive, account:<network> or label:<label_id>. Pass it to inbox.list as space."
+        },
+        "kind": { "type": "string", "values": ["builtin", "account", "label"] },
+        "title": {
+          "type": "string",
+          "doc": "An account's network display name (WhatsApp) or a label's title. \"\" for a built-in space: the app names those."
+        },
+        "network": {
+          "type": "string",
+          "doc": "For an account, its network. \"\" otherwise."
+        },
+        "label_id": { "type": "int", "doc": "For a label. 0 otherwise." },
+        "color": {
+          "type": "int",
+          "doc": "For a label: an index into the app's list of system colours, 0 to 11. 0 otherwise."
+        },
+        "icon": {
+          "type": "string",
+          "doc": "For a label: an SF Symbol name. \"\" otherwise."
+        },
+        "hidden": {
+          "type": "bool",
+          "doc": "Hidden from the bar (spaces.setLayout)."
+        },
+        "muted": {
+          "type": "bool",
+          "doc": "For an account or a label: its chats are muted (spaces.update). false for a built-in space."
+        },
+        "show_in_inbox": {
+          "type": "string",
+          "values": ["all", "dms", "none", ""],
+          "doc": "For an account or a label: which of its chats also show in the inbox space. \"\" for a built-in space."
+        },
+        "chats": {
+          "type": "int",
+          "doc": "How many chats inbox.list lists for this space."
+        },
+        "unread_chats": {
+          "type": "int",
+          "doc": "How many of them are unread."
+        },
+        "attention_chats": {
+          "type": "int",
+          "doc": "For inbox: how many of its unread chats (unread, or marked unread) nothing mutes, neither the chat itself, its account nor a label. It is the Dock badge and the menu bar's count, so it doesn't change with the space or filters the app shows. 0 for every other space."
+        }
+      }
+    },
+    "SpacesResult": {
+      "fields": {
+        "spaces": {
+          "type": "Space[]",
+          "doc": "In the bar's order, hidden ones in their place. inbox is always first. The built-in spaces, an account per network with an account, and every label: a space the saved layout doesn't name yet goes at the end."
+        }
+      }
+    },
+    "SpaceLayoutParams": {
+      "fields": {
+        "order": {
+          "type": "string[]",
+          "doc": "space_ids in the bar's order, each once, starting with inbox."
+        },
+        "hidden": {
+          "type": "string[]",
+          "doc": "The space_ids in order to hide. Not inbox."
+        }
+      }
+    },
+    "SpaceUpdateParams": {
+      "fields": {
+        "space_id": {
+          "type": "string",
+          "doc": "An account:<network> or label:<label_id> space."
+        },
+        "muted": { "type": "bool?" },
+        "show_in_inbox": { "type": "string?", "values": ["all", "dms", "none"] }
+      }
+    },
+    "LabelParams": {
+      "fields": {
+        "title": {
+          "type": "string",
+          "doc": "1 to 40 characters, once spaces at either end are trimmed."
+        },
+        "color": { "type": "int", "doc": "0 to 11." },
+        "icon": {
+          "type": "string",
+          "doc": "An SF Symbol name, at most 64 bytes."
+        }
+      }
+    },
+    "LabelResult": {
+      "fields": {
+        "label_id": { "type": "int" }
+      }
+    },
+    "LabelUpdateParams": {
+      "doc": "A field left out stays as it is.",
+      "fields": {
+        "label_id": { "type": "int" },
+        "title": { "type": "string?" },
+        "color": { "type": "int?" },
+        "icon": { "type": "string?" }
+      }
+    },
+    "LabelIDParams": {
+      "fields": {
+        "label_id": { "type": "int" }
+      }
+    },
+    "SetPinnedParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "pinned": { "type": "bool" }
+      }
+    },
+    "ArchiveParams": {
+      "fields": {
+        "room_ids": { "type": "string[]", "doc": "1 to 500 chats." },
+        "archived": { "type": "bool" },
+        "mark_read": {
+          "type": "bool?",
+          "doc": "Also mark read each chat this archived (or unarchived)."
+        }
+      }
+    },
+    "RoomsChanged": {
+      "fields": {
+        "room_ids": {
+          "type": "string[]",
+          "doc": "The chats that changed, in the order asked for; [] when none did."
+        }
+      }
+    },
+    "RoomsFlagParams": {
+      "fields": {
+        "room_ids": { "type": "string[]", "doc": "1 to 500 chats." },
+        "on": { "type": "bool" }
+      }
+    },
+    "SetLabelParams": {
+      "fields": {
+        "room_ids": { "type": "string[]", "doc": "1 to 500 chats." },
+        "label_id": { "type": "int" },
+        "on": {
+          "type": "bool",
+          "doc": "true puts the label on, false takes it off."
+        }
+      }
+    },
+    "DraftParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "text": {
+          "type": "string",
+          "doc": "At most 16,384 characters. \"\" clears the draft."
+        }
+      }
+    },
+    "ReminderParams": {
+      "fields": {
+        "room_ids": { "type": "string[]", "doc": "1 to 500 chats." },
+        "due_at": {
+          "type": "int",
+          "doc": "After now and at most 5 years ahead."
+        },
+        "condition": { "type": "string", "values": ["if_no_reply", "always"] },
+        "archive": {
+          "type": "bool?",
+          "doc": "Also archive the chats, all but pinned ones, until the reminder brings them back."
+        }
+      }
+    },
+    "RoomsParams": {
+      "fields": {
+        "room_ids": { "type": "string[]", "doc": "1 to 500 chats." }
+      }
+    },
+    "ArchiveMatchingParams": {
+      "fields": {
+        "space": {
+          "type": "string?",
+          "doc": "inbox (when left out), an account:<network> or a label:<label_id>. Only the chats it lists with no place filter count, and never a pinned one."
+        },
+        "read_only": {
+          "type": "bool",
+          "doc": "Only chats with nothing unread and not marked unread."
+        },
+        "older_than_ms": {
+          "type": "int",
+          "doc": "Only chats whose newest message (or, with none, whose arrival) is older than this: 0 (any age) or 3, 7, 14, 28, 90 or 365 days."
+        },
+        "dry_run": {
+          "type": "bool",
+          "doc": "Say which chats, and change nothing."
+        }
+      }
+    },
+    "SpaceParams": {
+      "fields": {
+        "space": {
+          "type": "string?",
+          "doc": "A space_id. Left out means inbox."
+        }
+      }
+    },
+    "AutoArchiveRule": {
+      "doc": "A rule that archives chats by itself. The General setting is one after_reply or after_read rule with scope all; each space can have one older_than rule.",
+      "fields": {
+        "rule_id": {
+          "type": "int",
+          "doc": "0 in autoArchive.set makes a new rule."
+        },
+        "scope": {
+          "type": "string",
+          "doc": "all, or for an older_than rule the space it sweeps: account:<network> or label:<label_id> (all sweeps the inbox)."
+        },
+        "trigger": {
+          "type": "string",
+          "values": ["after_reply", "after_read", "older_than"],
+          "doc": "after_reply: duration_ms after I send a message. after_read: duration_ms after I read the chat. older_than: once the chat's newest message is older than duration_ms."
+        },
+        "chat_type": {
+          "type": "string",
+          "values": ["all", "read"],
+          "doc": "read: only chats with nothing unread and not marked unread."
+        },
+        "duration_ms": {
+          "type": "int",
+          "doc": "after_reply and after_read: 0, 1, 5, 10 or 30 minutes, 1 or 4 hours, 1 or 7 days. older_than: 3, 7, 14, 28, 90 or 365 days."
+        },
+        "enabled": { "type": "bool" }
+      }
+    },
+    "RulesResult": {
+      "fields": {
+        "rules": { "type": "AutoArchiveRule[]", "doc": "Oldest first." }
+      }
+    },
+    "RuleIDParams": {
+      "fields": {
+        "rule_id": { "type": "int" }
       }
     },
     "Cursor": {
@@ -410,15 +779,25 @@
       }
     },
     "Changed": {
-      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
+      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. spaces: labels, the spaces layout or an account's or label's space settings changed; no room_id, so re-read spaces.list (and the inbox, whose rows show labels). typing: who is typing in room_id changed. reminder: room_id's reminder fired, so tell the person (a room change for its row comes too). resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
       "fields": {
         "kind": {
           "type": "string",
-          "values": ["room", "event", "status", "read", "bridge", "resync"]
+          "values": [
+            "room",
+            "event",
+            "status",
+            "read",
+            "bridge",
+            "spaces",
+            "typing",
+            "reminder",
+            "resync"
+          ]
         },
         "room_id": {
           "type": "string?",
-          "doc": "On room (usually), event, status and read."
+          "doc": "On room (usually), event, status, read, typing and reminder."
         },
         "event_id": { "type": "string?", "doc": "On event, status and read." },
         "network": { "type": "string?", "doc": "On bridge." }
@@ -453,10 +832,142 @@
       "errors": []
     },
     "inbox.list": {
-      "doc": "Every chat, in inbox order.",
-      "params": "Empty",
+      "doc": "One page of chats: a space, narrowed by filters, in a sort; or the chats room_ids names. Pages go by cursor, not by position, so in every sort a chat that doesn't move while you page is listed exactly once. A chat that moves between pages (a new message under oldest; a pin, an unpin or a reminder change under any sort) can be listed twice: keep the first and drop a later copy by room_id. A space_id that isn't one of the forms spaces.list gives, an unknown filter or sort, a cursor of another query, or room_ids with space, filters or sort is -32602. A well-formed space that doesn't exist (label:999, or an account with no chats) is not an error: it lists no chats.",
+      "params": "InboxListParams",
       "result": "InboxResult",
       "errors": []
+    },
+    "spaces.list": {
+      "doc": "The spaces bar: built-in spaces, accounts and labels, in order, with their counts.",
+      "params": "Empty",
+      "result": "SpacesResult",
+      "errors": []
+    },
+    "spaces.setLayout": {
+      "doc": "Save the bar's order and which spaces are hidden. A layout that doesn't start with inbox, names a space twice or hides inbox is -32014.",
+      "params": "SpaceLayoutParams",
+      "result": "Empty",
+      "errors": [-32014]
+    },
+    "spaces.update": {
+      "doc": "Change an account's or a label's space settings. A built-in space has none (-32014).",
+      "params": "SpaceUpdateParams",
+      "result": "Empty",
+      "errors": [-32014, -32020]
+    },
+    "labels.create": {
+      "doc": "Make a label. Its space joins the bar at the end.",
+      "params": "LabelParams",
+      "result": "LabelResult",
+      "errors": [-32014]
+    },
+    "labels.update": {
+      "doc": "Rename a label, or change its colour or icon.",
+      "params": "LabelUpdateParams",
+      "result": "Empty",
+      "errors": [-32014, -32020]
+    },
+    "labels.delete": {
+      "doc": "Delete a label. It comes off every chat, and its space and auto-archive rule go with it.",
+      "params": "LabelIDParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "room.setPinned": {
+      "doc": "Pin or unpin a chat. Pinning brings it back from the archive. A network that takes pins (Account.syncs) is told too.",
+      "params": "SetPinnedParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "room.setArchived": {
+      "doc": "Archive or unarchive chats. A new message from someone else brings an archived chat back. A pinned chat is never archived: it is left out of room_ids, and when every chat named is pinned it is -32021.",
+      "params": "ArchiveParams",
+      "result": "RoomsChanged",
+      "errors": [-32020, -32021]
+    },
+    "room.setLowPriority": {
+      "doc": "Move chats to Low priority, or back. A new message leaves them there. Moving them there is part of a plan (-32022 when it isn't); moving them back always works.",
+      "params": "RoomsFlagParams",
+      "result": "RoomsChanged",
+      "errors": [-32020, -32022]
+    },
+    "room.setHidden": {
+      "doc": "Hide chats, or show them again. A new message leaves them hidden.",
+      "params": "RoomsFlagParams",
+      "result": "RoomsChanged",
+      "errors": [-32020]
+    },
+    "room.setMarkedUnread": {
+      "doc": "Mark chats unread, or clear the mark. The mark stays on this Mac: no network is told.",
+      "params": "RoomsFlagParams",
+      "result": "RoomsChanged",
+      "errors": [-32020]
+    },
+    "room.setLabel": {
+      "doc": "Put a label on chats, or take it off.",
+      "params": "SetLabelParams",
+      "result": "RoomsChanged",
+      "errors": [-32020]
+    },
+    "room.setDraft": {
+      "doc": "Keep the unsent text of a chat's composer. It stays on this Mac.",
+      "params": "DraftParams",
+      "result": "Empty",
+      "errors": [-32014, -32020]
+    },
+    "room.acceptRequest": {
+      "doc": "Accept a message request. The chat moves to the inbox, and the network is told. On a network that can't take an accept (Account.syncs has no accept_request) it is -32023 and nothing changes.",
+      "params": "RoomParams",
+      "result": "Empty",
+      "errors": [-32020, -32023]
+    },
+    "reminder.set": {
+      "doc": "Set, or replace, the reminder of chats. Part of a plan (-32022 when it isn't). A due_at not after now or more than 5 years ahead, or an unknown condition, is -32014.",
+      "params": "ReminderParams",
+      "result": "Empty",
+      "errors": [-32014, -32020, -32022]
+    },
+    "reminder.clear": {
+      "doc": "End the reminders of chats, set or fired. A chat without one is no error.",
+      "params": "RoomsParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "reminder.clearAll": {
+      "doc": "End every reminder.",
+      "params": "Empty",
+      "result": "Empty",
+      "errors": []
+    },
+    "inbox.archiveMatching": {
+      "doc": "Archive, all at once, the chats of a space that match: \"Archive all read\", \"Archive older than a week\". A built-in space other than inbox, or an older_than_ms that isn't one of the offered ages, is -32014.",
+      "params": "ArchiveMatchingParams",
+      "result": "RoomsChanged",
+      "errors": [-32014]
+    },
+    "inbox.markAllRead": {
+      "doc": "Mark read every unread chat the space lists (unread, or marked unread). Each network is told, as room.markRead tells it.",
+      "params": "SpaceParams",
+      "result": "RoomsChanged",
+      "errors": []
+    },
+    "autoArchive.list": {
+      "doc": "Every auto-archive rule.",
+      "params": "Empty",
+      "result": "RulesResult",
+      "errors": []
+    },
+    "autoArchive.set": {
+      "doc": "Save a rule, new (rule_id 0) or changed, and answer it as stored. Part of a plan (-32022 when it isn't). A rule out of shape, a second enabled after_reply or after_read rule, or a second older_than rule for one space is -32014; an unknown rule_id or label is -32020. Changing a rule's duration moves the archives it has already scheduled; turning it off drops them.",
+      "params": "AutoArchiveRule",
+      "result": "AutoArchiveRule",
+      "errors": [-32014, -32020, -32022]
+    },
+    "autoArchive.delete": {
+      "doc": "Delete a rule, and the archives it had scheduled.",
+      "params": "RuleIDParams",
+      "result": "Empty",
+      "errors": [-32020]
     },
     "room.events": {
       "doc": "One page of a chat's history, newest first.",
@@ -465,13 +976,13 @@
       "errors": [-32020]
     },
     "room.markRead": {
-      "doc": "Mark a chat read up to its newest message. The unread count clears at once; the network is told when it can be (best effort).",
+      "doc": "Mark a chat read up to its newest message. The unread count clears at once, and so do an unread mark and a reminder that has fired; the network is told when it can be (best effort).",
       "params": "RoomParams",
       "result": "Empty",
       "errors": [-32020]
     },
     "room.setMuted": {
-      "doc": "Mute or unmute a chat on this device.",
+      "doc": "Mute or unmute a chat. A network that takes mutes (Account.syncs) is told too.",
       "params": "SetMutedParams",
       "result": "Empty",
       "errors": [-32020]
@@ -564,7 +1075,7 @@
         "code": -32602,
         "name": "invalid_params",
         "message": "invalid params",
-        "when": "A parameter is missing, has the wrong type or is out of range. data says which.",
+        "when": "A parameter is missing, has the wrong type or is out of range, or names something the method doesn't know (an inbox.list filter, a cursor of another query). data says which.",
         "data": "InvalidParamsData"
       },
       {
@@ -614,7 +1125,7 @@
         "code": -32014,
         "name": "bad_value",
         "message": "that isn't accepted",
-        "when": "An unknown network or flow, a value the network won't take, or a call that does not fit the step (login.wait on a user_input step). The sign-in stays open."
+        "when": "An unknown network or flow, a value the network won't take, or a call that does not fit the step (login.wait on a user_input step), and the sign-in stays open. Or a value the engine doesn't keep: a label title, colour or icon out of range, a draft too long, a reminder time that has passed, a spaces layout that moves or hides inbox, a rule out of shape."
       },
       {
         "code": -32015,
@@ -650,7 +1161,25 @@
         "code": -32020,
         "name": "not_found",
         "message": "no such chat or message",
-        "when": "An unknown room_id, event_id or reply_to, or a message in another chat."
+        "when": "An unknown room_id, event_id or reply_to, or a message in another chat; an unknown label_id, rule_id or label space."
+      },
+      {
+        "code": -32021,
+        "name": "pinned",
+        "message": "a pinned chat can't be archived",
+        "when": "room.setArchived when every chat it names is pinned. Unpin it first."
+      },
+      {
+        "code": -32022,
+        "name": "not_entitled",
+        "message": "this isn't part of your plan",
+        "when": "A feature the person's plan doesn't include: reminders, Low priority, auto-archive rules. Nothing was changed."
+      },
+      {
+        "code": -32023,
+        "name": "not_supported",
+        "message": "this network can't do that",
+        "when": "room.acceptRequest on a network that can't take an accept. Nothing was changed."
       }
     ]
   }

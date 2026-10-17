@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/networks"
+	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -221,7 +223,7 @@ func (c *rpcClient) hello() struct {
 		Engine   string   `json:"engine"`
 		Networks []string `json:"networks"`
 	}
-	require.NoError(c.t, json.Unmarshal(c.call("hello", map[string]any{"protocol": 1, "client": "test/1"}), &res))
+	require.NoError(c.t, json.Unmarshal(c.call("hello", map[string]any{"protocol": rpc.Protocol, "client": "test/1"}), &res))
 	return res
 }
 
@@ -229,12 +231,12 @@ func TestServesHelloOnTheSocket(t *testing.T) {
 	data := filepath.Join(shortDir(t), "data")
 	p, ready := start(t, data, nil)
 
-	require.Equal(t, gotReady{Ready: true, Socket: filepath.Join(data, "engine.sock"), Protocol: 1}, ready)
+	require.Equal(t, gotReady{Ready: true, Socket: filepath.Join(data, "engine.sock"), Protocol: rpc.Protocol}, ready)
 	require.True(t, filepath.IsAbs(ready.Socket))
 
 	c := dial(t, ready.Socket)
 	res := c.hello()
-	require.Equal(t, 1, res.Protocol)
+	require.Equal(t, rpc.Protocol, res.Protocol)
 	want := os.Getenv("COURIER_ENGINE_VERSION")
 	require.NotEmpty(t, want, "COURIER_ENGINE_VERSION is not set: BUILD passes the version the binary is stamped with")
 	require.Equal(t, want, res.Engine, "hello reports the version the build stamped (app/version.bzl), the app's own")
@@ -301,7 +303,7 @@ func TestSecondEngineOnSameDirExits3(t *testing.T) {
 	require.Empty(t, second.stdout.String(), "a refused engine says nothing on stdout")
 
 	// The refused engine must not have removed the first one's socket: it still answers.
-	require.Equal(t, 1, dial(t, ready.Socket).hello().Protocol)
+	require.Equal(t, rpc.Protocol, dial(t, ready.Socket).hello().Protocol)
 	select {
 	case <-first.done:
 		t.Fatal("the first engine stopped")
@@ -323,7 +325,7 @@ func TestStaleSocketIsReplaced(t *testing.T) {
 
 	_, ready := start(t, data, nil)
 	require.Equal(t, sock, ready.Socket)
-	require.Equal(t, 1, dial(t, sock).hello().Protocol)
+	require.Equal(t, rpc.Protocol, dial(t, sock).hello().Protocol)
 }
 
 func TestSIGTERMStopsCleanly(t *testing.T) {
@@ -359,7 +361,7 @@ func TestParentPipeClosedStopsEngine(t *testing.T) {
 		t.Fatal("the engine stopped while its parent was still there")
 	case <-time.After(300 * time.Millisecond):
 	}
-	require.Equal(t, 1, dial(t, ready.Socket).hello().Protocol)
+	require.Equal(t, rpc.Protocol, dial(t, ready.Socket).hello().Protocol)
 
 	require.NoError(t, w.Close()) // the app crashed
 	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
@@ -443,4 +445,17 @@ func TestPendingFromAnEarlierRunBecomesMayHaveBeenSent(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "failed", e.Status)
 	require.Equal(t, store.ReasonMayHaveBeenSent, e.StatusReason)
+}
+
+// Ruling 5: the store is handed each network's display name, so account spaces and muted_by_name read "WhatsApp".
+func TestTheStoreIsGivenEachNetworksDisplayName(t *testing.T) {
+	all := networks.All()
+	names := displayNames(all)
+	require.Len(t, names, len(all))
+	for _, n := range all {
+		require.Equal(t, n.DisplayName, names[n.Name])
+		require.NotEmpty(t, names[n.Name], n.Name)
+	}
+	require.Equal(t, "WhatsApp", names["whatsapp"])
+	require.Equal(t, "Google Messages", names["gmessages"])
 }

@@ -1,0 +1,60 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "spaces.list"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+      "spaces": [
+        {
+          "space_id": "inbox",
+          "kind": "builtin",
+          "title": "",
+          "network": "",
+          "label_id": 0,
+          "color": 0,
+          "icon": "",
+          "hidden": false,
+          "muted": false,
+          "show_in_inbox": "",
+          "chats": 1,
+          "unread_chats": 1,
+          "attention_chats": 1
+        },
+        {
+          "space_id": "account:whatsapp",
+          "kind": "account",
+          "title": "WhatsApp",
+          "network": "whatsapp",
+          "label_id": 0,
+          "color": 0,
+          "icon": "",
+          "hidden": false,
+          "muted": false,
+          "show_in_inbox": "all",
+          "chats": 1,
+          "unread_chats": 1,
+          "attention_chats": 0
+        },
+        {
+          "space_id": "label:1",
+          "kind": "label",
+          "title": "Work",
+          "network": "",
+          "label_id": 1,
+          "color": 3,
+          "icon": "briefcase",
+          "hidden": true,
+          "muted": false,
+          "show_in_inbox": "dms",
+          "chats": 0,
+          "unread_chats": 0,
+          "attention_chats": 0
+        }
+      ]
+    }
+  }
+}

@@ -13,16 +13,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/bridgeconfig"
+	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -481,4 +486,275 @@ func TestOnlyMyReadReceiptsMoveMyReadMarker(t *testing.T) {
 	answer := send(meIntent, "nearly there", 70)
 	require.NoError(t, friend.MarkRead(ctx, roomID, answer, time.Unix(80, 0)))
 	require.Equal(t, 2, unreadOf(t, c, roomID), "someone else reading my newest message is not my read")
+}
+
+// bridged is a real bridgev2 bridge running the fake network over this package's connector, with the tag and
+// mute settings host.Start gives every network (TestStartBridgeConfigMatchesExampleDefaults pins those there; the
+// host package imports this one, so its Start can't be used here).
+type bridged struct {
+	c     *Connector
+	n     *fakenet.Network
+	login *bridgev2.UserLogin
+}
+
+func startBridged(t *testing.T) bridged {
+	t.Helper()
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	// br.Stop closes the bridge database itself.
+	bdb, err := sqlite.Open(filepath.Join(dir, "fake.db"))
+	require.NoError(t, err)
+	n := fakenet.New()
+	c := New("fake", s, &media.Store{Dir: filepath.Join(dir, "media")})
+	cfg := &bridgeconfig.BridgeConfig{
+		CommandPrefix:    "!fake",
+		Permissions:      bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
+		TagOnlyOnCreate:  true,
+		MuteOnlyOnCreate: true,
+		OnlyBridgeTags:   []event.RoomTag{event.RoomTagFavourite, event.RoomTagLowPriority},
+	}
+	br := bridgev2.NewBridge("fake", bdb, zerolog.Nop(), cfg, c, n,
+		func(b *bridgev2.Bridge) bridgev2.CommandProcessor { return commands.NewProcessor(b) })
+	require.NoError(t, br.Start(ctx))
+	t.Cleanup(br.Stop)
+	login, err := n.Login(ctx, br)
+	require.NoError(t, err)
+	return bridged{c: c, n: n, login: login}
+}
+
+// arrive has the network deliver the first message of chatID, which makes the bridge create the chat, and
+// returns its room once the message is stored.
+func (b bridged) arrive(t *testing.T, chatID string) id.RoomID {
+	t.Helper()
+	body := "first message of " + chatID
+	b.n.Incoming(b.login, chatID, "alice", "m-"+chatID, body)
+	var room id.RoomID
+	require.Eventually(t, func() bool {
+		rooms, err := b.c.store.ListRooms(context.Background())
+		if err != nil {
+			return false
+		}
+		for _, r := range rooms {
+			evs, err := b.c.store.Events(context.Background(), r.ID, 10)
+			if err != nil {
+				return false
+			}
+			for _, e := range evs {
+				if strings.Contains(string(e.Content), body) {
+					room = id.RoomID(r.ID)
+					return true
+				}
+			}
+		}
+		return false
+	}, 5*time.Second, 20*time.Millisecond, "%s never arrived", chatID)
+	return room
+}
+
+// rowOf is the inbox row of roomID.
+func rowOf(t *testing.T, c *Connector, roomID id.RoomID) store.InboxRow {
+	t.Helper()
+	rows, err := c.store.Inbox(context.Background())
+	require.NoError(t, err)
+	for _, r := range rows {
+		if r.ID == string(roomID) {
+			return r
+		}
+	}
+	t.Fatalf("no inbox row for %s", roomID)
+	return store.InboxRow{}
+}
+
+func TestNetworkPinAtCreateBecomesPinned(t *testing.T) {
+	b := startBridged(t)
+	b.n.SetChat("pinned", fakenet.Chat{Tag: ptr(event.RoomTagFavourite)})
+	b.n.SetChat("muted", fakenet.Chat{MutedUntil: ptr(event.MutedForever)})
+	b.n.SetChat("was-muted", fakenet.Chat{MutedUntil: ptr(bridgev2.Unmuted)})
+
+	pinned := b.arrive(t, "pinned")
+	require.False(t, rowOf(t, b.c, pinned).PinnedAt.IsZero(), "a chat pinned on the phone arrives pinned")
+	require.False(t, rowOf(t, b.c, pinned).Archived)
+
+	muted := b.arrive(t, "muted")
+	require.True(t, rowOf(t, b.c, muted).Muted, "a chat muted on the phone arrives muted")
+	require.True(t, rowOf(t, b.c, muted).PinnedAt.IsZero())
+
+	wasMuted := b.arrive(t, "was-muted")
+	require.False(t, rowOf(t, b.c, wasMuted).Muted, "a mute that has run out is no mute")
+
+	plain := b.arrive(t, "plain")
+	require.True(t, rowOf(t, b.c, plain).PinnedAt.IsZero(), "a chat with no tag arrives unpinned")
+	require.False(t, rowOf(t, b.c, plain).Muted)
+}
+
+func TestNetworkArchiveTagBecomesArchived(t *testing.T) {
+	b := startBridged(t)
+	b.n.SetChat("archived", fakenet.Chat{Tag: ptr(event.RoomTagLowPriority)})
+	room := b.arrive(t, "archived")
+	row := rowOf(t, b.c, room)
+	require.True(t, row.Archived, "a network's low priority is what it shows as archived")
+	require.False(t, row.LowPriority, "it is Courier's archive, not Courier's low priority")
+	require.True(t, row.PinnedAt.IsZero())
+}
+
+func TestOtherTagsAreIgnored(t *testing.T) {
+	t.Run("from the network at create", func(t *testing.T) {
+		b := startBridged(t)
+		b.n.SetChat("work", fakenet.Chat{Tag: ptr(event.RoomTag("u.work"))})
+		row := rowOf(t, b.c, b.arrive(t, "work"))
+		require.True(t, row.PinnedAt.IsZero())
+		require.False(t, row.Archived)
+		require.False(t, row.LowPriority)
+	})
+	t.Run("handed to my intent", func(t *testing.T) {
+		c, ctx := newTestConnector(t), context.Background()
+		roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+		require.NoError(t, err)
+		me, _, err := c.NewUserIntent(ctx, ids.Me, "")
+		require.NoError(t, err)
+		for _, tag := range []event.RoomTag{"u.work", event.RoomTagServerNotice, ""} {
+			require.NoError(t, me.TagRoom(ctx, roomID, tag, true), tag)
+		}
+		row := rowOf(t, c, roomID)
+		require.True(t, row.PinnedAt.IsZero())
+		require.False(t, row.Archived)
+		require.False(t, row.LowPriority)
+		require.False(t, row.Hidden)
+	})
+}
+
+// bridgev2 sends a chat's tags, mute and unread mark through my own (double-puppet) intent. A ghost's or the
+// bot's say nothing about my chat list.
+func TestOnlyMyTagsAndMutesCount(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	me, _, err := c.NewUserIntent(ctx, ids.Me, "")
+	require.NoError(t, err)
+
+	for _, other := range []bridgev2.MatrixAPI{c.GhostIntent("friend"), c.BotIntent()} {
+		require.NoError(t, other.TagRoom(ctx, roomID, event.RoomTagFavourite, true))
+		require.NoError(t, other.TagRoom(ctx, roomID, event.RoomTagLowPriority, true))
+		require.NoError(t, other.MuteRoom(ctx, roomID, event.MutedForever))
+		require.NoError(t, other.MarkUnread(ctx, roomID, true))
+	}
+	row := rowOf(t, c, roomID)
+	require.True(t, row.PinnedAt.IsZero())
+	require.False(t, row.Archived)
+	require.False(t, row.Muted)
+	require.False(t, row.MarkedUnread)
+
+	require.NoError(t, me.TagRoom(ctx, roomID, event.RoomTagFavourite, true))
+	require.False(t, rowOf(t, c, roomID).PinnedAt.IsZero())
+	require.NoError(t, me.TagRoom(ctx, roomID, event.RoomTagFavourite, false))
+	require.True(t, rowOf(t, c, roomID).PinnedAt.IsZero())
+
+	require.NoError(t, me.MuteRoom(ctx, roomID, event.MutedForever))
+	require.True(t, rowOf(t, c, roomID).Muted)
+	require.NoError(t, me.MuteRoom(ctx, roomID, bridgev2.Unmuted))
+	require.False(t, rowOf(t, c, roomID).Muted)
+
+	require.NoError(t, me.MarkUnread(ctx, roomID, true))
+	require.True(t, rowOf(t, c, roomID).MarkedUnread)
+	require.NoError(t, me.MarkUnread(ctx, roomID, false))
+	require.False(t, rowOf(t, c, roomID).MarkedUnread)
+}
+
+func TestGhostTypingIsKeptUntilTimeout(t *testing.T) {
+	b := startBridged(t)
+	room := b.arrive(t, "chat1")
+	alice := string(ids.GhostMXID("fake", "alice"))
+	typing := func() []string { return b.c.store.TypingIn(string(room)) }
+
+	b.n.Typing(b.login, "chat1", "alice", 400*time.Millisecond)
+	require.Eventually(t, func() bool { return len(typing()) == 1 && typing()[0] == alice }, 5*time.Second, 10*time.Millisecond,
+		"the contact is shown typing")
+	require.Eventually(t, func() bool { return len(typing()) == 0 }, 5*time.Second, 20*time.Millisecond,
+		"and stops being shown once the timeout passes")
+
+	b.n.Typing(b.login, "chat1", "alice", time.Minute)
+	require.Eventually(t, func() bool { return len(typing()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	b.n.Typing(b.login, "chat1", "alice", 0)
+	require.Eventually(t, func() bool { return len(typing()) == 0 }, 5*time.Second, 10*time.Millisecond,
+		"a timeout of 0 is the contact stopping")
+
+	// My own typing (from another device) and the bot's are not someone typing to me.
+	ctx := context.Background()
+	me, _, err := b.c.NewUserIntent(ctx, ids.Me, "")
+	require.NoError(t, err)
+	require.NoError(t, me.MarkTyping(ctx, room, bridgev2.TypingTypeText, time.Minute))
+	require.NoError(t, b.c.BotIntent().MarkTyping(ctx, room, bridgev2.TypingTypeText, time.Minute))
+	require.Empty(t, typing())
+}
+
+func TestMessageRequestFromBridgeInfo(t *testing.T) {
+	b := startBridged(t)
+	b.n.SetChat("stranger", fakenet.Chat{MessageRequest: ptr(true)})
+	stranger := b.arrive(t, "stranger")
+	require.True(t, rowOf(t, b.c, stranger).Request, "the bridge info of a new chat says it is a message request")
+	friend := b.arrive(t, "friend")
+	require.False(t, rowOf(t, b.c, friend).Request)
+
+	ctx := context.Background()
+	bot := b.c.BotIntent()
+	info := func(request bool) *event.Content {
+		return &event.Content{Parsed: &event.BridgeEventContent{Channel: event.BridgeInfoSection{ID: "x", MessageRequest: request}}}
+	}
+	// bridgev2 resends the bridge info whenever the chat's info changes. "Request" in a resend is not taken in:
+	// after an accept here that the network refused or never heard of, the resend still says "request".
+	for _, typ := range []event.Type{event.StateBridge, event.StateHalfShotBridge} {
+		_, err := bot.SendState(ctx, friend, typ, "fake://friend", info(true), time.Now())
+		require.NoError(t, err)
+		require.False(t, rowOf(t, b.c, friend).Request, "%s resent with the flag doesn't make a chat a request", typ.Type)
+	}
+	require.NoError(t, b.c.store.SetRequest(ctx, string(stranger), false), "accepted here (the network refused it)")
+	_, err := bot.SendState(ctx, stranger, event.StateBridge, "fake://stranger", info(true), time.Now())
+	require.NoError(t, err)
+	require.False(t, rowOf(t, b.c, stranger).Request, "a resent request flag doesn't undo an accept")
+
+	// "Not a request" is taken in at any time: that is how an accept the network took reads afterwards, from either
+	// of the two state events.
+	other := b.arrive(t, "other")
+	require.NoError(t, b.c.store.SetRequest(ctx, string(other), true), "fixture: a request")
+	_, err = bot.SendState(ctx, other, event.StateHalfShotBridge, "fake://other", info(false), time.Now())
+	require.NoError(t, err)
+	require.False(t, rowOf(t, b.c, other).Request)
+	require.NoError(t, b.c.store.SetRequest(ctx, string(other), true))
+	_, err = bot.SendState(ctx, other, event.StateBridge, "fake://other", info(false), time.Now())
+	require.NoError(t, err)
+	require.False(t, rowOf(t, b.c, other).Request)
+
+	// A chat made fresh with the flag in its initial state is a request, whichever event carries it.
+	sk := "fake://new"
+	newRoom, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{InitialState: []*event.Event{
+		{Type: event.StateHalfShotBridge, StateKey: &sk, Content: *info(true)},
+	}})
+	require.NoError(t, err)
+	require.True(t, rowOf(t, b.c, newRoom).Request)
+}
+
+// A resend that says nothing new writes nothing: no "room" change reaches the app.
+func TestUnchangedBridgeInfoPublishesNothing(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	bot := c.BotIntent()
+	roomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	changes, cancel := c.store.Subscribe()
+	defer cancel()
+	for _, request := range []bool{false, true} {
+		_, err = bot.SendState(ctx, roomID, event.StateBridge, "k",
+			&event.Content{Parsed: &event.BridgeEventContent{Channel: event.BridgeInfoSection{ID: "x", MessageRequest: request}}}, time.Now())
+		require.NoError(t, err)
+	}
+	deadline := time.After(100 * time.Millisecond)
+	for {
+		select {
+		case ch := <-changes:
+			require.NotEqual(t, "room", ch.Kind, "an unchanged request flag published %+v", ch)
+		case <-deadline:
+			return
+		}
+	}
 }

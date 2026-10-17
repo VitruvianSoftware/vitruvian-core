@@ -26,7 +26,7 @@ flowchart LR
   Net["bridges → networks"]
   V --> M -->|"inbox.list {space, filters, sort, cursor}"| R
   R --> S & A
-  A -->|"m.tag · com.beeper.mute · m.marked_unread"| Net
+  A -->|"m.tag · com.beeper.mute · accept request"| Net
   Net -->|"tags and mutes at first sync, typing"| L --> S
   T --> S
 ```
@@ -49,7 +49,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | Pin, sent | yes (`BuildPin`) | no | yes (`MessagesToggleDialogPin`) | no | no |
 | Mute, sent | yes (`BuildMuteAbs`) | no | yes (`AccountUpdateNotifySettings`) | no | no |
-| Marked unread, sent | yes (`BuildMarkChatAsRead`) | no | no | no | no |
+| Marked unread, sent | no (the bridge inverts it; checked v0.2609.0–v0.2610.0) | no | no | no | no |
 | Accept a message request, sent | no | yes | no | no | no |
 | Pin, taken in when a chat first arrives | yes | no | yes | yes | no |
 | Archived, taken in when a chat first arrives | yes, once `archive_tag` is set (Task 4) | no | no | yes (sent as `m.lowpriority`) | no |
@@ -428,7 +428,7 @@ func (a *Actions) SetPinned(ctx context.Context, roomID string, pinned bool) err
 func (a *Actions) SetMuted(ctx context.Context, roomID string, muted bool) error
 func (a *Actions) SetMarkedUnread(ctx context.Context, roomIDs []string, unread bool) ([]string, error)
 func (a *Actions) AcceptRequest(ctx context.Context, roomID string) error
-func (a *Actions) Syncs(network string) []string // subset of "pin", "mute", "unread", "accept_request", in that order
+func (a *Actions) Syncs(network string) []string // subset of "pin", "mute", "accept_request", in that order (never "unread": Ruling 18)
 var ErrNotSupported = errors.New("this network can't do that")
 ```
 
@@ -438,16 +438,15 @@ var ErrNotSupported = errors.New("this network can't do that")
 |---|---|---|---|
 | pin | `event.AccountDataRoomTags` | `TagEventContent{Tags: {m.favourite: {}}}`, or `{}` to unpin | `TagHandlingNetworkAPI` |
 | mute | `event.AccountDataBeeperMute` | `BeeperMuteEventContent{MutedUntil: -1}`, or `0` to unmute | `MuteHandlingNetworkAPI` |
-| marked unread | `event.AccountDataMarkedUnread` | `MarkedUnreadEventContent{Unread: …}` | `MarkedUnreadHandlingNetworkAPI` |
 | accept request | `event.BeeperAcceptMessageRequest` | `BeeperAcceptMessageRequestEventContent{}` | `MessageRequestAcceptingNetworkAPI` |
 
   - The send is best effort (Global Constraints).
   - `AcceptRequest` on a network without the interface is `ErrNotSupported`, and nothing changes. Otherwise it clears `request` locally first.
-  - `MarkRead` sends `{Unread: false}` only when the chat was marked unread.
+  - Marked unread is never sent, by `SetMarkedUnread` or `MarkRead` (Ruling 18): WhatsApp's bridge, the only one with `MarkedUnreadHandlingNetworkAPI`, inverts the flag (checked v0.2609.0–v0.2610.0). `TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks` fails when its pin moves.
 - **Taking in:**
   - `TagRoom`, `MuteRoom` and `MarkUnread` act only for the `@me` intent (bridgev2 calls them on the double puppet) and call the store mappers.
   - `MarkTyping` from a ghost calls `SetTyping(room, ghost, now+timeout)`; a timeout of 0 stops it. `@me`'s own typing is ignored.
-  - `applyRoomState` for `m.bridge` and `uk.half-shot.bridge` reads `channel["com.beeper.message_request"]` into `SetRequest`.
+  - `applyRoomState` for `m.bridge` and `uk.half-shot.bridge` reads `channel["com.beeper.message_request"]` into `SetRequest`: `true` only in a new chat's initial state, `false` at any time (Ruling 19), so a resend never undoes an accept.
 - **Config:**
   - `host.go` sets `OnlyBridgeTags: []event.RoomTag{event.RoomTagFavourite, event.RoomTagLowPriority}` (the example config's value). Today it is empty, so no tag is ever taken in.
   - The WhatsApp spec's configure hook sets `ArchiveTag = event.RoomTagLowPriority`, so a chat archived on the phone arrives archived.
@@ -458,7 +457,7 @@ var ErrNotSupported = errors.New("this network can't do that")
 
 - [ ] **Step 1: Write the failing tests:**
   - localmatrix: `TestNetworkPinAtCreateBecomesPinned`, `TestNetworkArchiveTagBecomesArchived`, `TestOtherTagsAreIgnored`, `TestOnlyMyTagsAndMutesCount`, `TestGhostTypingIsKeptUntilTimeout`, `TestMessageRequestFromBridgeInfo`
-  - actions: `TestPinReachesNetworksThatSyncPins` (pin gives `m.favourite`; unpin gives empty tags), `TestPinOnANetworkWithoutPinsIsLocalOnly` (`NewPlain`: nothing queued, store pinned), `TestPinStaysWhenTheNetworkRefuses` (Review Focus 5), `TestMuteReachesTheNetwork` (−1, then 0), `TestMarkUnreadReachesTheNetworkAndMarkReadClearsIt`, `TestAcceptRequestOnlyWhereSupported`, `TestSyncsFollowTheClient`
+  - actions: `TestPinReachesNetworksThatSyncPins` (pin gives `m.favourite`; unpin gives empty tags), `TestPinOnANetworkWithoutPinsIsLocalOnly` (`NewPlain`: nothing queued, store pinned), `TestPinStaysWhenTheNetworkRefuses` (Review Focus 5), `TestMuteReachesTheNetwork` (−1, then 0), `TestMarkUnreadStaysOnThisMacAndMarkReadClearsIt`, `TestAcceptRequestOnlyWhereSupported`, `TestSyncsFollowTheClient`
   - host: `TestStartBridgeConfigMatchesExampleDefaults` gains `require.Equal(t, []event.RoomTag{"m.favourite", "m.lowpriority"}, c.OnlyBridgeTags)`.
   - networks: `TestWhatsAppArchivedChatsArriveArchived` (the configured `ArchiveTag`), and `TestNetworkSyncTableMatchesTheBridges`. The latter type-asserts a nil pointer of each real client type (`*whatsapp.WhatsAppClient`, `*telegram.TelegramClient`, `*gmessages.GMClient`, `*slack.SlackClient`, and Signal's under its darwin build tag) against the four interfaces. It expects exactly the Global Constraints table, so a bridge bump that changes it fails here.
 - [ ] **Step 2: Run them to verify they fail.** `bazel test //apps/desktop/courier/engine/internal/localmatrix:localmatrix_test //apps/desktop/courier/engine/internal/actions:actions_test //apps/desktop/courier/engine/internal/host:host_test //apps/desktop/courier/engine/internal/networks:networks_test`. Expected: FAIL.
@@ -891,6 +890,6 @@ public static let remindOneHour: TimeInterval = 3600, remindEightHours: TimeInte
 
 - **Setup:** install the build (`bazel run --config=macos-app //apps/desktop/courier/app:install`) and keep using it as in milestone 3. Your existing chats keep their state. Network pins only come in for chats new to Courier, so pin one chat on your phone in WhatsApp *before* it first reaches Courier if you want to see that.
 - **One day of use:** organise the inbox for real: spaces, two labels, pins, archive, low priority, a reminder set for an hour ahead with Courier's window closed, and one auto-archive rule. Tick the 4.1 section of `m4-acceptance.md` as each item is seen working.
-- **Check on the phones:** a pin and a mute set in Courier show on WhatsApp and Telegram, and Mark as Unread shows on WhatsApp. Nothing else is expected to.
+- **Check on the phones:** a pin and a mute set in Courier show on WhatsApp and Telegram. Nothing else is expected to.
 - **Record** the result in `apps/desktop/courier/docs/m4-1-result.md`, with no names, numbers or message text.
 - **Done when** the 4.1 section is ticked, or each unticked row has a reason.
