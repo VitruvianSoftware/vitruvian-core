@@ -482,20 +482,24 @@ def strip_ours_gemini(hooks: Dict[str, Any]) -> Dict[str, Any]:
             if not isinstance(entries, list):
                 continue
             kept = []
+            changed = False
             for entry in entries:
                 if isinstance(entry, dict) and isinstance(entry.get("hooks"), list):
                     handlers = [h for h in entry["hooks"] if not _is_ours(h)]
                     if len(handlers) != len(entry["hooks"]):
-                        removed = True
+                        changed = True
                         if not handlers:
                             continue
                         entry = dict(entry)
                         entry["hooks"] = handlers
                 elif _is_ours(entry):  # the flat shape agy ignores for PreToolUse
-                    removed = True
+                    changed = True
                     continue
                 kept.append(entry)
-            if len(kept) != len(entries):
+            if changed:
+                # Write the trimmed groups back even when none disappeared: a
+                # group shared with someone else's handler loses only ours.
+                removed = True
                 if kept:
                     spec[event] = kept
                 else:

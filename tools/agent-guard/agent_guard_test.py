@@ -1533,15 +1533,22 @@ class AntigravityHookTest(HookHarness):
         self.assertEqual(rec["session"], "0f6c1d2e-3a4b-4c5d-8e9f-a0b1c2d3e4f5")
         self.assertEqual((rec["scope"], rec["decision"]), ("inside", "deny"))
 
-    def test_missing_cwd_falls_back_to_the_first_workspace(self):
+    def test_missing_cwd_falls_back_to_the_workspaces(self):
         # Without the fallback the guard would judge ~/.gemini/config and allow.
         out = self.hook(agy_payload("go vet ./...", None, [self.fx.repo, self.fx.out]))
         self.assertEqual(out["decision"], "deny")
         self.assertEqual(self.log()[-1]["cwd"], self.fx.repo)
+        # Any workspace inside vitruvian-core puts the call inside, not just the first.
+        out = self.hook(agy_payload("git push", None, ["/tmp", self.fx.repo]))
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("//tools/git:push", out["reason"])
+        self.assertEqual(self.log()[-1]["cwd"], self.fx.repo)
+        # No workspace inside: the first one decides.
         self.assertIsNone(
-            self.hook(agy_payload("go vet ./...", None, [self.fx.out, self.fx.repo]))
+            self.hook(agy_payload("go vet ./...", None, [self.fx.out, "/tmp"]))
         )
-        self.assertEqual(self.log()[-1]["scope"], "outside")
+        rec = self.log()[-1]
+        self.assertEqual((rec["scope"], rec["cwd"]), ("outside", self.fx.out))
 
     def test_cwd_wins_over_workspace_paths(self):
         self.assertIsNone(

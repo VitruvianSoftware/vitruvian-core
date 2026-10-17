@@ -3084,16 +3084,25 @@ def resolve_cwd(payload: Dict[str, Any], home: str) -> Tuple[str, bool]:
     Claude Code runs the hook in the agent's own directory and sends `cwd`.
     Antigravity runs it in the folder holding hooks.json (~/.gemini/config),
     sends no top-level cwd, and puts the directory in args.Cwd; the hook's own
-    directory is therefore never a fallback for it. Without Cwd the first
-    workspace path stands in; without that, the location is unknown.
+    directory is therefore never a fallback for it. Without Cwd the workspace
+    paths stand in: the first one inside vitruvian-core if any is, else the
+    first one. Without those, the location is unknown.
     """
     antigravity, tool, tin = tool_call(payload)
     if antigravity:
         raw = str(tin.get("Cwd") or tin.get("cwd") or "")
         if not raw:
             paths = payload.get("workspacePaths")
-            if isinstance(paths, list):
-                raw = next((str(p) for p in paths if isinstance(p, str) and p), "")
+            spaces = [
+                expand_path(p, "", home)
+                for p in (paths if isinstance(paths, list) else [])
+                if isinstance(p, str) and p
+            ]
+            spaces = [p for p in spaces if os.path.isabs(p)]
+            raw = next(
+                (p for p in spaces if repo_root_of(p) is not None),
+                spaces[0] if spaces else "",
+            )
         path = expand_path(raw, "", home) if raw else ""
         if not os.path.isabs(path):
             # Missing, or relative to a directory nobody named: unknown.

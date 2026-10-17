@@ -762,6 +762,54 @@ class InstallTest(unittest.TestCase):
         _rc, out = self.run_install("--uninstall")
         self.assertIn("Antigravity hooks: no agent-guard hook to remove", out)
 
+    def test_antigravity_uninstall_trims_a_shared_group(self):
+        command = install.hook_command(self.home)
+        other = {"type": "command", "command": "/x/other-guard.sh", "timeout": 5}
+        shared = dict(EXISTING_GEMINI)
+        shared["shared"] = {
+            "enabled": True,
+            "PreToolUse": [
+                {
+                    "matcher": "run_command",
+                    "hooks": [
+                        {"type": "command", "command": command, "timeout": 10},
+                        other,
+                    ],
+                }
+            ],
+        }
+        with open(self.gemini, "w") as fh:
+            json.dump(shared, fh, indent=2)
+        expected = dict(EXISTING_GEMINI)
+        expected["shared"] = {
+            "enabled": True,
+            "PreToolUse": [{"matcher": "run_command", "hooks": [other]}],
+        }
+        self.assertEqual(install.strip_ours_gemini(shared), expected)
+        rc, out = self.run_install()
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load_gemini()["shared"], expected["shared"])
+        rc, out = self.run_install("--uninstall")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load_gemini(), expected)
+        self.assertNotIn("agent-guard/hook.sh", self.gemini_text())
+
+    def test_claude_uninstall_trims_a_shared_group(self):
+        self.run_install()
+        s = self.load()
+        other = {"type": "command", "command": "/x/other-guard.sh"}
+        for entry in s["hooks"]["PreToolUse"]:
+            entry["hooks"].append(other)
+        with open(self.settings, "w") as fh:
+            json.dump(s, fh, indent=2)
+        rc, out = self.run_install("--uninstall")
+        self.assertEqual(rc, 0, out)
+        after = self.load()
+        self.assertEqual(self.ours(after), [])
+        self.assertEqual(
+            [e["hooks"] for e in after["hooks"]["PreToolUse"]], [[other], [other]]
+        )
+
     def test_antigravity_check(self):
         self.run_install()
         rc, out = self.run_install("--check")

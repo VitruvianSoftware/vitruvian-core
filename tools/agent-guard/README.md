@@ -137,8 +137,9 @@ What the installer writes, and why:
     `input`) and `git_commit` (refused as a commit whatever its arguments).
 - **Where a command runs.** agy runs hooks in the folder holding `hooks.json`
   (`~/.gemini/config`), not the agent's, and sends no top-level `cwd`. The
-  guard uses `args.Cwd`; without it, the first of `workspacePaths`; without
-  either, the location is unknown and the command is judged as if it were
+  guard uses `args.Cwd`; without it, a `workspacePaths` entry inside
+  vitruvian-core if any is, else the first one; without either, the location
+  is unknown and the command is judged as if it were
   inside vitruvian-core. A missing location never means allowed.
 - **Replies.** Allow prints nothing; deny prints
   `{"decision":"deny","reason":"..."}`. Warn mode prints nothing (agy has no
@@ -258,8 +259,8 @@ categories apply everywhere, because what they protect is not in the checkout:
 scoped by that repository instead: vitruvian-core is in scope wherever the
 command runs, and any other repository is out of scope even from inside this
 checkout. `{owner}/{repo}` placeholders mean the current directory's repo.
-For Antigravity the directory is `args.Cwd`, then the first `workspacePaths`
-entry; with neither, the command is treated as inside (see Install).
+For Antigravity the directory is `args.Cwd`, then a `workspacePaths` entry
+inside vitruvian-core (or the first one if none is); with neither, the command is treated as inside (see Install).
 
 ## Modes
 
