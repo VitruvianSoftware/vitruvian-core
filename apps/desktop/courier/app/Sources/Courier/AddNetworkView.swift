@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import CourierCore
 import SwiftUI
 
@@ -14,6 +15,7 @@ struct AddNetworkView: View {
         content
             .padding(24)
             .frame(width: 460)
+            .background(AllowsQuitWhileShown())
     }
 
     @ViewBuilder
@@ -160,4 +162,22 @@ private struct NetworkChoiceRow: View {
         }
         .padding(.vertical, 8)
     }
+}
+
+/// A sheet's window stops the app from quitting while it is up: AppKit's `preventsApplicationTerminationWhenModal`
+/// is on for SwiftUI sheets, so Quit, ⌘Q and the menu-bar icon's Quit did nothing while this sheet was open. This
+/// one has only a Cancel or Done to lose, and a sign-in in progress ends when the engine stops, so Quit may go
+/// ahead. Set on the window itself, which works on every macOS Courier runs on (SwiftUI's own
+/// `presentationPreventsAppTermination` needs 15.4).
+private struct AllowsQuitWhileShown: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.preventsApplicationTerminationWhenModal = false
+        }
+    }
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+
+    func updateNSView(_ view: Probe, context: Context) {}
 }
