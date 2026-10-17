@@ -33,7 +33,7 @@ final class CommandSetTests: XCTestCase {
             autoRelease: true)
         harnesses.append(h)
         h.script.spaces = [
-            spaceJSON("inbox"), spaceJSON("requests"), spaceJSON("archive"),
+            spaceJSON("inbox", chats: 3, unread: 1), spaceJSON("requests"), spaceJSON("archive"),
             spaceJSON("account:whatsapp", kind: "account", title: "WhatsApp", network: "whatsapp", showInInbox: "all"),
             spaceJSON("account:signal", kind: "account", title: "Signal", network: "signal", showInInbox: "all"),
         ]
@@ -50,6 +50,17 @@ final class CommandSetTests: XCTestCase {
         let (h, spaces, commands) = try await start()
         XCTAssertEqual(commands.map(\.id), ledger, "exactly the ledger's 13, once each")
         XCTAssertEqual(Set(commands.map(\.id)).count, 13)
+        // The four bulk commands ask first, in words that say what happens; the other nine just run.
+        let bulk: Set<String> = ["Archive all chats", "Archive all chats older than a week",
+                                 "Archive all read chats", "Mark all chats as read"]
+        XCTAssertEqual(Set(commands.filter { $0.confirmation != nil }.map(\.id)), bulk)
+        for command in commands where bulk.contains(command.id) {
+            XCTAssertFalse(command.confirmation?.isEmpty ?? true, command.id)
+        }
+        for id in bulk.subtracting(["Mark all chats as read"]) {
+            XCTAssertTrue(try command(commands, id).confirmation?.contains("Pinned chats stay") ?? false, id)
+        }
+        XCTAssertTrue(try command(commands, "Mark all chats as read").confirmation?.contains("can’t be undone") ?? false)
         for command in commands {
             XCTAssertEqual(command.title, command.id, "the title is the ledger's name (in English)")
             XCTAssertTrue(command.isEnabled(), command.id)
@@ -153,13 +164,16 @@ final class CommandSetTests: XCTestCase {
     }
 
     func testCommandsThatNeedChatsAreOffWithoutThem() async throws {
-        let (h, _, commands) = try await start(rooms: [room("!a", ts: 200)])
+        let (h, spaces, commands) = try await start(rooms: [room("!a", ts: 200)])
+        h.script.spaces = [spaceJSON("inbox", chats: 1, unread: 0)]
+        h.server.notify(["kind": "spaces"])
+        try await waitUntil { spaces.spaces.count == 1 && spaces.spaces[0].unreadChats == 0 }
         XCTAssertFalse(try command(commands, "Mark all chats as read").isEnabled(), "nothing is unread")
         XCTAssertTrue(try command(commands, "Next Chat").isEnabled())
 
-        h.script.rooms = [room("!a", ts: 200, unread: 1)]
-        h.server.notify(["kind": "room"])
-        try await waitUntil { h.inbox.rows.first?.unread == 1 }
+        h.script.spaces = [spaceJSON("inbox", chats: 1, unread: 1)]
+        h.server.notify(["kind": "spaces"])
+        try await waitUntil { spaces.spaces.first?.unreadChats == 1 }
         XCTAssertTrue(try command(commands, "Mark all chats as read").isEnabled())
 
         h.script.rooms = []
@@ -167,6 +181,20 @@ final class CommandSetTests: XCTestCase {
         try await waitUntil { h.inbox.rows.isEmpty }
         XCTAssertFalse(try command(commands, "Next Chat").isEnabled())
         XCTAssertFalse(try command(commands, "Toggle chat selection mode").isEnabled())
+    }
+
+    func testMarkAllReadFollowsTheSpacesCountNotTheFirstPage() async throws {
+        // The first page holds no unread chat, but the space says 40 are unread further down.
+        let (h, spaces, commands) = try await start(rooms: [room("!a", ts: 200), room("!b", ts: 100)])
+        h.script.spaces = [spaceJSON("inbox", chats: 500, unread: 40)]
+        h.server.notify(["kind": "spaces"])
+        try await waitUntil { spaces.spaces.first?.unreadChats == 40 }
+        XCTAssertTrue(h.inbox.rows.allSatisfy { !$0.isUnread })
+        XCTAssertTrue(try command(commands, "Mark all chats as read").isEnabled())
+
+        // A space the bar doesn't know falls back to the chats loaded.
+        spaces.select("label:9")
+        XCTAssertFalse(try command(commands, "Mark all chats as read").isEnabled())
     }
 
     func testKeysAreTheLedgersWhereItGivesOne() async throws {

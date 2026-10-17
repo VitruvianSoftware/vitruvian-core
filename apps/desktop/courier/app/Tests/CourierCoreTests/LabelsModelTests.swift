@@ -239,9 +239,9 @@ final class LabelsModelTests: XCTestCase {
         XCTAssertEqual(none, 0)
         XCTAssertEqual(h.count("inbox.archiveMatching"), 2)
 
-        // A refusal is no chats.
+        // A refusal is not "0 chats": the count could not be had.
         h.script.fail("inbox.archiveMatching", code: -32014)
         let refused = await labels.matchCount(for: sweep)
-        XCTAssertEqual(refused, 0)
+        XCTAssertNil(refused)
     }
 }

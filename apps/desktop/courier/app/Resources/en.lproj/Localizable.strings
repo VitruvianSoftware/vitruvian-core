@@ -594,3 +594,15 @@
 
 /* Command bar: starts or ends selecting several chats at once. */
 "Toggle chat selection mode" = "Toggle chat selection mode";
+
+/* Question asked before "Archive all chats" runs from the command bar. Archiving can be undone from the toast. */
+"Archive every chat in this space? Pinned chats stay where they are. You can undo this." = "Archive every chat in this space? Pinned chats stay where they are. You can undo this.";
+
+/* Question asked before "Archive all chats older than a week" runs from the command bar. Archiving can be undone from the toast. */
+"Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this." = "Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this.";
+
+/* Question asked before "Archive all read chats" runs from the command bar. Archiving can be undone from the toast. */
+"Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this." = "Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this.";
+
+/* Question asked before "Mark all chats as read" runs from the command bar. The networks are told, so there is no Undo. */
+"Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone." = "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone.";

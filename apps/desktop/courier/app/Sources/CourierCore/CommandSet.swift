@@ -11,6 +11,9 @@ public struct CourierCommand: Identifiable {
     public let title: String
     /// The shortcut as the menu shows it, when it has one.
     public let keys: String?
+    /// What to ask the person before running it, when it changes many chats at once; nil when it just runs. The
+    /// command bar shows it with the command's title and runs the command only after a yes.
+    public let confirmation: String?
     /// Whether it can do anything now. The bar greys out what can't.
     public let isEnabled: @MainActor () -> Bool
     /// Does it. What takes the engine is started and not waited for.
@@ -21,8 +24,8 @@ public struct CourierCommand: Identifiable {
 public enum CommandSet {
     /// The 13 commands of the inventory ledger that act on the inbox, in its order.
     ///
-    /// The bulk commands ("Archive all …", "Mark all chats as read") ask for a confirmation in the bar, which is
-    /// the bar's to ask: here they act at once, and archiving can be undone.
+    /// The four bulk commands ("Archive all …", "Mark all chats as read") carry a `confirmation` for the bar to ask
+    /// first; `run` itself acts at once. The other nine have none.
     ///
     /// The filter commands step through their choices one at a time until the bar has the pickers that list them:
     /// Filter Chats is Cycle Filters (⌥Tab), Filter by folder type steps through Archived, Low priority, Hidden,
@@ -33,59 +36,73 @@ public enum CommandSet {
         let sweepable: @MainActor () -> Bool = { inbox.isLoaded && inbox.canArchiveAll }
         return [
             CourierCommand(id: "Archive all chats", title: String(localized: "Archive all chats"), keys: nil,
+                           confirmation: String(localized: "Archive every chat in this space? Pinned chats stay where they are. You can undo this."),
                            isEnabled: sweepable) {
                 Task { _ = await inbox.archiveAll(readOnly: false) }
             },
             CourierCommand(id: "Archive all chats older than a week",
                            title: String(localized: "Archive all chats older than a week"), keys: nil,
+                           confirmation: String(localized: "Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this."),
                            isEnabled: sweepable) {
                 Task { _ = await inbox.archiveAll(readOnly: false, olderThanDays: 7) }
             },
             CourierCommand(id: "Archive all read chats", title: String(localized: "Archive all read chats"),
-                           keys: "⌘⇧E", isEnabled: sweepable) {
+                           keys: "⌘⇧E",
+                           confirmation: String(localized: "Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this."),
+                           isEnabled: sweepable) {
                 Task { _ = await inbox.archiveAllRead() }
             },
             CourierCommand(id: "Mark all chats as read", title: String(localized: "Mark all chats as read"),
-                           keys: nil, isEnabled: { inbox.rows.contains { $0.isUnread } }) {
+                           keys: nil,
+                           confirmation: String(localized: "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone."),
+                           isEnabled: { hasUnread(inbox, spaces) }) {
                 Task { await inbox.markAllRead() }
             },
-            CourierCommand(id: "Next Chat", title: String(localized: "Next Chat"), keys: "⌘]",
+            CourierCommand(id: "Next Chat", title: String(localized: "Next Chat"), keys: "⌘]", confirmation: nil,
                            isEnabled: { !inbox.rows.isEmpty }) {
                 inbox.selectNext()
             },
             CourierCommand(id: "Show message requests", title: String(localized: "Show message requests"),
-                           keys: nil, isEnabled: { true }) {
+                           keys: nil, confirmation: nil, isEnabled: { true }) {
                 spaces.select("requests")
             },
-            CourierCommand(id: "Toggle space bar", title: String(localized: "Toggle space bar"), keys: "⌘S",
+            CourierCommand(id: "Toggle space bar", title: String(localized: "Toggle space bar"), keys: "⌘S", confirmation: nil,
                            isEnabled: { true }) {
                 inbox.preferences.showSpaceBar.toggle()
             },
-            CourierCommand(id: "Edit spaces", title: String(localized: "Edit spaces"), keys: nil,
+            CourierCommand(id: "Edit spaces", title: String(localized: "Edit spaces"), keys: nil, confirmation: nil,
                            isEnabled: { true }) {
                 spaces.isEditing = true
             },
-            CourierCommand(id: "Filter Chats", title: String(localized: "Filter Chats"), keys: nil,
+            CourierCommand(id: "Filter Chats", title: String(localized: "Filter Chats"), keys: nil, confirmation: nil,
                            isEnabled: { true }) {
                 inbox.cycleFilter()
             },
             CourierCommand(id: "Filter by folder type", title: String(localized: "Filter by folder type"),
-                           keys: nil, isEnabled: { true }) {
+                           keys: nil, confirmation: nil, isEnabled: { true }) {
                 step(inbox, through: SpacesModel.placeFilters)
             },
-            CourierCommand(id: "Filter by type", title: String(localized: "Filter by type"), keys: nil,
+            CourierCommand(id: "Filter by type", title: String(localized: "Filter by type"), keys: nil, confirmation: nil,
                            isEnabled: { true }) {
                 step(inbox, through: [.dms, .groups])
             },
-            CourierCommand(id: "Filter by account", title: String(localized: "Filter by account"), keys: "⌘⌥A",
+            CourierCommand(id: "Filter by account", title: String(localized: "Filter by account"), keys: "⌘⌥A", confirmation: nil,
                            isEnabled: { nextAccount(inbox, spaces) != nil }) {
                 if let next = nextAccount(inbox, spaces) { spaces.select(next.spaceID) }
             },
             CourierCommand(id: "Toggle chat selection mode", title: String(localized: "Toggle chat selection mode"),
-                           keys: nil, isEnabled: { inbox.isSelecting || !inbox.rows.isEmpty }) {
+                           keys: nil, confirmation: nil, isEnabled: { inbox.isSelecting || !inbox.rows.isEmpty }) {
                 if inbox.isSelecting { inbox.endSelecting() } else { inbox.beginSelecting() }
             },
         ]
+    }
+
+    /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so
+    /// only when the bar doesn't know the space yet.
+    @MainActor
+    private static func hasUnread(_ inbox: InboxModel, _ spaces: SpacesModel) -> Bool {
+        if let space = spaces.spaces.first(where: { $0.spaceID == inbox.query.space }) { return space.unreadChats > 0 }
+        return inbox.rows.contains { $0.isUnread }
     }
 
     /// Replaces the one of `choices` that the query has with the next, and after the last with none. The query's

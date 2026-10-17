@@ -133,15 +133,16 @@ public final class LabelsModel: ObservableObject {
     }
 
     /// How many chats the rule would archive right now: the engine's dry run of the same sweep. Only an "older than"
-    /// rule sweeps what is there; "after a reply" and "after a read" act on what happens next, so for those, and
-    /// when the engine refuses, it is 0.
-    public func matchCount(for rule: AutoArchiveRule) async -> Int {
-        guard rule.trigger == .olderThan, let client = appModel.client else { return 0 }
+    /// rule sweeps what is there; "after a reply" and "after a read" act on what happens next, so for those it is 0.
+    /// Nil when the count could not be had (the engine refused or did not answer): "couldn't check", not "0 chats".
+    public func matchCount(for rule: AutoArchiveRule) async -> Int? {
+        guard rule.trigger == .olderThan else { return 0 }
+        guard let client = appModel.client else { return nil }
         let params = ArchiveMatchingParams(
             space: rule.scope == "all" ? nil : rule.scope, readOnly: rule.chatType == .read,
             olderThanMS: rule.durationMS, dryRun: true)
         let result: RoomsChanged? = try? await client.call("inbox.archiveMatching", params)
-        return result?.roomIDs.count ?? 0
+        return result?.roomIDs.count
     }
 
     private func readRules() {
