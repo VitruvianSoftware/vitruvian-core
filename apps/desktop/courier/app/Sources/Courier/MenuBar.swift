@@ -68,7 +68,8 @@ struct OpenWindowRegistrar: View {
     }
 }
 
-/// Keeps the Dock icon's badge at the number of unread chats that are not muted; none at zero.
+/// Keeps the Dock icon's badge at the number of unread or marked-unread chats that are not muted, low priority,
+/// hidden or requests; none at zero.
 @MainActor
 final class DockBadge {
     private var subscription: AnyCancellable?
