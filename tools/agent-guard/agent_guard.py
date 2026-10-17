@@ -31,8 +31,10 @@ It is a guardrail against habits, not a security boundary: it reads the
 command TEXT, so a script that calls git internally is not seen. James's own
 terminal is never affected; hooks only run inside agent loops.
 
-Standard library only, and Python 3.9 compatible: the installed hook runs on
-the macOS system python3, not on Bazel's.
+Standard library only, and Python 3.9 compatible: the hook runs on whichever
+python3 the machine has (tools/agent-guard/hook.sh picks it), not on Bazel's.
+The hook runs THIS file as it is on origin/main, so an edit here governs agents
+only once it is merged.
 
 See README.md beside this file for the rules, the limits and the log.
 """
@@ -40,6 +42,7 @@ See README.md beside this file for the rules, the limits and the log.
 from __future__ import annotations
 
 import datetime
+import fnmatch
 import json
 import os
 import re
@@ -54,10 +57,27 @@ MODES = ("enforce", "warn", "off")
 # The Bazel module name that marks a vitruvian-core checkout or worktree.
 MODULE_NAME_RE = re.compile(r'module\(\s*name\s*=\s*"vitruvian_core"')
 
-# Where the installer puts the guard, and where it logs. Agents may not write
-# to either (category guard-config).
+# Where the old per-user installer copied the guard, and where the guard logs
+# and hook.sh caches origin/main's copy. Agents may not write to either
+# (category guard-config). The old copy stays protected while anyone still has
+# it: `bazel run //tools/agent-guard:install` migrates it to the backstop and
+# deletes it.
 INSTALL_DIR_REL = ".local/share/agent-guard"
 STATE_DIR_REL = ".local/state/agent-guard"
+
+# Files in a checkout that wire the hook up, could switch it off, or run as
+# hooks themselves, and that take effect the moment they change, before anyone
+# reviews them. Agents may not write, move or delete them (category
+# guard-config); changing them is James's call. The guard's own source and
+# policy are NOT here: hook.sh runs them from origin/main, so an agent's edit to
+# them governs nothing until it is merged. `*` matches within one folder.
+PROTECTED_REPO_FILES = (
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".claude/*.sh",
+    ".agents/hooks.json",
+    "tools/agent-guard/hook.sh",
+)
 
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_COMMAND_MAX = 1000
@@ -1383,10 +1403,62 @@ def _positionals(args: Sequence[str], with_arg: Sequence[str] = ()) -> List[str]
     return out
 
 
+# git fetch options that take a separate value.
+_FETCH_WITH_ARG = (
+    "--depth",
+    "--deepen",
+    "--shallow-since",
+    "--shallow-exclude",
+    "--negotiation-tip",
+    "--refmap",
+    "--upload-pack",
+    "-j",
+    "--jobs",
+    "-o",
+    "--server-option",
+    "--recurse-submodules-default",
+    "--submodule-prefix",
+    "--filter",
+    "-s",
+    "--strategy",
+    "-X",
+    "--strategy-option",
+)
+
+
+def _fetch_into_named_ref(verb: str, vargs: List[str], config: List[str]) -> str:
+    """What makes this fetch (or pull) write a ref it names, or "" if nothing does.
+
+    hook.sh runs the guard from origin/main, so a fetch that can point
+    refs/remotes/origin/main (or a branch) at other code must not slip through
+    as a read: an explicit `src:dst` refspec, `--refmap`, or a config override
+    of a remote or of URL rewriting. The remote's own refspec only ever writes
+    its own refs/remotes/<name>/, so plain fetches stay allowed.
+    """
+    for c in config:
+        key = c.split("=", 1)[0].lower()
+        if key.startswith("remote.") or key.startswith("url."):
+            return "-c %s" % key
+    for i, a in enumerate(vargs):
+        if a == "--refmap" and i + 1 < len(vargs) and vargs[i + 1]:
+            return "--refmap"
+        if a.startswith("--refmap=") and a.split("=", 1)[1]:
+            return "--refmap"
+    if _has(vargs, "--multiple", "--all"):
+        return ""  # every argument is a remote or group, none is a refspec
+    pos = _positionals(vargs, _FETCH_WITH_ARG)
+    for spec in pos[1:]:
+        dst = spec.lstrip("+").split(":", 1)
+        if len(dst) == 2 and dst[1]:
+            return spec
+    return ""
+
+
 def classify_git(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str]:
     """Returns (verdict, effective cwd)."""
     args = inv.argv[1:]
     cwd = inv.cwd
+    config: List[str] = []  # -c / --config-env settings, for fetch and pull
     i = 0
     while i < len(args):
         a = args[i]
@@ -1398,6 +1470,8 @@ def classify_git(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str]
             if "=" in a
             else (args[i + 1] if i + 1 < len(args) else "")
         )
+        if name in ("-c", "--config-env"):
+            config.append(val)
         if name in ("-C",):
             cwd = expand_path(val, cwd, ctx.home)
         elif name == "--work-tree":
@@ -1420,6 +1494,18 @@ def classify_git(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str]
         or vargs == ["-h"]
     ):
         return None, cwd
+    if verb in ("fetch", "pull"):
+        hijack = _fetch_into_named_ref(verb, vargs, config)
+        if hijack:
+            return V(
+                "git-other",
+                "git %s %s" % (verb, hijack),
+                None,
+                "A fetch that names where it writes (a `src:dst` refspec, `--refmap`, or a "
+                "`-c remote.*`/`url.*` override) can move origin/main, and agent-guard's hook "
+                "runs the guard from origin/main. `git fetch`, `git fetch origin` and "
+                "`git fetch origin main` are fine.",
+            ), cwd
     if verb in GIT_READ_ONLY:
         return None, cwd
 
@@ -2554,6 +2640,13 @@ def classify_rm(inv: Invocation, ctx: Context) -> Tuple[Optional[Verdict], str]:
     for t in targets:
         p = expand_path(t, inv.cwd, ctx.home)
         if guard_path(p, ctx.home):
+            if protected_repo_file(p):
+                return V(
+                    "guard-config",
+                    "rm of agent-guard's hook files",
+                    None,
+                    HOOK_FILES_NOTE,
+                ), p
             return V(
                 "guard-config",
                 "rm of agent-guard files",
@@ -2617,12 +2710,43 @@ READERS = {
 
 
 def guard_path(path: str, home: str) -> bool:
+    """Is path one agents may not write: the guard's folders in HOME, or a hook file in a checkout?"""
     p = os.path.normpath(path)
     for rel in (INSTALL_DIR_REL, STATE_DIR_REL):
         base = os.path.normpath(os.path.join(home, rel))
         if p == base or p.startswith(base + os.sep):
             return True
-    return False
+    return protected_repo_file(p) is not None
+
+
+def protected_repo_file(path: str, folders: bool = True) -> Optional[str]:
+    """The PROTECTED_REPO_FILES entry that path is, or holds, inside a vitruvian-core checkout.
+
+    With folders, a folder holding one counts too (`rm -r .claude`,
+    `mv tools/agent-guard x`); the checkout's root never does (removing a
+    worktree is git-worktree's).
+    """
+    p = os.path.normpath(path)
+    if not any(
+        part in p for part in (".claude", ".agents", "tools", "agent-guard", "hook")
+    ):
+        return None  # fast path: most paths name none of them
+    root = repo_root_of(p)
+    if root is None or p == root:
+        return None
+    rel = os.path.relpath(p, root).replace(os.sep, "/")
+    for f in PROTECTED_REPO_FILES:
+        if _protected_match(rel, f) or (folders and f.startswith(rel + "/")):
+            return f
+    return None
+
+
+def _protected_match(rel: str, pattern: str) -> bool:
+    if "*" not in pattern:
+        return rel == pattern
+    folder, _, name = pattern.rpartition("/")
+    rfolder, _, rname = rel.rpartition("/")
+    return rfolder == folder and fnmatch.fnmatchcase(rname, name)
 
 
 def _mentions_guard(word: str, cwd: str, home: str) -> bool:
@@ -2632,6 +2756,131 @@ def _mentions_guard(word: str, cwd: str, home: str) -> bool:
         if guard_path(expand_path(m.group(0), cwd, home), home):
             return True
     return False
+
+
+_PYTHON_RE = re.compile(r"^python(3(\.\d+)?)?$")
+_PY_LITERAL = re.compile(r"(['\"])((?:(?!\1).){1,500}?)\1")
+# Where a path literal sits when Python code writes, moves or deletes it: the
+# first argument of these calls...
+_PY_WRITE_FIRST = re.compile(
+    r"\b(rmtree|remove|unlink|rmdir|removedirs|rename|renames|replace|move|chmod|chown|"
+    r"truncate|makedirs|mkdir|symlink|link|utime|chflags)\(\s*$"
+)
+# ...the second argument of these (the first is what is read or moved from)...
+_PY_WRITE_SECOND = re.compile(
+    r"\b(copy\w*|move|rename|renames|replace|symlink|link)\(\s*(['\"])[^'\"]*\2\s*,\s*$"
+)
+# ...and Path(<path>) followed by a writing method.
+_PY_PATH_WRITE = re.compile(
+    r"^\s*\)\s*\.\s*(write_text|write_bytes|unlink|rmdir|mkdir|touch|rename|replace|"
+    r"chmod|symlink_to|hardlink_to|open\(\s*['\"][wax])"
+)
+
+
+def _python_writes(text: str, protected: Callable[[str], bool]) -> str:
+    """The protected path literal that Python code writes, moves or deletes, or "".
+
+    Reads a `python -c` text the way the rest of the guard reads shell: by its
+    shape. A protected path counts only where it is written: `open(p, "w")`,
+    the first argument of rmtree/remove/rename/..., the destination of
+    copy/move, or `Path(p).write_text(...)`. As a read or copy source it is fine.
+    """
+    for m in _PY_LITERAL.finditer(text):
+        lit = m.group(2)
+        if not protected(lit):
+            continue
+        before, after = (
+            text[max(0, m.start() - 120) : m.start()],
+            text[m.end() : m.end() + 40],
+        )
+        if re.search(r"\bopen\(\s*$", before) and re.match(
+            r"^\s*,\s*(mode\s*=\s*)?['\"][^'\"]*[wax+]", after
+        ):
+            return lit
+        if _PY_WRITE_FIRST.search(before) or _PY_WRITE_SECOND.search(before):
+            return lit
+        if re.search(r"\bPath\(\s*$", before) and _PY_PATH_WRITE.match(after):
+            return lit
+    return ""
+
+
+_HOOK_FILE_HINT = re.compile(r"\.claude|\.agents|settings|hooks\.json|hook\.sh|tools")
+_PATHISH = re.compile(r"[^\s'\"=,;:()<>|&`]+")
+
+
+def _mentions_hook_file(word: str, cwd: str, home: str, folders: bool = False) -> bool:
+    """Does word name a PROTECTED_REPO_FILES file (with folders, or a folder holding one)?"""
+    if not _HOOK_FILE_HINT.search(word):
+        return False
+    for m in _PATHISH.finditer(word):
+        if protected_repo_file(expand_path(m.group(0), cwd, home), folders):
+            return True
+    return False
+
+
+# Programs that remove or move what they are given, so naming a folder that
+# holds a hook file counts (`mv .claude x`, `chmod -R a-w tools`). For any
+# other program only the files themselves do (`pytest tools/` is fine).
+_REMOVERS = {
+    "rm",
+    "rmdir",
+    "mv",
+    "unlink",
+    "trash",
+    "srm",
+    "chmod",
+    "chown",
+    "chflags",
+    "find",
+}
+
+
+# Programs that take a hook file as an argument without writing it: running
+# the launcher to try it, git and gh (judged by their own rules), and Bazel.
+_BAZELS = {"bazel", "bazelisk", "aspect", "ibazel"}
+_HOOK_FILE_NONWRITERS = SHELLS | _BAZELS | {"git", "gh", "source", "."}
+
+# Copiers read their sources: only where they write counts.
+_COPIERS = {"cp", "rsync", "scp", "ditto", "install"}
+
+
+def _written_words(argv: List[str]) -> List[str]:
+    """The paths a program may write: all its arguments, except a copier's sources.
+
+    For a copier that is the destination, plus destination/<source name> for
+    each source in case the destination is a folder (`cp x/hooks.json .agents/`).
+    """
+    if os.path.basename(argv[0]) not in _COPIERS:
+        return argv[1:]
+    dests: List[str] = []
+    plain = []
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-t", "--target-directory") and i + 1 < len(argv):
+            dests.append(argv[i + 1])
+            i += 2
+            continue
+        if a.startswith("--target-directory="):
+            dests.append(a.split("=", 1)[1])
+        elif not a.startswith("-"):
+            plain.append(a)
+        i += 1
+    if not dests and plain:
+        dests.append(plain.pop())
+    out = list(dests)
+    for d in dests:
+        out += [
+            d.rstrip("/") + "/" + os.path.basename(src.rstrip("/")) for src in plain
+        ]
+    return out
+
+
+HOOK_FILES_NOTE = (
+    "Agents may not change agent-guard's wiring (%s): those files take effect "
+    "before review. Changing them is James's call: ask him."
+    % ", ".join(PROTECTED_REPO_FILES)
+)
 
 
 _INSTALLER_RE = re.compile(
@@ -2669,9 +2918,15 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
             "`--dry-run` and `--check` are fine.",
         )
     for op, target in inv.redirects:
-        if op not in ("<",) and guard_path(
-            expand_path(target, inv.cwd, ctx.home), ctx.home
-        ):
+        path = expand_path(target, inv.cwd, ctx.home)
+        if op not in ("<",) and guard_path(path, ctx.home):
+            if protected_repo_file(path):
+                return V(
+                    "guard-config",
+                    "writing agent-guard's hook files",
+                    None,
+                    HOOK_FILES_NOTE,
+                )
             return V(
                 "guard-config",
                 "writing agent-guard files",
@@ -2679,20 +2934,26 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
                 "Changing agent-guard is James's job, from his own terminal.",
             )
     prog = inv.prog
-    if prog in READERS:
-        if prog in ("python", "python3"):
-            # python -c that mentions the guard's files and writes: refuse; reading is fine.
+    if prog in READERS or _PYTHON_RE.match(prog):
+        if _PYTHON_RE.match(prog):
+            # python -c that WRITES one of the guard's files: refuse. Naming one
+            # only as something to read or copy from is fine.
             text = " ".join(inv.argv[1:])
-            if any(
-                _mentions_guard(w, inv.cwd, ctx.home) for w in inv.argv[1:]
-            ) and re.search(
-                r"open\([^)]*['\"][wa]|write|unlink|remove|rmtree|rename|replace", text
-            ):
+            hit = _python_writes(
+                text,
+                lambda p: guard_path(expand_path(p, inv.cwd, ctx.home), ctx.home),
+            )
+            if hit:
+                hook = protected_repo_file(expand_path(hit, inv.cwd, ctx.home))
                 return V(
                     "guard-config",
-                    "writing agent-guard files",
+                    "writing agent-guard's hook files"
+                    if hook
+                    else "writing agent-guard files",
                     None,
-                    "Changing agent-guard is James's job, from his own terminal.",
+                    HOOK_FILES_NOTE
+                    if hook
+                    else "Changing agent-guard is James's job, from his own terminal.",
                 )
         return None
     if (
@@ -2703,12 +2964,27 @@ def classify_guard_tamper(inv: Invocation, ctx: Context) -> Optional[Verdict]:
         return None
     if prog == "find" and not ("-delete" in inv.argv or "-exec" in inv.argv):
         return None
-    if any(_mentions_guard(w, inv.cwd, ctx.home) for w in inv.argv[1:]):
+    if prog in _BAZELS:
+        # Its arguments are labels and the target's own arguments (a commit
+        # message that names the guard's folder, say). What a target does is
+        # out of sight by design; the installer is judged in classify_bazel.
+        return None
+    if any(_mentions_guard(w, inv.cwd, ctx.home) for w in _written_words(inv.argv)):
         return V(
             "guard-config",
             "%s on agent-guard files" % prog,
             None,
             "Changing agent-guard is James's job, from his own terminal.",
+        )
+    if prog not in _HOOK_FILE_NONWRITERS and any(
+        _mentions_hook_file(w, inv.cwd, ctx.home, prog in _REMOVERS)
+        for w in _written_words(inv.argv)
+    ):
+        return V(
+            "guard-config",
+            "%s on agent-guard's hook files" % prog,
+            None,
+            HOOK_FILES_NOTE,
         )
     return None
 
@@ -3020,7 +3296,7 @@ COMMAND_FIELDS: Dict[str, Tuple[str, ...]] = {
     "send_command_input": ("Input", "input"),
 }
 # Tools that write files, and the fields naming the files. Checked only to keep
-# agents out of the installed guard's own folders.
+# agents out of the guard's folders in HOME and the checkout's hook files.
 DC = "mcp__plugin_desktop-commander_desktop-commander__"
 FILE_TOOLS = {
     "Edit": ("file_path",),
@@ -3082,8 +3358,9 @@ def resolve_cwd(payload: Dict[str, Any], home: str) -> Tuple[str, bool]:
     """(directory the tool call runs in, whether the payload said so).
 
     Claude Code runs the hook in the agent's own directory and sends `cwd`.
-    Antigravity runs it in the folder holding hooks.json (~/.gemini/config),
-    sends no top-level cwd, and puts the directory in args.Cwd; the hook's own
+    Antigravity runs it in the folder holding hooks.json (the checkout's
+    .agents/, or ~/.gemini/config for the retired per-user hook), sends no
+    top-level cwd, and puts the directory in args.Cwd; the hook's own
     directory is therefore never a fallback for it. Without Cwd the workspace
     paths stand in: the first one inside vitruvian-core if any is, else the
     first one. Without those, the location is unknown.
@@ -3141,12 +3418,20 @@ def evaluate_tool(
             (p for p in paths if p and guard_path(expand_path(p, cwd, home), home)), ""
         )
         if path and modes.get("guard-config") != "off":
-            v = V(
-                "guard-config",
-                "%s of agent-guard files" % tool,
-                None,
-                "Changing agent-guard is James's job, from his own terminal.",
-            )
+            if protected_repo_file(expand_path(path, cwd, home)):
+                v = V(
+                    "guard-config",
+                    "%s of agent-guard's hook files" % tool,
+                    None,
+                    HOOK_FILES_NOTE,
+                )
+            else:
+                v = V(
+                    "guard-config",
+                    "%s of agent-guard files" % tool,
+                    None,
+                    "Changing agent-guard is James's job, from his own terminal.",
+                )
             d = Decision(
                 "deny" if modes.get("guard-config") == "enforce" else "warn",
                 "guard-config",
@@ -3343,6 +3628,10 @@ def main(argv: Optional[List[str]] = None, stdin=None, stdout=None) -> int:
                 "decision": decision.decision,
                 "command": redact_for_log(text),
                 "session": str(session or "")[:64],
+                # Which copy decided: "origin/main:<blob>" or "working-copy (why)"
+                # from hook.sh; "" when run some other way. The retired
+                # per-user install writes no source at all.
+                "source": os.environ.get("AGENT_GUARD_SOURCE", "")[:200],
             },
         )
     out = render(decision, antigravity)

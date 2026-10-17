@@ -18,9 +18,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""agent-guard: a Claude Code hook that keeps agents' repo and dev operations on Bazel targets.
+"""agent-guard: a Claude Code and Antigravity hook that keeps agents' repo and dev operations on Bazel targets.
 
-  bazel run //tools/agent-guard:install [-- --dry-run | --check | --uninstall | --mode CATEGORY=MODE]
+It runs from the repo: .claude/settings.json and .agents/hooks.json call
+hook.sh, which runs the guard as it is on origin/main. A thin per-user
+backstop covers sessions started outside the repo.
+
+  bazel run //tools/agent-guard:install                  # install the backstop (once)
+  bazel run //tools/agent-guard:install -- --check       # wiring, backstop and launcher OK?
 
 See README.md.
 """
@@ -30,15 +35,16 @@ See README.md.
 # package: everything imports by path.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 
 exports_files([
     "agent_guard.py",
+    "hook.sh",
     "policy.json",
 ])
 
-# The hook itself. Not how it runs in practice (the installed copy runs on the
-# system python3), but handy for trying a payload:
+# The guard on its own. Not how it runs in practice (hook.sh runs origin/main's
+# copy on the machine's python3), but handy for trying a payload:
 #   echo '{"tool_name":"Bash","cwd":"'$PWD'","tool_input":{"command":"git push"}}' | bazel run //tools/agent-guard
 py_binary(
     name = "agent-guard",
@@ -48,6 +54,8 @@ py_binary(
     main = "agent_guard.py",
 )
 
+# Installs the per-user backstop (entries running the main checkout's hook.sh),
+# migrating the old copied install; --check, --dry-run, --uninstall.
 py_binary(
     name = "install",
     srcs = [
@@ -59,8 +67,31 @@ py_binary(
     main = "install.py",
 )
 
+# The repo's hook files and the launcher, for the tests.
+filegroup(
+    name = "wiring",
+    srcs = [
+        "hook.sh",
+        "//:.agents/hooks.json",
+        "//:.claude/settings.json",
+    ],
+)
+
+py_library(
+    name = "testlib",
+    testonly = True,
+    srcs = ["testlib.py"],
+    data = [
+        "agent_guard.py",
+        "policy.json",
+        ":wiring",
+    ],
+    imports = ["."],
+)
+
 # The decision table (400+ real commands), redaction, scope, modes, hook I/O,
-# and a real-git merge conflict for the in-progress checks.
+# the hook files' protection, and a real-git merge conflict for the
+# in-progress checks.
 py_test(
     name = "agent_guard_test",
     size = "small",
@@ -73,18 +104,34 @@ py_test(
     main = "agent_guard_test.py",
 )
 
-# The installer against a temporary HOME: merge, the two entries, idempotence,
-# dry run, uninstall, modes, self-test and rollback, and its refusals.
+# hook.sh in a throwaway git checkout: origin/main's guard rather than a local
+# edit, the working-copy fallbacks, the python fallback, both agents' working
+# folders; and the repo's real .claude/settings.json and .agents/hooks.json,
+# which fail the test if agent-guard is unwired from either.
+py_test(
+    name = "hook_test",
+    size = "small",
+    srcs = [
+        "agent_guard.py",
+        "hook_test.py",
+        "install.py",
+    ],
+    imports = ["."],
+    main = "hook_test.py",
+    deps = [":testlib"],
+)
+
+# The backstop against a temporary HOME (install, migration, rollback,
+# uninstall) and --check against a throwaway checkout.
 py_test(
     name = "install_test",
-    # Each case runs the real installer and its self-test: ~10 s locally.
-    size = "medium",
+    size = "small",
     srcs = [
         "agent_guard.py",
         "install.py",
         "install_test.py",
     ],
-    data = ["policy.json"],
     imports = ["."],
     main = "install_test.py",
+    deps = [":testlib"],
 )

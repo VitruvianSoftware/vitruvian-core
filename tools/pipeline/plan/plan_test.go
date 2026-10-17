@@ -73,6 +73,16 @@ func TestDocsOnlyFastGate(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "agent-guard's agy hook file is code",
+			files:    []string{".agents/hooks.json"},
+			expected: false,
+		},
+		{
+			name:     "agent definitions and skills",
+			files:    []string{".agents/agents/wren.md", ".agents/skills/x/SKILL.yaml"},
+			expected: true,
+		},
+		{
 			name:     "image assets in docs",
 			files:    []string{"docs/arch.png", "docs/diagram.svg"},
 			expected: true,

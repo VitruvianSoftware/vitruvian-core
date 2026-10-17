@@ -130,7 +130,7 @@ your checkout. Previews are always fine; applies are not.
 ## Repo and dev operations go through Bazel targets
 **Use these targets for every git write.** Raw git writes (`git commit`, `git push`,
 `git rebase`, `git worktree add/remove`, `git stash`, …) are blocked by agent-guard
-in agent sessions once it is installed (below); reads (`git status`, `log`, `diff`, `show`, `fetch`) stay allowed.
+in agent sessions (below); reads (`git status`, `log`, `diff`, `show`, `fetch`) stay allowed.
 Each target does the write plus the checks that belong with it, and every refusal
 prints the command to use instead. If no target fits, stop and say which one is missing.
 
@@ -165,7 +165,14 @@ does not, stop and tell James which one is missing.
 
 In Claude Code and Antigravity (agy) this is enforced by **agent-guard**, a hook that refuses the raw command and
 names the target ([tools/agent-guard](tools/agent-guard/README.md)). It reads command text,
-so it stops habits, not determined workarounds: do not route around it.
+so it stops habits, not determined workarounds: do not route around it. It runs from the repo, so
+every checkout and worktree is guarded with nothing to install: `.claude/settings.json` and
+`.agents/hooks.json` run `tools/agent-guard/hook.sh`, which runs the guard **as it is on
+`origin/main`**. You may change `agent_guard.py` and `policy.json` like any code (your edit takes
+effect once merged); you may not change those two hook files or `hook.sh`, which take effect
+before review: that is James's call. `bazel run //tools/agent-guard:install -- --check` shows
+whether the wiring works. Sessions started outside the repo are covered by a one-time per-user
+backstop that runs the main checkout's `hook.sh` (`bazel run //tools/agent-guard:install`, James's step).
 
 ## Finishing work: PR, checks, land, clean up
 Run every change to completion — an unmerged branch is unfinished work, not a deliverable.

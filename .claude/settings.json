@@ -8,6 +8,7 @@
       "mcp__Claude_Code_Remote__delete_trigger"
     ]
   },
+  "disableAllHooks": false,
   "hooks": {
     "SessionStart": [
       {
@@ -27,6 +28,27 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/block-queue-bypass.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^(Bash|Monitor|mcp__terminal__run_in_terminal|mcp__plugin_desktop-commander_desktop-commander__(start_process|interact_with_process)|mcp__ccd_pr__set_auto_merge|mcp__(kubernetes|Kubernetes_MCP_Server)__(kubectl_(apply|create|delete|patch|scale|rollout|generic)|exec_in_pod|(install|upgrade|uninstall)_helm_chart|node_management))$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh \"$CLAUDE_PROJECT_DIR/tools/agent-guard/hook.sh\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "^(Edit|Write|MultiEdit|NotebookEdit|mcp__plugin_desktop-commander_desktop-commander__(write_file|edit_block|move_file|create_directory|write_pdf))$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh \"$CLAUDE_PROJECT_DIR/tools/agent-guard/hook.sh\"",
             "timeout": 10
           }
         ]

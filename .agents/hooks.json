@@ -1,0 +1,17 @@
+{
+  "agent-guard": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|shell_exec|send_command_input|manage_task|git_commit|write_to_file|replace_file_content|multi_replace_file_content|notebook_edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh ../tools/agent-guard/hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
