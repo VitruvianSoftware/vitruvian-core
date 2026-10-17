@@ -126,6 +126,21 @@ your checkout. Previews are always fine; applies are not.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
 - macOS app (nexus-agent): `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`.
 
+## Repo and dev operations go through Bazel targets
+Agents do not run git writes, `gh` writes, or toolchains directly here. Use the target:
+`bazel run //tools/git:{commit,push,sync}` instead of `git commit`/`push`/`rebase`,
+`bazel run //tools/worktree` instead of `git worktree`, `git checkout -b` or `git switch`,
+`bazel test //...` instead of `go test`, `swift test`, `pnpm test` or `cargo test`,
+`bazel run //tools/format` and `aspect lint` instead of running linters, and
+`bazel run //tools/agent-app -- pr-create` instead of `gh pr create`. Read-only commands
+(`git status/log/diff`, `gh pr view`, `kubectl get`) stay fine.
+Where this guide still names a raw command (`gh pr create`, `gh pr merge --auto` below),
+use the target if it exists; if it does not, stop and tell James which one is missing.
+
+In Claude Code this is enforced by **agent-guard**, a hook that refuses the raw command and
+names the target ([tools/agent-guard](tools/agent-guard/README.md)). It reads command text,
+so it stops habits, not determined workarounds: do not route around it.
+
 ## Finishing work: PR, checks, land, clean up
 Run every change to completion — an unmerged branch is unfinished work, not a deliverable.
 1. **Open a PR.** When the work is done, push and open one unless an open, related PR already

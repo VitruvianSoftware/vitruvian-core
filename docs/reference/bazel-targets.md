@@ -14,6 +14,7 @@ mindmap
     Dev loop & SDLC
       //:doctor
       //tools/worktree
+      //tools/agent-guard:install
       //tools/agent-app
       //tools/watch-pr
       //tools/landed
@@ -56,6 +57,7 @@ mindmap
 | `//tools/ci-preflight` | The repo-side counterpart to `//:doctor`: every `secrets.*`/`vars.*` the workflows reference, and whether it is actually configured. Flags secrets that PR-triggered workflows read but the **Dependabot** store lacks — those silently resolve to `""` on dependency PRs. `-- --list` for the required set without touching the network |
 | `//tools/gomod:tidy` | `go mod tidy` across the `replace`-coupled Go modules (library ↔ go-foundation examples), which Dependabot cannot keep in step on its own. The fix side of `//tools/gomod:check` |
 | `//tools/antigravity-telemetry` | Antigravity & `agy` OTLP telemetry CLI: workstation setup (`setup`), diagnostics (`status`), test metric/trace emission (`emit`), and hook event exporter (`export`) |
+| `//tools/agent-guard:install` | Installs **agent-guard**, the Claude Code hook that refuses agents' repo and dev operations outside Bazel targets (`git commit`, `go test`, `gh pr merge`, ...) and names the target to use instead. Copies the guard to `~/.local/share/agent-guard`, merges two hook entries into `~/.claude/settings.json`, then self-tests and rolls back on failure. Refuses until `//tools/git:{commit,push,sync}`, `//tools/secret-scan` and agent-app `pr-enqueue` are in the checkout. `-- --dry-run`, `--check`, `--mode CATEGORY=enforce\|warn\|off`, `--uninstall`. Run it from your own terminal; agents may only dry-run or check. See [tools/agent-guard](../../tools/agent-guard/README.md) |
 | `//tools/bazel-cache:gc` | Reclaims Bazel output bases whose workspace is gone, or that are stale, across the default root, the per-worktree roots in `~/.cache/bazel/worktrees/` and stray bases; never one with a live server or a live worktree. Dry run unless `--execute` |
 | `//tools/remote:setup` | Opt-in build caching / RBE bootstrap — writes `user.bazelrc` for BuildBuddy or any REAPI provider. See [build cache](../guides/build-cache.md) / [remote build](../guides/remote-build.md) |
 
