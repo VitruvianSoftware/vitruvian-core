@@ -23,7 +23,12 @@
 # They are checked as the app and the engine check them: api_id a whole number from 1 to 2147483647, api_hash 32
 # hexadecimal characters. The values are never printed, in an error or by `bash -x`.
 #
-# Signing: ad hoc (`codesign --force --deep --sign -`), or with the identity in COURIER_SIGN_IDENTITY.
+# Signing: ad hoc (`codesign --force --deep --sign -`), or with the identity in COURIER_SIGN_IDENTITY. Extra
+# codesign flags can be passed in COURIER_SIGN_FLAGS (split on spaces, added before the app's path).
+#
+# This is NOT yet a release signing. A Developer ID build that can be notarized needs `--options runtime
+# --timestamp` and each nested piece (the Contents/Helpers engine, then the app) signed inside out with its own
+# entitlements, not `--deep`; that is milestone 6's. COURIER_SIGN_FLAGS lets the flags through until then.
 #
 # With no values the script says so, writes nothing and exits 1. --allow-missing skips the plist instead, so the
 # app falls back to asking for keys, and still signs the app again. Exit 2 is for a mistake in how it was run or in
@@ -70,23 +75,26 @@ store_relative="tools/sync-env-secrets/secrets/courier-release"
 id_name="COURIER_TELEGRAM_API_ID"
 hash_name="COURIER_TELEGRAM_API_HASH"
 
-# The folders to look for the store files in, most likely first.
+# The folders to look for the store files in, most likely first. Under `bazel run` this script runs from the
+# runfiles, which are not in any repository, so git is asked about BUILD_WORKSPACE_DIRECTORY (the checkout the
+# command was run in) when that is set, else about the folder this script is in.
 store_dirs() {
 	if [ -n "${COURIER_SECRETS_DIR:-}" ]; then
 		printf '%s\n' "$COURIER_SECRETS_DIR"
 		return
 	fi
-	local here
-	here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	local base top common
 	if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
-		printf '%s\n' "$BUILD_WORKSPACE_DIRECTORY/$store_relative"
+		base="$BUILD_WORKSPACE_DIRECTORY"
+		printf '%s\n' "$base/$store_relative"
+	else
+		base="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 	fi
-	local top common
-	if top="$(cd "$here" && git rev-parse --show-toplevel 2>/dev/null)"; then
+	if top="$(git -C "$base" rev-parse --show-toplevel 2>/dev/null)"; then
 		printf '%s\n' "$top/$store_relative"
 	fi
 	# In a worktree the store is in the main checkout: git's common folder is its .git.
-	if common="$(cd "$here" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
+	if common="$(git -C "$base" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
 		printf '%s\n' "$(dirname "$common")/$store_relative"
 	fi
 }
@@ -188,7 +196,13 @@ fi
 
 # The plist is part of the app's seal, so the app is signed again whether or not one was written.
 identity="${COURIER_SIGN_IDENTITY:--}"
-codesign --force --deep --sign "$identity" "$app" >/dev/null || {
+# Extra flags from the environment, split on spaces. (`${flags[@]+...}`: an empty array is an unset variable to
+# bash 3.2's `set -u`.)
+sign_flags=()
+if [ -n "${COURIER_SIGN_FLAGS:-}" ]; then
+	read -r -a sign_flags <<<"$COURIER_SIGN_FLAGS"
+fi
+codesign --force --deep --sign "$identity" ${sign_flags[@]+"${sign_flags[@]}"} "$app" >/dev/null || {
 	echo "inject-app-credentials: codesign could not sign $app." >&2
 	exit 1
 }

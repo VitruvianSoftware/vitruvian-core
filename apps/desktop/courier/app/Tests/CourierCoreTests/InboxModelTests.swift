@@ -33,7 +33,7 @@ final class InboxModelTests: XCTestCase {
     /// An app model on a stand-in engine, an inbox model on that, and the first inbox read done.
     private func start(rooms: [[String: Any]] = [], accounts: [[String: Any]] = [account("whatsapp", "CONNECTED")],
                        autoRelease: Bool = false, failFirstReads: Int = 0,
-                       hasTelegramCredentials: Bool = true) async throws -> Harness {
+                       hasTelegramCredentials: @escaping @MainActor () -> Bool = { true }) async throws -> Harness {
         let script = InboxScript(rooms: rooms, accounts: accounts)
         script.failReads = failFirstReads
         let server = try TestEngineServer(handler: script.handle)
@@ -46,7 +46,7 @@ final class InboxModelTests: XCTestCase {
         let app = AppModel(supervisor: supervisor)
         let sleeps = SleepControl()
         if autoRelease { await sleeps.releaseAlways() }
-        let inbox = InboxModel(appModel: app, hasTelegramCredentials: { hasTelegramCredentials }, window: 0.1,
+        let inbox = InboxModel(appModel: app, hasTelegramCredentials: hasTelegramCredentials, window: 0.1,
                                retryDelay: 2, sleep: { await sleeps.sleep($0) })
         app.start()
         try await waitUntil { inbox.isLoaded && !app.accounts.isEmpty }
@@ -389,10 +389,51 @@ final class InboxModelTests: XCTestCase {
             account("whatsapp", "LOGGED_OUT", error: "You were logged out"),
             account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
             account("slack", "NOT_STARTED", notStarted: "The Slack bridge could not start."),
-        ], hasTelegramCredentials: false)
+        ], hasTelegramCredentials: { false })
         XCTAssertEqual(h.inbox.banners.map(\.network), ["whatsapp", "slack"])
         XCTAssertFalse(h.inbox.banners.contains { $0.network == "telegram" })
         await stop(h)
+    }
+
+    /// The bundle and the Keychain are not read on every redraw: once per change of the accounts or the engine.
+    /// And while the engine restarts after the keys were saved, the old "not started" is no banner.
+    func testTelegramKeysAreAskedForOncePerChangeAndNoBannerWhileRestarting() async throws {
+        final class Keys: @unchecked Sendable {
+            var asked = 0
+            var has = false
+        }
+        let keys = Keys()
+        let h = try await start(accounts: [
+            account("whatsapp", "CONNECTED"),
+            account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
+        ], hasTelegramCredentials: { keys.asked += 1; return keys.has })
+        for _ in 0 ..< 5 { XCTAssertEqual(h.inbox.banners.count, 0) }
+        XCTAssertEqual(keys.asked, 1, "five redraws, one read")
+
+        // The keys are saved: nothing has changed in the accounts, so no banner flickers up before the
+        // restarted engine has been read.
+        keys.has = true
+        XCTAssertEqual(h.inbox.banners.count, 0)
+        XCTAssertEqual(keys.asked, 1)
+
+        // The accounts change (the new engine's list): asked again, and a Telegram that still did not start
+        // with keys in hand is a fault with a banner.
+        h.script.accounts = [
+            account("whatsapp", "CONNECTED"),
+            account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
+            account("slack", "CONNECTED"),
+        ]
+        h.server.notify(["kind": "bridge", "network": "slack"])
+        try await waitUntil { h.inbox.accounts.count == 3 }
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["telegram"])
+        XCTAssertEqual(keys.asked, 2)
+        _ = h.inbox.banners
+        XCTAssertEqual(keys.asked, 2)
+
+        // While the engine is not up, the stale "not started" shows nothing.
+        await stop(h)
+        XCTAssertNotEqual(h.app.engineState, .connected)
+        XCTAssertEqual(h.inbox.banners.count, 0)
     }
 
     func testReconnectingStatusPerAccount() async throws {
@@ -423,7 +464,7 @@ final class InboxModelTests: XCTestCase {
     func testEmptyStateWhenNoNetworkIsLinked() async throws {
         let h = try await start(accounts: [
             account("whatsapp", "UNCONFIGURED"), account("telegram", "NOT_STARTED", notStarted: "Needs a key."),
-        ], hasTelegramCredentials: false)
+        ], hasTelegramCredentials: { false })
         XCTAssertTrue(h.inbox.showsAddNetwork)
         // Telegram has no keys here yet: no banner, and no Set up button. Add a network asks for them.
         XCTAssertEqual(h.inbox.banners.map(\.network), [])

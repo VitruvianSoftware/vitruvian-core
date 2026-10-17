@@ -20,7 +20,8 @@ rm -rf "$work"
 mkdir -p "$work"
 
 # Nothing from the machine running the test may reach the script.
-unset COURIER_TELEGRAM_API_ID COURIER_TELEGRAM_API_HASH COURIER_SIGN_IDENTITY BUILD_WORKSPACE_DIRECTORY
+unset COURIER_TELEGRAM_API_ID COURIER_TELEGRAM_API_HASH COURIER_SIGN_IDENTITY COURIER_SIGN_FLAGS \
+	BUILD_WORKSPACE_DIRECTORY COURIER_SECRETS_DIR
 
 failed=0
 fail() {
@@ -34,12 +35,14 @@ good_hash=0123456789abcdef0123456789abcdef
 other_id=7070707
 other_hash=fedcba9876543210fedcba9876543210
 
-# A fresh, signed stand-in app: a real executable, so codesign has something to seal.
+# A fresh, signed stand-in app: a real executable, and a helper like the engine, so codesign has something to seal.
 new_app() {
 	local app="$work/apps/$1/Courier.app"
 	rm -rf "$work/apps/$1"
-	mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+	mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Helpers"
 	cp /usr/bin/true "$app/Contents/MacOS/Dummy"
+	printf '#!/bin/sh\nexit 0\n' >"$app/Contents/Helpers/dummy-helper"
+	chmod 755 "$app/Contents/Helpers/dummy-helper"
 	cat >"$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -72,6 +75,10 @@ mkdir -p "$empty_store"
 
 # --- 1. From the environment: a valid plist, a valid signature, nothing printed.
 app="$(new_app env)"
+# The helper changes after the app was signed (as the engine does when Bazel builds it): the app no longer
+# verifies, and only signing the whole bundle again, nested helper included, puts that right.
+printf '# changed\n' >>"$app/Contents/Helpers/dummy-helper"
+if verifies "$app"; then fail "the stand-in app still verifies after its helper changed"; fi
 out="$work/env.out"
 if COURIER_SECRETS_DIR="$empty_store" COURIER_TELEGRAM_API_ID="$good_id" COURIER_TELEGRAM_API_HASH="$good_hash" \
 	"$injector" "$app" >"$out" 2>&1; then
@@ -90,6 +97,11 @@ fi
 [ "$(plutil -extract api_id raw -o - "$plist" 2>/dev/null)" = "$good_id" ] && ok "api_id is the one given" || fail "api_id differs"
 [ "$(plutil -extract api_hash raw -o - "$plist" 2>/dev/null)" = "$good_hash" ] && ok "api_hash is the one given" || fail "api_hash differs"
 if verifies "$app"; then ok "the app passes codesign --verify --deep --strict"; else fail "the app does not verify after injection"; fi
+if codesign --verify --strict "$app/Contents/Helpers/dummy-helper" >/dev/null 2>&1; then
+	ok "the helper was signed again with the app"
+else
+	fail "the nested helper was not signed again"
+fi
 if leaks "$out" "$good_id" "$good_hash"; then fail "the script printed a value: $(cat "$out")"; else ok "nothing printed a value"; fi
 ls "$app/Contents/Resources" | grep -q '^\.TelegramApp\.' && fail "a staging file was left behind" || ok "no staging file left behind"
 
@@ -196,7 +208,47 @@ app="$(new_app allow-present)"
 COURIER_SECRETS_DIR="$store" "$injector" --allow-missing "$app" >/dev/null 2>&1 || true
 [ -f "$app/Contents/Resources/TelegramApp.plist" ] && ok "--allow-missing still injects when it can" || fail "--allow-missing skipped values that were there"
 
-# --- 8. Mistakes in how it is run.
+# --- 8. Extra codesign flags from COURIER_SIGN_FLAGS reach codesign.
+app="$(new_app flags)"
+COURIER_SECRETS_DIR="$store" COURIER_SIGN_FLAGS="--options runtime" "$injector" "$app" >"$work/flags.out" 2>&1 || true
+details="$(codesign -d --verbose=2 "$app" 2>&1 || true)"
+if [[ "$details" == *runtime* ]] && verifies "$app"; then
+	ok "COURIER_SIGN_FLAGS reaches codesign"
+else
+	fail "COURIER_SIGN_FLAGS did not reach codesign: $(cat "$work/flags.out")"
+fi
+
+# --- 9. Under `bazel run` the script is in the runfiles, which are not in any repository, and the store is in
+# the main checkout while the command was run in a worktree: BUILD_WORKSPACE_DIRECTORY leads git to it.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+main="$work/main-checkout"
+rm -rf "$main" "$work/worktree" "$work/runfiles"
+mkdir -p "$main" "$work/runfiles"
+git -C "$main" init -q
+git -C "$main" -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false commit -q --allow-empty -m init
+git -C "$main" worktree add -q "$work/worktree" -b scratch
+mkdir -p "$main/tools/sync-env-secrets/secrets/courier-release"
+printf '%s' "$other_id" >"$main/tools/sync-env-secrets/secrets/courier-release/COURIER_TELEGRAM_API_ID"
+printf '%s' "$other_hash" >"$main/tools/sync-env-secrets/secrets/courier-release/COURIER_TELEGRAM_API_HASH"
+cp "$injector" "$work/runfiles/inject-app-credentials.sh"
+app="$(new_app worktree)"
+if BUILD_WORKSPACE_DIRECTORY="$work/worktree" "$work/runfiles/inject-app-credentials.sh" "$app" >"$work/worktree.out" 2>&1 &&
+	[ "$(plutil -extract api_id raw -o - "$app/Contents/Resources/TelegramApp.plist")" = "$other_id" ] && verifies "$app"; then
+	ok "finds the main checkout's store from a worktree, outside any repository"
+else
+	fail "did not find the main checkout's store from a worktree: $(cat "$work/worktree.out")"
+fi
+if leaks "$work/worktree.out" "$other_id" "$other_hash"; then fail "the worktree run printed a value"; fi
+# Nothing in either place: still the plain missing-values answer.
+rm -f "$main/tools/sync-env-secrets/secrets/courier-release/"*
+app="$(new_app worktree-empty)"
+set +e
+BUILD_WORKSPACE_DIRECTORY="$work/worktree" "$work/runfiles/inject-app-credentials.sh" "$app" >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" -eq 1 ] && ok "an empty main checkout store is exit 1" || fail "an empty store gave exit $status"
+
+# --- 10. Mistakes in how it is run.
 set +e
 "$injector" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "no argument is a usage error" || fail "no argument was not a usage error"
