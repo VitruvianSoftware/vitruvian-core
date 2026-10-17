@@ -31,8 +31,7 @@
         },
         "icon": "qrcode",
         "surfaces": [
-          "commandBar",
-          "quickPanel"
+          "commandBar"
         ]
       },
       {
@@ -52,8 +51,7 @@
         },
         "icon": "bell",
         "surfaces": [
-          "commandBar",
-          "quickPanel"
+          "commandBar"
         ]
       },
       {

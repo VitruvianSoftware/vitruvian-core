@@ -450,6 +450,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.say?:
                 guard let text = event.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return .keep }
                 try say(text)
+            case Pages.Block.sayClipboard?:
+                guard event.kind == .tap else { return .keep }
+                try run(command: Command.sayClipboard)
             case Pages.Block.broadcasting?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()

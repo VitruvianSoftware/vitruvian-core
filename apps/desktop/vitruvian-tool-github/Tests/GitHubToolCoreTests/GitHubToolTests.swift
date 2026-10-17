@@ -134,7 +134,7 @@ final class GitHubToolTests: XCTestCase {
         XCTAssertEqual(mouse, [["/usr/bin/gravastar-mouse", "breathe", "red"]], "the first snapshot writes the mouse")
         XCTAssertEqual(host.rendered.map(\.panel), ["settings", "status", "settings"],
                        "the Settings panel while checking, the island after the poll, then Settings signed in")
-        XCTAssertEqual(tool.islandPage().ids, ["repo.VitruvianSoftware.vitruvian-core", "pulls", "refresh", "openRepo", "rerun"])
+        XCTAssertEqual(tool.islandPage().ids, ["repo.VitruvianSoftware.vitruvian-core", "pulls", "openPulls", "refresh", "openRepo", "rerun"])
     }
 
     func testTheCLIsLoginSignsInWhenNothingIsSaved() throws {
@@ -452,6 +452,10 @@ final class GitHubToolTests: XCTestCase {
         XCTAssertEqual(host.opened.count, 1, "a row the tool does not know opens nothing")
         tool.openPulls()
         XCTAssertEqual(host.opened.last, "https://github.com/pulls")
+        let opened = host.opened.count
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "openPulls", kind: .tap)), .keep, "the island's page stays")
+        XCTAssertEqual(host.opened.count, opened + 1)
+        XCTAssertEqual(host.opened.last, "https://github.com/pulls", "the island's button opens what the openPulls command opens")
     }
 
     // MARK: Settings
@@ -701,7 +705,7 @@ final class GitHubToolTests: XCTestCase {
         transport.answers["/graphql"] = (200, #"{"data": {"repository": {"mergeQueue": {"url": "https://github.com/VitruvianSoftware/vitruvian-core/queue/main", "entries": {"nodes": [{"position": 1, "state": "AWAITING_CHECKS", "pullRequest": {"number": 3, "title": "Fix", "url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/3", "author": {"login": "james"}}}, {"position": 2, "state": "QUEUED", "pullRequest": {"number": 40, "title": "Theirs", "url": null, "author": {"login": "bo"}}}]}}}}}"#)
         tool.start()
         let page = tool.islandPage()
-        XCTAssertEqual(page.ids, ["repo.VitruvianSoftware.vitruvian-core", "queue", "pulls", "refresh", "openRepo"])
+        XCTAssertEqual(page.ids, ["repo.VitruvianSoftware.vitruvian-core", "queue", "pulls", "openPulls", "refresh", "openRepo"])
         XCTAssertEqual(tool.summary.pullRequests.first?.pullRequest.mergeQueue, MergeQueueState(position: 1))
         _ = tool.islandEvent(PanelEvent(block: "queue", kind: .tap, value: .string("queue.VitruvianSoftware.vitruvian-core.3")))
         XCTAssertEqual(host.opened.last, "https://github.com/VitruvianSoftware/vitruvian-core/pull/3")

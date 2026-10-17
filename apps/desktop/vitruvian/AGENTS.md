@@ -129,6 +129,13 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   command is in it, and each would appear twice. A built-in command asks for
   a surface in `BuiltinTools.install` only when something there already runs
   it.
+- The island's Tools grid (`.quickPanel`) is for the app's own tools and for
+  tools from outside with no island page of their own. An outside tool
+  whose manifest has an island panel offers its actions on that page, so
+  `extraCommands(on: .quickPanel)` leaves its commands out even when they
+  ask for the grid (`ToolRegistry.hasIslandPage`, noted when the tool is
+  registered). The command bar, the wheel and the Shortcuts page still list
+  them. The rule reads the manifest, not the island switch.
 - A registry command that is listed and cannot run now (`ToolRegistry.canRun`
   is false: a grant is missing, its tool said so in `commands/state`, or the
   tool's program is stopped) is handled by each surface in its own way. The
@@ -724,7 +731,8 @@ before: the app offers both versions at `initialize`, and the tool picks.
   (`NotchSectionItem.tool`), beside the `NotchModule` pages in Explore and
   in the saved order (`notchModuleOrder`); reopening can land on it, and a
   quick-access button saved as `extension:<tool id>` opens it. The Tools
-  page lists only quick tools and commands.
+  page lists only quick tools and commands, and none of a tool that has
+  an island page.
   `NotchService` owns which page shows (`currentSection`, `extensionPage`):
   it opens one tool's page at a time, closing the last first, since
   `ToolPanelHost.open` does neither; an island page of its own, the app

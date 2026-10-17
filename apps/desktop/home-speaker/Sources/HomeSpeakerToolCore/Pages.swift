@@ -217,11 +217,16 @@ public enum Pages {
     public static let moreSettings = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
     /// The button that opens them, for an app that can.
     public static let moreSettingsButton = "More settings…"
+    /// The island's button that speaks what is on the clipboard.
+    public static let sayClipboardButton = "Speak clipboard"
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
 
     public enum Block {
         public static let say = "say"
+        /// The island's button that speaks the clipboard, as the
+        /// `sayClipboard` command does.
+        public static let sayClipboard = "sayClipboard"
         public static let broadcasting = "broadcasting"
         public static let quiet = "quiet"
         /// The island's Mute switch: on mutes, off unmutes.
@@ -342,6 +347,9 @@ public enum Pages {
             // when it would.
             if !status.needsSetup || status.config.effectiveSpeakLocal {
                 field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
+                // The `sayClipboard` command, here because the island's
+                // Tools grid leaves an extension's commands to its own page.
+                button(Block.sayClipboard, UIText.plain(sayClipboardButton))
             }
             if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
             if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }

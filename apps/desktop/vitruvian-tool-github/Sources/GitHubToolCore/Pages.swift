@@ -23,6 +23,10 @@ public enum Pages {
     public static let signOutButton = "signOut"
     public static let repoPicker = "repoPicker"
     public static let openRepoButton = "openRepo"
+    /// Opens the person's pull requests on GitHub, as the `openPulls`
+    /// command does: the island's Tools grid leaves an extension's commands
+    /// to its own page.
+    public static let openPullsButton = "openPulls"
     public static let queueList = "queue"
     public static let branchChecksList = "branchChecks"
     public static let copyCodeButton = "copyCode"
@@ -322,6 +326,7 @@ public enum Pages {
                                      trailing: Words.text(pull.isDraft ? "draft" : standing))
                 })
             }
+            button(openPullsButton, Words.text("openMyPulls"))
             button(refreshButton, Words.text("refresh"))
             if focused != nil { button(openRepoButton, Words.text("openInGitHub")) }
             if summary.repositories.contains(where: { !$0.failedRunIDs.isEmpty }) {

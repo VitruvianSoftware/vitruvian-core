@@ -78,8 +78,7 @@
         },
         "icon": "arrow.triangle.pull",
         "surfaces": [
-          "commandBar",
-          "quickPanel"
+          "commandBar"
         ]
       }
     ],
