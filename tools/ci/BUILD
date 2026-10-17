@@ -56,6 +56,10 @@ exports_files([
     "llvm-cache-key_test.sh",
     "llvm-cache-stage.sh",
     "llvm-cache-stage_test.sh",
+    # Read by //tools/agent-app:agent-app_test: pr-hold must use the label
+    # these gates honour as a person's hold (PERSON_LABEL).
+    "release-beta-gate.sh",
+    "release-hold.sh",
     # CI's gitleaks pin. //tools/secret-scan:secret-scan_test fails when it and
     # tools/tools.lock.json disagree.
     "secret-scan.sh",

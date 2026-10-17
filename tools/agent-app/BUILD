@@ -34,7 +34,11 @@ exports_files(["agent-app.sh"])
 sh_binary(
     name = "agent-app",
     srcs = ["agent-app.sh"],
-    data = ["agents.tsv"],
+    data = [
+        "agents.tsv",
+        "permissions.tsv",
+        "workflow-allowlist.txt",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -45,7 +49,17 @@ sh_test(
     data = [
         "agent-app.sh",
         "agents.tsv",
-    ],
+        "permissions.tsv",
+        "workflow-allowlist.txt",
+        # pr-hold's label must be the one these gates treat as a person's hold.
+        "//tools/ci:release-beta-gate.sh",
+        "//tools/ci:release-hold.sh",
+        # The script's --jq filters run for real, on responses saved from
+        # GitHub; the remote-exec image has no jq, so bring our own.
+        "@jq_toolchains//:resolved_toolchain",
+    ] + glob(["testdata/*.json"]),
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 alias(

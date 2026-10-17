@@ -1,0 +1,18 @@
+# Workflows an agent may start by hand with
+#   bazel run //tools/agent-app -- workflow-run <file> [-f k=v ...]
+# One file name per line, exactly as it is under .github/workflows/. Anything
+# not listed is refused. Starting a workflow can deploy, publish or push to
+# another repository, so adding a line is a decision for review, not a fix to
+# make in passing.
+#
+# Each one is here because agents already start it, and it only reads or
+# opens a pull request that the merge queue still tests.
+
+# Opens a catalog pull request for a tool release that is ahead of its entry.
+catalog-bump.yaml
+# Read-only: reports drift between the delivery config and what is deployed.
+# Started by wren on 2026-10-14 (run 38636869265).
+delivery-drift.yaml
+# Read-only: compares each agent App's permissions with permissions.tsv.
+# Started by wren after each by-hand permission change.
+agent-app-permissions.yaml

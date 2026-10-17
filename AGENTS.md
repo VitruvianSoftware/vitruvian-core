@@ -162,13 +162,30 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
    bare `gh pr create`: that opens it as the agent app with the `agent-fast-lane` label, so the
    PR skips the heavy tests (#3418). The merge queue still tests everything before it lands. Never merge locally. PR bodies are self-contained: what
    changed, why, how it was verified.
+   **Act as your own app.** Every `//tools/agent-app` PR command acts as **wren** unless you pass
+   `--agent <your agent name>` as its first argument (`pr-create --agent atlas --title ...`), so
+   pass it, or your work shows up as wren's. The run commands (`run-rerun`, `run-cancel`,
+   `workflow-run`) are the exception: they work **only as wren**, the one app allowed to start
+   or stop workflow runs, so leave `--agent` off for those.
 2. **Drive the checks green & monitor landing autonomously.** Run `bazel run //tools/watch-pr -- <pr#>`
    (or delegate to subagent `scout`). This hermetic tool monitors PR CI checks to completion,
    extracts failure logs if a check goes red, tracks merge queue progression, confirms squash landing,
    and verifies post-merge push workflows on `main` (`//tools/pipeline-status`) with a hard timeout
    to prevent spinning or infinite loops.
-3. **Land it.** Once approved, enable auto-merge (`gh pr merge <pr#> --auto --squash`) and let
-   `watch-pr` monitor until it lands.
+   Edit, comment on, mark ready or close it the same way: `pr-edit`, `pr-comment`, `pr-ready`,
+   `pr-close` (`bazel run //tools/agent-app -- <command> <pr#> ...`). To re-run or cancel a CI
+   run use `run-rerun <run-id> [--failed]` / `run-cancel <run-id>`; to start a workflow,
+   `workflow-run <file.yaml>`, which only starts the ones in
+   `tools/agent-app/workflow-allowlist.txt`, from `main`. No raw `gh pr`, `gh run` or
+   `gh workflow` writes.
+3. **Land it.** Once approved, arm auto-merge with `bazel run //tools/agent-app -- pr-enqueue <pr#>`
+   (not `gh pr merge --auto`). It arms auto-merge as the agent app, then checks on GitHub that
+   the PR has auto-merge armed or is in the merge queue, and says which. Let `watch-pr` monitor
+   until it lands. To hold a PR, `pr-hold <pr#> [--reason "..."]`: it adds `do-not-automerge`,
+   turns auto-merge off and takes the PR out of the queue, since the label alone stops nothing.
+   `pr-enqueue` refuses a held PR, including one a release gate holds (`dev-deploy-red`,
+   `beta-not-built`): that gate re-arms it itself once its condition clears. `pr-unhold <pr#>` removes the label only; run `pr-enqueue`
+   again when it should land.
    **Never merge past the merge queue.** No `gh pr merge --admin`, no direct merge through the
    API, no push to `main`. If the queue removes your PR, a check failed on the queue's trial
    commit (your change plus the latest `main`); that run is under Actions, not on the PR's Checks

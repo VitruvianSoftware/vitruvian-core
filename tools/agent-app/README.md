@@ -13,6 +13,51 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `env <agent>` | **The one agents use.** Prints every export: token **and** git author identity. |
 | `login <agent>` | Token only. Not sufficient on its own — see below. |
 | `pr-create [--agent <agent>] [gh pr create args]` | **How agents open PRs.** Opens the PR as the agent app (default `wren`) with the `agent-fast-lane` label on at creation, so it skips the heavy PR tests; the merge queue still runs everything (#3418). Every other argument goes to `gh pr create` unchanged. The token is never printed; if it can't be minted, no PR is opened. |
+| `pr-edit <pr> [gh pr edit args]` | Edits the PR as the agent: `--title`, `--body-file`, `--add-label`, and so on. |
+| `pr-comment <pr> --body-file <f>` \| `--body <s>` | Comments as the agent. The body is required: without one gh waits for an editor. |
+| `pr-ready <pr>` | Marks a draft ready for review. |
+| `pr-close <pr> [--comment <s>] [--delete-branch]` | Closes the PR. |
+| `pr-enqueue <pr> [gh pr merge args]` | **How agents land PRs.** Arms auto-merge (`gh pr merge --auto`, plus `--squash` unless you chose it), so the PR joins the merge queue when its checks pass. Then asks GitHub (GraphQL) whether it took and prints which: `autoMergeRequest` (armed, waiting for checks) or `mergeQueueEntry` (in the queue). Fails if neither. Refuses a PR held with `do-not-automerge` (run `pr-unhold` first) or by a release gate's own label, `dev-deploy-red` or `beta-not-built` (the gate re-arms it itself once its condition clears), `--admin` however it is written, and `--merge`/`--rebase`, which main's ruleset does not allow, also inside short-flag clusters such as `-sm`. |
+| `pr-hold <pr> [--reason <s>]` | Holds the PR, in this order: adds `do-not-automerge` (first, so no release gate re-arms it meanwhile), turns auto-merge off, then reads the PR again and takes it out of the merge queue if it is in it, even when turning auto-merge off failed. Reads the PR back and fails unless GitHub shows all three. Posts the reason as a comment after that, if given. |
+| `pr-unhold <pr>` | Removes `do-not-automerge` and checks it is gone. Does **not** re-arm auto-merge: run `pr-enqueue` when the PR should land. |
+| `run-rerun <run-id> [--failed] [--job <id>]` | Re-runs a workflow run. Needs Actions write. |
+| `run-cancel <run-id>` | Cancels a workflow run. Needs Actions write. |
+| `workflow-run <file.yaml> [-f k=v ...] [--ref main]` | Starts a workflow, **only** one listed in [`workflow-allowlist.txt`](workflow-allowlist.txt), named by its file name, from `main` (another ref runs that branch's copy of the workflow), in this repository (`--repo` is refused). Needs Actions write. |
+
+Every `pr-*`, `run-*` and `workflow-run` command takes `--agent <agent>` as its
+**first** argument (default `wren`, or `$AGENT_APP_AGENT`) and acts as that
+agent's App, so an agent passes its own name. Tracing is switched off first
+thing, so `bash -x` or `SHELLOPTS=xtrace` cannot print the token. The token reaches `gh` through its environment only and is never
+printed. If it cannot be minted, nothing runs: no fallback to your own `gh`
+login. This is how agents do these things without a raw `gh pr ...` write,
+which the agent hook refuses.
+
+**Whose identity `pr-enqueue` uses, and why.** The agent's App, not your login.
+Arming auto-merge needs write access to the repo; for an App that is
+`contents` and `pull_requests` write, which every agent App has. It has been
+done for real: on #3421 `vitruvian-scout-agent[bot]` armed auto-merge and added
+the PR to the queue, and it merged. The Apps are not bypass actors on main's
+ruleset and do not need to be, because a bypass only matters for a direct
+merge, which this never does.
+
+**A hold is the label and auto-merge off, together.** Auto-merge is a setting
+on the PR, not a check, so a label alone stops nothing: GitHub merges an armed
+PR the moment its checks pass. `do-not-automerge` is the label the release
+gates ([`release-hold.sh`](../ci/release-hold.sh),
+[`release-beta-gate.sh`](../ci/release-beta-gate.sh)) treat as a person's
+hold: they never remove it and never re-arm a PR that carries it. The gates' own hold labels (`dev-deploy-red`, `beta-not-built`) are copied
+into `agent-app.sh` so `pr-enqueue` can refuse them too. The test fails if any
+of the three names drifts from its script.
+
+**Tests run the real `--jq` filters.** The fake `gh` in `agent-app_test.sh`
+answers with responses saved from GitHub ([`testdata/`](testdata/README.md))
+passed through the script's own filters by a real `jq`, so a typo in a
+filter fails CI. `WORKFLOW_ALLOWLIST` and `AGENT_PERMISSIONS` exist for that
+test and are ignored outside `bazel test`.
+
+**Actions write is wren's only** ([`permissions.tsv`](permissions.tsv)). The
+three run commands check that file first and refuse for any other agent,
+naming wren, instead of letting GitHub answer with a bare 403.
 
 `permissions.tsv` records what each App is meant to be allowed to do, and
 `bazel run //tools/agent-app:permission-drift` checks GitHub against it (below).
@@ -20,6 +65,9 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 ```sh
 eval "$(bazel run //tools/agent-app -- env beacon)"   # what an agent runs
 bazel run //tools/agent-app -- pr-create --title "..." --body-file pr.md
+bazel run //tools/agent-app -- pr-enqueue 123          # arm auto-merge, confirm on GitHub
+bazel run //tools/agent-app -- run-rerun 18000000000 --failed
+bazel run //tools/agent-app -- workflow-run catalog-bump.yaml
 bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
 bazel test //tools/agent-app/...
 bazel run //tools/agent-app:permission-drift          # GitHub vs permissions.tsv

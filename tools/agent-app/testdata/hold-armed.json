@@ -1,0 +1,10 @@
+{
+  "data": {
+    "node": {
+      "state": "OPEN",
+      "autoMergeRequest": { "enabledAt": "2026-10-16T20:00:00Z" },
+      "mergeQueueEntry": null,
+      "labels": { "nodes": [{ "name": "agent-fast-lane" }] }
+    }
+  }
+}

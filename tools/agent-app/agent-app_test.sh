@@ -39,6 +39,22 @@ bad() {
   failures=$((failures + 1))
 }
 
+# A real jq, so the script's own --jq filters run against responses saved from
+# GitHub (testdata/). Under Bazel it is the hermetic one (JQ_BIN, an exec path:
+# external/<repo>/... is ../<repo>/... from the runfiles root); the remote-exec
+# image has none of its own. Run by hand, the one on PATH.
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  REAL_JQ="$(cd "$(dirname "$JQ_BIN")" && pwd)/$(basename "$JQ_BIN")"
+else
+  REAL_JQ="$(command -v jq || true)"
+fi
+if [ ! -x "$REAL_JQ" ]; then
+  echo "agent-app_test: no jq (JQ_BIN or PATH); the filter checks cannot run" >&2
+  exit 1
+fi
+FIXTURES="$(cd "$(dirname "$SCRIPT")/testdata" && pwd)"
+
 # A throwaway key, generated per run: no fixture key is ever committed.
 KEYDIR="$(mktemp -d)"
 trap 'rm -rf "$KEYDIR"' EXIT
@@ -210,10 +226,7 @@ cat >"$STUB/curl" <<STUBEOF
 for a in "\$@"; do case "\$a" in http*) echo "\$a" >>"$KEYDIR/curl.log" ;; esac; done
 printf '{"token":"%s"}' "$SECRET"
 STUBEOF
-cat >"$STUB/jq" <<'STUBEOF'
-#!/usr/bin/env bash
-sed -n 's/.*"token":"\([^"]*\)".*/\1/p'
-STUBEOF
+ln -s "$REAL_JQ" "$STUB/jq"
 cat >"$STUB/gh" <<STUBEOF
 #!/usr/bin/env bash
 : >"$KEYDIR/gh.args"
@@ -295,6 +308,408 @@ elif [ -e "$KEYDIR/gh.args" ]; then
 else
   ok "GitHub refusing the token opens nothing"
 fi
+
+echo "== pr-edit, pr-comment, pr-ready, pr-close, pr-enqueue and the run commands act as the agent =="
+# This fake gh logs EVERY call as one line, arguments joined by |, and answers
+# the reads the way GitHub does: it takes a response saved from GitHub (in
+# testdata/, see its README) and runs it through the script's OWN --jq filter
+# with a real jq. So a typo in a filter fails here, not on the first real PR.
+# Which saved response each read gets: FAKE_HOLD for the hold-state query,
+# FAKE_ENQ for pr-enqueue's read-back, each a ;-separated list consumed one
+# per read, the last one repeating.
+export FAKE_LOG="$KEYDIR" FAKE_SECRET="$SECRET" FAKE_FIXTURES="$FIXTURES" FAKE_JQ="$REAL_JQ"
+cat >"$STUB/curl" <<'STUBEOF'
+#!/usr/bin/env bash
+{ set +x; } 2>/dev/null
+for a in "$@"; do case "$a" in http*) echo "$a" >>"$FAKE_LOG/curl.log" ;; esac; done
+printf '{"token":"%s"}' "$FAKE_SECRET"
+STUBEOF
+cat >"$STUB/gh" <<'STUBEOF'
+#!/usr/bin/env bash
+{ set +x; } 2>/dev/null
+(IFS='|'; printf '%s\n' "$*") >>"$FAKE_LOG/gh.calls"
+if [ "${GH_TOKEN:-}" = "$FAKE_SECRET" ] && [ -z "${GITHUB_TOKEN:-}" ]; then echo ok; else echo wrong; fi >>"$FAKE_LOG/gh.tokens"
+filter="" prev=""
+for a in "$@"; do [ "$prev" = --jq ] && filter="$a"; prev="$a"; done
+answer() { # kind list -> the saved response for this read, through the real filter
+  local n file
+  n=$(($(cat "$FAKE_LOG/$1.count" 2>/dev/null || echo 0) + 1))
+  echo "$n" >"$FAKE_LOG/$1.count"
+  file="$(tr ';' '\n' <<<"$2" | sed -n "${n}p")"
+  [ -n "$file" ] || file="$(tr ';' '\n' <<<"$2" | tail -1)"
+  "$FAKE_JQ" -r "$filter" "$FAKE_FIXTURES/$file.json"
+}
+case "$1 $2" in
+  "pr view") "$FAKE_JQ" -r "$filter" "$FAKE_FIXTURES/pr-view-id.json" ;;
+  "api graphql")
+    case "$*" in
+      *dequeuePullRequest*) exit "${FAKE_DEQUEUE_EXIT:-0}" ;;
+      *"labels(first"*) answer hold "${FAKE_HOLD:-hold-open}" ;;
+      *mergeMethod*) answer enq "${FAKE_ENQ:-enqueue-armed}" ;;
+      *) echo "fake gh: unexpected query" >&2; exit 1 ;;
+    esac ;;
+  "pr merge") exit "${FAKE_MERGE_EXIT:-0}" ;;
+  "pr edit") exit "${FAKE_EDIT_EXIT:-0}" ;;
+  "pr comment") exit "${FAKE_COMMENT_EXIT:-0}" ;;
+  *) echo done ;;
+esac
+STUBEOF
+chmod +x "$STUB/curl" "$STUB/gh"
+PR_ID="$("$REAL_JQ" -r .id "$FIXTURES/pr-view-id.json")"
+run_cmd() { # command args... -> output in $KEYDIR/cmd.out, gh calls in gh.calls
+  rm -f "$KEYDIR/gh.calls" "$KEYDIR/gh.tokens" "$KEYDIR/curl.log" "$KEYDIR/hold.count" "$KEYDIR/enq.count"
+  # OUTSIDE_TEST=1 runs the script as if not under bazel test; XTRACE=1 runs
+  # it with tracing switched on from the environment.
+  env ${OUTSIDE_TEST:+-u TEST_SRCDIR -u TEST_TMPDIR} ${XTRACE:+SHELLOPTS=xtrace} \
+    PATH="$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR="${KEYS:-$KEYDIR/keys}" GITHUB_TOKEN=ambient \
+    AGENT_APP_VERIFY_TRIES=2 AGENT_APP_VERIFY_SLEEP=0 bash "$SCRIPT" "$@" >"$KEYDIR/cmd.out" 2>&1 </dev/null
+}
+called() { grep -qx -- "$1" "$KEYDIR/gh.calls" 2>/dev/null; }
+call_line() { grep -nx -- "$1" "$KEYDIR/gh.calls" | head -1 | cut -d: -f1; }
+no_gh() { [ ! -s "$KEYDIR/gh.calls" ]; }
+no_token() { [ ! -s "$KEYDIR/curl.log" ]; }
+leaked() { grep -q "$SECRET" "$KEYDIR/cmd.out" "$KEYDIR/gh.calls" 2>/dev/null; }
+writes() { grep -cE '^pr\|(merge|edit|comment)\||dequeuePullRequest' "$KEYDIR/gh.calls" 2>/dev/null || true; }
+calls() { tr '\n' ' ' <"$KEYDIR/gh.calls" 2>/dev/null; }
+
+# command line | the gh call it must make
+while IFS='	' read -r line want; do
+  # shellcheck disable=SC2086
+  eval "run_cmd $line"
+  if ! called "$want"; then
+    bad "$line: no gh call '$want'; got: $(calls); out: $(cat "$KEYDIR/cmd.out")"
+  elif grep -qv '^ok$' "$KEYDIR/gh.tokens"; then
+    bad "$line: gh ran without the agent token, or with an ambient GITHUB_TOKEN"
+  elif ! grep -q "/app/installations/$(inst_of wren)/access_tokens" "$KEYDIR/curl.log" 2>/dev/null; then
+    bad "$line: did not mint wren's token"
+  elif leaked; then
+    bad "$line: the token was printed or passed as an argument"
+  else
+    ok "$line: passed through as the wren app; token never printed"
+  fi
+done <<'CASES'
+pr-edit 12 --title "two words" --add-label x --body-file pr.md	pr|edit|12|--title|two words|--add-label|x|--body-file|pr.md
+pr-comment 12 --body-file note.md	pr|comment|12|--body-file|note.md
+pr-comment 12 --body "looks good"	pr|comment|12|--body|looks good
+pr-ready 12	pr|ready|12
+pr-close 12 --comment "superseded by #13" --delete-branch	pr|close|12|--comment|superseded by #13|--delete-branch
+pr-enqueue 12	pr|merge|12|--auto|--squash
+pr-enqueue 12 --squash --auto --match-head-commit abc	pr|merge|12|--squash|--auto|--match-head-commit|abc
+pr-enqueue 12 -sd	pr|merge|12|-sd|--auto
+pr-enqueue 12 --subject -m	pr|merge|12|--subject|-m|--auto|--squash
+pr-enqueue 12 -t -r	pr|merge|12|-t|-r|--auto|--squash
+run-rerun 18000000001 --failed	run|rerun|18000000001|--failed
+run-cancel 18000000001	run|cancel|18000000001
+workflow-run catalog-bump.yaml -f tool=github --ref main	workflow|run|catalog-bump.yaml|-f|tool=github|--ref|main
+workflow-run catalog-bump.yaml --ref=main -Fn=1	workflow|run|catalog-bump.yaml|--ref=main|-Fn=1
+CASES
+
+run_cmd pr-edit --agent beacon --title t
+no_gh && ok "pr-edit without a PR number is a usage error, not an edit of the current branch's PR" ||
+  bad "pr-edit with no PR number ran gh: $(calls)"
+run_cmd pr-ready --agent beacon 12
+grep -q "/app/installations/$(inst_of beacon)/access_tokens" "$KEYDIR/curl.log" 2>/dev/null && called "pr|ready|12" &&
+  ok "--agent picks the app and is not passed to gh" || bad "--agent beacon: gh got $(calls)"
+run_cmd pr-comment 12
+no_gh && grep -q "body" "$KEYDIR/cmd.out" &&
+  ok "pr-comment without a body is refused (gh would wait for an editor)" || bad "pr-comment without a body: $(calls)"
+
+echo "== pr-enqueue confirms on GitHub through the real filters, and says which =="
+run_cmd pr-enqueue 12
+called "pr|view|12|--json|id|--jq|.id" && grep -q "^api|graphql|-f|id=$PR_ID|" "$KEYDIR/gh.calls" &&
+  ok "looks the PR up by the node id the real '.id' filter reads from a saved gh pr view" ||
+  bad "node id lookup: $(calls)"
+FAKE_ENQ=enqueue-armed run_cmd pr-enqueue 12
+grep -q "auto-merge armed by vitruvian-wren-agent (autoMergeRequest: SQUASH)" "$KEYDIR/cmd.out" &&
+  ok "armed: the read-back filter names autoMergeRequest, who armed it and the method" || bad "armed: $(cat "$KEYDIR/cmd.out")"
+FAKE_ENQ=enqueue-queued run_cmd pr-enqueue 12
+grep -q "mergeQueueEntry: position 1, AWAITING_CHECKS" "$KEYDIR/cmd.out" &&
+  ok "queued (response saved from #3425): names mergeQueueEntry, position and state" || bad "queued: $(cat "$KEYDIR/cmd.out")"
+if FAKE_ENQ=enqueue-open run_cmd pr-enqueue 12; then
+  bad "exited 0 although GitHub showed neither auto-merge nor a queue entry"
+elif grep -q "NOT queued" "$KEYDIR/cmd.out" && [ "$(grep -c '^api|graphql' "$KEYDIR/gh.calls")" = 3 ]; then
+  ok "neither set: reads again, then fails saying it is NOT queued"
+else
+  bad "none: $(cat "$KEYDIR/cmd.out") ; $(calls)"
+fi
+FAKE_HOLD=hold-merged run_cmd pr-enqueue 12
+grep -q "already merged" "$KEYDIR/cmd.out" && ! grep -q '^pr|merge' "$KEYDIR/gh.calls" &&
+  ok "merged (response saved from #3427): says so and arms nothing" || bad "merged: $(cat "$KEYDIR/cmd.out")"
+if FAKE_MERGE_EXIT=1 run_cmd pr-enqueue 12; then
+  bad "exited 0 when gh pr merge failed"
+elif grep -q "NOT armed" "$KEYDIR/cmd.out"; then
+  ok "gh pr merge failing is reported as NOT armed"
+else
+  bad "merge failure: $(cat "$KEYDIR/cmd.out")"
+fi
+
+echo "== pr-enqueue never arms over a hold =="
+for held in hold-held hold-armed-labelled hold-queued-labelled; do
+  if FAKE_HOLD=$held run_cmd pr-enqueue 12; then
+    bad "$held: pr-enqueue exited 0 on a PR carrying do-not-automerge"
+  elif grep -q '^pr|merge' "$KEYDIR/gh.calls"; then
+    bad "$held: armed auto-merge over the hold"
+  elif grep -q "pr-unhold 12" "$KEYDIR/cmd.out"; then
+    ok "$held: refused, nothing armed, points to pr-unhold"
+  else
+    bad "$held: $(cat "$KEYDIR/cmd.out")"
+  fi
+done
+
+# A release gate's own hold: the gate re-arms the PR itself when it clears.
+while IFS='	' read -r label gate; do
+  if FAKE_HOLD="hold-gate-$label" run_cmd pr-enqueue 12; then
+    bad "$label: pr-enqueue exited 0 on a PR $gate is holding"
+  elif grep -q '^pr|merge' "$KEYDIR/gh.calls"; then
+    bad "$label: armed auto-merge over $gate's hold"
+  elif grep -q "held by $gate ($label" "$KEYDIR/cmd.out" && grep -q "re-arms the PR itself" "$KEYDIR/cmd.out"; then
+    ok "$label: refused, nothing armed, says $gate re-arms it itself"
+  else
+    bad "$label: $(cat "$KEYDIR/cmd.out")"
+  fi
+done <<'GATES'
+dev-deploy-red	release-hold
+beta-not-built	release-beta-gate
+GATES
+FAKE_HOLD=hold-open run_cmd pr-enqueue 12
+called "pr|merge|12|--auto|--squash" && ok "no hold label of any kind: arms as usual" || bad "unheld PR not armed: $(calls)"
+
+echo "== pr-enqueue never merges past the queue =="
+for given in "--admin" "--admin=true" "--squash --admin" "--rebase" "-m" "-sm" "-dr" "-ms" "--disable-auto"; do
+  # shellcheck disable=SC2086
+  if run_cmd pr-enqueue 12 $given; then
+    bad "pr-enqueue 12 $given exited 0"
+  elif ! no_gh || ! no_token; then
+    bad "pr-enqueue 12 $given still minted a token or ran gh: $(calls)"
+  else
+    ok "'$given' refused before any token is minted"
+  fi
+done
+run_cmd pr-enqueue 12 --admin
+grep -q "break-glass" "$KEYDIR/cmd.out" && ok "--admin refusal says why" || bad "--admin refusal: $(cat "$KEYDIR/cmd.out")"
+
+echo "== workflow-run starts only allowlisted workflows, from main, here =="
+for wf in tabula-deploy.yaml catalog-bump "catalog-bump.yaml.bak" ../catalog-bump.yaml; do
+  if run_cmd workflow-run "$wf"; then
+    bad "workflow-run '$wf' exited 0"
+  elif ! no_gh || ! no_token; then
+    bad "workflow-run '$wf' ran gh or minted a token"
+  elif grep -q "not in workflow-allowlist.txt" "$KEYDIR/cmd.out"; then
+    ok "'$wf' refused: not on the allowlist"
+  else
+    bad "'$wf' refused for the wrong reason: $(cat "$KEYDIR/cmd.out")"
+  fi
+done
+grep -qx "catalog-bump.yaml" "$(dirname "$SCRIPT")/workflow-allowlist.txt" &&
+  ok "catalog-bump.yaml is on the allowlist" || bad "catalog-bump.yaml missing from the allowlist"
+for given in "--ref feature" "--ref=dev" "-r feature" "-rfeature" "--ref refs/heads/main" "-R o/r" "-Ro/r" "--repo o/r" "--repo=o/r" "--json"; do
+  # shellcheck disable=SC2086
+  if run_cmd workflow-run catalog-bump.yaml $given; then
+    bad "workflow-run catalog-bump.yaml $given exited 0"
+  elif ! no_gh || ! no_token; then
+    bad "workflow-run catalog-bump.yaml $given ran gh or minted a token"
+  else
+    ok "workflow-run catalog-bump.yaml $given: refused, nothing run"
+  fi
+done
+
+echo "== the allowlist and permissions overrides count only under bazel test =="
+EVIL="$KEYDIR/evil"
+mkdir -p "$EVIL"
+echo "tabula-deploy.yaml" >"$EVIL/allow.txt"
+printf 'beacon\tactions\twrite\n' >"$EVIL/perms.tsv"
+if OUTSIDE_TEST=1 WORKFLOW_ALLOWLIST="$EVIL/allow.txt" run_cmd workflow-run tabula-deploy.yaml; then
+  bad "outside bazel test, WORKFLOW_ALLOWLIST let tabula-deploy.yaml start"
+elif no_gh && grep -q "not in workflow-allowlist.txt" "$KEYDIR/cmd.out"; then
+  ok "outside bazel test, WORKFLOW_ALLOWLIST is ignored: the committed list applies"
+else
+  bad "WORKFLOW_ALLOWLIST outside test: $(cat "$KEYDIR/cmd.out")"
+fi
+if OUTSIDE_TEST=1 AGENT_PERMISSIONS="$EVIL/perms.tsv" run_cmd run-cancel --agent beacon 1; then
+  bad "outside bazel test, AGENT_PERMISSIONS gave beacon Actions write"
+elif no_gh && grep -q "no Actions write" "$KEYDIR/cmd.out"; then
+  ok "outside bazel test, AGENT_PERMISSIONS is ignored: the committed file applies"
+else
+  bad "AGENT_PERMISSIONS outside test: $(cat "$KEYDIR/cmd.out")"
+fi
+# The other half, so the two above prove something: the override does work
+# where it is meant to.
+TEST_TMPDIR="$KEYDIR" WORKFLOW_ALLOWLIST="$EVIL/allow.txt" run_cmd workflow-run tabula-deploy.yaml
+called "workflow|run|tabula-deploy.yaml" && ok "under bazel test the override is honoured (so the checks above are real)" ||
+  bad "override under test: $(cat "$KEYDIR/cmd.out")"
+
+echo "== run commands refuse an agent without Actions write =="
+for line in "run-rerun --agent beacon 1" "run-cancel --agent scout 1" "workflow-run --agent forge catalog-bump.yaml"; do
+  # shellcheck disable=SC2086
+  if run_cmd $line; then
+    bad "$line exited 0"
+  elif ! no_gh || ! no_token; then
+    bad "$line ran gh or minted a token"
+  elif grep -q "no Actions write" "$KEYDIR/cmd.out" && grep -q "wren" "$KEYDIR/cmd.out"; then
+    ok "$line: refused, naming wren as the agent that can"
+  else
+    bad "$line: $(cat "$KEYDIR/cmd.out")"
+  fi
+done
+run_cmd run-rerun not-a-number
+no_gh && grep -q usage "$KEYDIR/cmd.out" && ok "run-rerun needs a numeric run id" || bad "run-rerun not-a-number: $(cat "$KEYDIR/cmd.out")"
+
+echo "== pr-hold: label first, then auto-merge off, then out of the queue, then checked =="
+# FAKE_HOLD is the PR as GitHub shows it: before, after steps 1-2, at the end.
+if FAKE_HOLD="hold-armed;hold-held;hold-held" run_cmd pr-hold 12 --reason "waiting on #120" &&
+  called "pr|merge|12|--disable-auto" && called "pr|edit|12|--add-label|do-not-automerge" &&
+  grep -q '^pr|comment|12|--body|Held by the wren agent: waiting on #120' "$KEYDIR/gh.calls" &&
+  ! grep -q dequeuePullRequest "$KEYDIR/gh.calls" && grep -q "is held" "$KEYDIR/cmd.out"; then
+  ok "armed PR: do-not-automerge on, auto-merge off, reason posted, confirmed"
+else
+  bad "armed PR: $(calls) ; out: $(cat "$KEYDIR/cmd.out")"
+fi
+! grep -qv '^ok$' "$KEYDIR/gh.tokens" && ! leaked &&
+  ok "pr-hold runs every call as the agent; the token is never printed" || bad "pr-hold: token missing or leaked"
+[ "$(call_line "pr|edit|12|--add-label|do-not-automerge")" -lt "$(call_line "pr|merge|12|--disable-auto")" ] &&
+  ok "labels BEFORE turning auto-merge off: no window for a gate to re-arm it" || bad "auto-merge turned off before the label went on"
+
+FAKE_HOLD="hold-queued;hold-queued-labelled;hold-held" run_cmd pr-hold 12
+tr '\n' ' ' <"$KEYDIR/gh.calls" | grep -q "id=$PR_ID|-f|query= *mutation(\$id: ID!) { dequeuePullRequest" && ! called "pr|merge|12|--disable-auto" &&
+  ok "in the queue (response saved from #3425): takes it out by node id" || bad "queued: $(calls)"
+
+FAKE_HOLD="hold-held" run_cmd pr-hold 12
+[ "$(writes)" = 0 ] && grep -q "is held" "$KEYDIR/cmd.out" &&
+  ok "already held: changes nothing and says it is held" || bad "already held: $(calls)"
+
+if FAKE_HOLD="hold-armed;hold-armed-labelled;hold-armed-labelled" run_cmd pr-hold 12 --reason r; then
+  bad "exited 0 although GitHub still shows auto-merge armed"
+elif grep -q "NOT held" "$KEYDIR/cmd.out" && ! grep -q '^pr|comment' "$KEYDIR/gh.calls"; then
+  ok "read-back still armed: fails saying NOT held, and posts no reason"
+else
+  bad "still armed: $(cat "$KEYDIR/cmd.out")"
+fi
+if FAKE_MERGE_EXIT=1 FAKE_HOLD="hold-armed;hold-queued-labelled" run_cmd pr-hold 12 --reason r; then
+  bad "exited 0 when turning auto-merge off failed"
+elif grep -q dequeuePullRequest "$KEYDIR/gh.calls" && grep -q "NOT held" "$KEYDIR/cmd.out" &&
+  ! grep -q '^pr|comment' "$KEYDIR/gh.calls"; then
+  ok "turning auto-merge off fails and the PR has entered the queue: still takes it out, says NOT held"
+else
+  bad "disable failure + queued: $(calls) ; $(cat "$KEYDIR/cmd.out")"
+fi
+if FAKE_MERGE_EXIT=1 FAKE_HOLD="hold-armed;hold-armed-labelled" run_cmd pr-hold 12; then
+  bad "exited 0 when turning auto-merge off failed"
+elif grep -q "can still merge" "$KEYDIR/cmd.out" && ! grep -q dequeuePullRequest "$KEYDIR/gh.calls"; then
+  ok "turning auto-merge off fails, not queued: says NOT held, it can still merge"
+else
+  bad "disable failure: $(cat "$KEYDIR/cmd.out")"
+fi
+if FAKE_EDIT_EXIT=1 FAKE_HOLD="hold-armed" run_cmd pr-hold 12; then
+  bad "exited 0 when the label could not be added"
+elif ! grep -q '^pr|merge' "$KEYDIR/gh.calls" && grep -q "NOT held" "$KEYDIR/cmd.out"; then
+  ok "label cannot be added: stops there, says NOT held"
+else
+  bad "label failure: $(calls) ; $(cat "$KEYDIR/cmd.out")"
+fi
+if FAKE_HOLD="hold-merged" run_cmd pr-hold 12; then
+  bad "held a merged PR"
+elif [ "$(writes)" = 0 ]; then
+  ok "a merged PR (response saved from #3427): refused, nothing changed"
+else
+  bad "merged PR: $(calls)"
+fi
+for given in "--admin" "--label x" "--reason"; do
+  # shellcheck disable=SC2086
+  if run_cmd pr-hold 12 $given; then
+    bad "pr-hold 12 $given exited 0"
+  elif ! no_gh || ! no_token; then
+    bad "pr-hold 12 $given ran gh or minted a token"
+  else
+    ok "pr-hold 12 $given: usage error, nothing run"
+  fi
+done
+
+echo "== pr-unhold removes the label and does not re-arm =="
+if FAKE_HOLD="hold-open" run_cmd pr-unhold 12 &&
+  called "pr|edit|12|--remove-label|do-not-automerge" && ! grep -q '^pr|merge' "$KEYDIR/gh.calls" &&
+  grep -q "pr-enqueue 12" "$KEYDIR/cmd.out"; then
+  ok "label removed, auto-merge left off, and it says to run pr-enqueue"
+else
+  bad "unhold: $(calls) ; out: $(cat "$KEYDIR/cmd.out")"
+fi
+if FAKE_HOLD="hold-held" run_cmd pr-unhold 12; then
+  bad "unhold exited 0 although the label is still on"
+elif grep -q "NOT released" "$KEYDIR/cmd.out"; then
+  ok "read-back still labelled: fails saying NOT released"
+else
+  bad "unhold still labelled: $(cat "$KEYDIR/cmd.out")"
+fi
+run_cmd pr-unhold 12 --reason r
+no_gh && grep -q usage "$KEYDIR/cmd.out" && ok "pr-unhold takes no --reason" || bad "unhold --reason: $(cat "$KEYDIR/cmd.out")"
+
+echo "== xtrace cannot print the token =="
+if env SHELLOPTS=xtrace bash -c 'true' 2>&1 | grep -q '^+ true'; then
+  for line in "pr-edit 12 --title t" "pr-enqueue 12" "pr-hold 12" "workflow-run catalog-bump.yaml"; do
+    # shellcheck disable=SC2086
+    XTRACE=1 run_cmd $line
+    if leaked; then
+      bad "$line under SHELLOPTS=xtrace printed the token"
+    elif no_gh; then
+      bad "$line under SHELLOPTS=xtrace did not run: $(cat "$KEYDIR/cmd.out")"
+    else
+      ok "$line under SHELLOPTS=xtrace: ran, token not printed"
+    fi
+  done
+else
+  bad "SHELLOPTS=xtrace does not turn tracing on here, so this check would prove nothing"
+fi
+
+echo "== every new command fails closed with no token =="
+for line in "pr-edit 12 --title t" "pr-comment 12 --body b" "pr-ready 12" "pr-close 12" "pr-enqueue 12" \
+  "pr-hold 12 --reason r" "pr-unhold 12" "run-rerun 1" "run-cancel 1" "workflow-run catalog-bump.yaml"; do
+  # shellcheck disable=SC2086
+  if KEYS=/nonexistent run_cmd $line; then
+    bad "$line exited 0 without a key"
+  elif ! no_gh; then
+    bad "$line ran gh anyway, as whoever it is logged in as"
+  elif grep -q "NOT" "$KEYDIR/cmd.out" && grep -q "agent-keys-pull" "$KEYDIR/cmd.out"; then
+    ok "$line: no key, nothing run, says so and names the fix"
+  else
+    bad "$line: unclear failure: $(cat "$KEYDIR/cmd.out")"
+  fi
+done
+printf '#!/usr/bin/env bash\nexit 22\n' >"$STUB/curl"
+if run_cmd pr-enqueue 12; then
+  bad "pr-enqueue exited 0 when GitHub refused the token"
+elif ! no_gh; then
+  bad "pr-enqueue ran gh after the token request failed"
+else
+  ok "GitHub refusing the token: pr-enqueue runs nothing"
+fi
+
+echo "== the hold label is the one the release gates honour =="
+# release-hold.sh and release-beta-gate.sh call it PERSON_LABEL: the hold they
+# never remove and never re-arm over. If the names drift apart, a gate going
+# green would quietly re-arm a PR an agent is holding.
+hold_label="$(sed -n 's/^HOLD_LABEL="\([^"]*\)"$/\1/p' "$SCRIPT")"
+for gate in tools/ci/release-hold.sh tools/ci/release-beta-gate.sh; do
+  person="$(sed -n 's/^PERSON_LABEL="\([^"]*\)".*/\1/p' "$gate" 2>/dev/null)"
+  if [ -n "$hold_label" ] && [ "$hold_label" = "$person" ]; then
+    ok "$hold_label matches $gate's PERSON_LABEL"
+  else
+    bad "pr-hold uses '$hold_label' but $gate's PERSON_LABEL is '${person:-unreadable}'"
+  fi
+done
+
+# pr-enqueue's copies of each gate's OWN hold label. If a gate renames its
+# label and this does not follow, an agent could arm a PR that gate holds.
+while IFS='	' read -r var gate; do
+  ours="$(sed -n "s/^${var}=\"\([^\"]*\)\"\$/\1/p" "$SCRIPT")"
+  theirs="$(sed -n 's/^HOLD_LABEL="\([^"]*\)".*/\1/p' "$gate" 2>/dev/null)"
+  if [ -n "$ours" ] && [ "$ours" = "$theirs" ]; then
+    ok "$var ($ours) matches $gate's HOLD_LABEL"
+  else
+    bad "pr-enqueue's $var is '${ours:-missing}' but $gate's HOLD_LABEL is '${theirs:-unreadable}'"
+  fi
+done <<'DRIFT'
+RELEASE_HOLD_LABEL	tools/ci/release-hold.sh
+BETA_GATE_LABEL	tools/ci/release-beta-gate.sh
+DRIFT
 
 echo "== a worktree finds the keys in the main checkout =="
 if command -v git >/dev/null 2>&1; then
