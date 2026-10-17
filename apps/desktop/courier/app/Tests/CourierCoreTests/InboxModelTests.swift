@@ -33,7 +33,7 @@ final class InboxModelTests: XCTestCase {
     /// An app model on a stand-in engine, an inbox model on that, and the first inbox read done.
     private func start(rooms: [[String: Any]] = [], accounts: [[String: Any]] = [account("whatsapp", "CONNECTED")],
                        autoRelease: Bool = false, failFirstReads: Int = 0,
-                       hasTelegramCredentials: Bool = true) async throws -> Harness {
+                       hasTelegramCredentials: @escaping @MainActor () -> Bool = { true }) async throws -> Harness {
         let script = InboxScript(rooms: rooms, accounts: accounts)
         script.failReads = failFirstReads
         let server = try TestEngineServer(handler: script.handle)
@@ -46,7 +46,7 @@ final class InboxModelTests: XCTestCase {
         let app = AppModel(supervisor: supervisor)
         let sleeps = SleepControl()
         if autoRelease { await sleeps.releaseAlways() }
-        let inbox = InboxModel(appModel: app, hasTelegramCredentials: { hasTelegramCredentials }, window: 0.1,
+        let inbox = InboxModel(appModel: app, hasTelegramCredentials: hasTelegramCredentials, window: 0.1,
                                retryDelay: 2, sleep: { await sleeps.sleep($0) })
         app.start()
         try await waitUntil { inbox.isLoaded && !app.accounts.isEmpty }
@@ -389,9 +389,88 @@ final class InboxModelTests: XCTestCase {
             account("whatsapp", "LOGGED_OUT", error: "You were logged out"),
             account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
             account("slack", "NOT_STARTED", notStarted: "The Slack bridge could not start."),
-        ], hasTelegramCredentials: false)
+        ], hasTelegramCredentials: { false })
         XCTAssertEqual(h.inbox.banners.map(\.network), ["whatsapp", "slack"])
         XCTAssertFalse(h.inbox.banners.contains { $0.network == "telegram" })
+        await stop(h)
+    }
+
+    /// The bundle and the Keychain are not read on every redraw: once per change of the accounts or the engine.
+    /// And while the engine restarts after the keys were saved, the old "not started" is no banner.
+    func testTelegramKeysAreAskedForOncePerChangeAndNoBannerWhileRestarting() async throws {
+        final class Keys: @unchecked Sendable {
+            var asked = 0
+            var has = false
+        }
+        let keys = Keys()
+        let h = try await start(accounts: [
+            account("whatsapp", "CONNECTED"),
+            account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
+        ], hasTelegramCredentials: { keys.asked += 1; return keys.has })
+        for _ in 0 ..< 5 { XCTAssertEqual(h.inbox.banners.count, 0) }
+        XCTAssertEqual(keys.asked, 1, "five redraws, one read")
+
+        // The keys are saved: nothing has changed in the accounts, so no banner flickers up before the
+        // restarted engine has been read.
+        keys.has = true
+        XCTAssertEqual(h.inbox.banners.count, 0)
+        XCTAssertEqual(keys.asked, 1)
+
+        // The accounts change (the new engine's list): asked again, and a Telegram that still did not start
+        // with keys in hand is a fault with a banner.
+        h.script.accounts = [
+            account("whatsapp", "CONNECTED"),
+            account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash."),
+            account("slack", "CONNECTED"),
+        ]
+        h.server.notify(["kind": "bridge", "network": "slack"])
+        try await waitUntil { h.inbox.accounts.count == 3 }
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["telegram"])
+        XCTAssertEqual(keys.asked, 2)
+        _ = h.inbox.banners
+        XCTAssertEqual(keys.asked, 2)
+
+        // While the engine is not up, the stale "not started" shows nothing.
+        await stop(h)
+        try await waitUntil { h.app.engineState != .connected }
+        XCTAssertEqual(h.inbox.banners.count, 0)
+    }
+
+    /// The engine restarts to start Telegram with keys just saved. The new engine is connected at once, but its
+    /// accounts.list has not answered: the list is still the old engine's, and its "Telegram not started" is no
+    /// banner. Once the new list arrives, a Telegram that still did not start (with keys in hand) is one.
+    func testNoStaleTelegramBannerBetweenReconnectAndTheNewAccountList() async throws {
+        let notStarted = account("telegram", "NOT_STARTED", notStarted: "Telegram needs an api_id and api_hash.")
+        let h = try await start(accounts: [account("whatsapp", "CONNECTED"), notStarted],
+                                hasTelegramCredentials: { true })
+        // The first engine had no keys when it started: its list says "not started", and with keys now in hand
+        // that is already a fault the person can see.
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["telegram"])
+        let firstConnection = try XCTUnwrap(h.app.connectedAt)
+        XCTAssertNotNil(h.app.accountsReadAt)
+
+        // The restart: the new engine connects, and its accounts.list is held.
+        h.script.holdAccounts = true
+        h.supervisor.restart()
+        try await waitUntil { h.app.engineState == .connected && h.app.connectedAt != firstConnection }
+        try await waitUntil { h.server.receivedMethods().filter { $0 == "accounts.list" }.count >= 2 }
+        XCTAssertNil(h.app.accountsReadAt, "the new engine has not answered")
+        XCTAssertEqual(h.app.accounts.first { $0.network == "telegram" }?.state, .notStarted,
+                       "the list on screen is the old engine's")
+        XCTAssertEqual(h.inbox.banners.count, 0, "so its 'not started' is no banner")
+
+        // The new engine answers: Telegram is running, so still no banner...
+        h.script.accounts = [account("whatsapp", "CONNECTED"), account("telegram", "UNCONFIGURED")]
+        h.script.holdAccounts = false
+        h.server.releaseHeld(method: "accounts.list", with: ["accounts": h.script.accounts])
+        try await waitUntil { h.app.accountsReadAt != nil }
+        XCTAssertEqual(h.inbox.banners.count, 0)
+
+        // ...and one that still did not start is a fault with a banner, now that the list is the engine's own.
+        h.script.accounts = [account("whatsapp", "CONNECTED"), notStarted]
+        h.server.notify(["kind": "bridge", "network": "telegram"])
+        try await waitUntil { h.app.accounts.first { $0.network == "telegram" }?.state == .notStarted }
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["telegram"])
         await stop(h)
     }
 
@@ -423,7 +502,7 @@ final class InboxModelTests: XCTestCase {
     func testEmptyStateWhenNoNetworkIsLinked() async throws {
         let h = try await start(accounts: [
             account("whatsapp", "UNCONFIGURED"), account("telegram", "NOT_STARTED", notStarted: "Needs a key."),
-        ], hasTelegramCredentials: false)
+        ], hasTelegramCredentials: { false })
         XCTAssertTrue(h.inbox.showsAddNetwork)
         // Telegram has no keys here yet: no banner, and no Set up button. Add a network asks for them.
         XCTAssertEqual(h.inbox.banners.map(\.network), [])
@@ -456,6 +535,7 @@ final class InboxScript: @unchecked Sendable {
     private var _rooms: [[String: Any]]
     private var _accounts: [[String: Any]]
     private var _hold = false
+    private var _holdAccounts = false
     private var _failReads = 0
     private var _onMarkRead: (@Sendable (String) -> Void)?
 
@@ -480,6 +560,12 @@ final class InboxScript: @unchecked Sendable {
         set { lock.withLock { _hold = newValue } }
     }
 
+    /// While set, accounts.list is not answered until the test calls `releaseHeld(method:with:)`.
+    var holdAccounts: Bool {
+        get { lock.withLock { _holdAccounts } }
+        set { lock.withLock { _holdAccounts = newValue } }
+    }
+
     /// The next this many inbox.list calls fail.
     var failReads: Int {
         get { lock.withLock { _failReads } }
@@ -502,7 +588,7 @@ final class InboxScript: @unchecked Sendable {
     func handle(_ method: String, _ params: [String: Any]?) -> TestEngineServer.Reply {
         switch method {
         case "hello": return TestEngineServer.helloOK
-        case "accounts.list": return .result(["accounts": accounts])
+        case "accounts.list": return holdAccounts ? .later : .result(["accounts": accounts])
         case "inbox.list":
             if shouldFailRead() { return .error(code: -32000, message: "example failure") }
             return holdInbox ? .later : .result(["rooms": rooms])
@@ -522,7 +608,12 @@ extension TestEngineServer {
 
     /// Answers every inbox.list the handler held.
     func releaseHeld(with result: Any) {
-        for request in received where request["method"] as? String == "inbox.list" {
+        releaseHeld(method: "inbox.list", with: result)
+    }
+
+    /// Answers every request for `method` the handler held.
+    func releaseHeld(method: String, with result: Any) {
+        for request in received where request["method"] as? String == method {
             if let id = request["id"] as? Int { reply(to: id, with: result) }
         }
     }

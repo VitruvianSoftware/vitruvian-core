@@ -13,7 +13,9 @@
 #   3. quits the Courier that is installed at the destination if it is running, and waits for its engine to stop,
 #   4. replaces DIR/Courier.app (DIR is /Applications unless --dest says otherwise),
 #   5. checks the installed app with `codesign --verify --deep --strict`.
-# Only the Courier at the destination is quit, so a copy somewhere else keeps running.
+# Only the Courier at the destination is quit (matched by its exact path), so a copy somewhere else keeps
+# running. If it does not quit in ten seconds, or the quit is refused, its processes are sent SIGTERM; after 30
+# seconds the install gives up and replaces nothing. The old app is put aside, and put back if anything fails.
 #
 # Usage (as bazel run passes it): install.sh <inject-app-credentials.sh> <Courier.zip> [--dest DIR]
 set -euo pipefail
@@ -73,30 +75,85 @@ if [ ! -f "$app/Contents/Resources/TelegramApp.plist" ]; then
 	echo "Note: this Courier has no Telegram app ID built in, so it will ask for Telegram keys when Telegram is added."
 fi
 
-# Quit the Courier installed at the destination, by its path, and wait for its engine to go.
-engine_running() { pgrep -f "$installed/Contents/Helpers/courier-engine" >/dev/null 2>&1; }
-app_running() { pgrep -f "$installed/Contents/MacOS/Courier" >/dev/null 2>&1; }
-if app_running || engine_running; then
+# The Courier installed at the destination: its app and its engine, matched against the whole command line and
+# anchored to this exact path, so another Courier.app (~/Applications, say) is never mistaken for it.
+regex_escape() { printf '%s' "$1" | sed 's/[][\\.*^$+?(){}|\/]/\\&/g'; }
+patterns=()
+for prefix in "$installed" "$(cd "$dest" && pwd -P)/Courier.app"; do
+	escaped="$(regex_escape "$prefix")"
+	patterns+=("^$escaped/Contents/MacOS/Courier( |\$)" "^$escaped/Contents/Helpers/courier-engine( |\$)")
+done
+running_pids() {
+	local pattern
+	for pattern in "${patterns[@]}"; do pgrep -f "$pattern" 2>/dev/null || true; done | sort -u
+}
+if [ -n "$(running_pids)" ]; then
 	echo "Quitting the Courier installed in $dest..."
 	osascript -e "quit app \"$installed\"" >/dev/null 2>&1 || true
 	waited=0
-	while { app_running || engine_running; } && [ "$waited" -lt 30 ]; do
+	while [ -n "$(running_pids)" ] && [ "$waited" -lt 30 ]; do
 		sleep 1
 		waited=$((waited + 1))
+		# Not quit in ten seconds (or the quit was refused): ask the processes themselves to stop.
+		if [ "$waited" -eq 10 ]; then
+			for pid in $(running_pids); do kill -TERM "$pid" 2>/dev/null || true; done
+		fi
 	done
-	if app_running || engine_running; then
+	if [ -n "$(running_pids)" ]; then
 		echo "install: Courier is still running after 30 seconds. Quit it and run this again; nothing was replaced." >&2
 		exit 1
 	fi
 fi
 
-# ditto keeps the signature and every attribute; the old app goes only when the new one is in place beside it.
-ditto "$app" "$dest/.Courier.app.new"
-rm -rf "$installed"
-mv "$dest/.Courier.app.new" "$installed"
+# ditto keeps the signature and every attribute. The old app is moved aside, not deleted, until the new one is in
+# place and passes codesign --verify; any failure, or an interrupt, puts it back.
+staging="$dest/.Courier.app.new"
+aside="$dest/.Courier.app.old"
+trap 'rm -rf "$scratch" "$staging"' EXIT
+rm -rf "$staging"
 
-if ! codesign --verify --deep --strict "$installed"; then
-	echo "install: the installed app does not pass codesign --verify." >&2
-	exit 1
+# A run that was interrupted (a power cut, a kill -9) can leave the old app aside. If the installed app is missing,
+# that folder may hold the only copy: put it back before anything else. If both are there, the installed one is
+# the new app of that run, which may not have been checked: keep whichever passes codesign --verify.
+if [ -e "$aside" ]; then
+	if [ ! -e "$installed" ]; then
+		mv "$aside" "$installed"
+		echo "Note: an earlier install was interrupted; the Courier it had set aside is back in $dest."
+	elif codesign --verify --deep --strict "$installed" >/dev/null 2>&1; then
+		rm -rf "$aside"
+	else
+		rm -rf "$installed"
+		mv "$aside" "$installed"
+		echo "Note: an earlier install was interrupted; the Courier it had set aside is back in $dest."
+	fi
 fi
+
+ditto "$app" "$staging"
+
+# From here the destination changes. What to undo is read from what is on disk, so an interrupt at any moment is
+# handled: the old app, if there was one, goes back; on a first install the half-installed app is removed.
+had_old=0
+if [ -e "$installed" ]; then had_old=1; fi
+restore() {
+	trap '' INT TERM HUP
+	if [ "$had_old" -eq 1 ]; then
+		if [ -e "$aside" ]; then
+			rm -rf "$installed"
+			mv "$aside" "$installed"
+		fi
+		echo "install: $1 The previous Courier is back in place." >&2
+	else
+		rm -rf "$installed"
+		echo "install: $1 Nothing was installed." >&2
+	fi
+	exit 1
+}
+trap 'restore "Interrupted."' INT TERM HUP
+if [ "$had_old" -eq 1 ]; then mv "$installed" "$aside"; fi
+mv "$staging" "$installed" || restore "Could not move the new app into place."
+codesign --verify --deep --strict "$installed" || restore "The new app does not pass codesign --verify."
+# The new app is verified and in place: nothing left to guard. An interrupt from here on must not roll back to the
+# old app, least of all one half deleted by the rm below.
+trap - INT TERM HUP
+rm -rf "$aside"
 echo "Installed $installed."

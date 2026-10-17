@@ -66,6 +66,9 @@ public final class InboxModel: ObservableObject {
 
     private let appModel: AppModel
     private let hasTelegramCredentials: @MainActor () -> Bool
+    /// What `hasTelegramCredentials` said, and for which accounts and which engine: reading the app bundle and the
+    /// Keychain on every redraw of a view that shows `banners` would be wasteful, so it is asked once per change.
+    private var telegramKeysAnswer: (accounts: [Account], connectedAt: Date?, has: Bool)?
     private let window: TimeInterval
     private let retryDelay: TimeInterval
     private let sleep: @Sendable (TimeInterval) async -> Void
@@ -124,6 +127,18 @@ public final class InboxModel: ObservableObject {
         accounts.first { $0.network == network }?.displayName ?? network
     }
 
+    /// Whether Telegram has an app ID, asked again only when the accounts or the engine that is up change.
+    private var telegramHasKeys: Bool {
+        let accounts = self.accounts
+        let connectedAt = appModel.connectedAt
+        if let answer = telegramKeysAnswer, answer.accounts == accounts, answer.connectedAt == connectedAt {
+            return answer.has
+        }
+        let has = hasTelegramCredentials()
+        telegramKeysAnswer = (accounts, connectedAt, has)
+        return has
+    }
+
     /// Accounts that need the person, in the engine's order.
     public var banners: [AccountBanner] {
         accounts.compactMap { account in
@@ -139,7 +154,11 @@ public final class InboxModel: ObservableObject {
                               detail: account.error, action: .reconnect)
             case .notStarted:
                 // Telegram without an app ID is not a fault: Add a network asks for the keys when it is picked.
-                account.network == "telegram" && !hasTelegramCredentials()
+                // Nor is the "not started" of a list that is not the connected engine's word: the engine is not up,
+                // or it is up and has not yet answered accounts.list, so the list is still the previous engine's (as
+                // when the engine restarts to start Telegram with keys just saved).
+                account.network == "telegram"
+                    && (appModel.engineState != .connected || appModel.accountsReadAt == nil || !telegramHasKeys)
                     ? nil
                     : AccountBanner(network: account.network, displayName: account.displayName,
                                     reason: .notStarted, detail: account.notStarted, action: nil)
