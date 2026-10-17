@@ -42,6 +42,8 @@ go_test(
     },
     deps = [
         "//apps/desktop/courier/engine/internal/datadir",
+        "//apps/desktop/courier/engine/internal/networks",
+        "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_stretchr_testify//require",
     ],

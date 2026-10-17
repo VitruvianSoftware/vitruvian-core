@@ -20,9 +20,28 @@
           "preview_kind": "text",
           "preview_mine": false,
           "unread": 2,
-          "muted": false
+          "muted": false,
+          "pinned": true,
+          "archived": false,
+          "low_priority": false,
+          "hidden": false,
+          "marked_unread": false,
+          "request": false,
+          "draft": "Half a thought",
+          "labels": [1],
+          "muted_by": "",
+          "muted_by_name": "",
+          "reminder": {
+            "due_at": 1760700000000,
+            "condition": "if_no_reply",
+            "fired": false
+          },
+          "typing": ["Contact One"],
+          "unread_mentions": 0,
+          "preview_media_path": ""
         }
-      ]
+      ],
+      "next_cursor": null
     }
   }
 }

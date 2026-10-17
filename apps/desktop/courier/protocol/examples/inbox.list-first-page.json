@@ -1,0 +1,49 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "inbox.list",
+    "params": {
+      "space": "inbox",
+      "filters": [],
+      "sort": "newest",
+      "limit": 1
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "rooms": [
+        {
+          "room_id": "!9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d:courier.local",
+          "network": "whatsapp",
+          "name": "Contact Two",
+          "avatar_path": "",
+          "is_direct": true,
+          "last_ts": 0,
+          "preview": "",
+          "preview_kind": "",
+          "preview_mine": false,
+          "unread": 0,
+          "muted": false,
+          "pinned": false,
+          "archived": false,
+          "low_priority": false,
+          "hidden": false,
+          "marked_unread": false,
+          "request": false,
+          "draft": "",
+          "labels": [],
+          "muted_by": "",
+          "muted_by_name": "",
+          "reminder": null,
+          "typing": [],
+          "unread_mentions": 0,
+          "preview_media_path": ""
+        }
+      ],
+      "next_cursor": "eyJxIjoiZXhhbXBsZSIsImsiOlswLDAsMCwiIXJvb20iXX0"
+    }
+  }
+}

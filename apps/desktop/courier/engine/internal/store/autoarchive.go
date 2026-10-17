@@ -55,6 +55,10 @@ var ruleDurations = func() map[string][]time.Duration {
 	}
 }()
 
+// OlderThanDurations are the ages an older_than rule takes, shortest first. The protocol offers the same ones to
+// ArchiveMatching.
+func OlderThanDurations() []time.Duration { return slices.Clone(ruleDurations[trigOlderThan]) }
+
 // checkRule puts r in canonical form and checks its shape. Anything out of shape is ErrBadValue.
 func checkRule(r *Rule) error {
 	if r.ChatType == "" {

@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "room.acceptRequest",
+    "params": {
+      "room_id": "!9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d:courier.local"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "error": {
+      "code": -32023,
+      "message": "this network can't do that"
+    }
+  }
+}

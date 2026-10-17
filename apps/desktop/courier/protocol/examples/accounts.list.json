@@ -16,7 +16,8 @@
           "state": "CONNECTED",
           "error": "",
           "remote_name": "Test Account",
-          "not_started": ""
+          "not_started": "",
+          "syncs": ["pin", "mute", "accept_request"]
         },
         {
           "network": "signal",
@@ -25,7 +26,8 @@
           "state": "UNCONFIGURED",
           "error": "",
           "remote_name": "",
-          "not_started": ""
+          "not_started": "",
+          "syncs": []
         },
         {
           "network": "telegram",
@@ -34,7 +36,8 @@
           "state": "NOT_STARTED",
           "error": "",
           "remote_name": "",
-          "not_started": "Telegram needs an api_id and api_hash"
+          "not_started": "Telegram needs an api_id and api_hash",
+          "syncs": []
         }
       ]
     }

@@ -57,6 +57,13 @@ func parseSpace(id string) (kind, network string, labelID int64, ok bool) {
 	return "", "", 0, false
 }
 
+// IsSpaceID reports whether id is a well-formed space ID: a built-in space, account:<network> or label:<id>. It
+// doesn't say whether that account or label exists.
+func IsSpaceID(id string) bool {
+	_, _, _, ok := parseSpace(id)
+	return ok
+}
+
 // placeSQL is where a chat is, first match wins: hidden, requests, low_priority, archive, otherwise inbox.
 // r is the rooms alias and p the LEFT JOINed room_prefs alias.
 func placeSQL(r, p string) string {

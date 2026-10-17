@@ -1,0 +1,16 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "spaces.setLayout",
+    "params": {
+      "order": ["inbox", "account:whatsapp", "archive", "reminders"],
+      "hidden": ["reminders"]
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {}
+  }
+}

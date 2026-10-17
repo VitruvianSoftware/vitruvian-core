@@ -122,6 +122,21 @@ var filterRules = func() map[string]filterRule {
 	}
 }()
 
+// FilterNames lists every filter an InboxQuery takes, sorted. The protocol lists the same names.
+func FilterNames() []string { return sortedKeys(filterRules) }
+
+// SortNames lists every sort an InboxQuery takes, sorted. The protocol lists the same names.
+func SortNames() []string { return sortedKeys(sortKeys) }
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // sortKeys are each sort's two keys after the pin key, both ascending. Pinned chats come first, oldest pin first
 // (pinKeySQL); room_id breaks every tie. Chats without a reminder come after those with one.
 var sortKeys = map[string][2]string{

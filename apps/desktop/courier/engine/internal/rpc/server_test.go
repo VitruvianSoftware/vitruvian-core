@@ -29,6 +29,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
+	"github.com/VitruvianSoftware/courier/engine/internal/timers"
 )
 
 // socketPath is a place for a test's socket. A Unix socket path must be short (104 bytes on macOS), and a test's
@@ -422,7 +423,7 @@ func TestUnknownParametersAreRefusedByName(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	e = c.fails(CodeInvalidParams, "inbox.list", map[string]any{"filter": "unread"})
-	require.Equal(t, "unknown parameter filter", reason(e), "a method with no params takes none")
+	require.Equal(t, "unknown parameter filter", reason(e), "filters, not filter")
 	e = c.fails(CodeInvalidParams, "room.events", map[string]any{"room_id": w.room, "before": map[string]any{"ts": 1, "seq": 1, "id": "x"}})
 	require.Equal(t, "unknown parameter before.id", reason(e), "nested keys too")
 	c.ok("inbox.list", map[string]any{}, nil)
@@ -611,6 +612,7 @@ type world struct {
 	wa, sig *fakenet.Network
 	waLogin *bridgev2.UserLogin
 	d       *login.Driver
+	ent     *switchable // allows everything until a test denies it
 	deps    Deps
 	path    string
 	room    string   // the whatsapp chat
@@ -669,14 +671,23 @@ func newWorld(t *testing.T) *world {
 		}, 5*time.Second, 10*time.Millisecond, "the bridge never stored message %d", i)
 	}
 
+	// As courier-engine does: account titles and muted_by_name read "WhatsApp", not "whatsapp" (Ruling 5).
+	names := map[string]string{}
+	for _, n := range testNetworks {
+		names[n.Name] = n.DisplayName
+	}
+	s.SetNetworkNames(names)
 	w.d = login.NewDriver(eng, s, testFlows)
 	a := actions.New(eng, s, m)
 	a.LoginWait = 5 * time.Second
+	w.ent = &switchable{}
 	w.deps = Deps{
 		Store: s, Engine: eng, Actions: a, Login: w.d, Media: m,
-		Networks:   testNetworks,
-		NotStarted: map[string]string{"telegram": "Telegram needs an api_id and api_hash"},
-		Version:    "0.3.0-test",
+		Timers:      timers.New(s, w.ent, timers.RealClock{}, zerolog.Nop()), // not run: a poke just waits
+		Entitlement: w.ent,
+		Networks:    testNetworks,
+		NotStarted:  map[string]string{"telegram": "Telegram needs an api_id and api_hash"},
+		Version:     "0.3.0-test",
 	}
 	w.path = serve(t, w.deps)
 	return w
@@ -992,21 +1003,24 @@ func TestNotificationsMapEveryStoreChange(t *testing.T) {
 		c  changed
 		ok bool
 	}{
-		"room":    {changed{Kind: "room", RoomID: "!r"}, true},
-		"member":  {changed{Kind: "room", RoomID: "!r"}, true},
-		"profile": {changed{Kind: "room"}, true},
-		"event":   {changed{Kind: "event", RoomID: "!r", EventID: "$e"}, true},
-		"status":  {changed{Kind: "status", RoomID: "!r", EventID: "$e"}, true},
-		"read":    {changed{Kind: "read", RoomID: "!r", EventID: "$e"}, true},
-		"bridge":  {changed{Kind: "bridge", Network: "!r"}, true},
-		"resync":  {changed{Kind: "resync"}, true},
-		"unknown": {changed{Kind: "resync"}, true}, // a kind this code doesn't know: re-read everything rather than miss it
+		"room":     {changed{Kind: "room", RoomID: "!r"}, true},
+		"member":   {changed{Kind: "room", RoomID: "!r"}, true},
+		"profile":  {changed{Kind: "room"}, true},
+		"event":    {changed{Kind: "event", RoomID: "!r", EventID: "$e"}, true},
+		"status":   {changed{Kind: "status", RoomID: "!r", EventID: "$e"}, true},
+		"read":     {changed{Kind: "read", RoomID: "!r", EventID: "$e"}, true},
+		"bridge":   {changed{Kind: "bridge", Network: "!r"}, true},
+		"spaces":   {changed{Kind: "spaces"}, true},
+		"typing":   {changed{Kind: "typing", RoomID: "!r"}, true},
+		"reminder": {changed{Kind: "reminder", RoomID: "!r"}, true},
+		"resync":   {changed{Kind: "resync"}, true},
+		"unknown":  {changed{Kind: "resync"}, true}, // a kind this code doesn't know: re-read everything rather than miss it
 	} {
 		roomID, eventID := "!r", ""
 		if kind == "event" || kind == "status" || kind == "read" {
 			eventID = "$e"
 		}
-		if kind == "profile" || kind == "resync" || kind == "unknown" {
+		if kind == "profile" || kind == "resync" || kind == "unknown" || kind == "spaces" {
 			roomID = ""
 		}
 		got := notification(store.Change{Kind: kind, RoomID: roomID, EventID: eventID})
