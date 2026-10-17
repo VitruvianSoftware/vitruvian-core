@@ -2923,7 +2923,7 @@ USER_FILES_NOTE = (
     "Shell, Desktop Commander and Antigravity writes to ~/.claude/settings.json and "
     "~/.gemini/config/hooks.json are refused because they hold agent-guard's backstop. "
     "Change other settings there with the Edit tool (it may not touch agent-guard's entries "
-    "or disableAllHooks); the backstop itself changes only through "
+    "or set disableAllHooks to true); the backstop itself changes only through "
     "`bazel run //tools/agent-guard:install`."
 )
 
@@ -2961,6 +2961,10 @@ def _guard_entries(path: str, data: Any) -> Any:
         if isinstance(entries, list)
         and any(_USER_HOOK_MARK.search(json.dumps(e)) for e in entries)
     }
+
+
+# `"disableAllHooks": true` in an edit's new text; false is fine.
+_DISABLE_ALL_TRUE = re.compile(r'"disableAllHooks"\s*:\s*true\b')
 
 
 def user_file_change_problem(path: str, before: Optional[str], after: str) -> str:
@@ -3777,8 +3781,10 @@ def user_file_tool_decision(
         else:
             edits = tin.get("edits") if tool == "MultiEdit" else [tin]
             edits = [e for e in (edits or []) if isinstance(e, dict)]
-            if any("disableAllHooks" in str(e.get("new_string") or "") for e in edits):
-                why = "it sets disableAllHooks"
+            if any(
+                _DISABLE_ALL_TRUE.search(str(e.get("new_string") or "")) for e in edits
+            ):
+                why = 'it sets "disableAllHooks": true'
             else:
                 after = _edited(before, edits) if before is not None else None
                 if after is not None:

@@ -2116,7 +2116,7 @@ class UserFileToolTest(HookHarness):
         # Not found in the file (so it cannot be simulated) but aimed at our entries.
         self.assertEqual(self.edit("tools/agent-guard/hook.sh gone", "x"), D)
 
-    def test_disable_all_hooks_is_refused(self):
+    def test_disable_all_hooks_true_is_refused_false_is_fine(self):
         self.assertEqual(
             self.edit(
                 '"effortLevel": "high"',
@@ -2126,10 +2126,16 @@ class UserFileToolTest(HookHarness):
         )
         self.assertEqual(
             self.edit(
+                '"effortLevel": "high"', '"disableAllHooks":true,"effortLevel": "high"'
+            ),
+            D,
+        )
+        self.assertEqual(
+            self.edit(
                 '"effortLevel": "high"',
                 '"disableAllHooks": false, "effortLevel": "high"',
             ),
-            D,
+            A,
         )
         data = dict(USER_SETTINGS, disableAllHooks=True)
         self.assertEqual(
@@ -2138,6 +2144,18 @@ class UserFileToolTest(HookHarness):
             ),
             D,
         )
+        data = dict(USER_SETTINGS, disableAllHooks=False)
+        self.assertEqual(
+            self.decide(
+                "Write", {"file_path": self.settings, "content": json.dumps(data)}
+            ),
+            A,
+        )
+        # Flipping an existing false to true with an edit that names only the value.
+        with open(self.settings, "w") as fh:
+            json.dump(dict(USER_SETTINGS, disableAllHooks=False), fh, indent=2)
+        self.assertEqual(self.edit("false", "true"), D)
+        self.assertEqual(self.edit("false", "false "), A)
 
     def test_write_must_keep_the_same_entries(self):
         kept = dict(USER_SETTINGS, effortLevel="low", model="x")
