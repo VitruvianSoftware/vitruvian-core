@@ -472,7 +472,8 @@ func requireIndexed(t *testing.T, plan []string) {
 	t.Helper()
 	t.Log("plan:\n  " + strings.Join(plan, "\n  "))
 	for _, line := range plan {
-		if strings.HasPrefix(line, "SCAN") || strings.HasPrefix(line, "SEARCH") {
+		// A rowid lookup ("USING INTEGER PRIMARY KEY") is the table's own b-tree: as good as an index.
+		if (strings.HasPrefix(line, "SCAN") || strings.HasPrefix(line, "SEARCH")) && !strings.Contains(line, "INTEGER PRIMARY KEY") {
 			require.Contains(t, line, "INDEX", "a full table scan: %s", line)
 		}
 		require.NotContains(t, line, "TEMP B-TREE", "the query sorts in a temp table: %s", line)

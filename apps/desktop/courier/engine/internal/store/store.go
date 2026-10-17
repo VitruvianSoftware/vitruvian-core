@@ -15,6 +15,7 @@ import (
 
 	"go.mau.fi/util/dbutil"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 )
 
@@ -51,6 +52,15 @@ type Store struct {
 	seq  int64
 	mu   sync.Mutex // guards seq and subs
 	subs map[chan Change]*subscriber
+
+	cfgMu        sync.RWMutex      // guards clock and networkNames
+	clock        func() time.Time  // SetClock; time.Now by default
+	networkNames map[string]string // SetNetworkNames: network name → display name
+
+	typingMu sync.Mutex
+	typing   map[string]map[string]*typingEntry // room ID → user ID → who is typing there, until when
+	// afterFunc is time.AfterFunc, returning the timer's Stop. Tests replace it to fire typing expiries by hand.
+	afterFunc func(time.Duration, func()) (stop func() bool)
 }
 
 // subscriber is one change feed. dropped is set when a change could not be delivered to it; guarded by Store.mu.
@@ -69,7 +79,10 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Store{db: db, subs: map[chan Change]*subscriber{}}
+	s := &Store{
+		db: db, subs: map[chan Change]*subscriber{}, clock: time.Now, typing: map[string]map[string]*typingEntry{},
+		afterFunc: func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
+	}
 	if err = db.QueryRow(context.Background(), "SELECT COALESCE(MAX(seq),0) FROM events").Scan(&s.seq); err != nil {
 		db.Close()
 		return nil, err
@@ -291,8 +304,9 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	s.seq++
 	seq := s.seq
 	s.mu.Unlock()
-	var inserted bool
-	// The event and the room's last_ts / last_event_id change together or not at all.
+	var inserted, cameBack bool
+	// The event, the room's last_ts / last_event_id and its coming back from the archive change together or not
+	// at all.
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(event_id) DO NOTHING`,
@@ -308,6 +322,9 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 			// Only a message newer than the current newest moves the room: a backfilled older one must not.
 			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
 				e.RoomID, e.TS.UnixMilli(), e.EventID)
+			if err == nil && e.Sender != string(ids.Me) {
+				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS)
+			}
 		case e.Type == "m.room.redaction" && e.Status != "failed":
 			err = s.redact(ctx, e.RoomID, e.Content)
 		}
@@ -319,7 +336,36 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	if inserted {
 		s.publish(Change{Kind: "event", RoomID: e.RoomID, EventID: e.EventID, Seq: seq})
 	}
+	if cameBack {
+		s.publish(Change{Kind: "room", RoomID: e.RoomID})
+	}
 	return inserted, nil
+}
+
+// newMessageFromOthers is what a new message (message-like, not an edit) from someone else does to where its chat
+// is, inside InsertEvent's transaction. It reports whether the chat came back from the archive.
+//
+// Inferred (inventory 01 §18): an archived chat comes back on a new message; low priority and hidden chats don't,
+// so only archived_at is touched.
+// Inferred: only a message from someone else brings an archived chat back (InsertEvent never calls this for mine),
+// and only one sent after the chat was archived, so a backfilled older message leaves it where it is.
+//
+// The same message cancels a pending auto-archive (archive_due).
+func (s *Store) newMessageFromOthers(ctx context.Context, roomID string, ts time.Time) (bool, error) {
+	var archivedAt int64
+	if err := s.db.QueryRow(ctx, "SELECT COALESCE((SELECT archived_at FROM room_prefs WHERE room_id=$1), 0)", roomID).Scan(&archivedAt); err != nil {
+		return false, err
+	}
+	if ts.UnixMilli() <= archivedAt {
+		return false, nil // older than the archive: a backfill, not a new message
+	}
+	if archivedAt > 0 {
+		if _, err := s.db.Exec(ctx, "UPDATE room_prefs SET archived_at=0 WHERE room_id=$1", roomID); err != nil {
+			return false, err
+		}
+	}
+	_, err := s.db.Exec(ctx, "DELETE FROM archive_due WHERE room_id=$1", roomID)
+	return archivedAt > 0 && err == nil, err
 }
 
 // redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message. If it was
