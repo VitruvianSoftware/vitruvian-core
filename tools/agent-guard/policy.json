@@ -105,7 +105,7 @@
     },
     "guard-config": {
       "mode": "enforce",
-      "covers": "agents changing agent-guard itself, or the scripts that run at session start"
+      "covers": "agents changing agent-guard itself, or the files that drive session start"
     },
     "oversize": {
       "mode": "enforce",

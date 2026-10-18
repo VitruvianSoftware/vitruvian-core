@@ -638,6 +638,16 @@ TABLE = [
     ("bazel run //tools/cloud-bootstrap:whoami", A, None, ""),
     ("echo x >> tools/cloud-bootstrap/cloud-bootstrap_test.sh", A, None, ""),
     ("echo x > tools/remote/setup_test.sh", A, None, ""),
+    # profiles.tsv decides which secrets session start fetches.
+    ("echo x >> tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
+    ("cp /tmp/p.tsv tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
+    ("sed -i '' s/core/all/ tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
+    ("mv tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", D, "guard-config", ""),
+    ("rm tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
+    ("cat tools/cloud-bootstrap/profiles.tsv", A, None, ""),
+    ("awk '{print $1}' tools/cloud-bootstrap/profiles.tsv", A, None, ""),
+    ("cp tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", A, None, ""),
+    ("echo x > tools/cloud-bootstrap/README.md", A, None, ""),
     ("cat .claude/block-queue-bypass.sh", A, None, ""),
     ("echo x > .claude/sub/x.sh", A, None, ""),
     ("cat .claude/settings.json", A, None, ""),
@@ -1856,6 +1866,7 @@ class HookIOTest(HookHarness):
         dc = "mcp__plugin_desktop-commander_desktop-commander__"
         for rel in (
             "tools/cloud-bootstrap/cloud-bootstrap.sh",
+            "tools/cloud-bootstrap/profiles.tsv",
             "tools/remote/setup.sh",
         ):
             path = os.path.join(self.fx.repo, rel)
@@ -1959,6 +1970,7 @@ class HookIOTest(HookHarness):
                 ".agents/hooks.json",
                 "tools/agent-guard/hook.sh",
                 "tools/cloud-bootstrap/cloud-bootstrap.sh",
+                "tools/cloud-bootstrap/profiles.tsv",
                 "tools/remote/setup.sh",
             ):
                 for root in (self.fx.repo, self.fx.wt):
@@ -1991,7 +2003,7 @@ class HookIOTest(HookHarness):
             "tools/agent-guard/policy.json",
             ".claude/notes.md",
             "tools/cloud-bootstrap/cloud-bootstrap_test.sh",
-            "tools/cloud-bootstrap/profiles.tsv",
+            "tools/cloud-bootstrap/README.md",
             "tools/remote/setup_test.sh",
         ):
             self.assertIsNone(
@@ -2533,6 +2545,7 @@ class AntigravityHookTest(HookHarness):
             ".claude/settings.json",
             "tools/agent-guard/hook.sh",
             "tools/cloud-bootstrap/cloud-bootstrap.sh",
+            "tools/cloud-bootstrap/profiles.tsv",
             "tools/remote/setup.sh",
         ):
             path = os.path.join(self.fx.repo, rel)

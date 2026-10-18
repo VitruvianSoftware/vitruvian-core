@@ -72,11 +72,12 @@ STATE_DIR_REL = ".local/state/agent-guard"
 # policy are NOT here: hook.sh runs them from origin/main, so an agent's edit to
 # them governs nothing until it is merged. `*` matches within one folder.
 #
-# The last two run at session start from the working copy, with the session's
-# credentials in their environment: .claude/session-start.sh runs
-# cloud-bootstrap.sh, which runs tools/remote/setup.sh to configure the build
-# cache (with BUILDBUDDY_API_KEY). Nothing else in the chain runs a repo file;
-# cloud-bootstrap.sh reads its profiles.tsv as data.
+# The last three drive session start from the working copy, with the
+# session's credentials: .claude/session-start.sh runs cloud-bootstrap.sh,
+# which runs tools/remote/setup.sh to configure the build cache (with
+# BUILDBUDDY_API_KEY), and reads profiles.tsv to decide which tools to install,
+# which service account to use and which secrets to fetch into the session.
+# Nothing else in the chain runs or reads a repo file.
 PROTECTED_REPO_FILES = (
     ".claude/settings.json",
     ".claude/settings.local.json",
@@ -84,6 +85,7 @@ PROTECTED_REPO_FILES = (
     ".agents/hooks.json",
     "tools/agent-guard/hook.sh",
     "tools/cloud-bootstrap/cloud-bootstrap.sh",
+    "tools/cloud-bootstrap/profiles.tsv",
     "tools/remote/setup.sh",
 )
 
@@ -119,7 +121,7 @@ CATEGORIES = {
     "kubectl": "kubectl writes (apply, delete, patch, edit, exec, rollout, scale, ...) and the kubernetes MCP write tools",
     "helm": "helm install/upgrade/uninstall/rollback",
     "bazel-cache": "deleting Bazel output bases (rm -r, bazel clean --expunge, --output_user_root/--output_base overrides)",
-    "guard-config": "agents changing agent-guard itself, or the scripts that run at session start",
+    "guard-config": "agents changing agent-guard itself, or the files that drive session start",
     "oversize": "a command too large to check in time (over 20,000 commands); split it up",
 }
 
@@ -3186,7 +3188,7 @@ def _written_words(argv: List[str]) -> List[str]:
 
 
 HOOK_FILES_NOTE = (
-    "Agents may not change agent-guard's wiring or the scripts that run at session "
+    "Agents may not change agent-guard's wiring or the files that drive session "
     "start (%s): those files take effect before review. Changing them is James's "
     "call: ask him." % ", ".join(PROTECTED_REPO_FILES)
 )
