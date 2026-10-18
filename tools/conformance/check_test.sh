@@ -867,6 +867,95 @@ case_gitleaks_allowlist_comment_ignored() {
   rm -rf "$root"
 }
 
+# --- check_guard_review_paths -------------------------------------------------
+# The agent-guard-review ruleset names the files whose changes need James's
+# approval by pattern. A pattern that matches nothing is protection that quietly
+# stopped: GitHub never asks for the approval and nothing fails.
+guardreview_line() {
+  printf '%s\n' "$1" | awk -v f="$2" '
+    /^agent-guard review paths/ {in_s=1; next}
+    in_s && /^[A-Za-z]/ && !/^ / {in_s=0}
+    in_s && index($0, f) {print; exit}
+  '
+}
+
+# write_guard_review <root> <go-lines> — guard_review.go with $2 between the
+# markers, verbatim.
+write_guard_review() {
+  printf 'package main\n\nvar guardReviewPaths = []string{\n\t// guard-review-paths:begin\n%b\t// guard-review-paths:end\n}\n' "$2" \
+    > "$1/infrastructure/pulumi/platform/repo-config/guard_review.go"
+}
+
+# A tree with the guarded files, and a README listing $2 (space-separated).
+guard_tree() {
+  root="$1"; listed="$2"
+  mkdir -p "$root/tools/agent-guard" "$root/.claude"
+  printf '{}\n' > "$root/tools/agent-guard/policy.json"
+  printf '{}\n' > "$root/.claude/settings.json"
+  {
+    printf '# agent-guard\n\n'
+    for p in $listed; do printf -- '- `%s`\n' "$p"; done
+  } > "$root/tools/agent-guard/README.md"
+}
+
+case_guard_review_paths_live() {
+  root="$(new_root)"
+  guard_tree "$root" 'tools/agent-guard/** .claude/settings.json'
+  write_guard_review "$root" '\t"tools/agent-guard/**",\n\t".claude/settings.json",\n'
+  out="$(run_check "$root")"
+  expect "patterns that match files and are in the README pass" \
+    "$(guardreview_line "$out" "guard_review.go")" "✓"
+  expect "and both are counted" \
+    "$(guardreview_line "$out" "guard_review.go")" "2 pattern(s)"
+  rm -rf "$root"
+}
+
+# The broken state: the file moved (tools/guard/), the pattern did not.
+case_guard_review_paths_stale() {
+  root="$(new_root)"
+  guard_tree "$root" 'tools/guard/** .claude/settings.json'
+  write_guard_review "$root" '\t"tools/guard/**",\n\t".claude/settings.json",\n'
+  out="$(run_check "$root")"
+  line="$(guardreview_line "$out" "tools/guard/**")"
+  expect "a pattern that matches no file is reported" "$line" "matches no file"
+  expect "and it is a failure" "$line" "✗"
+  rm -rf "$root"
+}
+
+# A protected path the README does not list is a failure too.
+case_guard_review_paths_undocumented() {
+  root="$(new_root)"
+  guard_tree "$root" 'tools/agent-guard/**'
+  write_guard_review "$root" '\t"tools/agent-guard/**",\n\t".claude/settings.json",\n'
+  out="$(run_check "$root")"
+  expect "a pattern missing from the README is reported" \
+    "$(guardreview_line "$out" "README.md")" "not listed in tools/agent-guard/README.md"
+  rm -rf "$root"
+}
+
+# Lost markers mean nothing is checked; that must fail, not pass with 0.
+case_guard_review_paths_no_markers() {
+  root="$(new_root)"
+  guard_tree "$root" ''
+  printf 'package main\n\nvar guardReviewPaths = []string{"tools/agent-guard/**"}\n' \
+    > "$root/infrastructure/pulumi/platform/repo-config/guard_review.go"
+  out="$(run_check "$root")"
+  expect "a guard_review.go without the markers is reported" \
+    "$(guardreview_line "$out" "(none)")" "no patterns found"
+  rm -rf "$root"
+}
+
+# A commented-out pattern between the markers is not a protected path.
+case_guard_review_paths_comment_ignored() {
+  root="$(new_root)"
+  guard_tree "$root" 'tools/agent-guard/**'
+  write_guard_review "$root" '\t// "nowhere/at/all",\n\t"tools/agent-guard/**",\n'
+  out="$(run_check "$root")"
+  expect "a commented-out pattern is not checked" \
+    "$(guardreview_line "$out" "guard_review.go")" "1 pattern(s)"
+  rm -rf "$root"
+}
+
 # --- check_oci_base_registry --------------------------------------------------
 # Docker Hub rate-limits anonymous pulls from shared runner addresses, so a base
 # image fetched from it can fail every build that uses it.
@@ -1255,6 +1344,11 @@ case_action_sha_pins_fails
 case_gitleaks_allowlist_path_live
 case_gitleaks_allowlist_path_stale
 case_gitleaks_allowlist_comment_ignored
+case_guard_review_paths_live
+case_guard_review_paths_stale
+case_guard_review_paths_undocumented
+case_guard_review_paths_no_markers
+case_guard_review_paths_comment_ignored
 case_oci_base_off_docker_hub
 case_oci_base_bare_name_is_docker_hub
 case_oci_base_explicit_docker_hub

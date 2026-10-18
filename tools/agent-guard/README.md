@@ -84,8 +84,9 @@ agent is). Then:
    `policy.json`) gives their blob ids; the files are written once per change
    on main to `~/.local/state/agent-guard/cache/` and reused from there. So an
    agent's edit to `agent_guard.py` or `policy.json` in a worktree governs
-   nothing until it is reviewed and merged, and agents may edit those files
-   like any other code. `origin/main` is as fresh as your last fetch.
+   nothing until it is merged, and agents may edit those files like any other
+   code; the pull request then waits for James's approval (see "Who may do
+   what"). `origin/main` is as fresh as your last fetch.
 2. **If that is not possible**, because there is no `origin/main`, main has no
    guard yet, git is missing, or the cache cannot be written, it runs this
    checkout's copy and says so: on stderr, and in the log's `source` field
@@ -121,7 +122,8 @@ vitruvian-core checkout, through the file tools or the obvious shell
 writes (`>`, `tee`, `cp` onto them, `mv`, `rm`, `sed -i`, `perl -i`,
 `python -c` that writes, `chmod`). Those take effect before review, so
 changing them is James's call. Reading them, `git diff`, and running the
-launcher by hand are fine. The rest of `tools/agent-guard/` is ordinary code.
+launcher by hand are fine. The rest of `tools/agent-guard/` is ordinary code
+to edit, though merging any change to it needs James's approval (below).
 
 **Fetches that could move origin/main are refused** (category `git-other`),
 because origin/main is what hook.sh runs: a `src:dst` refspec
@@ -199,6 +201,67 @@ runs it. Nothing is copied:
 | the first switch from the old copied install | | yes |
 | pointing the backstop at a different checkout | | yes |
 | other settings in `~/.claude/settings.json` and `~/.gemini/config/hooks.json` | yes, with Claude Code's Edit, MultiEdit or Write, leaving agent-guard's entries alone | |
+| editing agent-guard's rules on a branch and opening the pull request | yes | |
+| approving that pull request so it can merge | | yes |
+
+**Changes to agent-guard's rules need James's approval to merge** (James
+approved this on 2026-10-17). Without it, main needs no review at all, and
+agents arm auto-merge on their own pull requests, so an agent could have
+weakened the guard without James seeing it.
+
+```mermaid
+flowchart LR
+  PR[Pull request into main] --> T{"Changes a path below?"}
+  T -- no --> Q[Merge queue as usual]
+  T -- yes --> A{"Approved by James<br/>since the last push?"}
+  A -- yes --> Q
+  A -- no --> W[Waits: cannot enter the queue]
+```
+
+A pull request that changes any of these waits until `ipv1337`, through the
+`agent-guard-approvers` team, approves it:
+
+- `tools/agent-guard/**` (`policy.json` decides what is blocked; the guard and
+  launcher load from origin/main)
+- `.claude/settings.json`
+- `.claude/settings.local.json`
+- `.claude/*.sh`
+- `.agents/hooks.json`
+- the requirement itself: `infrastructure/pulumi/platform/repo-config/guard_review.go`
+  (the rule and the team), `infrastructure/pulumi/platform/repo-config/main.go`
+  (where it is wired in, and the merge-queue ruleset's bypass list),
+  `infrastructure/pulumi/platform/repo-config/Pulumi.yaml` and
+  `infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml` (the stack)
+
+How it works and what it does not do:
+
+- **It is a GitHub ruleset** (`agent-guard-review`, declared in
+  `guard_review.go` and applied by repo-config's CI on merge), using GitHub's
+  required-reviewers rule. Pull requests that change none of these paths are
+  unaffected: they still need no approval.
+- **A new push makes the approval stale.** Any push to the branch, a sync with
+  main included, dismisses it, and James approves again. This applies to every
+  pull request into main (GitHub has no per-path version), but the others need
+  no approval, so it only changes what their review list shows.
+- **The merge queue needs nothing extra.** Approval is checked before a pull
+  request can enter the queue; `pr-enqueue` arms auto-merge, which waits for it.
+- **It proves the `ipv1337` account approved, not that James did.** Agents
+  sometimes run `gh` as ipv1337; approving a pull request that way defeats the
+  point, so never do it.
+- **James cannot approve his own pull request.** One opened as ipv1337 needs
+  his admin bypass (a direct merge, his break-glass), not an approval.
+- **The break-glass bypasses this review too, the same as it bypasses the
+  queue.** The ruleset's bypass list is the merge-queue ruleset's, read from
+  the same code: repository admins and the copybara-sync App, both "always".
+  A direct merge by either skips James's approval. Auto-merge never uses a
+  bypass, so an agent's `pr-enqueue` always waits for the approval.
+- **Not the whole delivery chain.** The rest of repo-config (`internal/`,
+  `go.mod`) and the shared CI it runs on are not covered, to keep that work
+  autonomous; they run with the same admin token and could in principle undo
+  the rule.
+- `bazel run //tools/conformance:check` fails if a pattern stops matching any
+  file (a rename would otherwise drop the protection silently), or if this list
+  is missing one.
 
 The guard lets an agent run the target exactly as
 `bazel run //tools/agent-guard:install`, or with only `--check`/`--dry-run`
