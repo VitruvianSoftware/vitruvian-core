@@ -10,6 +10,7 @@ go_library(
         "migrate.go",
         "query.go",
         "reminders.go",
+        "search.go",
         "searchindex.go",
         "spaces.go",
         "store.go",
@@ -36,11 +37,16 @@ go_test(
         "labels_test.go",
         "query_test.go",
         "reminders_test.go",
+        "search_test.go",
         "searchindex_test.go",
+        "searchscale_test.go",
         "spaces_test.go",
         "store_test.go",
     ],
-    data = glob(["testdata/**"]),
+    data = glob(["testdata/**"]) + [
+        # Task 2's corpus of strange queries, which TestStrangeTextNeverFails runs through the real index.
+        "//apps/desktop/courier/engine/internal/searchtext:queries",
+    ],
     embed = [":store"],
     deps = [
         "//apps/desktop/courier/engine/internal/searchtext",

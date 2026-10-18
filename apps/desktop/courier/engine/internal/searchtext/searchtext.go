@@ -175,7 +175,7 @@ func ftsDiacritic(r rune) bool {
 type Term struct {
 	Text   string // normalised; for a phrase, its words separated by single spaces
 	Phrase bool   // in quotes, or a word that splits into several tokens, or a run of a script without spaces
-	Prefix bool   // the last word, still being typed
+	Prefix bool   // the last word, still being typed (from 2 letters; from 1 in ParseName)
 }
 
 // Double quotes start and end a phrase. The curly ones are the same mark after macOS's smart quotes; the
@@ -195,7 +195,15 @@ func wordEnd(r rune) bool {
 // run of a script written without spaces. The last term matches as a prefix while it is still being typed:
 // when it is a word (not a phrase) of at least 2 characters that runs to the end of the query, so the query
 // doesn't end in whitespace or a closing quote, and no word after it was dropped.
-func Parse(q string) []Term {
+func Parse(q string) []Term { return parse(q, 2) }
+
+// ParseName is Parse for names of chats and people, which are searched from the first letter: the last word is a
+// prefix from 1 letter on, on the same conditions otherwise. Messages keep Parse's 2 letters, because a 1-letter
+// prefix over every message is the slowest query there is.
+func ParseName(q string) []Term { return parse(q, 1) }
+
+// parse is Parse with the fewest letters a prefix needs.
+func parse(q string, minPrefix int) []Term {
 	q = strings.ToValidUTF8(q, "\uFFFD")
 	if utf8.RuneCountInString(q) > MaxQueryRunes {
 		n := 0
@@ -217,7 +225,7 @@ func Parse(q string) []Term {
 		}
 		t := Term{Text: strings.Join(words, " ")}
 		t.Phrase = quoted || len(words) > 1 || strings.ContainsFunc(t.Text, noSpace)
-		t.Prefix = atEnd && !t.Phrase && utf8.RuneCountInString(t.Text) >= 2
+		t.Prefix = atEnd && !t.Phrase && utf8.RuneCountInString(t.Text) >= minPrefix
 		terms = append(terms, t)
 	}
 	for i := 0; i < len(rs); {

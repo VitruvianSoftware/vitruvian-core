@@ -45,6 +45,27 @@ func TestParseWordsPhrasesAndPrefix(t *testing.T) {
 	}
 }
 
+func TestParseNameIsAPrefixFromTheFirstLetter(t *testing.T) {
+	for _, tc := range []struct {
+		q    string
+		want []Term
+	}{
+		{"a", []Term{{Text: "a", Prefix: true}}},
+		{"A", []Term{{Text: "a", Prefix: true}}},
+		{"a ", []Term{{Text: "a"}}},
+		{`"a"`, []Term{{Text: "a", Phrase: true}}},
+		{`"a`, []Term{{Text: "a", Phrase: true}}},
+		{"book c", []Term{{Text: "book"}, {Text: "c", Prefix: true}}},
+		{"e-m", []Term{{Text: "e m", Phrase: true}}},
+		{"🥺", nil},
+	} {
+		assert.Equal(t, tc.want, ParseName(tc.q), "%q", tc.q)
+	}
+	// Messages keep the 2-letter rule.
+	assert.Equal(t, []Term{{Text: "a"}}, Parse("a"))
+	assert.Equal(t, `{name}: ("a"*)`, MatchAll("name", ParseName("a")))
+}
+
 func TestFTSSyntaxIsPlainText(t *testing.T) {
 	for _, tc := range []struct{ q, want string }{
 		{"AND", `{body}: ("and"*)`},
