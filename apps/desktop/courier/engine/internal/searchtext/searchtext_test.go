@@ -168,6 +168,17 @@ func TestSnippetCentresOnTheFirstMatch(t *testing.T) {
 	snippet, ranges = Snippet("Ask José about it", Parse("jose "), 160)
 	require.Len(t, ranges, 1)
 	assert.Equal(t, "José", utf16Of(snippet, ranges[0]))
+
+	// A decomposed accent is a unit of its own: e and U+0301 are 2 of the 5 units of "José".
+	snippet, ranges = Snippet("Ask Jose\u0301 about it", Parse("jose "), 160)
+	assert.Equal(t, []Range{{Start: 4, Length: 5}}, ranges)
+	assert.Equal(t, "Jose\u0301", utf16Of(snippet, ranges[0]))
+
+	// 𠮷 (U+20BB7) is outside the BMP, so it is 2 units and everything after it moves by one more.
+	snippet, ranges = Snippet("go to 𠮷野家 today", Parse("𠮷野 today"), 160)
+	assert.Equal(t, []Range{{Start: 6, Length: 3}, {Start: 11, Length: 5}}, ranges)
+	assert.Equal(t, "𠮷野", utf16Of(snippet, ranges[0]))
+	assert.Equal(t, "today", utf16Of(snippet, ranges[1]))
 }
 
 func TestSnippetHighlightsEveryMatchedWordAndPhrase(t *testing.T) {
@@ -283,6 +294,8 @@ func TestQueriesFindTheirTextInTheIndex(t *testing.T) {
 		{"thanks🥺 so much", "thanks ", true},
 		{"great 👍🏽 work", `"great work"`, true},
 		{"I ❤️ it", "i it", true},
+		// U+1FAE9 is newer than Go's Unicode tables, and SQLite counts code points it doesn't know as letters.
+		{"thanks\U0001FAE9 so much", "thanks ", true},
 	} {
 		_, err := db.Exec(ctx, "DELETE FROM t")
 		require.NoError(t, err)

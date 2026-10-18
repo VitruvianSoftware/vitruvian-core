@@ -60,7 +60,7 @@ func Normalize(s string) string {
 		switch {
 		case presentation(r):
 			continue
-		case r == utf8.RuneError || unicode.Is(unicode.S, r):
+		case r == utf8.RuneError || unicode.Is(unicode.S, r) || unknown(r):
 			if prev < 0 || unicode.IsSpace(prev) {
 				continue
 			}
@@ -72,6 +72,19 @@ func Normalize(s string) string {
 		prev = r
 	}
 	return b.String()
+}
+
+// unknown is a code point Go's Unicode tables have no character for. Go 1.26 ships Unicode 15.0, so emoji
+// from Unicode 16 on (U+1FAE9 🫩) are unknown to it, and SQLite's tokenizer counts every code point it doesn't
+// know as a letter: left in place, "thanks🫩" would be indexed as one word. Made a separator, it is not
+// searchable, like other emoji. The cost: letters of scripts newer than Go's tables aren't searchable either
+// until a Go update brings the newer tables.
+//
+// The control categories are named one by one: Go's unicode.C also covers the code points with no character,
+// so testing it would find nothing unknown.
+func unknown(r rune) bool {
+	return !unicode.In(r, unicode.L, unicode.M, unicode.N, unicode.P, unicode.S, unicode.Z,
+		unicode.Cc, unicode.Cf, unicode.Co, unicode.Cs)
 }
 
 // presentation is a mark that only changes how the character before it is drawn: the variation selectors
