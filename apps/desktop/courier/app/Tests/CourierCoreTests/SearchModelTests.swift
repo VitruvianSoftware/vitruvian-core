@@ -403,6 +403,25 @@ final class SearchModelTests: XCTestCase {
         try await waitUntil { h.search.notice == .failed }
     }
 
+    func testCommandKTogglesOnlyAPanelInView() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1)])
+        h.search.toggle(visible: true)
+        XCTAssertEqual(h.search.phase, .home, "closed: ⌘K opens it")
+        h.search.toggle(visible: true)
+        XCTAssertEqual(h.search.phase, .closed, "open in front: ⌘K closes it")
+
+        // Open in a window that is closed or behind another: ⌘K shows it, over every chat, and never closes it unseen.
+        h.search.show(in: "!a")
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+        h.search.toggle(visible: false)
+        XCTAssertEqual(h.search.phase, .home)
+        XCTAssertNil(h.search.scope, "⌘K searches every chat")
+        h.search.toggle(visible: false)
+        XCTAssertEqual(h.search.phase, .home)
+        h.search.toggle(visible: true)
+        XCTAssertEqual(h.search.phase, .closed)
+    }
+
     func testSearchingShowsOnlyAfterADelay() async throws {
         let h = try await start()
         try await h.showHome()

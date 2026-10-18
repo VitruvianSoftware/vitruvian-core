@@ -450,14 +450,48 @@ struct SearchField: NSViewRepresentable {
     }
 }
 
-/// Takes the keyboard as soon as it is in a window: the panel opens ready to type.
+/// Takes the keyboard as soon as it is in a window, so the panel opens ready to type, and gives it back when the
+/// panel closes: to what had it before (the composer, the chat list), else the composer when a chat is open, else
+/// the chat list. Without that, the window itself keeps the keyboard: typing beeps and the list's keys do nothing.
 private final class FocusedTextField: NSTextField {
+    private weak var previousResponder: NSResponder?
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }
+        previousResponder = window.firstResponder
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window === window else { return }
             window.makeFirstResponder(self)
         }
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil, let window { giveKeyboardBack(in: window) }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    private func giveKeyboardBack(in window: NSWindow) {
+        // Only while the keyboard is still the panel's: something else may have taken it (a chat opened, say).
+        let current = window.firstResponder
+        let isOurs = current === self || current === window
+            || (current as? NSTextView).map { $0.isFieldEditor && $0.delegate === self } == true
+        guard isOurs else { return }
+        if let previous = previousResponder, previous !== window, previous !== self,
+           (previous as? NSView)?.window === window, window.makeFirstResponder(previous) {
+            return
+        }
+        guard let content = window.contentView else { return }
+        if let composer = Self.first(PlainTextView.self, in: content), window.makeFirstResponder(composer) { return }
+        if let list = Self.first(NSTableView.self, in: content) { window.makeFirstResponder(list) }
+    }
+
+    /// The first view of a type under `view`, depth first.
+    private static func first<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
+        for subview in view.subviews {
+            if let match = subview as? T { return match }
+            if let match = first(type, in: subview) { return match }
+        }
+        return nil
     }
 }

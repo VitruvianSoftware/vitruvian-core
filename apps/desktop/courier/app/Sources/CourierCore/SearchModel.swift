@@ -240,6 +240,17 @@ public final class SearchModel: ObservableObject {
         queryChanged(debounced: false)
     }
 
+    /// ⌘K: opens the panel over every chat, or closes it when it is open and `visible` (its window is in front).
+    /// Over a window that is closed or behind another, a panel left open is never closed unseen: it opens, and
+    /// the caller brings the window forward.
+    public func toggle(visible: Bool) {
+        if phase != .closed, visible {
+            close()
+        } else {
+            show()
+        }
+    }
+
     /// Closes the panel and forgets what was typed, filtered and found.
     public func close() {
         phase = .closed // first, so the resets below search nothing

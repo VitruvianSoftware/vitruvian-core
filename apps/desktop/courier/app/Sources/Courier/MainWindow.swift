@@ -11,6 +11,9 @@ final class InboxUI: ObservableObject {
     @Published var customReminder: ReminderRequest?
     @Published var remindPopover = false
     @Published var accountPopover = false
+    /// The main window is open and in front (key). ⌘K closes a panel only then; otherwise it brings the window
+    /// forward and opens it.
+    var isMainWindowKey = false
 }
 
 /// The main window: how the engine is doing until it is up, then the space bar, the chat list and the
@@ -26,6 +29,7 @@ struct MainWindow: View {
     @ObservedObject var search: SearchModel
     let labels: LabelsModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
         content
@@ -37,6 +41,12 @@ struct MainWindow: View {
             }
             // A chat's right-click menu opens search in that chat.
             .environment(\.searchInChat, { search.show(in: $0) })
+            .onChange(of: controlActiveState, initial: true) { _, state in ui.isMainWindowKey = state == .key }
+            // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
+            .onDisappear {
+                ui.isMainWindowKey = false
+                search.close()
+            }
             .sheet(isPresented: addingNetwork) {
                 AddNetworkView(login: login)
             }

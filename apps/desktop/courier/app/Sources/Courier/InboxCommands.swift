@@ -23,7 +23,8 @@ struct InboxCommands: Commands {
         // takes ⌘K or ⌘F: part 4.3's formatting keys must leave them to search.)
         CommandGroup(after: .appSettings) {
             Button(String(localized: "Search…")) {
-                if search.phase == .closed { search.show() } else { search.close() }
+                let visible = bringMainWindowForward()
+                search.toggle(visible: visible)
             }
             .keyboardShortcut("k", modifiers: .command)
         }
@@ -77,8 +78,11 @@ struct InboxCommands: Commands {
             }
             // The open chat's messages; with none open, every chat (as ⌘K). MainWindow also takes ⌘F, so that it
             // wins over the Edit menu's Find while typing.
-            Button(String(localized: "Search in Chat…")) { search.show(in: inbox.selectedRoomID) }
-                .keyboardShortcut("f", modifiers: .command)
+            Button(String(localized: "Search in Chat…")) {
+                _ = bringMainWindowForward()
+                search.show(in: inbox.selectedRoomID)
+            }
+            .keyboardShortcut("f", modifiers: .command)
             Divider()
             actions
             Divider()
@@ -90,6 +94,15 @@ struct InboxCommands: Commands {
             Divider()
             spaceKeys
         }
+    }
+
+    /// The panel is drawn over the main window, so search first brings it forward (making it again if it was
+    /// closed). True when it already was in front.
+    private func bringMainWindowForward() -> Bool {
+        guard !ui.isMainWindowKey else { return true }
+        NSApp.activate()
+        openWindow(id: "main")
+        return false
     }
 
     // MARK: The open chat (or the chats selected)

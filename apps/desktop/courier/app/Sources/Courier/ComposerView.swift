@@ -221,6 +221,9 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isRichText = false
         textView.importsGraphics = false
         textView.usesFontPanel = false
+        // ⌘F belongs to search (InboxCommands, MainWindow), so the box has no Find bar or panel of its own.
+        textView.usesFindBar = false
+        textView.usesFindPanel = false
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
