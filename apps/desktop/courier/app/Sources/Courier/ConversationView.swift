@@ -266,6 +266,7 @@ private struct ProblemBar: View {
         switch problem {
         case .loadFailed: String(localized: "Courier could not read the latest messages.")
         case let .actionFailed(reason): reason
+        case .messageGone: String(localized: "That message isn’t in this chat any more.")
         }
     }
 }

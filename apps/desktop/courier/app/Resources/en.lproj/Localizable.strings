@@ -276,6 +276,9 @@
 /* In a bar above the composer when the newest messages could not be read. */
 "Courier could not read the latest messages." = "Courier could not read the latest messages.";
 
+/* In that bar when a chat was opened at a message (a search result) that has been deleted since: the newest messages show instead. */
+"That message isn’t in this chat any more." = "That message isn’t in this chat any more.";
+
 /* Button in that bar: read them again. */
 "Try again" = "Try again";
 
