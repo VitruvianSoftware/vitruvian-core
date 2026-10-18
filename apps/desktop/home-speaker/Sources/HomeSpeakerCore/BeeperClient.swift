@@ -296,9 +296,11 @@ public struct BeeperClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data: Data
         let response: URLResponse
+        // A cancelled request is thrown as it is, not as "Beeper: cancelled":
+        // the monitor stopped or restarted, and has nothing to say about it.
         do {
             (data, response) = try await session.data(for: request, delegate: RefuseRedirects())
-        } catch let error as URLError {
+        } catch let error as URLError where error.code != .cancelled {
             throw Self.mapped(error)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
