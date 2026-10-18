@@ -15,5 +15,8 @@ go_test(
     name = "sqlite_test",
     srcs = ["open_test.go"],
     embed = [":sqlite"],
-    deps = ["@com_github_stretchr_testify//require"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
 )
