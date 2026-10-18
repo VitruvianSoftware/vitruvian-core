@@ -196,6 +196,7 @@ enum TestGroups {
                 ToolPanelHostTests.run(suite)
                 ToolPanelScreensTests.run(suite)
                 BlockTreeLayoutTests.run(suite)
+                BlockFieldPendingTests.run(suite)
                 MenuPanelExtensionsTests.run(suite)
                 ToolWebPanelTests.run(suite)
                 CatalogueListTests.run(suite)

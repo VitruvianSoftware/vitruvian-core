@@ -369,6 +369,64 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains("Beeper token saved · "))
     }
 
+    /// Vitruvian 3.61 and earlier send a field's text only when the field
+    /// is left, and clicking Save Token does not leave it: the paste never
+    /// arrives. Save Token then takes the token from the clipboard, where
+    /// the paste came from.
+    func testSaveTokenInSettingsTakesAPasteThatNeverArrivedFromTheClipboard() {
+        let tool = opened()
+        link.clipboard = "  xoxp-from-clipboard \n"
+        event(tool, Pages.Block.saveSlackToken, .tap)
+        XCTAssertEqual(chat.saved, ["xoxp-from-clipboard"])
+        XCTAssertEqual(tool.setupNotice, "Slack token saved")
+
+        link.clipboard = "beeper-from-clipboard"
+        event(tool, Pages.Block.saveBeeperToken, .tap)
+        XCTAssertEqual(chat.beeperSaved, ["beeper-from-clipboard"])
+        XCTAssertEqual(tool.setupNotice, "Beeper token saved")
+        XCTAssertEqual(posted, 2)
+    }
+
+    func testSaveTokenOnTheIslandTakesAPasteThatNeverArrivedFromTheClipboard() throws {
+        setMonitor {
+            $0.slackEnabled = true
+            $0.beeperEnabled = true
+        }
+        let tool = tool()
+        _ = tool.islandPage()
+        link.clipboard = "beeper-from-clipboard"
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.saveBeeperToken, kind: .tap))
+        XCTAssertEqual(chat.beeperSaved, ["beeper-from-clipboard"])
+        XCTAssertEqual(tool.notice, "Beeper token saved")
+        link.clipboard = "xoxb-from-clipboard"
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.saveSlackToken, kind: .tap))
+        XCTAssertEqual(chat.saved, ["xoxb-from-clipboard"])
+        XCTAssertEqual(tool.notice, "Slack token saved")
+    }
+
+    /// What was typed wins over the clipboard, and a clipboard that is no
+    /// token is never saved.
+    func testSaveTokenPrefersTheFieldAndTakesOnlyATokenFromTheClipboard() {
+        let tool = opened()
+        link.clipboard = "xoxp-on-clipboard"
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.slackToken, kind: .change, value: .string("xoxp-typed")))
+        event(tool, Pages.Block.saveSlackToken, .tap)
+        XCTAssertEqual(chat.saved, ["xoxp-typed"], "the field's text, not the clipboard's")
+
+        for clip in ["not a token", "https://example.com/x", ""] {
+            link.clipboard = clip
+            event(tool, Pages.Block.saveSlackToken, .tap)
+            XCTAssertEqual(tool.setupNotice, "Paste the Slack token first", "\(clip) is no Slack token")
+        }
+        link.clipboard = "two words"
+        event(tool, Pages.Block.saveBeeperToken, .tap)
+        XCTAssertEqual(tool.setupNotice, "Paste the Beeper token first")
+        XCTAssertEqual(chat.saved, ["xoxp-typed"])
+        XCTAssertEqual(chat.beeperSaved, [])
+        XCTAssertEqual(chat.cleared, 0)
+        XCTAssertEqual(chat.beeperCleared, 0)
+    }
+
     func testAnEmptySaveTokenNeverClears() {
         chat.token = "xoxp-old"
         chat.beeperToken = "old"
