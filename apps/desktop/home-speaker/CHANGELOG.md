@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.2...home-speaker-v1.24.3) (2026-10-18)
+
+
+### Bug Fixes
+
+* **home-speaker:** ignore cancelled polls when restarting chat monitor ([#3472](https://github.com/VitruvianSoftware/vitruvian-core/issues/3472)) ([62fd6a3](https://github.com/VitruvianSoftware/vitruvian-core/commit/62fd6a3b17532e1b817b7548d1651f3c2a4bd687))
+
 ## [1.24.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.1...home-speaker-v1.24.2) (2026-10-18)
 
 
