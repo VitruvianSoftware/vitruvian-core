@@ -195,3 +195,147 @@ Not in 4.1, and not expected to work yet:
 - Editing the reminder time suggestions: part 4.6, with Settings.
 - The §22 icon-library rows: part 4.7.
 - Send Later has its space and filter, and they are empty until part 4.3.
+
+## Part 4.2: search
+
+Search finds chats, people and messages, all on this Mac. Nothing you type is sent to a phone or a network. Your recent searches are kept on this Mac only, and "Clear Recent Searches" removes them.
+
+**What search does not find in this part.** Look for none of these, and do not report them as bugs:
+
+- Emoji and punctuation. They are skipped, and a search made of only emoji says so.
+- Part of a word of one letter, in messages. A message search needs at least two letters. Chats and people search from the first letter. A single Chinese, Japanese, Korean or Thai character does count.
+- Messages a network never sent Courier. Courier can only search the history it has on this Mac. Older history appears as each network sends it.
+
+### Before you start
+
+- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- The first time Courier opens after this update, it adds your older messages to search in the background. Search works at once, and new messages are found straight away. Until the older ones are in, a line at the top of the results says "Still adding older messages to search. Some results may be missing."
+- Do not open the same chat in the other chat app while you test. It would send a read receipt.
+
+### Check these first
+
+Nobody has seen these on screen yet, because the Mac's screen was locked while the app was being built. The tests cover the logic behind each one. Look at these before anything else.
+
+- [ ] ⌘F works while you are typing a message. Click into the message box of an open chat, type a few words, then press ⌘F. Search opens for that chat ("In: <chat> ×" shows). There is no Find bar and no beep, and your half-written message is still there.
+- [ ] Right-click a chat in the list. "Search…" is in the menu, after Pin and before Hide, and it opens search for that chat.
+- [ ] The keyboard comes back when search closes. Check each of these, and type a letter straight away without clicking:
+  - press Esc out of a search made with ⌘F in a chat where you had a half-written message: typing carries on in that message;
+  - search from the same chat you are in, open a result, and the message box has the keyboard;
+  - press ⌘K and then Esc with the chat list in front: the list has the keyboard again, and E, x, ⇧J and ⇧K work without a click.
+- [ ] ⌘K brings the window forward. Close the main window and press ⌘K: the window comes back with search open. With Settings or Edit Spaces in front, press ⌘K: the main window comes forward with search open, and it does not close again.
+- [ ] Jumping to an old result lands on it. Search for a word from months ago and open that message. The chat opens at the message, in the middle of the view, not at the bottom. The message is tinted, and the tint fades away over about three seconds.
+- [ ] "Jump to latest" works. Once you have jumped to an old message, a "Jump to latest" button shows. It gets a small dot if something new arrives while you are away. Pressing it, or sending a message, goes back to the newest message. Scrolling down to the bottom brings in newer messages without the view jumping.
+- [ ] New messages do not move the view while you are away. Open an old message, let a new one arrive, and the view stays where it was.
+- [ ] ⌘K opens search with the home view, and the cursor is already in the field, so typing starts straight away.
+- [ ] The keys inside search work:
+  - ↑ ↓ and ⌃P ⌃N move the selection, and the list scrolls to follow it;
+  - Tab and ⇧Tab jump from one section to the next;
+  - Return opens the selected row;
+  - Esc steps back one thing at a time: first the filters, then the text, then the "In:" chat, then it closes;
+  - ⌫ with nothing typed removes the "In:" chat;
+  - ⌘⌫ clears the text.
+- [ ] Choosing a recent search puts its words in the field and searches them. Check where the cursor ends up (it should be at the end of the words).
+- [ ] Clicks do the right thing. Clicking the dimmed window outside closes search. Clicking inside it does not. A filter chip opens its menu, and afterwards you can still type in the field.
+- [ ] The panel is the right size. It is about 640 points wide, grows as rows are added, and stops at about 70% of the window's height, then scrolls.
+- [ ] A message's matching words are in bold, also when an emoji comes earlier in the line.
+- [ ] Photos and videos show as small pictures, four to a row, under "Media".
+- [ ] Each filter narrows the results, and its × clears it. Check Accounts, Type, Sent / Received, Chats and Time. "Show partial matches" adds a "Partial matches" divider, then messages that have only some of your words. "Hide partial matches" takes them away.
+- [ ] Search looks right in light and in dark: the background, the tint on the opened message and the filter chips.
+
+### Keys
+
+- [ ] `hotkey` Search: ⌘K opens search over every chat. Pressing it again closes it. If another Courier window is in front, it brings the main window forward first.
+- [ ] `hotkey` Search: Room: ⌘F searches the chat that is open. With no chat open it does the same as ⌘K. It also works while the cursor is in the message box.
+
+### Menus
+
+- [ ] `menu:Beeper` Search…: Courier ▸ Search… (⌘K), just after Settings. The Chat menu also has "Search in Chat…" (⌘F).
+
+### Components
+
+- [ ] `component` GeneralSearch.tsx: ⌘K opens a search panel over the window. It has a field, a row of filters, and the results in sections. The field reads "Search chats, people and messages", or "Search this chat" inside one chat.
+- [ ] `component` GeneralSearchResults.tsx: Before you type, the panel shows Recent (chats you opened lately), Last archived (the chat you archived last), and Recent searches. Once you type it shows Chats, In groups, Media and Messages, whichever have something. A section with more rows has "Show more".
+- [ ] `component` JumpToMessage.tsx: Opening a message result opens its chat at that message, tinted, and "Jump to latest" goes back. See the first list for what to look for.
+- [ ] `component` SearchIcon.tsx: A magnifying glass sits at the left of the search field.
+- [ ] `component` OutlineSearch.tsx: The same magnifying glass, in its outline style. Courier uses one system symbol for both, so there is nothing different to look for.
+- [ ] `component` search.tsx: The search icon in the library. Same as above.
+- [ ] `component` SelectMessageCommand.tsx: A message row shows who sent it ("You" for yours), the chat, a place tag if the chat is not in the inbox, the date, and the line of text with the matching words in bold. Today shows a time, this year shows day and month, and older shows the whole date. Return opens it.
+- [ ] `component` SelectRecentSearchCommand.tsx: A recent search shows as a clock and the words. Return searches them again. "Clear Recent Searches" sits in that section's title row.
+- [ ] `component` CommandBarUser.tsx: A person row (under "In groups") shows their picture, name and network, and "In <group>", "In <group> and 1 other group" or "In <group> and N other groups". It lists people you have no direct chat with. Opening one opens the newest group you share. Starting a direct chat comes with part 4.5.
+
+### Commands
+
+These 2 are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The keys above are checked there.
+
+- `command` Search chats
+- `command` Search messages in all chats
+
+Courier also registers "Search messages in current chat" (⌘F). It has no ledger row of its own, and is off while no chat is open.
+
+### Not ledger rows
+
+The inventory has no row for these, but they are what this part was built to do. Look at the first five before the rest. They are the five things the plan was most worried about.
+
+**The five things to check**
+
+- [ ] Deleted and edited words go away. Delete a message, then search for a word only it had: it does not come back. Edit a message to different words: search finds the new words and not the old ones, even if the edit reached Courier before the message did. A chat that is gone leaves none of its words or its name in search.
+- [ ] Anything you type is safe. Try quotes, `*`, `-`, `(`, the words AND, OR and NOT, `NEAR(`, a single `"`, a colon, a very long paste, and emoji on their own. None gives an error or freezes the app. Each is searched as ordinary words, and emoji alone shows the calm line "Search for a word or a name. Emoji and punctuation aren’t searched." Words in double quotes find that exact run of words.
+- [ ] Accents, capitals, width and scripts do not get in the way. "cafe" and "CAFE" both find "café". Full-width letters find the same word in normal letters. A word in Chinese, Japanese, Korean or Thai is found by part of it as well as the whole of it. A Hindi word is found whole, and is not cut in two. (Only try the scripts you have messages in.)
+- [ ] A big history stays quick after the update. With a very large chat history, Courier opens as fast as before. New messages can be searched at once, older ones fill in behind, and quitting halfway through carries on where it stopped when you open Courier again. With thousands of chats, each search still answers quickly.
+- [ ] Jumping to an old message is steady. Open a message from last year: the chat opens at it, tinted, not at the bottom. New messages arriving meanwhile do not move the view. "Jump to latest" and sending a message both go back to the newest. (This is the same as the jump lines in the first list.)
+
+**The sections, in order**
+
+- [ ] Before you type: Recent, Last archived, then Recent searches. The chat you are in is left out of Recent and Last archived. Inside one chat, home shows only recent searches.
+- [ ] As you type: Chats, In groups, Media, then Messages. A section with nothing in it is left out. Inside one chat there are only Media and Messages.
+- [ ] Messages and media come newest first, not best match first. Chats and people whose name starts with your first word come first, then the one with the newest message.
+- [ ] Every chat is searched, wherever it is: inbox, Archive, Low Priority, hidden and Requests. A result outside the inbox carries a tag: "Archived", "Low priority", "Hidden" or "Request".
+- [ ] Your own messages are found too. The Sent / Received filter narrows them.
+- [ ] The Chats section stops at 100 chats and says "Showing the first 100 chats. Type more to narrow it down."
+- [ ] The foot of the Messages section reads "Courier searches the messages on this Mac. Older history appears as each network sends it."
+
+**The filters**
+
+- [ ] Accounts: lists your linked networks with ticks. Pick one or more and results come from only those. The chip shows the choice, or "N accounts".
+- [ ] Type: Text, Photos, Videos, Voice and audio, Files, Links, Stickers. Several can be ticked.
+- [ ] Sent / Received: Anyone, Sent by me, Received.
+- [ ] Chats: All chats, Direct messages, Groups. Inside one chat this chip is hidden.
+- [ ] Time: Any time, Last hour, Last week, Last 30 days, Last year. The time is counted back from now.
+- [ ] An active chip shows its choice and an ×, and the × clears just that filter. "Clear Filters" appears when nothing matches and clears all of them.
+
+**Partial matches**
+
+- [ ] Search wants all of your words. The last word you are still typing matches as a start of a word ("meet" finds "meeting") unless it is in quotes or followed by a space.
+- [ ] "Show partial matches" lists, after every full match, messages that have some of the words but not all. They sit under a "Partial matches" divider.
+
+**What the panel says**
+
+| When | What it shows |
+|---|---|
+| Home, nothing recent | Find any chat, person or message on this Mac. |
+| Waiting more than a third of a second | Searching… |
+| No results | No matches for “…” and, under it, Check the spelling, or try fewer words. |
+| No results, with filters on | Nothing matches these filters. and a Clear Filters button |
+| One letter, for messages | Under Chats: Type one more letter to search messages. |
+| Only emoji or punctuation | Search for a word or a name. Emoji and punctuation aren’t searched. |
+| Older messages still being added | Still adding older messages to search. Some results may be missing. |
+| Search broke | Search isn’t working right now. and a Try Again button |
+
+- [ ] Each line above shows in its place, word for word.
+- [ ] Results do not change by themselves. If a new message arrives while search is open, the rows stay as they are. The next key you type, or the next filter you change, searches again.
+
+**The chat menu**
+
+- [ ] Right-click a chat ▸ Search…: opens search with "In: <chat> ×" in the field and "Search this chat" as the hint. The chat menu's order is now Pin, Search…, Hide.
+
+### Carried to later parts
+
+Not in 4.2, and not expected to work yet:
+
+- The Bookmarks section of search: part 4.3, with bookmarks.
+- Search suggestions, and searching inside Settings: part 4.6.
+- "Open recently viewed chats", and the Commands ⌘J switch inside the panel: part 4.7. The three search commands above are registered and wait for it.
+- Starting a direct chat with someone from "In groups": part 4.5.
+- Searching the words in a photo's caption from the media viewer: part 4.5.
+- Search tools for other programs (MCP): milestone 5.
+- The "find a chat" page of the hotkey tutorial (ThreadSearchPage): not planned.
