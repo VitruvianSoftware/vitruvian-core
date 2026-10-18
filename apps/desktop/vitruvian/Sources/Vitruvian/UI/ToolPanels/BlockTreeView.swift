@@ -173,6 +173,10 @@ package struct BlockTreeView: View {
     /// The focus of the view the page is drawn in, when that view keeps one
     /// for every control: a tool's detail in Settings.
     package let focus: FocusState<ExternalToolDetail.Focus?>.Binding?
+    /// What is typed in the page's fields and not yet sent. Clicking a
+    /// button on macOS leaves the field focused, so it is sent here, before
+    /// the click, or the tool acts on what it had before.
+    @State private var pending: PendingFields
 
     package init(content: BlockTreeContent, size: BlockTreeContent.Size,
                  act: @escaping (String, UIEventKind, JSONValue?) -> Void, follow: @escaping (URL) -> Void,
@@ -182,7 +186,11 @@ package struct BlockTreeView: View {
         self.act = act
         self.follow = follow
         self.focus = focus
+        _pending = State(initialValue: PendingFields())
     }
+
+    /// `act` for every control but a field: the fields' unsent text first.
+    private var send: (String, UIEventKind, JSONValue?) -> Void { pending.flushing(into: act) }
 
     private var metrics: BlockMetrics { BlockMetrics(size: size) }
 
@@ -212,7 +220,7 @@ package struct BlockTreeView: View {
                 .accessibilityAddTraits(.isHeader)
         case .row(let row, let tappable):
             if tappable {
-                Button { act(row.id, .tap, nil) } label: { rowLabel(row, chevron: true) }
+                Button { send(row.id, .tap, nil) } label: { rowLabel(row, chevron: true) }
                     .buttonStyle(.plain)
                     .modifier(Focused(focus: focus, id: row.id))
             } else {
@@ -232,7 +240,7 @@ package struct BlockTreeView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityHidden(true)
                 Spacer(minLength: 8)
-                Toggle(title, isOn: Binding(get: { isOn }, set: { act(id, .toggle, .bool($0)) }))
+                Toggle(title, isOn: Binding(get: { isOn }, set: { send(id, .toggle, .bool($0)) }))
                     .labelsHidden()
                     .controlNamed(title)
                     .toggleStyle(.switch)
@@ -243,11 +251,11 @@ package struct BlockTreeView: View {
             }
         case .field(let id, let title, let value, let placeholder, let kind):
             BlockField(id: id, title: title, value: value, placeholder: placeholder, kind: kind,
-                       metrics: metrics, focus: focus, act: act)
+                       metrics: metrics, focus: focus, pending: pending, act: act)
         case .list(let id, let rows):
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    Button { act(id, .tap, .string(row.id)) } label: { rowLabel(row, chevron: false) }
+                    Button { send(id, .tap, .string(row.id)) } label: { rowLabel(row, chevron: false) }
                         .buttonStyle(.plain)
                         .modifier(Focused(focus: focus, id: id + "/" + row.id))
                     if index < rows.count - 1 { Divider().padding(.leading, 8) }
@@ -289,7 +297,7 @@ package struct BlockTreeView: View {
                 Spacer(minLength: 8)
                 // A pick is the event a field's change is, with the
                 // option's value. The page is the tool's to send again.
-                Picker(title ?? "", selection: Binding(get: { selected }, set: { act(id, .change, .string($0)) })) {
+                Picker(title ?? "", selection: Binding(get: { selected }, set: { send(id, .change, .string($0)) })) {
                     // The tool's own words: plain text, one line each.
                     ForEach(options) { Text(verbatim: $0.title).tag($0.value) }
                 }
@@ -343,11 +351,11 @@ package struct BlockTreeView: View {
         let label = Text(verbatim: title).lineLimit(1)
         switch style {
         case .plain:
-            Button { act(id, .tap, nil) } label: { label }.controlSize(.small)
+            Button { send(id, .tap, nil) } label: { label }.controlSize(.small)
         case .prominent:
-            Button { act(id, .tap, nil) } label: { label }.buttonStyle(.borderedProminent).controlSize(.small)
+            Button { send(id, .tap, nil) } label: { label }.buttonStyle(.borderedProminent).controlSize(.small)
         case .destructive:
-            Button(role: .destructive) { act(id, .tap, nil) } label: { label }.controlSize(.small)
+            Button(role: .destructive) { send(id, .tap, nil) } label: { label }.controlSize(.small)
         }
     }
 }
@@ -368,8 +376,58 @@ private struct Focused: ViewModifier {
     }
 }
 
+/// Text typed in a page's fields that has not reached its tool. On macOS a
+/// click on a button, switch or menu does not take the focus from a field,
+/// so the field never learns it was left; the page sends each field's text
+/// as `change` before the click's own event, so the tool acts on what is
+/// on screen.
+@MainActor
+package final class PendingFields {
+    private var sends: [(id: String, send: () -> Void)] = []
+
+    package init() {}
+
+    /// Whether no field holds text the tool has not had.
+    package var isEmpty: Bool { sends.isEmpty }
+
+    /// The field `id` holds text its tool has not had; `send` sends it.
+    /// A second hold for the field takes the place of the first.
+    package func hold(_ id: String, send: @escaping () -> Void) {
+        if let index = sends.firstIndex(where: { $0.id == id }) {
+            sends[index].send = send
+        } else {
+            sends.append((id, send))
+        }
+    }
+
+    /// The field `id` has sent its text, or has none to send.
+    package func drop(_ id: String) {
+        sends.removeAll { $0.id == id }
+    }
+
+    /// Sends every field's text, in the order they were first typed in,
+    /// once.
+    package func flush() {
+        let due = sends
+        sends = []
+        for entry in due { entry.send() }
+    }
+
+    /// `act`, sending the fields' text first.
+    package func flushing(into act: @escaping (String, UIEventKind, JSONValue?) -> Void)
+        -> (String, UIEventKind, JSONValue?) -> Void {
+        { [self] id, kind, value in
+            flush()
+            act(id, kind, value)
+        }
+    }
+}
+
 /// A field: Return sends `submit`, and leaving it with other text sends
-/// `change`, each with the text. What is typed stays here until then.
+/// `change`, each with the text. What is typed stays here until then, or
+/// until another control of the page is used (`PendingFields`). A secret
+/// field sends `change` as it is typed in: the tool never draws its value
+/// back, and keeps it only as a draft until its own button saves it.
 private struct BlockField: View {
     let id: String
     let title: String?
@@ -378,6 +436,7 @@ private struct BlockField: View {
     let kind: FieldBlock.Kind
     let metrics: BlockMetrics
     let focus: FocusState<ExternalToolDetail.Focus?>.Binding?
+    let pending: PendingFields
     let act: (String, UIEventKind, JSONValue?) -> Void
     @State private var text: String = ""
     @State private var sent: String = ""
@@ -396,6 +455,7 @@ private struct BlockField: View {
                 .controlSize(.small)
                 .onSubmit {
                     sent = text
+                    pending.drop(id)
                     act(id, .submit, .string(text))
                 }
         }
@@ -407,11 +467,30 @@ private struct BlockField: View {
             text = new
             sent = new
         }
-        .onChange(of: isFocused) { _, focused in
-            guard !focused, text != sent else { return }
-            sent = text
-            act(id, .change, .string(text))
+        .onChange(of: text) { _, typed in
+            guard typed != sent else {
+                pending.drop(id)
+                return
+            }
+            if kind == .secret {
+                sendChange()
+            } else {
+                pending.hold(id) { sendChange() }
+            }
         }
+        .onChange(of: isFocused) { _, focused in
+            guard !focused else { return }
+            sendChange()
+        }
+        .onDisappear { pending.drop(id) }
+    }
+
+    /// Sends what is typed as `change`, unless the tool has it already.
+    private func sendChange() {
+        pending.drop(id)
+        guard text != sent else { return }
+        sent = text
+        act(id, .change, .string(text))
     }
 
     @ViewBuilder

@@ -564,7 +564,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case (Pages.Block.slackToken?, .submit), (Pages.Block.beeperToken?, .submit):
             typed = event.text ?? (isSlack ? draftSlackToken : draftBeeperToken)
         case (Pages.Block.saveSlackToken?, .tap), (Pages.Block.saveBeeperToken?, .tap):
-            typed = isSlack ? draftSlackToken : draftBeeperToken
+            typed = tokenToSave(slack: isSlack)
         default:
             return .keep
         }
@@ -690,10 +690,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.saveSlackToken?:
                 guard event.kind == .tap else { return .keep }
                 // Never a clear: an empty Save is a slip, not a request.
-                guard !draftSlackToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                let typed = tokenToSave(slack: true)
+                guard !typed.isEmpty else {
                     throw CommandRefused("paste the Slack token first")
                 }
-                try saveSlackToken(draftSlackToken)
+                try saveSlackToken(typed)
                 tokenSavedElsewhere()
             case Pages.Block.clearSlackToken?:
                 try saveSlackToken("")
@@ -708,10 +709,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 tokenSavedElsewhere()
             case Pages.Block.saveBeeperToken?:
                 guard event.kind == .tap else { return .keep }
-                guard !draftBeeperToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                let typed = tokenToSave(slack: false)
+                guard !typed.isEmpty else {
                     throw CommandRefused("paste the Beeper token first")
                 }
-                try saveBeeperToken(draftBeeperToken)
+                try saveBeeperToken(typed)
                 tokenSavedElsewhere()
             case Pages.Block.clearBeeperToken?:
                 try saveBeeperToken("")
@@ -1606,6 +1608,22 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// redrawn, so its warning and token field follow at once.
     private func tokenSavedElsewhere() {
         if openPanels.contains(Self.islandPanel) { parts.link.render(panel: Self.islandPanel, Pages.island(status())) }
+    }
+
+    /// What Save Token saves: the token held from the field, or else the
+    /// one on the clipboard. A Vitruvian that sends a field's text only
+    /// when the field is left (3.61 and earlier) never sends it when Save
+    /// Token is clicked straight after pasting, so the draft is empty while
+    /// the token sits on the clipboard. Only a clipboard that looks like a
+    /// token is taken: one word, and for Slack starting `xox`. Empty when
+    /// there is neither.
+    private func tokenToSave(slack: Bool) -> String {
+        let draft = (slack ? draftSlackToken : draftBeeperToken).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard draft.isEmpty else { return draft }
+        let clip = (parts.link.clipboardText() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clip.isEmpty, !clip.contains(where: \.isWhitespace) else { return "" }
+        if slack, !clip.hasPrefix("xox") { return "" }
+        return clip
     }
 
     /// Saves the Slack token typed, trimmed; nothing typed clears it. The
