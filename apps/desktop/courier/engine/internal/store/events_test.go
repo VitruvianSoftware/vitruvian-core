@@ -1,0 +1,213 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package store
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+// seedHistory gives roomID n messages $000…, oldest first, perTS of them sharing each timestamp (so that, within a
+// timestamp, only seq orders them). It returns their IDs, oldest first.
+func seedHistory(t *testing.T, s *Store, roomID string, n, perTS int) []string {
+	t.Helper()
+	mkRoom(t, s, roomID, time.Unix(1, 0))
+	var ids []string
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("$%s-%03d", strings.TrimPrefix(roomID, "!"), i)
+		ids = append(ids, id)
+		mkMsg(t, s, roomID, id, ghost, "m.room.message", text("x"), time.Unix(int64(1000+i/perTS), 0))
+	}
+	return ids
+}
+
+func idsOf(evs []Event) []string {
+	out := make([]string, 0, len(evs))
+	for _, e := range evs {
+		out = append(out, e.EventID)
+	}
+	return out
+}
+
+// newestFirst is ids[lo:hi] reversed: how a page of them comes back.
+func newestFirst(ids []string, lo, hi int) []string {
+	var out []string
+	for i := hi - 1; i >= lo; i-- {
+		out = append(out, ids[i])
+	}
+	return out
+}
+
+func cursorOf(t *testing.T, s *Store, eventID string) *Cursor {
+	t.Helper()
+	e, ok, err := s.GetEvent(context.Background(), eventID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	return &Cursor{TS: e.TS, Seq: e.Seq}
+}
+
+func TestAroundCentresOnTheMessage(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	ids := seedHistory(t, s, "!r", 100, 1)
+
+	evs, before, after, err := s.EventsAround(ctx, "!r", ids[29], 10)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 25, 35), idsOf(evs), "the 4 older, the 30th itself, the 5 newer; newest first")
+	require.Equal(t, cursorOf(t, s, ids[25]), before, "before is the oldest of the page")
+	require.Equal(t, cursorOf(t, s, ids[34]), after, "after is the newest of the page")
+
+	// The pages either side carry on exactly where this one stops.
+	older, _, err := s.EventsBefore(ctx, "!r", before, 5)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 20, 25), idsOf(older))
+	newer, _, err := s.EventsAfter(ctx, "!r", *after, 5)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 35, 40), idsOf(newer))
+}
+
+func TestAroundAtTheEdges(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	ids := seedHistory(t, s, "!r", 100, 1)
+
+	evs, before, after, err := s.EventsAround(ctx, "!r", ids[99], 10)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 95, 100), idsOf(evs), "the newest: its 4 older and itself")
+	require.Nil(t, after, "the page has the room's newest event")
+	require.Equal(t, cursorOf(t, s, ids[95]), before)
+
+	evs, before, after, err = s.EventsAround(ctx, "!r", ids[0], 10)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 0, 10), idsOf(evs), "the oldest: itself and the rest newer")
+	require.Nil(t, before, "nothing is older than the oldest")
+	require.Equal(t, cursorOf(t, s, ids[9]), after)
+
+	// One short of an edge still reports the edge's cursor: the extra row is what decides.
+	evs, before, after, err = s.EventsAround(ctx, "!r", ids[94], 10)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 90, 100), idsOf(evs))
+	require.Nil(t, after, "the page reaches the newest event exactly")
+	require.NotNil(t, before)
+
+	// A page of one is just the event, with cursors both ways.
+	evs, before, after, err = s.EventsAround(ctx, "!r", ids[50], 1)
+	require.NoError(t, err)
+	require.Equal(t, []string{ids[50]}, idsOf(evs))
+	require.Equal(t, cursorOf(t, s, ids[50]), before)
+	require.Equal(t, cursorOf(t, s, ids[50]), after)
+
+	// A room of one event: no cursor either way.
+	only := seedHistory(t, s, "!one", 1, 1)
+	evs, before, after, err = s.EventsAround(ctx, "!one", only[0], 10)
+	require.NoError(t, err)
+	require.Equal(t, only, idsOf(evs))
+	require.Nil(t, before)
+	require.Nil(t, after)
+}
+
+func TestAfterWalksForwardToTheNewest(t *testing.T) {
+	for _, limit := range []int{7, 33} { // 99 events after the oldest: 7 leaves a short last page, 33 divides exactly
+		t.Run(fmt.Sprint(limit), func(t *testing.T) {
+			s, ctx := open(t), context.Background()
+			ids := seedHistory(t, s, "!r", 100, 1)
+
+			_, _, cur, err := s.EventsAround(ctx, "!r", ids[0], 1)
+			require.NoError(t, err)
+			require.NotNil(t, cur)
+			got := []string{ids[0]}
+			for pages := 0; cur != nil; pages++ {
+				require.Less(t, pages, 100, "the walk ends")
+				evs, next, err := s.EventsAfter(ctx, "!r", *cur, limit)
+				require.NoError(t, err)
+				require.NotEmpty(t, evs, "a cursor never leads to an empty page")
+				require.LessOrEqual(t, len(evs), limit)
+				// Each page is newest first, so walking forward reads it from its end.
+				for i := len(evs) - 1; i >= 0; i-- {
+					got = append(got, evs[i].EventID)
+				}
+				if next != nil {
+					require.Equal(t, &Cursor{TS: evs[0].TS, Seq: evs[0].Seq}, next, "the cursor is the newest of the page")
+				}
+				cur = next
+			}
+			require.Equal(t, ids, got, "every event once, in order, ending at the newest")
+		})
+	}
+
+	s, ctx := open(t), context.Background()
+	ids := seedHistory(t, s, "!r", 3, 1)
+	evs, next, err := s.EventsAfter(ctx, "!r", *cursorOf(t, s, ids[2]), 10)
+	require.NoError(t, err)
+	require.Empty(t, evs, "nothing is newer than the newest")
+	require.Nil(t, next)
+}
+
+func TestEqualTimestampsKeepSeqOrder(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	ids := seedHistory(t, s, "!r", 60, 3) // three events share each timestamp
+
+	for _, centre := range []int{0, 1, 2, 28, 29, 30, 31, 57, 58, 59} {
+		for _, limit := range []int{1, 2, 5, 10} {
+			evs, before, after, err := s.EventsAround(ctx, "!r", ids[centre], limit)
+			require.NoError(t, err)
+			require.Contains(t, idsOf(evs), ids[centre])
+
+			// Older pages through EventsBefore, newer through EventsAfter: together with this page, the whole
+			// history exactly once, in order.
+			all := idsOf(evs)
+			for cur := before; cur != nil; {
+				page, next, err := s.EventsBefore(ctx, "!r", cur, limit)
+				require.NoError(t, err)
+				all = append(all, idsOf(page)...)
+				cur = next
+			}
+			for cur := after; cur != nil; {
+				page, next, err := s.EventsAfter(ctx, "!r", *cur, limit)
+				require.NoError(t, err)
+				all = append(idsOf(page), all...)
+				cur = next
+			}
+			require.Equal(t, newestFirst(ids, 0, len(ids)), all, "centre %d, limit %d", centre, limit)
+		}
+	}
+}
+
+func TestAroundAnEventInAnotherRoomIsNotFound(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	seedHistory(t, s, "!a", 5, 1)
+	b := seedHistory(t, s, "!b", 5, 1)
+
+	evs, before, after, err := s.EventsAround(ctx, "!a", b[2], 10)
+	require.ErrorIs(t, err, ErrNotFound, "never a page from the wrong chat")
+	require.Nil(t, evs)
+	require.Nil(t, before)
+	require.Nil(t, after)
+
+	_, _, _, err = s.EventsAround(ctx, "!a", "$nope", 10)
+	require.ErrorIs(t, err, ErrNotFound)
+	_, _, _, err = s.EventsAround(ctx, "!nope", b[2], 10)
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestAroundAndAfterAreIndexed(t *testing.T) {
+	s := open(t)
+	seedBig(t, s, 2000, 5, 10000)
+
+	for name, plan := range map[string][]string{
+		"centre": planOf(t, s, eventAtSQL, "$!long-5000", "!long"),
+		"older":  planOf(t, s, eventsBeforeSQL, "!long", int64(1_002_500), int64(5000), 6),
+		"newer":  planOf(t, s, eventsAfterSQL, "!long", int64(1_002_500), int64(5000), 6),
+	} {
+		t.Run(name, func(t *testing.T) {
+			requireIndexed(t, plan)
+			if name != "centre" { // the centre is a primary-key lookup by event ID
+				require.Contains(t, strings.Join(plan, "\n"), "events_room_ts")
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "autoarchive.go",
         "chatstate.go",
+        "events.go",
         "inbox.go",
         "labels.go",
         "migrate.go",
@@ -33,6 +34,7 @@ go_test(
     srcs = [
         "autoarchive_test.go",
         "chatstate_test.go",
+        "events_test.go",
         "inbox_test.go",
         "labels_test.go",
         "query_test.go",
