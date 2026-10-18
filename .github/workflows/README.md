@@ -8,8 +8,8 @@ Reference for the non-obvious automation in this directory. For CI/CD
 `main` is protected by a **merge queue** (ruleset `merge-queue`, managed as code
 in `infrastructure/pulumi/platform/repo-config`): every PR merges through the
 queue once the required status checks pass on the queued (speculative) merge
-commit. Two robots feed bot-authored PRs into that queue so they don't sit
-waiting on a human.
+commit. The robots below feed bot-authored PRs into that queue so they don't
+sit waiting on a human.
 
 > ℹ️ The merge-queue ruleset can also require a code-owner review, but that is
 > gated off by default (`requireCodeOwnerReview` in `repo-config`) because a
@@ -111,6 +111,20 @@ The same idea for Dependabot's grouped `*-minor-patch` PRs, but triggered on
 `pull_request`, so it waits for CI in the default-branch context, then enables
 auto-merge as the App). **Major** bumps are never auto-merged — they land as a
 single PR for deliberate review.
+
+### `catalog-publish.yaml` and `site-sync-downloads.yaml` — website PRs arm themselves
+
+Each opens or updates one PR that writes into the website (the signed tool
+catalog; the downloads list). After pushing, the same step arms auto-merge on
+that PR, as the App, at the commit it just pushed (`--match-head-commit`), so
+the queue merges it on green CI. Before 2026-10-18 nothing armed them, and they
+sat open for hours with green checks.
+
+`tools/ci/site-pr-automerge.sh` does the arming, tested by
+`//tools/ci:site_pr_automerge_test`. It turns auto-merge off before each push
+and arms again only at the new commit. It does not arm a PR labelled
+`do-not-automerge` or `needs-human`, or a draft; it never adds or removes those
+labels. A failed arm fails the step, with a warning in the job summary.
 
 ## Scheduled checks
 
