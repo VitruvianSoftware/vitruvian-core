@@ -1417,3 +1417,213 @@
 
 /* Notification text when a reminder the person set comes due. The notification's title is the chat's name. */
 "You asked to be reminded about this chat." = "You asked to be reminded about this chat.";
+
+/* Courier menu (⌘K) and a chat's right-click menu (⌘F): opens search. */
+"Search…" = "Search…";
+
+/* Chat menu (⌘F): searches the open chat's messages, or every chat with none open. */
+"Search in Chat…" = "Search in Chat…";
+
+/* Tooltip of Search… in a chat's right-click menu. */
+"Search the messages in this chat." = "Search the messages in this chat.";
+
+/* Command bar: opens ⌘K's search over every chat. */
+"Search chats" = "Search chats";
+
+/* Command bar: opens ⌘K's search over every chat. */
+"Search messages in all chats" = "Search messages in all chats";
+
+/* Command bar: opens search in the open chat (⌘F). */
+"Search messages in current chat" = "Search messages in current chat";
+
+/* VoiceOver: the search panel. */
+"Search" = "Search";
+
+/* Placeholder of the search field (⌘K). */
+"Search chats, people and messages" = "Search chats, people and messages";
+
+/* Placeholder of the search field while it searches one chat (⌘F). */
+"Search this chat" = "Search this chat";
+
+/* Chip in the search field naming the chat searched in. The argument is the chat's name. */
+"In: %@" = "In: %@";
+
+/* Tooltip and VoiceOver label of the × on the chip naming the chat searched in. */
+"Search every chat" = "Search every chat";
+
+/* Quiet line at the top of search results while messages already on this Mac are still being indexed. */
+"Still adding older messages to search. Some results may be missing." = "Still adding older messages to search. Some results may be missing.";
+
+/* Under the Chats section of search once Show more has listed the most it lists. The argument is that number (100). */
+"Showing the first %lld chats. Type more to narrow it down." = "Showing the first %lld chats. Type more to narrow it down.";
+
+/* Search, after one letter: chats and people are searched, messages need two. */
+"Type one more letter to search messages." = "Type one more letter to search messages.";
+
+/* Under a search section: lists more of it. */
+"Show more" = "Show more";
+
+/* Under the Messages section of search: what search covers. */
+"Courier searches the messages on this Mac. Older history appears as each network sends it." = "Courier searches the messages on this Mac. Older history appears as each network sends it.";
+
+/* In the title row of the Recent searches section of search. */
+"Clear Recent Searches" = "Clear Recent Searches";
+
+/* In the title row of the Messages section of search: also lists messages with only some of the words. */
+"Show partial matches" = "Show partial matches";
+
+/* In the title row of the Messages section of search, while partial matches are listed. */
+"Hide partial matches" = "Hide partial matches";
+
+/* Tooltip of Show partial matches. */
+"Also list messages that have some of the words, after those with all of them." = "Also list messages that have some of the words, after those with all of them.";
+
+/* Divider in search's Messages section above the messages that have only some of the words. */
+"Partial matches" = "Partial matches";
+
+/* Search section before anything is typed: the chats opened most recently. */
+"Recent" = "Recent";
+
+/* Search section before anything is typed: the chat archived most recently. */
+"Last archived" = "Last archived";
+
+/* Search section before anything is typed: searches whose results were opened. */
+"Recent searches" = "Recent searches";
+
+/* Search section of chats found by name; also the search filter for direct messages or groups. */
+"Chats" = "Chats";
+
+/* Search section of people found by name in groups shared with me. */
+"In groups" = "In groups";
+
+/* Search section of photos and videos found. */
+"Media" = "Media";
+
+/* Search section of messages found. */
+"Messages" = "Messages";
+
+/* Search panel before anything is typed, with nothing recent. */
+"Find any chat, person or message on this Mac." = "Find any chat, person or message on this Mac.";
+
+/* Search panel while a search takes longer than a moment. */
+"Searching…" = "Searching…";
+
+/* Search found nothing. The argument is what was typed. */
+"No matches for “%@”" = "No matches for “%@”";
+
+/* Under No matches in search. */
+"Check the spelling, or try fewer words." = "Check the spelling, or try fewer words.";
+
+/* Search found nothing, and filters narrow it. */
+"Nothing matches these filters." = "Nothing matches these filters.";
+
+/* Button under Nothing matches these filters: turns every search filter off. */
+"Clear Filters" = "Clear Filters";
+
+/* Search, when only emoji or punctuation were typed. */
+"Search for a word or a name. Emoji and punctuation aren’t searched." = "Search for a word or a name. Emoji and punctuation aren’t searched.";
+
+/* Search failed. */
+"Search isn’t working right now." = "Search isn’t working right now.";
+
+/* Button under Search isn’t working right now. */
+"Try Again" = "Try Again";
+
+/* VoiceOver: a photo in search's Media section. The argument is who sent it. */
+"Photo from %@" = "Photo from %@";
+
+/* VoiceOver: a video in search's Media section. The argument is who sent it. */
+"Video from %@" = "Video from %@";
+
+/* Search filter: which networks. */
+"Accounts" = "Accounts";
+
+/* Search filter: which kinds of message. */
+"Type" = "Type";
+
+/* Search filter: messages I sent, or received. */
+"Sent / Received" = "Sent / Received";
+
+/* Sent / Received search filter: both. */
+"Anyone" = "Anyone";
+
+/* Chats search filter: direct messages and groups. */
+"All chats" = "All chats";
+
+/* Search filter: how long ago. */
+"Time" = "Time";
+
+/* An active Accounts search filter, when its networks' names aren't known. The argument is how many. */
+"%lld accounts" = "%lld accounts";
+
+/* An active search filter with many choices: the first one's name and how many others. */
+"%@ and %lld more" = "%@ and %lld more";
+
+/* Type search filter: text messages. */
+"Text" = "Text";
+
+/* Type search filter. */
+"Photos" = "Photos";
+
+/* Type search filter. */
+"Videos" = "Videos";
+
+/* Type search filter. */
+"Voice and audio" = "Voice and audio";
+
+/* Type search filter. */
+"Files" = "Files";
+
+/* Type search filter: messages with a web link. */
+"Links" = "Links";
+
+/* Type search filter. */
+"Stickers" = "Stickers";
+
+/* Sent / Received search filter. */
+"Sent by me" = "Sent by me";
+
+/* Sent / Received search filter. */
+"Received" = "Received";
+
+/* Chats search filter: one-to-one chats. */
+"Direct messages" = "Direct messages";
+
+/* Time search filter: no limit. */
+"Any time" = "Any time";
+
+/* Time search filter. */
+"Last hour" = "Last hour";
+
+/* Time search filter: the last seven days. */
+"Last week" = "Last week";
+
+/* Time search filter. */
+"Last 30 days" = "Last 30 days";
+
+/* Time search filter: the last 365 days. */
+"Last year" = "Last year";
+
+/* Tooltip of the × on an active search filter. */
+"Clear this filter" = "Clear this filter";
+
+/* VoiceOver: the × on an active search filter. The argument is the filter's name. */
+"Clear %@" = "Clear %@";
+
+/* The button that leaves a chat opened at a search result for its newest messages. */
+"Jump to latest" = "Jump to latest";
+
+/* Tag on a search result whose chat is in Low Priority. */
+"Low priority" = "Low priority";
+
+/* Tag on a search result whose chat is a message request. */
+"Request" = "Request";
+
+/* A person found in search: the group they share with me. The argument is the group's name. */
+"In %@" = "In %@";
+
+/* A person found in search who shares two groups with me. The argument is the newest one's name. */
+"In %@ and 1 other group" = "In %@ and 1 other group";
+
+/* A person found in search who shares several groups with me: the newest one's name, and how many others. */
+"In %@ and %lld other groups" = "In %@ and %lld other groups";

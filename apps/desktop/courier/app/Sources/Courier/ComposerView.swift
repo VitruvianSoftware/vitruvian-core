@@ -284,6 +284,8 @@ struct ComposerTextView: NSViewRepresentable {
             }
         }
 
+        // Part 4.3's formatting keys go here. A link must not take ⌘K, and nothing may take ⌘F: those keys open
+        // search, from the Courier and Chat menus (InboxCommands) and MainWindow's ⌘F.
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             switch selector {
             case #selector(NSResponder.insertNewline(_:)),

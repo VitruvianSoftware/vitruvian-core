@@ -20,6 +20,10 @@ struct ConversationView: View {
     /// Leaving the bottom is told a moment late: new content below pushes the end out of sight for an instant
     /// before the view scrolls to it, and that is not the person scrolling up.
     @State private var leavingBottom: Task<Void, Never>?
+    @State private var bottomInView = false
+    /// The scroll to a message (a search result) that has been made. Until it is, the bottom being in view is the
+    /// timeline starting there, not the person reaching it, and reads nothing newer.
+    @State private var scrolledToMessage: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,6 +84,7 @@ struct ConversationView: View {
                     }
                     ForEach(conversation.items) { item in
                         TimelineItemView(item: item, isSelected: conversation.selectedMessageID == item.id,
+                                         isHighlighted: conversation.highlightedMessageID == item.id,
                                          showsSent: conversation.lastOutgoingID == item.id, actions: actions)
                             .id(item.id)
                     }
@@ -88,9 +93,12 @@ struct ConversationView: View {
                         .id(Self.bottomID)
                         .onAppear {
                             leavingBottom?.cancel()
+                            bottomInView = true
                             conversation.scrolled(toBottom: true)
+                            readNewerIfAtBottom()
                         }
                         .onDisappear {
+                            bottomInView = false
                             leavingBottom?.cancel()
                             leavingBottom = Task {
                                 try? await Task.sleep(nanoseconds: 150_000_000)
@@ -106,16 +114,24 @@ struct ConversationView: View {
             .onChange(of: conversation.isLoadingOlder) { _, loading in
                 if !loading, topInView, !conversation.olderFailed { requestOlder() }
             }
+            .onChange(of: conversation.isLoadingNewer) { _, loading in
+                // A newer page is in and the bottom is still in view (it was a short one): the next.
+                if !loading { readNewerIfAtBottom() }
+            }
+            .onChange(of: conversation.scrollToMessageRequest, initial: true) { _, request in
+                if let request { scrollToMessage(proxy, request) }
+            }
             .onChange(of: conversation.jumpToBottomRequest) { _, _ in
                 scrollToBottom(proxy, animated: true)
             }
             .onChange(of: conversation.items) { _, _ in
-                // New messages, a reaction or a status line are followed only by someone already at the bottom.
-                if conversation.isAtBottom { scrollToBottom(proxy) }
+                // New messages, a reaction or a status line are followed only by someone already at the newest
+                // message. Away from it (opened at a search result), new messages never move the view.
+                if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
             }
             .onChange(of: bottomBarSignature) { _, _ in
                 // The bottom bar grew (a reply, files, more lines): keep the newest message in view.
-                if conversation.isAtBottom { scrollToBottom(proxy) }
+                if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
             }
             .onChange(of: firstMessageID) { _, _ in
                 // Older messages came in above: stay where the person was.
@@ -147,6 +163,24 @@ struct ConversationView: View {
         return nil
     }
 
+    /// Opened at a message: scroll to it, in the middle. Once there, reaching the bottom reads newer messages.
+    private func scrollToMessage(_ proxy: ScrollViewProxy, _ request: ConversationModel.MessageScrollRequest) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            proxy.scrollTo(request.messageID, anchor: .center)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                scrolledToMessage = request.serial
+                readNewerIfAtBottom()
+            }
+        }
+    }
+
+    /// Away from the newest message, reaching the bottom reads the next newer page.
+    private func readNewerIfAtBottom() {
+        guard bottomInView, conversation.isAwayFromLatest, !conversation.isLoadingNewer,
+              let request = conversation.scrollToMessageRequest, scrolledToMessage == request.serial else { return }
+        conversation.loadNewer()
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = false) {
         // A moment later, so the layout that asked for it has settled.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -168,15 +202,26 @@ struct ConversationView: View {
         }
     }
 
+    /// The way back to the newest message. Away from it (opened at a search result) it says "Jump to latest", with
+    /// a dot once something new has come in.
     @ViewBuilder
     private var jumpButton: some View {
-        if !conversation.isAtBottom {
+        if !conversation.isAtBottom || conversation.isAwayFromLatest {
             Button {
                 conversation.jumpToBottom()
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "chevron.down")
-                    if conversation.newMessageCount > 0 {
+                    if conversation.isAwayFromLatest {
+                        Text(String(localized: "Jump to latest"))
+                            .font(.callout.weight(.medium))
+                        if conversation.hasNewerWhileAway {
+                            Circle()
+                                .fill(Color.accentColor)
+                                .frame(width: 7, height: 7)
+                                .accessibilityLabel(String(localized: "New messages"))
+                        }
+                    } else if conversation.newMessageCount > 0 {
                         Text(conversation.newMessageCount == 1 ? String(localized: "1 new message")
                             : String(localized: "\(conversation.newMessageCount) new messages"))
                             .font(.callout.weight(.medium))

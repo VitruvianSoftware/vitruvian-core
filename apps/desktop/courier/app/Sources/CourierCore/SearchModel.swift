@@ -124,6 +124,24 @@ public struct SearchSection: Identifiable, Equatable, Sendable {
     }
 }
 
+/// What the panel says in place of its rows.
+public enum SearchNotice: Equatable, Sendable {
+    /// Home, with nothing recent to list.
+    case welcome
+    /// A search has taken longer than `SearchModel.searchingDelay`.
+    case searching
+    /// Nothing found for these words (as typed, without the spaces around them).
+    case noMatches(String)
+    /// Nothing found, and filters narrow the search: Clear Filters may find something.
+    case nothingMatchesFilters
+    /// Only emoji or punctuation were typed, and those aren't searched.
+    case emojiOnly
+    /// Too few letters to search messages, and no chat or person matched either.
+    case needMoreLetters
+    /// The search failed: Try Again.
+    case failed
+}
+
 /// The ⌘K (and ⌘F) search panel: what is typed and filtered, the sections found, and the row selected.
 ///
 /// **Requests.** A change to `text` searches once typing pauses for `debounce`; a change to `filters` or the scope
@@ -245,7 +263,7 @@ public final class SearchModel: ObservableObject {
     /// Esc: clears the filters, then the text, then the chat searched in, then closes. True once closed.
     public func escape() -> Bool {
         if !filters.isEmpty {
-            filters = SearchFilterSet(partial: filters.partial)
+            clearFilters()
             return false
         }
         if !text.isEmpty {
@@ -266,6 +284,32 @@ public final class SearchModel: ObservableObject {
         scopeRoomID = nil
         scope = nil
         queryChanged(debounced: false)
+    }
+
+    /// "Clear Filters": every filter off. "Show partial matches" isn't a filter, and stays as it is.
+    public func clearFilters() {
+        filters = SearchFilterSet(partial: filters.partial)
+    }
+
+    /// What the panel shows in place of its rows; nil when it shows rows (or is closed).
+    public var notice: SearchNotice? {
+        switch phase {
+        case .closed: return nil
+        case .failed: return .failed
+        case .searching: return .searching
+        case .home: return sections.isEmpty ? .welcome : nil
+        case .results:
+            guard sections.isEmpty else { return nil }
+            if hint == SearchHint.emojiOnly.rawValue { return .emojiOnly }
+            if hint == SearchHint.needMoreLetters.rawValue { return .needMoreLetters }
+            if !filters.isEmpty { return .nothingMatchesFilters }
+            return .noMatches(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
+    /// Too few letters were typed to search messages, and Chats has rows: the line under them says so.
+    public var needsMoreLettersUnderChats: Bool {
+        phase == .results && hint == SearchHint.needMoreLetters.rawValue && !sections.isEmpty
     }
 
     /// Try Again, after a failure.

@@ -12,13 +12,13 @@ struct CourierApp: App {
         Window("Courier", id: "main") {
             MainWindow(model: delegate.model, inbox: delegate.inbox, conversation: delegate.conversation,
                        login: delegate.login, spaces: delegate.spaces, preferences: delegate.inbox.preferences,
-                       ui: delegate.inboxUI, labels: delegate.labels)
+                       ui: delegate.inboxUI, search: delegate.search, labels: delegate.labels)
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
         .defaultSize(width: 1020, height: 660)
         .commands {
             InboxCommands(inbox: delegate.inbox, login: delegate.login, spaces: delegate.spaces,
-                          preferences: delegate.inbox.preferences, ui: delegate.inboxUI)
+                          preferences: delegate.inbox.preferences, ui: delegate.inboxUI, search: delegate.search)
             ConversationCommands(conversation: delegate.conversation)
         }
 

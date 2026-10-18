@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The spaces bar, and the labels with their auto-archive rules.
     let spaces: SpacesModel
     let labels: LabelsModel
+    /// ⌘K and ⌘F. Opening a result opens its chat through the app's model, at the message for a message.
+    let search: SearchModel
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
@@ -58,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.login = login
         spaces = SpacesModel(appModel: model, inbox: inbox)
         labels = LabelsModel(appModel: model)
+        search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
         inbox.onReconnect = { network in login.begin(network: network) }

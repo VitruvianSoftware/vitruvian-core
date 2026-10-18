@@ -363,6 +363,46 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.chatIDs(.chats), ["!c"])
     }
 
+    func testNoticesSayWhatAnEmptyPanelMeans() async throws {
+        let h = try await start()
+        XCTAssertNil(h.search.notice, "closed")
+        try await h.showHome()
+        XCTAssertEqual(h.search.notice, .welcome, "home with nothing recent")
+
+        try await h.type("  zzz ")
+        try await waitUntil { h.search.phase == .results }
+        XCTAssertEqual(h.search.notice, .noMatches("zzz"), "the words, without the spaces around them")
+
+        h.search.filters.partial = true
+        h.search.filters.sender = "me"
+        try await waitUntil { h.search.notice == .nothingMatchesFilters }
+        h.search.clearFilters()
+        XCTAssertTrue(h.search.filters.isEmpty)
+        XCTAssertTrue(h.search.filters.partial, "Show partial matches isn't a filter")
+        try await waitUntil { h.search.notice == .noMatches("zzz") }
+
+        h.script.results["🎉"] = searchResult(chats: [], inGroups: [], media: nil, messages: nil, hint: "emoji_only")
+        try await h.type("🎉")
+        try await waitUntil { h.search.notice == .emojiOnly }
+
+        // One letter: no messages yet. Alone it is the notice; under chats that matched, it is a line.
+        h.script.results["p"] = searchResult(chats: [], inGroups: [], media: nil, messages: nil,
+                                             hint: "need_more_letters")
+        try await h.type("p")
+        try await waitUntil { h.search.notice == .needMoreLetters }
+        XCTAssertFalse(h.search.needsMoreLettersUnderChats)
+        h.script.results["q"] = searchResult(chats: [room("!q", ts: 1)], media: nil, messages: nil,
+                                             hint: "need_more_letters")
+        try await h.type("q")
+        try await waitUntil { h.search.sections.map(\.kind) == [.chats] }
+        XCTAssertNil(h.search.notice)
+        XCTAssertTrue(h.search.needsMoreLettersUnderChats)
+
+        h.script.fail = true
+        try await h.type("qr")
+        try await waitUntil { h.search.notice == .failed }
+    }
+
     func testSearchingShowsOnlyAfterADelay() async throws {
         let h = try await start()
         try await h.showHome()

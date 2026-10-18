@@ -9,6 +9,7 @@ import XCTest
 @MainActor
 final class CommandSetTests: XCTestCase {
     private var harnesses: [InboxHarness] = []
+    private var searchHarnesses: [SearchHarness] = []
 
     override func tearDown() async throws {
         for harness in harnesses {
@@ -16,6 +17,11 @@ final class CommandSetTests: XCTestCase {
             harness.cleanUp()
         }
         harnesses = []
+        for harness in searchHarnesses {
+            await harness.app.stop()
+            harness.cleanUp()
+        }
+        searchHarnesses = []
     }
 
     /// The ledger's names (docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv, "command"
@@ -218,4 +224,57 @@ final class CommandSetTests: XCTestCase {
         account.run()
         XCTAssertEqual(h.inbox.query.space, "inbox")
     }
+
+    // MARK: - Search
+
+    func testSearchCommandsHaveLedgerNamesAndRun() async throws {
+        let h = try await startSearch(rooms: [room("!a", ts: 1, name: "Picnic planning")])
+        searchHarnesses.append(h)
+        let open = OpenRoom()
+        let commands = CommandSet.search(h.search, openRoomID: { open.id })
+        // The ledger's two ("command" rows), and 02 §4's "Search messages in current chat".
+        XCTAssertEqual(commands.map(\.id),
+                       ["Search chats", "Search messages in all chats", "Search messages in current chat"])
+        XCTAssertEqual(commands.map(\.keys), ["⌘K", "⌘K", "⌘F"])
+        for command in commands {
+            XCTAssertEqual(command.title, command.id, "the title is the ledger's name (in English)")
+            XCTAssertNil(command.confirmation, "searching changes nothing, so nothing asks first")
+        }
+        let inbox = ["Archive all chats", "Next Chat", "Toggle space bar"]
+        XCTAssertTrue(Set(commands.map(\.id)).isDisjoint(with: inbox + ledger), "no id is the inbox's too")
+
+        let chats = try command(commands, "Search chats")
+        let messages = try command(commands, "Search messages in all chats")
+        let here = try command(commands, "Search messages in current chat")
+        XCTAssertTrue(chats.isEnabled())
+        XCTAssertTrue(messages.isEnabled())
+        XCTAssertFalse(here.isEnabled(), "no chat is open")
+        here.run()
+        XCTAssertEqual(h.search.phase, .closed, "with no chat open it does nothing")
+
+        chats.run()
+        XCTAssertEqual(h.search.phase, .home)
+        XCTAssertNil(h.search.scope)
+        h.search.close()
+        messages.run()
+        XCTAssertEqual(h.search.phase, .home)
+        XCTAssertNil(h.search.scope)
+        h.search.close()
+
+        open.id = "!a"
+        XCTAssertTrue(here.isEnabled())
+        here.run()
+        XCTAssertEqual(h.search.phase, .home)
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+
+        // Over a panel searching in a chat, the other two search every chat again.
+        chats.run()
+        XCTAssertNil(h.search.scope)
+    }
+}
+
+/// The open chat, as the commands read it when they run.
+@MainActor
+private final class OpenRoom {
+    var id: String?
 }
