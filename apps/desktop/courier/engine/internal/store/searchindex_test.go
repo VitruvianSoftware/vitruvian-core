@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
@@ -841,4 +842,78 @@ func TestBackfillAndLiveWritesTakeTurns(t *testing.T) {
 	require.Equal(t, 2*n, count(t, s, "SELECT count(DISTINCT doc_id) FROM events"))
 	require.Equal(t, 2*n, count(t, s, "SELECT count(*) FROM search_messages"))
 	require.Len(t, matches(t, s, `"live"`), n)
+}
+
+// Ruling 14: a batch over long messages runs out of time before it runs out of rows. It commits what it indexed,
+// and the next batch starts right after the last message it took, so each is indexed once. The clock is the
+// test's: every look at it is 10 ms later, so a 50 ms budget lets a batch take a handful of rows.
+func TestBackfillBatchStopsWhenItsTimeIsSpent(t *testing.T) {
+	const n = 200
+	ctx := context.Background()
+	s, _ := openSeeded(t, n)
+	_, err := s.db.Exec(ctx, `UPDATE events SET content = json_object('msgtype', 'm.text',
+		'body', 'seed message w' || substr(event_id, 6) || ' ' || $1) WHERE event_id LIKE '$seed%'`,
+		strings.Repeat("long ", searchtext.MaxIndexRunes/5))
+	require.NoError(t, err)
+	var clock time.Time
+	s.backfillNow = func() time.Time {
+		clock = clock.Add(10 * time.Millisecond)
+		return clock
+	}
+	s.backfillBudget = 50 * time.Millisecond
+
+	batches := 0
+	for after := 0; ; batches++ {
+		done, err := s.BackfillSearch(ctx, 2000)
+		require.NoError(t, err)
+		next := stateValue(t, s, "backfill_after")
+		indexed := count(t, s, "SELECT count(*) FROM events WHERE doc_id IS NOT NULL")
+		// The cursor is the last message indexed: everything up to it has its doc, nothing after it does.
+		require.Equal(t, next, indexed)
+		require.Equal(t, indexed, count(t, s, "SELECT count(*) FROM events WHERE rowid <= $1 AND doc_id IS NOT NULL", next))
+		if done {
+			require.Equal(t, n, next)
+			break
+		}
+		require.Greater(t, next, after, "every batch indexes at least one message")
+		require.LessOrEqual(t, next-after, 5, "and stops once its 50 ms are spent, far short of 2,000 rows")
+		after = next
+	}
+	require.Greater(t, batches, 10)
+	require.True(t, searchComplete(t, s))
+	require.Equal(t, n, count(t, s, "SELECT count(DISTINCT doc_id) FROM events"))
+	require.Equal(t, n, count(t, s, "SELECT count(*) FROM search_messages"))
+	for i := 1; i <= n; i += 13 {
+		require.Equal(t, []string{storetest.SeedEventID(i)}, matches(t, s, fmt.Sprintf("%q", storetest.SeedWord(i))), i)
+	}
+}
+
+// Messages whose millisecond has no doc id left are reported once per batch, with how many, not once each.
+func TestBackfillWarnsOncePerBatchForFullMilliseconds(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openSeeded(t, 30)
+	s.backfillNow = func() time.Time { return time.Time{} } // never out of time: one batch
+	// Seeds 3-5 and 6-8 share two milliseconds; fill both (with rows past the backfill's range).
+	for _, ms := range []int64{storetest.SeedTS(3), storetest.SeedTS(6)} {
+		_, err := s.db.Exec(ctx, `WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i < 1023)
+			INSERT INTO events (event_id, room_id, sender, type, content, ts, seq, doc_id)
+			SELECT '$full' || $2 || '-' || i, $1, $3, 'm.room.message', '{}', $2, 100000 + $2 * 2000 + i, ($2 << 10) | i FROM n`,
+			storetest.SeedRoom, ms, ghost)
+		require.NoError(t, err)
+	}
+	var lb strings.Builder
+	log := zerolog.New(&lb).Level(zerolog.InfoLevel)
+	done, err := s.BackfillSearch(log.WithContext(ctx), 2000)
+	require.NoError(t, err)
+	require.True(t, done)
+	lines := strings.Split(strings.TrimSpace(lb.String()), "\n")
+	require.Len(t, lines, 1, lb.String())
+	var warning struct {
+		Level    string `json:"level"`
+		Messages int    `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &warning))
+	require.Equal(t, "warn", warning.Level)
+	require.Equal(t, 6, warning.Messages)
+	require.Equal(t, 24, count(t, s, "SELECT count(*) FROM search_messages"))
 }

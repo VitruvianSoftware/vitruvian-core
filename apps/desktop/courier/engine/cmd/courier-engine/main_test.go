@@ -473,9 +473,8 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 	require.NoError(t, s.Close())
 	storetest.SeedUnindexed(t, db, 50_000)
 
-	p, ready := start(t, data, nil)
-	c := dial(t, ready.Socket)
-	require.Equal(t, rpc.Protocol, c.hello().Protocol)
+	// The test's own look at the database is open before the engine starts, so the first reading can be taken the
+	// moment the ready line is out.
 	s, err = store.Open(db)
 	require.NoError(t, err)
 	defer s.Close()
@@ -484,9 +483,12 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 		require.NoError(t, err)
 		return done
 	}
-	// 50,000 messages are 25 batches with a pause between each, so the backfill cannot have finished yet.
-	require.False(t, searchComplete(), "the engine was ready and answering before the history on disk was indexed")
-	require.Equal(t, rpc.Protocol, c.hello().Protocol, "and keeps answering while it indexes")
+	p, ready := start(t, data, nil)
+	// 50,000 messages are at least 25 batches, each followed by a rest at least as long, so the backfill, which
+	// starts only after the ready line, cannot have finished yet.
+	require.False(t, searchComplete(), "the engine was ready before the history on disk was indexed")
+	c := dial(t, ready.Socket)
+	require.Equal(t, rpc.Protocol, c.hello().Protocol, "and answers while it indexes")
 
 	deadline := time.Now().Add(startTimeout)
 	for !strings.Contains(p.stderr.String(), "search backfill done") {

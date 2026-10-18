@@ -61,6 +61,11 @@ type Store struct {
 	typing   map[string]map[string]*typingEntry // room ID → user ID → who is typing there, until when
 	// afterFunc is time.AfterFunc, returning the timer's Stop. Tests replace it to fire typing expiries by hand.
 	afterFunc func(time.Duration, func()) (stop func() bool)
+
+	// backfillNow and backfillBudget time a backfill batch: time.Now and BackfillTimeBudget. Tests replace them so
+	// that a batch runs out of time without depending on how fast the machine is.
+	backfillNow    func() time.Time
+	backfillBudget time.Duration
 }
 
 // subscriber is one change feed. dropped is set when a change could not be delivered to it; guarded by Store.mu.
@@ -81,7 +86,8 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{
 		db: db, subs: map[chan Change]*subscriber{}, clock: time.Now, typing: map[string]map[string]*typingEntry{},
-		afterFunc: func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
+		afterFunc:   func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
+		backfillNow: time.Now, backfillBudget: BackfillTimeBudget,
 	}
 	if err = db.QueryRow(context.Background(), "SELECT COALESCE(MAX(seq),0) FROM events").Scan(&s.seq); err != nil {
 		db.Close()

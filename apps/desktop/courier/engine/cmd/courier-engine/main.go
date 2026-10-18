@@ -265,12 +265,12 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		return fmt.Errorf("write the ready line: %w", err)
 	}
 
-	// History already on disk goes into the search index behind the engine, in small batches with a pause between
-	// them (search.RunBackfill), so a big courier.db starts as fast as an empty one and new messages, indexed as
-	// they arrive, never wait long for a batch. It starts only now, once the engine is serving, and like the
-	// timers it stops with the engine's context and is waited for before the store closes (defers run in reverse).
-	// Its one line when done says how many batches and how long, at info: the only line below warn that the
-	// engine writes.
+	// History already on disk goes into the search index behind the engine, in short batches (at most 2,000 rows and
+	// 50 ms each), each followed by a rest at least as long (search.RunBackfill): a big courier.db starts as fast
+	// as an empty one, and new messages, indexed as they arrive, never wait long for a batch. It starts only now,
+	// once the engine is serving, and like the timers it stops with the engine's context and is waited for before
+	// the store closes (defers run in reverse). Its one line when done gives counts and a duration, at info: the
+	// only line below warn that the engine writes.
 	backfillCtx, stopBackfill := context.WithCancel(ctx)
 	backfillDone := make(chan struct{})
 	go func() {

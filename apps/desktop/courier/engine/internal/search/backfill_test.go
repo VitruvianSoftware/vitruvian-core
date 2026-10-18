@@ -80,6 +80,11 @@ func newLog() (*logBuf, zerolog.Logger) {
 	return b, zerolog.New(b).Level(zerolog.InfoLevel)
 }
 
+// defaultConfig is RunBackfill's own configuration.
+func defaultConfig() backfillConfig {
+	return backfillConfig{batch: BackfillBatch, pause: BackfillPause, retry: BackfillRetry, now: time.Now, sleep: sleep}
+}
+
 // seeded is a store whose database held n messages before migration 4 (see storetest). The caller closes it.
 func seeded(t *testing.T, n int) (*store.Store, string) {
 	t.Helper()
@@ -133,8 +138,11 @@ func TestRunBackfillIndexesEverythingAndSaysSo(t *testing.T) {
 	done := lb.lines(t, "info")
 	require.Len(t, done, 1, lb.String())
 	require.Equal(t, "search backfill done", done[0]["message"])
-	require.EqualValues(t, 2, done[0]["batches"], "3,000 messages, a chat and a person in batches of %d", BackfillBatch)
+	require.GreaterOrEqual(t, done[0]["batches"], float64(2), "3,000 messages, a chat and a person in batches of %d", BackfillBatch)
 	require.Contains(t, done[0], "took_ms")
+	require.EqualValues(t, 3000, done[0]["messages"])
+	require.EqualValues(t, 1, done[0]["chats"])
+	require.EqualValues(t, 1, done[0]["people"])
 	require.Empty(t, lb.warnings(t))
 	require.NotContains(t, lb.String(), "seed", "counts and durations only, never text or names")
 
@@ -153,7 +161,9 @@ func TestRunBackfillStopsWithItsContext(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runBackfill(ctx, s, log, 10, BackfillPause, BackfillRetry) // 500 batches: far from done when stopped
+		cfg := defaultConfig()
+		cfg.batch = 10 // 500 batches: far from done when stopped
+		runBackfill(ctx, s, log, cfg)
 	}()
 	waitFor(t, "the first batch", func() bool { return storetest.Indexed(t, path) > 0 })
 	cancel()
@@ -201,7 +211,9 @@ func TestRunBackfillRetriesAfterAnError(t *testing.T) {
 	done2 := make(chan struct{})
 	go func() {
 		defer close(done2)
-		runBackfill(ctx2, s, log2, BackfillBatch, BackfillPause, time.Millisecond)
+		cfg := defaultConfig()
+		cfg.retry = time.Millisecond
+		runBackfill(ctx2, s, log2, cfg)
 	}()
 	waitFor(t, "three tries", func() bool { return len(lb2.warnings(t)) >= 3 })
 	for _, w := range lb2.warnings(t) {
@@ -209,4 +221,41 @@ func TestRunBackfillRetriesAfterAnError(t *testing.T) {
 	}
 	cancel2()
 	returned(t, done2)
+}
+
+// Ruling 14: after each batch the backfill rests at least as long as the batch took, and never less than
+// BackfillPause, so it holds the database at most about half the time. The clock and the sleep are the test's.
+func TestRunBackfillRestsAsLongAsEachBatchTook(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		tick      time.Duration // how much later each look at the clock is
+		wantSleep time.Duration
+	}{
+		{"a slow batch", 70 * time.Millisecond, 70 * time.Millisecond},
+		{"a quick batch", time.Millisecond, BackfillPause},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s, path := seeded(t, 50)
+			defer s.Close()
+			_, log := newLog()
+			var clock time.Time
+			var slept []time.Duration
+			cfg := defaultConfig()
+			cfg.batch = 10
+			cfg.now = func() time.Time {
+				clock = clock.Add(c.tick)
+				return clock
+			}
+			cfg.sleep = func(_ context.Context, d time.Duration) bool {
+				slept = append(slept, d)
+				return true
+			}
+			runBackfill(context.Background(), s, log, cfg)
+			require.Equal(t, 50, storetest.Indexed(t, path))
+			require.NotEmpty(t, slept)
+			for _, d := range slept {
+				require.Equal(t, c.wantSleep, d) // a batch looks at the clock once before and once after
+			}
+		})
+	}
 }
