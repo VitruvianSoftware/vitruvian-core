@@ -1,0 +1,510 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
+	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
+)
+
+// matches returns the IDs of the events whose doc matches a raw FTS5 expression, newest first.
+func matches(t *testing.T, s *Store, expr string) []string {
+	t.Helper()
+	return queryIDs(t, s, `SELECT e.event_id FROM search_messages JOIN events e ON e.doc_id = search_messages.rowid
+		WHERE search_messages MATCH $1 ORDER BY search_messages.rowid DESC`, expr)
+}
+
+// chatMatches returns the IDs of the chats whose name doc matches expr.
+func chatMatches(t *testing.T, s *Store, expr string) []string {
+	t.Helper()
+	return queryIDs(t, s, `SELECT d.room_id FROM search_chats JOIN chat_docs d ON d.doc_id = search_chats.rowid
+		WHERE search_chats MATCH $1 ORDER BY d.room_id`, expr)
+}
+
+// peopleMatches returns the user IDs whose person doc matches expr.
+func peopleMatches(t *testing.T, s *Store, expr string) []string {
+	t.Helper()
+	return queryIDs(t, s, `SELECT d.user_id FROM search_people JOIN people_docs d ON d.doc_id = search_people.rowid
+		WHERE search_people MATCH $1 ORDER BY d.user_id`, expr)
+}
+
+func queryIDs(t *testing.T, s *Store, q string, args ...any) []string {
+	t.Helper()
+	rows, err := s.db.Query(context.Background(), q, args...)
+	require.NoError(t, err)
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		require.NoError(t, rows.Scan(&id))
+		out = append(out, id)
+	}
+	require.NoError(t, rows.Err())
+	return out
+}
+
+func count(t *testing.T, s *Store, q string, args ...any) int {
+	t.Helper()
+	var n int
+	require.NoError(t, s.db.QueryRow(context.Background(), q, args...).Scan(&n))
+	return n
+}
+
+func docID(t *testing.T, s *Store, eventID string) sql.NullInt64 {
+	t.Helper()
+	var d sql.NullInt64
+	require.NoError(t, s.db.QueryRow(context.Background(), "SELECT doc_id FROM events WHERE event_id=$1", eventID).Scan(&d))
+	return d
+}
+
+func insert(t *testing.T, s *Store, e Event) {
+	t.Helper()
+	ins, err := s.InsertEvent(context.Background(), e)
+	require.NoError(t, err)
+	require.True(t, ins)
+}
+
+func editTo(target, body string) string {
+	b, _ := json.Marshal(map[string]any{
+		"msgtype": "m.text", "body": "* " + body,
+		"m.new_content": map[string]string{"msgtype": "m.text", "body": body},
+		"m.relates_to":  map[string]string{"rel_type": "m.replace", "event_id": target},
+	})
+	return string(b)
+}
+
+func TestMigrationFromMilestone4_1(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	fixture, err := os.ReadFile("testdata/m4.sql")
+	require.NoError(t, err)
+	raw, err := sqlite.Open(path)
+	require.NoError(t, err)
+	_, err = raw.Exec(ctx, string(fixture))
+	require.NoError(t, err)
+	var before, maxRowID, events int
+	require.NoError(t, raw.QueryRow(ctx, "PRAGMA user_version").Scan(&before))
+	require.Equal(t, 3, before, "the fixture is a genuine milestone-4.1 database")
+	require.NoError(t, raw.QueryRow(ctx, "SELECT MAX(rowid), count(*) FROM events").Scan(&maxRowID, &events))
+	require.GreaterOrEqual(t, events, 20)
+	require.NoError(t, raw.Close())
+
+	s, err := Open(path)
+	require.NoError(t, err)
+	defer s.Close()
+	require.Equal(t, 4, userVersion(t, s))
+	require.Equal(t, len(migrations), userVersion(t, s))
+
+	require.Equal(t, maxRowID, count(t, s, "SELECT value FROM search_state WHERE key='backfill_until'"))
+	require.Equal(t, 0, count(t, s, "SELECT value FROM search_state WHERE key='backfill_after'"))
+	// The migration indexes nothing: the backfill does, outside it.
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM events WHERE doc_id IS NOT NULL"))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_messages"))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_chats"))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_people"))
+
+	rows := inboxByID(t, s)
+	require.Len(t, rows, 3)
+	require.Equal(t, "see https://example.com/seeds", rows["!garden:courier.local"].Preview)
+	require.True(t, rows["!trip:courier.local"].Muted)
+	require.True(t, rows["!pat:courier.local"].Archived)
+
+	// The engine keeps working on the upgraded database: a new message is indexed at once.
+	insert(t, s, Event{
+		RoomID: "!trip:courier.local", EventID: "$t6", Sender: "@ghost3:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(text("bring snacks")), TS: time.UnixMilli(190000),
+	})
+	require.Equal(t, []string{"$t6"}, matches(t, s, `"snacks"`))
+}
+
+func TestNewMessagesAreIndexedAtOnce(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$m", ghost, "m.room.message", text("dinner at eight"), time.Unix(10, 0))
+	require.Equal(t, []string{"$m"}, matches(t, s, `"dinner"`))
+	require.Equal(t, []string{"$m"}, matches(t, s, `"eight"`))
+
+	mkMsg(t, s, "!r", "$react", ghost, "m.reaction", `{"m.relates_to":{"rel_type":"m.annotation","event_id":"$m","key":"dinner"}}`, time.Unix(11, 0))
+	mkMsg(t, s, "!r", "$enc", ghost, "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2","ciphertext":"dinner"}`, time.Unix(12, 0))
+	key := ""
+	_, err := s.InsertEvent(ctx, Event{
+		RoomID: "!r", EventID: "$state", Sender: ghost, Type: "m.room.topic", StateKey: &key,
+		Content: json.RawMessage(`{"topic":"dinner"}`), TS: time.Unix(13, 0),
+	})
+	require.NoError(t, err)
+	for _, id := range []string{"$react", "$enc", "$state"} {
+		require.False(t, docID(t, s, id).Valid, id)
+	}
+	require.Equal(t, []string{"$m"}, matches(t, s, `"dinner"`))
+}
+
+func TestDocIDsFollowTime(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	// Backfill delivers history out of order: the index still yields newest first.
+	mkMsg(t, s, "!r", "$c", ghost, "m.room.message", text("hello three"), time.UnixMilli(3000))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("hello one"), time.UnixMilli(1000))
+	mkMsg(t, s, "!r", "$b", ghost, "m.room.message", text("hello two"), time.UnixMilli(2000))
+	require.Equal(t, []string{"$c", "$b", "$a"}, matches(t, s, `"hello"`))
+	require.Equal(t, int64(3000<<10), docID(t, s, "$c").Int64)
+
+	for i, id := range []string{"$s0", "$s1", "$s2"} {
+		mkMsg(t, s, "!r", id, ghost, "m.room.message", text("same millisecond"), time.UnixMilli(5000))
+		require.Equal(t, int64(5000<<10|i), docID(t, s, id).Int64, id)
+	}
+
+	mkMsg(t, s, "!r", "$neg", ghost, "m.room.message", text("before the epoch"), time.UnixMilli(-5000))
+	require.Equal(t, int64(0), docID(t, s, "$neg").Int64, "a negative ts counts as 0")
+
+	// With every one of a millisecond's 1,024 doc ids taken, the next message there isn't indexed.
+	_, err := s.db.Exec(ctx, `WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i < 1023)
+		INSERT INTO events (event_id, room_id, sender, type, content, ts, seq, doc_id)
+		SELECT '$full' || i, '!r', $1, 'm.room.message', '{}', 7000, 1000 + i, (7000 << 10) | i FROM n`, ghost)
+	require.NoError(t, err)
+	mkMsg(t, s, "!r", "$over", ghost, "m.room.message", text("one too many"), time.UnixMilli(7000))
+	require.False(t, docID(t, s, "$over").Valid)
+	require.Empty(t, matches(t, s, `"many"`))
+}
+
+func TestReplyFallbackIsNotIndexed(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	body := "> <@a> where are you\n\nhome soon"
+	reply, _ := json.Marshal(map[string]any{
+		"msgtype": "m.text", "body": body,
+		"m.relates_to": map[string]any{"m.in_reply_to": map[string]string{"event_id": "$q"}},
+	})
+	mkMsg(t, s, "!r", "$reply", ghost, "m.room.message", string(reply), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$quote", ghost, "m.room.message", text(body), time.Unix(11, 0))
+	require.Equal(t, []string{"$quote", "$reply"}, matches(t, s, `"home"`))
+	require.Equal(t, []string{"$quote"}, matches(t, s, `"where"`), "a reply isn't found by the words it quotes")
+
+	got, kind, ok := MessageText("m.room.message", reply)
+	require.True(t, ok)
+	require.Equal(t, "home soon", got)
+	require.Equal(t, "text", kind)
+}
+
+func TestMessageText(t *testing.T) {
+	for _, c := range []struct {
+		typ, content, text, kind string
+		ok                       bool
+	}{
+		{"m.room.message", `{"msgtype":"m.text","body":"hi"}`, "hi", "text", true},
+		{"m.room.message", `{"msgtype":"m.notice","body":"hi"}`, "hi", "text", true},
+		{"m.room.message", `{"msgtype":"m.emote","body":"hi"}`, "hi", "text", true},
+		{"m.room.message", `{"msgtype":"m.image","body":"cat.jpg"}`, "cat.jpg", "image", true},
+		{"m.room.message", `{"msgtype":"m.video","body":"v"}`, "v", "video", true},
+		{"m.room.message", `{"msgtype":"m.audio","body":"a"}`, "a", "audio", true},
+		{"m.room.message", `{"msgtype":"m.file","body":"f.pdf"}`, "f.pdf", "file", true},
+		{"m.room.message", `{"msgtype":"m.location","body":"here"}`, "here", "text", true},
+		{"m.sticker", `{"body":"waving"}`, "waving", "sticker", true},
+		{"m.room.message", editTo("$x", "new"), "", "", false},
+		{"m.room.encrypted", `{"body":"x"}`, "", "", false},
+		{"m.reaction", `{"body":"x"}`, "", "", false},
+		{"m.room.message", `not json`, "", "", false},
+	} {
+		text, kind, ok := MessageText(c.typ, json.RawMessage(c.content))
+		require.Equal(t, c.ok, ok, c.content)
+		require.Equal(t, c.text, text, c.content)
+		require.Equal(t, c.kind, kind, c.content)
+	}
+	long := strings.Repeat("é", searchtext.MaxIndexRunes+10)
+	text, _, ok := MessageText("m.room.message", json.RawMessage(fmt.Sprintf(`{"msgtype":"m.text","body":%q}`, long)))
+	require.True(t, ok)
+	require.Equal(t, searchtext.MaxIndexRunes, len([]rune(text)))
+}
+
+func TestEditReplacesTheIndexedText(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$o", ghost, "m.room.message", text("meet at noon"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$e", ghost, "m.room.message", editTo("$o", "meet at five"), time.Unix(20, 0))
+	require.Empty(t, matches(t, s, `"noon"`))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"five"`), "the original is found, not the edit")
+	require.False(t, docID(t, s, "$e").Valid, "an edit has no doc of its own")
+
+	// An edit from someone else changes nothing.
+	mkMsg(t, s, "!r", "$x", "@other:courier.local", "m.room.message", editTo("$o", "meet at six"), time.Unix(30, 0))
+	require.Empty(t, matches(t, s, `"six"`))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"five"`))
+}
+
+func TestEditBeforeItsMessageStillWins(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$e", ghost, "m.room.message", editTo("$o", "meet at five"), time.Unix(20, 0))
+	mkMsg(t, s, "!r", "$o", ghost, "m.room.message", text("meet at noon"), time.Unix(10, 0))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"five"`))
+	require.Empty(t, matches(t, s, `"noon"`))
+
+	// Of two edits the later ts wins, whichever arrives first, and wherever the original falls among them.
+	orders := [][]string{{"o", "e1", "e2"}, {"o", "e2", "e1"}, {"e1", "o", "e2"}, {"e2", "o", "e1"}, {"e1", "e2", "o"}, {"e2", "e1", "o"}}
+	for i, order := range orders {
+		room := fmt.Sprintf("!r%d", i)
+		mkRoom(t, s, room, time.Unix(1, 0))
+		orig := fmt.Sprintf("$o%d", i)
+		for _, which := range order {
+			switch which {
+			case "o":
+				mkMsg(t, s, room, orig, ghost, "m.room.message", text("first word"), time.Unix(10, 0))
+			case "e1":
+				mkMsg(t, s, room, fmt.Sprintf("$e1-%d", i), ghost, "m.room.message", editTo(orig, "second word"), time.Unix(20, 0))
+			case "e2":
+				mkMsg(t, s, room, fmt.Sprintf("$e2-%d", i), ghost, "m.room.message", editTo(orig, "third word"), time.Unix(30, 0))
+			}
+		}
+		scope := fmt.Sprintf(`{scope}: %q AND `, RoomScope(room))
+		require.Equal(t, []string{orig}, matches(t, s, scope+`"third"`), order)
+		require.Empty(t, matches(t, s, scope+`"second"`), order)
+		require.Empty(t, matches(t, s, scope+`"first"`), order)
+	}
+}
+
+func TestRedactedMessageLeavesTheIndex(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$m", ghost, "m.room.message", text("secret plan"), time.Unix(10, 0))
+	_, err := s.InsertEvent(ctx, Event{
+		RoomID: "!r", EventID: "$r1", Sender: me, Type: "m.room.redaction",
+		Content: json.RawMessage(redactionOf("$m")), TS: time.Unix(20, 0), Status: "failed",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"$m"}, matches(t, s, `"secret"`), "a failed redaction removes nothing")
+	require.True(t, docID(t, s, "$m").Valid)
+
+	mkMsg(t, s, "!r", "$r2", ghost, "m.room.redaction", redactionOf("$m"), time.Unix(30, 0))
+	require.Empty(t, matches(t, s, `"secret"`))
+	require.False(t, docID(t, s, "$m").Valid)
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_messages"))
+
+	// An edit arriving after the deletion doesn't bring it back.
+	mkMsg(t, s, "!r", "$e", ghost, "m.room.message", editTo("$m", "secret plan b"), time.Unix(40, 0))
+	require.Empty(t, matches(t, s, `"secret"`))
+}
+
+func TestRedactingAnEditPutsBackTheOneBefore(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$o", ghost, "m.room.message", text("apple"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$b", ghost, "m.room.message", editTo("$o", "banana"), time.Unix(20, 0))
+	mkMsg(t, s, "!r", "$c", ghost, "m.room.message", editTo("$o", "cherry"), time.Unix(30, 0))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"cherry"`))
+
+	mkMsg(t, s, "!r", "$red", ghost, "m.room.redaction", redactionOf("$c"), time.Unix(40, 0))
+	require.Empty(t, matches(t, s, `"cherry"`))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"banana"`))
+
+	mkMsg(t, s, "!r", "$red2", ghost, "m.room.redaction", redactionOf("$b"), time.Unix(50, 0))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"apple"`))
+	require.Empty(t, matches(t, s, `"banana"`))
+}
+
+func TestDiscardingAFailedEditPutsBackTheText(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$o", me, "m.room.message", text("apple"), time.Unix(10, 0))
+	insert(t, s, Event{
+		RoomID: "!r", EventID: "$e", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(editTo("$o", "banana")), TS: time.Unix(20, 0), Status: "failed",
+	})
+	require.Equal(t, []string{"$o"}, matches(t, s, `"banana"`))
+	require.NoError(t, s.DeleteEvent(ctx, "$e"))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"apple"`))
+	require.Empty(t, matches(t, s, `"banana"`))
+}
+
+func TestDeletingAChatLeavesNoText(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r", Network: "whatsapp", Name: "Book club"}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!keep", Network: "whatsapp", Name: "Book swap"}))
+	mkMsg(t, s, "!r", "$1", ghost, "m.room.message", text("chapter one"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$2", ghost, "m.room.message", text("chapter two"), time.Unix(20, 0))
+	mkMsg(t, s, "!keep", "$3", ghost, "m.room.message", text("chapter three"), time.Unix(30, 0))
+	require.NoError(t, s.SetMember(ctx, "!r", "@reader:courier.local", json.RawMessage(`{"membership":"join","displayname":"Avid Reader"}`)))
+	require.Equal(t, []string{"@reader:courier.local"}, peopleMatches(t, s, `"avid"`))
+	scope := fmt.Sprintf(`{scope}: %q`, RoomScope("!r"))
+	require.Equal(t, 2, count(t, s, "SELECT count(*) FROM search_messages WHERE search_messages MATCH $1", scope))
+
+	require.NoError(t, s.DeleteRoom(ctx, "!r"))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_messages WHERE search_messages MATCH $1", scope))
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_messages"))
+	require.Equal(t, []string{"!keep"}, chatMatches(t, s, `"book"`))
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_chats"))
+	require.Empty(t, peopleMatches(t, s, `"avid"`), "a name only that chat knew goes with it")
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_people"))
+
+	// A failed send that is discarded leaves the index too.
+	insert(t, s, Event{
+		RoomID: "!keep", EventID: "$f", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(text("typo here")), TS: time.Unix(40, 0), Status: "failed",
+	})
+	require.Equal(t, []string{"$f"}, matches(t, s, `"typo"`))
+	require.NoError(t, s.DeleteEvent(ctx, "$f"))
+	require.Empty(t, matches(t, s, `"typo"`))
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_messages"))
+}
+
+func TestChatAndPeopleDocsFollowTheirNames(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	name := func(n string) *string { return &n }
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: "Hiking group"}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!d", Network: "telegram", Name: "Dana Example", IsDirect: true}))
+	require.Equal(t, []string{"!g"}, chatMatches(t, s, `"hiking"`))
+	require.Equal(t, []string{"!d"}, chatMatches(t, s, `{scope}: "dm"`))
+	require.Equal(t, []string{"!g"}, chatMatches(t, s, `{scope}: "group"`))
+	require.Equal(t, []string{"!d"}, chatMatches(t, s, `{scope}: "ntelegram"`))
+	require.Equal(t, []string{"!d", "!g"}, chatMatches(t, s, `{scope}: "all"`))
+
+	// Renaming, then clearing the name.
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: "Climbing group"}))
+	require.Empty(t, chatMatches(t, s, `"hiking"`))
+	require.Equal(t, []string{"!g"}, chatMatches(t, s, `"climbing"`))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: ""}))
+	require.Empty(t, chatMatches(t, s, `"climbing"`))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM chat_docs WHERE room_id='!g'"))
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_chats"))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: "Hiking group"}))
+
+	// A ghost's profile name changes.
+	g1 := "@ghost1:courier.local"
+	require.NoError(t, s.SetProfile(ctx, g1, name("Robin Example"), nil))
+	require.Equal(t, []string{g1}, peopleMatches(t, s, `"robin"`))
+	require.NoError(t, s.SetProfile(ctx, g1, name("Robyn Example"), nil))
+	require.Empty(t, peopleMatches(t, s, `"robin"`))
+	require.Equal(t, []string{g1}, peopleMatches(t, s, `"robyn"`))
+	require.NoError(t, s.SetProfile(ctx, g1, nil, name("mxc://courier.local/avatar")), "an avatar change keeps the name")
+	require.Equal(t, []string{g1}, peopleMatches(t, s, `"robyn"`))
+
+	// A member name only one group knows, and the networks of the chats they're in.
+	require.NoError(t, s.SetMember(ctx, "!g", g1, json.RawMessage(`{"membership":"join","displayname":"Rob from the trail"}`)))
+	require.NoError(t, s.SetMember(ctx, "!d", g1, json.RawMessage(`{"membership":"join"}`)))
+	require.Equal(t, []string{g1}, peopleMatches(t, s, `"trail"`))
+	require.Equal(t, []string{g1}, peopleMatches(t, s, `{scope}: "nwhatsapp" AND {scope}: "ntelegram"`))
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_people"), "one doc per person")
+
+	// The member leaves the group.
+	require.NoError(t, s.DeleteMember(ctx, "!g", g1))
+	require.Empty(t, peopleMatches(t, s, `"trail"`))
+	require.Empty(t, peopleMatches(t, s, `{scope}: "nwhatsapp"`))
+	require.Equal(t, []string{g1}, peopleMatches(t, s, `"robyn" AND {scope}: "ntelegram"`))
+
+	// A membership that says they left is not being in the chat.
+	g2 := "@ghost2:courier.local"
+	require.NoError(t, s.SetMember(ctx, "!g", g2, json.RawMessage(`{"membership":"join","displayname":"Sam Sample"}`)))
+	require.Equal(t, []string{g2}, peopleMatches(t, s, `"sam"`))
+	require.NoError(t, s.SetMember(ctx, "!g", g2, json.RawMessage(`{"membership":"leave","displayname":"Sam Sample"}`)))
+	require.Empty(t, peopleMatches(t, s, `"sam"`))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM people_docs WHERE user_id=$1", g2), "no names left removes the doc")
+
+	// No names left at all.
+	require.NoError(t, s.DeleteMember(ctx, "!d", g1))
+	require.NoError(t, s.SetProfile(ctx, g1, name(""), nil))
+	require.Empty(t, peopleMatches(t, s, `{scope}: "all"`))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM people_docs"))
+
+	// I am never a person.
+	require.NoError(t, s.SetProfile(ctx, me, name("Myself Example"), nil))
+	require.NoError(t, s.SetMember(ctx, "!g", me, json.RawMessage(`{"membership":"join","displayname":"Myself Example"}`)))
+	require.Empty(t, peopleMatches(t, s, `"myself"`))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_people"))
+}
+
+func TestScopeTokens(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa", Network: "whatsapp", Name: "Family"}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!tg", Network: "telegram", Name: "Work", IsDirect: true}))
+	mkMsg(t, s, "!wa", "$img", me, "m.room.message",
+		`{"msgtype":"m.image","body":"look at https://example.com/beach","url":"mxc://courier.local/beach"}`, time.Unix(10, 0))
+	mkMsg(t, s, "!wa", "$txt", ghost, "m.room.message", text("lovely beach"), time.Unix(20, 0))
+	mkMsg(t, s, "!tg", "$stk", ghost, "m.sticker", `{"body":"beach ball","url":"mxc://courier.local/ball"}`, time.Unix(30, 0))
+	mkMsg(t, s, "!tg", "$vid", ghost, "m.room.message", `{"msgtype":"m.video","body":"beach.mp4"}`, time.Unix(40, 0))
+	mkMsg(t, s, "!tg", "$aud", ghost, "m.room.message", `{"msgtype":"m.audio","body":"beach audio"}`, time.Unix(50, 0))
+	mkMsg(t, s, "!tg", "$fil", ghost, "m.room.message", `{"msgtype":"m.file","body":"beach.pdf"}`, time.Unix(60, 0))
+
+	require.Equal(t, []string{"$img"}, matches(t, s, `{scope}: "me" AND {scope}: "kimage" AND {scope}: "klink" AND {scope}: "nwhatsapp"`))
+	require.Equal(t, []string{"$fil", "$aud", "$vid", "$stk", "$txt", "$img"}, matches(t, s, `{scope}: "all"`))
+	require.Equal(t, []string{"$txt"}, matches(t, s, `{scope}: "ktext"`))
+	require.Equal(t, []string{"$stk"}, matches(t, s, `{scope}: "ksticker"`))
+	require.Equal(t, []string{"$vid"}, matches(t, s, `{scope}: "kvideo"`))
+	require.Equal(t, []string{"$aud"}, matches(t, s, `{scope}: "kaudio"`))
+	require.Equal(t, []string{"$fil"}, matches(t, s, `{scope}: "kfile"`))
+	require.Equal(t, []string{"$img"}, matches(t, s, `{scope}: "klink"`))
+	require.Equal(t, []string{"$txt", "$img"}, matches(t, s, fmt.Sprintf(`{scope}: %q`, RoomScope("!wa"))))
+	require.Equal(t, []string{"$img"}, matches(t, s, fmt.Sprintf(`{scope}: %q`, SenderScope(me))))
+	require.Equal(t, []string{"$fil", "$aud", "$vid", "$stk", "$txt"}, matches(t, s, fmt.Sprintf(`{scope}: %q`, SenderScope(ghost))))
+	require.Empty(t, matches(t, s, `{body}: "me" OR {body}: "kimage" OR {body}: "nwhatsapp"`), "scope tokens stay out of the text")
+	require.Equal(t, "nwhatsapp", NetworkScope("WhatsApp"))
+	require.Regexp(t, `^r[0-9a-f]{16}$`, RoomScope("!wa"))
+	require.Regexp(t, `^s[0-9a-f]{16}$`, SenderScope(me))
+
+	// An edit that adds a link makes it a link message.
+	mkMsg(t, s, "!wa", "$e", ghost, "m.room.message", editTo("$txt", "lovely beach http://example.com"), time.Unix(70, 0))
+	require.Equal(t, []string{"$txt", "$img"}, matches(t, s, `{scope}: "klink"`))
+}
+
+func TestIndexedTextIsNormalised(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$jp", ghost, "m.room.message", text("東京タワーで会いましょう"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$fw", ghost, "m.room.message", text("Ｈｅｌｌｏ José"), time.Unix(20, 0))
+	require.Equal(t, []string{"$jp"}, matches(t, s, searchtext.MatchAll("body", searchtext.Parse("京タ "))))
+	require.Equal(t, []string{"$fw"}, matches(t, s, searchtext.MatchAll("body", searchtext.Parse("hello jose "))))
+}
+
+func TestCurrentText(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$o", ghost, "m.room.message", text("apple"), time.Unix(10, 0))
+	e, _, err := s.GetEvent(ctx, "$o")
+	require.NoError(t, err)
+	got, err := s.CurrentText(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "apple", got)
+	mkMsg(t, s, "!r", "$e", ghost, "m.room.message", editTo("$o", "banana"), time.Unix(20, 0))
+	mkMsg(t, s, "!r", "$bad", ghost, "m.room.message", `{"msgtype":"m.text","body":"* x","m.relates_to":{"rel_type":"m.replace","event_id":"$o"}}`, time.Unix(30, 0))
+	got, err = s.CurrentText(ctx, e)
+	require.NoError(t, err)
+	require.Equal(t, "banana", got, "an edit with no new content is passed over")
+}
+
+func TestEditLookupUsesItsIndex(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	rows, err := s.db.Query(ctx, "EXPLAIN QUERY PLAN "+currentEditSQL, "$o", ghost)
+	require.NoError(t, err)
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		require.NoError(t, rows.Scan(&id, &parent, &notused, &detail))
+		plan = append(plan, detail)
+	}
+	require.NoError(t, rows.Err())
+	require.Contains(t, strings.Join(plan, "\n"), "USING INDEX events_edits", plan)
+
+	rows2, err := s.db.Query(ctx, "EXPLAIN QUERY PLAN "+docIDsInMillisecondSQL, 1<<10, 1<<10|1023)
+	require.NoError(t, err)
+	defer rows2.Close()
+	plan = nil
+	for rows2.Next() {
+		var id, parent, notused int
+		var detail string
+		require.NoError(t, rows2.Scan(&id, &parent, &notused, &detail))
+		plan = append(plan, detail)
+	}
+	require.Contains(t, strings.Join(plan, "\n"), "events_doc", plan)
+}

@@ -69,6 +69,20 @@ func redactionTargetSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$.redacts') END)`
 }
 
+// editTargetSQL is the message an edit replaces: content.m.relates_to.event_id. content is the column expression.
+func editTargetSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".event_id') END)`
+}
+
+// isEditSQL is true for content that replaces an earlier message: the opposite of notEditSQL. (Go twin: isEdit.)
+func isEditSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') END) = 'm.replace'`
+}
+
+// searchTokenizer is every search table's tokenizer: case and accents fold, and combining marks stay inside
+// words. searchtext prepares text and queries for exactly this one.
+const searchTokenizer = `tokenize="unicode61 remove_diacritics 2 categories 'L* N* Co M*'"`
+
 // migrations are applied in order. migrations[i] upgrades a database at PRAGMA user_version = i to i+1.
 // schema.sql is the version-0 baseline (the milestone-2 shape) and is never edited: every later change to the
 // shape of courier.db is a new entry here, so that databases already on a user's disk keep opening.
@@ -116,6 +130,27 @@ CREATE TABLE auto_archive_rules (rule_id INTEGER PRIMARY KEY, scope TEXT NOT NUL
   chat_type TEXT NOT NULL DEFAULT 'all', duration_ms INTEGER NOT NULL, enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE archive_due (room_id TEXT PRIMARY KEY REFERENCES rooms(room_id) ON DELETE CASCADE, due_at INTEGER NOT NULL,
   rule_id INTEGER NOT NULL REFERENCES auto_archive_rules(rule_id) ON DELETE CASCADE);`,
+	// 4: search (milestone 4.2): contentless FTS5 indexes of messages, chat names and people's names. The
+	// migration indexes nothing itself: text goes through searchtext.Normalize, which is Go, and the backfill
+	// indexes every event up to backfill_until in the background. Events inserted after it are indexed by
+	// InsertEvent. A message's doc id encodes its time (see indexEvent), so newest first is rowid order.
+	`ALTER TABLE events ADD COLUMN doc_id INTEGER;            -- the message's row in search_messages; NULL = not indexed
+CREATE UNIQUE INDEX events_doc ON events(doc_id) WHERE doc_id IS NOT NULL;
+CREATE INDEX events_edits ON events(` + editTargetSQL("content") + `, ts) WHERE type = 'm.room.message' AND ` + isEditSQL("content") + `;
+CREATE INDEX members_user ON members(user_id);            -- a person's chats and names, for their doc
+CREATE VIRTUAL TABLE search_messages USING fts5(body, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
+CREATE TABLE chat_docs (doc_id INTEGER PRIMARY KEY, room_id TEXT NOT NULL UNIQUE REFERENCES rooms(room_id) ON DELETE CASCADE);
+CREATE VIRTUAL TABLE search_chats USING fts5(name, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
+CREATE TABLE people_docs (doc_id INTEGER PRIMARY KEY, user_id TEXT NOT NULL UNIQUE);
+CREATE VIRTUAL TABLE search_people USING fts5(name, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
+CREATE TABLE search_state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+INSERT INTO search_state VALUES ('backfill_until', (SELECT COALESCE(MAX(rowid), 0) FROM events)), ('backfill_after', 0);
+CREATE TRIGGER events_unindex AFTER DELETE ON events WHEN old.doc_id IS NOT NULL
+  BEGIN DELETE FROM search_messages WHERE rowid = old.doc_id; END;
+CREATE TRIGGER events_unindex_redacted AFTER UPDATE OF redacted ON events WHEN new.redacted = 1 AND old.doc_id IS NOT NULL
+  BEGIN DELETE FROM search_messages WHERE rowid = old.doc_id; UPDATE events SET doc_id = NULL WHERE event_id = new.event_id; END;
+CREATE TRIGGER chat_docs_unindex AFTER DELETE ON chat_docs BEGIN DELETE FROM search_chats WHERE rowid = old.doc_id; END;
+CREATE TRIGGER people_docs_unindex AFTER DELETE ON people_docs BEGIN DELETE FROM search_people WHERE rowid = old.doc_id; END;`,
 }
 
 // migrate brings db up to the latest version.

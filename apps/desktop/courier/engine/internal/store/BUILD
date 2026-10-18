@@ -10,6 +10,7 @@ go_library(
         "migrate.go",
         "query.go",
         "reminders.go",
+        "searchindex.go",
         "spaces.go",
         "store.go",
         "typing.go",
@@ -19,7 +20,9 @@ go_library(
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
         "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/searchtext",
         "//apps/desktop/courier/engine/internal/sqlite",
+        "@com_github_rs_zerolog//:zerolog",
         "@fi_mau_go_util//dbutil",
     ],
 )
@@ -33,12 +36,14 @@ go_test(
         "labels_test.go",
         "query_test.go",
         "reminders_test.go",
+        "searchindex_test.go",
         "spaces_test.go",
         "store_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":store"],
     deps = [
+        "//apps/desktop/courier/engine/internal/searchtext",
         "//apps/desktop/courier/engine/internal/sqlite",
         "@com_github_stretchr_testify//require",
         "@net_maunium_go_mautrix//bridgev2",
