@@ -36,7 +36,11 @@
           "media_path": ""
         }
       ],
-      "before": null
+      "before": null,
+      "after": {
+        "ts": 1760599980000,
+        "seq": 41
+      }
     }
   }
 }

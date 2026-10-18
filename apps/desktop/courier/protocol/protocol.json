@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 2,
+  "protocol": 3,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -14,7 +14,7 @@
   },
 
   "handshake": {
-    "doc": "The first request on a connection must be hello. Any other method before a successful hello is -32002. A hello with a different protocol number is -32001 with data {\"engine\": <the engine's protocol>}, and the app shows \"update needed\". Once a hello has succeeded, the connection receives changed notifications, the first of them after hello's answer. hello may be sent again: with the engine's protocol it answers the same; with another it is -32001; either way the connection stays as it was, greeted, with one feed."
+    "doc": "The first request on a connection must be hello. Any other method before a successful hello is -32002. A hello with a different protocol number is -32001 with data {\"engine\": <the engine's protocol>}, and the app shows \"update needed\". Once a hello has succeeded, the connection receives a changed notification for every change from when it answered on, the first of them after hello's answer. hello may be sent again: with the engine's protocol it answers the same; with another it is -32001; either way the connection stays as it was, greeted, with one feed."
   },
 
   "type_grammar": {
@@ -529,7 +529,7 @@
       }
     },
     "Cursor": {
-      "doc": "A place in a chat's history: the oldest event of the page you have.",
+      "doc": "A place in a chat's history: one event's ts and seq. A page's before is its oldest event, and its after its newest.",
       "fields": {
         "ts": { "type": "int" },
         "seq": { "type": "int" }
@@ -541,11 +541,20 @@
       }
     },
     "RoomEventsParams": {
+      "doc": "Give at most one of before, after and around (more is -32602). None of them is the newest page.",
       "fields": {
         "room_id": { "type": "string" },
         "before": {
           "type": "Cursor?",
-          "doc": "Leave out for the newest page; pass the last page's before for the one older than it."
+          "doc": "A page's before, for the page older than it."
+        },
+        "after": {
+          "type": "Cursor?",
+          "doc": "A page's after, for the page newer than it."
+        },
+        "around": {
+          "type": "string?",
+          "doc": "An event_id in this chat: the page with that event in the middle, about half of the rest older and half newer (an even limit leans newer). Near either end of the history the other side fills the page. An event that isn't in this chat is -32020."
         },
         "limit": { "type": "int?", "doc": "1 to 100. 50 when left out." }
       }
@@ -599,7 +608,193 @@
         "before": {
           "type": "Cursor|null",
           "doc": "Pass as before for the next, older page. null when there is no older event."
+        },
+        "after": {
+          "type": "Cursor|null",
+          "doc": "The newest event of this page, to pass as after for the next newer page. null when the page has the chat's newest event."
         }
+      }
+    },
+    "SearchParams": {
+      "doc": "One search, over every chat in any place. Empty text with no filters answers only last_archived; text of only emoji or punctuation runs nothing (hint emoji_only). Messages and media need 2 letters of text (or one character of a script written without spaces, such as 東); chats and people are found from the first letter.",
+      "fields": {
+        "text": {
+          "type": "string",
+          "doc": "What was typed: 0 to 500 characters (Unicode scalars); longer is -32602. Quotes make a phrase, and the last word matches as a prefix while it is being typed. Emoji and punctuation separate words and are not searched."
+        },
+        "sections": {
+          "type": "string[]?",
+          "values": ["chats", "in_groups", "media", "messages"],
+          "doc": "What to search. Left out or [] is all four."
+        },
+        "filters": { "type": "SearchFilters?" },
+        "cursor": {
+          "type": "string?",
+          "doc": "The next_cursor of a page of media or messages, for the page after it. It needs sections to be exactly [\"media\"] or [\"messages\"], and the same text and filters as the query that handed it out; any other is -32602. limit may change between pages."
+        },
+        "limit": {
+          "type": "int?",
+          "doc": "Each section's most results. Left out, chats and in_groups take 5, media 12 and messages 20. Given, it is 1 to 100 when only chats and in_groups are asked for, and 1 to 50 otherwise."
+        },
+        "open_room_id": {
+          "type": "string?",
+          "doc": "The chat open now, which last_archived leaves out."
+        }
+      }
+    },
+    "SearchFilters": {
+      "doc": "Every filter narrows; filters together are and'ed. room_ids leaves out chats and in_groups. sender, kinds, since, until and partial narrow media and messages only; networks and chat_type narrow every section.",
+      "fields": {
+        "room_ids": {
+          "type": "string[]?",
+          "doc": "1 to 100 chats to search in. A chat the engine doesn't have is -32020."
+        },
+        "networks": {
+          "type": "string[]?",
+          "doc": "Network names, as hello lists them. One the engine doesn't know is -32602."
+        },
+        "sender": {
+          "type": "string?",
+          "values": ["me", "others"],
+          "doc": "Sent by me, or received."
+        },
+        "chat_type": { "type": "string?", "values": ["dm", "group"] },
+        "kinds": {
+          "type": "string[]?",
+          "values": [
+            "text",
+            "image",
+            "video",
+            "audio",
+            "file",
+            "sticker",
+            "link"
+          ],
+          "doc": "Any of these. A link is a text message holding an http(s) URL, so it is text too. Media holds the images and videos asked for, messages the rest: kinds of only images and videos leave messages null, and kinds with neither leave media null."
+        },
+        "since": { "type": "int?", "doc": "Sent at or after this time." },
+        "until": {
+          "type": "int?",
+          "doc": "Sent before this time. since must be before until."
+        },
+        "partial": {
+          "type": "bool?",
+          "doc": "After the messages with every word, add those with some of them (partial is true on each). Left out is false."
+        }
+      }
+    },
+    "SearchResult": {
+      "doc": "A section that wasn't asked for or didn't run is null; one that ran and found nothing is empty.",
+      "fields": {
+        "chats": {
+          "type": "InboxRow[]|null",
+          "doc": "Chats in any place whose name matches (a DM also by the name of the person it is with): a name that begins with the first word first, then the newest message first."
+        },
+        "in_groups": {
+          "type": "PersonHit[]|null",
+          "doc": "People whose name matches, who are in a group with me and have no direct chat with me. Ordered as chats."
+        },
+        "media": {
+          "type": "MessageHits|null",
+          "doc": "Images and videos, newest first."
+        },
+        "messages": {
+          "type": "MessageHits|null",
+          "doc": "Every other kind of message, newest first."
+        },
+        "last_archived": {
+          "type": "InboxRow|null",
+          "doc": "Only for empty text with no filters: the chat archived most recently, leaving out hidden chats and open_room_id. null otherwise, or when there is none."
+        },
+        "complete": {
+          "type": "bool",
+          "doc": "false while older messages are still being added; results may be missing some."
+        },
+        "hint": {
+          "type": "string",
+          "values": ["", "emoji_only", "need_more_letters"],
+          "doc": "emoji_only: the text has only emoji or punctuation, and nothing was searched. need_more_letters: under 2 letters, so media and messages didn't run (null) while chats and in_groups did."
+        }
+      }
+    },
+    "PersonHit": {
+      "doc": "Someone found by name in a group I share with them.",
+      "fields": {
+        "user_id": { "type": "string" },
+        "name": { "type": "string" },
+        "network": { "type": "string" },
+        "avatar_path": { "type": "string" },
+        "room_id": {
+          "type": "string",
+          "doc": "Their most recent shared group: the one with the newest message."
+        },
+        "room_name": { "type": "string" },
+        "groups": { "type": "int", "doc": "How many groups I share with them." }
+      }
+    },
+    "MessageHits": {
+      "doc": "One page of messages found.",
+      "fields": {
+        "hits": {
+          "type": "MessageHit[]",
+          "doc": "Newest first; with partial, every full match first."
+        },
+        "next_cursor": {
+          "type": "string|null",
+          "doc": "Pass as cursor for the next page. null when this is the last. A page may hold fewer than limit hits, to stay under 1 MiB: only next_cursor says whether there is more."
+        }
+      }
+    },
+    "MessageHit": {
+      "doc": "One message found.",
+      "fields": {
+        "event_id": {
+          "type": "string",
+          "doc": "Open the chat at it with room.events around."
+        },
+        "room_id": { "type": "string" },
+        "room_name": { "type": "string" },
+        "network": { "type": "string" },
+        "is_direct": { "type": "bool" },
+        "place": {
+          "type": "string",
+          "values": ["inbox", "archive", "low_priority", "hidden", "requests"],
+          "doc": "Where the chat is. A result outside the inbox says so."
+        },
+        "sender": { "type": "string" },
+        "sender_name": {
+          "type": "string",
+          "doc": "The sender's display name, or the localpart of their ID when they have none."
+        },
+        "mine": { "type": "bool" },
+        "ts": { "type": "int" },
+        "seq": { "type": "int" },
+        "kind": {
+          "type": "string",
+          "values": ["text", "image", "video", "audio", "file", "sticker"]
+        },
+        "snippet": {
+          "type": "string",
+          "doc": "At most 160 characters of the message's text (as edited) around the first match, with … where it was cut."
+        },
+        "ranges": {
+          "type": "TextRange[]",
+          "doc": "The matched words in snippet, in order."
+        },
+        "media_path": {
+          "type": "string",
+          "doc": "For an image or a video: its thumbnail (or the file itself), when the engine has it. \"\" otherwise."
+        },
+        "partial": {
+          "type": "bool",
+          "doc": "It matches some of the words, not all (filters.partial)."
+        }
+      }
+    },
+    "TextRange": {
+      "fields": {
+        "start": { "type": "int", "doc": "UTF-16 code units within snippet." },
+        "length": { "type": "int", "doc": "UTF-16 code units within snippet." }
       }
     },
     "SetMutedParams": {
@@ -969,8 +1164,14 @@
       "result": "Empty",
       "errors": [-32020]
     },
+    "search.query": {
+      "doc": "Search this Mac's chats, people and messages. Answers don't change by themselves: run it again for newer results. A changed notification doesn't re-run a search. -32602's reason says what is wrong: text is too long, sections is not one of …, cursor needs exactly one of media or messages, cursor is not one this query handed out, limit must be 1 to N, since must be before until, unknown kind, network, sender or chat_type, room_ids must name 1 to 100 chats.",
+      "params": "SearchParams",
+      "result": "SearchResult",
+      "errors": [-32020]
+    },
     "room.events": {
-      "doc": "One page of a chat's history, newest first.",
+      "doc": "One page of a chat's history, newest first: the newest page, the one older than before, the one newer than after, or the one around a message (to open the chat at a search result). Paging out from any page with its before and after reads every event once.",
       "params": "RoomEventsParams",
       "result": "EventsPage",
       "errors": [-32020]
@@ -1075,7 +1276,7 @@
         "code": -32602,
         "name": "invalid_params",
         "message": "invalid params",
-        "when": "A parameter is missing, has the wrong type or is out of range, or names something the method doesn't know (an inbox.list filter, a cursor of another query). data says which.",
+        "when": "A parameter is missing, has the wrong type or is out of range, or names something the method doesn't know (an inbox.list filter, a cursor of another query, a search kind or network), or parameters that can't go together (room.events before, after and around). data says which.",
         "data": "InvalidParamsData"
       },
       {
@@ -1161,7 +1362,7 @@
         "code": -32020,
         "name": "not_found",
         "message": "no such chat or message",
-        "when": "An unknown room_id, event_id or reply_to, or a message in another chat; an unknown label_id, rule_id or label space."
+        "when": "An unknown room_id, event_id or reply_to, or a message in another chat (room.events around, too); an unknown label_id, rule_id or label space; a search.query room_ids chat the engine doesn't have."
       },
       {
         "code": -32021,

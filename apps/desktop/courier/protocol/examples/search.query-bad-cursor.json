@@ -1,0 +1,23 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "search.query",
+    "params": {
+      "text": "picnic",
+      "sections": ["messages"],
+      "cursor": "eyJxIjoiYW5vdGhlciJ9"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "error": {
+      "code": -32602,
+      "message": "invalid params",
+      "data": {
+        "reason": "cursor is not one this query handed out"
+      }
+    }
+  }
+}

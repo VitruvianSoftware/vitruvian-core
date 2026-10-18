@@ -6,6 +6,7 @@ go_library(
         "feed.go",
         "methods.go",
         "organise.go",
+        "search.go",
         "server.go",
     ],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/rpc",
@@ -17,6 +18,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/media",
+        "//apps/desktop/courier/engine/internal/search",
         "//apps/desktop/courier/engine/internal/store",
         "//apps/desktop/courier/engine/internal/timers",
         "@com_github_rs_zerolog//:zerolog",
@@ -29,6 +31,7 @@ go_test(
     srcs = [
         "conformance_test.go",
         "organise_test.go",
+        "search_test.go",
         "server_test.go",
     ],
     # The protocol and its examples, which the conformance test holds the server to.
@@ -42,6 +45,7 @@ go_test(
         "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/media",
+        "//apps/desktop/courier/engine/internal/search",
         "//apps/desktop/courier/engine/internal/store",
         "//apps/desktop/courier/engine/internal/timers",
         "@com_github_rs_zerolog//:zerolog",

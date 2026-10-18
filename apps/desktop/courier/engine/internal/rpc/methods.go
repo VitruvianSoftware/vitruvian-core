@@ -183,6 +183,9 @@ var methods = map[string]handler{
 	"autoArchive.list":      autoArchiveList,
 	"autoArchive.set":       autoArchiveSet,
 	"autoArchive.delete":    autoArchiveDelete,
+
+	// Search (search.go).
+	"search.query": searchQuery,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")
@@ -357,18 +360,28 @@ func localpart(userID string) string {
 	return strings.TrimPrefix(userID, "@")
 }
 
+// sender is who userID is to the app: their profile's name (else their ID's localpart) and picture. senders caches
+// them across a page.
+func (d *Deps) sender(ctx context.Context, userID string, senders map[string]sender) (sender, error) {
+	if who, ok := senders[userID]; ok {
+		return who, nil
+	}
+	name, avatar, _, err := d.Store.GetProfile(ctx, userID)
+	if err != nil {
+		return sender{}, err
+	}
+	if name == "" {
+		name = localpart(userID)
+	}
+	who := sender{name: name, avatarPath: d.path(avatar)}
+	senders[userID] = who
+	return who, nil
+}
+
 func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]sender) (eventJSON, error) {
-	who, ok := senders[e.Sender]
-	if !ok {
-		name, avatar, _, err := d.Store.GetProfile(ctx, e.Sender)
-		if err != nil {
-			return eventJSON{}, err
-		}
-		if name == "" {
-			name = localpart(e.Sender)
-		}
-		who = sender{name: name, avatarPath: d.path(avatar)}
-		senders[e.Sender] = who
+	who, err := d.sender(ctx, e.Sender, senders)
+	if err != nil {
+		return eventJSON{}, err
 	}
 	content := e.Content
 	var fields map[string]json.RawMessage
@@ -388,10 +401,33 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 	}, nil
 }
 
+// eventsCursor is a room.events cursor as the store takes it; name says which parameter it is, for the reason.
+func eventsCursor(name string, c *cursor) (store.Cursor, error) {
+	if c.TS == nil || c.Seq == nil {
+		return store.Cursor{}, invalidParams(name + " needs ts and seq")
+	}
+	return store.Cursor{TS: time.UnixMilli(*c.TS), Seq: *c.Seq}, nil
+}
+
+// cursorJSON is a cursor on the wire: null when there is none.
+func cursorJSON(c *store.Cursor) any {
+	if c == nil {
+		return nil
+	}
+	ts, seq := c.TS.UnixMilli(), c.Seq
+	return cursor{TS: &ts, Seq: &seq}
+}
+
+// roomEvents is one page of a chat's history, newest first: the newest page, the one older than before, the one
+// newer than after, or the one around a message (so a search result opens the chat at it). Every page says where
+// the next older (before) and the next newer (after) pages start, so paging both ways from a message reads each
+// event exactly once.
 func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
 		RoomID *string `json:"room_id"`
 		Before *cursor `json:"before"`
+		After  *cursor `json:"after"`
+		Around *string `json:"around"`
 		Limit  *int    `json:"limit"`
 	}
 	if err := decode(raw, &p); err != nil {
@@ -400,6 +436,20 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	if err := required("room_id", p.RoomID); err != nil {
 		return nil, err
 	}
+	given := 0
+	for _, set := range []bool{p.Before != nil, p.After != nil, p.Around != nil} {
+		if set {
+			given++
+		}
+	}
+	if given > 1 {
+		return nil, invalidParams("only one of before, after and around can be given")
+	}
+	if p.Around != nil {
+		if err := required("around", p.Around); err != nil {
+			return nil, err
+		}
+	}
 	limit := 50
 	if p.Limit != nil {
 		if *p.Limit < 1 || *p.Limit > 100 {
@@ -407,17 +457,48 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 		}
 		limit = *p.Limit
 	}
-	var before *store.Cursor
+	var before, after store.Cursor
+	var err error
 	if p.Before != nil {
-		if p.Before.TS == nil || p.Before.Seq == nil {
-			return nil, invalidParams("before needs ts and seq")
+		if before, err = eventsCursor("before", p.Before); err != nil {
+			return nil, err
 		}
-		before = &store.Cursor{TS: time.UnixMilli(*p.Before.TS), Seq: *p.Before.Seq}
+	}
+	if p.After != nil {
+		if after, err = eventsCursor("after", p.After); err != nil {
+			return nil, err
+		}
 	}
 	if _, err := d.room(ctx, *p.RoomID); err != nil {
 		return nil, err
 	}
-	evs, next, err := d.Store.EventsBefore(ctx, *p.RoomID, before, limit)
+
+	var evs []store.Event
+	var older, newer *store.Cursor
+	switch {
+	case p.Around != nil:
+		// A message that isn't in this chat is not_found, whatever the store calls it: only the code's fixed
+		// message goes out (sentinels).
+		evs, older, newer, err = d.Store.EventsAround(ctx, *p.RoomID, *p.Around, limit)
+	case p.After != nil:
+		evs, newer, err = d.Store.EventsAfter(ctx, *p.RoomID, after, limit)
+		if err == nil && len(evs) > 0 {
+			// The page's oldest event has an older one: the after cursor's own event.
+			oldest := evs[len(evs)-1]
+			older = &store.Cursor{TS: oldest.TS, Seq: oldest.Seq}
+		}
+	default:
+		var from *store.Cursor
+		if p.Before != nil {
+			from = &before
+		}
+		evs, older, err = d.Store.EventsBefore(ctx, *p.RoomID, from, limit)
+		// The newest page has the chat's newest event. A page older than another has newer events: the before
+		// cursor's own event, at least.
+		if err == nil && p.Before != nil && len(evs) > 0 {
+			newer = &store.Cursor{TS: evs[0].TS, Seq: evs[0].Seq}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -430,12 +511,7 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 		}
 		out = append(out, ev)
 	}
-	var nextJSON any // null when there is no older page
-	if next != nil {
-		ts, seq := next.TS.UnixMilli(), next.Seq
-		nextJSON = cursor{TS: &ts, Seq: &seq}
-	}
-	return map[string]any{"events": out, "before": nextJSON}, nil
+	return map[string]any{"events": out, "before": cursorJSON(older), "after": cursorJSON(newer)}, nil
 }
 
 func roomMarkRead(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {

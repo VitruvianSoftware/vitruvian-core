@@ -6,7 +6,7 @@
 //
 // Standard output carries exactly one line, once the engine is serving:
 //
-//	{"ready":true,"socket":"/path/to/engine.sock","protocol":2}
+//	{"ready":true,"socket":"/path/to/engine.sock","protocol":3}
 //
 // Standard error carries warnings and errors as JSON lines, and one info line when the history already on disk has
 // been added to search ("search backfill done", counts and a duration); nothing is written to a log file, because
@@ -245,6 +245,7 @@ func run(cfg config, stdout, stderr io.Writer) error {
 			return n.Flows, ok
 		}),
 		Media:       m,
+		Search:      search.New(s),
 		Timers:      tm,
 		Entitlement: ent,
 		Networks:    infos,

@@ -242,9 +242,9 @@ func (d *Deps) inboxPage(ctx context.Context, q store.InboxQuery) ([]inboxRow, s
 	}
 }
 
-// fitting is how many of rows, from the first, encode to at most budget bytes; never fewer than one.
+// fitting is how many of rows, from the first, encode to at most budget bytes as a JSON list; never fewer than one.
 // json.Marshal escapes <, > and & as six bytes each, which the wire does not, so this overcounts if anything.
-func fitting(rows []inboxRow, budget int) int {
+func fitting[T any](rows []T, budget int) int {
 	total := 2 // the list's brackets
 	for i, r := range rows {
 		b, err := json.Marshal(r)
