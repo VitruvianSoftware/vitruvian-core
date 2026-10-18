@@ -71,12 +71,22 @@ STATE_DIR_REL = ".local/state/agent-guard"
 # guard-config); changing them is James's call. The guard's own source and
 # policy are NOT here: hook.sh runs them from origin/main, so an agent's edit to
 # them governs nothing until it is merged. `*` matches within one folder.
+#
+# The last three drive session start from the working copy, with the
+# session's credentials: .claude/session-start.sh runs cloud-bootstrap.sh,
+# which runs tools/remote/setup.sh to configure the build cache (with
+# BUILDBUDDY_API_KEY), and reads profiles.tsv to decide which tools to install,
+# which service account to use and which secrets to fetch into the session.
+# Nothing else in the chain runs or reads a repo file.
 PROTECTED_REPO_FILES = (
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/*.sh",
     ".agents/hooks.json",
     "tools/agent-guard/hook.sh",
+    "tools/cloud-bootstrap/cloud-bootstrap.sh",
+    "tools/cloud-bootstrap/profiles.tsv",
+    "tools/remote/setup.sh",
 )
 
 LOG_MAX_BYTES = 10 * 1024 * 1024
@@ -111,7 +121,7 @@ CATEGORIES = {
     "kubectl": "kubectl writes (apply, delete, patch, edit, exec, rollout, scale, ...) and the kubernetes MCP write tools",
     "helm": "helm install/upgrade/uninstall/rollback",
     "bazel-cache": "deleting Bazel output bases (rm -r, bazel clean --expunge, --output_user_root/--output_base overrides)",
-    "guard-config": "agents changing agent-guard itself",
+    "guard-config": "agents changing agent-guard itself, or the files that drive session start",
     "oversize": "a command too large to check in time (over 20,000 commands); split it up",
 }
 
@@ -222,6 +232,25 @@ T_PR_CREATE = (
 T_PR_ENQUEUE = (
     "bazel run //tools/agent-app -- pr-enqueue <pr>",
     ("tools/agent-app/agent-app.sh", "pr-enqueue"),
+)
+# Actions writes: wren's App is the only one with Actions write
+# (tools/agent-app/permissions.tsv), so the other agents' Apps are refused.
+T_RUN_RERUN = (
+    "bazel run //tools/agent-app -- run-rerun <run-id> [--failed] [--job <id>]",
+    ("tools/agent-app/agent-app.sh", "run-rerun"),
+)
+T_RUN_CANCEL = (
+    "bazel run //tools/agent-app -- run-cancel <run-id>",
+    ("tools/agent-app/agent-app.sh", "run-cancel"),
+)
+T_WORKFLOW_RUN = (
+    "bazel run //tools/agent-app -- workflow-run <file.yaml> [-f k=v ...] [--ref main]",
+    ("tools/agent-app/agent-app.sh", "workflow-run"),
+)
+RUN_NOTE = "Only wren's App has Actions write; any other agent: tell James."
+RUN_NO_TARGET_NOTE = (
+    "//tools/agent-app has run-rerun, run-cancel and workflow-run, but nothing "
+    "that deletes runs or enables or disables workflows."
 )
 T_SECRET_SCAN = ("bazel run //tools/secret-scan", ("tools/secret-scan/BUILD", None))
 T_ACTIONLINT = ("bazel run //tools/ci:actionlint", ("tools/ci/BUILD", '"actionlint"'))
@@ -2057,11 +2086,23 @@ def classify_gh(inv: Invocation) -> Optional[Verdict]:
     if group == "run":
         if sub in ("view", "list", "watch", "download", ""):
             return None
-        return V("gh-run", "gh run " + sub)
+        if sub == "rerun":
+            return V("gh-run", "gh run rerun", T_RUN_RERUN, RUN_NOTE)
+        if sub == "cancel":
+            return V("gh-run", "gh run cancel", T_RUN_CANCEL, RUN_NOTE)
+        return V("gh-run", "gh run " + sub, None, RUN_NO_TARGET_NOTE)
     if group == "workflow":
         if sub in ("view", "list", ""):
             return None
-        return V("gh-run", "gh workflow " + sub)
+        if sub == "run":
+            return V(
+                "gh-run",
+                "gh workflow run",
+                T_WORKFLOW_RUN,
+                "It starts only workflows in tools/agent-app/workflow-allowlist.txt, "
+                "in this repository. " + RUN_NOTE,
+            )
+        return V("gh-run", "gh workflow " + sub, None, RUN_NO_TARGET_NOTE)
     if group in ("search", "browse", "status", "completion"):
         return None
     if group == "auth":
@@ -3147,9 +3188,9 @@ def _written_words(argv: List[str]) -> List[str]:
 
 
 HOOK_FILES_NOTE = (
-    "Agents may not change agent-guard's wiring (%s): those files take effect "
-    "before review. Changing them is James's call: ask him."
-    % ", ".join(PROTECTED_REPO_FILES)
+    "Agents may not change agent-guard's wiring or the files that drive session "
+    "start (%s): those files take effect before review. Changing them is James's "
+    "call: ask him." % ", ".join(PROTECTED_REPO_FILES)
 )
 
 
@@ -3631,11 +3672,13 @@ COMMAND_FIELDS: Dict[str, Tuple[str, ...]] = {
     "mcp__plugin_desktop-commander_desktop-commander__interact_with_process": (
         "input",
     ),
-    # Antigravity (agy 1.4.0). run_command's CommandLine and Cwd were captured
-    # live. shell_exec and send_command_input exist in the agy binary (step types
-    # SHELL_EXEC, with a `command` field, and SEND_COMMAND_INPUT, with `input`),
-    # but no agy session has been seen offering them, so their argument names
-    # are assumed: every likely spelling is read.
+    # Antigravity. run_command's CommandLine and Cwd were captured live (agy
+    # 1.4.0). shell_exec and send_command_input exist in the agy binary (step
+    # types SHELL_EXEC, with a `command` field, and SEND_COMMAND_INPUT, with
+    # `input`), but agy 1.4.2 does not offer them to the model (checked live on
+    # 2026-10-17, default and --sandbox: asked for each by name, it had none and
+    # used run_command and manage_task instead), so their argument names are
+    # assumed: every likely spelling is read.
     "run_command": ("CommandLine",),
     "shell_exec": ("Command", "command", "CommandLine"),
     "send_command_input": ("Input", "input"),
@@ -3661,11 +3704,13 @@ FILE_TOOLS = {
     "multi_replace_file_content": ("TargetFile",),
     "notebook_edit": ("NotebookPath",),
 }
-# Antigravity's manage_task (verified in agy's declarations): Action
-# "send_input" delivers Input to a running command, which is a command.
+# Antigravity's manage_task: Action "send_input" delivers Input to a running
+# command, which is a command. Captured live from agy 1.4.2 (Action, Input,
+# TaskId; no Cwd).
 AGY_MANAGE_TASK = "manage_task"
-# Antigravity's git_commit step (CortexStepGitCommit in the binary; never seen
-# offered to the model, so its arguments are unknown). Any call is a commit.
+# Antigravity's git_commit step (CortexStepGitCommit in the binary; not offered
+# to the model in agy 1.4.2, checked live on 2026-10-17, so its arguments are
+# unknown). Any call is a commit.
 AGY_GIT_COMMIT = "git_commit"
 K8S_MCP_RE = re.compile(r"^mcp__(kubernetes|Kubernetes_MCP_Server)__(.+)$")
 
