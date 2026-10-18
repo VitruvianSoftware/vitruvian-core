@@ -115,10 +115,11 @@ FILE_MATCHER = (
 )
 # Antigravity (agy 1.4.0). Its matcher is a Go regex tested against the tool
 # name; plain `|` alternation was verified live. run_command, write_to_file and
-# replace_file_content were seen live; multi_replace_file_content, manage_task
+# replace_file_content and manage_task were seen live; multi_replace_file_content
 # and notebook_edit are in agy's tool declarations; shell_exec,
-# send_command_input and git_commit exist in the binary but were never seen
-# offered to the model. Every name here is one agent_guard reads.
+# send_command_input and git_commit exist in the binary but are not offered to
+# the model (agy 1.4.2, checked 2026-10-17). Every name here is one agent_guard
+# reads.
 AGY_HOOK_NAME = "agent-guard"
 AGY_MATCHER = (
     "run_command|shell_exec|send_command_input|manage_task|git_commit"
