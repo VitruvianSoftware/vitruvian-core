@@ -286,6 +286,10 @@ TABLE = [
     ("gh workflow run ci.yaml --ref main", D, "gh-run", ""),
     ("gh run rerun 123 --failed", D, "gh-run", ""),
     ("gh run cancel 123", D, "gh-run", ""),
+    ("gh run delete 123", D, "gh-run", ""),
+    ("gh workflow enable ci.yaml", D, "gh-run", ""),
+    ("gh workflow disable ci.yaml", D, "gh-run", ""),
+    ("gh run rerun 123 --job 456", D, "gh-run", ""),
     (
         "gh api -X PUT repos/VitruvianSoftware/vitruvian-core/pulls/1/merge",
         D,
@@ -600,6 +604,40 @@ TABLE = [
     ("chmod -x .claude/tailscale-up.sh", D, "guard-config", ""),
     ("echo x > .claude/new-hook.sh", D, "guard-config", ""),
     ("bash .claude/session-start.sh", A, None, ""),
+    # The repo scripts session-start.sh runs: cloud-bootstrap.sh, and the
+    # build-cache configurator it runs.
+    ("echo 'exit 0' > tools/cloud-bootstrap/cloud-bootstrap.sh", D, "guard-config", ""),
+    (
+        "sed -i '' 's/exit 1/exit 0/' tools/cloud-bootstrap/cloud-bootstrap.sh",
+        D,
+        "guard-config",
+        "",
+    ),
+    ("cp /tmp/x.sh tools/remote/setup.sh", D, "guard-config", ""),
+    ("cat /tmp/x | tee tools/remote/setup.sh", D, "guard-config", ""),
+    ("rm tools/remote/setup.sh", D, "guard-config", ""),
+    ("rm -rf tools/cloud-bootstrap", D, "guard-config", ""),
+    ("mv tools/remote /tmp/remote", D, "guard-config", ""),
+    ("chmod -x tools/cloud-bootstrap/cloud-bootstrap.sh", D, "guard-config", ""),
+    (
+        "python3 -c \"open('tools/remote/setup.sh', 'w').write('')\"",
+        D,
+        "guard-config",
+        "",
+    ),
+    (
+        "echo x > {wt}/tools/cloud-bootstrap/cloud-bootstrap.sh",
+        D,
+        "guard-config",
+        "out",
+    ),
+    ("cat tools/cloud-bootstrap/cloud-bootstrap.sh", A, None, ""),
+    ("sed -n 1,40p tools/remote/setup.sh", A, None, ""),
+    ("cp tools/remote/setup.sh /tmp/setup.sh", A, None, ""),
+    ("bash tools/cloud-bootstrap/cloud-bootstrap.sh whoami", A, None, ""),
+    ("bazel run //tools/cloud-bootstrap:whoami", A, None, ""),
+    ("echo x >> tools/cloud-bootstrap/cloud-bootstrap_test.sh", A, None, ""),
+    ("echo x > tools/remote/setup_test.sh", A, None, ""),
     ("cat .claude/block-queue-bypass.sh", A, None, ""),
     ("echo x > .claude/sub/x.sh", A, None, ""),
     ("cat .claude/settings.json", A, None, ""),
@@ -1065,6 +1103,9 @@ class DecisionTableTest(unittest.TestCase):
             "go test ./...": "bazel test",
             "prettier --write .": "bazel run //tools/format",
             "kubectl apply -f x.yaml": "//tools/gitops",
+            "gh run rerun 1 --failed": "bazel run //tools/agent-app -- run-rerun <run-id>",
+            "gh run cancel 1": "bazel run //tools/agent-app -- run-cancel <run-id>",
+            "gh workflow run ci.yaml": "bazel run //tools/agent-app -- workflow-run <file.yaml>",
         }
         for command, needle in cases.items():
             msg = self.fx.run(command).message
@@ -1077,9 +1118,31 @@ class DecisionTableTest(unittest.TestCase):
         self.assertIn("not in this checkout yet", msg)
 
     def test_message_says_when_there_is_no_target(self):
-        msg = self.fx.run("gh run rerun 1").message
+        msg = self.fx.run("git reset --hard HEAD~1").message
         self.assertIn("no target for it yet", msg)
         self.assertIn("James", msg)
+
+    def test_run_commands_point_at_agent_app(self):
+        # agent-app has run-rerun, run-cancel and workflow-run (wren only);
+        # deleting runs and enabling or disabling workflows still have no target.
+        for command in ("gh run rerun 1", "gh run cancel 1", "gh workflow run ci.yaml"):
+            msg = self.fx.run(command).message
+            self.assertIn("//tools/agent-app --", msg, command)
+            self.assertIn("Only wren's App has Actions write", msg, command)
+            self.assertNotIn("no target for it yet", msg, command)
+        self.assertIn(
+            "workflow-allowlist.txt", self.fx.run("gh workflow run ci.yaml").message
+        )
+        for command in (
+            "gh run delete 1",
+            "gh workflow enable ci.yaml",
+            "gh workflow disable ci.yaml",
+        ):
+            msg = self.fx.run(command).message
+            self.assertIn("no target for it yet", msg, command)
+            self.assertIn(
+                "nothing that deletes runs or enables or disables", msg, command
+            )
 
     def test_pending_target_is_flagged_until_it_lands(self):
         msg = self.fx.run("git push").message
@@ -1789,6 +1852,39 @@ class HookIOTest(HookHarness):
         self.assertEqual(os.stat(os.path.dirname(path)).st_mode & 0o777, 0o700)
         self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
 
+    def test_desktop_commander_cannot_touch_the_session_start_scripts(self):
+        dc = "mcp__plugin_desktop-commander_desktop-commander__"
+        for rel in (
+            "tools/cloud-bootstrap/cloud-bootstrap.sh",
+            "tools/remote/setup.sh",
+        ):
+            path = os.path.join(self.fx.repo, rel)
+            for tool, tin in (
+                ("write_file", {"path": path, "content": "exit 0"}),
+                (
+                    "edit_block",
+                    {"file_path": path, "old_string": "a", "new_string": "b"},
+                ),
+                ("move_file", {"source": path, "destination": "/tmp/x"}),
+                ("move_file", {"source": "/tmp/x", "destination": path}),
+            ):
+                out = self.hook(
+                    {"tool_name": dc + tool, "cwd": self.fx.repo, "tool_input": tin}
+                )
+                self.assertEqual(
+                    out["hookSpecificOutput"]["permissionDecision"], "deny", (tool, rel)
+                )
+                self.assertEqual(self.log()[-1]["category"], "guard-config")
+            # A shell write through Desktop Commander's process tools too.
+            out = self.hook(
+                {
+                    "tool_name": dc + "start_process",
+                    "cwd": self.fx.repo,
+                    "tool_input": {"command": "echo 'exit 0' > " + path},
+                }
+            )
+            self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+
     def test_desktop_commander_file_tools_cannot_touch_the_guard(self):
         dc = "mcp__plugin_desktop-commander_desktop-commander__"
         guard = os.path.join(self.fx.home, ".local/share/agent-guard")
@@ -1862,6 +1958,8 @@ class HookIOTest(HookHarness):
                 ".claude/session-start.sh",
                 ".agents/hooks.json",
                 "tools/agent-guard/hook.sh",
+                "tools/cloud-bootstrap/cloud-bootstrap.sh",
+                "tools/remote/setup.sh",
             ):
                 for root in (self.fx.repo, self.fx.wt):
                     out = self.hook(
@@ -1892,6 +1990,9 @@ class HookIOTest(HookHarness):
             "tools/agent-guard/agent_guard.py",
             "tools/agent-guard/policy.json",
             ".claude/notes.md",
+            "tools/cloud-bootstrap/cloud-bootstrap_test.sh",
+            "tools/cloud-bootstrap/profiles.tsv",
+            "tools/remote/setup_test.sh",
         ):
             self.assertIsNone(
                 self.hook(
@@ -2356,6 +2457,34 @@ class AntigravityHookTest(HookHarness):
         )
         self.assertEqual(len(self.log()), before)
 
+    def test_manage_task_send_input_as_captured(self):
+        # Captured live from agy 1.4.2 on 2026-10-17 (paths and ids faked): the
+        # model started `cat` with run_command, then sent it a line. No Cwd, so
+        # the workspace paths say where it runs.
+        payload = {
+            "toolCall": {
+                "name": "manage_task",
+                "args": {
+                    "Action": "send_input",
+                    "Input": "hello cat\n",
+                    "TaskId": "task-3",
+                    "toolAction": "Sending input to background cat process",
+                    "toolSummary": "Send input to cat",
+                },
+            },
+            "stepIdx": 2,
+            "conversationId": "0f6c1d2e-3a4b-4c5d-8e9f-a0b1c2d3e4f5",
+            "transcriptPath": "/fake/home/.gemini/antigravity-cli/brain/x/transcript.jsonl",
+            "artifactDirectoryPath": "/fake/home/.gemini/antigravity-cli/brain/x",
+            "modelName": "auto",
+            "workspacePaths": [self.fx.repo],
+        }
+        self.assertIsNone(self.hook(payload))
+        payload["toolCall"]["args"]["Input"] = "git push\n"
+        out = self.hook(payload)
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("//tools/git:push", out["reason"])
+
     def test_git_commit_tool_is_a_commit(self):
         args = {"CommitMessage": "fix things"}
         out = self.hook(
@@ -2403,6 +2532,8 @@ class AntigravityHookTest(HookHarness):
             ".agents/hooks.json",
             ".claude/settings.json",
             "tools/agent-guard/hook.sh",
+            "tools/cloud-bootstrap/cloud-bootstrap.sh",
+            "tools/remote/setup.sh",
         ):
             path = os.path.join(self.fx.repo, rel)
             out = self.hook(
@@ -2416,6 +2547,14 @@ class AntigravityHookTest(HookHarness):
             )
             self.assertEqual(out["decision"], "deny", rel)
             self.assertIn("James's call", out["reason"])
+        # And through agy's shell, wherever the command says it runs.
+        out = self.hook(
+            agy_payload(
+                "sed -i '' s/a/b/ tools/remote/setup.sh", self.fx.repo, [self.fx.repo]
+            )
+        )
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("session start", out["reason"])
 
     def test_warn_mode_prints_nothing(self):
         with open(self.policy) as fh:

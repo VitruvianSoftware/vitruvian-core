@@ -85,6 +85,11 @@ var guardReviewPaths = []string{
 	".claude/settings.local.json",
 	".claude/*.sh",
 	".agents/hooks.json",
+	// The repo scripts .claude/session-start.sh runs from the working copy,
+	// with the session's credentials: cloud-bootstrap.sh, and the build-cache
+	// configurator it runs.
+	"tools/cloud-bootstrap/cloud-bootstrap.sh",
+	"tools/remote/setup.sh",
 	// This requirement itself: the ruleset and team (this file), where it is
 	// wired in and the other ruleset's bypass list (main.go), and the stack
 	// it is applied to.

@@ -117,7 +117,11 @@ only when that commit changes.
 not write, move or delete `.claude/settings.json`, `.claude/settings.local.json`
 (it could switch hooks off), the hook scripts `.claude/*.sh` (session-start,
 block-queue-bypass, kube-setup, tailscale-up: they run from the project
-settings), `.agents/hooks.json` or `tools/agent-guard/hook.sh` in any
+settings), `.agents/hooks.json`, `tools/agent-guard/hook.sh`, or the two
+repo scripts that run at session start from the working copy with the
+session's credentials (`tools/cloud-bootstrap/cloud-bootstrap.sh`, which
+`session-start.sh` runs, and `tools/remote/setup.sh`, the build-cache
+configurator it runs) in any
 vitruvian-core checkout, through the file tools or the obvious shell
 writes (`>`, `tee`, `cp` onto them, `mv`, `rm`, `sed -i`, `perl -i`,
 `python -c` that writes, `chmod`). Those take effect before review, so
@@ -227,6 +231,8 @@ A pull request that changes any of these waits until `ipv1337`, through the
 - `.claude/settings.local.json`
 - `.claude/*.sh`
 - `.agents/hooks.json`
+- `tools/cloud-bootstrap/cloud-bootstrap.sh` and `tools/remote/setup.sh` (they
+  run at session start, before review, with the session's credentials)
 - the requirement itself: `infrastructure/pulumi/platform/repo-config/guard_review.go`
   (the rule and the team), `infrastructure/pulumi/platform/repo-config/main.go`
   (where it is wired in, and the merge-queue ruleset's bypass list),
@@ -355,15 +361,20 @@ Verified live against agy 1.4.0. The entry in `.agents/hooks.json`:
 - **One regex matcher** against the tool name; plain `|` alternation was
   checked live. Which names are confirmed:
   - seen live in a hook payload: `run_command` (`CommandLine`, `Cwd`),
-    `write_to_file` and `replace_file_content` (`TargetFile`);
+    `write_to_file` and `replace_file_content` (`TargetFile`), and
+    `manage_task` (`Action: "send_input"` with `Input` and `TaskId`, no `Cwd`;
+    captured from agy 1.4.2 on 2026-10-17, when the model started `cat` and
+    sent it a line);
   - in agy's own tool declarations, not yet seen in a hook payload:
     `multi_replace_file_content` (`TargetFile`), `notebook_edit`
-    (`NotebookPath`), `manage_task` (`Action: "send_input"` with `Input`
-    sends input to a running command);
-  - in the agy binary only, never seen offered to the model, so their argument
-    names are guesses: `shell_exec` (read like `run_command`; the guard tries
-    `Command`, `command`, `CommandLine`), `send_command_input` (`Input` or
-    `input`) and `git_commit` (refused as a commit whatever its arguments).
+    (`NotebookPath`);
+  - in the agy binary only, **not offered to the model in agy 1.4.2** (checked
+    live on 2026-10-17 in the default mode and with `--sandbox`: asked for each
+    by name, the model had none of them), so their argument names are
+    guesses: `shell_exec` (read like `run_command`; the guard tries `Command`,
+    `command`, `CommandLine`), `send_command_input` (`Input` or `input`) and
+    `git_commit` (refused as a commit whatever its arguments). If a later agy
+    offers them, capture a real call and check.
 - **Where a command runs.** agy sends no top-level `cwd`. The guard uses
   `args.Cwd`; without it, a `workspacePaths` entry inside vitruvian-core if any
   is, else the first one; without either, the location is unknown and the
@@ -411,7 +422,10 @@ another branch; until one lands, the refusal says so and points to James.
 | `gh-pr` | `gh pr create` | `bazel run //tools/agent-app -- pr-create` (PR #3427) |
 | | `gh pr merge` (with or without `--auto`), the auto-merge MCP tool | `bazel run //tools/agent-app -- pr-enqueue <pr>` |
 | | `gh pr edit/comment/ready/close/review` | `pr-edit`, `pr-comment`, `pr-ready` are planned in agent-app: tell James |
-| `gh-run` | `gh workflow run/enable/disable`, `gh run rerun/cancel/delete` | no target yet: tell James |
+| `gh-run` | `gh run rerun` | `bazel run //tools/agent-app -- run-rerun <run-id> [--failed] [--job <id>]` (wren only: the one App with Actions write) |
+| | `gh run cancel` | `bazel run //tools/agent-app -- run-cancel <run-id>` (wren only) |
+| | `gh workflow run` | `bazel run //tools/agent-app -- workflow-run <file.yaml> [-f k=v ...] [--ref main]` (wren only; workflows in `tools/agent-app/workflow-allowlist.txt`, in this repository) |
+| | `gh run delete`, `gh workflow enable/disable` | no target yet: tell James |
 | `gh-api` | `gh api` with a write method or fields, GraphQL mutations | no target: tell James |
 | `gh-other` | other `gh` writes: `release create`, `secret set`, `label create`, ... | no target: tell James |
 | `go` | `go test/vet/build/run/install/mod/get/fmt` | `bazel test`, `bazel build`, `//tools/gomod:tidy`, `//tools/format` |
@@ -429,7 +443,7 @@ another branch; until one lands, the refusal says so and points to James.
 | | `edit/exec/rollout restart/scale/label/...` | no target: tell James |
 | `helm` | `install/upgrade/uninstall/rollback` | `bazel run //tools/gitops:helm`, or change git |
 | `bazel-cache` | `rm -r` of `~/.cache/bazel`, `~/Library/Caches/bazel` or `_bazel_*`; `find -delete` there; `bazel clean --expunge`; `--output_user_root`/`--output_base` | `bazel run //tools/bazel-cache:gc` |
-| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`); changing agent-guard's entries in, or setting `"disableAllHooks": true` in, the backstop's user files (`~/.claude/settings.json`, `~/.gemini/config/hooks.json`), and any shell, Desktop Commander or agy write to them (other settings: Claude Code's Edit tools, see "Limits"); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); `bazel run //tools/agent-guard:install` with anything but nothing, `--check` or `--dry-run` (so a real `--uninstall`, `--mode`, other flags, Bazel options), or from a checkout whose installer is not `origin/main`'s, and running `bazel-bin/.../install` or `install.py` directly for anything but `--check`/`--dry-run` (see "Who may do what"); hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal; agents may run the plain install |
+| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`, and the session-start scripts `tools/cloud-bootstrap/cloud-bootstrap.sh` and `tools/remote/setup.sh`); changing agent-guard's entries in, or setting `"disableAllHooks": true` in, the backstop's user files (`~/.claude/settings.json`, `~/.gemini/config/hooks.json`), and any shell, Desktop Commander or agy write to them (other settings: Claude Code's Edit tools, see "Limits"); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); `bazel run //tools/agent-guard:install` with anything but nothing, `--check` or `--dry-run` (so a real `--uninstall`, `--mode`, other flags, Bazel options), or from a checkout whose installer is not `origin/main`'s, and running `bazel-bin/.../install` or `install.py` directly for anything but `--check`/`--dry-run` (see "Who may do what"); hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal; agents may run the plain install |
 | `oversize` | a command with more than 20,000 simple commands in it (the hook must answer inside its 10 s timeout, and command tools fail closed) | split it into smaller commands |
 
 **Always allowed:** read-only git (`status log diff show fetch rev-parse
@@ -588,8 +602,9 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
   as a path, and as a branch switch otherwise.
 - **Antigravity** is guarded through the hook above, verified live for
   `run_command`, and a broken hook fails closed there. Not verified: the real
-  argument names of `shell_exec`, `send_command_input` and
-  `git_commit`. The older Gemini CLI has no usable hook.
+  argument names of `shell_exec`, `send_command_input` and `git_commit`,
+  which agy 1.4.2 does not offer to the model. The older Gemini CLI has no
+  usable hook.
 - Each refusal costs the agent a turn; expect some friction at first.
 
 ## Tests
