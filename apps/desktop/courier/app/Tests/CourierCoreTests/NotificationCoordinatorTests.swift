@@ -36,6 +36,8 @@ final class NotificationCoordinatorTests: XCTestCase {
     @MainActor
     final class WindowState {
         var isKey = false
+        /// The open chat shows older history, away from its newest message.
+        var isAway = false
         var shown = 0
         var drafts: [(room: String, text: String, mayHaveBeenSent: Bool)] = []
         var rows: [String: InboxRow] = ["!a": inboxRow("!a", name: "Chat A")]
@@ -64,6 +66,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let preferences = InboxPreferences(defaults: store.defaults)
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, isLooking: { window.isKey },
+            isAwayFromLatest: { window.isAway },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
             preferences: preferences, entitlement: entitlement,
             window: gather, replyTimeout: replyTimeout, clock: { clock.date })
@@ -340,6 +343,29 @@ final class NotificationCoordinatorTests: XCTestCase {
         try await waitUntil { h.delivery.delivered.count == 2 }
         XCTAssertEqual(h.delivery.delivered[1].roomID, "!a")
         XCTAssertEqual(h.server.receivedParams("room.markRead").count, 1, "not looked at: notified, not marked read")
+        await finish(h)
+    }
+
+    /// Ruling 27: a reminder for the chat being read, while it shows an older part of its history (opened at a
+    /// search result), ends the reminder and marks nothing read: the newest messages haven't been seen.
+    func testAReminderForAChatShownAwayFromItsNewestOnlyEndsTheReminder() async throws {
+        let h = try await start()
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        h.window.isAway = true
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { !h.server.receivedParams("reminder.clear").isEmpty }
+        XCTAssertEqual(h.server.receivedParams("reminder.clear").first?["room_ids"] as? [String], ["!a"])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "the newer messages stay unread")
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "the person is in the chat: no notification")
+        XCTAssertTrue(h.delivery.cleared.isEmpty, "nothing was read, so nothing shown is taken down")
+
+        // Back at the newest messages: marked read, as before.
+        h.window.isAway = false
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { h.server.receivedParams("room.markRead").count == 1 }
+        XCTAssertEqual(h.server.receivedParams("reminder.clear").count, 1)
         await finish(h)
     }
 

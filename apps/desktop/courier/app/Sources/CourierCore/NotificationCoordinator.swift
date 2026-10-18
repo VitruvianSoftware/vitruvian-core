@@ -43,6 +43,7 @@ public final class NotificationCoordinator {
     private let entitlement: any EntitlementProvider
     private let row: @MainActor (String) -> InboxRow?
     private let isLooking: @MainActor () -> Bool
+    private let isAwayFromLatest: @MainActor () -> Bool
     private let restoreDraft: @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void
     private let replyTimeout: TimeInterval?
     private let showWindow: @MainActor () -> Void
@@ -59,6 +60,8 @@ public final class NotificationCoordinator {
     /// - Parameters:
     ///   - row: the inbox's row for a chat, if it has one (its name and whether it is muted).
     ///   - isLooking: whether the person is looking at the open chat (`Attention.isLooking`).
+    ///   - isAwayFromLatest: whether the open chat shows older history that doesn't reach its newest message (it was
+    ///     opened at a search result: `ConversationModel.isHeldAwayFromLatest`).
     ///   - restoreDraft: puts text that could not be sent into a chat's composer draft; the last argument says the
     ///     engine did not answer, so it may have been sent.
     ///   - replyTimeout: how long a reply waits for the engine; nil is the client's own limit (30 s).
@@ -73,6 +76,7 @@ public final class NotificationCoordinator {
     ///   - clock: the time now; tests give one they move.
     public init(appModel: AppModel, delivery: any NotificationDelivering,
                 row: @escaping @MainActor (String) -> InboxRow?, isLooking: @escaping @MainActor () -> Bool,
+                isAwayFromLatest: @escaping @MainActor () -> Bool = { false },
                 restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void,
                 showWindow: @escaping @MainActor () -> Void, preferences: InboxPreferences,
                 entitlement: any EntitlementProvider = AlwaysEntitled(), window: TimeInterval = 0.1,
@@ -85,6 +89,7 @@ public final class NotificationCoordinator {
         self.entitlement = entitlement
         self.row = row
         self.isLooking = isLooking
+        self.isAwayFromLatest = isAwayFromLatest
         self.restoreDraft = restoreDraft
         self.replyTimeout = replyTimeout
         self.showWindow = showWindow
@@ -165,9 +170,15 @@ public final class NotificationCoordinator {
     /// chats too, but not the chat the person is looking at. The engine says it once per reminder, and so does this.
     private func announceReminder(roomID: String) async {
         // Ruling 37: the person is reading that chat, so the reminder has done its job. No notification; the chat is
-        // marked read, as reading it would, which ends the fired reminder and its unread mark.
+        // marked read, as reading it would, which ends the fired reminder and its unread mark. But when the chat
+        // shows an older part of its history (opened at a search result), its newest messages haven't been read:
+        // only the reminder is ended, and they stay unread until the person reaches them.
         if isLooking(), appModel.selectedRoomID == roomID {
-            await markRead(roomID: roomID)
+            if isAwayFromLatest() {
+                await clearReminder(roomID: roomID)
+            } else {
+                await markRead(roomID: roomID)
+            }
             return
         }
         var chat = row(roomID)
@@ -178,6 +189,12 @@ public final class NotificationCoordinator {
         // A chat the engine doesn't have has no name to show.
         guard let chat else { return }
         delivery.deliver(NotificationPolicy.reminderContent(room: chat))
+    }
+
+    /// Ends a chat's fired reminder without reading it. A failure is ignored, as Mark as Read's is.
+    private func clearReminder(roomID: String) async {
+        guard let client = appModel.client else { return }
+        let _: Empty? = try? await client.call("reminder.clear", RoomsParams(roomIDs: [roomID]))
     }
 
     /// `events` are newest first, as room.events has them; the oldest is announced first.

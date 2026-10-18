@@ -72,6 +72,9 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var hasNewerWhileAway = false
     /// The newest message of mine: the only one whose "Sent" is shown.
     public private(set) var lastOutgoingID: String?
+    /// From the moment the chat is opened at a message (its page still on the way) until it is back at the
+    /// newest message: what it shows doesn't reach the newest, so nothing new in it should be marked read.
+    public var isHeldAwayFromLatest: Bool { anchorID != nil }
 
     public let composer: ComposerModel
     /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
@@ -97,6 +100,9 @@ public final class ConversationModel: ObservableObject {
     private var scrollDownOnNewest = false
     /// The chat was opened at a message that isn't there: the newest page shows `messageGone` when it lands.
     private var messageGoneOnNewest = false
+    /// A window reached the newest message while changes were waiting: the newest page that brings them places
+    /// the "New" divider, from `unreadAtOpen`.
+    private var dividerOnNewest = false
 
     // A window around a message.
     /// The message the chat is held at, from the moment it is opened at it until the window reaches the newest
@@ -199,6 +205,7 @@ public final class ConversationModel: ObservableObject {
         firstNewest = true
         scrollDownOnNewest = false
         messageGoneOnNewest = false
+        dividerOnNewest = false
         refetching = false
         refetchAgain = false
         dropPending = false
@@ -256,11 +263,9 @@ public final class ConversationModel: ObservableObject {
     public func reload() {
         if problem == .messageGone { problem = nil }
         if let anchor = anchorID {
-            if windowLoaded {
-                problem = nil // away from the newest: there is nothing newer to read until the person goes there
-            } else {
-                Task { [weak self] in await self?.fetchAround(anchor, reveal: true) }
-            }
+            // Held at a message: read the page around it again (highlighting it only if it never showed).
+            let reveal = !windowLoaded
+            Task { [weak self] in await self?.fetchAround(anchor, reveal: reveal) }
             return
         }
         requestRefetch()
@@ -323,6 +328,7 @@ public final class ConversationModel: ObservableObject {
             page = try await client.call("room.events", RoomEventsParams(roomID: room, limit: Self.pageSize))
         } catch {
             guard owner == generation, client === appModel.client, anchorID == nil else { return }
+            messageGoneOnNewest = false // the failure is what the bar says now
             problem = .loadFailed
             return
         }
@@ -368,7 +374,8 @@ public final class ConversationModel: ObservableObject {
             problem = nil // the notice that a message is gone stays until the person moves on
         }
 
-        if first {
+        if first || dividerOnNewest {
+            dividerOnNewest = false
             firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
                                                    unread: unreadAtOpen)
         }
@@ -507,14 +514,20 @@ public final class ConversationModel: ObservableObject {
         isAwayFromLatest = false
         hasNewerWhileAway = false
         firstNewest = false
-        // What was unread is still unread (nothing was marked while away): the divider goes above it now.
-        let unread = roomID.map { unreadCount($0) } ?? 0
-        firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID, unread: unread)
-        if attention.isLooking { markRead() } else { needsRead = true }
+        // What was unread is still unread (nothing was marked while away): the divider goes above it. Counted now,
+        // before this chat is marked read. When something came while away, the count includes messages the
+        // window doesn't have yet, so the divider waits for the newest page that brings them.
+        unreadAtOpen = roomID.map { unreadCount($0) } ?? 0
         if missedChanges {
             missedChanges = false
+            firstUnreadID = nil
+            dividerOnNewest = true
             requestRefetch()
+        } else {
+            firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
+                                                   unread: unreadAtOpen)
         }
+        if attention.isLooking { markRead() } else { needsRead = true }
     }
 
     /// Lets go of the window and reads the newest page instead, as when the chat was opened.

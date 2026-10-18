@@ -76,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
             isLooking: { [attention] in attention.isLooking },
+            isAwayFromLatest: { [conversation] in conversation.isHeldAwayFromLatest },
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
