@@ -471,7 +471,10 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 	s, err := store.Open(db)
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
-	storetest.SeedUnindexed(t, db, 50_000)
+	// Enough history for several batches, and few enough that a race-instrumented build on a busy CI runner indexes
+	// it well inside backfillTimeout: 50,000 took over a minute there.
+	const history = 6_000
+	storetest.SeedUnindexed(t, db, history)
 
 	// The test's own look at the database is open before the engine starts, so the first reading can be taken the
 	// moment the ready line is out.
@@ -484,16 +487,18 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 		return done
 	}
 	p, ready := start(t, data, nil)
-	// 50,000 messages are at least 25 batches, each followed by a rest at least as long, so the backfill, which
+	// 6,000 messages are at least 3 batches, each followed by a rest of at least BackfillPause, so the backfill, which
 	// starts only after the ready line, cannot have finished yet.
 	require.False(t, searchComplete(), "the engine was ready before the history on disk was indexed")
 	c := dial(t, ready.Socket)
 	require.Equal(t, rpc.Protocol, c.hello().Protocol, "and answers while it indexes")
 
-	deadline := time.Now().Add(startTimeout)
+	// A loose ceiling, never a speed check: it only stops a hung backfill from hanging the test.
+	const backfillTimeout = 3 * time.Minute
+	deadline := time.Now().Add(backfillTimeout)
 	for !strings.Contains(p.stderr.String(), "search backfill done") {
 		if time.Now().After(deadline) {
-			t.Fatalf("the backfill did not finish in %v; stderr:\n%s", startTimeout, p.stderr.String())
+			t.Fatalf("the backfill did not finish in %v; stderr:\n%s", backfillTimeout, p.stderr.String())
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -505,5 +510,5 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 		require.True(t, json.Valid([]byte(line)), "stderr line is not JSON: %q", line)
 	}
 	require.NotContains(t, p.stderr.String(), "seed", "counts and durations only, never text or names")
-	require.Equal(t, 50_000, storetest.Indexed(t, db))
+	require.Equal(t, history, storetest.Indexed(t, db))
 }
