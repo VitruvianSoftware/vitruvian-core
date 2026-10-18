@@ -77,15 +77,35 @@ func TestAroundAtTheEdges(t *testing.T) {
 
 	evs, before, after, err := s.EventsAround(ctx, "!r", ids[99], 10)
 	require.NoError(t, err)
-	require.Equal(t, newestFirst(ids, 95, 100), idsOf(evs), "the newest: its 4 older and itself")
+	require.Equal(t, newestFirst(ids, 90, 100), idsOf(evs), "the newest: the older side takes the slots the newer can't fill")
 	require.Nil(t, after, "the page has the room's newest event")
-	require.Equal(t, cursorOf(t, s, ids[95]), before)
+	require.Equal(t, cursorOf(t, s, ids[90]), before)
+
+	evs, before, after, err = s.EventsAround(ctx, "!r", ids[97], 10)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 90, 100), idsOf(evs), "near the newest: 2 newer, so 7 older")
+	require.Nil(t, after, "the page has the room's newest event")
+	require.Equal(t, cursorOf(t, s, ids[90]), before)
 
 	evs, before, after, err = s.EventsAround(ctx, "!r", ids[0], 10)
 	require.NoError(t, err)
 	require.Equal(t, newestFirst(ids, 0, 10), idsOf(evs), "the oldest: itself and the rest newer")
 	require.Nil(t, before, "nothing is older than the oldest")
 	require.Equal(t, cursorOf(t, s, ids[9]), after)
+
+	evs, before, after, err = s.EventsAround(ctx, "!r", ids[2], 10)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(ids, 0, 10), idsOf(evs), "near the oldest: 2 older, so 7 newer")
+	require.Nil(t, before, "the page has the room's oldest event")
+	require.Equal(t, cursorOf(t, s, ids[9]), after)
+
+	// A room shorter than the page: all of it, no cursor either way.
+	short := seedHistory(t, s, "!short", 6, 1)
+	evs, before, after, err = s.EventsAround(ctx, "!short", short[4], 10)
+	require.NoError(t, err)
+	require.Equal(t, newestFirst(short, 0, 6), idsOf(evs))
+	require.Nil(t, before)
+	require.Nil(t, after)
 
 	// One short of an edge still reports the edge's cursor: the extra row is what decides.
 	evs, before, after, err = s.EventsAround(ctx, "!r", ids[94], 10)

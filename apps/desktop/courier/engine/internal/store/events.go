@@ -24,14 +24,15 @@ const eventsAfterSQL = `SELECT ` + eventCols + ` FROM events
 WHERE room_id = $1 AND (ts, seq) > ($2, $3)
 ORDER BY ts ASC, seq ASC LIMIT $4`
 
-// EventsAround is the page of roomID's history centred on eventID, newest first: up to limit/2 events older than
-// it, the event itself, and the rest newer. before is the cursor for the next older page (nil at the oldest); after
-// is the newest event of the page (nil when the page has the room's newest event). ErrNotFound when eventID isn't
-// in roomID.
+// EventsAround is the page of roomID's history centred on eventID, newest first: up to limit events, about half
+// older than it, the event itself, and the rest newer. before is the cursor for the next older page (nil at the
+// oldest); after is the newest event of the page (nil when the page has the room's newest event). ErrNotFound when
+// eventID isn't in roomID.
 //
-// Precisely: (limit-1)/2 older events when there are that many, so an even limit leans newer (10 is 4 older, the
-// event, 5 newer). When fewer older events exist, the newer side takes the rest of the page; the older side never
-// grows past its half, so a page at the newest message is short.
+// Precisely: (limit-1)/2 older events and the rest newer, so an even limit leans newer (10 is 4 older, the event,
+// 5 newer). When one side has fewer events than its share, the other side takes the spare slots, so the page is
+// full near either end of the history (around the newest message, limit 10 is its 9 older and itself); only a room
+// with fewer than limit events gives a shorter page.
 func (s *Store) EventsAround(ctx context.Context, roomID, eventID string, limit int) (evs []Event, before, after *Cursor, err error) {
 	if limit <= 0 {
 		limit = 50
@@ -44,21 +45,21 @@ func (s *Store) EventsAround(ctx context.Context, roomID, eventID string, limit 
 	}
 	at := centre.TS.UnixMilli()
 
-	wantOlder := (limit - 1) / 2
-	older, err := s.queryEvents(ctx, eventsBeforeSQL, roomID, at, centre.Seq, wantOlder+1) // newest first
+	// Each side may fill the whole page but the event itself: read limit-1 rows, plus one extra to know whether
+	// more exist. Both are bounded range scans of events_room_ts.
+	older, err := s.queryEvents(ctx, eventsBeforeSQL, roomID, at, centre.Seq, limit) // newest first
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	moreOlder := len(older) > wantOlder
-	older = older[:min(len(older), wantOlder)]
-
-	wantNewer := limit - 1 - len(older)
-	newer, err := s.queryEvents(ctx, eventsAfterSQL, roomID, at, centre.Seq, wantNewer+1) // oldest first
+	newer, err := s.queryEvents(ctx, eventsAfterSQL, roomID, at, centre.Seq, limit) // oldest first
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	moreNewer := len(newer) > wantNewer
-	newer = newer[:min(len(newer), wantNewer)]
+	nOlder := min(len(older), (limit-1)/2)
+	nNewer := min(len(newer), limit-1-nOlder)
+	nOlder = min(len(older), limit-1-nNewer) // the older side takes what the newer side left
+	moreOlder, moreNewer := len(older) > nOlder, len(newer) > nNewer
+	older, newer = older[:nOlder], newer[:nNewer]
 
 	slices.Reverse(newer)
 	evs = make([]Event, 0, len(newer)+1+len(older))
