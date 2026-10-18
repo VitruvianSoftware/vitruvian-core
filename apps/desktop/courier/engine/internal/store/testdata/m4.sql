@@ -74,7 +74,7 @@ CREATE TABLE archive_due (room_id TEXT PRIMARY KEY REFERENCES rooms(room_id) ON 
 PRAGMA user_version = 3;
 
 INSERT INTO rooms (room_id, network, name, is_direct, created_at, last_ts, last_event_id, request) VALUES
-  ('!garden:courier.local', 'whatsapp', 'Garden club', 0, 1000, 200000, '$g12', 0),
+  ('!garden:courier.local', 'whatsapp', 'Garden club', 0, 1000, 205000, '$g14', 0),
   ('!pat:courier.local',    'whatsapp', 'Pat Example', 1, 2000, 150000, '$p4', 0),
   ('!trip:courier.local',   'telegram', 'Trip planning', 0, 3000, 180000, '$t5', 0);
 
@@ -99,7 +99,10 @@ INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, sta
   ('$t2',  '!trip:courier.local',   '@ghost3:courier.local', 'm.room.message', NULL, '{"msgtype":"m.video","body":"platform.mp4","url":"mxc://courier.local/vid"}', 160000, '', '', 18, 0),
   ('$t3',  '!trip:courier.local',   '@me:courier.local',     'm.room.message', NULL, '{"msgtype":"m.audio","body":"voice note","url":"mxc://courier.local/ogg"}', 170000, 'sent', '', 19, 0),
   ('$t4',  '!trip:courier.local',   '@me:courier.local',     'm.room.message', NULL, '{"msgtype":"m.emote","body":"waves goodbye"}', 175000, 'failed', 'network down', 20, 0),
-  ('$t5',  '!trip:courier.local',   '@ghost3:courier.local', 'm.room.message', NULL, '{"msgtype":"m.text","body":"see you there"}', 180000, '', '', 21, 0);
+  ('$t5',  '!trip:courier.local',   '@ghost3:courier.local', 'm.room.message', NULL, '{"msgtype":"m.text","body":"see you there"}', 180000, '', '', 21, 0),
+  -- A redaction that arrived before its message: 4.1 never marked the message, so it is still the chat's latest.
+  ('$g13', '!garden:courier.local', '@ghost1:courier.local', 'm.room.redaction', NULL, '{"redacts":"$g14"}', 210000, '', '', 22, 0),
+  ('$g14', '!garden:courier.local', '@ghost1:courier.local', 'm.room.message', NULL, '{"msgtype":"m.text","body":"posted by mistake"}', 205000, '', '', 23, 0);
 
 INSERT INTO profiles (user_id, display_name) VALUES ('@ghost1:courier.local', 'Pat Example'), ('@ghost3:courier.local', 'Lee Sample');
 INSERT INTO members (room_id, user_id, content) VALUES

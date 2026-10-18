@@ -79,6 +79,13 @@ func isEditSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') END) = 'm.replace'`
 }
 
+// repairRedactedSQL is migration 2's repair, run again by migration 4: it marks deleted every message whose
+// redaction arrived before it did, which InsertEvent ignored until migration 4, and points each chat whose latest
+// message that was back at the newest one left. Migration 2's own copy stays as it shipped.
+var repairRedactedSQL = `UPDATE events SET redacted = 1 WHERE redacted = 0 AND (room_id, event_id) IN (
+  SELECT r.room_id, ` + redactionTargetSQL("r.content") + ` FROM events r WHERE r.type = 'm.room.redaction' AND r.status <> 'failed');
+` + backfillLastEventSQL + ` WHERE last_event_id IN (SELECT event_id FROM events WHERE redacted = 1)`
+
 // searchTokenizer is every search table's tokenizer: case and accents fold, and combining marks stay inside
 // words. searchtext prepares text and queries for exactly this one.
 const searchTokenizer = `tokenize="unicode61 remove_diacritics 2 categories 'L* N* Co M*'"`
@@ -138,6 +145,8 @@ CREATE TABLE archive_due (room_id TEXT PRIMARY KEY REFERENCES rooms(room_id) ON 
 CREATE UNIQUE INDEX events_doc ON events(doc_id) WHERE doc_id IS NOT NULL;
 CREATE INDEX events_edits ON events(` + editTargetSQL("content") + `, ts) WHERE type = 'm.room.message' AND ` + isEditSQL("content") + `;
 CREATE INDEX members_user ON members(user_id);            -- a person's chats and names, for their doc
+CREATE INDEX events_redacts ON events(` + redactionTargetSQL("content") + `) WHERE type = 'm.room.redaction';
+` + repairRedactedSQL + `;
 CREATE VIRTUAL TABLE search_messages USING fts5(body, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
 CREATE TABLE chat_docs (doc_id INTEGER PRIMARY KEY, room_id TEXT NOT NULL UNIQUE REFERENCES rooms(room_id) ON DELETE CASCADE);
 CREATE VIRTUAL TABLE search_chats USING fts5(name, scope, content='', contentless_delete=1, ` + searchTokenizer + `);

@@ -121,6 +121,9 @@ func TestMigrationFromMilestone4_1(t *testing.T) {
 	require.Equal(t, "see https://example.com/seeds", rows["!garden:courier.local"].Preview)
 	require.True(t, rows["!trip:courier.local"].Muted)
 	require.True(t, rows["!pat:courier.local"].Archived)
+	// 4.1 ignored a redaction that arrived before its message; the upgrade repairs that before anything is indexed.
+	require.Equal(t, 1, count(t, s, "SELECT redacted FROM events WHERE event_id='$g14'"))
+	require.Equal(t, 0, count(t, s, "SELECT redacted FROM events WHERE event_id='$g12'"))
 
 	// The engine keeps working on the upgraded database: a new message is indexed at once.
 	insert(t, s, Event{
@@ -167,7 +170,9 @@ func TestDocIDsFollowTime(t *testing.T) {
 	}
 
 	mkMsg(t, s, "!r", "$neg", ghost, "m.room.message", text("before the epoch"), time.UnixMilli(-5000))
+	require.True(t, docID(t, s, "$neg").Valid)
 	require.Equal(t, int64(0), docID(t, s, "$neg").Int64, "a negative ts counts as 0")
+	require.Equal(t, []string{"$neg"}, matches(t, s, `"epoch"`))
 
 	// With every one of a millisecond's 1,024 doc ids taken, the next message there isn't indexed.
 	_, err := s.db.Exec(ctx, `WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i < 1023)
@@ -294,6 +299,44 @@ func TestRedactedMessageLeavesTheIndex(t *testing.T) {
 	// An edit arriving after the deletion doesn't bring it back.
 	mkMsg(t, s, "!r", "$e", ghost, "m.room.message", editTo("$m", "secret plan b"), time.Unix(40, 0))
 	require.Empty(t, matches(t, s, `"secret"`))
+}
+
+func TestRedactionBeforeItsMessageKeepsItOut(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$old", ghost, "m.room.message", text("earlier words"), time.Unix(5, 0))
+	// The redaction arrives first, then the message it deletes.
+	mkMsg(t, s, "!r", "$red", ghost, "m.room.redaction", redactionOf("$m"), time.Unix(20, 0))
+	mkMsg(t, s, "!r", "$m", ghost, "m.room.message", text("secret plan"), time.Unix(10, 0))
+	require.Empty(t, matches(t, s, `"secret"`))
+	require.False(t, docID(t, s, "$m").Valid)
+	require.Equal(t, 1, count(t, s, "SELECT redacted FROM events WHERE event_id='$m'"), "deleted, as an in-order redaction leaves it")
+	row := inboxByID(t, s)["!r"]
+	require.Equal(t, "earlier words", row.Preview, "a deleted message isn't the chat's latest")
+	require.Equal(t, 1, row.Unread, "nor unread")
+
+	// The same for an edit: its redaction arrives before it, so the original keeps its own text.
+	mkMsg(t, s, "!r", "$o", ghost, "m.room.message", text("apple"), time.Unix(30, 0))
+	mkMsg(t, s, "!r", "$red2", ghost, "m.room.redaction", redactionOf("$e"), time.Unix(50, 0))
+	mkMsg(t, s, "!r", "$e", ghost, "m.room.message", editTo("$o", "banana"), time.Unix(40, 0))
+	require.Equal(t, []string{"$o"}, matches(t, s, `"apple"`))
+	require.Empty(t, matches(t, s, `"banana"`))
+	o, _, err := s.GetEvent(ctx, "$o")
+	require.NoError(t, err)
+	got, err := s.CurrentText(ctx, o)
+	require.NoError(t, err)
+	require.Equal(t, "apple", got)
+
+	// A failed redaction that arrived first deletes nothing, and nor does one from another chat.
+	mkRoom(t, s, "!other", time.Unix(1, 0))
+	_, err = s.InsertEvent(ctx, Event{
+		RoomID: "!r", EventID: "$redf", Sender: me, Type: "m.room.redaction",
+		Content: json.RawMessage(redactionOf("$k")), TS: time.Unix(70, 0), Status: "failed",
+	})
+	require.NoError(t, err)
+	mkMsg(t, s, "!other", "$redx", ghost, "m.room.redaction", redactionOf("$k"), time.Unix(70, 0))
+	mkMsg(t, s, "!r", "$k", ghost, "m.room.message", text("kept words"), time.Unix(60, 0))
+	require.Equal(t, []string{"$k"}, matches(t, s, `"kept"`))
 }
 
 func TestRedactingAnEditPutsBackTheOneBefore(t *testing.T) {
@@ -507,4 +550,16 @@ func TestEditLookupUsesItsIndex(t *testing.T) {
 		plan = append(plan, detail)
 	}
 	require.Contains(t, strings.Join(plan, "\n"), "events_doc", plan)
+
+	rows3, err := s.db.Query(ctx, "EXPLAIN QUERY PLAN "+earlierRedactionSQL, "$m", "!r")
+	require.NoError(t, err)
+	defer rows3.Close()
+	plan = nil
+	for rows3.Next() {
+		var id, parent, notused int
+		var detail string
+		require.NoError(t, rows3.Scan(&id, &parent, &notused, &detail))
+		plan = append(plan, detail)
+	}
+	require.Contains(t, strings.Join(plan, "\n"), "USING INDEX events_redacts", plan)
 }

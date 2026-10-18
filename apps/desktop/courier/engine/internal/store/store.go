@@ -400,6 +400,9 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 			err = s.redact(ctx, e.RoomID, e.Content)
 		}
 		if err == nil && inserted {
+			err = s.redactedEarlier(ctx, e)
+		}
+		if err == nil && inserted {
 			err = s.indexEvent(ctx, e)
 		}
 		return err
@@ -470,6 +473,23 @@ func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessa
 		return s.applyEdit(ctx, gone)
 	}
 	return nil
+}
+
+// redactedEarlier deals with a redaction of e that arrived before e did, inside InsertEvent's transaction: e is
+// marked deleted as an in-order redaction marks it, and if that made it the chat's latest message the chat goes
+// back to the newest one left. So it isn't unread, the chat's latest or searchable (indexEvent passes over a
+// deleted message, and CurrentText over a deleted edit). The timeline hides it by the redaction event, as it does
+// whatever the order.
+func (s *Store) redactedEarlier(ctx context.Context, e Event) error {
+	res, err := s.db.Exec(ctx, earlierRedactionSQL, e.EventID, e.RoomID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil
+	}
+	_, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", e.RoomID, e.EventID)
+	return err
 }
 
 // FailInterruptedSends turns every message still pending from an earlier run into a failed one, with

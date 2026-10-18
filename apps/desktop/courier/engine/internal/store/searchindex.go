@@ -41,6 +41,13 @@ WHERE ` + editTargetSQL("content") + ` = $1 AND type = 'm.room.message' AND ` + 
   AND sender = $2 AND redacted = 0
 ORDER BY ts DESC, seq DESC`
 
+// earlierRedactionSQL marks event $1 of chat $2 deleted when a redaction of it arrived before it did, through
+// events_redacts. It is the in-order redaction's flag, set late: the timeline hides the text by the redaction
+// event either way, and nothing else of the row changes.
+var earlierRedactionSQL = `UPDATE events SET redacted = 1 WHERE event_id = $1 AND EXISTS (
+  SELECT 1 FROM events r WHERE r.type = 'm.room.redaction' AND r.status <> 'failed' AND r.room_id = $2
+    AND ` + redactionTargetSQL("r.content") + ` = $1)`
+
 // scopeHash is the 16 hex digits that stand for an ID in a scope token: plain lowercase ASCII, so the tokenizer
 // keeps it whole, and the same length whatever the ID.
 func scopeHash(prefix, id string) string {
