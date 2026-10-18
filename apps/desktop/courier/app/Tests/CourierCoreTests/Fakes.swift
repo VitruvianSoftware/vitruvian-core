@@ -125,7 +125,51 @@ final class FakeTime: @unchecked Sendable {
     var sleeps: [TimeInterval] { lock.withLock { _sleeps } }
     var now: TimeInterval { lock.withLock { _now } }
 
-    func advance(_ seconds: TimeInterval) { lock.withLock { _now += seconds } }
+    /// Moves the clock on, ending every `sleep(for:)` that is due by then.
+    func advance(_ seconds: TimeInterval) {
+        let due = lock.withLock { () -> [CheckedContinuation<Void, Error>] in
+            _now += seconds
+            let now = _now
+            // A microsecond of slack: at a clock of 1.7e9 s, 0.1 + 0.05 is not exactly 0.15.
+            let ended = sleepers.filter { $0.deadline <= now + 1e-6 }
+            sleepers.removeAll { $0.deadline <= now + 1e-6 }
+            return ended.map(\.continuation)
+        }
+        for continuation in due { continuation.resume() }
+    }
+
+    private var sleepers: [(id: UUID, seconds: TimeInterval, deadline: TimeInterval,
+                            continuation: CheckedContinuation<Void, Error>)] = []
+    private var cancelledSleeps: Set<UUID> = []
+
+    /// The lengths of the sleeps waiting for the clock, in the order they began.
+    var pendingSleeps: [TimeInterval] { lock.withLock { sleepers.map(\.seconds) } }
+
+    /// A sleep on this clock: it ends when `advance` reaches it, and throws when its task is cancelled.
+    func sleep(for duration: Duration) async throws {
+        let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                lock.withLock {
+                    if cancelledSleeps.remove(id) != nil {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        sleepers.append((id, seconds, _now + seconds, continuation))
+                    }
+                }
+            }
+        } onCancel: {
+            let waiting = lock.withLock { () -> CheckedContinuation<Void, Error>? in
+                guard let index = sleepers.firstIndex(where: { $0.id == id }) else {
+                    cancelledSleeps.insert(id)
+                    return nil
+                }
+                return sleepers.remove(at: index).continuation
+            }
+            waiting?.resume(throwing: CancellationError())
+        }
+    }
 
     func timing(readyTimeout: TimeInterval = 10, stopGrace: TimeInterval = 2) -> EngineSupervisor.Timing {
         EngineSupervisor.Timing(

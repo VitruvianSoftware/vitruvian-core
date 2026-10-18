@@ -35,22 +35,26 @@ final class SearchModelTests: XCTestCase {
         h.search.text = "d"
         h.search.text = "di"
         h.search.text = "din"
-        try await Task.sleep(for: .milliseconds(60))
-        XCTAssertEqual(h.searches.count, before, "nothing is sent while typing")
+        try await waitUntil { h.time.pendingSleeps.contains(0.15) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(h.time.pendingSleeps, [0.15], "one pause, for din")
+        h.time.advance(0.1)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(h.searches.count, before, "nothing is sent until typing pauses for 150 ms")
 
+        h.time.advance(0.05)
         try await waitUntil { h.searches.count == before + 1 }
-        try await Task.sleep(for: .milliseconds(400))
-        XCTAssertEqual(h.searches.dropFirst(before).map { $0["text"] as? String }, ["din"], "one request, for din")
         try await waitUntil { h.search.phase == .results }
+        XCTAssertEqual(h.searches.dropFirst(before).map { $0["text"] as? String }, ["din"], "one request, for din")
     }
 
     func testOlderAnswersAreDropped() async throws {
         let h = try await start()
         try await h.showHome()
         h.script.hold = true
-        h.search.text = "di"
+        try await h.type("di")
         try await waitUntil { h.searches.last?["text"] as? String == "di" }
-        h.search.text = "din"
+        try await h.type("din")
         try await waitUntil { h.searches.last?["text"] as? String == "din" }
         let held = h.server.received.filter { $0["method"] as? String == "search.query" }.suffix(2)
             .compactMap { $0["id"] as? Int }
@@ -78,7 +82,7 @@ final class SearchModelTests: XCTestCase {
             hint: "need_more_letters")
         try await h.showHome()
 
-        h.search.text = "picnic"
+        try await h.type("picnic")
         try await waitUntil { h.search.phase == .results }
         XCTAssertEqual(h.search.sections.map(\.kind), [.chats, .media, .messages], "In groups found nobody")
         XCTAssertEqual(h.search.sections.last?.items.map(\.id), ["message:$t1", "message:$t2"])
@@ -86,7 +90,7 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.search.hint, "")
         XCTAssertEqual(h.search.selection, "chat:!c", "the first result is selected, for Return")
 
-        h.search.text = "p"
+        try await h.type("p")
         try await waitUntil { h.search.sections.map(\.kind) == [.inGroups] }
         XCTAssertEqual(h.search.hint, "need_more_letters")
         XCTAssertTrue(h.search.complete)
@@ -122,6 +126,7 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(h.search.text, "picnic")
         XCTAssertNotEqual(h.search.phase, .closed)
         try await waitUntil { h.searches.last?["text"] as? String == "picnic" }
+        XCTAssertEqual(h.time.pendingSleeps.filter { $0 == 0.15 }, [], "a recent search is searched at once, no pause")
 
         // Clear Recent Searches empties the section at once.
         h.search.text = ""
@@ -134,7 +139,7 @@ final class SearchModelTests: XCTestCase {
     func testFiltersAndPeriodsGoOnTheWire() async throws {
         let h = try await start()
         try await h.showHome()
-        h.search.text = "picnic"
+        try await h.type("picnic")
         try await waitUntil { h.searches.last?["text"] as? String == "picnic" }
         XCTAssertEqual(dicts([h.searches.last!]), dicts([["text": "picnic"]]), "no filters, no filters key")
 
@@ -178,7 +183,7 @@ final class SearchModelTests: XCTestCase {
         try await waitUntil { h.search.scope?.roomID == "!a" }
         XCTAssertEqual(h.search.phase, .home)
 
-        h.search.text = "pic"
+        try await h.type("pic")
         try await waitUntil { h.search.phase == .results }
         XCTAssertEqual(h.searches.last?["filters"] as? NSDictionary, ["room_ids": ["!a"]] as NSDictionary)
         XCTAssertEqual(h.search.sections.map(\.kind), [.messages], "no Chats or In groups inside a chat")
@@ -199,7 +204,7 @@ final class SearchModelTests: XCTestCase {
             chats: [room("!c1", ts: 2), room("!c2", ts: 1)],
             messages: [messageHit("$m1", room: "!c1"), messageHit("$m2", room: "!c1"), messageHit("$m3", room: "!c2")])
         try await h.showHome()
-        h.search.text = "pic"
+        try await h.type("pic")
         try await waitUntil { h.search.phase == .results }
 
         XCTAssertEqual(h.search.selection, "chat:!c1")
@@ -258,14 +263,14 @@ final class SearchModelTests: XCTestCase {
 
         // Typing alone keeps nothing: half-typed words aren't recent searches.
         try await h.showHome()
-        h.search.text = "half"
+        try await h.type("half")
         try await waitUntil { h.search.phase == .results }
         h.search.close()
         XCTAssertEqual(h.recents.searches, [])
         XCTAssertEqual(h.opened, [])
 
         try await h.showHome()
-        h.search.text = "picnic"
+        try await h.type("picnic")
         try await waitUntil { h.search.phase == .results }
         h.search.select("message:$e1")
         h.search.activate()
@@ -276,11 +281,11 @@ final class SearchModelTests: XCTestCase {
 
         // A chat opens it; a person opens the group I share with them.
         try await h.showHome()
-        h.search.text = "picnic"
+        try await h.type("picnic")
         try await waitUntil { h.search.phase == .results }
         h.search.activate()
         try await h.showHome()
-        h.search.text = "picnic"
+        try await h.type("picnic")
         try await waitUntil { h.search.phase == .results }
         h.search.select("person:@one")
         h.search.activate()
@@ -306,7 +311,7 @@ final class SearchModelTests: XCTestCase {
         }
         try await h.showHome()
         h.search.filters.period = .lastWeek
-        h.search.text = "picnic"
+        try await h.type("picnic")
         try await waitUntil { h.search.phase == .results }
         let first = try XCTUnwrap(h.searches.last)
         XCTAssertEqual(h.search.sections.map(\.canShowMore), [true, true])
@@ -338,7 +343,7 @@ final class SearchModelTests: XCTestCase {
         ])
         try await h.showHome()
         h.search.filters.partial = true
-        h.search.text = "picnic blanket"
+        try await h.type("picnic blanket")
         try await waitUntil { h.search.phase == .results }
         XCTAssertEqual(h.searches.last?["filters"] as? NSDictionary, ["partial": true] as NSDictionary)
         XCTAssertEqual(h.search.sections.last?.partialMatchesStart, 1, "the Partial matches divider sits above $some")
@@ -349,7 +354,7 @@ final class SearchModelTests: XCTestCase {
         h.script.results["pic"] = searchResult(chats: [room("!c", ts: 1)])
         try await h.showHome()
         h.script.fail = true
-        h.search.text = "pic"
+        try await h.type("pic")
         try await waitUntil { h.search.phase == .failed }
 
         h.script.fail = false
@@ -362,9 +367,12 @@ final class SearchModelTests: XCTestCase {
         let h = try await start()
         try await h.showHome()
         h.script.hold = true
-        h.search.text = "pic"
-        try await waitUntil { h.searches.last?["text"] as? String == "pic" }
+        try await h.type("pic")
+        try await waitUntil { h.searches.last?["text"] as? String == "pic" && h.time.pendingSleeps == [0.3] }
+        h.time.advance(0.29)
+        try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(h.search.phase, .home, "a quick answer never flashes Searching…")
+        h.time.advance(0.01)
         try await waitUntil { h.search.phase == .searching }
         let id = try XCTUnwrap(h.server.received.last { $0["method"] as? String == "search.query" }?["id"] as? Int)
         h.server.reply(to: id, with: searchResult(chats: [room("!c", ts: 1)]))
@@ -375,7 +383,7 @@ final class SearchModelTests: XCTestCase {
         let h = try await start()
         h.script.results["pic"] = searchResult(chats: [room("!c", ts: 1)])
         try await h.showHome()
-        h.search.text = "pic"
+        try await h.type("pic")
         try await waitUntil { h.search.phase == .results }
         let count = h.searches.count
         h.server.notify(["kind": "event", "room_id": "!c", "event_id": "$new"])
@@ -389,11 +397,81 @@ final class SearchModelTests: XCTestCase {
         let h = try await start()
         try await h.showHome()
         // 300 Characters, each an e and a combining accent: 600 scalars, which is what the engine counts.
-        h.search.text = String(repeating: "e\u{301}", count: 300)
+        try await h.type(String(repeating: "e\u{301}", count: 300))
         try await waitUntil { h.searches.count == 2 }
         let sent = try XCTUnwrap(h.searches.last?["text"] as? String)
         XCTAssertEqual(sent.unicodeScalars.count, 500)
         XCTAssertTrue(h.search.text.unicodeScalars.starts(with: sent.unicodeScalars))
+    }
+
+    // MARK: - Return while a search is pending
+
+    func testReturnBeforeThePauseEndsOpensTheNewAnswersFirstRow() async throws {
+        let h = try await start(rooms: [room("!old", ts: 1)])
+        h.recents.addChat("!old")
+        h.script.results["dinne"] = searchResult(chats: [room("!dinette", ts: 2)])
+        h.script.results["din"] = searchResult(chats: [room("!din", ts: 3)])
+        h.script.results["dinner"] = searchResult(messages: [messageHit("$dinner", room: "!din")])
+        try await h.showHome()
+        XCTAssertEqual(h.chatIDs(.recent), ["!old"])
+
+        // From home: Return inside the pause never opens the Recent chat on screen.
+        h.search.text = "din"
+        h.search.activate()
+        try await waitUntil { h.opened == [.chat(roomID: "!din")] }
+        XCTAssertEqual(h.searches.last?["text"] as? String, "din", "searched at once, without the rest of the pause")
+        XCTAssertEqual(h.recents.searches, ["din"], "kept with the result it opened")
+        XCTAssertEqual(h.search.phase, .closed)
+
+        // From results: the top hit for "dinne" isn't the one for "dinner".
+        try await h.showHome()
+        try await h.type("dinne")
+        try await waitUntil { h.chatIDs(.chats) == ["!dinette"] }
+        h.search.text = "dinner"
+        h.search.activate()
+        try await waitUntil { h.opened.count == 2 }
+        XCTAssertEqual(h.opened.last, .message(roomID: "!din", eventID: "$dinner"))
+        XCTAssertEqual(h.recents.searches.first, "dinner")
+    }
+
+    func testAKeystrokeAfterReturnCancelsTheOpen() async throws {
+        let h = try await start()
+        h.script.results["din"] = searchResult(chats: [room("!din", ts: 3)])
+        try await h.showHome()
+        h.script.hold = true
+        h.search.text = "din"
+        h.search.activate()
+        try await waitUntil { h.searches.last?["text"] as? String == "din" }
+        let id = try XCTUnwrap(h.server.received.last { $0["method"] as? String == "search.query" }?["id"] as? Int)
+
+        // Return, then typing on before the answer: the open is off.
+        h.search.text = "dinn"
+        h.server.reply(to: id, with: searchResult(chats: [room("!din", ts: 3)]))
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(h.opened, [])
+        XCTAssertEqual(h.recents.searches, [])
+        XCTAssertNotEqual(h.search.phase, .closed)
+    }
+
+    func testReturnOnAnEmptyAnswerOrAFailureOpensNothing() async throws {
+        let h = try await start()
+        try await h.showHome()
+        h.search.text = "zzz"
+        h.search.activate()
+        try await waitUntil { h.search.phase == .results }
+        XCTAssertEqual(h.search.sections, [])
+        XCTAssertEqual(h.opened, [])
+        XCTAssertEqual(h.recents.searches, [], "nothing opened, nothing kept")
+
+        h.script.fail = true
+        h.search.text = "pic"
+        h.search.activate()
+        try await waitUntil { h.search.phase == .failed }
+        h.search.activate()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(h.opened, [])
+        XCTAssertEqual(h.recents.searches, [])
+        XCTAssertEqual(h.search.phase, .failed, "Return on a failure is not Try Again")
     }
 
     // MARK: - Snippets
@@ -438,7 +516,7 @@ final class SearchHarness {
         recents = RecentSearches(defaults: store.defaults)
         let targets = targets
         search = SearchModel(appModel: app, recents: recents, open: { targets.all.append($0) },
-                             now: { Date(timeIntervalSince1970: time.now) })
+                             now: { Date(timeIntervalSince1970: time.now) }, sleep: { try await time.sleep(for: $0) })
     }
 
     /// What the model opened, in order.
@@ -448,7 +526,14 @@ final class SearchHarness {
     var searches: [[String: Any]] { server.receivedParams("search.query") }
 
     /// `now` in Unix milliseconds.
-    var nowMillis: Int64 { Int64(time.now * 1000) }
+    var nowMillis: Int64 { Int64((time.now * 1000).rounded()) }
+
+    /// Types `text`, and lets the pause after typing pass on the clock.
+    func type(_ text: String) async throws {
+        search.text = text
+        try await waitUntil { self.time.pendingSleeps.contains(0.15) }
+        time.advance(0.15)
+    }
 
     /// The chats of a section, by room.
     func chatIDs(_ kind: SearchSection.Kind) -> [String] {

@@ -145,7 +145,7 @@ public final class SearchModel: ObservableObject {
 
     /// What is typed. A change searches after `debounce`.
     @Published public var text: String = "" {
-        didSet { if text != oldValue { queryChanged(debounced: !isHome) } }
+        didSet { if text != oldValue { queryChanged(debounced: !isHome && !searchingNow) } }
     }
     /// A change searches at once.
     @Published public var filters = SearchFilterSet() {
@@ -185,13 +185,25 @@ public final class SearchModel: ObservableObject {
     private var cursors: [SearchSection.Kind: String] = [:]
     private var showingMore: Set<SearchSection.Kind> = []
     private var openedChats: AnyCancellable?
+    private let sleep: @Sendable (Duration) async throws -> Void
+    /// The generation the rows on screen were found for. Older than `generation` while a newer query is pending.
+    private var shownGeneration = 0
+    /// The newest generation whose request has been sent.
+    private var requestedGeneration = 0
+    /// Return was pressed on rows older than the query: the generation whose answer's first row opens on arrival.
+    private var pendingOpen: Int?
+    /// The next text change searches at once, without the pause (a recent search chosen).
+    private var searchingNow = false
 
     /// - Parameters:
     ///   - open: opens a chat, or a chat at a message.
     ///   - now: the time a period counts back from.
+    ///   - sleep: the pause after typing and before "Searching…"; tests give one on a clock they move.
     public init(appModel: AppModel, recents: RecentSearches, open: @escaping @MainActor (SearchTarget) -> Void,
-                now: @escaping @Sendable () -> Date = { Date() }) {
+                now: @escaping @Sendable () -> Date = { Date() },
+                sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.appModel = appModel
+        self.sleep = sleep
         self.recents = recents
         self.open = open
         self.now = now
@@ -227,6 +239,7 @@ public final class SearchModel: ObservableObject {
         complete = true
         firstPage = nil
         cursors = [:]
+        pendingOpen = nil
     }
 
     /// Esc: clears the filters, then the text, then the chat searched in, then closes. True once closed.
@@ -294,13 +307,31 @@ public final class SearchModel: ObservableObject {
         selection = sections[target].items.first?.id
     }
 
-    /// Return: opens the selected row and closes the panel. A recent search is searched again instead.
+    /// Return: opens the selected row and closes the panel. A recent search is searched again, at once, instead.
+    ///
+    /// Rows found for an older query (Return inside the pause after typing, or before the answer) are never
+    /// opened: the search runs now, and the first row of its answer opens when it lands. An empty answer or a
+    /// failure opens nothing and keeps nothing; a keystroke before the answer cancels the open.
     public func activate() {
+        guard phase != .closed else { return }
+        if shownGeneration != generation {
+            if requestedGeneration == generation, phase == .failed { return } // this query failed: Try Again
+            pendingOpen = generation
+            if requestedGeneration != generation {
+                // Skip the rest of the pause.
+                let generation = generation
+                running?.cancel()
+                running = Task { [weak self] in await self?.run(generation) }
+            }
+            return
+        }
         guard let selection, let item = allItems.first(where: { $0.id == selection }) else { return }
         let target: SearchTarget
         switch item {
         case let .recentSearch(words):
+            searchingNow = true
             text = words
+            searchingNow = false
             return
         case let .chat(row):
             target = .chat(roomID: row.roomID)
@@ -373,22 +404,25 @@ public final class SearchModel: ObservableObject {
     private func queryChanged(debounced: Bool) {
         guard phase != .closed else { return }
         generation += 1
+        pendingOpen = nil // a keystroke after Return cancels the open
         let generation = generation
+        let sleep = sleep
         running?.cancel()
         searchingTimer?.cancel()
         running = Task { [weak self] in
             if debounced {
-                do { try await Task.sleep(for: Self.debounce) } catch { return }
+                do { try await sleep(Self.debounce) } catch { return }
             }
             await self?.run(generation)
         }
     }
 
     private func run(_ generation: Int) async {
-        guard generation == self.generation, phase != .closed else { return }
+        guard generation == self.generation, phase != .closed, requestedGeneration != generation else { return }
+        requestedGeneration = generation
         if isHome, scopeRoomID != nil {
             // Inside one chat, home is the recent searches alone: recent and archived chats aren't in it.
-            showHome(recent: [], lastArchived: nil, complete: complete)
+            showHome(recent: [], lastArchived: nil, complete: complete, of: generation)
             return
         }
         guard let client = appModel.client else {
@@ -418,14 +452,15 @@ public final class SearchModel: ObservableObject {
             guard generation == self.generation, phase != .closed else { return }
             // In the order they were opened, not the engine's.
             let byID = Dictionary(found.map { ($0.roomID, $0) }, uniquingKeysWith: { first, _ in first })
-            showHome(recent: ids.compactMap { byID[$0] }, lastArchived: result.lastArchived, complete: result.complete)
+            showHome(recent: ids.compactMap { byID[$0] }, lastArchived: result.lastArchived, complete: result.complete,
+                     of: generation)
         } catch {
             guard generation == self.generation, phase != .closed else { return }
             fail()
         }
     }
 
-    private func showHome(recent: [InboxRow], lastArchived: InboxRow?, complete: Bool) {
+    private func showHome(recent: [InboxRow], lastArchived: InboxRow?, complete: Bool, of generation: Int) {
         var built: [SearchSection] = []
         if !recent.isEmpty { built.append(SearchSection(kind: .recent, items: recent.map(SearchItem.chat))) }
         if let lastArchived, !recent.contains(where: { $0.roomID == lastArchived.roomID }) {
@@ -442,6 +477,7 @@ public final class SearchModel: ObservableObject {
         self.complete = complete
         selection = built.first?.items.first?.id
         phase = .home
+        shown(generation)
     }
 
     private func runSearch(_ client: EngineClient, _ generation: Int) async {
@@ -450,7 +486,7 @@ public final class SearchModel: ObservableObject {
         do {
             let result: SearchResult = try await client.call("search.query", params)
             guard generation == self.generation, phase != .closed else { return }
-            showResults(result, of: params)
+            showResults(result, of: params, generation: generation)
         } catch {
             guard generation == self.generation, phase != .closed else { return }
             fail()
@@ -467,7 +503,7 @@ public final class SearchModel: ObservableObject {
         return SearchParams(text: words, filters: filters.wire(now: now(), roomIDs: scopeRoomID.map { [$0] }))
     }
 
-    private func showResults(_ result: SearchResult, of params: SearchParams) {
+    private func showResults(_ result: SearchResult, of params: SearchParams, generation: Int) {
         // Inside one chat there are no Chats or In groups (the engine leaves them null too).
         let everyChat = params.filters?.roomIDs == nil
         var built: [SearchSection] = []
@@ -495,17 +531,32 @@ public final class SearchModel: ObservableObject {
         complete = result.complete
         selection = built.first?.items.first?.id
         phase = .results
+        shown(generation)
+    }
+
+    /// The rows on screen are now `generation`'s. If Return was pressed for it, its first row opens (a recent
+    /// search, on home, isn't a result: nothing opens).
+    private func shown(_ generation: Int) {
+        shownGeneration = generation
+        guard pendingOpen == generation else { return }
+        pendingOpen = nil
+        guard let first = allItems.first else { return }
+        if case .recentSearch = first { return }
+        selection = first.id
+        activate()
     }
 
     private func fail() {
+        pendingOpen = nil
         searchingTimer?.cancel()
         phase = .failed
     }
 
     private func startSearchingTimer(_ generation: Int) {
         searchingTimer?.cancel()
+        let sleep = sleep
         searchingTimer = Task { [weak self] in
-            do { try await Task.sleep(for: Self.searchingDelay) } catch { return }
+            do { try await sleep(Self.searchingDelay) } catch { return }
             guard !Task.isCancelled, let self, generation == self.generation, self.phase != .closed else { return }
             self.phase = .searching
         }
